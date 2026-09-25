@@ -22,11 +22,18 @@
 ---   the secret aspect          a font string given a secret text keeps a secret
 ---                              aspect after `SetText("")`: `GetText`,
 ---                              `GetStringWidth` and `GetStringHeight` answer
----                              secret values until `ClearText` removes it. The
----                              client test inferred this from a reused `Label`
----                              whose `GetStringHeight` reached `SetHeight` as a
----                              secret after a plain `SetText("")`; `ClearText`
----                              is documented as removing secret aspects;
+---                              secret values. `ClearText` makes `GetText`
+---                              plain again, but the two measurements stay
+---                              secret for the font string's life, whatever
+---                              text it shows later: a reused `Label` whose
+---                              release had called `ClearText` answered
+---                              `GetText()` plainly and `GetStringHeight()` as
+---                              a secret for a plain text (measured
+---                              2026-09-25, 11:09);
+---   style getters              a font string answers `GetJustifyH` and
+---                              `GetWordWrap` with what its setters were given
+---                              (`"CENTER"` and `true` before that), as the
+---                              client's do; the shared stub only stores them;
 ---   strata follow the parent   `SetParent` gives a frame its new parent's
 ---                              strata unless `SetFixedFrameStrata(true)` was
 ---                              called on it.
@@ -111,17 +118,19 @@ local function emptyTextIsNil(region)
   end
 end
 
----Apply the font-string rules: guarded geometry, the secret aspect with
----`ClearText`, and `nil` for an empty text.
+---Apply the font-string rules: guarded geometry, the secret aspect of the
+---text (until `ClearText`) and of the measurements (for good), `nil` for an
+---empty text, and the style getters.
 ---@param fontString table
 local function applyFontStringRules(fontString)
   for index = 1, #GEOMETRY_SETTERS do
     guardArguments(fontString, GEOMETRY_SETTERS[index])
   end
 
-  -- The secret a secret text left behind, or `nil`: the aspect's value is
-  -- what the measurements answer while it lasts.
-  local aspect = nil
+  -- The secret a secret text left behind, or `nil`: what `GetText` answers
+  -- until `ClearText`, and what the measurements answer from then on too.
+  local textAspect = nil
+  local measureAspect = nil
   local setText = fontString.SetText
   local getText = fontString.GetText
   local getStringWidth = fontString.GetStringWidth
@@ -129,14 +138,15 @@ local function applyFontStringRules(fontString)
 
   fontString.SetText = function(self, text)
     if isSecret(text) then
-      aspect = text
+      textAspect = text
+      measureAspect = text
     end
     setText(self, text)
   end
   fontString.GetText = function(self)
     local text = getText(self)
-    if aspect ~= nil and not isSecret(text) then
-      return aspect
+    if textAspect ~= nil and not isSecret(text) then
+      return textAspect
     end
     if text == "" then
       return nil
@@ -144,20 +154,30 @@ local function applyFontStringRules(fontString)
     return text
   end
   fontString.GetStringWidth = function(self)
-    if aspect ~= nil then
-      return aspect
+    if measureAspect ~= nil then
+      return measureAspect
     end
     return getStringWidth(self)
   end
   fontString.GetStringHeight = function(self)
-    if aspect ~= nil then
-      return aspect
+    if measureAspect ~= nil then
+      return measureAspect
     end
     return getStringHeight(self)
   end
   fontString.ClearText = function(self)
-    aspect = nil
+    textAspect = nil
     setText(self, nil)
+  end
+
+  fontString.GetJustifyH = function(self)
+    return self.justifyH or "CENTER"
+  end
+  fontString.GetWordWrap = function(self)
+    if self.wordWrap == nil then
+      return true
+    end
+    return self.wordWrap
   end
 end
 

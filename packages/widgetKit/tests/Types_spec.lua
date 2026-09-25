@@ -22,19 +22,19 @@ describe("WidgetKit type registry", function()
   end)
   after_each(TestEnv.Reset)
 
-  it("registers the twelve base widget types, ten at version 2 and two at version 1", function()
+  it("registers the twelve base widget types, ten at version 3 and two at version 1", function()
     for name, version in pairs({
-      Frame = 2,
-      Group = 2,
+      Frame = 3,
+      Group = 3,
       ScrollFrame = 1,
-      Label = 2,
-      Button = 2,
-      CheckBox = 2,
-      Slider = 2,
-      EditBox = 2,
-      Dropdown = 2,
-      ColorPicker = 2,
-      Heading = 2,
+      Label = 3,
+      Button = 3,
+      CheckBox = 3,
+      Slider = 3,
+      EditBox = 3,
+      Dropdown = 3,
+      ColorPicker = 3,
+      Heading = 3,
       Spacer = 1,
     }) do
       assert.are.equal(version, WidgetKit:GetTypeVersion(name), name)

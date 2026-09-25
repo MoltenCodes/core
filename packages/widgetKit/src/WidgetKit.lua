@@ -56,7 +56,7 @@
 
 local PACKAGE_NAME = "widgetKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 6
+local IMPLEMENTATION_REVISION = 7
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_POOLKIT_API = 1
 local REQUIRED_SIGNALKIT_API = 1
@@ -157,18 +157,22 @@ local POINT_VERTICAL = {
 -- `Frame` window keeps its strata under any parent, the `Label` wraps at a
 -- width of its own and never sizes itself from a secret measurement, and
 -- `EditBox:SetText` refuses a secret. `ScrollFrame` and `Spacer` are unchanged.
+--
+-- Version 3 (implementation revision 7): every text a text setter may give a
+-- secret shows a secret on a font string of its own (`showText`), so a font
+-- string whose measurements stay secret never shows a plain text again.
 local BASE_TYPE_VERSIONS = {
-  Frame = 2,
-  Group = 2,
+  Frame = 3,
+  Group = 3,
   ScrollFrame = 1,
-  Label = 2,
-  Button = 2,
-  CheckBox = 2,
-  Slider = 2,
-  EditBox = 2,
-  Dropdown = 2,
-  ColorPicker = 2,
-  Heading = 2,
+  Label = 3,
+  Button = 3,
+  CheckBox = 3,
+  Slider = 3,
+  EditBox = 3,
+  Dropdown = 3,
+  ColorPicker = 3,
+  Heading = 3,
   Spacer = 1,
 }
 
@@ -3102,15 +3106,19 @@ end
 -- construction, because the widget is pooled for the session.
 --
 -- Two client facts measured on Retail 12.1.0 b69933 (2026-09-25) shape the
--- text code, and each place applies them inline, because the main chunk is at
--- Lua's limit of 200 active locals and has no room for a shared helper:
+-- text code. The main chunk is near Lua's limit of 200 active locals, so the
+-- first is applied inline by every getter and the second by the one shared
+-- helper, `showText` (it took the place of a `setShown` helper, replaced by
+-- the client's own `SetShown`):
 --
 --   * a font string or button answers `GetText()` with `nil`, not `""`, for
 --     an empty text, so every text getter turns `nil` into `""`;
---   * `SetText("")` leaves a font string that showed a secret with its secret
---     aspect (its text and measurements stay secret), so every `OnRelease`
---     that clears a font string a text setter may have given a secret also
---     calls `ClearText`, which removes it, when the client has it.
+--   * a font string that showed a secret keeps secret measurements for good:
+--     `SetText("")` leaves its text secret too, and `ClearText` makes the text
+--     plain again but not `GetStringWidth` or `GetStringHeight` (a reused
+--     `Label` measured a plain text as a secret after `ClearText`). So every
+--     text a text setter may give a secret goes through `showText`, which
+--     shows secrets on a font string of its own and never a plain text there.
 
 -- Colours a widget draws its text and chrome in.
 local LABEL_RED, LABEL_GREEN, LABEL_BLUE = 1, 0.82, 0
@@ -3155,6 +3163,95 @@ local function checkText(text, options, methodName, level)
   return text, false
 end
 
+---Show a checked text in the widget's text slot `key`: the field (`text`,
+---`titleText` or `labelText`) naming the region that shows the text now.
+---
+---A plain text is shown by the region the constructor built, a font string
+---or, for a `Button`, the button itself. A secret text is shown by a second
+---font string, created on the slot's first secret and kept for the widget's
+---life: a font string that showed a secret keeps secret measurements after
+---`ClearText` (Retail 12.1.0 b69933, 2026-09-25), so it must never show a
+---plain text again, and reusing it for every later secret bounds the cost at
+---one font string per slot however often a secret comes back. The client
+---never frees a font string, so a new one per secret would grow for the
+---session.
+---
+---`widget[key]` always names the region showing the text, so a widget's own
+---setters and getters reach the right one. At each switch the text leaves the
+---other region (the secret one also gets `ClearText` and is hidden) and the
+---font object, justification, colour and word wrap move with it; anchors are
+---copied once, when the secret font string is made. A `Button`'s own text
+---keeps the button's styling, and its secret font string starts from it.
+---@param widget table
+---@param key string
+---@param value string|number
+---@param secret boolean
+local function showText(widget, key, value, secret)
+  local slots = widget._secretTexts
+  if type(slots) == "nil" then
+    if not secret then
+      widget[key]:SetText(value)
+      return
+    end
+    slots = {}
+    widget._secretTexts = slots
+  end
+  local slot = slots[key]
+  if type(slot) == "nil" then
+    if not secret then
+      widget[key]:SetText(value)
+      return
+    end
+    local plain = widget[key]
+    local parent, source = plain, plain
+    if plain:GetObjectType() == "Button" then
+      source = plain:GetFontString()
+    else
+      parent = plain:GetParent()
+    end
+    local secretText = parent:CreateFontString(nil, "OVERLAY")
+    local points = source:GetNumPoints()
+    for index = 1, points do
+      secretText:SetPoint(source:GetPoint(index))
+    end
+    if points == 0 then
+      secretText:SetPoint("CENTER", parent, "CENTER", 0, 0)
+    end
+    secretText:Hide()
+    slot = { plain = plain, secret = secretText }
+    slots[key] = slot
+  end
+
+  local current = widget[key]
+  local target = secret and slot.secret or slot.plain
+  if current ~= target then
+    local source = current
+    if current:GetObjectType() == "Button" then
+      source = current:GetFontString()
+    end
+    if target:GetObjectType() ~= "Button" then
+      local fontObject = source:GetFontObject()
+      if type(fontObject) ~= "nil" then
+        target:SetFontObject(fontObject)
+      end
+      target:SetJustifyH(source:GetJustifyH())
+      target:SetTextColor(source:GetTextColor())
+      target:SetWordWrap(source:GetWordWrap())
+    end
+    current:SetText("")
+    if current == slot.secret then
+      if type(current.ClearText) == "function" then
+        current:ClearText()
+      end
+      current:Hide()
+    else
+      target:Show()
+    end
+    widget[key] = target
+  end
+  target:SetText(value)
+end
+
 ---Whether `widget` is still an active widget; script handlers check this
 ---before they act, since a host script can outlive a release by a frame.
 ---@param widget table
@@ -3162,16 +3259,6 @@ end
 local function isActive(widget)
   local record = records[widget]
   return record ~= nil and record.active == true
-end
-
----@param frame WidgetKit.Frame
----@param shown boolean
-local function setShown(frame, shown)
-  if shown then
-    frame:Show()
-  else
-    frame:Hide()
-  end
 end
 
 ---Validate a `SetDisabled` argument.
@@ -3219,8 +3306,8 @@ end
 ---@param options WidgetKit.TextOptions?
 local function setWidgetLabel(self, text, options)
   activeRecord(self, "WidgetKit.Widget:SetLabel", 3)
-  local value = checkText(text, options, "WidgetKit.Widget:SetLabel", 3)
-  self.labelText:SetText(value)
+  local value, secret = checkText(text, options, "WidgetKit.Widget:SetLabel", 3)
+  showText(self, "labelText", value, secret)
 end
 
 ---A `GetLabel` shared by the same widgets.
@@ -3249,7 +3336,8 @@ do
   ---@param options WidgetKit.TextOptions?
   local function windowSetTitle(self, text, options)
     activeRecord(self, "WidgetKit Frame:SetTitle", 3)
-    self.titleText:SetText(checkText(text, options, "WidgetKit Frame:SetTitle", 3))
+    local value, secret = checkText(text, options, "WidgetKit Frame:SetTitle", 3)
+    showText(self, "titleText", value, secret)
   end
 
   ---@return any
@@ -3270,7 +3358,7 @@ do
       error("WidgetKit Frame:SetResizable resizable must be a boolean", 2)
     end
     self.frame:SetResizable(resizable)
-    setShown(self.sizer, resizable)
+    self.sizer:SetShown(resizable)
   end
 
   ---@param movable boolean
@@ -3326,10 +3414,7 @@ do
       binding:Release()
       self._binding = nil
     end
-    self.titleText:SetText("")
-    if type(self.titleText.ClearText) == "function" then
-      self.titleText:ClearText()
-    end
+    showText(self, "titleText", "", false)
     local frame = self.frame
     frame:StopMovingOrSizing()
   end
@@ -3465,7 +3550,8 @@ do
   ---@param options WidgetKit.TextOptions?
   local function groupSetTitle(self, text, options)
     activeRecord(self, "WidgetKit Group:SetTitle", 3)
-    self.titleText:SetText(checkText(text, options, "WidgetKit Group:SetTitle", 3))
+    local value, secret = checkText(text, options, "WidgetKit Group:SetTitle", 3)
+    showText(self, "titleText", value, secret)
     groupPlaceContent(self)
   end
 
@@ -3501,10 +3587,7 @@ do
   end
 
   local function groupOnRelease(self)
-    self.titleText:SetText("")
-    if type(self.titleText.ClearText) == "function" then
-      self.titleText:ClearText()
-    end
+    showText(self, "titleText", "", false)
   end
 
   ---@return table widget
@@ -3604,7 +3687,7 @@ do
     self._range = range
     local scrollbar = self.scrollbar
     scrollbar:SetMinMaxValues(0, range)
-    setShown(scrollbar, range > 0)
+    scrollbar:SetShown(range > 0)
     local offset = self.scroll:GetVerticalScroll()
     if offset > range then
       self.scroll:SetVerticalScroll(range)
@@ -3687,9 +3770,10 @@ do
 
   ---Size the label to its text. A secret text is not measured, and a
   ---measurement the client answers as a secret is not used: `SetHeight`
-  ---takes a secret only from untainted code (Retail 12.1.0 b69933), and a
-  ---font string that once showed a secret may measure any later text as one.
-  ---Either way the label is one line high.
+  ---takes a secret only from untainted code (Retail 12.1.0 b69933). A plain
+  ---text is shown by a font string that never showed a secret (`showText`),
+  ---so its measurement is plain; the check stays as the last guard. Either
+  ---way a label whose height cannot be measured is one line high.
   ---@param widget table
   local function labelUpdateHeight(widget)
     local height = LINE_HEIGHT
@@ -3709,10 +3793,12 @@ do
   ---resolved, and a label laid out before it was ever drawn (measured on
   ---Retail 12.1.0 b69933) still measured one unwrapped line after its anchors
   ---spanned the content. `width` is a plain number: `SetWidth` refuses a
-  ---secret, and a layout tells a child no width it could not read.
+  ---secret, and a layout tells a child no width it could not read. It is
+  ---kept, so the font string `showText` switches to wraps at it too.
   ---@param widget table
   ---@param width number
   local function labelSetWrapWidth(widget, width)
+    widget._wrapWidth = width
     widget.text:SetWidth(width)
     labelUpdateHeight(widget)
   end
@@ -3723,8 +3809,9 @@ do
     activeRecord(self, "WidgetKit Label:SetText", 3)
     local value, secret = checkText(text, options, "WidgetKit Label:SetText", 3)
     self._secret = secret
-    self.text:SetText(value)
-    labelUpdateHeight(self)
+    showText(self, "text", value, secret)
+    -- The font string showing the text may have changed.
+    labelSetWrapWidth(self, self._wrapWidth)
   end
 
   ---@return any
@@ -3804,14 +3891,10 @@ do
     labelSetWrapWidth(self, LABEL_WIDTH)
   end
 
-  ---Clear the text, so a pooled font string never carries a secret into its
-  ---next use. `ClearText` also removes the secret aspect a secret text gave
-  ---the font string, which `SetText("")` keeps (Retail 12.x).
+  ---Clear the text and go back to the font string that never showed a
+  ---secret, so the next use measures its texts (`showText`).
   local function labelOnRelease(self)
-    self.text:SetText("")
-    if type(self.text.ClearText) == "function" then
-      self.text:ClearText()
-    end
+    showText(self, "text", "", false)
     self._secret = false
   end
 
@@ -3826,6 +3909,7 @@ do
       frame = frame,
       text = text,
       _secret = false,
+      _wrapWidth = LABEL_WIDTH,
       _disabled = false,
       _red = TEXT_RED,
       _green = TEXT_GREEN,
@@ -3865,13 +3949,14 @@ do
   ---@param options WidgetKit.TextOptions?
   local function buttonSetText(self, text, options)
     activeRecord(self, "WidgetKit Button:SetText", 3)
-    self.frame:SetText(checkText(text, options, "WidgetKit Button:SetText", 3))
+    local value, secret = checkText(text, options, "WidgetKit Button:SetText", 3)
+    showText(self, "text", value, secret)
   end
 
   ---@return any
   local function buttonGetText(self)
     activeRecord(self, "WidgetKit Button:GetText", 3)
-    local text = self.frame:GetText()
+    local text = self.text:GetText()
     if type(text) == "nil" then
       return ""
     end
@@ -3895,6 +3980,14 @@ do
       buttonStopCapture(self)
     end
     self.frame:SetEnabled(not disabled)
+    -- A secret text is on a font string of its own (`showText`), which the
+    -- button does not style: it takes the font the button's text has now.
+    if self.text ~= self.frame then
+      local fontObject = self.frame:GetFontString():GetFontObject()
+      if type(fontObject) ~= "nil" then
+        self.text:SetFontObject(fontObject)
+      end
+    end
   end
 
   ---Turn key capture on or off. With it on, a left click starts listening for
@@ -3952,7 +4045,7 @@ do
   local function buttonOnRelease(self)
     buttonStopCapture(self)
     self._captureEnabled = false
-    self.frame:SetText("")
+    showText(self, "text", "", false)
   end
 
   ---@return table widget
@@ -3961,6 +4054,9 @@ do
     frame:RegisterForClicks("LeftButtonUp", "RightButtonUp")
     local widget = {
       frame = frame,
+      -- The region showing the text: the button itself, or the font string
+      -- `showText` shows a secret text on.
+      text = frame,
       _captureEnabled = false,
       _capturing = false,
       OnAcquire = buttonOnAcquire,
@@ -4017,7 +4113,7 @@ do
   local function checkBoxShowValue(widget)
     local value = widget._value
     widget.button:SetChecked(value == true)
-    setShown(widget.indeterminate, value == nil and widget._triState)
+    widget.indeterminate:SetShown(value == nil and widget._triState)
   end
 
   ---@param value boolean? `nil` is the third state, and means `false` without it
@@ -4076,10 +4172,7 @@ do
   end
 
   local function checkBoxOnRelease(self)
-    self.labelText:SetText("")
-    if type(self.labelText.ClearText) == "function" then
-      self.labelText:ClearText()
-    end
+    showText(self, "labelText", "", false)
     self._value = false
   end
 
@@ -4272,10 +4365,7 @@ do
   end
 
   local function sliderOnRelease(self)
-    self.labelText:SetText("")
-    if type(self.labelText.ClearText) == "function" then
-      self.labelText:ClearText()
-    end
+    showText(self, "labelText", "", false)
     self.valueBox:ClearFocus()
   end
 
@@ -4448,9 +4538,9 @@ do
     local text = activeEditBox(self):GetText()
     self._multiLine = multiLine
     self._lines = lines or 4
-    setShown(self.singleBox, not multiLine)
-    setShown(self.multiBox, multiLine)
-    setShown(self.acceptButton, multiLine)
+    self.singleBox:SetShown(not multiLine)
+    self.multiBox:SetShown(multiLine)
+    self.acceptButton:SetShown(multiLine)
     self._settingText = true
     activeEditBox(self):SetText(text)
     self._settingText = false
@@ -4538,10 +4628,7 @@ do
     self._settingText = false
     self.singleBox:ClearFocus()
     self.multiBox:ClearFocus()
-    self.labelText:SetText("")
-    if type(self.labelText.ClearText) == "function" then
-      self.labelText:ClearText()
-    end
+    showText(self, "labelText", "", false)
   end
 
   ---@return table widget
@@ -5004,10 +5091,7 @@ do --
     self._count = 0
     self._value = nil
     self.button:SetText("")
-    self.labelText:SetText("")
-    if type(self.labelText.ClearText) == "function" then
-      self.labelText:ClearText()
-    end
+    showText(self, "labelText", "", false)
     local rows = self._rows
     for index = 1, #rows do
       rows[index]:SetText("")
@@ -5215,10 +5299,7 @@ do --
   end
 
   local function colorOnRelease(self)
-    self.labelText:SetText("")
-    if type(self.labelText.ClearText) == "function" then
-      self.labelText:ClearText()
-    end
+    showText(self, "labelText", "", false)
     -- Disarm the client picker's callbacks for this use of the widget.
     self._session = self._session + 1
   end
@@ -5325,7 +5406,7 @@ do
   local function headingSetText(self, text, options)
     activeRecord(self, "WidgetKit Heading:SetText", 3)
     local value, secret = checkText(text, options, "WidgetKit Heading:SetText", 3)
-    self.text:SetText(value)
+    showText(self, "text", value, secret)
     -- The lines meet in the middle when there is no text.
     local empty = not secret and value == ""
     self.leftLine:ClearAllPoints()
@@ -5364,10 +5445,7 @@ do
   end
 
   local function headingOnRelease(self)
-    self.text:SetText("")
-    if type(self.text.ClearText) == "function" then
-      self.text:ClearText()
-    end
+    showText(self, "text", "", false)
   end
 
   ---@return table widget

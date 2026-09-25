@@ -6,8 +6,9 @@ local TestEnv = require("WidgetKitTestEnv")
 -- client rules of `support/WidgetKitClientRules.lua`, so these specs run
 -- against a fixture that behaves as the client did there: frame setters refuse
 -- a secret, an empty font string or button answers `GetText()` with `nil`, a
--- font string that showed a secret keeps its secret aspect until `ClearText`,
--- and `SetParent` hands a frame its parent's strata.
+-- font string that showed a secret keeps its secret text until `ClearText` and
+-- its secret measurements for good (the second run, 2026-09-25 11:09, fixed in
+-- revision 7), and `SetParent` hands a frame its parent's strata.
 
 describe("WidgetKit fixture client rules", function()
   before_each(function()
@@ -37,19 +38,37 @@ describe("WidgetKit fixture client rules", function()
     assert.is_truthy(tostring(failure):find("bad argument #1 to 'SetText'", 1, true))
   end)
 
-  it("answer nil for an empty font string and keep a secret aspect until ClearText", function()
-    local frame = TestEnv.GetGlobal("CreateFrame")("Frame")
-    local fontString = frame:CreateFontString()
-    fontString:SetText("")
-    assert.is_nil(fontString:GetText())
-    local secret = TestEnv.NewSecret()
-    fontString:SetText(secret)
-    fontString:SetText("")
-    assert.are.equal(secret, fontString:GetText())
-    assert.are.equal(secret, fontString:GetStringHeight())
-    fontString:ClearText()
-    assert.is_nil(fontString:GetText())
-    assert.are.equal(0, fontString:GetStringHeight())
+  it(
+    "answer nil for an empty font string, keep a secret text until ClearText and secret measurements for good",
+    function()
+      local frame = TestEnv.GetGlobal("CreateFrame")("Frame")
+      local fontString = frame:CreateFontString()
+      fontString:SetText("")
+      assert.is_nil(fontString:GetText())
+      local secret = TestEnv.NewSecret()
+      fontString:SetText(secret)
+      fontString:SetText("")
+      assert.are.equal(secret, fontString:GetText())
+      assert.are.equal(secret, fontString:GetStringHeight())
+      fontString:ClearText()
+      assert.is_nil(fontString:GetText())
+      -- What the reused label showed in the client: a plain text, measured
+      -- as a secret.
+      fontString:SetText("plain")
+      assert.are.equal("plain", fontString:GetText())
+      assert.are.equal(secret, fontString:GetStringHeight())
+      assert.are.equal(secret, fontString:GetStringWidth())
+    end
+  )
+
+  it("answer GetJustifyH and GetWordWrap with what the setters stored", function()
+    local fontString = TestEnv.GetGlobal("CreateFrame")("Frame"):CreateFontString()
+    assert.are.equal("CENTER", fontString:GetJustifyH())
+    assert.is_true(fontString:GetWordWrap())
+    fontString:SetJustifyH("RIGHT")
+    fontString:SetWordWrap(false)
+    assert.are.equal("RIGHT", fontString:GetJustifyH())
+    assert.is_false(fontString:GetWordWrap())
   end)
 
   it("give a re-parented frame its parent's strata unless its strata is fixed", function()
@@ -146,10 +165,10 @@ describe("WidgetKit under the client rules", function()
     TestEnv.InstallSecretProbe()
     local label = WidgetKit:Create("Label") --[[@as WidgetKit.Label]]
     local secret = TestEnv.NewSecret()
-    label:SetText(secret, { allowSecret = true })
-    -- The font string now measures every text as a secret, as the reused
-    -- label in the client did; the rules raise if it reaches `SetHeight`.
-    label.text:SetText("")
+    -- A secret put on the label's own font string behind WidgetKit's back
+    -- makes it measure every text as a secret; the rules raise if that
+    -- measurement reaches `SetHeight`.
+    label.text:SetText(secret)
     label:SetText("plain")
     assert.are.equal(12, label:GetHeight())
 

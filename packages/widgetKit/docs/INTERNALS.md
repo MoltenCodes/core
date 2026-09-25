@@ -247,8 +247,30 @@ The entries themselves are two parallel arrays, `_keys` and `_labels`; the rows 
 
 Every base widget builds its frames in its constructor with `CreateFrame`,
 parented to `UIParent` (or the holder), and sets its scripts there, once. The
-one exception is a `Dropdown`'s sixteen list rows, built on its first `Open`
-and kept for the widget's life. The
+exceptions are a `Dropdown`'s sixteen list rows, built on its first `Open`
+and kept for the widget's life, and the secret font string of a text slot.
+
+**Secret font strings.** A font string that showed a secret keeps secret
+measurements for good (`ClearText` makes only its text plain again; measured
+on Retail 12.1.0 b69933, 2026-09-25), so `showText` shows every text a text
+setter may give a secret (the `Label`, `Heading` and `Button` texts, the
+`Frame` and `Group` titles and the `labelText` of `CheckBox`, `Slider`,
+`EditBox`, `Dropdown` and `ColorPicker`) on one of two regions. Plain texts go
+on the region the constructor built; a secret goes on a font string made on
+the slot's first secret, with the plain one's anchors, and kept in
+`widget._secretTexts[key]` (`{ plain = region, secret = fontString }`) for the
+widget's life. The widget field `key` (`text`, `titleText` or `labelText`)
+always names the region showing the text, so the widget's own setters and
+getters need no branch; at each switch the font object, justification, colour
+and word wrap move with the text, and the secret font string is emptied,
+cleared and hidden. The bound: at most one extra font string and one small
+table per slot, made only by a secret (a widget that never shows one
+allocates nothing), and never more however often a secret comes back. A
+`Button`'s plain region is the button itself, which keeps its own styling;
+its secret font string is parented to it and takes the font of the button's
+text, again after `SetDisabled`.
+
+The
 templates used are `UIPanelButtonTemplate`, `UIPanelCloseButton`,
 `UICheckButtonTemplate` and `InputBoxTemplate`, present on every supported
 client; everything else is drawn with `SetColorTexture`. No widget sets a script

@@ -9,7 +9,7 @@ describe("WidgetKit bootstrap", function()
     local reloaded = TestEnv.ReloadPackage()
     assert.are.equal(WidgetKit, reloaded)
     assert.is_true(WidgetKit:IsWidget(label))
-    assert.are.equal(2, WidgetKit:GetTypeVersion("Label"))
+    assert.are.equal(3, WidgetKit:GetTypeVersion("Label"))
     WidgetKit:Release(label)
   end)
 
@@ -92,7 +92,7 @@ describe("WidgetKit bootstrap", function()
     assert.are.equal(nextRevision, upgraded.REVISION)
     assert.are.equal(widgetBase, upgraded.Widget)
     assert.are.equal(containerBase, upgraded.Container)
-    assert.are.equal(2, upgraded:GetTypeVersion("Label"))
+    assert.are.equal(3, upgraded:GetTypeVersion("Label"))
 
     -- Live widgets keep working under the new copy's methods.
     label:SetText("still here")
@@ -125,7 +125,7 @@ describe("WidgetKit bootstrap", function()
     assert.are.equal(label, group:GetChildren()[1])
     assert.is_true(label:GetUserData("kept"))
     assert.are.equal(old.UNBOUNDED, upgraded:GetLimits().maxDropdownEntries)
-    assert.are.equal(2, upgraded:GetTypeVersion("Label"))
+    assert.are.equal(3, upgraded:GetTypeVersion("Label"))
     -- The widgets revision 1 built run the current methods at once.
     TestEnv.InstallSecretProbe()
     local secret = TestEnv.NewSecret()
@@ -190,7 +190,7 @@ describe("WidgetKit bootstrap", function()
     assert.are.equal(slider, group:GetChildren()[1])
     assert.is_true(slider:GetUserData("kept"))
     assert.are.equal(old.UNBOUNDED, upgraded:GetLimits().maxDropdownEntries)
-    assert.are.equal(2, upgraded:GetTypeVersion("Slider"))
+    assert.are.equal(3, upgraded:GetTypeVersion("Slider"))
     -- The widgets revision 3 built run the current methods at once: a
     -- secret flag is refused instead of being tested as a boolean.
     TestEnv.InstallSecretProbe()
@@ -249,7 +249,7 @@ describe("WidgetKit bootstrap", function()
     upgraded:Release(group)
   end)
 
-  it("upgrades a revision 5 copy in place, raising ten base widgets to version 2", function()
+  it("upgrades a revision 5 copy in place, raising ten base widgets from version 1", function()
     TestEnv.Reset()
     TestEnv.InstallWowApi()
     TestEnv.InstallClientRules()
@@ -271,7 +271,7 @@ describe("WidgetKit bootstrap", function()
       "ColorPicker",
       "Heading",
     }) do
-      versionOne["  " .. typeName .. " = 2,"] = "  " .. typeName .. " = 1,"
+      versionOne["  " .. typeName .. " = 3,"] = "  " .. typeName .. " = 1,"
     end
     local old = TestEnv.LoadRevision(5, versionOne)
     local state = old._state
@@ -289,9 +289,9 @@ describe("WidgetKit bootstrap", function()
     local upgraded = require("WidgetKit")
     assert.are.equal(old, upgraded)
     assert.are.equal(state, upgraded._state)
-    assert.are.equal(6, upgraded.REVISION)
-    assert.are.equal(2, upgraded:GetTypeVersion("Label"))
-    assert.are.equal(2, upgraded:GetTypeVersion("Frame"))
+    assert.are.equal(7, upgraded.REVISION)
+    assert.are.equal(3, upgraded:GetTypeVersion("Label"))
+    assert.are.equal(3, upgraded:GetTypeVersion("Frame"))
     assert.are.equal(1, upgraded:GetTypeVersion("ScrollFrame"))
     assert.are.equal(1, upgraded:GetTypeVersion("Spacer"))
     assert.are.equal(old.UNBOUNDED, upgraded:GetLimits().maxDropdownEntries)
@@ -313,14 +313,74 @@ describe("WidgetKit bootstrap", function()
     assert.are_not.equal(borrowed, another)
   end)
 
+  it("upgrades a revision 6 copy in place, retiring a Label that showed a secret", function()
+    TestEnv.Reset()
+    TestEnv.InstallWowApi()
+    TestEnv.InstallClientRules()
+    TestEnv.InstallScreen()
+    TestEnv.InstallSecretProbe()
+    for _, name in ipairs({ "Registry", "SignalKit", "PoolKit", "SchemaKit", "OptionsKit" }) do
+      require(name)
+    end
+    -- Revision 6 registered the ten text-bearing base widgets at version 2.
+    local versionTwo = {}
+    for _, typeName in ipairs({
+      "Frame",
+      "Group",
+      "Label",
+      "Button",
+      "CheckBox",
+      "Slider",
+      "EditBox",
+      "Dropdown",
+      "ColorPicker",
+      "Heading",
+    }) do
+      versionTwo["  " .. typeName .. " = 3,"] = "  " .. typeName .. " = 2,"
+    end
+    local old = TestEnv.LoadRevision(6, versionTwo)
+    local state = old._state
+    assert.are.equal(2, old:GetTypeVersion("Label"))
+    local secret = TestEnv.NewSecret()
+    local pooled = old:Create("Label") --[[@as WidgetKit.Label]]
+    -- Revision 6 showed a secret on the label's own font string, which then
+    -- measured every later text as a secret.
+    local taintedText = pooled.text
+    taintedText:SetText(secret)
+    old:Release(pooled)
+    assert.are.equal(secret, taintedText:GetStringHeight())
+    local borrowed = old:Create("Label") --[[@as WidgetKit.Label]]
+    borrowed:SetUserData("kept", true)
+
+    local upgraded = require("WidgetKit")
+    assert.are.equal(old, upgraded)
+    assert.are.equal(state, upgraded._state)
+    assert.are.equal(7, upgraded.REVISION)
+    assert.are.equal(3, upgraded:GetTypeVersion("Label"))
+    assert.are.equal(3, upgraded:GetTypeVersion("Button"))
+    assert.are.equal(1, upgraded:GetTypeVersion("Spacer"))
+
+    -- The pooled label's font string keeps secret measurements: it is retired
+    -- with the version 2 constructor, and the next label measures its text.
+    local fresh = upgraded:Create("Label") --[[@as WidgetKit.Label]]
+    assert.are_not.equal(pooled, fresh)
+    fresh:SetText("one line")
+    assert.are.equal(12, fresh:GetHeight())
+    -- The borrowed one keeps its record until its release retires it.
+    assert.is_true(upgraded:IsWidget(borrowed))
+    assert.is_true(borrowed:GetUserData("kept"))
+    upgraded:Release(borrowed)
+    assert.are_not.equal(borrowed, upgraded:Create("Label"))
+  end)
+
   it("discards pooled base widgets when a newer copy raises their version", function()
     local WidgetKit = TestEnv.NewPackage()
     local pooled = WidgetKit:Create("Label")
     local borrowed = WidgetKit:Create("Label")
     WidgetKit:Release(pooled)
 
-    TestEnv.LoadRevision(WidgetKit.REVISION + 1, { ["  Label = 2,"] = "  Label = 3," })
-    assert.are.equal(3, WidgetKit:GetTypeVersion("Label"))
+    TestEnv.LoadRevision(WidgetKit.REVISION + 1, { ["  Label = 3,"] = "  Label = 4," })
+    assert.are.equal(4, WidgetKit:GetTypeVersion("Label"))
     local fresh = WidgetKit:Create("Label")
     assert.are_not.equal(pooled, fresh)
     WidgetKit:Release(borrowed)

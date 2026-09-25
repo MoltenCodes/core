@@ -469,7 +469,7 @@ describe("WidgetKit secret values", function()
     end
   )
 
-  it("clears a secret and its secret aspect from pooled text on release", function()
+  it("leaves a secret off the font strings a pooled widget shows plain texts on", function()
     local secret = TestEnv.NewSecret()
     local label = WidgetKit:Create("Label")
     label:SetText(secret, { allowSecret = true })
@@ -483,8 +483,9 @@ describe("WidgetKit secret values", function()
     WidgetKit:Release(heading)
     WidgetKit:Release(group)
     WidgetKit:Release(box)
-    -- `SetText("")` alone would leave the aspect: `GetText` and the string
-    -- measurements would still answer the secret.
+    -- The secret was shown on each slot's own secret font string, so the
+    -- font strings the released widgets show plain texts on never held it:
+    -- their text and measurements are plain (`SecretTexts_spec.lua`).
     for _, fontString in ipairs({ label.text, heading.text, group.titleText, box.labelText }) do
       assert.is_nil(fontString:GetText())
       assert.are.equal(0, fontString:GetStringHeight())

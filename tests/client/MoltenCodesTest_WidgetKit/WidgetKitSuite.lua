@@ -103,19 +103,20 @@ local BASE_TYPES = {
 }
 
 --- The version docs/API.md ("Base widgets") gives each base type: revision 6
---- raised every type whose constructor it changed to 2.
+--- raised every type whose constructor it changed to 2, and revision 7 raised
+--- the same ten to 3 (secret texts on a font string of their own).
 local BASE_TYPE_VERSIONS = {
-  Frame = 2,
-  Group = 2,
+  Frame = 3,
+  Group = 3,
   ScrollFrame = 1,
-  Label = 2,
-  Button = 2,
-  CheckBox = 2,
-  Slider = 2,
-  EditBox = 2,
-  Dropdown = 2,
-  ColorPicker = 2,
-  Heading = 2,
+  Label = 3,
+  Button = 3,
+  CheckBox = 3,
+  Slider = 3,
+  EditBox = 3,
+  Dropdown = 3,
+  ColorPicker = 3,
+  Heading = 3,
   Spacer = 1,
 }
 
@@ -769,7 +770,7 @@ end
 local facade = newSuite("facade")
 
 facade:Test(
-  "Registry:Get('widgetKit', 1) is the WidgetKit facade with API 1, its sixteen methods, the four Anchor functions, the defaults 256/256/16 and UNBOUNDED, and the twelve base types at their documented versions (2, ScrollFrame and Spacer 1)",
+  "Registry:Get('widgetKit', 1) is the WidgetKit facade with API 1, its sixteen methods, the four Anchor functions, the defaults 256/256/16 and UNBOUNDED, and the twelve base types at their documented versions (3, ScrollFrame and Spacer 1)",
   function(ctx)
     ctx:Expect(rawget(WidgetKit, "API")):ToBe(WIDGET_KIT_API)
     for _, methodName in ipairs({
@@ -2641,7 +2642,7 @@ local function makeSecret(ctx, value)
 end
 
 secretTest(
-  "text setters refuse a secretwrap string at the calling line; with allowSecret a Label shows it one line high, and the next use of the same Label shows a plain empty text",
+  "text setters refuse a secretwrap string at the calling line; with allowSecret a Label shows it one line high on a font string of its own, and the next use of the same Label shows a plain empty text and measures plain texts again, wrapped ones included",
   function(ctx)
     local secretText = makeSecret(ctx, "hunter2")
     local lines = { start = 0 }
@@ -2666,8 +2667,14 @@ secretTest(
       "WidgetKit Button:SetText text must not be a secret value unless options.allowSecret is true"
     )
 
+    local plainText = label.text
     label:SetText(secretText, { allowSecret = true })
     expectNear(ctx, "secret label height", label:GetHeight(), 12)
+    -- Revision 7 shows a secret on a font string of its own: a font string
+    -- that showed one measures every later text as a secret, `ClearText` or
+    -- not (the run of 2026-09-25, 11:09).
+    local secretFontString = label.text
+    ctx:Expect(secretFontString ~= plainText):ToBe(true)
     ctx:Log(
       "Label:GetText() after a secret text is secret: " .. tostring(isSecret(label:GetText()))
     )
@@ -2681,19 +2688,37 @@ secretTest(
     WidgetKit:Release(label)
     local reused = create(ctx, "Label")
     ctx:Expect(reused:GetFrame()):ToBe(frame)
+    -- The next use is back on the font string that never showed the secret.
+    ctx:Expect(reused.text):ToBe(plainText)
     local text = reused:GetText()
-    -- WidgetKit's release calls `ClearText`, which should remove the secret
-    -- aspect `SetText("")` left on the font string; both answers are logged.
+    reused:SetText(SHORT_TEXT)
+    local measured = reused.text:GetStringHeight()
     ctx:Log(
-      ("reused Label: GetText() secret %s, GetStringHeight() secret %s"):format(
+      ("reused Label: GetText() secret %s, GetStringHeight() secret %s; the secret font string's GetStringHeight() secret %s"):format(
         tostring(isSecret(text)),
-        tostring(isSecret(reused.text:GetStringHeight()))
+        tostring(isSecret(measured)),
+        tostring(isSecret(secretFontString:GetStringHeight()))
       )
     )
     ctx:Expect(isSecret(text)):ToBe(false)
     ctx:Expect(cleared(text)):ToBe("")
-    reused:SetText(SHORT_TEXT)
-    ctx:Expect(isSecret(reused.text:GetStringHeight())):ToBe(false)
+    ctx:Expect(isSecret(measured)):ToBe(false)
+    if isSecret(measured) then
+      return
+    end
+    -- The height is the client's measure of the plain text, not one line.
+    local oneLine = reused:GetHeight()
+    expectNear(ctx, "reused label height is the string height", oneLine, measured)
+    reused:SetText(LONG_TEXT)
+    local wrapped = reused:GetHeight()
+    ctx:Log(("reused Label, long text: height %.2f, one line %.2f"):format(wrapped, oneLine))
+    expectNear(
+      ctx,
+      "reused wrapped height is the string height",
+      wrapped,
+      reused.text:GetStringHeight()
+    )
+    ctx:Expect(wrapped >= 2 * oneLine - 0.5):ToBe(true)
   end
 )
 
