@@ -15,7 +15,7 @@ Compare a new run with the package's `EXPECTED.md`, not with this table.
 
 | Flavour | Folder | Status |
 |---|---|---|
-| Retail | `_retail_` | 27 packages recorded, latest 2026-09-25 16:14:14 |
+| Retail | `_retail_` | 27 packages recorded, latest 2026-09-25 17:40:57 |
 | Classic Era | `_classic_era_` | not run (no client session available; the owner has no active game time) |
 | Mists Classic | `_classic_` | not run (no client session available; the owner has no active game time) |
 | TBC Anniversary | `_anniversary_` | optional (not promised); not run yet |
@@ -34,8 +34,10 @@ Compare a new run with the package's `EXPECTED.md`, not with this table.
 | `compatKit` | 24 | 24 | 0 | 0 | 0 | not run | - | - | - | - | not run | - | - | - | - |
 | `eventKit` | 19 | 18 | 0 | 1 | 0 | not run | - | - | - | - | not run | - | - | - | - |
 | `hookKit` | 38 | 36 | 0 | 2 | 0 | not run | - | - | - | - | not run | - | - | - | - |
+| `hookKit` (combat) | 1 | 1 | 0 | 0 | 0 | not run | - | - | - | - | not run | - | - | - | - |
 | `interopKit` | 22 | 19 | 0 | 3 | 0 | not run | - | - | - | - | not run | - | - | - | - |
 | `lifecycleKit` | 28 | 25 | 0 | 3 | 0 | not run | - | - | - | - | not run | - | - | - | - |
+| `lifecycleKit` (combat) | 1 | 1 | 0 | 0 | 0 | not run | - | - | - | - | not run | - | - | - | - |
 | `localeKit` | 32 | 29 | 0 | 3 | 0 | not run | - | - | - | - | not run | - | - | - | - |
 | `logKit` | 38 | 38 | 0 | 0 | 0 | not run | - | - | - | - | not run | - | - | - | - |
 | `mediaKit` | 34 | 32 | 0 | 2 | 0 | not run | - | - | - | - | not run | - | - | - | - |
@@ -68,9 +70,11 @@ Compare a new run with the package's `EXPECTED.md`, not with this table.
 | `commKit` | 12.1.0 (69933) | 120100 | enUS | macOS | 2026-09-24/2026-09-25 | unknown |
 | `compatKit` | 12.1.0 (69933) | 120100 | enUS | macOS | 2026-09-24/2026-09-25 | unknown |
 | `eventKit` | 12.1.0 (69933) | 120100 | enUS | macOS | 2026-09-24/2026-09-25 | unknown |
-| `hookKit` | 12.1.0 (69933) | 120100 | enUS | macOS | 2026-09-24/2026-09-25 | unknown |
+| `hookKit` | 12.1.0 (69933) | 120100 | enUS | macOS | 2026-09-25 17:38:47 | `73d1ee79b71c` |
+| `hookKit` (combat) | 12.1.0 (69933) | 120100 | enUS | macOS | 2026-09-25 17:39:30 | `73d1ee79b71c` |
 | `interopKit` | 12.1.0 (69933) | 120100 | enUS | macOS | 2026-09-24/2026-09-25 | unknown |
-| `lifecycleKit` | 12.1.0 (69933) | 120100 | enUS | macOS | 2026-09-24/2026-09-25 | unknown |
+| `lifecycleKit` | 12.1.0 (69933) | 120100 | enUS | macOS | 2026-09-25 17:38:57 | `73d1ee79b71c` |
+| `lifecycleKit` (combat) | 12.1.0 (69933) | 120100 | enUS | macOS | 2026-09-25 17:40:57 | `73d1ee79b71c` |
 | `localeKit` | 12.1.0 (69933) | 120100 | enUS | macOS | 2026-09-24/2026-09-25 | unknown |
 | `logKit` | 12.1.0 (69933) | 120100 | enUS | unknown | 2026-09-25 16:14:14 | unknown |
 | `mediaKit` | 12.1.0 (69933) | 120100 | enUS | macOS | 2026-09-24/2026-09-25 | unknown |
@@ -101,6 +105,11 @@ Not run: no client session available; the owner has no active game time.
 
 | Package | Test | Reason |
 |---|---|---|
+| `hookKit` | hookKit.access: a script hook of a genuinely forbidden frame is refused at the calling line | no forbidden frame is reachable from addon code without side effects; hookKit.errors checks the refusal on a stand-in, packages/hookKit/tests on the fixture |
+| `hookKit` | hookKit.combat: during combat lockdown a forced script hook of the test's secure button is refused at the calling line (passive: skipped out of combat) | the player is not in combat; type /mct run hookKit combat and attack a training dummy to run it |
+| `lifecycleKit` | lifecycleKit.dependencies: Halt of a throwaway instance tells a dependent through OnDependencyHalted | not exercised: API 1 keeps every ForAddon instance for the session and halted is terminal, so a probe addon would stay halted until /reload; Halt reads no client API, and packages/lifecycleKit/tests/Halt_spec.lua proves it |
+| `lifecycleKit` | lifecycleKit.shutdown: at logout the Kit reaches shutdown and closes this addon's scopes after its OnShutdown callbacks | not observable in a run: PLAYER_LOGOUT ends the session before a result could be printed or saved; packages/lifecycleKit/tests/OwnedScopes_spec.lua proves it |
+| `lifecycleKit` | lifecycleKit.combatDeferral: in combat, WhenOutOfCombat queues the call, refuses one past the limit, and runs it at PLAYER_REGEN_ENABLED before OnCombatEnd | not in combat; type /mct run lifecycleKit combat and attack a training dummy to run it (EXPECTED.md, Combat run) |
 | `settingsKit` | settingsKit.persistence: persistence step one: profile.scale 1.25, profile.anchor at its default, char.note, the per-character global.note and a marker are written through the views and stored in both raw saved tables | a marker from an earlier session is present; step two reads it, so nothing is rewritten |
 
 Recorded before this command existed, without the tests' names and reasons (each is a skip the package's `EXPECTED.md` announces):
@@ -109,9 +118,7 @@ Recorded before this command existed, without the tests' names and reasons (each
 - `commandKit`: 3 skipped
 - `commKit`: 4 skipped
 - `eventKit`: 1 skipped
-- `hookKit`: 2 skipped
 - `interopKit`: 3 skipped
-- `lifecycleKit`: 3 skipped
 - `localeKit`: 3 skipped
 - `mediaKit`: 2 skipped
 - `moduleKit`: 3 skipped
@@ -132,5 +139,4 @@ No failed or timed-out test recorded.
 - **Classic Era**: not run: no client session available; the owner has no active game time.
 - **Mists Classic**: not run: no client session available; the owner has no active game time.
 - **TBC Anniversary** (optional, not promised): no run recorded yet.
-- **Retail combat runs**: no `/mct run <package> combat` recorded for `hookKit`, `lifecycleKit`; their combat tests are skips in the default run.
-- **Skip reasons**: 14 rows were recorded without the names and reasons of their skipped tests; the next run of each package records them.
+- **Skip reasons**: 12 rows were recorded without the names and reasons of their skipped tests; the next run of each package records them.

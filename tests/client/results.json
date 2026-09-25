@@ -199,10 +199,41 @@
       "interface": 120100,
       "locale": "enUS",
       "os": "macOS",
-      "date": "2026-09-24/2026-09-25",
-      "commit": null,
-      "dirty": null,
-      "skips": null,
+      "date": "2026-09-25 17:38:47",
+      "commit": "73d1ee79b71c42aa36e0b43f2ad126b9867cf4e8",
+      "dirty": false,
+      "skips": [
+        {
+          "suite": "hookKit.access",
+          "test": "a script hook of a genuinely forbidden frame is refused at the calling line",
+          "reason": "no forbidden frame is reachable from addon code without side effects; hookKit.errors checks the refusal on a stand-in, packages/hookKit/tests on the fixture"
+        },
+        {
+          "suite": "hookKit.combat",
+          "test": "during combat lockdown a forced script hook of the test's secure button is refused at the calling line (passive: skipped out of combat)",
+          "reason": "the player is not in combat; type /mct run hookKit combat and attack a training dummy to run it"
+        }
+      ],
+      "problems": []
+    },
+    {
+      "flavour": "retail",
+      "package": "hookKit",
+      "mode": "combat",
+      "tests": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "timeout": 0,
+      "version": "12.1.0",
+      "build": "69933",
+      "interface": 120100,
+      "locale": "enUS",
+      "os": "macOS",
+      "date": "2026-09-25 17:39:30",
+      "commit": "73d1ee79b71c42aa36e0b43f2ad126b9867cf4e8",
+      "dirty": false,
+      "skips": [],
       "problems": []
     },
     {
@@ -239,10 +270,46 @@
       "interface": 120100,
       "locale": "enUS",
       "os": "macOS",
-      "date": "2026-09-24/2026-09-25",
-      "commit": null,
-      "dirty": null,
-      "skips": null,
+      "date": "2026-09-25 17:38:57",
+      "commit": "73d1ee79b71c42aa36e0b43f2ad126b9867cf4e8",
+      "dirty": false,
+      "skips": [
+        {
+          "suite": "lifecycleKit.dependencies",
+          "test": "Halt of a throwaway instance tells a dependent through OnDependencyHalted",
+          "reason": "not exercised: API 1 keeps every ForAddon instance for the session and halted is terminal, so a probe addon would stay halted until /reload; Halt reads no client API, and packages/lifecycleKit/tests/Halt_spec.lua proves it"
+        },
+        {
+          "suite": "lifecycleKit.shutdown",
+          "test": "at logout the Kit reaches shutdown and closes this addon's scopes after its OnShutdown callbacks",
+          "reason": "not observable in a run: PLAYER_LOGOUT ends the session before a result could be printed or saved; packages/lifecycleKit/tests/OwnedScopes_spec.lua proves it"
+        },
+        {
+          "suite": "lifecycleKit.combatDeferral",
+          "test": "in combat, WhenOutOfCombat queues the call, refuses one past the limit, and runs it at PLAYER_REGEN_ENABLED before OnCombatEnd",
+          "reason": "not in combat; type /mct run lifecycleKit combat and attack a training dummy to run it (EXPECTED.md, Combat run)"
+        }
+      ],
+      "problems": []
+    },
+    {
+      "flavour": "retail",
+      "package": "lifecycleKit",
+      "mode": "combat",
+      "tests": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "timeout": 0,
+      "version": "12.1.0",
+      "build": "69933",
+      "interface": 120100,
+      "locale": "enUS",
+      "os": "macOS",
+      "date": "2026-09-25 17:40:57",
+      "commit": "73d1ee79b71c42aa36e0b43f2ad126b9867cf4e8",
+      "dirty": false,
+      "skips": [],
       "problems": []
     },
     {
