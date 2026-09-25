@@ -29,7 +29,7 @@ What each piece promises:
 - **Standard compression.** `Compress` writes raw DEFLATE that any inflater reads, and `Decompress` reads any raw DEFLATE stream; levels 1 to 9.
 - **Every stage on its own.** `Serialize`/`Deserialize`, `Compress`/`Decompress`, `EncodeForAddon`/`DecodeForAddon`, `EncodeForPrint`/`DecodeForPrint`; `EncodeMany`/`DecodeMany` for argument lists of up to `maxListValues` values (4096 by default), `nil`s included.
 - **Never freezes a frame.** `EncodeAsync` and `DecodeAsync` run on a SchedulerKit scope and yield when the frame budget is spent.
-- **Re-entrant and cheap.** Buffers are leased from a PoolKit table pool and returned on every path; encoding a small value again allocates nothing.
+- **Re-entrant and cheap.** Serialising reuses one work record and writes the frame straight into one buffer, and the compression and print stages lease their buffers from a PoolKit table pool and return them on every path; encoding a small value again allocates nothing.
 - **Secrets refused.** A secret value anywhere in the value raises at your line.
 
 Decoded data is untrusted: validate it with SchemaKit before using it. See [`docs/API.md`](docs/API.md) for the wire format byte by byte, the escape table, the print alphabet and the limits, and [`docs/INTERNALS.md`](docs/INTERNALS.md) for the compressor.

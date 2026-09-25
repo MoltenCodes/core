@@ -147,7 +147,7 @@ describe("CodecKit bootstrap", function()
     package.loaded["CodecKit"] = nil
     local CodecKit = require("CodecKit")
     assert.are.equal(older, CodecKit)
-    assert.are.equal(4, CodecKit.REVISION)
+    assert.is_true(CodecKit.REVISION > 3)
     assert.are.equal(state, CodecKit._state)
     assert.are.equal(CodecKit.REVISION, CodecKit._state.runtimeRevision)
     assert.are.equal(pool, CodecKit._state.pool)
@@ -159,6 +159,39 @@ describe("CodecKit bootstrap", function()
     local nan = math.huge - math.huge
     local _, bytes = CodecKit:Serialize(-nan)
     assert.are.equal("067ff8000000000000", TestEnv.Hex(bytes))
+    assert.are.equal(0, pool:GetActiveCount())
+  end)
+
+  it("upgrades a revision 4 copy in place and writes the frames it wrote", function()
+    TestEnv.Reset()
+    require("Registry")
+    require("PoolKit")
+    local older = TestEnv.LoadRevision(4)
+    assert.are.equal(4, older.REVISION)
+    older:SetLimits({ maxDepth = 20, maxStringLength = older.UNBOUNDED })
+    local state = older._state
+    local pool = state.pool
+    -- A mixed table exercises both parts of the writer.
+    -- selene: allow(mixed_table)
+    local value = { "kept|", 300, -0.5, { nested = true }, flag = false }
+    local options = { channel = "addon" }
+    local _, before = older:Encode(value, options)
+
+    package.loaded["CodecKit"] = nil
+    local CodecKit = require("CodecKit")
+    assert.are.equal(older, CodecKit)
+    assert.is_true(CodecKit.REVISION > 4)
+    assert.are.equal(state, CodecKit._state)
+    assert.are.equal(CodecKit.REVISION, CodecKit._state.runtimeRevision)
+    assert.are.equal(pool, CodecKit._state.pool)
+    assert.are.equal(20, CodecKit:GetLimits().maxDepth)
+    assert.are.equal(CodecKit.UNBOUNDED, CodecKit:GetLimits().maxStringLength)
+
+    local ok, decoded = CodecKit:Decode(before, options)
+    assert.is_true(ok)
+    assert.is_true(TestEnv.Same(value, decoded))
+    local _, after = CodecKit:Encode(value, options)
+    assert.are.equal(TestEnv.Hex(before), TestEnv.Hex(after))
     assert.are.equal(0, pool:GetActiveCount())
   end)
 

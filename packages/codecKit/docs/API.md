@@ -2,7 +2,7 @@
 
 CodecKit API generation **1** turns Lua values into transport-safe strings and back in three composable stages — serialise, compress, channel-encode — behind a two-byte, self-describing header. Decoding never raises on malformed input.
 
-Implementation revision: **4**. Wire format version: **1** (`CodecKit.FORMAT_VERSION`).
+Implementation revision: **5**. Wire format version: **1** (`CodecKit.FORMAT_VERSION`).
 
 ## Loading
 
@@ -319,10 +319,10 @@ Compression time depends on the input as much as on the level. Per KiB of input,
 
 Inflating costs about 0.12 ms per KiB of output at any level, and print-encoding about 0.08 ms per KiB. **Synchronous callers should stay at level 6 or below**; for large exports at level 7 to 9, or any compression that might pass a few dozen KiB, use `EncodeAsync`, which spreads the work over frames. The default level is 6.
 
-- **Serialising** allocates the output string and nothing else: its fragment arrays and work record are leased from a PoolKit table pool and returned on every path. Encoding the same small value again allocates nothing.
-- **Decoding a serialised body** allocates the tables it returns and the strings in them; `DecodeMany` also allocates one array for the entries of a list.
+- **Serialising** allocates the output string and nothing else but `table.concat`'s own working buffer: the fragment buffer and the work record are one record the package reuses from call to call. An uncompressed `Encode` writes the header, the body and, for the addon channel, its escapes straight into that buffer, so on the `none` and `addon` channels the frame is the only string it builds. Encoding the same small value again allocates nothing.
+- **Decoding a serialised body** allocates the tables it returns and the strings in them; `DecodeMany` also allocates one array for the entries of a list. A binary frame, and an addon frame with nothing to unescape, are read in place; an addon frame with escapes costs one unescaped copy of the frame.
 - **Compressing** an input under 64 bytes writes one literal or stored block and allocates nothing beyond its output (0.001 KiB per call measured for 32 bytes). From 64 bytes the matcher allocates working arrays proportional to the input (a few tens of bytes per input byte: the byte array, the hash chains and the tokens) plus about 35 to 40 KiB of code tables **per block** (a block covers at most 32 KiB of input); all of it is garbage after the call. **Inflating** allocates an output array of about 16 bytes per output byte.
-- One `table.concat` per stage output, per 1024 fragments.
+- One `table.concat` per stage output, and one more per 4096 fragments of serialised output or per 1024 of a compression or print stage's.
 
 ## Deviations from the planned contract
 
@@ -334,7 +334,7 @@ The nine-point plan in `docs/ROADMAP.md` is followed except where recorded here:
 - **A secret value raises at the caller** instead of returning a reason, as the taint rules in `EMBEDDING.md` require; `"secret"` reaches only an asynchronous callback whose value changed after the call.
 - **`Decode` raises for a non-string argument.** The non-raising contract covers every string, not programming errors.
 - **Metatables are ignored**, not refused: raw contents are serialised.
-- **One `table.concat` per stage output** rather than per encode, and compression allocates its working arrays per call; only fragment arrays and work records are leased. The asynchronous variants lease nothing, because a cancelled job never returns what it holds.
+- **One `table.concat` per stage output** rather than per encode (an uncompressed `Encode` has one stage output, the frame), and compression allocates its working arrays per call. The serialiser reuses one work record; the compression and print stages lease their sinks from a PoolKit pool. The asynchronous variants lease nothing and reuse nothing, because a cancelled job never returns what it holds.
 - **`Compress` and every decoding stage refuse input larger than `maxOutputBytes`** (print text is measured before whitespace is stripped), so the limit bounds each stage's input as well as its output.
 - **Levels 8 and 9 cap their hash chains at 192 and 256 candidates** instead of zlib's 1024 and 4096, which keeps level 9 within about three times level 6 in pure Lua (2.7 times measured on the worst case above, down from 27 times).
 - **Inputs under 64 bytes skip matching** and are written as one fixed-Huffman literal block or one stored block.

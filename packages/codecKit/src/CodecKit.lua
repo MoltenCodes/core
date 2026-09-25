@@ -49,7 +49,7 @@
 
 local PACKAGE_NAME = "codecKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 4
+local IMPLEMENTATION_REVISION = 5
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_POOLKIT_API = 1
 local OPTIONAL_SCHEDULERKIT_API = 1
@@ -176,6 +176,13 @@ local POOL_MAX_RETAINED = 16
 local SINK_BATCH_SIZE = 1024
 local SINK_FRAGMENT_SIZE = 1024
 
+-- The serialiser's fragment buffer folds into one chunk string at this many
+-- fragments. A fragment is usually one byte, so a larger fold means fewer
+-- intermediate chunk strings for a large payload; the reused buffer keeps
+-- this many slots (64 KiB) between calls, less than the sixteen full 1024-slot
+-- tables revision 4 could leave in the pool.
+local WRITER_FOLD_SIZE = 4096
+
 -- How often the asynchronous variants ask `context:ShouldYield()`: every this
 -- many serialised values or print groups. The compressor and the inflater
 -- keep their own two intervals inside the DEFLATE scope.
@@ -267,6 +274,12 @@ local floor = math.floor
 local frexp = math.frexp
 local ldexp = math.ldexp
 local HUGE = math.huge
+-- Standard functions the per-value paths call, read once: a global read is a
+-- hash lookup in `_G` on every call, a local is not.
+local type = type
+local next = next
+local rawget = rawget
+local rawequal = rawequal
 
 -- The shared MoltenCodes namespace is the one documented global handoff point between independently embedded copies.
 -- selene: allow(global_usage)
@@ -437,10 +450,22 @@ local UNBOUNDED = rawget(state, "unbounded")
 
 -- Work and buffers -----------------------------------------------------------
 --
--- Every call builds one work record: the limits it runs under, the secret
--- probe, counters, and whether its tables come from the pool. Synchronous
--- calls lease every table from the shared pool and return each one on every
--- path. Asynchronous calls use plain tables instead, because a job cancelled
+-- Every call opens one work record: the limits it runs under, the secret
+-- probe, counters, and whether its tables come from the pool. The record
+-- carries the serialiser's writer and cycle set with it.
+--
+-- A synchronous call takes the file's one idle work record, built once and
+-- reused, so serialising and deserialising lease nothing: a PoolKit
+-- `Acquire` and `Release` pair costs about as much as serialising a small
+-- value, and those two stages run for every addon message. A call that finds
+-- the idle record taken builds a fresh one; that only happens for a call
+-- nested inside another (no user code runs inside a synchronous call, so
+-- only a host probe could nest one) or after a call that raised before giving
+-- its record back. Whichever record is given back while none is idle becomes
+-- the idle one. The compression and print stages lease their sinks from the
+-- shared pool and return each one on every path.
+--
+-- Asynchronous calls use plain tables throughout, because a job cancelled
 -- while it is suspended is never resumed, and a leased table it held would
 -- stay in the pool's active set for the rest of the session.
 
@@ -463,48 +488,82 @@ local function returnTable(pooled, borrowed)
   end
 end
 
----Read one shared limit as the number the stages compare against:
----`math.huge` for `CodecKit.UNBOUNDED`, so no stage tests for the sentinel.
----@param name string
----@return number
-local function readLimit(name)
-  local value = rawget(sharedLimits, name)
-  if value == UNBOUNDED then
-    return math.huge
-  end
-  return value
+---Build a work record with every field it will hold, so reusing it never
+---rehashes it. `writer` is the serialiser's fragment buffer (see "Writer"),
+---`visited` the tables open on the serialiser's current path, by depth.
+---@return table work
+local function newWork()
+  return {
+    pooled = false,
+    context = false,
+    isSecret = false,
+    maxDepth = 0,
+    maxValues = 0,
+    maxStringLength = 0,
+    maxOutputBytes = 0,
+    maxListValues = 0,
+    valueCount = 0,
+    textLength = 0,
+    visited = {},
+    writer = {
+      count = 0,
+      size = 0,
+      chunks = {},
+      chunkCount = 0,
+      textSlots = {},
+      textCount = 0,
+      byteText = false,
+      escapeStrings = false,
+    },
+  }
 end
+
+-- The idle work record of synchronous calls, or `false` while a call holds it.
+---@type table|false
+local idleWork = newWork()
 
 ---Open the work record of one call, copying the shared limits so a
 ---`SetLimits` during an asynchronous job does not change it mid-way.
----@param pooled boolean
+---@param pooled boolean `true` for a synchronous call
 ---@return table work
 local function openWork(pooled)
-  local work = leaseTable(pooled)
+  local work = pooled and idleWork or false
+  if work then
+    idleWork = false
+  else
+    work = newWork()
+  end
   work.pooled = pooled
   work.context = false
   work.isSecret = readSecretProbe() or false
-  work.maxDepth = readLimit("maxDepth")
-  work.maxValues = readLimit("maxValues")
-  work.maxStringLength = readLimit("maxStringLength")
-  work.maxOutputBytes = readLimit("maxOutputBytes")
-  work.maxListValues = readLimit("maxListValues")
+  -- The limits table is the package's own and has no metatable, so indexing
+  -- it is a raw read. Only `maxValues` and `maxStringLength` may hold the
+  -- `UNBOUNDED` sentinel; `SetLimits` refuses it for the other three.
+  local limits = sharedLimits
+  local maxValues, maxStringLength = limits.maxValues, limits.maxStringLength
+  work.maxDepth = limits.maxDepth
+  work.maxValues = maxValues == UNBOUNDED and HUGE or maxValues
+  work.maxStringLength = maxStringLength == UNBOUNDED and HUGE or maxStringLength
+  work.maxOutputBytes = limits.maxOutputBytes
+  work.maxListValues = limits.maxListValues
   work.valueCount = 0
-  work.visited = false
   work.textLength = 0
   return work
 end
 
----Close a work record and everything it still holds.
+---Close a work record. A synchronous call's record becomes the idle one
+---again when none is idle; it holds nothing of the call by then: the writer
+---clears itself when it finishes or is abandoned, and the open-table stack
+---is emptied here because a refused value leaves its open tables in it.
 ---@param work table
 local function closeWork(work)
-  local pooled = work.pooled
-  local visited = work.visited
-  if visited then
-    work.visited = false
-    returnTable(pooled, visited)
+  local open = work.visited
+  for depth = 1, #open do
+    open[depth] = nil
   end
-  returnTable(pooled, work)
+  if work.pooled and not idleWork then
+    idleWork = work
+  end
 end
 
 ---Give the frame back to the scheduler when an asynchronous call has used its
@@ -599,13 +658,6 @@ local function putString(sink, text)
   appendFragment(sink, text)
 end
 
----The number of bytes written so far.
----@param sink table
----@return integer
-local function sinkSize(sink)
-  return sink.total + sink.batchCount
-end
-
 ---Close the sink and return everything written as one string.
 ---@param sink table
 ---@return string
@@ -627,28 +679,191 @@ local function finishSink(sink)
   return result
 end
 
--- Serialiser -----------------------------------------------------------------
+-- The addon channel's escapes (see "Addon channel" below), defined here
+-- because the serialiser's writer applies them as it writes.
+local ADDON_ESCAPE_BYTE = 255
+local ADDON_ESCAPES = {
+  [char(0)] = char(ADDON_ESCAPE_BYTE, 48), -- "0"
+  [char(10)] = char(ADDON_ESCAPE_BYTE, 49), -- "1"
+  [char(13)] = char(ADDON_ESCAPE_BYTE, 50), -- "2"
+  [char(124)] = char(ADDON_ESCAPE_BYTE, 51), -- "3"
+  [char(255)] = char(ADDON_ESCAPE_BYTE, 52), -- "4"
+}
+local ADDON_UNESCAPES = {}
+for raw, escaped in pairs(ADDON_ESCAPES) do
+  ADDON_UNESCAPES[escaped] = raw
+end
+local ADDON_ESCAPE_PATTERN = "[%z\n\r|\255]"
+local ADDON_FORBIDDEN_PATTERN = "[%z\n\r|]"
+local ADDON_BAD_ESCAPE_PATTERN = "\255[^0-4]"
+local ADDON_SEQUENCE_PATTERN = "\255[0-4]"
 
----Write a non-negative integer as a varint: seven bits per byte, least
----significant group first, the high bit set on every byte but the last.
----@param sink table
+-- Writer ---------------------------------------------------------------------
+--
+-- The serialiser writes into its own buffer, `work.writer`, rather than a
+-- byte sink: every byte becomes a one-character string looked up in a table
+-- built at load (Lua interns short strings, so the lookup allocates nothing),
+-- every string value becomes one fragment, and the finished buffer is joined
+-- with one `table.concat`. The header of the frame can be its first fragment,
+-- so the output of `Encode` is the only string built.
+--
+-- For the addon channel without compression, the writer also applies the
+-- channel's escapes as it goes: a byte is looked up in a table that maps the
+-- five escaped bytes to their two-byte sequences, and a string value that
+-- contains one of them is escaped with one `gsub`. Escaping is a map of
+-- single bytes, so escaping every fragment gives exactly the bytes escaping
+-- the joined body would; the output is byte-identical to escaping afterwards,
+-- without building the unescaped body at all.
+--
+-- `size` counts the serialised bytes, before escaping, because
+-- `maxOutputBytes` bounds the serialised stage by itself; the escaped frame is
+-- measured once it is joined.
+--
+-- The hot paths of `writeValue` append to the buffer inline instead of calling
+-- `writeByte`, and the buffer is folded into a chunk at the end of a value
+-- when it has reached `WRITER_FOLD_SIZE` fragments. Between two such checks
+-- the writer appends at most a scalar (ten fragments: a string's type byte,
+-- an eight-byte length and its text) plus nine per table header it opens on
+-- the way down, so the buffer stays within a few hundred slots of the fold
+-- size even at the deepest nesting `maxDepth` allows.
+
+-- One-character strings for every byte value, and the same with the addon
+-- channel's five escapes applied.
+local BYTE_TEXT = {}
+local ADDON_BYTE_TEXT = {}
+for value = 0, 255 do
+  BYTE_TEXT[value] = char(value)
+  ADDON_BYTE_TEXT[value] = char(value)
+end
+for raw, escaped in pairs(ADDON_ESCAPES) do
+  ADDON_BYTE_TEXT[byte(raw)] = escaped
+end
+
+---Start writing into the work record's writer.
+---@param writer table `work.writer`
+---@param byteText table `BYTE_TEXT`, or `ADDON_BYTE_TEXT` to escape as it writes
+---@param header string|nil written first, as is, and not counted in `size`
+local function openWriter(writer, byteText, header)
+  writer.byteText = byteText
+  writer.escapeStrings = byteText == ADDON_BYTE_TEXT
+  writer.size = 0
+  writer.chunkCount = 0
+  if header ~= nil then
+    writer[1] = header
+    writer.count = 1
+  else
+    writer.count = 0
+  end
+end
+
+---Drop the buffer's references to string values. The other fragments are
+---the one- and two-byte strings of `BYTE_TEXT`, `ADDON_BYTE_TEXT` and the
+---frame headers, which the file keeps alive anyway, so only the slots
+---`writeValue` recorded in `textSlots` can hold anything of the caller's;
+---clearing those alone keeps the reused buffer from pinning the caller's
+---strings without a pass over every byte.
+---@param writer table
+local function releaseTexts(writer)
+  local textSlots = writer.textSlots
+  for index = 1, writer.textCount do
+    writer[textSlots[index]] = nil
+  end
+  writer.textCount = 0
+end
+
+---Join the buffer into one chunk and start it again, so the buffer stays
+---near `WRITER_FOLD_SIZE` slots however large the output.
+---@param writer table
+local function foldWriter(writer)
+  local chunkCount = writer.chunkCount + 1
+  writer.chunks[chunkCount] = concat(writer, "", 1, writer.count)
+  writer.chunkCount = chunkCount
+  releaseTexts(writer)
+  writer.count = 0
+end
+
+---@param writer table
+---@param value integer 0 to 255
+local function writeByte(writer, value)
+  local count = writer.count + 1
+  writer[count] = writer.byteText[value]
+  writer.count = count
+  writer.size = writer.size + 1
+end
+
+---Write a varint, after a type byte unless `typeByte` is `false`: seven bits
+---per byte, least significant group first, the high bit set on every byte but
+---the last.
+---@param writer table
+---@param typeByte integer|false
 ---@param value integer 0 to 2^53
-local function putVarint(sink, value)
+local function writeTagged(writer, typeByte, value)
+  local byteText = writer.byteText
+  local count = writer.count
+  local start = count
+  if typeByte then
+    count = count + 1
+    writer[count] = byteText[typeByte]
+  end
   while value >= 128 do
     local low = value % 128
-    putByte(sink, low + 128)
+    count = count + 1
+    writer[count] = byteText[low + 128]
     value = (value - low) / 128
   end
-  putByte(sink, value)
+  count = count + 1
+  writer[count] = byteText[value]
+  writer.count = count
+  writer.size = writer.size + (count - start)
 end
+
+---Drop every string value and chunk, so the reused buffer keeps no reference
+---to the caller's strings. Called on every path that leaves the writer.
+---@param writer table
+local function closeWriter(writer)
+  releaseTexts(writer)
+  local chunks = writer.chunks
+  for index = 1, writer.chunkCount do
+    chunks[index] = nil
+  end
+  writer.count = 0
+  writer.chunkCount = 0
+end
+
+---Join everything written into one string and close the writer.
+---@param writer table
+---@return string
+local function finishWriter(writer)
+  local result
+  local chunkCount = writer.chunkCount
+  if chunkCount > 0 then
+    local chunks = writer.chunks
+    if writer.count > 0 then
+      chunkCount = chunkCount + 1
+      chunks[chunkCount] = concat(writer, "", 1, writer.count)
+      writer.chunkCount = chunkCount
+    end
+    result = concat(chunks, "", 1, chunkCount)
+  else
+    result = concat(writer, "", 1, writer.count)
+  end
+  closeWriter(writer)
+  return result
+end
+
+-- Serialiser -----------------------------------------------------------------
 
 ---Write a number as an IEEE-754 binary64, big-endian, computed with `frexp`
 ---so it is exact for every double: NaN (written as the canonical quiet NaN),
 ---both infinities, both zeros and subnormals.
----@param sink table
+---@param writer table
 ---@param value number
-local function putFloat(sink, value)
-  putByte(sink, TYPE_FLOAT)
+local function writeFloat(writer, value)
+  local byteText = writer.byteText
+  local count = writer.count
+  writer[count + 1] = byteText[TYPE_FLOAT]
+  writer.count = count + 9
+  writer.size = writer.size + 9
   -- NaN is recognised before anything else looks at the value, and written as
   -- the one canonical quiet NaN whatever its sign bit and payload. Neither is
   -- observable portably from Lua, and an ordered comparison with a NaN is not
@@ -656,10 +871,10 @@ local function putFloat(sink, value)
   -- the sign test below answered "negative" for `0 / 0`, so a writer that
   -- tested the sign first wrote `FF F8 ...` instead of `7F F8 ...`.
   if value ~= value then
-    putByte(sink, 127)
-    putByte(sink, 248) -- low exponent bits and the quiet bit
-    for _ = 1, 6 do
-      putByte(sink, 0)
+    writer[count + 2] = byteText[127]
+    writer[count + 3] = byteText[248] -- low exponent bits and the quiet bit
+    for index = count + 4, count + 9 do
+      writer[index] = byteText[0]
     end
     return
   end
@@ -692,21 +907,21 @@ local function putFloat(sink, value)
 
   local high = floor(fraction / 4294967296)
   local low = fraction % 4294967296
-  putByte(sink, sign + floor(exponent / 16))
-  putByte(sink, (exponent % 16) * 16 + floor(high / 65536))
-  putByte(sink, floor(high / 256) % 256)
-  putByte(sink, high % 256)
-  putByte(sink, floor(low / 16777216))
-  putByte(sink, floor(low / 65536) % 256)
-  putByte(sink, floor(low / 256) % 256)
-  putByte(sink, low % 256)
+  writer[count + 2] = byteText[sign + floor(exponent / 16)]
+  writer[count + 3] = byteText[(exponent % 16) * 16 + floor(high / 65536)]
+  writer[count + 4] = byteText[floor(high / 256) % 256]
+  writer[count + 5] = byteText[high % 256]
+  writer[count + 6] = byteText[floor(low / 16777216)]
+  writer[count + 7] = byteText[floor(low / 65536) % 256]
+  writer[count + 8] = byteText[floor(low / 256) % 256]
+  writer[count + 9] = byteText[low % 256]
 end
 
 ---Write a number: a varint for an integer within +-2^53 other than -0, the
 ---exact double otherwise.
----@param sink table
+---@param writer table
 ---@param value number
-local function putNumber(sink, value)
+local function writeNumber(writer, value)
   if
     value == value
     and value % 1 == 0
@@ -714,20 +929,17 @@ local function putNumber(sink, value)
     and value <= MAX_SAFE_INTEGER
   then
     if value > 0 then
-      putByte(sink, TYPE_POSITIVE_INTEGER)
-      putVarint(sink, value)
+      writeTagged(writer, TYPE_POSITIVE_INTEGER, value)
       return
     elseif value < 0 then
-      putByte(sink, TYPE_NEGATIVE_INTEGER)
-      putVarint(sink, -value)
+      writeTagged(writer, TYPE_NEGATIVE_INTEGER, -value)
       return
     elseif 1 / value > 0 then
-      putByte(sink, TYPE_POSITIVE_INTEGER)
-      putByte(sink, 0)
+      writeTagged(writer, TYPE_POSITIVE_INTEGER, 0)
       return
     end
   end
-  putFloat(sink, value)
+  writeFloat(writer, value)
 end
 
 ---Whether `key` lies in the array part `1..arrayLength` of a table.
@@ -758,50 +970,55 @@ local writeValue
 ---Write a table: the array part `1..n` holds every leading non-nil index,
 ---found with `#` and verified with `rawget`; every other key is in the map
 ---part. The layout byte says which parts are present.
+---
+---A cycle is a table that is already open on the path from the top, and the
+---tables open on that path are `work.visited[1..depth - 1]`: each level
+---writes its table at its depth on the way down and clears it on the way up.
+---Comparing with the few open tables (`rawequal`, so no `__eq` runs) replaces
+---a set keyed by table, whose dead keys made Lua rehash it as distinct
+---tables came and went.
+---
+---Contents are read raw: an element of the array part is known to be present,
+---and so is every key `next` yields, so indexing them never reaches a
+---metatable.
 ---@param work table
----@param sink table
+---@param writer table
 ---@param value table
 ---@param depth integer nesting of this table, 1 for a top-level table
 ---@return boolean ok
 ---@return any reason
-local function writeTable(work, sink, value, depth)
+local function writeTable(work, writer, value, depth)
   if depth > work.maxDepth then
     return false, REASON.maxDepth
   end
-  local visited = work.visited
-  if not visited then
-    visited = leaseTable(work.pooled)
-    work.visited = visited
+  local open = work.visited
+  for index = 1, depth - 1 do
+    if rawequal(open[index], value) then
+      return false, REASON.cycle
+    end
   end
-  if visited[value] then
-    return false, REASON.cycle
-  end
-  visited[value] = true
+  open[depth] = value
 
   local arrayLength = arrayPartLength(value)
-  local mapCount = 0
-  local key = next(value)
-  while type(key) ~= "nil" do
-    if not isArrayKey(key, arrayLength) then
-      mapCount = mapCount + 1
-    end
-    key = next(value, key)
+  -- Every key `1..arrayLength` is present, so the map part is whatever else
+  -- `next` finds.
+  local keyCount = 0
+  for _ in next, value do
+    keyCount = keyCount + 1
   end
+  local mapCount = keyCount - arrayLength
 
   if mapCount == 0 then
-    putByte(sink, TYPE_ARRAY)
-    putVarint(sink, arrayLength)
+    writeTagged(writer, TYPE_ARRAY, arrayLength)
   elseif arrayLength == 0 then
-    putByte(sink, TYPE_MAP)
-    putVarint(sink, mapCount)
+    writeTagged(writer, TYPE_MAP, mapCount)
   else
-    putByte(sink, TYPE_MIXED)
-    putVarint(sink, arrayLength)
+    writeTagged(writer, TYPE_MIXED, arrayLength)
   end
 
   local ok, reason
   for index = 1, arrayLength do
-    ok, reason = writeValue(work, sink, rawget(value, index), depth)
+    ok, reason = writeValue(work, writer, value[index], depth)
     if not ok then
       return false, reason
     end
@@ -809,46 +1026,48 @@ local function writeTable(work, sink, value, depth)
 
   if mapCount > 0 then
     if arrayLength > 0 then
-      putVarint(sink, mapCount)
+      writeTagged(writer, false, mapCount)
     end
-    key = next(value)
-    while type(key) ~= "nil" do
-      if not isArrayKey(key, arrayLength) then
-        ok, reason = writeValue(work, sink, key, depth)
+    for key, item in next, value do
+      if arrayLength == 0 or not isArrayKey(key, arrayLength) then
+        ok, reason = writeValue(work, writer, key, depth)
         if not ok then
           return false, reason
         end
-        ok, reason = writeValue(work, sink, rawget(value, key), depth)
+        ok, reason = writeValue(work, writer, item, depth)
         if not ok then
           return false, reason
         end
       end
-      key = next(value, key)
     end
   end
 
-  visited[value] = nil
+  open[depth] = nil
   return true
 end
 
 ---Write one value. A secret is detected before anything else touches it.
+---
+---Short strings, small positive integers, booleans and `nil` are appended
+---inline: they are most of what addon messages carry, and each call saved is
+---a large share of their cost.
 ---@param work table
----@param sink table
+---@param writer table
 ---@param value any
 ---@param depth integer nesting of the table holding this value, 0 at the top
 ---@return boolean ok
 ---@return any reason a `CodecKit.Reason`, or `SECRET_FOUND`
-function writeValue(work, sink, value, depth)
+function writeValue(work, writer, value, depth)
   local isSecret = work.isSecret
   if isSecret and isSecret(value) then
     return false, SECRET_FOUND
   end
-  local count = work.valueCount + 1
-  if count > work.maxValues then
+  local valueCount = work.valueCount + 1
+  if valueCount > work.maxValues then
     return false, REASON.maxValues
   end
-  work.valueCount = count
-  if work.context and count % PAUSE_VALUES == 0 then
+  work.valueCount = valueCount
+  if work.context and valueCount % PAUSE_VALUES == 0 then
     pause(work)
   end
 
@@ -858,19 +1077,49 @@ function writeValue(work, sink, value, depth)
     if length > work.maxStringLength then
       return false, REASON.maxStringLength
     end
-    putByte(sink, TYPE_STRING)
-    putVarint(sink, length)
+    if length < 128 then
+      local byteText = writer.byteText
+      local count = writer.count
+      writer[count + 1] = byteText[TYPE_STRING]
+      writer[count + 2] = byteText[length]
+      writer.count = count + 2
+      writer.size = writer.size + 2
+    else
+      writeTagged(writer, TYPE_STRING, length)
+    end
     if length > 0 then
-      putString(sink, value)
+      -- The string's bytes as one fragment, escaped first when the writer
+      -- escapes for the addon channel and the string holds such a byte.
+      writer.size = writer.size + length
+      if writer.escapeStrings and find(value, ADDON_ESCAPE_PATTERN) then
+        value = gsub(value, ADDON_ESCAPE_PATTERN, ADDON_ESCAPES)
+      end
+      local count = writer.count + 1
+      writer[count] = value
+      writer.count = count
+      local textCount = writer.textCount + 1
+      writer.textSlots[textCount] = count
+      writer.textCount = textCount
     end
   elseif kind == "number" then
-    putNumber(sink, value)
+    -- `value == value` first: NaN takes the general path, which recognises
+    -- it before any ordered comparison.
+    if value == value and value > 0 and value < 128 and value % 1 == 0 then
+      local byteText = writer.byteText
+      local count = writer.count
+      writer[count + 1] = byteText[TYPE_POSITIVE_INTEGER]
+      writer[count + 2] = byteText[value]
+      writer.count = count + 2
+      writer.size = writer.size + 2
+    else
+      writeNumber(writer, value)
+    end
   elseif kind == "boolean" then
-    putByte(sink, value and TYPE_TRUE or TYPE_FALSE)
+    writeByte(writer, value and TYPE_TRUE or TYPE_FALSE)
   elseif kind == "nil" then
-    putByte(sink, TYPE_NIL)
+    writeByte(writer, TYPE_NIL)
   elseif kind == "table" then
-    local ok, reason = writeTable(work, sink, value, depth + 1)
+    local ok, reason = writeTable(work, writer, value, depth + 1)
     if not ok then
       return false, reason
     end
@@ -878,8 +1127,11 @@ function writeValue(work, sink, value, depth)
     return false, REASON.unsupportedType
   end
 
-  if sinkSize(sink) > work.maxOutputBytes then
+  if writer.size > work.maxOutputBytes then
     return false, REASON.maxOutputBytes
+  end
+  if writer.count >= WRITER_FOLD_SIZE then
+    foldWriter(writer)
   end
   return true
 end
@@ -888,31 +1140,35 @@ end
 ---@param work table
 ---@param value any the value, or the packed argument list
 ---@param count integer|nil the argument count for a list
+---@param byteText table `BYTE_TEXT`, or `ADDON_BYTE_TEXT` to escape the output
+---for the addon channel as it is written
+---@param header string|nil frame header written before the serialised bytes
 ---@return boolean ok
----@return any bytesOrReason
-local function serializeBody(work, value, count)
-  local sink = openSink(work.pooled)
+---@return any textOrReason the serialised bytes, after `header` and escaped
+---as `byteText` says
+local function serializeBody(work, value, count, byteText, header)
+  local writer = work.writer
+  openWriter(writer, byteText, header)
   local ok, reason
   if count == nil then
-    ok, reason = writeValue(work, sink, value, 0)
+    ok, reason = writeValue(work, writer, value, 0)
   elseif count > work.maxValues or count > work.maxListValues then
     ok, reason = false, REASON.maxValues
   else
     ok = true
-    putByte(sink, TYPE_LIST)
-    putVarint(sink, count)
+    writeTagged(writer, TYPE_LIST, count)
     for index = 1, count do
-      ok, reason = writeValue(work, sink, rawget(value, index), 0)
+      ok, reason = writeValue(work, writer, rawget(value, index), 0)
       if not ok then
         break
       end
     end
   end
   if not ok then
-    closeSink(sink)
+    closeWriter(writer)
     return false, reason
   end
-  return true, finishSink(sink)
+  return true, finishWriter(writer)
 end
 
 ---Read a varint; refuse one longer than 8 bytes, above 2^53, or overlong (a
@@ -993,11 +1249,19 @@ local function readTable(work, text, position, depth, layout)
     return nil, REASON.maxDepth
   end
   local textLength = work.textLength
-  local afterCount, count = readVarint(text, position)
-  if afterCount == nil then
-    return nil, count
+  -- A count below 128 is one varint byte; read it inline, and let
+  -- `readVarint` take everything else, including the end of the text.
+  local count = byte(text, position)
+  if count ~= nil and count < 128 then
+    position = position + 1
+  else
+    local afterCount
+    afterCount, count = readVarint(text, position)
+    if afterCount == nil then
+      return nil, count
+    end
+    position = afterCount
   end
-  position = afterCount
   local arrayCount, mapCount = count, 0
   if layout == TYPE_MAP then
     arrayCount, mapCount = 0, count
@@ -1023,11 +1287,16 @@ local function readTable(work, text, position, depth, layout)
   end
 
   if layout == TYPE_MIXED then
-    nextPosition, mapCount = readVarint(text, position)
-    if nextPosition == nil then
-      return nil, mapCount
+    mapCount = byte(text, position)
+    if mapCount ~= nil and mapCount < 128 then
+      position = position + 1
+    else
+      nextPosition, mapCount = readVarint(text, position)
+      if nextPosition == nil then
+        return nil, mapCount
+      end
+      position = nextPosition
     end
-    position = nextPosition
   end
   if mapCount * 2 > textLength - position + 1 then
     return nil, REASON.truncated
@@ -1050,7 +1319,9 @@ local function readTable(work, text, position, depth, layout)
     if value == nil then
       return nil, REASON.nilValue
     end
-    if rawget(result, key) ~= nil then
+    -- `result` is a fresh table without a metatable, so indexing it is a
+    -- raw read.
+    if result[key] ~= nil then
       return nil, REASON.duplicateKey
     end
     result[key] = value
@@ -1082,10 +1353,19 @@ function readValue(work, text, position, depth)
   end
   position = position + 1
 
+  -- Strings and non-negative integers come first, and their lengths and
+  -- values below 128 are one varint byte read inline; `readVarint` takes
+  -- everything else, including the end of the text.
   if kind == TYPE_STRING then
-    local first, length = readVarint(text, position)
-    if first == nil then
-      return nil, length
+    local length = byte(text, position)
+    local first
+    if length ~= nil and length < 128 then
+      first = position + 1
+    else
+      first, length = readVarint(text, position)
+      if first == nil then
+        return nil, length
+      end
     end
     if length > work.maxStringLength then
       return nil, REASON.maxStringLength
@@ -1096,6 +1376,10 @@ function readValue(work, text, position, depth)
     end
     return last + 1, sub(text, first, last)
   elseif kind == TYPE_POSITIVE_INTEGER then
+    local value = byte(text, position)
+    if value ~= nil and value < 128 then
+      return position + 1, value
+    end
     return readVarint(text, position)
   elseif kind == TYPE_NEGATIVE_INTEGER then
     local nextPosition, magnitude = readVarint(text, position)
@@ -1122,25 +1406,31 @@ end
 
 ---Deserialise a whole body. With `allowList`, an argument list is returned as
 ---a fresh array and its count; otherwise a list is refused.
+---
+---The body is `text` from byte `start` to the end, read in place: a frame's
+---body is not copied out of the frame first. Every position the reader keeps
+---is a position in `text`, so its bounds checks against `work.textLength`
+---hold unchanged.
 ---@param work table
 ---@param text string
+---@param start integer the first byte of the body
 ---@param allowList boolean
 ---@return boolean ok
 ---@return any valueOrReason
 ---@return integer|nil count the argument count of a list
-local function deserializeBody(work, text, allowList)
+local function deserializeBody(work, text, start, allowList)
   local textLength = #text
-  if textLength > work.maxOutputBytes then
+  if textLength - start + 1 > work.maxOutputBytes then
     return false, REASON.maxOutputBytes
   end
   work.textLength = textLength
 
   local position, value
-  if byte(text, 1) == TYPE_LIST then
+  if byte(text, start) == TYPE_LIST then
     if not allowList then
       return false, REASON.multipleValues
     end
-    local afterCount, count = readVarint(text, 2)
+    local afterCount, count = readVarint(text, start + 1)
     if afterCount == nil then
       return false, count
     end
@@ -1167,7 +1457,7 @@ local function deserializeBody(work, text, allowList)
     return true, values, count
   end
 
-  position, value = readValue(work, text, 1, 0)
+  position, value = readValue(work, text, start, 0)
   if position == nil then
     return false, value
   end
@@ -2524,24 +2814,8 @@ end
 -- The addon channel cannot carry NUL, line feed, carriage return or the pipe
 -- that introduces the client's escape sequences. Each of those, and the escape
 -- byte 255 itself, becomes 255 followed by one ASCII digit. Every other byte
--- passes through unchanged.
-
-local ADDON_ESCAPE_BYTE = 255
-local ADDON_ESCAPES = {
-  [char(0)] = char(ADDON_ESCAPE_BYTE, 48), -- "0"
-  [char(10)] = char(ADDON_ESCAPE_BYTE, 49), -- "1"
-  [char(13)] = char(ADDON_ESCAPE_BYTE, 50), -- "2"
-  [char(124)] = char(ADDON_ESCAPE_BYTE, 51), -- "3"
-  [char(255)] = char(ADDON_ESCAPE_BYTE, 52), -- "4"
-}
-local ADDON_UNESCAPES = {}
-for raw, escaped in pairs(ADDON_ESCAPES) do
-  ADDON_UNESCAPES[escaped] = raw
-end
-local ADDON_ESCAPE_PATTERN = "[%z\n\r|\255]"
-local ADDON_FORBIDDEN_PATTERN = "[%z\n\r|]"
-local ADDON_BAD_ESCAPE_PATTERN = "\255[^0-4]"
-local ADDON_SEQUENCE_PATTERN = "\255[0-4]"
+-- passes through unchanged. The tables and patterns are defined before the
+-- writer, which applies the same escapes while serialising.
 
 ---@param work table
 ---@param bytes string
@@ -2558,18 +2832,27 @@ local function encodeForAddon(work, bytes)
   return true, text
 end
 
+---Unescape addon-channel text from byte `start` on (1 when omitted). A frame
+---passes its whole text with `start` 3, so the escaped body is not copied out
+---first; the two header bytes are neither forbidden nor the escape byte, so
+---the unescaped text keeps them in front, unchanged, and the body still
+---starts at byte 3.
 ---@param work table
 ---@param text string
+---@param start integer|nil the first byte to unescape
 ---@return boolean ok
 ---@return string bytesOrReason
-local function decodeForAddon(work, text)
-  if #text > work.maxOutputBytes then
+local function decodeForAddon(work, text, start)
+  start = start or 1
+  if #text - start + 1 > work.maxOutputBytes then
     return false, REASON.maxOutputBytes
   end
-  if find(text, ADDON_FORBIDDEN_PATTERN) then
+  if find(text, ADDON_FORBIDDEN_PATTERN, start) then
     return false, REASON.forbiddenByte
   end
-  if find(text, ADDON_BAD_ESCAPE_PATTERN) or byte(text, -1) == ADDON_ESCAPE_BYTE then
+  -- The last byte is the body's own whenever the body is not empty, and a
+  -- header byte (never the escape byte) otherwise.
+  if find(text, ADDON_BAD_ESCAPE_PATTERN, start) or byte(text, -1) == ADDON_ESCAPE_BYTE then
     return false, REASON.malformedEscape
   end
   return true, (gsub(text, ADDON_SEQUENCE_PATTERN, ADDON_UNESCAPES))
@@ -2788,7 +3071,49 @@ end
 ---@param flag integer
 ---@return boolean
 local function hasFlag(flags, flag)
-  return floor(flags / flag) % 2 == 1
+  -- Plain arithmetic on the flags byte (0 to 255) and a power of two: the
+  -- bit is set when the remainder below the next power reaches `flag`.
+  return flags % (flag * 2) >= flag
+end
+
+---Serialise straight into the frame of an uncompressed `Encode`: the header
+---is the writer's first fragment and, for the addon channel, the writer
+---escapes as it goes, so the frame is the only string built. The result is
+---byte for byte what serialising, escaping and prefixing the header one stage
+---after another gives, and it is refused for the same reasons: the writer
+---checks the serialised size after every value as the serialiser always did,
+---and the joined frame is measured once, which covers the escaped body too
+---because it is two bytes shorter.
+---@param work table
+---@param value any the value, or the packed argument list
+---@param count integer|nil the argument count for a list
+---@param channel string
+---@return boolean ok
+---@return any textOrReason
+local function encodeUncompressedFrame(work, value, count, channel)
+  if channel == "print" then
+    local ok, frame =
+      serializeBody(work, value, count, BYTE_TEXT, HEADERS[FLAG_SERIALIZED + FLAG_PRINT])
+    if not ok then
+      return false, frame
+    end
+    return encodeForPrint(work, frame)
+  end
+
+  local ok, text
+  if channel == "addon" then
+    ok, text =
+      serializeBody(work, value, count, ADDON_BYTE_TEXT, HEADERS[FLAG_SERIALIZED + FLAG_ADDON])
+  else
+    ok, text = serializeBody(work, value, count, BYTE_TEXT, HEADERS[FLAG_SERIALIZED])
+  end
+  if not ok then
+    return false, text
+  end
+  if #text > work.maxOutputBytes then
+    return false, REASON.maxOutputBytes
+  end
+  return true, text
 end
 
 ---Run the stages `Encode` asked for and return the frame.
@@ -2801,17 +3126,17 @@ end
 ---@return boolean ok
 ---@return any textOrReason
 local function encodeFrame(work, value, count, compress, channel, level)
-  local ok, body = serializeBody(work, value, count)
+  if compress ~= "deflate" then
+    return encodeUncompressedFrame(work, value, count, channel)
+  end
+  local ok, body = serializeBody(work, value, count, BYTE_TEXT, nil)
   if not ok then
     return false, body
   end
-  local flags = FLAG_SERIALIZED
-  if compress == "deflate" then
-    flags = flags + FLAG_DEFLATE
-    ok, body = compressBytes(work, body, level)
-    if not ok then
-      return false, body
-    end
+  local flags = FLAG_SERIALIZED + FLAG_DEFLATE
+  ok, body = compressBytes(work, body, level)
+  if not ok then
+    return false, body
   end
 
   if channel == "print" then
@@ -2862,7 +3187,11 @@ local function decodeFrame(work, text, expectedChannel, allowList)
     return false, REASON.truncated
   end
 
+  -- `body` from byte `start` is the serialised or compressed stage input.
+  -- A binary frame, and an addon frame with nothing to unescape, keep the
+  -- received text and start at byte 3, so the common message is never copied.
   local ok, flags, body, reason
+  local start = 1
   if first == FORMAT_VERSION then
     flags = byte(text, 2)
     reason = checkFlags(flags)
@@ -2872,11 +3201,19 @@ local function decodeFrame(work, text, expectedChannel, allowList)
     if reason ~= nil then
       return false, reason
     end
-    body = sub(text, 3)
+    body, start = text, 3
     if hasFlag(flags, FLAG_ADDON) then
-      ok, body = decodeForAddon(work, body)
-      if not ok then
-        return false, body
+      -- Without an escape byte or a forbidden byte after the header, the
+      -- addon stage would return its input unchanged, so only its input
+      -- limit is left to check; with one, it runs in full and refuses
+      -- exactly as it always did.
+      if find(text, ADDON_ESCAPE_PATTERN, 3) then
+        ok, body = decodeForAddon(work, text, 3)
+        if not ok then
+          return false, body
+        end
+      elseif #text - 2 > work.maxOutputBytes then
+        return false, REASON.maxOutputBytes
       end
     end
   elseif PRINT_DIGITS[first] ~= nil or WHITESPACE[first] then
@@ -2918,12 +3255,16 @@ local function decodeFrame(work, text, expectedChannel, allowList)
   end
 
   if hasFlag(flags, FLAG_DEFLATE) then
+    if start > 1 then
+      body = sub(body, start)
+      start = 1
+    end
     ok, body = decompressBytes(work, body)
     if not ok then
       return false, body
     end
   end
-  return deserializeBody(work, body, allowList)
+  return deserializeBody(work, body, start, allowList)
 end
 
 ---Look for a secret anywhere in `value` before an asynchronous encode is
@@ -3016,6 +3357,11 @@ end
 ---@param name string the option or limit, qualified by its table (`options.level`)
 ---@param level integer
 local function refuseSecretSetting(value, label, name, level)
+  -- An absent setting is never a secret; `type` answers that without asking
+  -- the host.
+  if type(value) == "nil" then
+    return
+  end
   local isSecret = readSecretProbe()
   if isSecret ~= nil and isSecret(value) then
     error(label .. " " .. name .. " must not be a secret value", level)
@@ -3283,7 +3629,7 @@ end
 local function serialize(self, value)
   validateFacade(self, "CodecKit:Serialize", 3)
   local work = openWork(true)
-  local ok, result = serializeBody(work, value, nil)
+  local ok, result = serializeBody(work, value, nil, BYTE_TEXT, nil)
   closeWork(work)
   refuseSecret(ok, result, "CodecKit:Serialize", 3)
   return ok, result
@@ -3298,7 +3644,7 @@ local function deserialize(self, bytes)
   validateFacade(self, "CodecKit:Deserialize", 3)
   validateBytes(bytes, "CodecKit:Deserialize bytes", 3)
   local work = openWork(true)
-  local ok, value = deserializeBody(work, bytes, false)
+  local ok, value = deserializeBody(work, bytes, 1, false)
   closeWork(work)
   return ok, value
 end
