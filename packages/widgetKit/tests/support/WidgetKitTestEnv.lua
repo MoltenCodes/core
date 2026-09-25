@@ -12,7 +12,12 @@
 ---                   reports the tables `NewSecret` returns;
 ---   allocation      `AllocatedKilobytes` measures a workload with the
 ---                   collector stopped;
----   upgrades        `LoadRevision` loads the source again as another revision.
+---   upgrades        `LoadRevision` loads the source again as another revision;
+---   client rules    `InstallClientRules` applies what the client does and the
+---                   shared stub does not (`WidgetKitClientRules`): secret
+---                   arguments refused by frame setters, `nil` for an empty
+---                   text, the secret aspect of a font string and strata that
+---                   follow the parent. Every `NewPackage` loader installs them.
 ---
 --- OptionsKit is an optional dependency of WidgetKit, declared under
 --- `optionalDependencies`, so the test runner puts it and its closure on
@@ -20,6 +25,7 @@
 --- The SchedulerKit, SettingsKit and MediaKit chain lives in
 --- `WidgetKitHostTestEnv`.
 local FrameworkTestEnv = require("FrameworkTestEnv")
+local WidgetKitClientRules = require("WidgetKitClientRules")
 
 local WidgetKitTestEnv = FrameworkTestEnv.New({
   modules = { "Registry", "SignalKit", "PoolKit", "SchemaKit", "OptionsKit", "WidgetKit" },
@@ -62,9 +68,16 @@ function WidgetKitTestEnv.InstallScreen()
   return uiParent
 end
 
+---Apply the client rules of `WidgetKitClientRules` to every frame created
+---from now on, until the next `Reset`.
+function WidgetKitTestEnv.InstallClientRules()
+  WidgetKitClientRules.Install(WidgetKitTestEnv.SetGlobal)
+end
+
 local sharedNewPackage = WidgetKitTestEnv.NewPackage
 
----Reset, install the host stubs, load the module chain and create the screen.
+---Reset, install the host stubs and the client rules, load the module chain
+---and create the screen.
 ---@return table WidgetKit
 ---@return table Registry
 ---@return table SignalKit
@@ -73,6 +86,7 @@ local sharedNewPackage = WidgetKitTestEnv.NewPackage
 ---@return table OptionsKit
 function WidgetKitTestEnv.NewPackage()
   local WidgetKit, Registry, SignalKit, PoolKit, SchemaKit, OptionsKit = sharedNewPackage()
+  WidgetKitTestEnv.InstallClientRules()
   WidgetKitTestEnv.InstallScreen()
   return WidgetKit, Registry, SignalKit, PoolKit, SchemaKit, OptionsKit
 end
@@ -80,7 +94,9 @@ end
 ---Load the chain without creating `UIParent`, as on a host without one.
 ---@return table WidgetKit
 function WidgetKitTestEnv.NewPackageWithoutScreen()
-  return (sharedNewPackage())
+  local WidgetKit = sharedNewPackage()
+  WidgetKitTestEnv.InstallClientRules()
+  return WidgetKit
 end
 
 ---Load Registry, SignalKit, PoolKit and WidgetKit only, as an addon that
@@ -94,6 +110,7 @@ function WidgetKitTestEnv.NewPackageWithoutOptionsKit()
   require("SignalKit")
   require("PoolKit")
   local WidgetKit = require("WidgetKit")
+  WidgetKitTestEnv.InstallClientRules()
   WidgetKitTestEnv.InstallScreen()
   return WidgetKit, Registry
 end

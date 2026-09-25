@@ -56,7 +56,7 @@
 
 local PACKAGE_NAME = "widgetKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 5
+local IMPLEMENTATION_REVISION = 6
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_POOLKIT_API = 1
 local REQUIRED_SIGNALKIT_API = 1
@@ -151,18 +151,24 @@ local POINT_VERTICAL = {
 -- The version each base widget type is registered with. A later revision of
 -- this file that changes a base widget's constructor raises that widget's
 -- version, so pooled widgets built by the older constructor are discarded.
+--
+-- Version 2 (implementation revision 6): text getters answer `""` for the
+-- client's `nil`, releases remove a secret aspect with `ClearText`, the
+-- `Frame` window keeps its strata under any parent, the `Label` wraps at a
+-- width of its own and never sizes itself from a secret measurement, and
+-- `EditBox:SetText` refuses a secret. `ScrollFrame` and `Spacer` are unchanged.
 local BASE_TYPE_VERSIONS = {
-  Frame = 1,
-  Group = 1,
+  Frame = 2,
+  Group = 2,
   ScrollFrame = 1,
-  Label = 1,
-  Button = 1,
-  CheckBox = 1,
-  Slider = 1,
-  EditBox = 1,
-  Dropdown = 1,
-  ColorPicker = 1,
-  Heading = 1,
+  Label = 2,
+  Button = 2,
+  CheckBox = 2,
+  Slider = 2,
+  EditBox = 2,
+  Dropdown = 2,
+  ColorPicker = 2,
+  Heading = 2,
   Spacer = 1,
 }
 
@@ -292,7 +298,7 @@ local WEAK_KEYS = { __mode = "k" }
 
 ---Options for the text setters of every widget.
 ---@class WidgetKit.TextOptions
----@field allowSecret boolean? Display a secret value. The caller decides; see `docs/EMBEDDING.md`.
+---@field allowSecret boolean? Display a secret value. The caller decides; see `docs/EMBEDDING.md`. `EditBox:SetText` refuses a secret even with it: the client's edit box takes one only from untainted code.
 
 ---The base every widget falls back to.
 ---@class WidgetKit.Widget
@@ -487,7 +493,7 @@ local WEAK_KEYS = { __mode = "k" }
 
 ---Options for `WidgetKit:RenderOptions`.
 ---@class WidgetKit.RenderOptions
----@field allowSecret boolean? Show a secret value in an `input` option's edit box instead of a placeholder.
+---@field allowSecret boolean? Accepted and checked, with no effect since revision 6: the client's edit box refuses a secret from addon code, so an `input` option whose value is secret shows `<secret value>`, disabled.
 ---@field media table<string, string>? Option path to MediaKit media type, for `select` options drawn as media pickers.
 ---@field confirmText string? The question an `execute` option with `confirm = true` asks; default `"Click again to confirm."`.
 
@@ -2497,36 +2503,18 @@ local function setLimits(self, limits)
   -- `maxDropdownEntries`: a positive integer or `WidgetKit.UNBOUNDED`, since
   -- the entries are the consumer's own keys and labels, not frames.
   local dropdownEntries = rawget(limits, "maxDropdownEntries")
-  if
-    type(dropdownEntries) ~= "nil"
-    and (
-      isSecret(dropdownEntries)
-      or (
-        dropdownEntries ~= UNBOUNDED
-        and (
-          type(dropdownEntries) ~= "number"
-          or dropdownEntries ~= dropdownEntries
-          or dropdownEntries < 1
-          or dropdownEntries == math.huge
-          or dropdownEntries ~= math.floor(dropdownEntries)
-        )
-      )
-    )
-  then
-    error(
-      "WidgetKit:SetLimits limits.maxDropdownEntries must be a positive integer"
-        .. " or WidgetKit.UNBOUNDED",
-      2
-    )
+  if type(dropdownEntries) ~= "nil" then
+    validateLimitOrUnbounded(dropdownEntries, "WidgetKit:SetLimits limits.maxDropdownEntries", 3)
   end
   local ceiling = rawget(limits, "maxCreatedCeiling")
+  refuseSecret(ceiling, "WidgetKit:SetLimits limits.maxCreatedCeiling", 3)
   if type(ceiling) == "nil" then
     if type(dropdownEntries) ~= "nil" then
       rawset(rawget(state, "limits"), "maxDropdownEntries", dropdownEntries)
     end
     return
   end
-  if not isSecret(ceiling) and ceiling == UNBOUNDED then
+  if ceiling == UNBOUNDED then
     error(
       "WidgetKit:SetLimits limits.maxCreatedCeiling cannot be WidgetKit.UNBOUNDED:"
         .. " the client never frees a frame",
@@ -2534,8 +2522,7 @@ local function setLimits(self, limits)
     )
   end
   if
-    isSecret(ceiling)
-    or type(ceiling) ~= "number"
+    type(ceiling) ~= "number"
     or ceiling ~= math.floor(ceiling)
     or ceiling < MAX_CREATED_CEILING.minimum
     or ceiling > MAX_CREATED_CEILING.maximum
@@ -3113,6 +3100,17 @@ end
 -- methods stored on the widget table. Methods are shared functions defined
 -- once here; script handlers are closures made once per widget, at
 -- construction, because the widget is pooled for the session.
+--
+-- Two client facts measured on Retail 12.1.0 b69933 (2026-09-25) shape the
+-- text code, and each place applies them inline, because the main chunk is at
+-- Lua's limit of 200 active locals and has no room for a shared helper:
+--
+--   * a font string or button answers `GetText()` with `nil`, not `""`, for
+--     an empty text, so every text getter turns `nil` into `""`;
+--   * `SetText("")` leaves a font string that showed a secret with its secret
+--     aspect (its text and measurements stay secret), so every `OnRelease`
+--     that clears a font string a text setter may have given a secret also
+--     calls `ClearText`, which removes it, when the client has it.
 
 -- Colours a widget draws its text and chrome in.
 local LABEL_RED, LABEL_GREEN, LABEL_BLUE = 1, 0.82, 0
@@ -3229,7 +3227,11 @@ end
 ---@return any
 local function getWidgetLabel(self)
   activeRecord(self, "WidgetKit.Widget:GetLabel", 3)
-  return self.labelText:GetText()
+  local text = self.labelText:GetText()
+  if type(text) == "nil" then
+    return ""
+  end
+  return text
 end
 
 -- The base widget constructors, each defined in its own `do` block below so
@@ -3253,7 +3255,11 @@ do
   ---@return any
   local function windowGetTitle(self)
     activeRecord(self, "WidgetKit Frame:GetTitle", 3)
-    return self.titleText:GetText()
+    local text = self.titleText:GetText()
+    if type(text) == "nil" then
+      return ""
+    end
+    return text
   end
 
   ---@param resizable boolean
@@ -3304,6 +3310,7 @@ do
     -- A restored anchor applies its saved scale to the frame; the next
     -- use of the window starts at the default one.
     frame:SetScale(1)
+    frame:SetFrameStrata("DIALOG")
     frame:SetSize(WINDOW_WIDTH, WINDOW_HEIGHT)
     frame:ClearAllPoints()
     frame:SetPoint("CENTER")
@@ -3320,6 +3327,9 @@ do
       self._binding = nil
     end
     self.titleText:SetText("")
+    if type(self.titleText.ClearText) == "function" then
+      self.titleText:ClearText()
+    end
     local frame = self.frame
     frame:StopMovingOrSizing()
   end
@@ -3328,6 +3338,12 @@ do
   function constructWindow()
     local frame = createFrame("Frame", releaseParent())
     frame:SetFrameStrata("DIALOG")
+    -- `SetParent` gives a frame its new parent's strata (measured on Retail
+    -- 12.1.0 b69933: a window put on a MEDIUM frame answered MEDIUM), so the
+    -- window keeps its own strata wherever a consumer parents it.
+    if type(frame.SetFixedFrameStrata) == "function" then
+      frame:SetFixedFrameStrata(true)
+    end
     frame:SetToplevel(true)
     frame:SetClampedToScreen(true)
     frame:EnableMouse(true)
@@ -3456,7 +3472,11 @@ do
   ---@return any
   local function groupGetTitle(self)
     activeRecord(self, "WidgetKit Group:GetTitle", 3)
-    return self.titleText:GetText()
+    local text = self.titleText:GetText()
+    if type(text) == "nil" then
+      return ""
+    end
+    return text
   end
 
   ---@param disabled boolean? `true` greys the text out; the widget takes no input
@@ -3482,6 +3502,9 @@ do
 
   local function groupOnRelease(self)
     self.titleText:SetText("")
+    if type(self.titleText.ClearText) == "function" then
+      self.titleText:ClearText()
+    end
   end
 
   ---@return table widget
@@ -3658,17 +3681,40 @@ do
   -- One line of the default fonts, used where a text height cannot be measured.
   local LINE_HEIGHT = 12
 
-  ---Size the label to its text. A secret text is not measured: the measurement
-  ---of a secret string may itself be secret.
+  -- The width a label has from `Create` on, until `SetWidth` or a layout
+  -- gives it another.
+  local LABEL_WIDTH = 200
+
+  ---Size the label to its text. A secret text is not measured, and a
+  ---measurement the client answers as a secret is not used: `SetHeight`
+  ---takes a secret only from untainted code (Retail 12.1.0 b69933), and a
+  ---font string that once showed a secret may measure any later text as one.
+  ---Either way the label is one line high.
   ---@param widget table
   local function labelUpdateHeight(widget)
-    local height
-    if widget._secret then
-      height = LINE_HEIGHT
-    else
-      height = widget.text:GetStringHeight()
+    local height = LINE_HEIGHT
+    if not widget._secret then
+      local measured = widget.text:GetStringHeight()
+      if not isSecret(measured) then
+        height = measured
+      end
     end
     widget.frame:SetHeight(height)
+  end
+
+  ---Give the font string the label's width and size the label again.
+  ---
+  ---The font string wraps at a width of its own rather than at its anchors:
+  ---the client measures a wrapped text only against a width it has already
+  ---resolved, and a label laid out before it was ever drawn (measured on
+  ---Retail 12.1.0 b69933) still measured one unwrapped line after its anchors
+  ---spanned the content. `width` is a plain number: `SetWidth` refuses a
+  ---secret, and a layout tells a child no width it could not read.
+  ---@param widget table
+  ---@param width number
+  local function labelSetWrapWidth(widget, width)
+    widget.text:SetWidth(width)
+    labelUpdateHeight(widget)
   end
 
   ---@param text any
@@ -3684,7 +3730,12 @@ do
   ---@return any
   local function labelGetText(self)
     activeRecord(self, "WidgetKit Label:GetText", 3)
-    return self.text:GetText()
+    -- The client's font string answers `nil` for an empty text.
+    local text = self.text:GetText()
+    if type(text) == "nil" then
+      return ""
+    end
+    return text
   end
 
   ---@param fontObject any a font object or its global name
@@ -3736,12 +3787,13 @@ do
     end
   end
 
-  local function labelOnWidthSet(self)
-    labelUpdateHeight(self)
+  ---@param width number
+  local function labelOnWidthSet(self, width)
+    labelSetWrapWidth(self, width)
   end
 
   local function labelOnAcquire(self)
-    self.frame:SetWidth(200)
+    self.frame:SetWidth(LABEL_WIDTH)
     self._secret = false
     self._disabled = false
     self._red, self._green, self._blue, self._alpha = TEXT_RED, TEXT_GREEN, TEXT_BLUE, 1
@@ -3749,13 +3801,17 @@ do
     self.text:SetJustifyH("LEFT")
     self.text:SetTextColor(TEXT_RED, TEXT_GREEN, TEXT_BLUE, 1)
     self.text:SetText("")
-    labelUpdateHeight(self)
+    labelSetWrapWidth(self, LABEL_WIDTH)
   end
 
   ---Clear the text, so a pooled font string never carries a secret into its
-  ---next use.
+  ---next use. `ClearText` also removes the secret aspect a secret text gave
+  ---the font string, which `SetText("")` keeps (Retail 12.x).
   local function labelOnRelease(self)
     self.text:SetText("")
+    if type(self.text.ClearText) == "function" then
+      self.text:ClearText()
+    end
     self._secret = false
   end
 
@@ -3763,8 +3819,8 @@ do
   function constructLabel()
     local frame = createFrame("Frame", releaseParent())
     local text = frame:CreateFontString(nil, "OVERLAY")
+    -- One anchor: the width is the font string's own (`labelSetWrapWidth`).
     text:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, 0)
-    text:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, 0)
     text:SetWordWrap(true)
     return {
       frame = frame,
@@ -3815,7 +3871,11 @@ do
   ---@return any
   local function buttonGetText(self)
     activeRecord(self, "WidgetKit Button:GetText", 3)
-    return self.frame:GetText()
+    local text = self.frame:GetText()
+    if type(text) == "nil" then
+      return ""
+    end
+    return text
   end
 
   ---Leave key-capture mode without firing anything.
@@ -4017,6 +4077,9 @@ do
 
   local function checkBoxOnRelease(self)
     self.labelText:SetText("")
+    if type(self.labelText.ClearText) == "function" then
+      self.labelText:ClearText()
+    end
     self._value = false
   end
 
@@ -4210,6 +4273,9 @@ do
 
   local function sliderOnRelease(self)
     self.labelText:SetText("")
+    if type(self.labelText.ClearText) == "function" then
+      self.labelText:ClearText()
+    end
     self.valueBox:ClearFocus()
   end
 
@@ -4340,6 +4406,16 @@ do
   ---@param options WidgetKit.TextOptions?
   local function editBoxSetText(self, text, options)
     activeRecord(self, "WidgetKit EditBox:SetText", 3)
+    -- The client's edit box refuses a secret from addon code, `allowSecret`
+    -- or not: `SetText` takes one only during untainted execution (measured
+    -- on Retail 12.1.0 b69933). It is refused here, at the caller's line.
+    if isSecret(text) then
+      error(
+        "WidgetKit EditBox:SetText text must not be a secret value:"
+          .. " the client's edit box takes one only from untainted code",
+        2
+      )
+    end
     local value = checkText(text, options, "WidgetKit EditBox:SetText", 3)
     self._settingText = true
     activeEditBox(self):SetText(value)
@@ -4349,7 +4425,13 @@ do
   ---@return any
   local function editBoxGetText(self)
     activeRecord(self, "WidgetKit EditBox:GetText", 3)
-    return activeEditBox(self):GetText()
+    -- The client's edit box answers `""` when empty (measured on Retail
+    -- 12.1.0 b69933); a client that answers `nil` gets the same promise.
+    local text = activeEditBox(self):GetText()
+    if type(text) == "nil" then
+      return ""
+    end
+    return text
   end
 
   ---@param multiLine boolean
@@ -4457,6 +4539,9 @@ do
     self.singleBox:ClearFocus()
     self.multiBox:ClearFocus()
     self.labelText:SetText("")
+    if type(self.labelText.ClearText) == "function" then
+      self.labelText:ClearText()
+    end
   end
 
   ---@return table widget
@@ -4920,6 +5005,9 @@ do --
     self._value = nil
     self.button:SetText("")
     self.labelText:SetText("")
+    if type(self.labelText.ClearText) == "function" then
+      self.labelText:ClearText()
+    end
     local rows = self._rows
     for index = 1, #rows do
       rows[index]:SetText("")
@@ -5128,6 +5216,9 @@ do --
 
   local function colorOnRelease(self)
     self.labelText:SetText("")
+    if type(self.labelText.ClearText) == "function" then
+      self.labelText:ClearText()
+    end
     -- Disarm the client picker's callbacks for this use of the widget.
     self._session = self._session + 1
   end
@@ -5253,7 +5344,11 @@ do
   ---@return any
   local function headingGetText(self)
     activeRecord(self, "WidgetKit Heading:GetText", 3)
-    return self.text:GetText()
+    local text = self.text:GetText()
+    if type(text) == "nil" then
+      return ""
+    end
+    return text
   end
 
   ---@param disabled boolean? `true` greys the text out; the widget takes no input
@@ -5270,6 +5365,9 @@ do
 
   local function headingOnRelease(self)
     self.text:SetText("")
+    if type(self.text.ClearText) == "function" then
+      self.text:ClearText()
+    end
   end
 
   ---@return table widget
@@ -5429,9 +5527,6 @@ do --
     medium = "GameFontHighlight",
     large = "GameFontHighlightLarge",
   }
-
-  -- The text options of an edit box that may show a secret.
-  local ALLOW_SECRET_TEXT = { allowSecret = true }
 
   -- Seconds an armed `execute` confirmation waits for its second click.
   local CONFIRM_SECONDS = 5
@@ -5631,14 +5726,15 @@ do --
 
   ---Show `value` and the disabled state on the record's widgets.
   ---
-  ---A secret value is never inspected. An `input` option shows it only when the
-  ---caller passed `allowSecret`; every other kind shows a placeholder or its
-  ---default and is disabled, since the user cannot edit what cannot be read.
-  ---@param rendering table
+  ---A secret value is never inspected or handed to a widget: every kind shows
+  ---a placeholder or its default and is disabled, since the user cannot edit
+  ---what cannot be read. An `input` option shows the placeholder whatever
+  ---`allowSecret` says, because the client's edit box refuses a secret from
+  ---addon code (measured on Retail 12.1.0 b69933).
   ---@param record table
   ---@param value any
   ---@param disabled boolean
-  local function applyState(rendering, record, value, disabled)
+  local function applyState(record, value, disabled)
     local kind = record.kind
     local widget = record.widget
     record.disabled = disabled
@@ -5666,11 +5762,6 @@ do --
     end
 
     if secret then
-      if kind == "input" and rendering._allowSecret then
-        widget:SetText(value, ALLOW_SECRET_TEXT)
-        widget:SetDisabled(disabled)
-        return
-      end
       if kind == "input" then
         widget:SetText(SECRET_PLACEHOLDER)
       elseif kind == "keybinding" then
@@ -5744,7 +5835,7 @@ do --
     -- A secret `disabled` answer greys the option out: the user cannot be
     -- offered what the tree will not say is enabled.
     local disabled = tree:IsDisabled(record.path)
-    applyState(rendering, record, value, isSecret(disabled) or disabled == true)
+    applyState(record, value, isSecret(disabled) or disabled == true)
   end
 
   ---Run a refresh that `OnChange` asked for while a write was in progress.
@@ -6202,14 +6293,15 @@ do --
       error("WidgetKit:RenderOptions container must be an active WidgetKit container", 2)
     end
 
-    local allowSecret, media, confirmText = false, nil, DEFAULT_CONFIRM_TEXT
+    local media, confirmText = nil, DEFAULT_CONFIRM_TEXT
     if type(options) ~= "nil" then
       validateOptionKeys(options, RENDER_OPTION_KEYS, "WidgetKit:RenderOptions options", 3)
+      -- Still checked, though no kind shows a secret any more: see
+      -- `applyState` and docs/API.md ("Secret values").
       refuseSecret(options.allowSecret, "WidgetKit:RenderOptions options.allowSecret", 3)
       if type(options.allowSecret) ~= "nil" and type(options.allowSecret) ~= "boolean" then
         error("WidgetKit:RenderOptions options.allowSecret must be a boolean", 2)
       end
-      allowSecret = options.allowSecret == true
       if type(options.confirmText) ~= "nil" then
         validateName(options.confirmText, "WidgetKit:RenderOptions options.confirmText", 3)
         confirmText = options.confirmText
@@ -6231,7 +6323,6 @@ do --
     local rendering = setmetatable({
       _tree = tree,
       _container = container,
-      _allowSecret = allowSecret,
       _media = media,
       _confirmText = confirmText,
       -- Widget -> the acquire serial it had when this rendering took it.

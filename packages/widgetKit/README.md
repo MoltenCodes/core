@@ -35,7 +35,7 @@ What each piece promises:
 - **Bounded by default, opened on purpose.** Every cap has a documented default and a way to open it: `maxCallbacks` per type, `container:SetMaxChildren` (both accept `WidgetKit.UNBOUNDED`), `WidgetKit:SetLimits{ maxDropdownEntries }` (accepts `UNBOUNDED`) and `WidgetKit:SetLimits{ maxCreatedCeiling }` (up to 16384; frames are never freed, so never unbounded). See *Limits* in the API.
 - **Anchors you can save.** `WidgetKit.Anchor` elects the nearest of the nine points (`FromRect`), normalises any `SetPoint` argument form (`Normalize`), and applies and reads anchors. `BindPosition` saves a frame's anchor into any table, a SettingsKit scope view included, debounced through SchedulerKit when it is present.
 - **Options, rendered.** Every OptionsKit kind has a widget; `order`, `disabled` and `hidden` are honoured, writes go through `Validate` and `Set`, a refusal is shown in a line below the widget, and `OnChange` refreshes the widgets in place.
-- **Secrets stay the caller's decision.** Text setters refuse a secret value unless you pass `{ allowSecret = true }`, and a released widget never carries a secret into its next use.
+- **Secrets stay the caller's decision.** Text setters refuse a secret value unless you pass `{ allowSecret = true }` (an `EditBox` refuses one always: the client's edit box takes a secret only from untainted code), and a released widget never carries a secret into its next use.
 
 See [`docs/API.md`](docs/API.md) for the complete contract, including the rules a widget author must follow, and [`docs/INTERNALS.md`](docs/INTERNALS.md) for the layout algorithms, the renderer and pooling.
 

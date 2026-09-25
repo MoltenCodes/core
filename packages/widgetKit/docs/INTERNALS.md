@@ -199,7 +199,10 @@ refresh never writes.
 
 **Secrets.** `applyState` checks the value with `issecretvalue` before any
 comparison. A multiselect's table value is indexed only after the table itself
-passed that check, and each entry is checked before it is compared.
+passed that check, and each entry is checked before it is compared. A secret
+value is never handed to a widget: since revision 6 an `input` shows the
+placeholder too, because the client's edit box refuses a secret from addon code
+(`allowSecret` is still validated, and no longer stored on the rendering).
 
 **Ownership.** Every widget acquire raises a session-wide serial kept in the
 widget's record. The rendering stores the serial of each widget it acquired,

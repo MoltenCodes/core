@@ -9,7 +9,7 @@ describe("WidgetKit bootstrap", function()
     local reloaded = TestEnv.ReloadPackage()
     assert.are.equal(WidgetKit, reloaded)
     assert.is_true(WidgetKit:IsWidget(label))
-    assert.are.equal(1, WidgetKit:GetTypeVersion("Label"))
+    assert.are.equal(2, WidgetKit:GetTypeVersion("Label"))
     WidgetKit:Release(label)
   end)
 
@@ -92,7 +92,7 @@ describe("WidgetKit bootstrap", function()
     assert.are.equal(nextRevision, upgraded.REVISION)
     assert.are.equal(widgetBase, upgraded.Widget)
     assert.are.equal(containerBase, upgraded.Container)
-    assert.are.equal(1, upgraded:GetTypeVersion("Label"))
+    assert.are.equal(2, upgraded:GetTypeVersion("Label"))
 
     -- Live widgets keep working under the new copy's methods.
     label:SetText("still here")
@@ -125,7 +125,7 @@ describe("WidgetKit bootstrap", function()
     assert.are.equal(label, group:GetChildren()[1])
     assert.is_true(label:GetUserData("kept"))
     assert.are.equal(old.UNBOUNDED, upgraded:GetLimits().maxDropdownEntries)
-    assert.are.equal(1, upgraded:GetTypeVersion("Label"))
+    assert.are.equal(2, upgraded:GetTypeVersion("Label"))
     -- The widgets revision 1 built run the current methods at once.
     TestEnv.InstallSecretProbe()
     local secret = TestEnv.NewSecret()
@@ -190,7 +190,7 @@ describe("WidgetKit bootstrap", function()
     assert.are.equal(slider, group:GetChildren()[1])
     assert.is_true(slider:GetUserData("kept"))
     assert.are.equal(old.UNBOUNDED, upgraded:GetLimits().maxDropdownEntries)
-    assert.are.equal(1, upgraded:GetTypeVersion("Slider"))
+    assert.are.equal(2, upgraded:GetTypeVersion("Slider"))
     -- The widgets revision 3 built run the current methods at once: a
     -- secret flag is refused instead of being tested as a boolean.
     TestEnv.InstallSecretProbe()
@@ -249,14 +249,78 @@ describe("WidgetKit bootstrap", function()
     upgraded:Release(group)
   end)
 
+  it("upgrades a revision 5 copy in place, raising ten base widgets to version 2", function()
+    TestEnv.Reset()
+    TestEnv.InstallWowApi()
+    TestEnv.InstallClientRules()
+    TestEnv.InstallScreen()
+    for _, name in ipairs({ "Registry", "SignalKit", "PoolKit", "SchemaKit", "OptionsKit" }) do
+      require(name)
+    end
+    -- Revision 5 registered every base widget at version 1.
+    local versionOne = {}
+    for _, typeName in ipairs({
+      "Frame",
+      "Group",
+      "Label",
+      "Button",
+      "CheckBox",
+      "Slider",
+      "EditBox",
+      "Dropdown",
+      "ColorPicker",
+      "Heading",
+    }) do
+      versionOne["  " .. typeName .. " = 2,"] = "  " .. typeName .. " = 1,"
+    end
+    local old = TestEnv.LoadRevision(5, versionOne)
+    local state = old._state
+    assert.are.equal(1, old:GetTypeVersion("Label"))
+    local group = old:Create("Group") ---@cast group -nil
+    local borrowed = old:Create("Label") ---@cast borrowed -nil
+    group:AddChild(borrowed)
+    borrowed:SetUserData("kept", true)
+    local pooled = old:Create("Label") ---@cast pooled -nil
+    old:Release(pooled)
+    local scroll = old:Create("ScrollFrame") ---@cast scroll -nil
+    old:Release(scroll)
+    old:SetLimits({ maxDropdownEntries = old.UNBOUNDED })
+
+    local upgraded = require("WidgetKit")
+    assert.are.equal(old, upgraded)
+    assert.are.equal(state, upgraded._state)
+    assert.are.equal(6, upgraded.REVISION)
+    assert.are.equal(2, upgraded:GetTypeVersion("Label"))
+    assert.are.equal(2, upgraded:GetTypeVersion("Frame"))
+    assert.are.equal(1, upgraded:GetTypeVersion("ScrollFrame"))
+    assert.are.equal(1, upgraded:GetTypeVersion("Spacer"))
+    assert.are.equal(old.UNBOUNDED, upgraded:GetLimits().maxDropdownEntries)
+
+    -- The borrowed revision 5 label stays in use with its record.
+    assert.is_true(upgraded:IsWidget(borrowed))
+    assert.are.equal(borrowed, group:GetChildren()[1])
+    assert.is_true(borrowed:GetUserData("kept"))
+    -- The pooled one was built by the version 1 constructor and is discarded;
+    -- an unchanged type keeps its pooled widget.
+    local fresh = upgraded:Create("Label") ---@cast fresh -nil
+    assert.are_not.equal(pooled, fresh)
+    assert.are.equal("", fresh:GetText())
+    assert.are.equal(scroll, upgraded:Create("ScrollFrame"))
+    -- Released, the borrowed label is retired rather than pooled.
+    upgraded:Release(group)
+    assert.is_false(upgraded:IsWidget(borrowed))
+    local another = upgraded:Create("Label")
+    assert.are_not.equal(borrowed, another)
+  end)
+
   it("discards pooled base widgets when a newer copy raises their version", function()
     local WidgetKit = TestEnv.NewPackage()
     local pooled = WidgetKit:Create("Label")
     local borrowed = WidgetKit:Create("Label")
     WidgetKit:Release(pooled)
 
-    TestEnv.LoadRevision(WidgetKit.REVISION + 1, { ["  Label = 1,"] = "  Label = 2," })
-    assert.are.equal(2, WidgetKit:GetTypeVersion("Label"))
+    TestEnv.LoadRevision(WidgetKit.REVISION + 1, { ["  Label = 2,"] = "  Label = 3," })
+    assert.are.equal(3, WidgetKit:GetTypeVersion("Label"))
     local fresh = WidgetKit:Create("Label")
     assert.are_not.equal(pooled, fresh)
     WidgetKit:Release(borrowed)

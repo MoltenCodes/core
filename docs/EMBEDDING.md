@@ -1059,10 +1059,13 @@ embedding addon's state depend on which copy won.
   frame it uses, `ColorPickerFrame`, is opened only through its own
   `SetupColorPickerAndShow` after the same check, and a click fires the current
   colour when the check fails.
-- **Text setters refuse a secret.** `Label:SetText` and `EditBox:SetText`
-  refuse a secret value unless the caller passes `allowSecret`, and every
-  pooled widget clears its text on release, so a recycled region never shows
-  a value from its previous life (taint rule 6).
+- **Text setters refuse a secret.** `Label:SetText` refuses a secret value
+  unless the caller passes `allowSecret`; `EditBox:SetText` always refuses
+  one, because the client's edit box takes a secret only from untainted code
+  (measured on Retail 12.1.0 b69933, 2026-09-25), so the options renderer
+  shows a secret input value as `<secret value>`, disabled. Every pooled widget
+  clears its text on release, so a recycled region never shows a value from
+  its previous life (taint rule 6).
 - **Positions persist through SettingsKit.** `WidgetKit:BindPosition(frame,
   db.profile.window)` saves a plain anchor table `{ point, relativeTo,
   relativePoint, x, y, scale }` into a record you declare in your schema,

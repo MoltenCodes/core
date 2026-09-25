@@ -155,7 +155,7 @@ describe("WidgetKit rendering ownership", function()
           error("acquire exploded", 0)
         end,
       }
-    end, 2)
+    end, 3)
     local window = WidgetKit:Create("Frame")
     TestEnv.expectErrorContaining("WidgetKit:RenderOptions acquire exploded", function()
       WidgetKit:RenderOptions(tree, window)

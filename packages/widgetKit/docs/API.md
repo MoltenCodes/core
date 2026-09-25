@@ -2,7 +2,7 @@
 
 WidgetKit API generation **1** provides pooled, versioned widgets on frames WidgetKit creates itself, containers with explicit layouts, a normalised anchor value type with position persistence, and a renderer for OptionsKit trees.
 
-Implementation revision: **3**.
+Implementation revision: **6**.
 
 ## Loading
 
@@ -61,7 +61,7 @@ Package facade:
 | `MAX_CREATED`, `MAX_CHILDREN`, `MAX_CALLBACKS` | `256`, `256`, `16`: the defaults. See [Limits](#limits). |
 | `SetLimits(limits)` / `GetLimits()` | Change or read the package-wide limits `maxCreatedCeiling` and `maxDropdownEntries`; `GetLimits` returns a fresh table. |
 | `UNBOUNDED` | Sentinel `maxCallbacks`, `SetMaxChildren` and the `maxDropdownEntries` limit accept to lift a bound. |
-| `API`, `REVISION` | `1`, `3`. |
+| `API`, `REVISION` | `1`, `6`. |
 
 Widget base (`WidgetKit.Widget`), on every widget:
 
@@ -188,7 +188,7 @@ local list = WidgetKit:Create("ScrollFrame")
 list:SetMaxChildren(WidgetKit.UNBOUNDED)
 ```
 
-`SetLimits` accepts any subset and raises at the caller on an unknown name (a key that is not a string, number or boolean is named by its type, `limits.<table>`, so no `__tostring` runs), on `WidgetKit.UNBOUNDED` for `maxCreatedCeiling`, and on a secret value or one outside its range, before changing anything. **The limit is shared by every consumer in the session**: every embedded copy and every addon uses one value, so a library should rely on the default. Lowering it never shrinks a cap a type already has; it applies to later registrations and upgrades. `GetLimits` returns a fresh table.
+`SetLimits` accepts any subset and raises at the caller on an unknown name (a key that is not a string, number or boolean is named by its type, `limits.<table>`, so no `__tostring` runs), on `WidgetKit.UNBOUNDED` for `maxCreatedCeiling`, on a secret value (`WidgetKit:SetLimits limits.maxDropdownEntries must not be a secret value`) and on one outside its range, before changing anything. **The limit is shared by every consumer in the session**: every embedded copy and every addon uses one value, so a library should rely on the default. Lowering it never shrinks a cap a type already has; it applies to later registrations and upgrades. `GetLimits` returns a fresh table.
 
 `maxCallbacks` belongs to a type and applies to every widget of it; a newer version's registration sets it again. Base types keep 16; register your own type to ask for more. `SetMaxChildren` belongs to one container and is reset to 256 when the container is released, because pooled containers are reused by other code.
 
@@ -248,7 +248,7 @@ local rendering = WidgetKit:RenderOptions(tree, container, { allowSecret = false
 
 | Option | Meaning |
 |---|---|
-| `allowSecret` | An `input` option whose value is secret shows it instead of `<secret value>`. |
+| `allowSecret` | Checked (a boolean, not a secret) and without effect since revision 6: the client's edit box refuses a secret from addon code, so an `input` option whose value is secret shows `<secret value>`, disabled, as without it. See [Secret values](#secret-values). |
 | `media` | Option path → MediaKit type: that `select` is drawn with MediaKit's names when MediaKit is registered. |
 | `confirmText` | The question an `execute` option with `confirm = true` asks; default `"Click again to confirm."`. A `confirm` string is asked as it is. |
 
@@ -285,7 +285,9 @@ Every widget is full width and the container uses its own layout. Nodes are rend
 
 ## Base widgets
 
-Text setters take `(text, options?)`: a string or a number is shown, `nil` clears the text, anything else raises, and a secret is refused unless `options.allowSecret` is `true`. Text getters return what the widget shows (`""` once cleared). Every argument error is raised at the caller's line and names the method, as in `WidgetKit Slider:SetSliderValues minimum must not be greater than maximum`.
+The twelve base types are registered at version 2, except `ScrollFrame` and `Spacer` at version 1 (see [Embedded copies and upgrades](#embedded-copies-and-upgrades)).
+
+Text setters take `(text, options?)`: a string or a number is shown, `nil` clears the text, anything else raises, and a secret is refused unless `options.allowSecret` is `true` (`EditBox:SetText` refuses one even then). Text getters return what the widget shows, `""` once cleared: the client's font strings and buttons answer an empty text with `nil` (measured on Retail 12.1.0 b69933, 2026-09-25), and every getter turns that into `""`. Every argument error is raised at the caller's line and names the method, as in `WidgetKit Slider:SetSliderValues minimum must not be greater than maximum`.
 
 `SetDisabled(disabled?)` greys a widget out and, where it takes input, ignores it. `Group`, `Label` and `Heading` grey their text; `Button`, `CheckBox`, `Slider`, `EditBox`, `Dropdown` and `ColorPicker` also stop taking input (a disabled `Button` leaves key capture, a disabled `Dropdown` closes its list, a disabled `EditBox` loses the keyboard). `Frame`, `ScrollFrame` and `Spacer` use the base method, which only checks its argument.
 
@@ -293,12 +295,13 @@ Text setters take `(text, options?)`: a string or a number is shown, `nil` clear
 |---|---|---|
 | `Frame` | `SetTitle(text, options?)`, `GetTitle()` | The title bar's text. |
 | | `SetResizable(resizable)`, `SetMovable(movable)` | Booleans only. A new window is both. |
+| | — | The window stays at the `DIALOG` strata whatever you parent it to: it calls `SetFixedFrameStrata(true)` where the client has it, because `SetParent` otherwise hands a frame its parent's strata. |
 | | `BindPosition(storageTable, options?)` | A binding, as `WidgetKit:BindPosition` makes for the window's frame; a binding the window already had is released first. Released with the window. |
 | | `GetBinding()` | The binding, or `nil`. |
 | `Group` | `SetTitle(text, options?)`, `GetTitle()` | The content moves below a title and back up without one. |
 | `ScrollFrame` | `GetContentHeight()`, `GetScrollRange()`, `GetScroll()` | Numbers: the height the last layout used, how far it can scroll, the current offset. |
 | | `SetScroll(offset)` | A number, clamped to `0 .. GetScrollRange()`. |
-| `Label` | `SetText(text, options?)`, `GetText()` | The label's height follows its text; a secret text is one line high. |
+| `Label` | `SetText(text, options?)`, `GetText()` | The label's height follows its text, wrapped at the label's width: 200 from `Create` on, then the width `SetWidth` or a layout gives it (a label you anchor on two sides yourself keeps wrapping at that width). A secret text, or a measurement the client answers as a secret, makes it one line (12 pixels) high. |
 | | `SetFontObject(fontObject)` | A font object or its global name. |
 | | `SetColor(red, green, blue, alpha?)` | Numbers; `alpha` defaults to `1`. Kept while disabled and shown again when enabled. |
 | | `SetJustifyH(justify)` | `"LEFT"`, `"CENTER"` or `"RIGHT"`. |
@@ -312,7 +315,7 @@ Text setters take `(text, options?)`: a string or a number is shown, `nil` clear
 | | `SetValue(value)`, `GetValue()` | A number, snapped to the step from `minimum` and clamped to the range. |
 | | `SetIsPercent(isPercent)` | A boolean: the value box shows `value × 100` with `%` and reads typed values back as percentages. |
 | | `SetLabel(text, options?)`, `GetLabel()` | The text above the slider. |
-| `EditBox` | `SetText(text, options?)`, `GetText()` | The text of the box in use. |
+| `EditBox` | `SetText(text, options?)`, `GetText()` | The text of the box in use. A secret is refused at your line whatever `allowSecret` says: `WidgetKit EditBox:SetText text must not be a secret value: the client's edit box takes one only from untainted code`. |
 | | `SetMultiLine(multiLine, lines?)`, `IsMultiLine()` | A boolean and a positive integer of visible lines (default 4). The text moves to the box in use; a multi-line box shows an accept button. |
 | | `SetMaxLetters(letters)` | `0` for no limit, or a positive integer. |
 | | `SetFocus()` | Gives the box the keyboard and makes the widget WidgetKit's focused widget. |
@@ -352,7 +355,9 @@ local slider = WidgetKit:Create("Slider") --[[@as WidgetKit.Slider]]
 
 ## Secret values
 
-A font string can display a secret value, but whether one should appear is the caller's decision (see [`docs/EMBEDDING.md`](../../../docs/EMBEDDING.md#secret-values-retail-12x)). Every text setter refuses a secret at your line — `WidgetKit Label:SetText text must not be a secret value unless options.allowSecret is true` — unless you pass `{ allowSecret = true }`. A secret text is never measured (a `Label` showing one is one line high). Values a widget would compare (`CheckBox:SetValue`, `Dropdown:SetValue`, `Dropdown:SetList`, `Label:SetJustifyH`, numbers and optional numbers such as an `alpha` or a relative width, counts and indices such as `SetMaxLetters` and `PickIndex`, limits and caps, names, user-data keys, and the keys of a `Dropdown:SetList` `order`, which are refused before they index `values`: `WidgetKit Dropdown:SetList key must not be a secret value`) are refused when secret, before they are compared with anything, `nil` included. Absence of an optional argument, option field, constructor field or host result is tested with `type`, never by comparing with `nil`, so a value WidgetKit only stores, such as a user-data value, may be secret. Released widgets clear their texts. The renderer never inspects a secret value: an `input` shows it only with `allowSecret`, every other kind is disabled.
+A font string can display a secret value, but whether one should appear is the caller's decision (see [`docs/EMBEDDING.md`](../../../docs/EMBEDDING.md#secret-values-retail-12x)). Every text setter refuses a secret at your line — `WidgetKit Label:SetText text must not be a secret value unless options.allowSecret is true` — unless you pass `{ allowSecret = true }`. A secret text is never measured (a `Label` showing one is one line high).
+
+**What the client takes (measured on Retail 12.1.0 b69933, 2026-09-25).** A font string takes a secret text from addon code: a `Label` and a `Heading` show one with `allowSecret`, and `GetText` then answers a secret. An edit box does not: its `SetText` raises `Secret values are only allowed during untainted execution for this argument`, like `SetWidth` and `SetHeight`. So `EditBox:SetText` refuses a secret at your line even with `allowSecret` (`WidgetKit EditBox:SetText text must not be a secret value: the client's edit box takes one only from untainted code`), and the renderer shows an `input` option whose value is secret as `<secret value>`, disabled, whatever `options.allowSecret` says. A font string that showed a secret keeps a secret aspect after `SetText("")`: its text and its measurements stay secret. Every release that clears a font string a text setter may have given a secret calls `ClearText`, which removes that aspect, so the next use of the widget starts plain; a `Label` never sizes itself from a measurement the client answers as a secret (it is one line high instead), so the secret never reaches `SetHeight`. Values a widget would compare (`CheckBox:SetValue`, `Dropdown:SetValue`, `Dropdown:SetList`, `Label:SetJustifyH`, numbers and optional numbers such as an `alpha` or a relative width, counts and indices such as `SetMaxLetters` and `PickIndex`, limits and caps, names, user-data keys, and the keys of a `Dropdown:SetList` `order`, which are refused before they index `values`: `WidgetKit Dropdown:SetList key must not be a secret value`) are refused when secret, before they are compared with anything, `nil` included. Absence of an optional argument, option field, constructor field or host result is tested with `type`, never by comparing with `nil`, so a value WidgetKit only stores, such as a user-data value, may be secret. Released widgets clear their texts. The renderer never inspects a secret value or hands one to a widget: every kind whose value is secret shows a placeholder or its default and is disabled, `allowSecret` or not.
 
 **Secret booleans.** A secret value is never tested as a boolean (`if`, `and`, `or`, `not`) or compared inside WidgetKit, because either raises there (measured on Retail 12.1.0 b69933). What that means for each place a foreign value decides a branch:
 
@@ -375,7 +380,7 @@ Callback and hook return values are never read, so they need no rule.
 
 ### Secret sizes
 
-`GetWidth`, `GetHeight` and `GetSize` carry `SecretWhenAnchoringSecret` (and `ConstSecretAccessor`) in the client's documentation (`packages/apiKit/metadata/retail`, Retail 12.1.0 b69933): a frame anchored to something secret answers its size as a secret, and `SetWidth`, `SetHeight` and `SetSize` accept a secret argument only from untainted code, which an addon's is not. Arithmetic or a comparison on a secret raises, so every size WidgetKit reads from the client during a layout is asked of `issecretvalue` first, and a secret size is **unknown**:
+`GetWidth`, `GetHeight` and `GetSize` carry `SecretWhenAnchoringSecret` (and `ConstSecretAccessor`) in the client's documentation (`packages/apiKit/metadata/retail`, Retail 12.1.0 b69933): a frame anchored to something secret answers its size as a secret, and `SetWidth`, `SetHeight` and `SetSize` accept a secret argument only from untainted code, which an addon's is not. Arithmetic or a comparison on a secret raises, so every size WidgetKit reads from the client during a layout or to size a widget is asked of `issecretvalue` first, and a secret size is **unknown**; no measurement reaches a setter unchecked:
 
 | Where | A secret size |
 |---|---|
@@ -385,6 +390,7 @@ Callback and hook return values are never read, so they need no rule.
 | A container's height before or after `OnLayoutFinished` | Counts as unchanged: the container holding it is not laid out again. |
 | A `ScrollFrame` viewport's width | The scroll child keeps its width instead of being given the secret one. |
 | A `ScrollFrame` viewport's height | Counts as 0: the whole content height is the scroll range. |
+| A `Label`'s string height (`GetStringHeight`) | Not used: the label is one line (12 pixels) high. Measured on Retail 12.1.0 b69933: a label whose font string had shown a secret measured a later plain text as a secret. |
 
 A custom layout that reads sizes from the client follows the same care; what it returns is covered by the table above.
 
@@ -480,7 +486,7 @@ To change `MyAddonProgress` later, register the new constructor with version `2`
 
 ## Embedded copies and upgrades
 
-Several addons may embed WidgetKit; Registry selects the newest compatible revision and every copy shares one facade. An upgrade happens in place: the widget and container prototypes, the type registry, the pools, every live widget's record, and the binding and rendering prototypes are kept, and gain the newer copy's methods. Pools call through a shared dispatch table, so a newer copy's build and retire steps run for pools an older copy created. Built-in layouts are resolved by name on every pass, so they are replaced for existing containers too. Base widget types are registered again with this copy's versions: an equal version keeps the older constructor, a higher one retires the older widgets. Revisions 2, 3, 4 and 5 keep the revision 1 state as it is and replace the methods only; every base widget stays at version 1.
+Several addons may embed WidgetKit; Registry selects the newest compatible revision and every copy shares one facade. An upgrade happens in place: the widget and container prototypes, the type registry, the pools, every live widget's record, and the binding and rendering prototypes are kept, and gain the newer copy's methods. Pools call through a shared dispatch table, so a newer copy's build and retire steps run for pools an older copy created. Built-in layouts are resolved by name on every pass, so they are replaced for existing containers too. Base widget types are registered again with this copy's versions: an equal version keeps the older constructor, a higher one retires the older widgets. Revisions 2, 3, 4 and 5 keep the revision 1 state as it is and replace the methods only; every base widget stays at version 1. Revision 6 keeps the state too and raises `Frame`, `Group`, `Label`, `Button`, `CheckBox`, `Slider`, `EditBox`, `Dropdown`, `ColorPicker` and `Heading` to version 2, because it changed their constructors: an upgrade from an older revision retires their pooled widgets at once and their borrowed ones when they are released (the frame cap grows by what is retired, as [The frame cap](#the-frame-cap) says), so every `Create` after it hands out a widget with the revision 6 behaviour. `ScrollFrame` and `Spacer` stay at version 1.
 
 Nothing survives `/reload`: widgets are created again when the addon loads.
 

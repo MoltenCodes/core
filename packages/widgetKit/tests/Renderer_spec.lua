@@ -316,7 +316,7 @@ describe("WidgetKit options renderer", function()
     assert.is_nil(rendering:GetWidget("label"))
   end)
 
-  it("hides a secret value unless the caller allows it", function()
+  it("hides a secret value, with or without allowSecret", function()
     TestEnv.InstallSecretProbe()
     rendering:Release()
     local secret = TestEnv.NewSecret()
@@ -330,9 +330,12 @@ describe("WidgetKit options renderer", function()
     assert.is_false(rendering:GetWidget("frame.anchor").button:IsEnabled())
     rendering:Release()
 
+    -- The client's edit box refuses a secret from addon code, so
+    -- `allowSecret` changes nothing: the client rules of the fixture raise
+    -- if the secret reaches the edit box's `SetText`.
     rendering = WidgetKit:RenderOptions(tree, window, { allowSecret = true })
-    assert.are.equal(secret, rendering:GetWidget("label"):GetText())
-    assert.is_true(rendering:GetWidget("label").singleBox:IsEnabled())
+    assert.are.equal("<secret value>", rendering:GetWidget("label"):GetText())
+    assert.is_false(rendering:GetWidget("label").singleBox:IsEnabled())
   end)
 
   it("lays the tree out in the container once, top-down", function()

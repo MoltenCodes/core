@@ -433,41 +433,83 @@ describe("WidgetKit secret values", function()
   end)
   after_each(TestEnv.Reset)
 
-  it("refuses a secret in Label and EditBox text unless the caller allows it", function()
+  it(
+    "refuses a secret in Label text unless the caller allows it, and in EditBox text always",
+    function()
+      local secret = TestEnv.NewSecret()
+      local label = WidgetKit:Create("Label")
+      local edit = WidgetKit:Create("EditBox")
+      TestEnv.expectErrorContaining(
+        "WidgetKit Label:SetText text must not be a secret value unless options.allowSecret is true",
+        function()
+          label:SetText(secret)
+        end
+      )
+      TestEnv.expectErrorContaining(
+        "WidgetKit EditBox:SetText text must not be a secret value",
+        function()
+          edit:SetText(secret)
+        end
+      )
+
+      label:SetText(secret, { allowSecret = true })
+      assert.are.equal(secret, label:GetText())
+      -- A secret text is never measured.
+      assert.are.equal(12, label:GetHeight())
+      -- The client's edit box takes a secret only from untainted code, so
+      -- `allowSecret` does not open it.
+      TestEnv.expectErrorContaining(
+        "WidgetKit EditBox:SetText text must not be a secret value:"
+          .. " the client's edit box takes one only from untainted code",
+        function()
+          edit:SetText(secret, { allowSecret = true })
+        end
+      )
+      assert.are.equal("", edit:GetText())
+    end
+  )
+
+  it("clears a secret and its secret aspect from pooled text on release", function()
     local secret = TestEnv.NewSecret()
     local label = WidgetKit:Create("Label")
-    local edit = WidgetKit:Create("EditBox")
-    TestEnv.expectErrorContaining(
-      "WidgetKit Label:SetText text must not be a secret value unless options.allowSecret is true",
-      function()
-        label:SetText(secret)
-      end
-    )
-    TestEnv.expectErrorContaining(
-      "WidgetKit EditBox:SetText text must not be a secret value",
-      function()
-        edit:SetText(secret)
-      end
-    )
-
     label:SetText(secret, { allowSecret = true })
-    assert.are.equal(secret, label:GetText())
-    -- A secret text is never measured.
-    assert.are.equal(12, label:GetHeight())
-    edit:SetText(secret, { allowSecret = true })
-    assert.are.equal(secret, edit:GetText())
+    local heading = WidgetKit:Create("Heading")
+    heading:SetText(secret, { allowSecret = true })
+    local group = WidgetKit:Create("Group")
+    group:SetTitle(secret, { allowSecret = true })
+    local box = WidgetKit:Create("CheckBox")
+    box:SetLabel(secret, { allowSecret = true })
+    WidgetKit:Release(label)
+    WidgetKit:Release(heading)
+    WidgetKit:Release(group)
+    WidgetKit:Release(box)
+    -- `SetText("")` alone would leave the aspect: `GetText` and the string
+    -- measurements would still answer the secret.
+    for _, fontString in ipairs({ label.text, heading.text, group.titleText, box.labelText }) do
+      assert.is_nil(fontString:GetText())
+      assert.are.equal(0, fontString:GetStringHeight())
+    end
+
+    local reused = WidgetKit:Create("Label") --[[@as WidgetKit.Label]]
+    assert.are.equal(label, reused)
+    assert.are.equal("", reused:GetText())
+    reused:SetText("one line")
+    assert.are.equal(12, reused:GetHeight())
   end)
 
-  it("clears a secret from pooled text on release", function()
-    local secret = TestEnv.NewSecret()
-    local label = WidgetKit:Create("Label")
-    label:SetText(secret, { allowSecret = true })
-    local edit = WidgetKit:Create("EditBox")
-    edit:SetText(secret, { allowSecret = true })
-    WidgetKit:Release(label)
-    WidgetKit:Release(edit)
-    assert.are.equal("", label.text:GetText())
-    assert.are.equal("", edit.singleBox:GetText())
+  it("sizes a Label one line high when the client measures its text as a secret", function()
+    local label = WidgetKit:Create("Label") --[[@as WidgetKit.Label]]
+    local measured = TestEnv.NewSecret()
+    function label.text.GetStringHeight()
+      return measured
+    end
+    -- The client rules raise if the secret reaches `SetHeight`.
+    label:SetText("plain text, secret measure")
+    assert.are.equal(12, label:GetHeight())
+    label:SetWidth(120)
+    assert.are.equal(12, label:GetHeight())
+    label:SetFontObject("GameFontNormal")
+    assert.are.equal(12, label:GetHeight())
   end)
 
   it("refuses a secret where a widget would compare it", function()
@@ -561,12 +603,18 @@ describe("WidgetKit secret values", function()
         maxCallbacks = secret,
       })
     end)
-    TestEnv.expectErrorContaining("maxCreatedCeiling must be an integer from", function()
-      WidgetKit:SetLimits({ maxCreatedCeiling = secret })
-    end)
-    TestEnv.expectErrorContaining("maxDropdownEntries must be a positive integer", function()
-      WidgetKit:SetLimits({ maxDropdownEntries = secret })
-    end)
+    TestEnv.expectErrorContaining(
+      "WidgetKit:SetLimits limits.maxCreatedCeiling must not be a secret value",
+      function()
+        WidgetKit:SetLimits({ maxCreatedCeiling = secret })
+      end
+    )
+    TestEnv.expectErrorContaining(
+      "WidgetKit:SetLimits limits.maxDropdownEntries must not be a secret value",
+      function()
+        WidgetKit:SetLimits({ maxDropdownEntries = secret })
+      end
+    )
     assert.are.same({ maxCreatedCeiling = 4096, maxDropdownEntries = 1024 }, WidgetKit:GetLimits())
   end)
 end)

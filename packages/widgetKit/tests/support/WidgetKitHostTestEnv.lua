@@ -13,8 +13,10 @@
 ---
 --- Saved variables a spec opens with `SettingsKit:Open` are globals the shared
 --- fixture does not own, so `SavedVariable` records them and `Reset` removes
---- them.
+--- them. `NewPackage` installs the client rules of `WidgetKitClientRules`, as
+--- the loaders of `WidgetKitTestEnv` do.
 local FrameworkTestEnv = require("FrameworkTestEnv")
+local WidgetKitClientRules = require("WidgetKitClientRules")
 
 local WidgetKitHostTestEnv = FrameworkTestEnv.New({
   modules = {
@@ -61,7 +63,8 @@ function WidgetKitHostTestEnv.Reset()
   end
 end
 
----Reset, install the host stubs, load the whole chain and create `UIParent`.
+---Reset, install the host stubs, load the whole chain, install the client
+---rules and create `UIParent`.
 ---@return table WidgetKit
 ---@return table modules every loaded module by name
 function WidgetKitHostTestEnv.NewPackage()
@@ -82,6 +85,7 @@ function WidgetKitHostTestEnv.NewPackage()
   }) do
     modules[name] = require(name)
   end
+  WidgetKitClientRules.Install(setGlobal)
   local uiParent = getGlobal("CreateFrame")("Frame", "UIParent")
   uiParent:SetSize(1920, 1080)
   return modules.WidgetKit, modules

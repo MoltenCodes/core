@@ -6,7 +6,8 @@
 -- the installed MoltenCodes addon, what that fixture can only simulate:
 --
 --   * the installed facade and its committed revision, the twelve base types at
---     version 1, and the client facilities WidgetKit builds on;
+--     the versions docs/API.md gives, and the client facilities WidgetKit
+--     builds on;
 --   * each of the twelve base widget types on real frames: `Create` acquires it
 --     with the documented defaults, setters and getters round-trip through the
 --     client's frames, programmatic setters fire no callback while the
@@ -99,6 +100,23 @@ local BASE_TYPES = {
   "ColorPicker",
   "Heading",
   "Spacer",
+}
+
+--- The version docs/API.md ("Base widgets") gives each base type: revision 6
+--- raised every type whose constructor it changed to 2.
+local BASE_TYPE_VERSIONS = {
+  Frame = 2,
+  Group = 2,
+  ScrollFrame = 1,
+  Label = 2,
+  Button = 2,
+  CheckBox = 2,
+  Slider = 2,
+  EditBox = 2,
+  Dropdown = 2,
+  ColorPicker = 2,
+  Heading = 2,
+  Spacer = 1,
 }
 
 --- The stage every root widget is placed on: its top-left corner this far
@@ -751,7 +769,7 @@ end
 local facade = newSuite("facade")
 
 facade:Test(
-  "Registry:Get('widgetKit', 1) is the WidgetKit facade with API 1, its sixteen methods, the four Anchor functions, the defaults 256/256/16 and UNBOUNDED, and the twelve base types at version 1",
+  "Registry:Get('widgetKit', 1) is the WidgetKit facade with API 1, its sixteen methods, the four Anchor functions, the defaults 256/256/16 and UNBOUNDED, and the twelve base types at their documented versions (2, ScrollFrame and Spacer 1)",
   function(ctx)
     ctx:Expect(rawget(WidgetKit, "API")):ToBe(WIDGET_KIT_API)
     for _, methodName in ipairs({
@@ -786,7 +804,7 @@ facade:Test(
       ctx:Expect(type(WidgetKit:GetLayout(layoutName))):ToBe("function")
     end
     for _, typeName in ipairs(BASE_TYPES) do
-      ctx:Expect(WidgetKit:GetTypeVersion(typeName)):ToBe(1)
+      ctx:Expect(WidgetKit:GetTypeVersion(typeName)):ToBe(BASE_TYPE_VERSIONS[typeName])
     end
 
     local limits = WidgetKit:GetLimits()
@@ -926,6 +944,16 @@ types:Test(
     ctx:Expect(frame:IsMovable() == true):ToBe(true)
     ctx:Expect(frame:IsResizable() == true):ToBe(true)
     ctx:Expect(window.sizer:IsShown() == true):ToBe(true)
+    -- The window sits on the MEDIUM stage: `SetParent` would have handed it
+    -- that strata had WidgetKit not fixed its own.
+    local hasFixed = frame.HasFixedFrameStrata
+    ctx:Log(
+      ("window strata on the stage (%s): %s; fixed strata: %s"):format(
+        tostring(stage():GetFrameStrata()),
+        tostring(frame:GetFrameStrata()),
+        type(hasFixed) == "function" and tostring(hasFixed(frame)) or "no HasFixedFrameStrata"
+      )
+    )
     ctx:Expect(frame:GetFrameStrata()):ToBe("DIALOG")
 
     local calls, callback = recorder()
@@ -1661,8 +1689,12 @@ layout:Test(
 
     local labelHeight = label:GetHeight()
     ctx:Log(
-      ("content %s; label at full width: string width %.2f, height %.2f (one line %.2f)"):format(
+      (
+        "content %s; label at full width: font string width %.2f, string width %.2f,"
+        .. " height %.2f (one line %.2f)"
+      ):format(
         describeRect(content),
+        label.text:GetWidth(),
         label.text:GetStringWidth(),
         labelHeight,
         oneLine
@@ -1832,7 +1864,8 @@ layout:Test(
         5
       )
     end
-    local _, _, lastX = tenths[10]:GetPoint(1)
+    -- `GetPoint` answers point, relative frame, relative point, x and y.
+    local _, _, _, lastX = tenths[10]:GetPoint(1)
     ctx:Log(
       ("row content %s; the tenth starts at x %.6f"):format(describeRect(rowContent), lastX or 0)
     )
@@ -2649,8 +2682,18 @@ secretTest(
     local reused = create(ctx, "Label")
     ctx:Expect(reused:GetFrame()):ToBe(frame)
     local text = reused:GetText()
+    -- WidgetKit's release calls `ClearText`, which should remove the secret
+    -- aspect `SetText("")` left on the font string; both answers are logged.
+    ctx:Log(
+      ("reused Label: GetText() secret %s, GetStringHeight() secret %s"):format(
+        tostring(isSecret(text)),
+        tostring(isSecret(reused.text:GetStringHeight()))
+      )
+    )
     ctx:Expect(isSecret(text)):ToBe(false)
     ctx:Expect(cleared(text)):ToBe("")
+    reused:SetText(SHORT_TEXT)
+    ctx:Expect(isSecret(reused.text:GetStringHeight())):ToBe(false)
   end
 )
 
@@ -2778,8 +2821,10 @@ secretTest(
     label:SetUserData("kept", secretNumber)
     ctx:Expect(isSecret(label:GetUserData("kept"))):ToBe(true)
     local limitsBefore = WidgetKit:GetLimits()
-    local refused = pcall(WidgetKit.SetLimits, WidgetKit, { maxDropdownEntries = secretNumber })
-    ctx:Expect(refused):ToBe(false)
+    expectErrorAtCallingLine(ctx, function()
+      lines.start = currentLine()
+      WidgetKit:SetLimits({ maxDropdownEntries = secretNumber })
+    end, lines, "WidgetKit:SetLimits limits.maxDropdownEntries must not be a secret value")
     ctx:Expect(WidgetKit:GetLimits()):ToEqual(limitsBefore)
   end
 )
@@ -2894,9 +2939,30 @@ secretTest(
 )
 
 secretTest(
-  "RenderOptions with allowSecret hands the secret input value to the client's EditBox, which holds it, and keeps the edit box enabled",
+  "EditBox:SetText refuses a secret at the calling line even with allowSecret, as the client's edit box refuses one from addon code (logged), and RenderOptions with allowSecret shows a secret input value as '<secret value>', disabled",
   function(ctx)
     local secretText = makeSecret(ctx, "hunter2")
+    local lines = { start = 0 }
+    local edit = create(ctx, "EditBox")
+    expectErrorAtCallingLine(
+      ctx,
+      function()
+        lines.start = currentLine()
+        edit:SetText(secretText, { allowSecret = true })
+      end,
+      lines,
+      "WidgetKit EditBox:SetText text must not be a secret value:"
+        .. " the client's edit box takes one only from untainted code"
+    )
+    ctx:Expect(edit:GetText()):ToBe("")
+    -- The client's own answer, on the widget's edit box, for the record.
+    local accepted, problem = pcall(edit.singleBox.SetText, edit.singleBox, secretText)
+    ctx:Log(
+      "client EditBox:SetText(secret) from addon code: "
+        .. (accepted and "accepted" or ("refused: " .. tostring(problem)))
+    )
+    edit.singleBox:SetText("")
+
     definedTrees[#definedTrees + 1] = addonName
     local tree = OptionsKit:Define(addonName, {
       type = "group",
@@ -2922,9 +2988,9 @@ secretTest(
       return
     end
     trackedRenderings[#trackedRenderings + 1] = rendering
-    local edit = rendering:GetWidget("password")
-    ctx:Expect(isSecret(edit:GetText())):ToBe(true)
-    ctx:Expect(edit.singleBox:IsEnabled() == true):ToBe(true)
+    local input = rendering:GetWidget("password")
+    ctx:Expect(input:GetText()):ToBe("<secret value>")
+    ctx:Expect(input.singleBox:IsEnabled() == true):ToBe(false)
   end
 )
 
