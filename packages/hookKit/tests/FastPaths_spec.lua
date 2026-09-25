@@ -1,11 +1,13 @@
 local TestEnv = require("HookKitTestEnv")
 
--- Revision 6 makes installing, removing and calling a hook cheaper without
--- changing what they do (docs/INTERNALS.md). These specs pin what each fast
+-- Revisions 6 and 7 make installing, removing and calling a hook cheaper
+-- without changing what they do (docs/INTERNALS.md). These specs pin what each fast
 -- path must keep:
 --
---   * the secret check asks the host's `issecretvalue` directly when HookKit
---     loaded with one, and still asks ClientKit on a host that had none;
+--   * the secret check asks the host's `issecretvalue` alone, never ClientKit
+--     (revision 7): the probe read at load when there was one, else the
+--     global read again on each check, so nothing is secret without it and a
+--     probe installed later is honoured;
 --   * an object's method table stays, empty, after its last hook goes, so a
 --     re-hook allocates only its record and closure, and the table still goes
 --     with the object;
@@ -39,71 +41,128 @@ describe("HookKit fast paths", function()
       return lookups
     end
 
-    -- A secret name stands in as a string the probe reports, as a secret
-    -- string passes the type check before the probe is asked.
-    it("asks the host probe directly when HookKit loaded with one", function()
-      local secret = "SecretName"
+    ---Hook, query and unhook a method, then try a hook under `secret` and
+    ---expect the refusal when `refused`, or success otherwise.
+    ---@param scope table
+    ---@param secret string
+    ---@param refused boolean
+    local function exercise(scope, secret, refused)
+      local target = { Method = noop, [secret] = noop }
+      assert.is_true(scope:Hook(target, "Method", noop))
+      assert.is_true(scope:IsHooked(target, "Method"))
+      assert.is_true(scope:Unhook(target, "Method"))
+      local ok, failure = pcall(scope.Hook, scope, target, secret, noop)
+      if refused then
+        assert.is_false(ok)
+        assert.is_truthy(tostring(failure):find("method must not be a secret value", 1, true))
+      else
+        assert.is_true(ok)
+        assert.is_true(scope:Unhook(target, secret))
+      end
+    end
+
+    ---Load Registry and HookKit on a host with or without `issecretvalue`,
+    ---with a ClientKit stand-in registered that calls every value secret.
+    ---@param probe function|nil
+    ---@return table HookKit
+    ---@return table Registry
+    ---@return table standInCalls
+    local function load(probe)
       TestEnv.Reset()
       TestEnv.InstallWowApi()
       TestEnv.InstallHookApi()
+      TestEnv.SetGlobal("issecretvalue", probe)
+      local Registry = require("Registry")
+      local standInCalls = TestEnv.RegisterClientKitStandIn(Registry)
+      return require("HookKit"), Registry, standInCalls
+    end
+
+    -- A secret name stands in as a string the probe reports, as a secret
+    -- string passes the type check before the probe is asked.
+    it("asks the host probe alone when HookKit loaded with one", function()
+      local secret = "SecretName"
       local probes = 0
-      TestEnv.SetGlobal("issecretvalue", function(value)
+      local HookKit, Registry, standInCalls = load(function(value)
         probes = probes + 1
         return rawequal(value, secret)
       end)
-      local Registry = require("Registry")
-      require("ClientKit")
-      local HookKit = require("HookKit")
       local scope = HookKit:CreateScope()
-      local target = { Method = noop }
-
       local lookups = countClientKitLookups(Registry, function()
-        assert.is_true(scope:Hook(target, "Method", noop))
-        assert.is_true(scope:IsHooked(target, "Method"))
-        assert.is_true(scope:Unhook(target, "Method"))
-        local ok, failure = pcall(scope.Hook, scope, target, secret, noop)
-        assert.is_false(ok)
-        assert.is_truthy(tostring(failure):find("method must not be a secret value", 1, true))
+        exercise(scope, secret, true)
       end)
       assert.are.equal(0, lookups)
+      assert.are.equal(0, standInCalls.count)
       assert.is_true(probes > 0)
     end)
 
-    it("asks ClientKit on a host that had no probe when HookKit loaded", function()
+    it("treats nothing as secret without a probe, even with ClientKit registered", function()
+      local HookKit, Registry, standInCalls = load(nil)
+      local scope = HookKit:CreateScope()
+      local lookups = countClientKitLookups(Registry, function()
+        exercise(scope, "SecretName", false)
+        assert.is_false((scope:IsHooked("SecretName")))
+      end)
+      assert.are.equal(0, lookups)
+      assert.are.equal(0, standInCalls.count)
+    end)
+
+    it("honours a probe installed after HookKit loaded without one", function()
       local secret = "SecretName"
-      TestEnv.Reset()
-      TestEnv.InstallWowApi()
-      TestEnv.InstallHookApi()
-      TestEnv.SetGlobal("issecretvalue", nil)
-      local Registry = require("Registry")
-      local HookKit = require("HookKit")
-      -- A probe that appears after HookKit loaded (a compatibility shim, say)
-      -- reaches HookKit only through a ClientKit that loads after it.
+      local HookKit, Registry, standInCalls = load(nil)
+      local scope = HookKit:CreateScope()
+      exercise(scope, secret, false)
+      -- A test environment or a shim may add the probe later; HookKit reads
+      -- the global again on each check, so the next check uses it.
       TestEnv.SetGlobal("issecretvalue", function(value)
         return rawequal(value, secret)
       end)
-      require("ClientKit")
-      local scope = HookKit:CreateScope()
-
       local lookups = countClientKitLookups(Registry, function()
+        exercise(scope, secret, true)
         local ok, failure = pcall(scope.IsHooked, scope, secret)
         assert.is_false(ok)
         assert.is_truthy(tostring(failure):find("globalName must not be a secret value", 1, true))
       end)
-      assert.is_true(lookups > 0)
+      assert.are.equal(0, lookups)
+      assert.are.equal(0, standInCalls.count)
+      -- Removed again, nothing is secret again.
+      TestEnv.SetGlobal("issecretvalue", nil)
+      exercise(scope, secret, false)
     end)
 
-    it("treats nothing as secret without a probe or ClientKit", function()
+    it("keeps using the probe read at load on a host that had one", function()
+      local secret = "SecretName"
+      local HookKit = load(function(value)
+        return rawequal(value, secret)
+      end)
+      local scope = HookKit:CreateScope()
+      -- The probe read at load stays in use: replacing or removing the
+      -- global later does not change the answer.
+      TestEnv.SetGlobal("issecretvalue", nil)
+      exercise(scope, secret, true)
+    end)
+
+    it("uses the new check in scopes a revision 6 copy opened, after an upgrade", function()
+      local secret = "SecretName"
       TestEnv.Reset()
       TestEnv.InstallWowApi()
       TestEnv.InstallHookApi()
       TestEnv.SetGlobal("issecretvalue", nil)
-      require("Registry")
-      local HookKit = require("HookKit")
-      local scope = HookKit:CreateScope()
+      local Registry = require("Registry")
+      local standInCalls = TestEnv.RegisterClientKitStandIn(Registry)
+      local previous = TestEnv.LoadRevision(6)
+      local scope = previous:ForAddon("MyAddon")
       local target = { Method = noop }
       assert.is_true(scope:Hook(target, "Method", noop))
-      assert.is_true(scope:Unhook(target, "Method"))
+
+      local current = require("HookKit")
+      assert.are.equal(previous, current)
+      assert.is_true(current.REVISION > 6)
+      local lookups = countClientKitLookups(Registry, function()
+        exercise(scope, secret, false)
+        assert.is_true(scope:Unhook(target, "Method"))
+      end)
+      assert.are.equal(0, lookups)
+      assert.are.equal(0, standInCalls.count)
     end)
   end)
 

@@ -27,7 +27,7 @@ describe("HookKit bootstrap", function()
   end)
 
   it("loads and hooks with Registry alone", function()
-    local HookKit, Registry = TestEnv.NewPackageWithoutClientKit()
+    local HookKit, Registry = TestEnv.NewPackage()
     assert.are.equal(HookKit, Registry:Get("hookKit", 1))
     local calls = 0
     local target = {

@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.3.0 — 2026-09-25
+
+Documented-behaviour change, approved by the owner: **HookKit no longer uses ClientKit.** On a host without `issecretvalue` (every promised client flavour publishes it, Retail and both Classic flavours alike, per `tooling.validation.flavour_api`; the host benchmark and test environments do not), revision 6 still asked ClientKit through `Registry:Find("clientKit", 1)` for every validated name; such a client makes no secret values, so the check now answers "not secret" without a lookup. Where the probe exists, the check is exactly as before: the `issecretvalue` read at load, asked directly.
+
+- **The secret check asks the host alone.** `isSecret` uses the `issecretvalue` read at load when there was one. Without one it reads the global again (`rawget(_G, "issecretvalue")`, a few nanoseconds) on each check and answers `false` while there is none. Decided and pinned: a probe that appears later in the session, which the real client cannot do but a test environment or a shim can, is honoured at once instead of being ignored until reload, so no secret can slip past because of load order. A probe present at load stays in use even if the global is later replaced or removed. Secret names are still refused before any comparison, key use or string operation; nothing else in the argument checks changed.
+- **ClientKit is no longer an optional dependency.** Its `IsSecret` answers from the same host function (read when ClientKit loaded), so HookKit had nothing else to ask it; `package.manifest.json` drops `clientKit` from `optionalDependencies`. A ClientKit loaded beside HookKit is simply not looked for. `docs/API.md` ("Optional facilities": the ClientKit row replaced by an `issecretvalue` row and the paragraph under it, "Cost", "Deviations", "Upgrades", the release rule at "Unhook"), `docs/INTERNALS.md` and the README say so.
+- Host benchmark, `python3 -m tooling.bench.run --workload hooks --rounds 3` on an Apple M5 Pro (the host has no `issecretvalue`), before and after this change in the same session, with other agents' work running (load average 1.8 before, 2.5 after; compare the ratios, the sides are interleaved). Median ns per operation; allocation is deterministic and unchanged.
+
+  | Case | Before | After | AceHook (before / after) | Ratio before → after | Allocated (AceHook) |
+  |---|---:|---:|---:|---|---|
+  | `hook-unhook-function` | 1,970 | 1,216 | 692 / 675 | 2.85× → 1.80× | 480 B (288 B) |
+  | `hook-unhook-method` | 2,010 | 1,285 | 1,041 / 997 | 1.93× → 1.29× | 480 B (496 B) |
+  | `rawhook-unhook-method` | 2,039 | 1,268 | 1,160 / 1,095 | 1.76× → 1.16× | 520 B (688 B) |
+  | `hook-unhook-script` | 2,795 | 1,733 | 1,169 / 1,130 | 2.39× → 1.53× | 480 B (496 B) |
+  | `securehook-unhook-method` | 1,994 | 1,199 | 1,038 / 1,001 | 1.92× → 1.20× | 720 B (640 B) |
+  | `call-rawhooked-method` | 69.8 | 67.2 | 57.0 / 53.8 | 1.22× → 1.25× | 0 B (0 B) |
+
+  Each hook-and-unhook cycle validates several names, and each validation paid a ClientKit lookup through the Registry; about 750 ns of a cycle went. Hooked calls never ran the check, so their cost is unchanged (the `call-*` ratios move within the noise). On the game clients, which all have `issecretvalue`, revision 6 already skipped the lookup, so their cost does not change; the gain is on hosts without the probe.
+- What remains against AceHook is what HookKit promises and AceHook does not (the receiver, handler and secret checks, the secure-target memo, the protected-frame rules, the capacity check, the per-scope record, the restore-only-when-still-ours rule, the dispatch indirection, `pcall` isolation of pre-hooks and post-hooks), unchanged from 0.2.6.
+- Implementation revision 7. No state, scope layout or record layout changed; scopes an older copy opened use the new check at once after an in-place upgrade.
+- Specs: 129 → 131. `FastPaths_spec.lua` now pins that the check asks the probe alone and never looks ClientKit up (with a registered ClientKit stand-in that calls every value secret and counts its calls), that nothing is secret without a probe even with that stand-in registered, that a probe installed after load is honoured and its removal honoured too, that a probe read at load stays in use, and that scopes a revision 6 copy opened use the new check after an upgrade. `SecretValues_spec.lua` runs its ClientKit variants with the stand-in registered instead of the real ClientKit, which is no longer on the suite's path.
+- Real-client suite (`tests/client/MoltenCodesTest_HookKit`): unchanged; its secret tests use `issecretvalue` and `secretwrap` and never relied on ClientKit.
+
 ## 0.2.6 — 2026-09-25
 
 - Performance. Installing and removing a hook, and calling a replacement, cost less. Measured with the host benchmark (`python3 -m tooling.bench.run --workload hooks --rounds 3`, before and after this change, median ns per operation with AceHook-3.0 measured in the same run; other agents' benchmarks and specs ran on the machine at the same time, load average about 2.6 before and 3.1 after, so compare the ratios and the allocation, which is deterministic):

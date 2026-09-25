@@ -4,7 +4,9 @@ describe("HookKit and secret values", function()
   after_each(TestEnv.Reset)
 
   ---Load the module chain on a host whose `issecretvalue` reports `secret`,
-  ---counting every probe.
+  ---counting every probe. `withClientKit` also registers a ClientKit stand-in
+  ---that calls every value secret: HookKit asks the host alone (revision 7),
+  ---so the stand-in changes nothing.
   ---@param secret any
   ---@param withClientKit boolean
   ---@return table HookKit
@@ -18,9 +20,9 @@ describe("HookKit and secret values", function()
       probes.count = probes.count + 1
       return rawequal(value, secret)
     end)
-    require("Registry")
+    local Registry = require("Registry")
     if withClientKit then
-      require("ClientKit")
+      TestEnv.RegisterClientKitStandIn(Registry)
     end
     return require("HookKit"), probes
   end
@@ -84,7 +86,7 @@ describe("HookKit and secret values", function()
   end)
 
   for _, withClientKit in ipairs({ true, false }) do
-    local label = withClientKit and "through ClientKit" or "through issecretvalue"
+    local label = withClientKit and "with a ClientKit registered" or "through issecretvalue"
     it("refuses a secret method name " .. label, function()
       local HookKit = loadWithSecret("SecretMethod", withClientKit)
       local scope = HookKit:CreateScope()
@@ -175,7 +177,7 @@ describe("HookKit and secret values", function()
   end
 
   for _, withClientKit in ipairs({ true, false }) do
-    local label = withClientKit and "with ClientKit" or "with issecretvalue alone"
+    local label = withClientKit and "with a ClientKit registered" or "with issecretvalue alone"
 
     it("leaves a script closure inert when GetScript returns a secret " .. label, function()
       -- GetScript is a ConstSecretAccessor: the probe below reports the
@@ -189,9 +191,9 @@ describe("HookKit and secret values", function()
       TestEnv.SetGlobal("issecretvalue", function(value)
         return secretHandler ~= nil and rawequal(value, secretHandler)
       end)
-      require("Registry")
+      local Registry = require("Registry")
       if withClientKit then
-        require("ClientKit")
+        TestEnv.RegisterClientKitStandIn(Registry)
       end
       local HookKit = require("HookKit")
       local scope = HookKit:CreateScope()

@@ -238,7 +238,7 @@ The dependency layer directly above Registry holds the Kits that need nothing el
 
 `localeKit` depends only on Registry API 2. It keeps one read table per addon. Translation files write through per-call proxies: the client-locale proxy overwrites, the default proxy does not. Files for locales the client does not need get `nil` and allocate nothing. Missing keys are stored as themselves and reported once through the host error handler, and `Format` supports indexed specifiers so translators can reorder arguments.
 
-`hookKit` depends only on Registry API 2. It owns reversible hooks in three named semantics (secure post-hook over `hooksecurefunc` / `HookScript`, safe pre-hook, raw replacement), refuses non-secure hooks of secure targets and of protected scripts, and keeps records per scope in weak-keyed tables. ClientKit is found at call time through `Registry:Find` for `IsSecret`, so it adds no edge to the load order.
+`hookKit` depends only on Registry API 2. It owns reversible hooks in three named semantics (secure post-hook over `hooksecurefunc` / `HookScript`, safe pre-hook, raw replacement), refuses non-secure hooks of secure targets and of protected scripts, and keeps records per scope in weak-keyed tables. Secret names are recognised with the host's `issecretvalue` alone; since revision 7 HookKit does not use ClientKit, whose `IsSecret` answers from that same host function.
 
 `signalKit` also lets a signal observe its own use: `onFirst`/`onLast` hooks fire on the 0→1 and 1→0 listener transitions so a source can be active only while observed, `GetGeneration` counts firings, and a journal (`NewJournal`) keeps the last firings in a preallocated ring for explicit pull through `History()`.
 

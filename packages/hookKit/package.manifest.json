@@ -2,19 +2,16 @@
   "name": "hookKit",
   "displayName": "HookKit",
   "description": "Reversible, secure-first hooking of functions, methods and frame scripts for World of Warcraft addons, with the taint consequence of each hook named.",
-  "version": "0.2.6",
+  "version": "0.3.0",
   "license": "MIT",
   "api": 1,
-  "revision": 6,
+  "revision": 7,
   "dependencies": {
     "registry": {
       "api": 2
     }
   },
   "optionalDependencies": {
-    "clientKit": {
-      "api": 1
-    },
     "eventKit": {
       "api": 1
     },

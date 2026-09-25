@@ -2,7 +2,7 @@
 
 HookKit API generation **1** hooks global functions, object methods and frame scripts reversibly, under three named semantics, and refuses the hooks that break the client's secure code.
 
-Implementation revision: **6**.
+Implementation revision: **7**.
 
 ## The taint model: read this first
 
@@ -53,11 +53,11 @@ HookKit does not rely on `require()` at runtime. Loading it without Registry rai
 | `Frame:GetScript`, `Frame:SetScript` | `HookScript`, `RawHookScript` | Refused at the caller for that frame. |
 | `Frame:IsForbidden`, `Frame:CanBeAccessedInContext` | every script hook, and releasing a script pre-hook or replacement | A frame without them is accessible. Classic clients have no `CanBeAccessedInContext`; only `IsForbidden` is asked there. |
 | `geterrorhandler` | reporting a handler error, and a failure in another Kit while arranging the logout close | The failure is passed to `print`. |
-| ClientKit API 1 | `IsSecret`, to refuse a secret method, script or addon name, on a host that had no `issecretvalue` when HookKit loaded | Nothing is secret on such a host. Where HookKit found `issecretvalue`, it asks it directly: ClientKit's `IsSecret` answers from that same host function. |
+| `issecretvalue` | refusing a secret method, script, addon name or `maxHooks`, and never comparing a secret script handler at release | Nothing is secret: a client without it makes no secret values. |
 | LifecycleKit API 1 | closing an addon scope at logout (see [At logout](#at-logout)) | EventKit's `PLAYER_LOGOUT` closes it instead. |
 | EventKit API 1 | closing an addon scope at logout when LifecycleKit is absent | Without either, the consumer closes it (case d). |
 
-`hooksecurefunc`, `issecurevariable`, `InCombatLockdown` and `issecretvalue` are read once when the file loads; `geterrorhandler` is read at each report, and the frame methods on the frame at hand. When HookKit loaded without `issecretvalue`, ClientKit is looked up with `Registry:Find("clientKit", 1)` when a name is validated, never on a hooked call, so it may load after HookKit; with `issecretvalue` present no lookup is made (revision 6). LifecycleKit and EventKit are looked up with `Registry:Find` by `ForAddon`, so they may load in any order too.
+`hooksecurefunc`, `issecurevariable`, `InCombatLockdown` and `issecretvalue` are read once when the file loads; `geterrorhandler` is read at each report, and the frame methods on the frame at hand. When HookKit loaded without `issecretvalue` (every promised client flavour has it; a host outside the game may not), the global is read again, with `rawget`, each time a value is checked, never on a hooked call, so a probe a test environment or shim installs later is honoured at once. ClientKit is not used (revision 7): its `IsSecret` answers from the same host function, so HookKit asks the host alone and needs no ClientKit lookup; earlier revisions asked ClientKit through `Registry:Find` on a host without the probe, and declared it as an optional dependency, which it no longer is. ClientKit may still be loaded beside HookKit; HookKit does not look for it. LifecycleKit and EventKit are looked up with `Registry:Find` by `ForAddon`, so they may load in any order too.
 
 ## Public surface
 
@@ -177,7 +177,7 @@ Argument errors name the parameter: `HookKit.Scope:Hook method must be a non-emp
 | `hook`, `rawHook` | The original is written back. When the original came through `__index` (the field was not a raw field before the hook), the field is **deleted** instead, so the inherited function shows through again and no addon-written value stays in the field (the host may still report the slot as tainted). | The closure stays in their chain, inert: it forwards every argument to the original and returns its results. Restoring under them would cut their hook out. |
 | `hookScript`, `rawHookScript` | `frame:SetScript(script, previous)`, where `previous` may be `nil`. The closure stays, inert, instead while any HookKit scope holds a `SecureHookScript` post-hook on that script (restoring would drop it), on a protected frame in combat lockdown (a conservative HookKit rule), and on a frame that has become forbidden or inaccessible. | The closure stays, inert, forwarding to the previous script. |
 
-"Still HookKit's" is `rawget(object, method) == installed` for a field and `frame:GetScript(script) == installed` for a script. `GetScript` is flagged `ConstSecretAccessor` in the Retail 12.1.0 metadata, so while restrictions apply it may return a secret function, and comparing a secret with a function raises (measured on Retail 12.1.0 b69933). HookKit asks `IsSecret` (or `issecretvalue`) about the returned handler first and never compares a secret one: a secret handler counts as "someone hooked the target after HookKit", so the closure stays, inert, forwarding to the previous script, `SetScript` is not called, and `Unhook` still returns `true` because the record is released. **Install direction for scripts.** `HookScript` and `RawHookScript` install with `SetScript`. If the host drops the post-hooks added with `Frame:HookScript` when `SetScript` runs, installing a pre-hook after them would silently remove them — other addons' and HookKit's own — while `IsHooked` still answered `true` for HookKit's. HookKit therefore refuses a script pre-hook or replacement while any HookKit scope holds a `SecureHookScript` post-hook on that script, and the safe order is pre-hook first, post-hooks after. For the same reason, unhooking a pre-hook or replacement that has a HookKit post-hook installed after it leaves its closure in place, inert, rather than calling `SetScript`. It cannot see other addons' `HookScript` post-hooks; prefer `SecureHookScript`, which never calls `SetScript`.
+"Still HookKit's" is `rawget(object, method) == installed` for a field and `frame:GetScript(script) == installed` for a script. `GetScript` is flagged `ConstSecretAccessor` in the Retail 12.1.0 metadata, so while restrictions apply it may return a secret function, and comparing a secret with a function raises (measured on Retail 12.1.0 b69933). HookKit asks `issecretvalue` about the returned handler first and never compares a secret one: a secret handler counts as "someone hooked the target after HookKit", so the closure stays, inert, forwarding to the previous script, `SetScript` is not called, and `Unhook` still returns `true` because the record is released. **Install direction for scripts.** `HookScript` and `RawHookScript` install with `SetScript`. If the host drops the post-hooks added with `Frame:HookScript` when `SetScript` runs, installing a pre-hook after them would silently remove them — other addons' and HookKit's own — while `IsHooked` still answered `true` for HookKit's. HookKit therefore refuses a script pre-hook or replacement while any HookKit scope holds a `SecureHookScript` post-hook on that script, and the safe order is pre-hook first, post-hooks after. For the same reason, unhooking a pre-hook or replacement that has a HookKit post-hook installed after it leaves its closure in place, inert, rather than calling `SetScript`. It cannot see other addons' `HookScript` post-hooks; prefer `SecureHookScript`, which never calls `SetScript`.
 
 `UnhookAll` and `Close` release every hook, newest first. A host failure in one release (a `SetScript` that raises) does not stop the others: every hook is released and leaves the scope, and the first error object is re-raised unchanged afterwards.
 
@@ -220,6 +220,7 @@ In case (b) HookKit's `OnShutdown` subscription is made at the first `ForAddon`,
 ## Cost
 
 - **A hooked call** reads one flag and one dispatch field, then calls: `pcall(handler, ...)` for a post-hook or pre-hook, a direct call for a replacement. It allocates nothing, whether active or inert.
+- **The secret check on a validated name or option** calls the host's `issecretvalue` and nothing else: no `Registry:Find` (revision 7), and on a host without the probe one raw read of the global.
 - **One closure and one record per hook**, created when the hook is installed (about 464 bytes on a 64-bit Lua 5.1: a 376-byte record and a closure with one upvalue). The first hook of an object also creates that object's method table in the scope, which stays, empty, after its last hook goes, so hooking the same object again allocates only the record and closure; the table goes with the object. A secure hook's closure lives for the session.
 - **`IsHooked`, `Original` and `GetActiveCount`** allocate nothing. A lookup of an object the scope never hooked creates nothing.
 - **`Hooks()`, `UnhookAll()` and `Close()`** allocate one array per call (plus one row per hook for `Hooks()`); they are for diagnostics and teardown.
@@ -256,7 +257,7 @@ The nine-point plan in `docs/ROADMAP.md` is followed except where recorded here:
 - **A script pre-hook or replacement is refused while HookKit holds a `SecureHookScript` post-hook on that script**, because `SetScript` may drop it.
 - **`CloseAddonScopes` records nothing for an addon without a scope** and returns `false`, as SignalKit's `CloseAddonBus` does, instead of recording a closed scope.
 - **Additions:** `RawHookScript`; `Original`; `IsClosed`, `GetActiveCount`, `GetAddonName` and `HookKit:CloseAddonScopes` (the TimerKit and EventKit scope vocabulary); the global-name forms of the hook and lookup methods; the kind as `IsHooked`'s second result; `HookKit.MAX_HOOKS`; `options.maxHooks`, `HookKit.UNBOUNDED` and `GetMaxHooks` (see [Limits](#limits)).
-- **`securecallfunction` is not used** and ClientKit supplies only `IsSecret`; see [The taint model](#the-taint-model-read-this-first).
+- **`securecallfunction` is not used**, and neither is ClientKit (revision 7; earlier revisions asked its `IsSecret` on a host without `issecretvalue`); see [The taint model](#the-taint-model-read-this-first).
 
 ## Upgrades
 
@@ -267,3 +268,5 @@ Revision 2 upgrades the addon scopes revision 1 built (scope layout 1) in place 
 Revision 5 changes no state and no layout. It asks whether a script's current handler is secret before comparing it at release (see [Unhook](#unhook-restore-or-go-inert)); scopes an older copy opened gain that rule in place, because release runs in the scope methods the upgrade replaces.
 
 Revision 6 changes no state and no layout. It makes installing, removing and calling a hook cheaper (see [Cost](#cost)); hooks an older copy installed call the new `dispatch` functions, and an object whose method table an older copy deleted gets a new one at its next hook.
+
+Revision 7 changes no state and no layout. It asks only the host's `issecretvalue` whether a value is secret and no longer looks ClientKit up (see [Optional facilities](#optional-facilities)); scopes an older copy opened use the new check at once, because the argument checks run in the scope methods the upgrade replaces.

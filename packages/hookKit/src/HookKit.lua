@@ -20,9 +20,9 @@
 -- `options.forceSecure`, and replacing a protected script of a protected frame
 -- is refused outright. `docs/API.md` leads with the taint model.
 --
--- HookKit needs Registry API 2. It uses ClientKit API 1 when one is registered,
--- found through `Registry:Find` at call time, for `IsSecret`; without it the
--- host's `issecretvalue` is asked directly.
+-- HookKit needs Registry API 2. Secret values are recognised with the host's
+-- `issecretvalue` alone; ClientKit is not asked (revision 7), because its
+-- `IsSecret` answers from that same host function.
 --
 -- HookKit does not depend on LifecycleKit, yet an addon scope is closed at
 -- logout whenever the framework can observe logout at all (design
@@ -55,9 +55,8 @@
 
 local PACKAGE_NAME = "hookKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 6
+local IMPLEMENTATION_REVISION = 7
 local REQUIRED_REGISTRY_API = 2
-local OPTIONAL_CLIENTKIT_API = 1
 local STATE_SCHEMA = 1
 
 -- Every scope and record carries the layout it was built with, so a later
@@ -477,26 +476,26 @@ end
 
 ---Whether `value` is a secret value.
 ---
----A host that published `issecretvalue` when HookKit loaded is asked
----directly: ClientKit's `IsSecret` answers from that same host function, so
----asking it through `Registry:Find` would give the same answer for about
----230 ns more per validated name. Only a host without the probe asks ClientKit
----when one is registered, which may have found one since. Used only on
+---Only the host's `issecretvalue` can tell, and ClientKit's `IsSecret` answers
+---from that same function, so HookKit asks the host alone (revision 7; revision
+---6 still asked ClientKit through `Registry:Find`, about 750 ns of a hook and
+---unhook cycle, on a host without the probe). The probe read at load is used
+---when there was one, as on every promised client flavour. A host without it
+---at load makes no secret values; the global is read again on each call all the same,
+---for a few nanoseconds, so a probe installed later (a test environment or a
+---compatibility shim) is honoured at once rather than never. Used only on
 ---argument paths, never on a hooked call.
 ---@param value any
 ---@return boolean
 local function isSecret(value)
-  if nativeIsSecretValue ~= nil then
-    return nativeIsSecretValue(value) == true
-  end
-  local ClientKit = findOptional("clientKit", OPTIONAL_CLIENTKIT_API)
-  if type(ClientKit) ~= "nil" then
-    local clientIsSecret = rawget(ClientKit, "IsSecret")
-    if type(clientIsSecret) == "function" then
-      return clientIsSecret(ClientKit, value) == true
+  local probe = nativeIsSecretValue
+  if probe == nil then
+    probe = readHostFunction("issecretvalue")
+    if probe == nil then
+      return false
     end
   end
-  return false
+  return probe(value) == true
 end
 
 -- Argument checks ------------------------------------------------------------

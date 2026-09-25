@@ -21,9 +21,10 @@
 --- time) and removed again by `Reset`, because they are not among the globals
 --- the shared fixture owns.
 ---
---- ClientKit is an optional dependency of HookKit, declared under
---- `optionalDependencies`, so the test runner puts it on `LUA_PATH` for this
---- suite; `NewPackageWithoutClientKit` models an addon that embeds none.
+--- HookKit asks the host's `issecretvalue` alone and does not use ClientKit
+--- (revision 7), so ClientKit is not on this suite's `LUA_PATH`; a spec that
+--- must show a registered ClientKit is not asked registers a stand-in with
+--- `RegisterClientKitStandIn`.
 ---
 --- EventKit and LifecycleKit are optional dependencies too: they decide who
 --- closes an addon scope at logout. `LoadEventKit` and `LoadLifecycleKit` load
@@ -32,7 +33,7 @@
 local FrameworkTestEnv = require("FrameworkTestEnv")
 
 local HookKitTestEnv = FrameworkTestEnv.New({
-  modules = { "Registry", "ClientKit", "HookKit" },
+  modules = { "Registry", "HookKit" },
 })
 
 --- Modules a spec may load on top of the chain, in the order `Reset` unloads
@@ -162,27 +163,32 @@ end
 ---module chain.
 ---@return table HookKit
 ---@return table Registry
----@return table ClientKit
 function HookKitTestEnv.NewPackage()
-  HookKitTestEnv.Reset()
-  HookKitTestEnv.InstallWowApi()
-  HookKitTestEnv.InstallHookApi()
-  local Registry = require("Registry")
-  local ClientKit = require("ClientKit")
-  local HookKit = require("HookKit")
-  return HookKit, Registry, ClientKit
-end
-
----Load Registry and HookKit only, as a consumer that embeds no ClientKit does.
----@return table HookKit
----@return table Registry
-function HookKitTestEnv.NewPackageWithoutClientKit()
   HookKitTestEnv.Reset()
   HookKitTestEnv.InstallWowApi()
   HookKitTestEnv.InstallHookApi()
   local Registry = require("Registry")
   local HookKit = require("HookKit")
   return HookKit, Registry
+end
+
+---Register a stand-in `clientKit` API 1 package whose `IsSecret` reports
+---every value secret and counts its calls, the way a real ClientKit would be
+---found through `Registry:Find`. HookKit must never ask it.
+---@param Registry table
+---@return table calls `{ count = n }`
+function HookKitTestEnv.RegisterClientKitStandIn(Registry)
+  local calls = { count = 0 }
+  local standIn = Registry:Register("clientKit", 1, 1)
+  rawset(standIn, "API", 1)
+  rawset(standIn, "REVISION", 1)
+  rawset(standIn, "IsSecret", function()
+    calls.count = calls.count + 1
+    return true
+  end)
+  -- The stand-in must be what a lookup would find, or "not asked" proves nothing.
+  assert(Registry:Find("clientKit", 1) == standIn, "the ClientKit stand-in is not found")
+  return calls
 end
 
 ---Load the module chain on a host with none of `hooksecurefunc`,
@@ -192,7 +198,6 @@ function HookKitTestEnv.NewPackageWithoutHookApi()
   HookKitTestEnv.Reset()
   HookKitTestEnv.InstallWowApi()
   require("Registry")
-  require("ClientKit")
   return require("HookKit")
 end
 
