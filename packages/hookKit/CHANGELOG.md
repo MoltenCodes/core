@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.2.6 — 2026-09-25
+
+- Performance. Installing and removing a hook, and calling a replacement, cost less. Measured with the host benchmark (`python3 -m tooling.bench.run --workload hooks --rounds 3`, before and after this change, median ns per operation with AceHook-3.0 measured in the same run; other agents' benchmarks and specs ran on the machine at the same time, load average about 2.6 before and 3.1 after, so compare the ratios and the allocation, which is deterministic):
+
+  | Case | Before | After | AceHook (before / after) | Ratio before → after | Allocated before → after (AceHook) |
+  |---|---:|---:|---:|---|---|
+  | `hook-unhook-function` | 2,689 | 1,972 | 691 / 698 | 3.89× → 2.83× | 584 → 480 B (288 B) |
+  | `hook-unhook-method` | 2,728 | 2,021 | 1,028 / 1,015 | 2.65× → 1.99× | 584 → 480 B (496 B) |
+  | `rawhook-unhook-method` | 2,772 | 2,009 | 1,116 / 1,148 | 2.48× → 1.75× | 624 → 520 B (688 B) |
+  | `hook-unhook-script` | 3,528 | 2,817 | 1,153 / 1,178 | 3.06× → 2.39× | 584 → 480 B (496 B) |
+  | `securehook-unhook-method` | 2,475 | 1,990 | 1,024 / 1,050 | 2.42× → 1.90× | 720 → 720 B (640 B) |
+  | `call-rawhooked-method` | 90.9 | 68.8 | 55.9 / 56.7 | 1.63× → 1.21× | 0 → 0 B (0 B) |
+  | `call-prehooked-method` (different work: `pcall`) | 96.6 | 88.0 | 46.4 / 50.6 | — | 0 → 0 B |
+  | `call-posthooked-method` (different work: `pcall`) | 112 | 102 | 62.7 / 61.6 | — | 0 → 0 B |
+
+- How. The secret check asks the host's `issecretvalue` directly when HookKit found it at load, instead of looking ClientKit up through `Registry:Find` (about 230 ns) on every validated name: ClientKit's `IsSecret` answers from that same host function. A host without `issecretvalue` still asks ClientKit, as before. The install and lookup checks join their `"<method> <argument>"` labels only when they raise, the field-hook checks run inline, and scopes, records and HookKit's own tables are read and written by plain indexing instead of `rawget`/`rawset` (a record has no metatable; a scope's private fields all exist and its `__index` holds only the public methods). The dispatch functions behind every installed closure (`isolatedCall`, `replacementCall`) read the record the same way, which is the replacement call's gain. An object's method table in a scope now stays, empty, after its last hook goes, so hooking the same object again allocates only the record and its closure; the table is weak-keyed by the object and goes with it.
+- What remains against AceHook is what HookKit promises and AceHook does not: the receiver, handler and secret checks, the secure-target memo and the protected-frame rules, the capacity check, the record that makes `Unhook`, `IsHooked`, `Original` and `Hooks()` work per scope, the restore-only-when-still-ours rule, the dispatch indirection that lets an upgrade replace installed closures, and `pcall` isolation on pre-hooks and post-hooks (kept: it is why the original still runs when a handler fails). On a host without `issecretvalue`, as the benchmark host is, each validated name still pays the ClientKit lookup, about 530 ns of a hook-and-unhook cycle.
+- Guarantees are unchanged: the same messages at the same lines, secret names refused before any comparison, originals restored only while the installed function is still HookKit's, nothing created by a lookup.
+- Implementation revision 6. No state, scope layout or record layout changed; hooks an older copy installed call the new dispatch functions, and an object whose method table an older copy deleted gets a new one at its next hook. `docs/API.md` ("Dependencies", "Cost", "Upgrades"), `docs/INTERNALS.md` and the README describe the change.
+- Specs: new `FastPaths_spec.lua` (no ClientKit lookup when the host has `issecretvalue`, ClientKit still asked on a host that had none when HookKit loaded, nothing secret without either; re-hooking an object after its last hook went keeps `IsHooked`, `Original`, `Hooks()` order, the count and the restored originals right, and the empty method table goes with its object; a replacement of a script without a handler receives `nil` and every result of a handler reaches the caller; a re-hook cycle allocates at most 480 bytes). 121 → 129 specs.
+
 ## 0.2.5 — 2026-09-24
 
 - Unhooking a `HookScript` or `RawHookScript` no longer compares a secret script handler. `GetScript` is flagged `ConstSecretAccessor` in the Retail 12.1.0 metadata, so while restrictions apply it may return a secret function, and comparing a secret with a value of its own type raises (measured on Retail 12.1.0 b69933). The handler is now asked about with `IsSecret` (or `issecretvalue`) first, and a secret one is treated as "someone hooked the target after HookKit": the closure stays, inert, forwarding to the previous script, `SetScript` is not called, and `Unhook` returns `true`. Documented under "Unhook: restore or go inert" in `docs/API.md`.

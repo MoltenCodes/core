@@ -54,9 +54,10 @@ Both files above are required; omitting Registry makes this package raise at
 load.
 
 Optional: ClientKit API 1, used only to recognise a secret value passed as a
-method, script or addon name. HookKit looks it up with `Registry:Find` when it
-validates a name, so it may load in any order; without it HookKit asks the
-host's `issecretvalue` directly.
+method, script or addon name on a host that had no `issecretvalue` when HookKit
+loaded. HookKit then looks it up with `Registry:Find` when it validates a name,
+so it may load in any order. Where the host has `issecretvalue`, HookKit asks
+it directly, which is what ClientKit's `IsSecret` does too.
 
 At logout an addon scope is closed by LifecycleKit, or by HookKit's own
 `PLAYER_LOGOUT` watcher when only EventKit is loaded; with neither, call

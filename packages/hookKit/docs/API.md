@@ -2,7 +2,7 @@
 
 HookKit API generation **1** hooks global functions, object methods and frame scripts reversibly, under three named semantics, and refuses the hooks that break the client's secure code.
 
-Implementation revision: **5**.
+Implementation revision: **6**.
 
 ## The taint model: read this first
 
@@ -53,11 +53,11 @@ HookKit does not rely on `require()` at runtime. Loading it without Registry rai
 | `Frame:GetScript`, `Frame:SetScript` | `HookScript`, `RawHookScript` | Refused at the caller for that frame. |
 | `Frame:IsForbidden`, `Frame:CanBeAccessedInContext` | every script hook, and releasing a script pre-hook or replacement | A frame without them is accessible. Classic clients have no `CanBeAccessedInContext`; only `IsForbidden` is asked there. |
 | `geterrorhandler` | reporting a handler error, and a failure in another Kit while arranging the logout close | The failure is passed to `print`. |
-| ClientKit API 1 | `IsSecret`, to refuse a secret method, script or addon name | `issecretvalue` is asked directly; without it nothing is secret. |
+| ClientKit API 1 | `IsSecret`, to refuse a secret method, script or addon name, on a host that had no `issecretvalue` when HookKit loaded | Nothing is secret on such a host. Where HookKit found `issecretvalue`, it asks it directly: ClientKit's `IsSecret` answers from that same host function. |
 | LifecycleKit API 1 | closing an addon scope at logout (see [At logout](#at-logout)) | EventKit's `PLAYER_LOGOUT` closes it instead. |
 | EventKit API 1 | closing an addon scope at logout when LifecycleKit is absent | Without either, the consumer closes it (case d). |
 
-`hooksecurefunc`, `issecurevariable`, `InCombatLockdown` and `issecretvalue` are read once when the file loads; `geterrorhandler` is read at each report, and the frame methods on the frame at hand. ClientKit is looked up with `Registry:Find("clientKit", 1)` when a name is validated, never on a hooked call, so it may load after HookKit. LifecycleKit and EventKit are looked up with `Registry:Find` by `ForAddon`, so they may load in any order too.
+`hooksecurefunc`, `issecurevariable`, `InCombatLockdown` and `issecretvalue` are read once when the file loads; `geterrorhandler` is read at each report, and the frame methods on the frame at hand. When HookKit loaded without `issecretvalue`, ClientKit is looked up with `Registry:Find("clientKit", 1)` when a name is validated, never on a hooked call, so it may load after HookKit; with `issecretvalue` present no lookup is made (revision 6). LifecycleKit and EventKit are looked up with `Registry:Find` by `ForAddon`, so they may load in any order too.
 
 ## Public surface
 
@@ -220,7 +220,7 @@ In case (b) HookKit's `OnShutdown` subscription is made at the first `ForAddon`,
 ## Cost
 
 - **A hooked call** reads one flag and one dispatch field, then calls: `pcall(handler, ...)` for a post-hook or pre-hook, a direct call for a replacement. It allocates nothing, whether active or inert.
-- **One closure and one record per hook**, created when the hook is installed. A secure hook's closure lives for the session.
+- **One closure and one record per hook**, created when the hook is installed (about 464 bytes on a 64-bit Lua 5.1: a 376-byte record and a closure with one upvalue). The first hook of an object also creates that object's method table in the scope, which stays, empty, after its last hook goes, so hooking the same object again allocates only the record and closure; the table goes with the object. A secure hook's closure lives for the session.
 - **`IsHooked`, `Original` and `GetActiveCount`** allocate nothing. A lookup of an object the scope never hooked creates nothing.
 - **`Hooks()`, `UnhookAll()` and `Close()`** allocate one array per call (plus one row per hook for `Hooks()`); they are for diagnostics and teardown.
 - **`GetActiveCount()` and the `maxHooks` check count the records** rather than reading a stored counter, so the records of a garbage-collected object stop counting at once. The count walks every record, so it grows with the limit a scope was opened to; a scope opened with `HookKit.UNBOUNDED` skips the check entirely. `Hooks()`, `UnhookAll()` and `Close()` sort by insertion, which is quadratic in the hooks held; that is negligible at 256 and worth knowing at thousands.
@@ -265,3 +265,5 @@ Every installed closure calls through the shared `_state.dispatch` table, and sc
 Revision 2 upgrades the addon scopes revision 1 built (scope layout 1) in place and arranges their [logout close](#at-logout) while it loads, for every open one, instead of waiting for a `ForAddon` the addon may never call again. A later revision keeps the `OnShutdown` subscriptions and the `PLAYER_LOGOUT` watcher it inherits: both call through the facade or `dispatch`, so they run the newest code, and nothing is subscribed twice.
 
 Revision 5 changes no state and no layout. It asks whether a script's current handler is secret before comparing it at release (see [Unhook](#unhook-restore-or-go-inert)); scopes an older copy opened gain that rule in place, because release runs in the scope methods the upgrade replaces.
+
+Revision 6 changes no state and no layout. It makes installing, removing and calling a hook cheaper (see [Cost](#cost)); hooks an older copy installed call the new `dispatch` functions, and an object whose method table an older copy deleted gets a new one at its next hook.

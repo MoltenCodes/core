@@ -55,7 +55,7 @@
 
 local PACKAGE_NAME = "hookKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 5
+local IMPLEMENTATION_REVISION = 6
 local REQUIRED_REGISTRY_API = 2
 local OPTIONAL_CLIENTKIT_API = 1
 local STATE_SCHEMA = 1
@@ -223,6 +223,19 @@ local WEAK_KEYS = { __mode = "k" }
 ---@field CreateScope fun(self: HookKit, options: HookKit.ScopeOptions?): HookKit.Scope
 ---@field ForAddon fun(self: HookKit, addonName: string, options: HookKit.ScopeOptions?): HookKit.Scope
 ---@field CloseAddonScopes fun(self: HookKit, addonName: string): boolean
+
+---A scope as HookKit stores it: the public handle plus the private fields only
+---HookKit reads and writes (docs/INTERNALS.md, "Scope layout"). Internal
+---functions take this type; `HookKit.Scope` above stays the published contract.
+---@class HookKit.ScopeRecord : HookKit.Scope
+---@field _schema integer
+---@field _addonName string|false
+---@field _maxHooks integer|table
+---@field _closed boolean
+---@field _sequence integer
+---@field _records table<table, table<string, table>>
+---@field _logoutCloser string|false
+---@field _shutdownSubscription table|false
 
 -- Dependencies ---------------------------------------------------------------
 
@@ -462,22 +475,26 @@ local function findOptional(packageName, api)
   return nil
 end
 
----Whether `value` is a secret value, asking ClientKit when one is registered.
+---Whether `value` is a secret value.
 ---
----Used only on argument paths, never on a hooked call, so the `Registry:Find`
----lookup costs nothing where it matters.
+---A host that published `issecretvalue` when HookKit loaded is asked
+---directly: ClientKit's `IsSecret` answers from that same host function, so
+---asking it through `Registry:Find` would give the same answer for about
+---230 ns more per validated name. Only a host without the probe asks ClientKit
+---when one is registered, which may have found one since. Used only on
+---argument paths, never on a hooked call.
 ---@param value any
 ---@return boolean
 local function isSecret(value)
+  if nativeIsSecretValue ~= nil then
+    return nativeIsSecretValue(value) == true
+  end
   local ClientKit = findOptional("clientKit", OPTIONAL_CLIENTKIT_API)
   if type(ClientKit) ~= "nil" then
     local clientIsSecret = rawget(ClientKit, "IsSecret")
     if type(clientIsSecret) == "function" then
       return clientIsSecret(ClientKit, value) == true
     end
-  end
-  if nativeIsSecretValue ~= nil then
-    return nativeIsSecretValue(value) == true
   end
   return false
 end
@@ -498,38 +515,44 @@ local function validateScope(scope, methodName, level)
   end
 end
 
----@param scope HookKit.Scope
+---@param scope HookKit.ScopeRecord
 ---@param methodName string qualified public method name, used in the argument error
 ---@param level integer stack level the failure is reported at
 local function ensureOpen(scope, methodName, level)
-  if rawget(scope, "_closed") == true then
+  if scope._closed == true then
     error(methodName .. " cannot hook in a closed scope", level)
   end
 end
 
+-- The name and table checks run on every install and every lookup, so they
+-- take the public method name and the argument name separately and join them
+-- into the "<method> <argument>" label only when they raise.
+
 ---Refuse anything but a non-empty, non-secret string. The secret check comes
 ---before the emptiness comparison, which would raise on a secret.
 ---@param value any
----@param label string argument description, used in the argument error
+---@param methodName string qualified public method name, used in the argument error
+---@param argumentName string the argument's name in that error
 ---@param level integer stack level the failure is reported at
-local function validateName(value, label, level)
+local function validateName(value, methodName, argumentName, level)
   if type(value) ~= "string" then
-    error(label .. " must be a non-empty string", level)
+    error(methodName .. " " .. argumentName .. " must be a non-empty string", level)
   end
   if isSecret(value) then
-    error(label .. " must not be a secret value", level)
+    error(methodName .. " " .. argumentName .. " must not be a secret value", level)
   end
   if value == "" then
-    error(label .. " must be a non-empty string", level)
+    error(methodName .. " " .. argumentName .. " must be a non-empty string", level)
   end
 end
 
 ---@param value any
----@param label string argument description, used in the argument error
+---@param methodName string qualified public method name, used in the argument error
+---@param argumentName string the argument's name in that error
 ---@param level integer stack level the failure is reported at
-local function validateTable(value, label, level)
+local function validateTable(value, methodName, argumentName, level)
   if type(value) ~= "table" then
-    error(label .. " must be a table", level)
+    error(methodName .. " " .. argumentName .. " must be a table", level)
   end
 end
 
@@ -676,9 +699,11 @@ end
 ---@param method string
 ---@return boolean
 local function wasSecure(object, method)
-  local remembered = rawget(secureStatus, object)
+  -- The memo and its per-object tables are HookKit's own and have no
+  -- `__index`, so plain indexing is a raw read.
+  local remembered = secureStatus[object]
   if remembered ~= nil then
-    local status = rawget(remembered, method)
+    local status = remembered[method]
     if status ~= nil then
       return status
     end
@@ -748,43 +773,51 @@ end
 -- table is weak-keyed and a record never references its object, so HookKit
 -- keeps nothing alive on its own account. Reads never create anything: a
 -- lookup of an object the scope never hooked is two table reads and a `nil`.
+--
+-- Scopes, records and the record tables are HookKit's own, so they are read
+-- and written by plain indexing rather than `rawget`/`rawset`: indexing is one
+-- VM instruction, the raw functions are C calls. The answer is the same. A
+-- record and a per-object method table have no metatable; the record table's
+-- only sets `__mode`; and a scope's private fields all exist from
+-- construction, while a field that did not would fall through `__index` to
+-- `HookKit.Scope`, which holds only the capitalised public methods and so
+-- answers `nil` exactly as `rawget` would. Hooked objects are the caller's and
+-- keep `rawget`/`rawset`.
 
----@param scope HookKit.Scope
+---@param scope HookKit.ScopeRecord
 ---@param object table
 ---@param method string
 ---@return table|nil record
 local function findRecord(scope, object, method)
-  local methods = rawget(rawget(scope, "_records"), object)
+  local methods = scope._records[object]
   if methods == nil then
     return nil
   end
-  return rawget(methods, method)
+  return methods[method]
 end
 
----@param scope HookKit.Scope
+---@param scope HookKit.ScopeRecord
 ---@param object table
 ---@param method string
 ---@param record table
 local function storeRecord(scope, object, method, record)
-  local records = rawget(scope, "_records")
-  local methods = rawget(records, object)
+  local records = scope._records
+  local methods = records[object]
   if methods == nil then
     methods = {}
-    rawset(records, object, methods)
+    records[object] = methods
   end
-  rawset(methods, method, record)
+  methods[method] = record
 end
 
----@param scope HookKit.Scope
+---Remove one record. The object's method table stays, empty, when its last
+---record goes: hooking the same object again then allocates nothing for it,
+---and the weak key still lets the table go with the object.
+---@param scope HookKit.ScopeRecord
 ---@param object table
 ---@param method string
 local function removeRecord(scope, object, method)
-  local records = rawget(scope, "_records")
-  local methods = rawget(records, object)
-  rawset(methods, method, nil)
-  if next(methods) == nil then
-    rawset(records, object, nil)
-  end
+  scope._records[object][method] = nil
 end
 
 ---Count a scope's live records.
@@ -794,11 +827,11 @@ end
 ---told, and a stored count would keep charging them against the scope's
 ---`maxHooks`. Neither caller is a hot path, and an unbounded scope's capacity
 ---check never counts (see `hasRoom`).
----@param scope HookKit.Scope
+---@param scope HookKit.ScopeRecord
 ---@return integer
 local function countRecords(scope)
   local count = 0
-  for _, methods in next, rawget(scope, "_records") do
+  for _, methods in next, scope._records do
     for _ in next, methods do
       count = count + 1
     end
@@ -808,13 +841,13 @@ end
 
 ---Create a record. Every field exists from the start, so no later write adds a
 ---key to it.
----@param scope HookKit.Scope
+---@param scope HookKit.ScopeRecord
 ---@param kind HookKit.Kind
 ---@param handler function
 ---@return table record
 local function newRecord(scope, kind, handler)
-  local sequence = rawget(scope, "_sequence") + 1
-  rawset(scope, "_sequence", sequence)
+  local sequence = scope._sequence + 1
+  scope._sequence = sequence
   return {
     _schema = RECORD_SCHEMA,
     _kind = kind,
@@ -847,7 +880,7 @@ end
 ---@param record table
 ---@param ... any the hooked call's arguments
 local function isolatedCall(record, ...)
-  local ok, failure = pcall(rawget(record, "_handler"), ...)
+  local ok, failure = pcall(record._handler, ...)
   if not ok then
     reportError(failure)
   end
@@ -859,11 +892,11 @@ end
 ---@param ... any the hooked call's arguments
 ---@return any ...
 local function replacementCall(record, ...)
-  local original = rawget(record, "_original")
+  local original = record._original
   if original == false then
     original = nil
   end
-  return rawget(record, "_handler")(original, ...)
+  return record._handler(original, ...)
 end
 
 ---The closure a secure post-hook hands to `hooksecurefunc` or `HookScript`.
@@ -923,18 +956,28 @@ local function splitTarget(target, second, third, fourth)
 end
 
 ---Check what every hook of a table field needs, before anything is installed.
----@param scope HookKit.Scope
+---@param scope HookKit.ScopeRecord
 ---@param object any
 ---@param method any
 ---@param handler any
 ---@param methodName string qualified public method name, used in the argument errors
 ---@param level integer stack level the failures are reported at
 local function validateMethodTarget(scope, object, method, handler, methodName, level)
-  validateScope(scope, methodName, level + 1)
-  ensureOpen(scope, methodName, level + 1)
-  validateTable(object, methodName .. " object", level + 1)
-  validateName(method, methodName .. " method", level + 1)
-  validateHandler(handler, methodName, level + 1)
+  -- `validateScope`, `ensureOpen`, `validateTable` and `validateHandler`,
+  -- inline: every field hook takes this path.
+  if type(scope) ~= "table" or getmetatable(scope) ~= SCOPE_METATABLE then
+    error(methodName .. " must be called on a HookKit scope", level)
+  end
+  if scope._closed == true then
+    error(methodName .. " cannot hook in a closed scope", level)
+  end
+  if type(object) ~= "table" then
+    error(methodName .. " object must be a table", level)
+  end
+  validateName(method, methodName, "method", level + 1)
+  if type(handler) ~= "function" then
+    error(methodName .. " handler must be a function", level)
+  end
   if type(object[method]) ~= "function" then
     error(methodName .. ' target "' .. method .. '" is not a function', level)
   end
@@ -947,7 +990,7 @@ local function validateMethodTarget(scope, object, method, handler, methodName, 
 end
 
 ---Check what every hook of a frame script needs, before anything is installed.
----@param scope HookKit.Scope
+---@param scope HookKit.ScopeRecord
 ---@param frame any
 ---@param script any
 ---@param handler any
@@ -957,8 +1000,8 @@ end
 local function validateScriptTarget(scope, frame, script, handler, hostMethods, methodName, level)
   validateScope(scope, methodName, level + 1)
   ensureOpen(scope, methodName, level + 1)
-  validateTable(frame, methodName .. " frame", level + 1)
-  validateName(script, methodName .. " script", level + 1)
+  validateTable(frame, methodName, "frame", level + 1)
+  validateName(script, methodName, "script", level + 1)
   validateHandler(handler, methodName, level + 1)
   if not canTouchFrame(frame) then
     error(methodName .. " frame is forbidden or not accessible in this context", level)
@@ -1037,10 +1080,10 @@ local function refuseSecureTarget(object, method, forceSecure, methodName, level
 end
 
 ---Whether the scope has room for one more hook.
----@param scope HookKit.Scope
+---@param scope HookKit.ScopeRecord
 ---@return boolean
 local function hasRoom(scope)
-  local maxHooks = rawget(scope, "_maxHooks")
+  local maxHooks = scope._maxHooks
   if maxHooks == UNBOUNDED then
     return true
   end
@@ -1048,7 +1091,7 @@ local function hasRoom(scope)
 end
 
 ---Install a secure post-hook of a table field or global.
----@param scope HookKit.Scope
+---@param scope HookKit.ScopeRecord
 ---@param target any
 ---@param second any
 ---@param third any
@@ -1078,7 +1121,7 @@ local function installSecureHook(scope, target, second, third)
 end
 
 ---Install a pre-hook or a replacement of a table field or global.
----@param scope HookKit.Scope
+---@param scope HookKit.ScopeRecord
 ---@param kind HookKit.Kind `"hook"` or `"rawHook"`
 ---@param methodName string qualified public method name, used in the argument errors
 ---@param target any
@@ -1112,7 +1155,7 @@ local function installFieldHook(scope, kind, methodName, target, second, third, 
 end
 
 ---Install a secure post-hook of a frame script.
----@param scope HookKit.Scope
+---@param scope HookKit.ScopeRecord
 ---@param frame any
 ---@param script any
 ---@param handler any
@@ -1140,7 +1183,7 @@ local function installSecureScriptHook(scope, frame, script, handler)
 end
 
 ---Install a pre-hook or a replacement of a frame script through `SetScript`.
----@param scope HookKit.Scope
+---@param scope HookKit.ScopeRecord
 ---@param kind HookKit.Kind `"hookScript"` or `"rawHookScript"`
 ---@param methodName string qualified public method name, used in the argument errors
 ---@param frame any
@@ -1195,7 +1238,7 @@ end
 ---it would cut their hook out of the chain. The closure therefore stays where
 ---it is, inert, forwarding to the original for ever. A secure hook's closure is
 ---owned by the host and always stays.
----@param scope HookKit.Scope
+---@param scope HookKit.ScopeRecord
 ---@param object table
 ---@param method string
 ---@param record table
@@ -1203,7 +1246,7 @@ local function releaseRecord(scope, object, method, record)
   removeRecord(scope, object, method)
   record._active = false
 
-  local kind = rawget(record, "_kind")
+  local kind = record._kind
   if kind == KIND_SECURE_SCRIPT then
     local counts = rawget(secureScripts, object)
     local count = counts and rawget(counts, method)
@@ -1222,8 +1265,8 @@ local function releaseRecord(scope, object, method, record)
     return
   end
 
-  local installed = rawget(record, "_installed")
-  local original = rawget(record, "_original")
+  local installed = record._installed
+  local original = record._original
   if SCRIPT_KINDS[kind] == true then
     if not canTouchFrame(object) then
       -- A frame that became inaccessible keeps the inert closure.
@@ -1261,7 +1304,7 @@ local function releaseRecord(scope, object, method, record)
   if rawget(object, method) ~= installed then
     return
   end
-  if rawget(record, "_hadRaw") == true then
+  if record._hadRaw == true then
     rawset(object, method, original)
   else
     -- The original came through `__index`; deleting the field lets it show
@@ -1274,18 +1317,18 @@ end
 ---
 ---Allocates three parallel arrays; used by `Hooks`, `UnhookAll` and `Close`,
 ---none of which is a hot path.
----@param scope HookKit.Scope
+---@param scope HookKit.ScopeRecord
 ---@return table[] objects, string[] methods, table[] records, integer count
 local function collectRecords(scope)
   local objects, methods, records = {}, {}, {}
   local count = 0
-  for object, byMethod in next, rawget(scope, "_records") do
+  for object, byMethod in next, scope._records do
     for method, record in next, byMethod do
       -- Insertion sort by sequence: a scope holds at most its maxHooks,
       -- 256 unless its owner opened it.
       local position = count + 1
-      local sequence = rawget(record, "_sequence")
-      while position > 1 and rawget(records[position - 1], "_sequence") > sequence do
+      local sequence = record._sequence
+      while position > 1 and records[position - 1]._sequence > sequence do
         objects[position] = objects[position - 1]
         methods[position] = methods[position - 1]
         records[position] = records[position - 1]
@@ -1302,7 +1345,7 @@ end
 
 ---Release every hook of a scope, newest first. Every release is attempted; the
 ---first failure is re-raised unchanged afterwards.
----@param scope HookKit.Scope
+---@param scope HookKit.ScopeRecord
 ---@return integer released
 local function releaseAll(scope)
   local objects, methods, records, count = collectRecords(scope)
@@ -1330,11 +1373,11 @@ end
 ---@return table object, string method
 local function readLookup(target, method, methodName, level)
   if type(target) == "string" then
-    validateName(target, methodName .. " globalName", level + 1)
+    validateName(target, methodName, "globalName", level + 1)
     return GLOBALS, target
   end
-  validateTable(target, methodName .. " object", level + 1)
-  validateName(method, methodName .. " method", level + 1)
+  validateTable(target, methodName, "object", level + 1)
+  validateName(method, methodName, "method", level + 1)
   return target, method
 end
 
@@ -1424,7 +1467,7 @@ end
 ---Does nothing for a closed scope, and nothing once LifecycleKit has taken
 ---the scope over; see the section comment for the four outcomes.
 ---@param addonName string
----@param scope HookKit.Scope
+---@param scope HookKit.ScopeRecord
 function LogoutClose.arrange(addonName, scope)
   local closer = rawget(scope, "_logoutCloser")
   if closer ~= LOGOUT.byNobody and closer ~= LOGOUT.byEvent then
@@ -1461,7 +1504,7 @@ end
 ---caller: the failure goes to the host error handler and the scope stays
 ---undecided, so the next `ForAddon` asks again.
 ---@param addonName string
----@param scope HookKit.Scope
+---@param scope HookKit.ScopeRecord
 function LogoutClose.arrangeProtected(addonName, scope)
   local ok, failure = pcall(LogoutClose.arrange, addonName, scope)
   if not ok then
@@ -1474,7 +1517,7 @@ end
 ---Called when the scope closes by any path: a scope closed before logout needs
 ---no shutdown callback, and one closing from inside that callback finds it
 ---already delivered.
----@param scope HookKit.Scope
+---@param scope HookKit.ScopeRecord
 function LogoutClose.releaseSubscription(scope)
   local subscription = rawget(scope, "_shutdownSubscription")
   if subscription == nil or subscription == false then
@@ -1529,7 +1572,7 @@ end
 ---or `SecureHook(globalName, handler)`. The handler runs after the original with
 ---the same arguments; the target stays secure. Returns `nil, "full"` when the
 ---scope holds `MAX_HOOKS` hooks.
----@param self HookKit.Scope
+---@param self HookKit.ScopeRecord
 ---@param target table|string
 ---@param second string|function
 ---@param third function?
@@ -1542,7 +1585,7 @@ local function scopeSecureHook(self, target, second, third)
 end
 
 ---Post-hook a frame script with `frame:HookScript`. The target stays secure.
----@param self HookKit.Scope
+---@param self HookKit.ScopeRecord
 ---@param frame table
 ---@param script string
 ---@param handler function
@@ -1557,7 +1600,7 @@ end
 ---`Hook(globalName, handler[, options])`. The handler runs first and its errors
 ---are reported, the original always runs and its results are returned
 ---untouched. Taints the target.
----@param self HookKit.Scope
+---@param self HookKit.ScopeRecord
 ---@param target table|string
 ---@param second string|function
 ---@param third function|HookKit.HookOptions|nil
@@ -1573,7 +1616,7 @@ end
 ---Replace a method: `RawHook(object, method, handler[, options])` or
 ---`RawHook(globalName, handler[, options])`. The handler is called as
 ---`handler(original, ...)` and its results are returned. Taints the target.
----@param self HookKit.Scope
+---@param self HookKit.ScopeRecord
 ---@param target table|string
 ---@param second string|function
 ---@param third function|HookKit.HookOptions|nil
@@ -1588,7 +1631,7 @@ end
 
 ---Pre-hook a frame script through `SetScript`, calling the previous script
 ---after the handler. Taints the script.
----@param self HookKit.Scope
+---@param self HookKit.ScopeRecord
 ---@param frame table
 ---@param script string
 ---@param handler function
@@ -1610,7 +1653,7 @@ end
 
 ---Replace a frame script through `SetScript`. The handler is called as
 ---`handler(previous, ...)`, where `previous` is the earlier script or `nil`.
----@param self HookKit.Scope
+---@param self HookKit.ScopeRecord
 ---@param frame table
 ---@param script string
 ---@param handler function
@@ -1632,7 +1675,7 @@ end
 
 ---Undo this scope's hook of `object[method]` (or of a global, or of a frame
 ---script). Returns `false` when this scope has no such hook.
----@param self HookKit.Scope
+---@param self HookKit.ScopeRecord
 ---@param target table|string
 ---@param method string?
 ---@return boolean released
@@ -1648,7 +1691,7 @@ local function scopeUnhook(self, target, method)
 end
 
 ---Undo every hook of this scope, newest first; the scope stays usable.
----@param self HookKit.Scope
+---@param self HookKit.ScopeRecord
 ---@return integer released
 local function scopeUnhookAll(self)
   validateScope(self, "HookKit.Scope:UnhookAll", 3)
@@ -1656,7 +1699,7 @@ local function scopeUnhookAll(self)
 end
 
 ---Whether this scope hooks `object[method]`, and with which kind.
----@param self HookKit.Scope
+---@param self HookKit.ScopeRecord
 ---@param target table|string
 ---@param method string?
 ---@return boolean hooked
@@ -1668,12 +1711,12 @@ local function scopeIsHooked(self, target, method)
   if record == nil then
     return false, nil
   end
-  return true, rawget(record, "_kind")
+  return true, record._kind
 end
 
 ---The function this scope's hook wraps or replaces, or `nil` for a secure hook,
 ---a script that had no handler, or a target this scope does not hook.
----@param self HookKit.Scope
+---@param self HookKit.ScopeRecord
 ---@param target table|string
 ---@param method string?
 ---@return function|nil original
@@ -1684,7 +1727,7 @@ local function scopeOriginal(self, target, method)
   if record == nil then
     return nil
   end
-  local original = rawget(record, "_original")
+  local original = record._original
   if original == false then
     return nil
   end
@@ -1693,7 +1736,7 @@ end
 
 ---Enumerate this scope's hooks in creation order, for diagnostics. Allocates a
 ---new array of new rows on every call.
----@param self HookKit.Scope
+---@param self HookKit.ScopeRecord
 ---@return HookKit.HookInfo[] hooks
 local function scopeHooks(self)
   validateScope(self, "HookKit.Scope:Hooks", 3)
@@ -1703,14 +1746,14 @@ local function scopeHooks(self)
     rows[index] = {
       object = objects[index],
       method = methods[index],
-      kind = rawget(records[index], "_kind"),
+      kind = records[index]._kind,
     }
   end
   return rows
 end
 
 ---Close the scope: undo every hook, then refuse new ones. Terminal.
----@param self HookKit.Scope
+---@param self HookKit.ScopeRecord
 ---@return boolean closed `false` when the scope was already closed.
 local function scopeClose(self)
   validateScope(self, "HookKit.Scope:Close", 3)
@@ -1723,21 +1766,21 @@ local function scopeClose(self)
   return true
 end
 
----@param self HookKit.Scope
+---@param self HookKit.ScopeRecord
 ---@return boolean
 local function scopeIsClosed(self)
   validateScope(self, "HookKit.Scope:IsClosed", 3)
   return rawget(self, "_closed") == true
 end
 
----@param self HookKit.Scope
+---@param self HookKit.ScopeRecord
 ---@return integer
 local function scopeGetActiveCount(self)
   validateScope(self, "HookKit.Scope:GetActiveCount", 3)
   return countRecords(self)
 end
 
----@param self HookKit.Scope
+---@param self HookKit.ScopeRecord
 ---@return string|nil
 local function scopeGetAddonName(self)
   validateScope(self, "HookKit.Scope:GetAddonName", 3)
@@ -1750,7 +1793,7 @@ end
 
 ---The most hooks this scope holds at once: a positive integer, or
 ---`HookKit.UNBOUNDED`.
----@param self HookKit.Scope
+---@param self HookKit.ScopeRecord
 ---@return integer|table maxHooks
 local function scopeGetMaxHooks(self)
   validateScope(self, "HookKit.Scope:GetMaxHooks", 3)
@@ -1821,7 +1864,7 @@ end
 ---@return HookKit.Scope scope
 local function forAddon(self, addonName, options)
   validateFacade(self, "HookKit:ForAddon", 3)
-  validateName(addonName, "HookKit:ForAddon addonName", 3)
+  validateName(addonName, "HookKit:ForAddon", "addonName", 3)
   local maxHooks = readScopeOptions(options, "HookKit:ForAddon", 3)
   local scope = rawget(addonScopes, addonName)
   if scope == nil then
@@ -1847,7 +1890,7 @@ end
 ---@return boolean closed `false` when the addon has no scope or it was already closed.
 local function closeAddonScopes(self, addonName)
   validateFacade(self, "HookKit:CloseAddonScopes", 3)
-  validateName(addonName, "HookKit:CloseAddonScopes addonName", 3)
+  validateName(addonName, "HookKit:CloseAddonScopes", "addonName", 3)
   local scope = rawget(addonScopes, addonName)
   if scope == nil then
     return false

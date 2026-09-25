@@ -30,6 +30,7 @@ ClientKit, EventKit and LifecycleKit are declared under `optionalDependencies`, 
 | `Limits_spec.lua` | `options.maxHooks`, `HookKit.UNBOUNDED`, `GetMaxHooks`, invalid values |
 | `SecretValues_spec.lua` | secrets passing through; secret names refused; a secret `GetScript` handler left in place at release |
 | `Allocation_spec.lua` | allocation guards |
+| `FastPaths_spec.lua` | revision 6 fast paths: the secret check without a ClientKit lookup where the host has `issecretvalue`, re-hooking after the last hook of an object went, the replacement call, the re-hook allocation |
 | `ErrorLevels_spec.lua` | errors reported at the caller's line |
 | `LogoutClose_spec.lua` | who closes an addon scope at logout, in each of the four cases, and across upgrades |
 | `Bootstrap_spec.lua` | publication, duplicate loads, upgrades |

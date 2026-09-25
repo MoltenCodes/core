@@ -37,7 +37,9 @@ A scope is one table with a fixed set of private fields, all created by `newScop
 
 There is no stored hook count. `countRecords` walks `_records`, which holds at most `_maxHooks` entries, so a record that disappears with its garbage-collected object stops counting at once instead of holding a slot for ever. `hasRoom` returns `true` without counting when `_maxHooks` is the `unbounded` sentinel, so an unbounded scope never pays a walk per install.
 
-Reads never create anything: `findRecord` returns `nil` after at most two raw reads. Only `storeRecord` creates the per-object method table, and `removeRecord` deletes it when its last record goes. This is the fix for the auto-vivifying registry pattern older hook libraries use.
+Reads never create anything: `findRecord` returns `nil` after at most two reads. Only `storeRecord` creates the per-object method table. Since revision 6 `removeRecord` leaves it in place, empty, when its last record goes, so hooking the same object again allocates only the record and closure; the outer table is weak-keyed, so the empty table goes when the object does, and `countRecords` and `collectRecords` simply find nothing in it. Revision 5 and older deleted it, and a table they deleted is created again at the next hook. Not creating anything on a read is the fix for the auto-vivifying registry pattern older hook libraries use.
+
+**Access.** Scopes, records, the record tables and `secureStatus` are HookKit's own, so the install, release and call paths read and write them by plain indexing rather than `rawget`/`rawset` (one VM instruction instead of a C call). The answer is the same: a record and a method table have no metatable, the weak tables only set `__mode`, and a scope field that did not exist would fall through `__index` to `HookKit.Scope`, which holds only the capitalised public methods. Hooked objects are the caller's and keep `rawget`/`rawset`.
 
 ## Record layout
 
@@ -68,7 +70,7 @@ replacement:   if record._active then return dispatch.replacementCall(record, ..
                return record._original(...)            (when there is one)
 ```
 
-`isolatedCall` is `pcall(record._handler, ...)` plus a report on failure; `replacementCall` is `record._handler(original, ...)` with `false` mapped to `nil`. Neither builds a table, so a hooked call allocates nothing. The closures use plain field reads because a record has no metatable.
+`isolatedCall` is `pcall(record._handler, ...)` plus a report on failure; `replacementCall` is `record._handler(original, ...)` with `false` mapped to `nil`. Neither builds a table, so a hooked call allocates nothing. The closures and both dispatch functions use plain field reads because a record has no metatable (revision 5 and older read the record with `rawget` in the dispatch functions).
 
 The original is passed first to a replacement handler because Lua 5.1 cannot append a value after `...` without packing the arguments into a table.
 
@@ -80,6 +82,8 @@ The original is passed first to a replacement handler because Lua 5.1 cannot app
 4. Check the capacity against the scope's `_maxHooks` (`nil, "full"`).
 5. Build the record and closure, perform the host write (`hooksecurefunc`, `rawset`, `HookScript` or `SetScript`), and only then store the record. A host call that raises leaves nothing recorded.
 
+The secret check (`isSecret`) asks the `issecretvalue` HookKit read at load when there was one, because ClientKit's `IsSecret` answers from that same host function; only without it does it look ClientKit up through `Registry:Find` on each validated name. Argument labels such as `"<method> object"` are joined only when a check raises.
+
 Every public method calls its installer and returns the results through locals rather than as a tail call: a Lua 5.1 tail call replaces the public method's frame, and `error` levels counted from the installer would then land on the tail-call marker instead of the caller's line.
 
 ## Release
@@ -90,4 +94,4 @@ Every public method calls its installer and returns the results through locals r
 
 The bootstrap follows the Registry pattern. A copy that inherits state validates the shared fields and reuses `scopeMetatable`, `addonScopes`, `secureStatus` and `dispatch`, then rewrites the prototype methods and the dispatch functions. Closures installed by an older copy capture the shared `dispatch` table, not a function, so they run the newest behaviour. A revision that changes the record or scope layout must migrate by `_schema`, lazily or by walking `addonScopes`; manual scopes are reachable only through their owners, so a lazy migration on first use is the one that covers them.
 
-Revision 2 does this for scope layout 2: it walks `addonScopes` and gives every layout-1 scope `_logoutCloser = "none"` and `_shutdownSubscription = false`, and adds `logoutWatch` to the state. A manual layout-1 scope is left as built: the logout code reads both fields with `rawget` and treats a missing one as "nothing to do". After committing, an upgrading copy arranges the logout close of every open addon scope, in addon-name order. Revision 3 changed no state field or scope layout; it keeps scope layout 2 and every migration above.
+Revision 2 does this for scope layout 2: it walks `addonScopes` and gives every layout-1 scope `_logoutCloser = "none"` and `_shutdownSubscription = false`, and adds `logoutWatch` to the state. A manual layout-1 scope is left as built: the logout code reads both fields with `rawget` and treats a missing one as "nothing to do". After committing, an upgrading copy arranges the logout close of every open addon scope, in addon-name order. Revision 3 changed no state field or scope layout; it keeps scope layout 2 and every migration above. Revision 6 changes no state field, scope layout or record layout; the per-object method tables older copies deleted are simply created again on demand.
