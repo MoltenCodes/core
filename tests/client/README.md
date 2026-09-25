@@ -154,11 +154,11 @@ showed.
 | `registry` | 17 | 17 | 0 | 0 |
 | `schedulerKit` | 37 | 35 | 0 | 2 |
 | `schemaKit` | 34 | 34 | 0 | 0 |
-| `settingsKit` | 36 | 35 | 0 | 1 |
+| `settingsKit` | 40 | 39 | 0 | 1 |
 | `signalKit` | 35 | 35 | 0 | 0 |
 | `timerKit` | 29 | 27 | 0 | 2 |
-| `widgetKit` | 40 | 40 | 0 | 0 |
-| **total** | **873** | **838** | **0** | **35** |
+| `widgetKit` | 41 | 41 | 0 | 0 |
+| **total** | **878** | **843** | **0** | **35** |
 
 Run again after any change to a package's runtime code, and compare with its
 `EXPECTED.md` rather than with this table.

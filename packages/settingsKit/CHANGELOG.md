@@ -13,6 +13,7 @@ A contract change inside API generation 1 (nothing was released yet): migrations
 - Implementation revision 5, database layout 2 (`_newerVersion`, `_readOnly`). An in-place upgrade over revisions 1 to 4 gives every database they opened both fields: it stays writable, as it was opened, and records a newer stored version so `ResetDatabase` never lowers it; databases opened afterwards follow the read-only rule.
 - API.md: *Migrations* (transactions, the copy, cost), *Newer stored data: read-only databases*, the `Open` options table and order, `IsReadOnly`, the reads table, and the new messages under *Error behaviour*. INTERNALS.md: the database fields, *Migrations* and the revision 5 upgrade.
 - 173 specs (143 before): `Migrations_spec.lua` (transactions, failure at every step, identity, shared references and cycles, no metamethod run, secrets, 10,000 profiles, the layout check), `ReadOnly_spec.lua` (every write path, reads, `Validate`, logout, `allowNewerData`, `IsReadOnly`, option validation), `CorruptedData_spec.lua`, and the upgrade over revision 4 in `Bootstrap_spec.lua`.
+- Confirmed on the real client (Retail 12.1.0 b69933, 2026-09-25, 16:14): run 2 of `tests/client/MoltenCodesTest_SettingsKit` 39 passed, 1 skipped (the documented step one of run 2). The read-only refusals, the atomic retry (scale 2, not 4), `allowNewerData` and the scalar read as absent behave as the specs say, with the messages at the suite's calling lines.
 
 ## 0.1.4 — 2026-09-24
 

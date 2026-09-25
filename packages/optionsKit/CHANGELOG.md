@@ -6,6 +6,7 @@
 - Options bound to database paths through `options.db` are disabled the same way: while `db:IsReadOnly()` answers `true`, `IsDisabled` and `Describe` report every bound option as disabled (options with `get`/`set` and groups are unaffected), and `Get` and `Describe` still read the value. `Set` and `Reset` still run and SettingsKit refuses the write with its read-only message (`Set` raises `... refused by the database: SettingsKit (<name>) <path> is read-only: ...`). A database without `IsReadOnly` or answering with a secret counts as writable.
 - Implementation revision 6. No layout changed: a revision 5 state is taken over in place. A profile group built before the upgrade keeps the callbacks of the revision that built it; groups built afterwards get the read-only predicates. Bound options of every tree, including trees defined before the upgrade, are disabled at once: `IsDisabled` and `Describe` are prototype methods.
 - 160 specs (152 before): the read-only group, bound options over a read-only database, `allowNewerData`, the fallbacks for an older or secret-answering database (group and bound options), a bound option over a record stored as a scalar (SettingsKit's new fallback, in `SettingsKitIntegration_spec.lua`) and the upgrade of a revision 5 state.
+- Confirmed on the real client (Retail 12.1.0 b69933, 2026-09-25, 16:14): `tests/client/MoltenCodesTest_OptionsKit` 29 passed, 0 failed.
 
 ## 0.2.4 — 2026-09-24
 
