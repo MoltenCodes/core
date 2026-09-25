@@ -16,7 +16,10 @@
 --     the current profile being the real character key `"<name> - <realm>"`;
 --   * defaults read through views and never written back, checked by reading
 --     the raw saved table; writes validated by SchemaKit at this file's line;
---     profiles copied, reset and deleted; migrations run by version; Compact;
+--     profiles copied, reset and deleted; migrations run by version, each
+--     step atomic; a newer stored version opened read-only unless
+--     `allowNewerData`; a scalar under a declared record read as absent;
+--     Compact;
 --   * persistence across /reload, in two runs: the first run writes known
 --     values and a marker, the owner types /reload, and the next run reads
 --     them back from the tables the client wrote to disk and restored, and
@@ -267,6 +270,31 @@ local CHARACTER_SCHEMA = {
 local SCRATCH_SCHEMA = {
   profile = S.table({ fields = { scale = S.optional(S.number(), 1) } }),
 }
+
+--- A scratch schema with a record field, for the corrupted-data test: a
+--- saved scalar where `frame` is declared must read as absent.
+local SCRATCH_RECORD_SCHEMA = {
+  profile = S.table({
+    fields = {
+      frame = S.optional(S.table({ fields = { x = S.optional(S.number(), 0) } }), {}),
+    },
+  }),
+}
+
+--- The version a scratch table a newer addon version "wrote" carries, and
+--- the older version the read-only tests open it with.
+local NEWER_STORED_VERSION = 5
+local OLDER_OPEN_VERSION = 2
+
+---The reason every read-only refusal of the scratch tables ends with.
+---@return string
+local function readOnlyReason()
+  return "the saved table has version "
+    .. NEWER_STORED_VERSION
+    .. ", newer than options.version "
+    .. OLDER_OPEN_VERSION
+    .. "; pass options.allowNewerData = true to SettingsKit:Open to write it"
+end
 
 -- Reading the saved tables ----------------------------------------------------------------
 
@@ -702,7 +730,7 @@ end
 local facade = newSuite("facade")
 
 facade:Test(
-  "Registry:Get('settingsKit', 1) is the SettingsKit facade with API 1, Open, SetLimits, GetLimits, UNBOUNDED, DEFAULT_PROFILE 'Default', MAX_PROFILE_NAME_LENGTH 64 and the Database prototype's sixteen methods",
+  "Registry:Get('settingsKit', 1) is the SettingsKit facade with API 1, Open, SetLimits, GetLimits, UNBOUNDED, DEFAULT_PROFILE 'Default', MAX_PROFILE_NAME_LENGTH 64 and the Database prototype's seventeen methods",
   function(ctx)
     ctx:Expect(type(SettingsKit)):ToBe("table")
     ctx:Expect(rawget(SettingsKit, "API")):ToBe(SETTINGS_KIT_API)
@@ -731,6 +759,7 @@ facade:Test(
       "GetSavedVariable",
       "Pairs",
       "Validate",
+      "IsReadOnly",
     }) do
       ctx:Expect(type(rawget(prototype, methodName))):ToBe("function")
     end
@@ -1309,6 +1338,121 @@ migrations:Test(
     })
     ctx:Expect(calls):ToBe(0)
     ctx:Expect(rawget(readHost(name), "version")):ToBe(5)
+  end
+)
+
+migrations:Test(
+  "a stored version above options.version opens read-only: IsReadOnly is true, reads work, a view write and SetProfile are refused at the calling line with the exact message, and the saved table and its version stay unchanged",
+  function(ctx)
+    local name = newScratchGlobal("readOnly")
+    writeOwnGlobal(
+      name,
+      { version = NEWER_STORED_VERSION, profiles = { Default = { scale = 1.5 } } }
+    )
+    local db = SettingsKit:Open(name, SCRATCH_SCHEMA, { version = OLDER_OPEN_VERSION })
+    ctx:Expect(db:IsReadOnly()):ToBe(true)
+    ctx:Expect(db.profile.scale):ToBe(1.5)
+    ctx:Expect(db:GetProfile()):ToBe("Default")
+
+    local lines = { start = 0 }
+    expectErrorAtCallingLine(ctx, function()
+      lines.start = currentLine()
+      db.profile.scale = 1
+    end, lines, "SettingsKit (" .. name .. ") profile is read-only: " .. readOnlyReason())
+    expectErrorAtCallingLine(
+      ctx,
+      function()
+        lines.start = currentLine()
+        db:SetProfile("Other")
+      end,
+      lines,
+      "SettingsKit.Database:SetProfile cannot change "
+        .. name
+        .. ", which is read-only: "
+        .. readOnlyReason()
+    )
+    ctx:Expect(copySaved(readHost(name), 1)):ToEqual({
+      version = NEWER_STORED_VERSION,
+      profiles = { Default = { scale = 1.5 } },
+    })
+  end
+)
+
+migrations:Test(
+  "allowNewerData opens a stored version above options.version writable, and neither a write nor ResetDatabase lowers the stored version",
+  function(ctx)
+    local name = newScratchGlobal("allowNewer")
+    writeOwnGlobal(
+      name,
+      { version = NEWER_STORED_VERSION, profiles = { Default = { scale = 1.5 } } }
+    )
+    local db = SettingsKit:Open(
+      name,
+      SCRATCH_SCHEMA,
+      { version = OLDER_OPEN_VERSION, allowNewerData = true }
+    )
+    ctx:Expect(db:IsReadOnly()):ToBe(false)
+    db.profile.scale = 2
+    ctx
+      :Expect(
+        rawField(rawTableField(rawTableField(readHost(name), "profiles"), "Default"), "scale")
+      )
+      :ToBe(2)
+    ctx:Expect(rawget(readHost(name), "version")):ToBe(NEWER_STORED_VERSION)
+    db:ResetDatabase()
+    ctx:Expect(rawget(readHost(name), "version")):ToBe(NEWER_STORED_VERSION)
+    ctx:Expect(db.profile.scale):ToBe(1)
+  end
+)
+
+migrations:Test(
+  "a migration step that writes and then raises leaves the saved table untouched, and the retry applies the step once: scale 1 becomes 2, not 4",
+  function(ctx)
+    local name = newScratchGlobal("atomic")
+    writeOwnGlobal(name, { version = 1, profiles = { Default = { scale = 1 } } })
+    local failStep2 = true
+    local steps = {
+      [2] = function(raw)
+        raw.profiles.Default.scale = raw.profiles.Default.scale * 2
+        if failStep2 then
+          error("interrupted after writing", 0)
+        end
+      end,
+    }
+    local lines = { start = 0 }
+    expectErrorAtCallingLine(ctx, function()
+      lines.start = currentLine()
+      SettingsKit:Open(name, SCRATCH_SCHEMA, { version = 2, migrations = steps })
+    end, lines, "SettingsKit:Open migration 2 of " .. name .. " failed: interrupted after writing")
+    ctx:Expect(copySaved(readHost(name), 1)):ToEqual({
+      version = 1,
+      profiles = { Default = { scale = 1 } },
+    })
+
+    failStep2 = false
+    local db = SettingsKit:Open(name, SCRATCH_SCHEMA, { version = 2, migrations = steps })
+    ctx:Expect(db.profile.scale):ToBe(2)
+    ctx:Expect(rawget(readHost(name), "version")):ToBe(2)
+  end
+)
+
+migrations:Test(
+  "a scalar stored where the schema declares a record reads as absent: the default view answers frame.x 0, and the next write replaces the scalar",
+  function(ctx)
+    local name = newScratchGlobal("corrupted")
+    writeOwnGlobal(name, { profiles = { Default = { frame = 5 } } })
+    local db = SettingsKit:Open(name, SCRATCH_RECORD_SCHEMA)
+    ctx:Expect(getmetatable(db.profile.frame)):ToBe("SettingsKit.View")
+    ctx:Expect(db.profile.frame.x):ToBe(0)
+    ctx
+      :Expect(
+        rawField(rawTableField(rawTableField(readHost(name), "profiles"), "Default"), "frame")
+      )
+      :ToBe(5)
+    db.profile.frame.x = 3
+    ctx
+      :Expect(copySaved(rawTableField(rawTableField(readHost(name), "profiles"), "Default"), 1))
+      :ToEqual({ frame = { x = 3 } })
   end
 )
 

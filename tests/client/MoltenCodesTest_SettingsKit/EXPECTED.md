@@ -65,7 +65,7 @@ moment:
 
 ```text
 MoltenCodes Test: running settingsKit: 9 suites. Results follow when every test has finished.
-MoltenCodes Test: PASS settingsKit.facade: Registry:Get('settingsKit', 1) is the SettingsKit facade with API 1, Open, SetLimits, GetLimits, UNBOUNDED, DEFAULT_PROFILE 'Default', MAX_PROFILE_NAME_LENGTH 64 and the Database prototype's sixteen methods
+MoltenCodes Test: PASS settingsKit.facade: Registry:Get('settingsKit', 1) is the SettingsKit facade with API 1, Open, SetLimits, GetLimits, UNBOUNDED, DEFAULT_PROFILE 'Default', MAX_PROFILE_NAME_LENGTH 64 and the Database prototype's seventeen methods
 MoltenCodes Test: PASS settingsKit.facade: the installed SettingsKit carries the revision of the committed manifest
 MoltenCodes Test: PASS settingsKit.facade: GetLimits answers a fresh table holding the session's shared limits at their defaults: maxProfileNameLength 64 and pathKeyLimit 32
 MoltenCodes Test: PASS settingsKit.savedVariables: Open over the two saved variables of the toc, after the loaded phase, uses each global as the raw table, stamps its version, creates every layout section, and a second Open returns the same database
@@ -88,6 +88,10 @@ MoltenCodes Test: PASS settingsKit.migrations: a table written by an older versi
 MoltenCodes Test: PASS settingsKit.migrations: a new, empty saved table is stamped with the version and no migration runs
 MoltenCodes Test: PASS settingsKit.migrations: a migration that raises stops Open at the calling line naming the step, keeps the finished step, and the next Open retries from the failing step only
 MoltenCodes Test: PASS settingsKit.migrations: a stored version above options.version is left alone and no migration runs
+MoltenCodes Test: PASS settingsKit.migrations: a stored version above options.version opens read-only: IsReadOnly is true, reads work, a view write and SetProfile are refused at the calling line with the exact message, and the saved table and its version stay unchanged
+MoltenCodes Test: PASS settingsKit.migrations: allowNewerData opens a stored version above options.version writable, and neither a write nor ResetDatabase lowers the stored version
+MoltenCodes Test: PASS settingsKit.migrations: a migration step that writes and then raises leaves the saved table untouched, and the retry applies the step once: scale 1 becomes 2, not 4
+MoltenCodes Test: PASS settingsKit.migrations: a scalar stored where the schema declares a record reads as absent: the default view answers frame.x 0, and the next write replaces the scalar
 MoltenCodes Test: PASS settingsKit.allocation: reads through views of the real saved variable (scale, frame.x, a held auras entry's shown, char.touched, global.counter) allocate nothing over 5000 cycles
 MoltenCodes Test: PASS settingsKit.allocation: a validated write of an existing key with a plain value allocates nothing over 5000 cycles
 MoltenCodes Test: PASS settingsKit.allocation: Validate of a plain value with an array path allocates nothing over 5000 cycles
@@ -101,11 +105,11 @@ MoltenCodes Test: PASS settingsKit.persistence: persistence step one: profile.sc
 MoltenCodes Test: SKIP settingsKit.persistence: persistence step two: after /reload the client restored both saved tables after this file ran (nil at file scope) and before the loaded phase, and the views read back the marker, scale 1.25, char.note and the per-character note -- run again after /reload: no marker from an earlier session yet (step one wrote it now)
 MoltenCodes Test: SKIP settingsKit.persistence: persistence step two: the PLAYER_LOGOUT compaction removed profile.anchor, written equal to its default in step one, before the client wrote the file, and kept scale -- run again after /reload: no marker from an earlier session yet (step one wrote it now)
 MoltenCodes Test: SKIP settingsKit.cleanup: cleanup: once persistence step two passed, both saved variables are emptied so the files hold no data after the next /reload -- persistence step two has not passed yet; the saved tables are kept for the run after /reload
-MoltenCodes Test: settingsKit: 33 passed, 0 failed, 3 skipped, 0 timed out (36 tests)
+MoltenCodes Test: settingsKit: 37 passed, 0 failed, 3 skipped, 0 timed out (40 tests)
 MoltenCodes Test: results saved in MoltenCodesTestResults; /reload or log out to write them to disk.
 ```
 
-The totals line reads `33 passed, 0 failed, 3 skipped, 0 timed out (36 tests)`.
+The totals line reads `37 passed, 0 failed, 3 skipped, 0 timed out (40 tests)`.
 The step-one test logs `marker written: <date> #<number>; now /reload and run
 /mct run settingsKit again`.
 
@@ -139,7 +143,7 @@ The client may order the keys differently.
 
 ```text
 MoltenCodes Test: running settingsKit: 9 suites. Results follow when every test has finished.
-MoltenCodes Test: PASS settingsKit.facade: Registry:Get('settingsKit', 1) is the SettingsKit facade with API 1, Open, SetLimits, GetLimits, UNBOUNDED, DEFAULT_PROFILE 'Default', MAX_PROFILE_NAME_LENGTH 64 and the Database prototype's sixteen methods
+MoltenCodes Test: PASS settingsKit.facade: Registry:Get('settingsKit', 1) is the SettingsKit facade with API 1, Open, SetLimits, GetLimits, UNBOUNDED, DEFAULT_PROFILE 'Default', MAX_PROFILE_NAME_LENGTH 64 and the Database prototype's seventeen methods
 MoltenCodes Test: PASS settingsKit.facade: the installed SettingsKit carries the revision of the committed manifest
 MoltenCodes Test: PASS settingsKit.facade: GetLimits answers a fresh table holding the session's shared limits at their defaults: maxProfileNameLength 64 and pathKeyLimit 32
 MoltenCodes Test: PASS settingsKit.savedVariables: Open over the two saved variables of the toc, after the loaded phase, uses each global as the raw table, stamps its version, creates every layout section, and a second Open returns the same database
@@ -162,6 +166,10 @@ MoltenCodes Test: PASS settingsKit.migrations: a table written by an older versi
 MoltenCodes Test: PASS settingsKit.migrations: a new, empty saved table is stamped with the version and no migration runs
 MoltenCodes Test: PASS settingsKit.migrations: a migration that raises stops Open at the calling line naming the step, keeps the finished step, and the next Open retries from the failing step only
 MoltenCodes Test: PASS settingsKit.migrations: a stored version above options.version is left alone and no migration runs
+MoltenCodes Test: PASS settingsKit.migrations: a stored version above options.version opens read-only: IsReadOnly is true, reads work, a view write and SetProfile are refused at the calling line with the exact message, and the saved table and its version stay unchanged
+MoltenCodes Test: PASS settingsKit.migrations: allowNewerData opens a stored version above options.version writable, and neither a write nor ResetDatabase lowers the stored version
+MoltenCodes Test: PASS settingsKit.migrations: a migration step that writes and then raises leaves the saved table untouched, and the retry applies the step once: scale 1 becomes 2, not 4
+MoltenCodes Test: PASS settingsKit.migrations: a scalar stored where the schema declares a record reads as absent: the default view answers frame.x 0, and the next write replaces the scalar
 MoltenCodes Test: PASS settingsKit.allocation: reads through views of the real saved variable (scale, frame.x, a held auras entry's shown, char.touched, global.counter) allocate nothing over 5000 cycles
 MoltenCodes Test: PASS settingsKit.allocation: a validated write of an existing key with a plain value allocates nothing over 5000 cycles
 MoltenCodes Test: PASS settingsKit.allocation: Validate of a plain value with an array path allocates nothing over 5000 cycles
@@ -175,11 +183,11 @@ MoltenCodes Test: SKIP settingsKit.persistence: persistence step one: profile.sc
 MoltenCodes Test: PASS settingsKit.persistence: persistence step two: after /reload the client restored both saved tables after this file ran (nil at file scope) and before the loaded phase, and the views read back the marker, scale 1.25, char.note and the per-character note
 MoltenCodes Test: PASS settingsKit.persistence: persistence step two: the PLAYER_LOGOUT compaction removed profile.anchor, written equal to its default in step one, before the client wrote the file, and kept scale
 MoltenCodes Test: PASS settingsKit.cleanup: cleanup: once persistence step two passed, both saved variables are emptied so the files hold no data after the next /reload
-MoltenCodes Test: settingsKit: 35 passed, 0 failed, 1 skipped, 0 timed out (36 tests)
+MoltenCodes Test: settingsKit: 39 passed, 0 failed, 1 skipped, 0 timed out (40 tests)
 MoltenCodes Test: results saved in MoltenCodesTestResults; /reload or log out to write them to disk.
 ```
 
-The totals line reads `35 passed, 0 failed, 1 skipped, 0 timed out (36 tests)`.
+The totals line reads `39 passed, 0 failed, 1 skipped, 0 timed out (40 tests)`.
 Step two logs `marker restored by the client: <token>` and `verified at
 <date>`; the compaction test logs `restored profile keys: scale`; the cleanup
 test logs `both saved variables are empty; /reload or log out to write the
@@ -190,8 +198,8 @@ empty files`. Now `/reload` once more (step 4 above).
 After the cleanup test, every test that needs the two databases ends as
 `SKIP` with `the cleanup test emptied both saved variables in this session;
 /reload to test again`, and the cleanup test with `already emptied in this
-session; /reload writes the empty files`: the totals read `7 passed, 0 failed,
-29 skipped, 0 timed out (36 tests)` (the facade and migration tests still
+session; /reload writes the empty files`: the totals read `11 passed, 0 failed,
+29 skipped, 0 timed out (40 tests)` (the facade and migration tests still
 run). After the next `/reload` the procedure starts again at run 1.
 
 Running run 1 a second time before the `/reload` prints the run 1 lines again;
@@ -232,14 +240,14 @@ the three full garbage collections. On disk, the two
 The 6 `settingsKit.secrets` tests need the client's `issecretvalue` and
 `secretwrap`, which Retail 12.1 has. Without them they print `SKIP ... -- the
 client has no issecretvalue and secretwrap; the secret path was not
-exercised`, and the totals read 27 and 29 passed with 9 and 7 skipped.
+exercised`, and the totals read 31 and 33 passed with 9 and 7 skipped.
 
 ## What each test proves
 
 | Test | Proves in the real client |
 |---|---|
-| `Registry:Get('settingsKit', 1) is the SettingsKit facade ...` | The facade the client loaded is API 1 with `Open`, `SetLimits`, `GetLimits`, `UNBOUNDED`, `DEFAULT_PROFILE` `"Default"`, `MAX_PROFILE_NAME_LENGTH` 64 and a `Database` prototype carrying all sixteen documented methods. |
-| `the installed SettingsKit carries the revision ...` | Registry's selected revision and the facade's `REVISION` are both the committed manifest's (4), not an older or newer embedded copy. |
+| `Registry:Get('settingsKit', 1) is the SettingsKit facade ...` | The facade the client loaded is API 1 with `Open`, `SetLimits`, `GetLimits`, `UNBOUNDED`, `DEFAULT_PROFILE` `"Default"`, `MAX_PROFILE_NAME_LENGTH` 64 and a `Database` prototype carrying all seventeen documented methods, `IsReadOnly` included. |
+| `the installed SettingsKit carries the revision ...` | Registry's selected revision and the facade's `REVISION` are both the committed manifest's (5), not an older or newer embedded copy. |
 | `GetLimits answers a fresh table ...` | A new table per call holding `maxProfileNameLength` 64 and `pathKeyLimit` 32; a difference means another addon changed the shared limits. |
 | `Open over the two saved variables of the toc ...` | After the loaded phase, `Open` works on the tables the client restored (or creates them on a first install), stamps `version` 2 and 1, creates all eight layout sections, `GetSavedVariable` names each global, a second `Open` (with or without the schema) returns the same database, and views report `getmetatable` `"SettingsKit.View"`. The log says what the client restored at the loaded phase. |
 | `the current profile and the char scope are keyed '<name> - <realm>' ...` | With `defaultProfile = "char"`, the current profile is `UnitName("player") .. " - " .. GetRealmName()` from the live client, its table exists in the saved `profiles`, and a write through `db.char` lands in `char["<name> - <realm>"]`. The log gives the key. |
@@ -261,6 +269,10 @@ exercised`, and the totals read 27 and 29 passed with 9 and 7 skipped.
 | `a new, empty saved table is stamped with the version ...` | No migration runs on a new install, and `version` is stamped. |
 | `a migration that raises stops Open ...` | `SettingsKit:Open migration 3 of <name> failed: step three is not ready` at this file's calling line, `version` 2 stays stored, and the next `Open` runs step 3 only. |
 | `a stored version above options.version is left alone ...` | A downgrade runs nothing and keeps `version` 5. |
+| `a stored version above options.version opens read-only ...` | Over a scratch global holding `version` 5, `Open` with `version = 2` answers `IsReadOnly()` `true` and reads `profile.scale` 1.5; `db.profile.scale = 1` raises `SettingsKit (<name>) profile is read-only: the saved table has version 5, newer than options.version 2; pass options.allowNewerData = true to SettingsKit:Open to write it` and `db:SetProfile("Other")` raises `SettingsKit.Database:SetProfile cannot change <name>, which is read-only: ...`, both at this file's calling line, and the saved table is exactly as written (no layout, no profile, `version` 5). |
+| `allowNewerData opens a stored version above options.version writable ...` | With `allowNewerData = true` the same table is writable (`IsReadOnly()` `false`, the write stored), and `version` stays 5 after the write and after `ResetDatabase`. |
+| `a migration step that writes and then raises ...` | A step that doubles `scale` and then raises stops `Open` at this file's calling line with `SettingsKit:Open migration 2 of <name> failed: interrupted after writing`, the scratch table still reads `version` 1 and `scale` 1, and the retry leaves `scale` 2 and `version` 2. |
+| `a scalar stored where the schema declares a record reads as absent ...` | With `profiles.Default.frame = 5` saved, `db.profile.frame` is a view reading `x` 0 while the raw 5 stays, and `db.profile.frame.x = 3` replaces it with `{ x = 3 }`. |
 | `reads through views of the real saved variable ... allocate nothing` | After a full collection in a step of its own and one unmeasured cycle, 5000 rounds of six view reads (a scalar, a nested record field, a held and a re-read keyed-section entry, `char` and `global`) move `collectgarbage("count")` by at most 1 KB. The log gives the delta. |
 | `a validated write of an existing key ... allocates nothing` | The same for 5000 validated writes of `frame.y`. |
 | `Validate of a plain value with an array path allocates nothing` | The same for 5000 `Validate` calls. |

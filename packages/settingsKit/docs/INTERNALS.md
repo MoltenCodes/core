@@ -4,7 +4,7 @@ This document describes the private layout behind SettingsKit API generation 1: 
 
 ## The saved table
 
-`Open` creates every missing section; nothing else is added unless the player changes something.
+`Open` creates every missing section of a writable database; nothing else is added unless the player changes something. A read-only database (stored version newer than `options.version`) is left exactly as the client loaded it.
 
 ```lua
 MyAddonDB = {
@@ -25,7 +25,7 @@ MyAddonDB = {
 
 | Section | Keyed by | Written when |
 |---|---|---|
-| `version` | — | A new table is stamped at `Open`; each migration step advances it. |
+| `version` | — | A new table is stamped at `Open`; each migration step advances it. Never lowered: a newer stored version stays, also through `ResetDatabase` under `allowNewerData`. |
 | `global` | — | A write through `db.global`. |
 | `profiles` | profile name | `Open` and `SetProfile` create the current profile's table; writes through `db.profile` fill it. |
 | `profileKeys` | `"<name> - <realm>"` | `SetProfile` records the character's choice; `DeleteProfile` removes choices naming the deleted profile. |
@@ -56,7 +56,7 @@ A database is a table carrying its views as plain fields (`global`, `char`, ...,
 
 | Field | Purpose |
 |---|---|
-| `_layout` | Database layout number (`1`). |
+| `_layout` | Database layout number (`2`). Layout 1 (revisions 1 to 4) had no `_newerVersion` and `_readOnly`. |
 | `_name` | The saved-variable name. |
 | `_raw` | The saved table. |
 | `_schemaSource` | The schema table passed to `Open`, to recognise a reopen. |
@@ -67,6 +67,8 @@ A database is a table carrying its views as plain fields (`global`, `char`, ...,
 | `_profile` | The current profile name. |
 | `_profileRoots` | Profile name to its cached root view. |
 | `_version` | `options.version`, or `false`. |
+| `_newerVersion` | The stored version when it was newer than `options.version` at `Open`, else `false`. `ResetDatabase` stamps it instead of `_version`, and the read-only messages name it. |
+| `_readOnly` | `true` when `_newerVersion` is set and `allowNewerData` was not. Read with `rawget` by every write path. |
 | `_signals` | The four profile signals. |
 
 A scope record holds the scope's `name`, its own sealed `schema`, its compiled `plan`, the `sectionName` and `sectionKey` of its saved table, whether it is `available`, and its `OnChange` `signal`.
@@ -135,6 +137,8 @@ Views are built recursively down to SchemaKit's `maxDepth` limit (16 by default)
 
 Both kinds ask `issecretvalue` about the key before comparing it or using it to index anything; a secret key raises at the reading line.
 
+A saved value that is not a table under a record or map plan (hand-edited or corrupted data) reads as absent: the read falls through to the default, so the child view stays usable, `resolveContainer` already skips a non-table on the way down, and `resolveForWrite` replaces it on the next write. `wouldCreateEntry` counts such a keyed-section entry as not saved, so a materialising read below it never overwrites it.
+
 A saved value, a key from the caller's path and a default from the caller's schema did not originate in SettingsKit, so their absence is tested with `type(value) == "nil"`, the repository rule, which never compares anything. In the client a secret compared with a value of its own type raises, as does a secret used as a key; a comparison with `nil` happens not to raise (measured on Retail 12.1.0 b69933). Only values SettingsKit built (its nodes, plans, caches and the results of its own lookups) are compared with `nil` directly.
 
 ### Iteration
@@ -145,7 +149,7 @@ A saved value, a key from the caller's path and a default from the caller's sche
 
 `viewNewIndex` → `writeView`:
 
-1. Refuse on a detached root.
+1. Refuse on a read-only database (`_readOnly`), then on a detached root.
 2. Refuse a secret key, then a secret value, then a table value that contains a secret, is or contains a view (`state.views` lookup), or is or contains a table with a metatable (`scanValue`, bounded by SchemaKit's `maxDepth` read when the write starts and the database's `_maxScannedEntries`, 65536 by default and `math.huge` when opened with `SettingsKit.UNBOUNDED`). The scan runs on every client: a view stored in a saved table would be a non-empty proxy, so later writes to its keys would skip `__newindex` and validation, and it would alias the other view's data on disk.
 3. **Probe check.** Each view from the written one up to the root sets its key in its parent's probe to its own probe, the written view sets `key = value` in its probe, and the scope's sealed schema checks the root probe. The probe holds exactly the path to the written value, and every other field of every record on the path is optional (`compilePlan` guarantees it), so the check passes exactly when the value is valid where it is written. The probes are cleared again before any error is raised. A valid check allocates nothing; the reported path is SchemaKit's own, relative to the scope, and the message is built only on failure.
 4. Refuse a write that would add an entry to a keyed section already holding `max` entries (the probe holds one entry, so the bound is counted against the saved table, stopping at `max`).
@@ -156,15 +160,31 @@ The checks of steps 1 to 4 live in `refuseWrite`, which returns the refusal mess
 
 A probe key left behind by a custom check that raised mid-check is cleared by the next write that uses that probe (`probeSet` / `probeKey`), so a stale key can never leak into a later check.
 
+## Migrations
+
+`migrate` compares the stored version with `options.version`. A newer stored version is returned to `Open` untouched (`_newerVersion`) and nothing runs. Otherwise every pending step with a function runs through `runMigrationStep`:
+
+1. `copySavedTable` deep-copies the saved table. It walks with its own work list (no recursion, so no depth limit), keeps a memo from each original table to its copy so a table reached twice is copied once and cycles close on the copies, uses keys as they are, and touches tables only with `next`, `rawget` and `rawset`. A secret is carried over without being indexed or used as a memo key.
+2. The step runs on the copy under `pcall`. A failure returns before anything touched the saved table.
+3. For the last step with a function, `findLayoutProblem` checks the copy: a layout section present but not a table fails the step without committing it.
+4. `adoptMigrated` empties the saved table in place and moves the copy's top-level entries into it, then walks the result once and points every reference to the copy's root at the saved table, so a cycle through the root survives and the saved-variable global keeps its identity.
+5. The version is stored.
+
+When no step with a function is pending, the layout is validated before the version is stamped, so a refused table is never written. `Open` validates the layout again (`validateLayout`) after `migrate`, which is where a table without a version, a current one and a read-only one are checked, and only then creates the missing sections (`createLayout`) of a writable database.
+
+The cost is one copy and one walk per pending step, each visiting every table and entry once. The saved table of 10,000 nested profiles measured in `docs/API.md` (about 50,000 tables) costs about 26 ms per step on host Lua 5.1.
+
 ## Compaction
 
-`compactRecord`, `compactMap` and `compactValue` walk a saved table together with its plan and defaults. A value deeply equal to its default is removed (`deepEqual` treats a secret as unequal to everything and stops at SchemaKit's `maxDepth`, read when the compaction starts). A record or map table is compacted first and then removed when it is empty and has a default to fall back to. The walk follows the plan, which `compilePlan` stops at the `maxDepth` in force at `Open`, so it carries no depth counter of its own; keys the plan does not declare are never visited, so undeclared data survives. `compactScope` walks every entry of a section, removes empty character, realm, class and faction entries, and keeps empty profiles. The logout listener calls `dispatch.compactOnLogout(db)`, which runs `compactDatabase` under `pcall` and reports a failure through `geterrorhandler()`.
+`compactRecord`, `compactMap` and `compactValue` walk a saved table together with its plan and defaults. A value deeply equal to its default is removed (`deepEqual` treats a secret as unequal to everything and stops at SchemaKit's `maxDepth`, read when the compaction starts). A record or map table is compacted first and then removed when it is empty and has a default to fall back to. The walk follows the plan, which `compilePlan` stops at the `maxDepth` in force at `Open`, so it carries no depth counter of its own; keys the plan does not declare are never visited, so undeclared data survives. `compactScope` walks every entry of a section, removes empty character, realm, class and faction entries, and keeps empty profiles. The logout listener calls `dispatch.compactOnLogout(db)`, which skips a read-only database, runs `compactDatabase` under `pcall` and reports a failure through `geterrorhandler()`.
 
 ## Closures and upgrades
 
 SettingsKit hands out one closure per database: the `PLAYER_LOGOUT` listener, which calls through `state.dispatch`. The connection EventKit returns is not kept: a database lives for the session and is never disconnected. Views and databases get their behaviour from the two metatables in `_state` and the `Database` prototype, which a newer revision rewrites in place. Databases, nodes and plans carry layout numbers so a revision that changes a layout can upgrade them lazily. The upgrade spec loads the same source a second time with `IMPLEMENTATION_REVISION` raised by one and checks that a database opened before the upgrade, its views, its `OnChange` and profile listeners and its logout compaction keep working.
 
 Revision 1 gave an entry view of a keyed section declared without a default `false` for its `defaults`, and handed that `false` down to the record views below it, so a saved entry read `nil` where the wildcard or a field default applied. Revision 2 builds every node's `defaults` through `viewDefaults`, and an upgrade over revision 1 walks `state.views` once and recomputes the `defaults` of every live node, parents first; a node revision 1 built correctly gets the same table back. A spec leaves two nodes in the revision 1 shape, reloads, and checks that they read their defaults.
+
+Revision 5 added database layout 2 (`_newerVersion`, `_readOnly`) and the `IsReadOnly` method. An upgrade over revisions 1 to 4 walks `state.databases` once and brings every layout 1 database to layout 2: `_readOnly` is `false`, because the database was opened writable and an addon may already be writing through it, and `_newerVersion` is read from the saved table's current `version` when that is an integer above the database's `_version`, so `ResetDatabase` never lowers it. A spec leaves two databases and the prototype in the revision 4 shape, reloads, and checks the fields, the writes, `ResetDatabase` and that a database opened afterwards is read-only over newer data.
 
 ## Error levels
 

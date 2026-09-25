@@ -2,7 +2,7 @@
 
 SettingsKit API generation **1** opens a database over an addon's saved variable: scoped views whose reads fall back to schema defaults and whose writes are validated at the writer's line, profiles, change signals, versioned migrations and compaction.
 
-Implementation revision: **4**.
+Implementation revision: **5**.
 
 ## Loading
 
@@ -70,6 +70,7 @@ Databases:
 | `GetSavedVariable()` | The global name the database was opened over. |
 | `Pairs(view)` | Iterate a view: keys with defaults, then saved keys. |
 | `Validate(scope, path, value)` | Whether a write would be accepted, without writing. |
+| `IsReadOnly()` | Whether the database refuses every write because a newer version of the addon saved the data (see [Newer stored data](#newer-stored-data-read-only-databases)). |
 
 The `On*` methods return SignalKit connections; `connection:Disconnect()` stops the listener.
 
@@ -187,8 +188,9 @@ profile.anchor = "LEFT"          -- raises at this line:
 | `version` | none | The version of the saved table this addon writes, a positive integer. |
 | `migrations` | none | `{ [n] = function(raw) }`, each key from 1 to `version`. Requires `version`. |
 | `maxScannedEntries` | `65536` | The most entries the scan of one written table visits (see [Limits](#limits)): a positive integer or `SettingsKit.UNBOUNDED`. |
+| `allowNewerData` | `false` | `true` opens a saved table whose stored version is newer than `version` writable instead of read-only (see [Newer stored data](#newer-stored-data-read-only-databases)). A boolean; requires `version`. |
 
-Unknown fields are refused, and so is a secret `version`, `maxScannedEntries` or `migrations` key, before it is compared: `SettingsKit:Open options.version must not be a secret value`, `SettingsKit:Open options.maxScannedEntries must not be a secret value`, `SettingsKit:Open options.migrations must not have a secret key`. A secret option name is reported as `SettingsKit:Open options contains unknown field "<secret>"`.
+Unknown fields are refused, and so is a secret `version`, `maxScannedEntries`, `allowNewerData` or `migrations` key, before it is compared or tested: `SettingsKit:Open options.version must not be a secret value`, `SettingsKit:Open options.maxScannedEntries must not be a secret value`, `SettingsKit:Open options.allowNewerData must not be a secret value`, `SettingsKit:Open options.migrations must not have a secret key`. A secret option name is reported as `SettingsKit:Open options contains unknown field "<secret>"`. `allowNewerData` that is not a boolean raises `SettingsKit:Open options.allowNewerData must be a boolean`, and without `version` `SettingsKit:Open options.allowNewerData requires options.version`.
 
 Opening a name that is already open returns the same database. `schema` may then be omitted; passing a different schema table raises, and so does a saved variable replaced since the first `Open`. Options passed to a later `Open` are ignored.
 
@@ -197,9 +199,9 @@ Opening a name that is already open returns the same database. `schema` may then
 1. Validates every argument and compiles the schemas, before anything is written.
 2. Reads the scope keys.
 3. Creates the global when it is missing.
-4. Runs migrations (below).
-5. Creates every missing section of the layout (see [`INTERNALS.md`](INTERNALS.md#the-saved-table)); a section that is not a table is refused.
-6. Picks the profile: the character's recorded choice when it names a usable profile, otherwise the default profile. The profile gets an empty table when it has none.
+4. Runs migrations (below). A stored version newer than `options.version` makes the database read-only unless `allowNewerData` is set.
+5. Checks the layout (see [`INTERNALS.md`](INTERNALS.md#the-saved-table)): a section that is present but not a table is refused with `SettingsKit:Open MyAddonDB.global must be a table`. The check runs before anything else is written — before the version is stamped when no migration is pending, and on the last migration's result before that result is committed — so a refused table is never half-changed. A writable database then gets every missing section; a read-only one gets none.
+6. Picks the profile: the character's recorded choice when it names a usable profile, otherwise the default profile. In a writable database the profile gets an empty table when it has none.
 7. Builds the views and, when EventKit is registered, connects the logout compaction.
 
 ## Migrations
@@ -207,12 +209,20 @@ Opening a name that is already open returns the same database. `schema` may then
 With `options.version = n`:
 
 - a saved table that is **empty** (a new install) is stamped `version = n` and no migration runs;
-- otherwise the stored `version` (`0` when absent) is compared with `n`, and each `migrations[step]` from the stored version + 1 to `n` runs once, in ascending order, receiving the raw saved table to change in place. Steps without a function are skipped. The stored version is written after each step, so a finished step never runs again;
-- a step that raises stops `Open` with `SettingsKit:Open migration <step> of <name> failed: <error>` at your line. The steps before it stay done, and the next `Open` retries from the failing step;
-- a stored version above `n` (a downgrade) is left alone and nothing runs;
+- otherwise the stored `version` (`0` when absent) is compared with `n`, and each `migrations[step]` from the stored version + 1 to `n` runs once, in ascending order. Steps without a function are skipped. The stored version is written after each step, so a finished step never runs again;
+- **each step is a transaction.** A step receives a deep copy of the saved table's current contents and changes that copy in place. When the step returns, the copy's contents replace the saved table's contents **in place** — the saved-variable global keeps its identity, because that is the table the client saves — and then the version is stored. The tables inside the saved table are the copies from then on;
+- a step that raises stops `Open` with `SettingsKit:Open migration <step> of <name> failed: <error>` at your line. The saved table and its version are exactly as they were before that step: whatever the step wrote went to the copy, which is dropped. The steps before it stay committed, and the next `Open` retries only the failing step, on untouched data, so a step is never applied twice;
+- the result of the last step with a function must have the layout: when a layout section in it is present but not a table, that step counts as failed (`SettingsKit:Open migration <step> of <name> failed: <name>.global must be a table`) and is not committed. Steps before it may pass through any shape;
+- a stored version above `n` (a downgrade: data a newer version of the addon saved) runs nothing, is never lowered, and opens the database **read-only** unless `allowNewerData` is set (see [Newer stored data](#newer-stored-data-read-only-databases));
 - a stored version that is not a non-negative integer is refused.
 
 SettingsKit owns the `version` key of the saved table. Migrations run before the layout is created, so a step may restructure a table written by a pre-SettingsKit version of the addon.
+
+**A step must not keep a reference to the table it was given once it returns.** That table is the copy; its contents move into the saved table and the copy itself is dropped, so a write to it afterwards reaches nothing that is saved. The tables inside it are the ones now saved, but they are the database's from then on: change saved data through the views.
+
+The copy keeps the saved table's shape: a table reached through two keys is copied once and both keys hold the copy, cycles are preserved (a reference to the table the step received becomes a reference to the saved table), keys are used as they are, only `next`, `rawget` and `rawset` touch the tables (no metamethod runs, and no metatable is copied: a saved variable cannot hold one), and a secret value is carried over as it is. The walk keeps its own work list, so no nesting depth overflows the Lua stack.
+
+**Cost.** Every pending step with a function costs one deep copy of the saved table and one walk of the result; nothing is copied when no step is pending, which is every `Open` after the first one of a new addon version. Measured on host Lua 5.1 (2026-09-25): a saved table of 10,000 profiles, each holding nested tables (about 50,000 tables and 120,000 entries in all), costs about 26 ms per pending step, 78 ms for three.
 
 ## Views: `db.<scope>`
 
@@ -228,9 +238,11 @@ SettingsKit owns the `version` key of the saved table. Migrations run before the
 | an `array`, or `any`, `oneOf`, `custom` holding a table | the saved table itself | **a copy of the default, stored on this first read** — except inside a keyed-section entry that is not saved yet, where the copy is returned without being stored |
 | undeclared (on an open or closed record) | the saved value | `nil` |
 
+A saved value that is not a table where the schema declares a `table` or `map` (a hand-edited or corrupted file, `profiles.Default.frame = 5`) reads as if nothing were saved: the default view, or `nil` without a default. It stays in the saved table until the next write through that view replaces it with a table. A plain-table default read below it is returned without being stored, as inside an unsaved keyed-section entry.
+
 A record view reads each field from the saved table, then from the defaults: a record default filled with its own field defaults, the way `schema:Apply` fills it. A keyed-section view reads a key from the saved table, then from the section's own default entries, then from its **wildcard default** — the default of `optional(...)` on the map's `values` — so `db.profile.auras[118].shown` is `true` for a spell ID nothing was ever saved for. Views of the same record or entry are the same table every time you read them.
 
-Reading a default never writes, with the one exception in the table: an array (or other plain table) default is copied into the saved table on first read, so that editing it in place cannot change the default for the rest of the session. `Compact` removes the copy again while it still equals the default.
+Reading a default never writes, with the one exception in the table: an array (or other plain table) default is copied into the saved table on first read, so that editing it in place cannot change the default for the rest of the session. `Compact` removes the copy again while it still equals the default. A [read-only database](#newer-stored-data-read-only-databases) returns the copy without storing it.
 
 **A read never creates a keyed-section entry.** Reading `db.profile.colors[spellId]` for a key nothing was saved for returns the default (a view for a record, a fresh copy for a plain table, not stored) and stores nothing, whatever the key and however many keys are read: the key may be one the key schema refuses, and the section may be full. Only a validated write creates an entry, after the key and the section's `max` were checked. Edits to such a copy are lost; assign the table to store it.
 
@@ -238,11 +250,12 @@ Reading a default never writes, with the one exception in the table: an array (o
 
 `view[key] = value` runs, in order:
 
-1. **Value refusal.** A secret key, a secret value, or a table containing a secret anywhere raises `SettingsKit (MyAddonDB) profile.name refused a secret value: saved variables never hold secret values`. Every table value is scanned (to SchemaKit's `maxDepth` levels, 16 by default, and at most `maxScannedEntries` entries, 65536 by default; a larger table is refused too), on every client, and is also refused when it or any table inside it is a **view** (`db.profile.b = db.profile.a` would alias `a` and let writes through `b` bypass validation) or carries a **metatable** (the client saves neither). Nothing is stored.
-2. **Schema check.** The value is checked where it is written, against the scope's schema, and a failure raises with SchemaKit's text: `SettingsKit (MyAddonDB) profile.frame.x: expected number, found string`. An undeclared field of a closed record is refused the same way.
-3. **Bounds.** A write that adds an entry to a keyed section already holding `max` entries raises `SettingsKit (MyAddonDB) profile.auras: expected at most 256 entries`.
-4. **Store.** Missing tables on the way are created. Writing `nil` removes the saved value, so the field reads its default again.
-5. **Signal.** The scope's `OnChange` signal fires.
+1. **Read-only refusal.** A [read-only database](#newer-stored-data-read-only-databases) refuses every write: `SettingsKit (MyAddonDB) profile.frame is read-only: the saved table has version 9, newer than options.version 2; pass options.allowNewerData = true to SettingsKit:Open to write it`.
+2. **Value refusal.** A secret key, a secret value, or a table containing a secret anywhere raises `SettingsKit (MyAddonDB) profile.name refused a secret value: saved variables never hold secret values`. Every table value is scanned (to SchemaKit's `maxDepth` levels, 16 by default, and at most `maxScannedEntries` entries, 65536 by default; a larger table is refused too), on every client, and is also refused when it or any table inside it is a **view** (`db.profile.b = db.profile.a` would alias `a` and let writes through `b` bypass validation) or carries a **metatable** (the client saves neither). Nothing is stored.
+3. **Schema check.** The value is checked where it is written, against the scope's schema, and a failure raises with SchemaKit's text: `SettingsKit (MyAddonDB) profile.frame.x: expected number, found string`. An undeclared field of a closed record is refused the same way.
+4. **Bounds.** A write that adds an entry to a keyed section already holding `max` entries raises `SettingsKit (MyAddonDB) profile.auras: expected at most 256 entries`.
+5. **Store.** Missing tables on the way are created. Writing `nil` removes the saved value, so the field reads its default again.
+6. **Signal.** The scope's `OnChange` signal fires.
 
 Every refusal is raised at the writing line and stores nothing. A table you assign is stored as it is, by reference: later changes through your own reference to it are not validated. Read the field back to change it through a view.
 
@@ -251,6 +264,25 @@ Every refusal is raised at the writing line and stores nothing. A table you assi
 - `pairs`, `next` and `#` see an empty table: Lua 5.1 has no `__pairs` or `__len` for tables. Use `db:Pairs(view)` instead.
 - A view of a deleted profile, or of any profile after `ResetDatabase`, is **detached**: it reads defaults and refuses writes with `... belongs to a profile that was deleted or reset away`.
 - Reading a view with a secret key raises at the reading line.
+
+## Newer stored data: read-only databases
+
+When the stored `version` is greater than `options.version`, a newer version of the addon wrote the saved table, and this one does not know its layout. By default `Open` then opens the database **read-only**:
+
+- nothing is migrated and nothing is written by `Open`: no layout section, no profile table, no profile choice, and the stored version stays as it is;
+- reads work as usual, over whatever the newer version saved; a plain-table default is handed out as a copy and not stored;
+- every write raises at the writer's line and changes nothing: a write through any view, `SetProfile` (even to the current profile), `CopyProfile`, `ResetProfile`, `DeleteProfile`, `ResetDatabase` and `Compact`. A view write raises `SettingsKit (MyAddonDB) profile.frame is read-only: <reason>`, a method `SettingsKit.Database:SetProfile cannot change MyAddonDB, which is read-only: <reason>`, where `<reason>` is `the saved table has version 9, newer than options.version 2; pass options.allowNewerData = true to SettingsKit:Open to write it`. No signal fires;
+- `db:Validate` answers `false` and the same view message;
+- the logout compaction skips the database;
+- `db:IsReadOnly()` returns `true`.
+
+`Open(name, schema, { version = 2, allowNewerData = true })` opens such a table writable, as revisions before 5 did. Its stored version is still never lowered: nothing is migrated, writes leave `version` as it is, and `ResetDatabase` stamps the newer stored version rather than `options.version`. Opt in only when this version of the addon can write data a newer one reads.
+
+The mode is decided by the first `Open` of the name; a later `Open` returns the same database and ignores its options.
+
+### `db:IsReadOnly()`
+
+`true` when the database was opened over newer data without `allowNewerData`, `false` otherwise. It never changes for the session.
 
 ## Profiles
 
@@ -312,7 +344,7 @@ local ok, message = db:Validate("profile", { "auras", 118, "shown" }, false)
 local ok, message = db:Validate("profile", "frame.x", 120)
 ```
 
-Returns `true` when writing `value` at `path` in `scope` would be accepted, and `false, message` otherwise, where `message` is exactly the text the refused write would raise, without the `file:line:` prefix. It runs every check a write through a view runs, in the same order — the secret refusal, the view and metatable refusal, the schema check, and the key schema and `max` of every keyed section on the path — and writes nothing: no saved table, no keyed-section entry, no `OnChange`. A `profile` path is checked against the current profile.
+Returns `true` when writing `value` at `path` in `scope` would be accepted, and `false, message` otherwise, where `message` is exactly the text the refused write would raise, without the `file:line:` prefix. It runs every check a write through a view runs, in the same order — the read-only refusal, the secret refusal, the view and metatable refusal, the schema check, and the key schema and `max` of every keyed section on the path — and writes nothing: no saved table, no keyed-section entry, no `OnChange`. A `profile` path is checked against the current profile.
 
 `path` is either:
 
@@ -329,7 +361,7 @@ Walks every declared scope — every stored character, realm, class and faction 
 - each record or keyed-section table left empty, when it has a default to fall back to. A table without a default stays, because removing it would turn its view into `nil`;
 - each empty character, realm, class or faction entry. Empty profiles stay: they are still profiles.
 
-Returns how many values and tables it removed. With EventKit registered, every database compacts itself on `PLAYER_LOGOUT`; a compaction that raises there is reported through `geterrorhandler()` rather than raised into EventKit's dispatch. Values written after that compaction are saved as they are.
+Returns how many values and tables it removed. With EventKit registered, every database compacts itself on `PLAYER_LOGOUT`; a compaction that raises there is reported through `geterrorhandler()` rather than raised into EventKit's dispatch. Values written after that compaction are saved as they are. A read-only database refuses `Compact` and is skipped at logout.
 
 ## Limits
 
@@ -366,6 +398,14 @@ Where a value can come from outside SettingsKit (an argument, an option, a saved
 - `SettingsKit:SetLimits limits.<name> must not be a secret value`
 - `SettingsKit.Database:OnChange scope must not be a secret value` and `SettingsKit.Database:Validate scope must not be a secret value`, asked before the scope name indexes the database's scopes (revision 4 and later)
 - `SettingsKit databases cannot be read with a secret key`, raised at the reading line by `db[key]` before the key indexes the method table (revision 4 and later)
+- `SettingsKit:Open options.allowNewerData must not be a secret value` (revision 5 and later)
+
+Revision 5 adds these refusals:
+
+- `SettingsKit:Open options.allowNewerData must be a boolean` and `SettingsKit:Open options.allowNewerData requires options.version`
+- `SettingsKit (<name>) <view path> is read-only: <reason>` for a write through a view of a read-only database, and `SettingsKit.Database:<method> cannot change <name>, which is read-only: <reason>` for `SetProfile`, `CopyProfile`, `ResetProfile`, `DeleteProfile`, `ResetDatabase` and `Compact`, each at the caller's line; `<reason>` is `the saved table has version <stored>, newer than options.version <version>; pass options.allowNewerData = true to SettingsKit:Open to write it`
+- `SettingsKit.Database:IsReadOnly must be called on a SettingsKit database`
+- `SettingsKit:Open migration <step> of <name> failed: <name>.<section> must be a table`, when the last migration step leaves a layout section that is not a table
 
 SettingsKit never tests a value it did not create as a boolean (`if x`, `x and y`, `x or y`, `not x`), which raises on a secret as well: the host identity returns are type-tested and asked about secrecy before they are used, and the only answers it tests (SchemaKit's `Check`, `pcall`) are its dependencies' own booleans.
 
@@ -380,6 +420,7 @@ A secret stored `version` in the saved table is refused as `SettingsKit:Open MyA
 | A validated write | One schema check of a probe holding only the written path, one table write, one signal dispatch. No allocation when the key already exists and the value is not a table; a table value adds the scan of its contents and the one table `SchemaKit:GetLimits()` returns. |
 | `Open`, `SetProfile` to a new profile | Build the views of the scope: one proxy and node per record and keyed section in the schema. |
 | `GetProfiles`, `CopyProfile`, `Compact` | Allocate or walk by design; not for hot paths. |
+| A pending migration step | One deep copy of the saved table and one walk of the result, once per step with a function, only while the stored version is behind (see [Migrations](#migrations)). |
 
 Defaults are compiled once at `Open` from `schema:Describe()`; nothing on the read path consults SchemaKit.
 
@@ -388,7 +429,8 @@ Defaults are compiled once at `Open` from `schema:Describe()`; nothing on the re
 The nine-point plan in `docs/ROADMAP.md` is followed except where recorded here:
 
 - **EventKit, not LifecycleKit, is the optional dependency.** The plan lists LifecycleKit as optional with nothing to do; compaction at logout needs a `PLAYER_LOGOUT` listener, and EventKit is the Kit that delivers host events. It is found at `Open` through `Registry:Find("eventKit", 1)` and declared under `optionalDependencies`.
-- **Migrations receive the raw saved table** (`fn(raw)`), not the database. They run before the layout and the views exist, so a step can restructure a table written by an older version of the addon, including one that predates SettingsKit.
+- **Migrations receive a copy of the saved table** (`fn(raw)`), not the database. They run before the layout and the views exist, so a step can restructure a table written by an older version of the addon, including one that predates SettingsKit. Each step works on a deep copy that replaces the saved table's contents only when the step returns (revision 5), so a failing step never leaves half-applied writes behind.
+- **Newer stored data opens read-only** (revision 5). The plan says nothing about downgrades; writing a newer version's data with an older layout can corrupt it, so writing it is an explicit opt-in (`allowNewerData`).
 - **Every field of a record read through a view must be `optional`.** A write is validated by checking a probe that holds only the written path; that is what makes a write one schema check with no allocation, and it is only sound when every other field may be absent.
 - **Plain table defaults are copied into the saved table on first read.** Arrays and other tables without their own view would otherwise hand out the shared default to be edited in place. Records and keyed sections, the common case, are never written back.
 - **A read resolves the saved table through each nesting level** instead of holding it. That keeps every view valid across `ResetProfile`, `CopyProfile` and `ResetDatabase`, which replace or empty saved tables, at the cost of one lookup per level.
@@ -399,5 +441,7 @@ The nine-point plan in `docs/ROADMAP.md` is followed except where recorded here:
 ## Embedded copies and upgrades
 
 Several addons may embed SettingsKit; Registry selects the newest compatible revision and every copy shares one facade. Package state holds one database per saved-variable name, the shared limits and the `UNBOUNDED` sentinel, and an upgrade keeps them: databases, views, their listeners and the logout connection keep working and run the newer implementation, because the database and view metatables and the logout listener's dispatch table are rewritten in place.
+
+Revision 5 gives every database opened by an older revision the fields it reads (database layout 2). Such a database stays writable, as it was opened, even over newer data — turning it read-only in the middle of a session would break an addon already writing through it — but it records the newer stored version, so `ResetDatabase` never lowers it. `IsReadOnly` answers `false` for it. Databases opened after the upgrade follow the read-only rule.
 
 Nothing survives `/reload` except the saved variable itself: open the database again in the loaded phase.

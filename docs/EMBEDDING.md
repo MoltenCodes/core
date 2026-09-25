@@ -1264,6 +1264,15 @@ message is SchemaKit's failure text; fix the value or widen the schema. A
 secret value is refused before the schema runs, with `refused a secret value:
 saved variables never hold secret values`; never store one.
 
+### `SettingsKit (<name>) <scope> is read-only: the saved table has version <n>, newer than options.version <m>; ...`
+
+The saved variable was written by a newer version of your addon than the one
+running (the player downgraded, or two installations share a `WTF` folder).
+SettingsKit opens such data read-only so an older version cannot damage it:
+reads work, writes raise, and `db:IsReadOnly()` is `true`. Update the addon,
+or, when this version can safely write the newer layout, open the database
+with `allowNewerData = true`.
+
 ### `CommandKit ... nil, "taken"` or `nil, "emote"`
 
 The slash name is already a chat type (`/s`, `/g`), an emote (`/dance`) or

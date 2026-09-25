@@ -40,7 +40,8 @@ What each piece promises:
 - **Scopes.** `db.global`, `db.char`, `db.realm`, `db.class`, `db.faction` and `db.profile`, keyed from `UnitName`, `GetRealmName`, `UnitClass` and `UnitFactionGroup` read once at `Open`.
 - **Profiles.** `SetProfile`, `GetProfiles` (sorted), `CopyProfile`, `ResetProfile`, `DeleteProfile`, `ResetDatabase`, with a signal for each change.
 - **Change notifications.** `db:OnChange(scope, callback)` returns a SignalKit connection called after every validated write.
-- **Versioned migrations.** `options.migrations[n]` runs once, in ascending order, from the stored version to `options.version`.
+- **Versioned migrations.** `options.migrations[n]` runs once, in ascending order, from the stored version to `options.version`, each on a copy of the saved table that replaces it only when the step returns, so a failing step leaves nothing half-applied and is retried on untouched data.
+- **Newer data is read-only.** A saved table a newer version of the addon wrote (stored version above `options.version`) opens read-only: reads work, every write raises at the writer's line, and `db:IsReadOnly()` says so. `allowNewerData = true` opts in to writing it.
 - **Compaction at logout.** When EventKit is embedded, every database compacts itself on `PLAYER_LOGOUT`.
 - **Bounded by default, opened on purpose.** The secret-value scan of a written table (`maxScannedEntries`, an `Open` option that accepts `SettingsKit.UNBOUNDED`), profile-name length and path-key length (`SettingsKit:SetLimits`) each have a documented default; see *Limits* in the API.
 

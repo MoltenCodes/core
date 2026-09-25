@@ -42,8 +42,9 @@ local SCHEMA = {
 
 local MIGRATIONS = {
   -- The release before SettingsKit saved `{ greetings = n }` at the top of the
-  -- table. Migrations receive the raw saved table and run before the layout
-  -- exists, so a step can restructure anything an older release wrote.
+  -- table. A migration receives a copy of the saved table and runs before the
+  -- layout exists, so a step can restructure anything an older release wrote;
+  -- the copy replaces the saved table only when the step returns.
   [1] = function(raw)
     if type(raw.greetings) ~= "nil" then
       raw.global = raw.global or {}

@@ -12,7 +12,10 @@
 --   profiles   one current profile per character, with copy, reset, delete
 --              and change signals;
 --   versions   `options.migrations` run once each, in ascending order, from
---              the stored version to `options.version`;
+--              the stored version to `options.version`, each on a copy of
+--              the saved table that replaces it only when the step returns;
+--              data a newer version saved opens read-only unless the addon
+--              passes `allowNewerData`;
 --   Compact    removes every value still equal to its default, on demand and
 --              on `PLAYER_LOGOUT` when EventKit is embedded.
 --
@@ -46,7 +49,7 @@
 
 local PACKAGE_NAME = "settingsKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 4
+local IMPLEMENTATION_REVISION = 5
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_SCHEMAKIT_API = 1
 local REQUIRED_SIGNALKIT_API = 1
@@ -55,8 +58,9 @@ local STATE_SCHEMA = 1
 
 -- Every database and view node carries the layout it was built with, so a
 -- later revision that changes a layout can upgrade old objects instead of
--- guessing from which fields exist.
-local DATABASE_SCHEMA = 1
+-- guessing from which fields exist. Database layout 2 (revision 5) added
+-- `_readOnly` and `_newerVersion`.
+local DATABASE_SCHEMA = 2
 local NODE_SCHEMA = 1
 
 -- The profile every character shares unless the addon asks otherwise.
@@ -124,8 +128,13 @@ local LAYOUT_SECTIONS =
   { "global", "profiles", "profileKeys", "char", "realm", "class", "faction", "namespaces" }
 
 -- The complete set of fields an options table accepts.
-local OPTION_KEYS =
-  { defaultProfile = true, version = true, migrations = true, maxScannedEntries = true }
+local OPTION_KEYS = {
+  defaultProfile = true,
+  version = true,
+  migrations = true,
+  maxScannedEntries = true,
+  allowNewerData = true,
+}
 
 -- The two kinds of view: a record (a SchemaKit `table`) and a keyed section
 -- (a SchemaKit `map`).
@@ -150,6 +159,7 @@ local DATABASE_METHODS = {
   "GetSavedVariable",
   "Pairs",
   "Validate",
+  "IsReadOnly",
 }
 
 local WEAK_KEYS = { __mode = "k" }
@@ -174,8 +184,11 @@ local WEAK_VALUES = { __mode = "v" }
 ---@field faction (SchemaKit.Node|SchemaKit.Schema)?
 ---@field profile (SchemaKit.Node|SchemaKit.Schema)?
 
----One step of a saved-table migration. It receives the raw saved table and
----changes it in place; its return value is ignored.
+---One step of a saved-table migration. It receives a deep copy of the saved
+---table's contents and changes that copy in place; its return value is
+---ignored. The copy replaces the saved table's contents only when the step
+---returns, so a step that raises leaves the saved table as it was. A step must
+---not keep a reference to the table it was given once it returns.
 ---@alias SettingsKit.Migration fun(raw: table)
 
 ---Options accepted by `SettingsKit:Open`.
@@ -184,6 +197,7 @@ local WEAK_VALUES = { __mode = "v" }
 ---@field version integer? The saved-table version this addon writes. Omitted: no versioning.
 ---@field migrations table<integer, SettingsKit.Migration>? Steps by the version they produce; requires `version`.
 ---@field maxScannedEntries (integer|table)? Most entries the secret-value scan of one written table visits: a positive integer or `SettingsKit.UNBOUNDED`; default `65536`.
+---@field allowNewerData boolean? `true` opens a saved table whose stored version is newer than `version` writable; by default it opens read-only. Requires `version`.
 
 ---The limits every consumer in the session shares. `SetLimits` accepts any
 ---subset; `GetLimits` returns a fresh table.
@@ -229,6 +243,7 @@ local WEAK_VALUES = { __mode = "v" }
 ---@field GetSavedVariable fun(self: SettingsKit.Database): string
 ---@field Validate fun(self: SettingsKit.Database, scope: SettingsKit.ScopeName, path: string|any[], value: any): boolean, string?
 ---@field Pairs fun(self: SettingsKit.Database, view: table): (fun(view: table, key: any): any, any), table, nil
+---@field IsReadOnly fun(self: SettingsKit.Database): boolean
 
 ---The SettingsKit package facade published through Registry.
 ---@class SettingsKit
@@ -637,13 +652,37 @@ local function readMaxScannedEntries(value, level)
   return value
 end
 
+---Validate `allowNewerData`. A secret is refused before it is tested, since
+---testing a secret for truth raises.
+---@param value any
+---@param version any the validated `options.version`, `nil` when absent
+---@param level integer stack level the failure is reported at
+---@return boolean allowNewerData
+local function readAllowNewerData(value, version, level)
+  if type(value) == "nil" then
+    return false
+  end
+  if isSecret(value) then
+    error("SettingsKit:Open options.allowNewerData must not be a secret value", level)
+  end
+  if type(value) ~= "boolean" then
+    error("SettingsKit:Open options.allowNewerData must be a boolean", level)
+  end
+  -- Without a version there is nothing to be newer than, so the option could
+  -- only be a mistake.
+  if type(version) == "nil" then
+    error("SettingsKit:Open options.allowNewerData requires options.version", level)
+  end
+  return value
+end
+
 ---Validate `Open`'s options and return what the database keeps of them.
 ---@param options any
 ---@param level integer stack level the failures are reported at
----@return string defaultProfile, integer|false version, table|false migrations, number maxScannedEntries
+---@return string defaultProfile, integer|false version, table|false migrations, number maxScannedEntries, boolean allowNewerData
 local function readOptions(options, level)
   if type(options) == "nil" then
-    return DEFAULT_PROFILE_NAME, false, false, DEFAULT_MAX_SCANNED_ENTRIES
+    return DEFAULT_PROFILE_NAME, false, false, DEFAULT_MAX_SCANNED_ENTRIES, false
   end
   if type(options) ~= "table" then
     error("SettingsKit:Open options must be a table", level)
@@ -694,8 +733,9 @@ local function readOptions(options, level)
   end
 
   local maxScannedEntries = readMaxScannedEntries(rawget(options, "maxScannedEntries"), level + 1)
+  local allowNewerData = readAllowNewerData(rawget(options, "allowNewerData"), version, level + 1)
 
-  return defaultProfile, version or false, migrations or false, maxScannedEntries
+  return defaultProfile, version or false, migrations or false, maxScannedEntries, allowNewerData
 end
 
 ---Validate `Open`'s schema argument: a table of SchemaKit nodes or schemas
@@ -810,6 +850,87 @@ local function wipe(container)
   while type(key) ~= "nil" do
     rawset(container, key, nil)
     key = next(container)
+  end
+end
+
+---Deep-copy a saved table for a migration step to change.
+---
+---A saved table was written by the client or by an addon, so unlike the
+---defaults `copyPlain` copies it may share tables between keys or contain a
+---cycle, and it may nest deeper than anything SettingsKit built. The copy
+---keeps that shape: every table is copied once, through `copies`, and a table
+---reached twice is the same copy both times, so shared references and cycles
+---survive. The walk keeps its own work list instead of recursing, so no
+---nesting depth can overflow the Lua stack. Keys are used as they are; a
+---saved variable keys by strings, numbers and booleans. Only `next`,
+---`rawget` and `rawset` touch the tables, so no metamethod runs, and a secret
+---is carried over as it is without being indexed or compared.
+---@param source table
+---@param isSecretValue (fun(value: any): boolean)|nil
+---@return table copy
+local function copySavedTable(source, isSecretValue)
+  local root = {}
+  local copies = { [source] = root }
+  local pending = { source }
+  local pendingCount = 1
+  while pendingCount > 0 do
+    local original = pending[pendingCount]
+    pending[pendingCount] = nil
+    pendingCount = pendingCount - 1
+    local copy = rawget(copies, original)
+    for key, item in next, original do
+      if type(item) == "table" and not (isSecretValue ~= nil and isSecretValue(item)) then
+        local itemCopy = rawget(copies, item)
+        if itemCopy == nil then
+          itemCopy = {}
+          rawset(copies, item, itemCopy)
+          pendingCount = pendingCount + 1
+          pending[pendingCount] = item
+        end
+        item = itemCopy
+      end
+      rawset(copy, key, item)
+    end
+  end
+  return root
+end
+
+---Move the contents of `copy`, which a migration step changed, into `raw`.
+---
+---The client saves the saved-variable global by identity, so `raw` keeps it:
+---it is emptied and refilled rather than replaced. A table inside the copy
+---that refers to the copy itself (a cycle through the root) is pointed at
+---`raw` instead, so the saved table has the shape the step built. The walk
+---visits every table once, with its own work list, and uses only `next`,
+---`rawget` and `rawset`.
+---@param raw table the saved table
+---@param copy table the root the step received
+---@param isSecretValue (fun(value: any): boolean)|nil
+local function adoptMigrated(raw, copy, isSecretValue)
+  wipe(raw)
+  for key, item in next, copy do
+    rawset(raw, key, item)
+  end
+
+  local visited = { [raw] = true }
+  local pending = { raw }
+  local pendingCount = 1
+  while pendingCount > 0 do
+    local container = pending[pendingCount]
+    pending[pendingCount] = nil
+    pendingCount = pendingCount - 1
+    for key, item in next, container do
+      if type(item) == "table" and not (isSecretValue ~= nil and isSecretValue(item)) then
+        if item == copy then
+          -- Replacing the value of an existing key is allowed during `next`.
+          rawset(container, key, raw)
+        elseif rawget(visited, item) == nil then
+          rawset(visited, item, true)
+          pendingCount = pendingCount + 1
+          pending[pendingCount] = item
+        end
+      end
+    end
   end
 end
 
@@ -1299,7 +1420,9 @@ end
 
 ---Whether storing anything below `node` would create a keyed-section entry
 ---that is not saved yet. Only a validated write may create one, after the key
----schema and the section's `max` were checked.
+---schema and the section's `max` were checked. An entry stored as something
+---other than a table reads as absent, so it counts as not saved: a read never
+---replaces it.
 ---@param node table
 ---@return boolean
 local function wouldCreateEntry(node)
@@ -1308,7 +1431,7 @@ local function wouldCreateEntry(node)
   while parent ~= false do
     if parent.kind == KIND_MAP then
       local container = resolveContainer(parent)
-      if container == nil or type(rawget(container, child.key)) == "nil" then
+      if container == nil or type(rawget(container, child.key)) ~= "table" then
         return true
       end
     end
@@ -1325,15 +1448,16 @@ end
 ---may edit in place. Handing out the shared default would let that edit change
 ---the default for the session, so the first read stores a copy instead;
 ---`Compact` removes it again while it still equals the default. Inside a
----keyed-section entry that is not saved yet the copy is returned unstored, so
----a read never creates an entry.
+---keyed-section entry that is not saved yet, and in a read-only database, the
+---copy is returned unstored, so a read never creates an entry and never
+---changes data a newer version saved.
 ---@param node table
 ---@param key any
 ---@param default table
 ---@return table
 local function materialise(node, key, default)
   local copy = copyPlain(default)
-  if node.root.dead or wouldCreateEntry(node) then
+  if node.root.dead or rawget(node.db, "_readOnly") == true or wouldCreateEntry(node) then
     return copy
   end
   local container = resolveForWrite(node)
@@ -1365,10 +1489,16 @@ local function readRecord(node, key)
 
   local field = node.plan.fields[key]
   if type(value) ~= "nil" then
-    if field ~= nil and field.proxied ~= false and type(value) == "table" then
+    if field == nil or field.proxied == false then
+      return value
+    end
+    if type(value) == "table" then
       return node.children[key]
     end
-    return value
+    -- A record or keyed section is stored as something other than a table:
+    -- corrupted or hand-edited data. It reads as absent, so the view below
+    -- and its defaults stay usable, and the next write through that view
+    -- replaces it (`resolveForWrite`).
   end
   if field == nil then
     return nil
@@ -1423,10 +1553,14 @@ local function readMap(node, key)
 
   local valuesPlan = node.plan.values
   if type(value) ~= "nil" then
-    if valuesPlan.proxied ~= false and type(value) == "table" then
+    if valuesPlan.proxied == false then
+      return value
+    end
+    if type(value) == "table" then
       return entryView(node, key)
     end
-    return value
+    -- An entry declared as a record or keyed section but stored as a
+    -- scalar reads as absent, as in `readRecord`.
   end
 
   local default = nil
@@ -1587,6 +1721,19 @@ local function refusalLabel(node)
   return "SettingsKit (" .. node.db._name .. ") "
 end
 
+---Why a read-only database refuses writes, and how to open it writable: the
+---tail of every read-only refusal. Both versions are integers `Open`
+---validated, so nothing here can be secret.
+---@param db table
+---@return string
+local function readOnlyReason(db)
+  return "the saved table has version "
+    .. rawget(db, "_newerVersion")
+    .. ", newer than options.version "
+    .. rawget(db, "_version")
+    .. "; pass options.allowNewerData = true to SettingsKit:Open to write it"
+end
+
 ---Return why the write `node[key] = value` would be refused, or `nil` when it
 ---would be accepted. Runs every check a write runs, in the same order, and
 ---writes nothing: the probe chain is set and cleared again. The message is
@@ -1596,6 +1743,9 @@ end
 ---@param value any
 ---@return string|nil refusal
 local function refuseWrite(node, key, value)
+  if rawget(node.db, "_readOnly") == true then
+    return refusalLabel(node) .. node.displayPath .. " is read-only: " .. readOnlyReason(node.db)
+  end
   if node.root.dead then
     return refusalLabel(node)
       .. node.displayPath
@@ -1883,9 +2033,14 @@ local function newLogoutListener(db)
 end
 
 ---Compact at logout. A failure is reported, never raised into EventKit's
----dispatch, so one addon's database cannot stop another's compaction.
+---dispatch, so one addon's database cannot stop another's compaction. A
+---read-only database is skipped: compaction removes saved values, and the
+---newer version that wrote them decides what they should be.
 ---@param db table
 local function compactOnLogout(db)
+  if rawget(db, "_readOnly") == true then
+    return
+  end
   local ok, failure = pcall(compactDatabase, db)
   if not ok then
     reportError(failure)
@@ -1970,23 +2125,138 @@ local UNAVAILABLE_REASONS = {
 
 -- Saved table ----------------------------------------------------------------
 
+---Return the first layout section of `candidate` that is present but not a
+---table, or `nil` when every section is absent or a table. Asks `type` only,
+---so it writes nothing and never touches a secret.
+---@param candidate table the saved table, or a migrated copy of it
+---@return string|nil sectionName
+local function findLayoutProblem(candidate)
+  for index = 1, #LAYOUT_SECTIONS do
+    local sectionName = LAYOUT_SECTIONS[index]
+    local section = rawget(candidate, sectionName)
+    if type(section) ~= "nil" and type(section) ~= "table" then
+      return sectionName
+    end
+  end
+  return nil
+end
+
+---Refuse a saved table whose layout sections are not all tables. Called
+---before `Open` writes anything but the migrations, so a refused table is
+---left exactly as the client loaded it.
+---@param raw table
+---@param name string saved-variable name, for messages
+---@param level integer stack level the failure is reported at
+local function validateLayout(raw, name, level)
+  local sectionName = findLayoutProblem(raw)
+  if sectionName ~= nil then
+    error("SettingsKit:Open " .. name .. "." .. sectionName .. " must be a table", level)
+  end
+end
+
+---Create every missing section of the saved table. The layout was validated
+---first, so every present section is a table.
+---@param raw table
+local function createLayout(raw)
+  for index = 1, #LAYOUT_SECTIONS do
+    local sectionName = LAYOUT_SECTIONS[index]
+    if type(rawget(raw, sectionName)) == "nil" then
+      rawset(raw, sectionName, {})
+    end
+  end
+end
+
+---Raise the failure of migration `step` at the caller of `Open`. A secret
+---error value is never formatted into the message.
+---@param name string saved-variable name
+---@param step integer
+---@param failure any
+---@param level integer stack level the failure is reported at
+local function raiseMigrationFailure(name, step, failure, level)
+  if isSecret(failure) then
+    failure = "<secret value>"
+  end
+  error(
+    "SettingsKit:Open migration " .. step .. " of " .. name .. " failed: " .. tostring(failure),
+    level
+  )
+end
+
+---Run one migration step as a transaction: the step changes a deep copy of
+---the saved table, and the copy's contents replace the saved table's only
+---when the step returns (and, for the last step, when the result has a valid
+---layout). A step that raises, or a last step that leaves a layout section
+---that is not a table, leaves the saved table exactly as it was, so the retry
+---at the next `Open` starts from untouched data instead of re-applying the
+---writes the failed attempt made.
+---@param raw table
+---@param name string saved-variable name, for messages
+---@param migration function
+---@param isLast boolean whether this is the last step with a function
+---@return boolean ok, any failure
+local function runMigrationStep(raw, name, migration, isLast)
+  local isSecretValue = readIsSecret()
+  local copy = copySavedTable(raw, isSecretValue)
+  local ok, failure = pcall(migration, copy)
+  if not ok then
+    return false, failure
+  end
+  if isLast then
+    -- Steps before the last may pass through any shape (a pre-SettingsKit
+    -- table can hold a field named `global`); the result the views will
+    -- read must have the layout, and is refused before it is committed.
+    local sectionName = findLayoutProblem(copy)
+    if sectionName ~= nil then
+      return false, name .. "." .. sectionName .. " must be a table"
+    end
+  end
+  adoptMigrated(raw, copy, isSecretValue)
+  return true, nil
+end
+
+---The highest step from `first` to `last` that has a migration function, or
+---`false` when none has.
+---@param migrations table|false
+---@param first integer
+---@param last integer
+---@return integer|false
+local function findLastMigration(migrations, first, last)
+  if migrations == false then
+    return false
+  end
+  for step = last, first, -1 do
+    if type(rawget(migrations, step)) ~= "nil" then
+      return step
+    end
+  end
+  return false
+end
+
 ---Run the migrations between the stored version and `version`, storing the
 ---version after each step so a failing step is retried and a finished one
----never runs again.
+---never runs again. Returns the stored version when it is newer than
+---`version` (data a newer version of the addon saved), which is left as it
+---is, and `false` otherwise.
+---
+---The layout is checked before anything is written when no step with a
+---function is pending, and on the result of the last such step before that
+---result is committed, so a table `Open` refuses never has its version
+---stamped or a migration committed on the way to the refusal.
 ---@param raw table
 ---@param name string saved-variable name, for messages
 ---@param version integer|false
 ---@param migrations table|false
 ---@param level integer stack level the failures are reported at
+---@return integer|false newerVersion
 local function migrate(raw, name, version, migrations, level)
   if version == false then
-    return
+    return false
   end
 
   -- A table with nothing in it was never written by an older version.
   if type(next(raw)) == "nil" then
     rawset(raw, "version", version)
-    return
+    return false
   end
 
   local stored = rawget(raw, "version")
@@ -1995,45 +2265,30 @@ local function migrate(raw, name, version, migrations, level)
   elseif isSecret(stored) or not isIntegerAtLeast(stored, 0) then
     error("SettingsKit:Open " .. name .. ".version must be a non-negative integer", level)
   end
+  if stored > version then
+    return stored
+  end
 
+  local lastMigration = findLastMigration(migrations, stored + 1, version)
+  if lastMigration == false then
+    validateLayout(raw, name, level + 1)
+  end
   for step = stored + 1, version do
-    local migration = migrations and rawget(migrations, step)
+    -- `migrations` is `false` when the option was omitted: every step is
+    -- then a version stamp with nothing to run.
+    local migration = nil
+    if migrations ~= false then
+      migration = rawget(migrations, step)
+    end
     if type(migration) ~= "nil" then
-      local ok, failure = pcall(migration, raw)
+      local ok, failure = runMigrationStep(raw, name, migration, step == lastMigration)
       if not ok then
-        if isSecret(failure) then
-          failure = "<secret value>"
-        end
-        error(
-          "SettingsKit:Open migration "
-            .. step
-            .. " of "
-            .. name
-            .. " failed: "
-            .. tostring(failure),
-          level
-        )
+        raiseMigrationFailure(name, step, failure, level + 1)
       end
     end
     rawset(raw, "version", step)
   end
-end
-
----Create every missing section of the saved table; refuse one that is not a
----table.
----@param raw table
----@param name string saved-variable name, for messages
----@param level integer stack level the failures are reported at
-local function ensureLayout(raw, name, level)
-  for index = 1, #LAYOUT_SECTIONS do
-    local sectionName = LAYOUT_SECTIONS[index]
-    local section = rawget(raw, sectionName)
-    if type(section) == "nil" then
-      rawset(raw, sectionName, {})
-    elseif type(section) ~= "table" then
-      error("SettingsKit:Open " .. name .. "." .. sectionName .. " must be a table", level)
-    end
-  end
+  return false
 end
 
 ---Whether a stored profile name is still usable. A corrupted entry is ignored
@@ -2102,6 +2357,32 @@ end
 
 -- Database methods -----------------------------------------------------------
 
+---Refuse a method that changes the saved table when the database is
+---read-only. Every changing method asks this right after its receiver check,
+---so nothing is validated, created or signalled on a read-only database.
+---@param db table a validated database
+---@param methodName string qualified public method name, used in the error
+---@param level integer stack level the failure is reported at
+local function refuseReadOnly(db, methodName, level)
+  if rawget(db, "_readOnly") == true then
+    error(
+      methodName
+        .. " cannot change "
+        .. rawget(db, "_name")
+        .. ", which is read-only: "
+        .. readOnlyReason(db),
+      level
+    )
+  end
+end
+
+---@param self SettingsKit.Database
+---@return boolean readOnly `true` when the saved table was written by a newer version and `allowNewerData` was not passed
+local function databaseIsReadOnly(self)
+  validateDatabase(self, "SettingsKit.Database:IsReadOnly", 3)
+  return rawget(self, "_readOnly") == true
+end
+
 ---@param self SettingsKit.Database
 ---@return string name the current profile
 local function databaseGetProfile(self)
@@ -2123,6 +2404,7 @@ end
 ---@return boolean changed `false` when `name` already was the current profile
 local function databaseSetProfile(self, name)
   validateDatabase(self, "SettingsKit.Database:SetProfile", 3)
+  refuseReadOnly(self, "SettingsKit.Database:SetProfile", 3)
   validateProfileName(name, "SettingsKit.Database:SetProfile name", 3)
 
   local db = self --[[@as table]]
@@ -2174,6 +2456,7 @@ end
 ---@param from string
 local function databaseCopyProfile(self, from)
   validateDatabase(self, "SettingsKit.Database:CopyProfile", 3)
+  refuseReadOnly(self, "SettingsKit.Database:CopyProfile", 3)
   validateProfileName(from, "SettingsKit.Database:CopyProfile from", 3)
 
   local db = self --[[@as table]]
@@ -2204,6 +2487,7 @@ end
 ---@param self SettingsKit.Database
 local function databaseResetProfile(self)
   validateDatabase(self, "SettingsKit.Database:ResetProfile", 3)
+  refuseReadOnly(self, "SettingsKit.Database:ResetProfile", 3)
   local db = self --[[@as table]]
   local current = db._profile
   ensureProfile(db._raw, current)
@@ -2217,6 +2501,7 @@ end
 ---@param name string
 local function databaseDeleteProfile(self, name)
   validateDatabase(self, "SettingsKit.Database:DeleteProfile", 3)
+  refuseReadOnly(self, "SettingsKit.Database:DeleteProfile", 3)
   validateProfileName(name, "SettingsKit.Database:DeleteProfile name", 3)
 
   local db = self --[[@as table]]
@@ -2244,18 +2529,27 @@ end
 ---Wipe the whole saved variable back to an empty layout. Every profile view
 ---obtained before is detached; `db.profile` is a new view of the default
 ---profile.
+---
+---The version stamped again is `options.version`, except in a database
+---opened with `allowNewerData` over newer data: that one keeps the newer
+---stored version, because SettingsKit never lowers a stored version.
 ---@param self SettingsKit.Database
 local function databaseResetDatabase(self)
   validateDatabase(self, "SettingsKit.Database:ResetDatabase", 3)
+  refuseReadOnly(self, "SettingsKit.Database:ResetDatabase", 3)
   local db = self --[[@as table]]
   local raw = db._raw
   local previous = db._profile
 
   wipe(raw)
-  if db._version ~= false then
-    rawset(raw, "version", db._version)
+  local stamp = db._version
+  if rawget(db, "_newerVersion") ~= false then
+    stamp = rawget(db, "_newerVersion")
   end
-  ensureLayout(raw, db._name, 3)
+  if stamp ~= false then
+    rawset(raw, "version", stamp)
+  end
+  createLayout(raw)
 
   for name in next, db._profileRoots do
     local node = rawget(views, rawget(db._profileRoots, name))
@@ -2503,6 +2797,7 @@ end
 ---@return integer removed how many values and tables were removed
 local function databaseCompact(self)
   validateDatabase(self, "SettingsKit.Database:Compact", 3)
+  refuseReadOnly(self, "SettingsKit.Database:Compact", 3)
   return compactDatabase(self)
 end
 
@@ -2644,7 +2939,8 @@ local function open(_, savedVariable, schema, options)
 
   validateSchemaTable(schema, 3)
   ---@cast schema table
-  local defaultProfile, version, migrations, maxScannedEntries = readOptions(options, 3)
+  local defaultProfile, version, migrations, maxScannedEntries, allowNewerData =
+    readOptions(options, 3)
 
   local raw = readGlobal(savedVariable)
   if type(raw) ~= "nil" and type(raw) ~= "table" then
@@ -2660,8 +2956,15 @@ local function open(_, savedVariable, schema, options)
     raw = {}
     writeGlobal(savedVariable, raw)
   end
-  migrate(raw, savedVariable, version, migrations, 3)
-  ensureLayout(raw, savedVariable, 3)
+  -- Data a newer version of the addon saved is left as that version wrote
+  -- it: nothing is migrated, the stored version is never lowered, and unless
+  -- the addon opted in, nothing is written at all.
+  local newerVersion = migrate(raw, savedVariable, version, migrations, 3)
+  local readOnly = newerVersion ~= false and not allowNewerData
+  validateLayout(raw, savedVariable, 3)
+  if not readOnly then
+    createLayout(raw)
+  end
 
   local charKey = keys.char
   local resolvedDefault = defaultProfile
@@ -2669,13 +2972,17 @@ local function open(_, savedVariable, schema, options)
     resolvedDefault = charKey or DEFAULT_PROFILE_NAME
   end
   local profileName = resolvedDefault
-  if charKey ~= false then
-    local stored = rawget(rawget(raw, "profileKeys"), charKey)
+  -- A read-only database may lack the section, since it created none.
+  local profileKeys = rawget(raw, "profileKeys")
+  if charKey ~= false and type(profileKeys) == "table" then
+    local stored = rawget(profileKeys, charKey)
     if isStoredProfileName(stored) then
       profileName = stored
     end
   end
-  ensureProfile(raw, profileName)
+  if not readOnly then
+    ensureProfile(raw, profileName)
+  end
 
   local db = setmetatable({
     _layout = DATABASE_SCHEMA,
@@ -2689,6 +2996,10 @@ local function open(_, savedVariable, schema, options)
     _profile = profileName,
     _profileRoots = {},
     _version = version,
+    -- The stored version when it is newer than `options.version`, else `false`.
+    _newerVersion = newerVersion,
+    -- `true` when newer data was opened without `allowNewerData`.
+    _readOnly = readOnly,
     -- `math.huge` when opened with `maxScannedEntries = SettingsKit.UNBOUNDED`.
     _maxScannedEntries = maxScannedEntries,
     _signals = {
@@ -2830,6 +3141,42 @@ if previousRevision ~= nil and previousRevision < 2 then
   end
 end
 
+---Bring a layout 1 database (revisions 1 to 4) to layout 2 by adding the
+---fields revision 5 reads. The database was opened writable under the older
+---contract and stays writable: turning it read-only in the middle of a
+---session would break an addon that already writes through it. Its
+---`_newerVersion` is still recorded from the saved table, so `ResetDatabase`
+---never lowers a newer stored version.
+---@param db table
+local function upgradeDatabaseLayout(db)
+  local newerVersion = false
+  local version = rawget(db, "_version")
+  local stored = rawget(rawget(db, "_raw"), "version")
+  if
+    version ~= false
+    and type(stored) == "number"
+    and not isSecret(stored)
+    and isIntegerAtLeast(stored, 0)
+    and stored > version
+  then
+    newerVersion = stored
+  end
+  rawset(db, "_newerVersion", newerVersion)
+  rawset(db, "_readOnly", false)
+  rawset(db, "_layout", DATABASE_SCHEMA)
+end
+
+-- Revision 5 records on every database whether it is read-only and which
+-- newer stored version it was opened over. Databases an older revision opened
+-- lack both fields; they get them once, here.
+if previousRevision ~= nil and previousRevision < 5 then
+  for _, db in next, databases do
+    if rawget(db, "_layout") == 1 then
+      upgradeDatabaseLayout(db)
+    end
+  end
+end
+
 -- Commit ---------------------------------------------------------------------
 
 rawset(Database, "GetProfile", databaseGetProfile)
@@ -2848,6 +3195,7 @@ rawset(Database, "Compact", databaseCompact)
 rawset(Database, "GetSavedVariable", databaseGetSavedVariable)
 rawset(Database, "Pairs", databasePairs)
 rawset(Database, "Validate", databaseValidate)
+rawset(Database, "IsReadOnly", databaseIsReadOnly)
 
 rawset(VIEW_METATABLE, "__index", viewIndex)
 rawset(VIEW_METATABLE, "__newindex", viewNewIndex)

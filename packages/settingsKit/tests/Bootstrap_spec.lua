@@ -197,7 +197,7 @@ describe("SettingsKit bootstrap", function()
 
     local upgraded = TestEnv.ReloadPackage()
     assert.are.equal(previous, upgraded)
-    assert.are.equal(4, upgraded.REVISION)
+    assert.is_true(upgraded.REVISION > 3)
     assert.are.equal(state, rawget(upgraded, "_state"))
     assert.are.equal(db, upgraded:Open("MyAddonDB"))
     assert.are.equal(profile, db.profile)
@@ -219,6 +219,57 @@ describe("SettingsKit bootstrap", function()
         return db[secret]
       end
     )
+  end)
+
+  it("upgrades revision 4 in place: its databases stay writable and gain IsReadOnly", function()
+    TestEnv.Reset()
+    TestEnv.InstallWowApi()
+    require("Registry")
+    require("SignalKit")
+    require("EventKit")
+    local S = require("SchemaKit")
+    local previous = TestEnv.LoadRevision(4)
+    TestEnv.SetPlayer()
+    local state = rawget(previous, "_state")
+    TestEnv.SavedVariable("NewerDB", { version = 9, profiles = { Default = { scale = 2 } } })
+    local current = previous:Open("CurrentDB", schemaFor(S), { version = 2 })
+    local newer = previous:Open("NewerDB", schemaFor(S), { version = 2 })
+    local profile = newer.profile
+
+    -- Leave both databases, and the prototype, as revision 4 built them:
+    -- layout 1, without the read-only fields, and no `IsReadOnly` method.
+    for _, db in ipairs({ current, newer }) do
+      rawset(db, "_layout", 1)
+      rawset(db, "_readOnly", nil)
+      rawset(db, "_newerVersion", nil)
+    end
+    rawset(previous.Database, "IsReadOnly", nil)
+
+    local upgraded = TestEnv.ReloadPackage()
+    assert.are.equal(previous, upgraded)
+    assert.are.equal(5, upgraded.REVISION)
+    assert.are.equal(state, rawget(upgraded, "_state"))
+    assert.are.equal(newer, upgraded:Open("NewerDB"))
+    assert.are.equal(profile, newer.profile)
+    for _, db in ipairs({ current, newer }) do
+      assert.are.equal(2, rawget(db, "_layout"))
+      assert.is_false(db:IsReadOnly())
+    end
+    assert.is_false(rawget(current, "_newerVersion"))
+    assert.are.equal(9, rawget(newer, "_newerVersion"))
+
+    -- Opened writable under revision 4, the database stays writable, and
+    -- ResetDatabase keeps the newer stored version.
+    profile.scale = 1.5
+    assert.are.equal(1.5, TestEnv.GetGlobal("NewerDB").profiles.Default.scale)
+    newer:ResetDatabase()
+    assert.are.equal(9, TestEnv.GetGlobal("NewerDB").version)
+    current:ResetDatabase()
+    assert.are.equal(2, TestEnv.GetGlobal("CurrentDB").version)
+
+    -- A database opened after the upgrade follows the new contract.
+    TestEnv.SavedVariable("LaterDB", { version = 9 })
+    assert.is_true(upgraded:Open("LaterDB", schemaFor(S), { version = 2 }):IsReadOnly())
   end)
 
   it("loads without EventKit", function()
