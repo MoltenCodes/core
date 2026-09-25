@@ -28,6 +28,8 @@ SHARED_TEST_SUPPORT = ROOT / "tests" / "support"
 CLIENT_TESTS = ROOT / "tests" / "client"
 #: The host benchmark's Lua: plain Lua 5.1 run by `tooling.bench.run`, never Busted.
 BENCH_LUA = ROOT / "tooling" / "bench" / "lua"
+#: The in-client benchmark's Lua: the harness addon and its modules, run by the game client.
+BENCH_CLIENT_LUA = ROOT / "tooling" / "bench" / "client"
 
 #: Selene configuration for test code: the Lua 5.1 library plus Busted's globals.
 TEST_CONFIG = "selene-tests.toml"
@@ -54,8 +56,9 @@ def discover_runtime_lua_files() -> list[Path]:
 
     That is each package's `src/` tree, each package's `fidelity/` tree (a
     suite that runs in the game client), the example addon's own source, the
-    real-client test addons under `tests/client/` and the host benchmark's Lua
-    under `tooling/bench/lua/`. The example, the test addons and the benchmark
+    real-client test addons under `tests/client/`, the host benchmark's Lua
+    under `tooling/bench/lua/` and the in-client benchmark's under
+    `tooling/bench/client/`. The example, the test addons and the benchmark
     are not Busted code, so they are held to the runtime standard library: a
     Busted global there would be a real defect.
     """
@@ -78,6 +81,8 @@ def discover_runtime_lua_files() -> list[Path]:
     discovered.extend(path for path in CLIENT_TESTS.glob("**/*.lua") if path.is_file())
     # The benchmark runs under plain `lua`, not Busted (docs/BENCHMARKS.md).
     discovered.extend(path for path in BENCH_LUA.glob("**/*.lua") if path.is_file())
+    # The in-client benchmark runs inside the game client (docs/BENCHMARKS.md).
+    discovered.extend(path for path in BENCH_CLIENT_LUA.glob("**/*.lua") if path.is_file())
     return sorted(set(discovered))
 
 

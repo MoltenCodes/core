@@ -277,43 +277,245 @@ What each pairing leaves out, on purpose:
   DropDown, ColorPicker, TabGroup and TreeGroup (not pinned; the in-client
   runner is where frame-heavy widgets can be priced).
 
-## In-client plan
+## In-client runner
 
-The host cannot measure what only the client shows. Those measurements belong
-to an in-client runner, which is designed here and not built yet:
+The host cannot measure what only the client shows: native calls, real
+frames, the frame loop, the collector over minutes, a real throttled message.
+The in-client runner measures those inside World of Warcraft, and runs the host
+workloads that make sense there on the client's own Lua. It follows the plan
+this section held before it was built; the places where it refines the plan
+are listed at the end. Its results are files of their own kind and are never
+mixed with host results.
 
-- **What it adds.** Frame time p95 and p99 with a synthetic load running
-  (listeners on busy events, timers, a comm stream, a settings panel) against
-  the same load on the Ace side; garbage-collector steps and memory growth over
-  a session of several minutes; UI open and close where WidgetKit and
-  OptionsKit have an Ace3 counterpart doing the same (AceGUI-3.0,
-  AceConfigDialog-3.0); the cost of `issecretvalue` and `securecallfunction`
-  as native calls on Retail 12.x; a real addon-message round trip through the
-  client's own throttle.
-- **The same workloads.** The workload modules talk to a host only through the
-  interface `BenchHost.lua` gives them (`RequireAll`, `Global`, `EventHandler`,
-  `Tick`, `timers`, `chat`). A client host implements it over the real API:
-  Kits come from Registry instead of `require`, Ace3 from `LibStub`,
-  `EventHandler` returns `frame:GetScript("OnEvent")` of the library's frame,
-  and the clock is `debugprofilestop()`. Cases that need simulated time (timer
-  firing, throttle refills) become frame-driven: they run across real frames
-  and report per-frame cost.
-- **The addons.** Like the real-client tests
-  ([`tests/client/README.md`](../tests/client/README.md)): a harness addon
-  `MoltenCodesBench` with a slash command (`/mcb run <workload> <side>`),
-  and one load-on-demand addon per side, `MoltenCodesBench_Kits` (the bundle's
-  Kits) and `MoltenCodesBench_Ace3` (the libraries copied from the benchmark
-  cache at install time, never from the repository), so only one side is in
-  memory during a run and a `/reload` separates runs. `tooling.client.install`
-  gains a `--bench` target that installs and removes them the way it handles
-  the test addons.
-- **Results.** The harness saves raw results to its saved variables; a
-  `tooling.bench` command reads them with `tooling/client/saved_variables.py`
-  into `tooling/bench/results/<date>-client-<flavour>.json`: the same schema
-  with `kind = "client"`, the flavour, the client build (`GetBuildInfo`), the
-  frame-rate cap, the addons loaded (only the bench addons), and the commits
-  of both sides. `report` renders host and client files separately and never
-  merges them.
+### The addons
+
+`python3 -m tooling.bench.client_install` (see
+[`TOOLING.md`](TOOLING.md#in-client-benchmark)) writes three development addons
+into the game folder; nothing of them ships:
+
+| Addon | Loads | Holds |
+|---|---|---|
+| `MoltenCodesBench` | at login | the harness and `/mcb`: its files from [`tooling/bench/client/MoltenCodesBench/`](../tooling/bench/client/MoltenCodesBench/), every benchmark Lua module (the host workloads and the client's own), and a generated `Installation.lua` with the installed commit, the flavour folder, what each side carries and the workload catalogue. It depends on no framework addon. |
+| `MoltenCodesBench_Kits` | on demand | the release bundle `tooling.package.build` builds, plus `LibStub.lua` for the InteropKit rows |
+| `MoltenCodesBench_Ace3` | on demand | exactly the pinned Ace3 files the host loads (`ace3.py`, `LOADED_FILES`) and Ace3's licence, copied from the checksummed cache at install time and checked against its digest again just before copying ([Ace3 licence](#ace3-licence)) |
+
+The harness loads **one side per session**, so the two sides never share a
+heap, a memory figure or a frame. It refuses to load a side while the
+standalone `MoltenCodes` addon or `MoltenCodesTest` is loaded, while another
+addon already put MoltenCodes Kits (Kits side) or any of the pinned Ace3
+libraries in LibStub (Ace3 side), or in combat: each would make the measured
+copy something other than the installed one. A refusal stops the run with the
+reason and the addons loaded, and saves nothing.
+
+### The same workloads, on a client host
+
+A workload talks to its host only through the interface `BenchHost.lua` gives
+it. [`ClientHost.lua`](../tooling/bench/client/lua/ClientHost.lua) gives the same
+interface over the real client, so a shared workload module runs unchanged:
+
+| Host call | In the client |
+|---|---|
+| `RequireAll` | Kits from the Registry the Kits side loaded (`MoltenCodes.Registries[2]`), each at the API of its committed manifest; `LibStub` is the global the side loaded |
+| `LoadFiles` | nothing to load (the side's `.toc` loaded the files); checks that the side carries every file the workload names |
+| `Global` | the client global |
+| `EventHandler` | the frame the side's library registered for the event and its `OnEvent` script, found with `GetFramesRegisteredForEvent` among the frames that did not exist before the side loaded (`EnumerateFrames` at load) |
+| `TakeReportedErrors` | the errors the host error handler received: the harness installs a capturing handler with `seterrorhandler` for the whole session item and restores the previous one |
+| `environment.Emit` | calls the `OnEvent` script of those same side frames, as the client does |
+| `timers`, `chat`, `chatFrame`, `Tick`, the rest of `environment` | the fake client's internals: touching one marks the case *not run in the client*, with the reason |
+
+The clock is `debugprofilestop()`. The client has no `require`: the installer
+wraps every module in one `DefineModule` call opened on the module's first
+line, so error messages keep the committed file's line numbers
+([`Loader.lua`](../tooling/bench/client/MoltenCodesBench/Loader.lua)).
+
+Shared workloads run in the client: `eventDispatch`, `messageDispatch`,
+`settings`, `codec`, `libraryRegistry`, `hooks`, `slashCommands`, `locale`.
+The others need the fake client and are replaced or left to the host
+([`client_workloads.py`](../tooling/bench/client_workloads.py) holds the list
+and the reasons, and a unit test holds it to the host catalogue):
+
+| Host workload | Why not in the client | Measured instead by |
+|---|---|---|
+| `timers` | every case advances the simulated clock | `timersLive` |
+| `comm` | sends into the recording outbox and advances the simulated clock | `whisper` |
+| `buckets` | delivery waits for the simulated clock | the host rows; the timers under it by `timersLive` |
+| `addonModules` | drives fake addons through the fake client's addon-loaded state | the host rows |
+| `options` | counts lines on the fake chat frame; in the client every typed command would print to the real chat frame thousands of times per batch | the host rows |
+| `widgets` | creates its own `UIParent`, which would replace the client's | `window` |
+
+### What only the client measures
+
+Each is a client-only workload under
+[`tooling/bench/client/lua/clientWorkloads/`](../tooling/bench/client/lua/clientWorkloads/),
+doing the same work on both sides through one set of adapters
+([`Adapters.lua`](../tooling/bench/client/lua/clientWorkloads/Adapters.lua)):
+
+- **`nativeCalls`**: `issecretvalue` of a number, a string and a table, and
+  `securecallfunction` of an empty function with none and two arguments, as
+  batches beside an empty Lua call and `pcall` for scale. No library is
+  involved; both sides run the same calls, so the ratio of the two columns is
+  the noise floor of the in-client numbers. A client without either function
+  reports those cases as not run.
+- **`window`**: a WidgetKit window against an AceGUI-3.0 `Frame`, 400 × 500,
+  holding a heading, 20 full-width labels, a button, a check box, a slider and
+  an edit box, laid out once with layout paused while filling, shown and
+  released. `open-close` times that as a batch (every native frame call
+  inside the time, the drawing not); `open-close-drawn` opens it, lets the
+  client draw it once and closes it, 60 times, and reports the frame after an
+  open against idle frames of the same session.
+- **`timersLive`**: TimerKit against AceTimer-3.0 on the client's clock. Start
+  and cancel a 10-minute one-shot (a batch; no cancelled native callback comes
+  due before the next reload); start 1,000 one-shots of 0.2 s in one frame and
+  wait for all (the starting frame's Lua time, how late each callback ran, the
+  frames it took); 200 repeating timers of 0.1 s for 10 s (ticks delivered
+  against ticks due, frame times).
+- **`whisper`**: a real addon-message round trip. CommKit against AceComm-3.0
+  with ChatThrottleLib, both at their default rates (800 bytes per second, a
+  4000-byte burst), whisper 200-, 1000- and 4000-byte messages to the player's
+  own character, five in a row, each sent when the previous one arrived whole.
+  Reported: round trip median, minimum and maximum, and messages lost after 60
+  s. The server's addon-message limits apply to both sides alike.
+- **`session`**: frame time and memory under a synthetic load shaped like a
+  busy addon: 10 listeners on each of 10 events that fire in any session
+  (auras, power, health, cooldown updates, the cursor, the mouse-over unit, UI
+  widgets), a message bus of 20 subscribers published 10 times per frame, 50
+  repeating timers of 0.1 s, an open window of 25 widgets whose label changes
+  every frame, and a 200-byte whisper to the player every 2 s. `idle-30s` is
+  the session's baseline with the side loaded; `load-60s` runs the load and
+  reports frame time p50, p95 and p99 and the Lua time of the per-frame work;
+  `memory-300s` runs it for five minutes, samples the heap every second and
+  the side addon's memory every 10 s (`UpdateAddOnMemoryUsage` and
+  `GetAddOnMemoryUsage`, present on every promised flavour's documentation),
+  and reports growth per minute, collection cycles, and what stayed after a
+  full collection at the end against one at the start, after the load was
+  torn down. `UpdateAddOnMemoryUsage` walks the whole heap, so that case's
+  frame times are not comparable with `load-60s`.
+
+### Methodology in the client
+
+- **One case per session.** The host's fresh process per case is a fresh UI
+  session here. `/mcb run <workload> <kits|ace3|both> [rounds]` queues one
+  *checks* item per side (it runs the correctness checks and lists the side's
+  cases), then one item per case, side and round, ordered as the host runner
+  orders its processes: the two sides of a case follow each other and the
+  first side alternates from case to case and round to round. Each item runs
+  in its own session; between items the harness shows a panel whose button
+  reloads the interface (a reload from a click is always allowed), and after
+  the reload it goes on by itself. A session that ended before its item
+  finished (a crash, a disconnect) is recorded as such after the next login.
+- **Settling.** An item starts 10 s after the session entered the world, so
+  login work, the first collections and CommKit's zoning throttle are over,
+  and never in combat.
+- **Batches.** A batch case follows the host protocol (2 warm-up, 5 timed and
+  1 allocation batch per round), one batch per frame so the client keeps
+  drawing; each batch still runs synchronously inside its frame, so nothing
+  else runs while it is timed, and the client pauses for the length of a
+  batch. A client that refuses `collectgarbage("stop")` gets no allocation
+  figure rather than a wrong one.
+- **Frame cases.** Frame times come from `GetTimePreciseSec` between
+  successive frames (no addon can reset it, unlike `debugprofilestop`), and
+  go into fixed-size histograms whose percentiles are exact to 1 %, so the
+  runner adds nothing to the heap while a case runs. Completed collection
+  cycles are counted with an unreachable key in a weak table, checked every
+  frame (exact to one cycle).
+- **Recorded with every item**: the client build, interface, flavour,
+  operating system and locale; the addons loaded after the side loaded; the
+  frame-rate settings (`maxFPS`, `maxFPSBk`, `targetFPS`, their `use` flags
+  and vertical sync) and `GetFramerate()`; the seconds since entering the world; the
+  side's load time and memory; whether errors could be captured; every error
+  the handler received; the installed commit and whether the working tree had
+  changes. The package versions and the Ace3 source are saved once per
+  installation.
+- **Reading a row.** As on the host, with one addition: the client's numbers
+  include what the client does around the Lua (native calls, the collector of
+  a much larger heap). Keep both sides' conditions equal: the same place in
+  the world, the camera still, the same frame-rate settings, and no other
+  addon loaded; the results list what was loaded.
+
+### Running it in the client
+
+In the repository:
+
+```bash
+python3 -m tooling.bench.client_install --wow-dir "/Applications/World of Warcraft" --dry-run
+python3 -m tooling.bench.client_install --wow-dir "/Applications/World of Warcraft"
+```
+
+In the game, step by step:
+
+1. In the addon list, leave `MoltenCodesBench`, `MoltenCodesBench_Kits` and
+   `MoltenCodesBench_Ace3` enabled (the two sides load only when the harness
+   asks), and disable `MoltenCodes`, `MoltenCodesTest` and, for comparable
+   numbers, every other addon. An addon that embeds Kits must be disabled:
+   the harness refuses the Kits side while any other copy of the Kits is
+   loaded, and names the addons that are.
+2. Log in somewhere quiet and leave the camera still.
+3. `/mcb list` shows the workloads and the host workloads the client skips.
+4. `/mcb run eventDispatch both` (or `kits`, `ace3`; an optional last number
+   runs up to 5 rounds). The first item starts 10 s later and loads one side.
+5. When the panel says so, click **Reload and go on** (or type
+   `/mcb continue`). The next item runs by itself after the reload. Repeat
+   until the chat says the run is complete. `/mcb status` shows progress,
+   `/mcb stop` drops the queue (saved results stay), `/mcb report` prints the
+   saved results of this installation.
+6. **Switching sides** needs a reload: a session that loaded one side refuses
+   the other. `both` switches for you at every reload. To run the sides one
+   at a time, run `/mcb run <workload> kits`, then after its last reload
+   `/mcb run <workload> ace3`; both sides stay enabled in the addon list
+   throughout, and the harness loads only the one the item needs.
+7. Log out, or reload once more, so the client writes the saved variables.
+
+Back in the repository:
+
+```bash
+python3 -m tooling.bench.client_report --wow-dir "/Applications/World of Warcraft"
+python3 -m tooling.bench.client_report --render tooling/bench/results/<date>-client-retail.json
+python3 -m tooling.bench.client_install --wow-dir "/Applications/World of Warcraft" --remove
+```
+
+`client_report` reads `WTF/Account/*/SavedVariables/MoltenCodesBench.lua` of
+each flavour folder without running Lua, keeps the entries of the most recent
+installation (older ones and test builds are reported and left out), pools the
+rounds of a batch case as the host runner does and takes the median of each
+frame measurement, writes `tooling/bench/results/<date>-client-<flavour>.json`
+(`-2`, `-3`... when the name is taken; `--out` names another file, `--dry-run`
+writes none) and prints the tables. `--remove` deletes the three addons, the
+harness's saved variables and their lines in every `AddOns.txt`, and nothing
+else; run the report first.
+
+### Client results files
+
+A client results file has the host file's shape where the two agree (per
+workload, per side: the libraries with their revision or minor, the checks,
+the cases with the host's timing fields), so the timing, measurement and check
+tables render the same way, and adds `kind = "client"`, the flavour, the
+client build, the frame-rate settings, the addons loaded, the settle time, the
+frame cases' measurements, the cases not run with their reason, and the host
+workloads the client does not run. `python3 -m tooling.bench.report` refuses a
+client file and `client_report --render` refuses a host file, so the two kinds
+are never rendered or merged together.
+
+### Refinements of the plan
+
+- **The installer is its own command**, `tooling.bench.client_install`,
+  instead of a `--bench` target of `tooling.client.install`: it needs the Ace3
+  cache and the benchmark's modules, which belong to `tooling/bench/`. It
+  shares the test installer's layout, safety and removal helpers, and the two
+  never remove each other's addons.
+- **A reload separates every case**, not only the sides: a case's set-up stays
+  in the Kits' and LibStub's singletons, so two cases in one session would not
+  measure what the host measures.
+- **Windows only.** The UI comparison is WidgetKit against AceGUI-3.0's
+  `Frame`. AceConfigDialog-3.0 is not in the pinned, checksummed file set, so
+  OptionsKit dialogs are not compared yet; adding it means pinning its files
+  and a new digest.
+- **The Kits side carries `LibStub.lua`** from the cache, which the host's
+  MoltenCodes process also loads for the InteropKit rows.
+- **Six host workloads are not run in the client**, with the reasons above;
+  their simulated-time cases became `timersLive` and `whisper`.
+- **The report is its own command**, `tooling.bench.client_report`, which reads
+  the saved variables and renders client files; `tooling.bench.report` stays
+  the host renderer.
 
 ## Ace3 licence
 
@@ -328,8 +530,9 @@ Development Team."* The conclusion for this repository:
   upstream repository into a cache outside the repository on the machine that
   runs the benchmark, which is use, not redistribution.
 - The results name Ace3's files, versions and commit, which the licence does
-  not restrict. A future in-client runner copies Ace3 from the cache into the
-  local game folder at install time, again without redistributing it.
+  not restrict. The in-client runner (`tooling.bench.client_install`) copies the
+  pinned files from the cache into the local game folder at install time,
+  verified against their digest, without redistributing them.
 
 ## Adding a workload
 

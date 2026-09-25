@@ -108,6 +108,11 @@ OPTIONAL_INTERFACE_DOCUMENTS = (Path("README.md"),)
 #: full `## Interface` line; see `validate_client_test_tocs`.
 CLIENT_TESTS = Path("tests/client")
 
+#: The in-client benchmark's harness addon, whose `.toc` is held to the same
+#: rule (`docs/BENCHMARKS.md`, "In-client runner"); its side addons' `.toc`
+#: files are generated at install time and never committed.
+BENCH_CLIENT_ADDONS = Path("tooling/bench/client")
+
 #: The document whose supported-client table is checked row by row.
 SUPPORTED_CLIENTS_DOCUMENT = Path("docs/EMBEDDING.md")
 
@@ -633,21 +638,25 @@ def validate_supported_client_table(path: Path, expected: SupportedClients) -> l
     return errors
 
 
-def validate_client_test_tocs(expected: SupportedClients) -> list[str]:
-    """Check the `.toc` of every real-client test addon under `tests/client/`.
+def validate_client_test_tocs(
+    expected: SupportedClients, folder: Path = CLIENT_TESTS, kind: str = "test addon"
+) -> list[str]:
+    """Check the `.toc` of every development addon directly under `folder`.
 
-    The installer writes the table's `## Interface` line into every test `.toc`
-    it installs, so one install layout serves every supported flavour; the
+    By default that is every real-client test addon under `tests/client/`;
+    `validate_interface_numbers` also passes the in-client benchmark's folder.
+    The installers write the table's `## Interface` line into every `.toc` they
+    install, so one install layout serves every supported flavour; the
     committed files must carry exactly that line too, once, so a copy loaded
     straight from the repository behaves the same and a reader sees what the
     client will. A single-number line, which `validate_interface_lines` allows
-    for a per-flavour example, is refused here: a test addon is never
+    for a per-flavour example, is refused here: a development addon is never
     per-flavour.
     """
     errors: list[str] = []
-    tocs = sorted((ROOT / CLIENT_TESTS).glob("*/*.toc"))
+    tocs = sorted((ROOT / folder).glob("*/*.toc"))
     if not tocs:
-        return [error(ROOT / CLIENT_TESTS, "no test addon .toc to check Interface numbers in")]
+        return [error(ROOT / folder, f"no {kind} .toc to check Interface numbers in")]
     wanted = expected.interface_numbers()
     for toc_path in tocs:
         lines = INTERFACE_LINE_RE.findall(toc_path.read_text(encoding="utf-8"))
@@ -699,6 +708,7 @@ def validate_interface_numbers(expected: SupportedClients | None = None) -> list
 
     errors.extend(validate_supported_client_table(ROOT / SUPPORTED_CLIENTS_DOCUMENT, expected))
     errors.extend(validate_client_test_tocs(expected))
+    errors.extend(validate_client_test_tocs(expected, BENCH_CLIENT_ADDONS, "benchmark addon"))
     return errors
 
 

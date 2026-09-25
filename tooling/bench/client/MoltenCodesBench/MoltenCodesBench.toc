@@ -1,0 +1,22 @@
+## Interface: 120100, 50504, 20506, 11509
+## Title: MoltenCodes Bench
+## Notes: Development harness that runs the MoltenCodes in-client benchmark with /mcb and saves its results.
+## Author: MoltenCodes
+## Version: 1.0.0
+## SavedVariables: MoltenCodesBenchResults
+## X-Category: Development Tools
+## X-License: MIT
+
+# Development only: never ship this addon. See docs/BENCHMARKS.md, "In-client runner".
+#
+# The harness depends on no framework addon on purpose: the Kits and Ace3 are
+# each in a load-on-demand side addon (MoltenCodesBench_Kits,
+# MoltenCodesBench_Ace3) that the harness loads, one per session.
+#
+# Installation.lua and the modules/ folder are written here by
+# `python3 -m tooling.bench.client_install`; they are not committed. The
+# installer replaces the line below with the generated module files.
+Installation.lua
+Loader.lua
+# @modules@
+Harness.lua

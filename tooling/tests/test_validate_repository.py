@@ -480,6 +480,10 @@ class InterfaceNumberTests(unittest.TestCase):
             "tests/client/MoltenCodesTest/MoltenCodesTest.toc",
             "## Interface: 120100, 11509\n## Title: Harness\n",
         )
+        self.write(
+            "tooling/bench/client/MoltenCodesBench/MoltenCodesBench.toc",
+            "## Interface: 120100, 11509\n## Title: Bench\n",
+        )
 
     def test_consistent_repository_is_accepted(self):
         self.write_consistent_repository()
@@ -631,6 +635,26 @@ class InterfaceNumberTests(unittest.TestCase):
 
         self.assertEqual(1, len(errors))
         self.assertIn("no test addon .toc", errors[0])
+
+    def test_benchmark_harness_toc_with_a_drifted_line_is_reported(self):
+        self.write_consistent_repository()
+        self.write(
+            "tooling/bench/client/MoltenCodesBench/MoltenCodesBench.toc", "## Interface: 120100\n"
+        )
+
+        errors = module.validate_interface_numbers(self.EXPECTED)
+
+        self.assertEqual(1, len(errors))
+        self.assertIn("MoltenCodesBench.toc", errors[0])
+
+    def test_missing_benchmark_harness_toc_is_reported(self):
+        self.write_consistent_repository()
+        (self.root / "tooling/bench/client/MoltenCodesBench/MoltenCodesBench.toc").unlink()
+
+        errors = module.validate_interface_numbers(self.EXPECTED)
+
+        self.assertEqual(1, len(errors))
+        self.assertIn("no benchmark addon .toc", errors[0])
 
     def test_example_directory_without_a_toc_is_reported(self):
         self.write_consistent_repository()

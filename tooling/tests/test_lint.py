@@ -26,6 +26,7 @@ class LuaLintDiscoveryTests(unittest.TestCase):
             module.SHARED_TEST_SUPPORT,
             module.CLIENT_TESTS,
             module.BENCH_LUA,
+            module.BENCH_CLIENT_LUA,
         )
         module.ROOT = self.root
         module.PACKAGES = self.packages
@@ -33,6 +34,7 @@ class LuaLintDiscoveryTests(unittest.TestCase):
         module.SHARED_TEST_SUPPORT = self.shared_support
         module.CLIENT_TESTS = self.root / "tests" / "client"
         module.BENCH_LUA = self.root / "tooling" / "bench" / "lua"
+        module.BENCH_CLIENT_LUA = self.root / "tooling" / "bench" / "client"
 
     def tearDown(self):
         (
@@ -42,6 +44,7 @@ class LuaLintDiscoveryTests(unittest.TestCase):
             module.SHARED_TEST_SUPPORT,
             module.CLIENT_TESTS,
             module.BENCH_LUA,
+            module.BENCH_CLIENT_LUA,
         ) = self.originals
         self.tempdir.cleanup()
 
@@ -54,6 +57,20 @@ class LuaLintDiscoveryTests(unittest.TestCase):
 
         self.assertIn(workload, module.discover_runtime_lua_files())
         self.assertNotIn(workload, module.discover_test_lua_files())
+
+    def test_in_client_benchmark_lua_is_runtime_lua(self):
+        """The in-client benchmark runs inside the game client, so it is judged as runtime code."""
+        harness = self.root / "tooling" / "bench" / "client" / "MoltenCodesBench"
+        modules = self.root / "tooling" / "bench" / "client" / "lua" / "clientWorkloads"
+        harness.mkdir(parents=True)
+        modules.mkdir(parents=True)
+        files = [harness / "Harness.lua", modules / "Session.lua"]
+        for path in files:
+            path.write_text("", encoding="utf-8")
+
+        for path in files:
+            self.assertIn(path, module.discover_runtime_lua_files())
+            self.assertNotIn(path, module.discover_test_lua_files())
 
     def test_discovers_nested_runtime_lua_files(self):
         nested = self.packages / "eventKit" / "src" / "internal"
@@ -155,6 +172,7 @@ class LintScopeTests(unittest.TestCase):
             module.SHARED_TEST_SUPPORT,
             module.CLIENT_TESTS,
             module.BENCH_LUA,
+            module.BENCH_CLIENT_LUA,
         )
         module.ROOT = self.root
         module.PACKAGES = self.packages
@@ -162,6 +180,7 @@ class LintScopeTests(unittest.TestCase):
         module.SHARED_TEST_SUPPORT = self.shared_support
         module.CLIENT_TESTS = self.root / "tests" / "client"
         module.BENCH_LUA = self.root / "tooling" / "bench" / "lua"
+        module.BENCH_CLIENT_LUA = self.root / "tooling" / "bench" / "client"
 
     def tearDown(self):
         (
@@ -171,6 +190,7 @@ class LintScopeTests(unittest.TestCase):
             module.SHARED_TEST_SUPPORT,
             module.CLIENT_TESTS,
             module.BENCH_LUA,
+            module.BENCH_CLIENT_LUA,
         ) = self.originals
         self.tempdir.cleanup()
 

@@ -151,6 +151,20 @@ python3 -m tooling.bench.run --workload timers --rounds 1 --repeat 1 --warmup 0
 python3 -m tooling.bench.report tooling/bench/results/<date>-host.json
 ```
 
+Run the same comparison inside the game client: install the `MoltenCodesBench`
+harness and its two load-on-demand side addons (the Kits, and Ace3 copied from
+the benchmark cache), type `/mcb run <workload> both` in the game, then read the
+saved results into `tooling/bench/results/<date>-client-<flavour>.json`; remove
+everything afterwards (see `docs/BENCHMARKS.md`, "In-client runner"):
+
+```bash
+python3 -m tooling.bench.client_install --wow-dir "/Applications/World of Warcraft" --dry-run
+python3 -m tooling.bench.client_install --wow-dir "/Applications/World of Warcraft"
+python3 -m tooling.bench.client_report --wow-dir "/Applications/World of Warcraft"
+python3 -m tooling.bench.client_report --render tooling/bench/results/<date>-client-retail.json
+python3 -m tooling.bench.client_install --wow-dir "/Applications/World of Warcraft" --remove
+```
+
 Run tooling unit tests:
 
 ```bash

@@ -10,6 +10,7 @@ tooling/
 ├── spell.py                        # runs the pinned cspell over the documentation
 ├── spell-words.txt                 # the project dictionary cspell reads
 ├── api/                            # apiKit metadata pipeline; see "API metadata tooling"
+├── bench/                          # Kits against Ace3: "Host benchmark" and "In-client benchmark"
 │   ├── flavours.json              # the apiKit flavours: namespaces, mirror branches, detection facts
 │   ├── fetch.py                   # downloads one flavour's documentation tables at a pinned commit
 │   ├── lua_tables.py              # parses the tables
@@ -158,8 +159,8 @@ where there is one, the line to add:
 - each `src/.luarc.json` and `examples/.luarc.json` against the dependency
   closure and the example's `embeds.xml`;
 - every quoted `## Interface` line, the supported-client table and the
-  `.toc` of every real-client test addon (see "Supported clients: one table")
-  and the apiKit flavour table;
+  `.toc` of every real-client test addon and of the in-client benchmark's
+  harness (see "Supported clients: one table") and the apiKit flavour table;
 - `.pkgmeta`: every release package moved (`src` and `docs`) exactly once, no
   development or unknown package moved, every development package ignored,
   and every root entry except `LICENSE` and `packages/` ignored, so the
@@ -220,7 +221,7 @@ standard libraries:
 
 | Scope | Files | Configuration |
 |---|---|---|
-| runtime Lua | `packages/*/src/**`, `packages/*/fidelity/**`, `examples/*.lua`, `tests/client/**` | [`selene.toml`](../selene.toml) |
+| runtime Lua | `packages/*/src/**`, `packages/*/fidelity/**`, `examples/*.lua`, `tests/client/**`, `tooling/bench/lua/**`, `tooling/bench/client/**` | [`selene.toml`](../selene.toml) |
 | test Lua | `packages/*/tests/**`, `examples/tests/**`, `tests/support/**` | [`selene-tests.toml`](../selene-tests.toml) |
 
 Both scopes run even when the first fails, so one broken scope cannot hide the
@@ -960,7 +961,7 @@ until all four exist.
 `tooling/bench/` compares Kits with the Ace3 libraries that do the same work,
 on host Lua 5.1. [`BENCHMARKS.md`](BENCHMARKS.md) is the full account: the
 principles, the methodology, each workload, what was stubbed for Ace3 and why
-that is fair, the in-client plan and the measured results.
+that is fair, the in-client runner and the measured results.
 
 ```text
 tooling/bench/
@@ -1002,6 +1003,76 @@ python3 -m tooling.bench.ace3 [--cache DIR]   # fetch only; run does this itself
 - **Lint.** The benchmark's Lua is plain Lua 5.1 run outside Busted, so
   `python3 -m tooling.lint` holds it to the runtime scope (`selene.toml`)
   alongside `tests/client/`.
+
+## In-client benchmark
+
+The in-client runner measures the same comparison inside the game client,
+plus what only the client shows (native calls, real windows, timers on the
+client's clock, a real throttled whisper, frame time and memory over a
+session). [`BENCHMARKS.md`](BENCHMARKS.md#in-client-runner) is the full account:
+the addons, the client host, the client-only workloads, the methodology and
+how the owner runs it step by step.
+
+```text
+tooling/bench/
+├── client_workloads.py   # which host workloads run in the client, why the others do not, the client-only ones
+├── client_install.py     # installs the harness and the two side addons into a game folder, or removes them
+├── client_report.py      # reads the harness's saved variables into results/<date>-client-<flavour>.json
+└── client/
+    ├── .luarc.json       # lua-language-server settings for the folder
+    ├── MoltenCodesBench/ # the harness addon: .toc, Loader.lua (modules without require), Harness.lua (/mcb)
+    └── lua/              # ClientBench.lua (measurement), ClientHost.lua (the host interface over the client)
+        └── clientWorkloads/  # the client-only workloads, their adapters and frame statistics
+```
+
+```bash
+python3 -m tooling.bench.client_install --wow-dir DIR [--flavour-dir _retail_] [--cache DIR] [--dry-run]
+python3 -m tooling.bench.client_install --wow-dir DIR [--flavour-dir _retail_] --remove [--dry-run]
+python3 -m tooling.bench.client_report --wow-dir DIR [--flavour-dir NAME ...] [--out FILE] [--markdown FILE] [--dry-run]
+python3 -m tooling.bench.client_report --saved-variables FILE [--saved-variables FILE ...] [--out FILE] [--dry-run]
+python3 -m tooling.bench.client_report --render FILE [--markdown FILE]
+```
+
+- **Install** builds the release bundle into a temporary directory, fetches
+  (or reuses) the pinned Ace3 cache exactly as `tooling.bench.run` does and
+  checks its digest again, then replaces `MoltenCodesBench`,
+  `MoltenCodesBench_Kits` and `MoltenCodesBench_Ace3` under
+  `<DIR>/<flavour>/Interface/AddOns`. The harness gets its committed `.lua`
+  files, `modules/` (every Lua module under `tooling/bench/lua/` except the
+  host's `main.lua`, `BenchHost.lua` and `SimulatedTimers.lua`, and every
+  module under `tooling/bench/client/lua/`, each wrapped in one
+  `DefineModule` call opened on its first line so line numbers survive), its
+  `.toc` with the module list in place of the `# @modules@` line, and a
+  generated `Installation.lua`. The Kits side gets the bundle's Lua files and
+  licence and `LibStub/LibStub.lua`; the Ace3 side gets the files of
+  `ace3.LOADED_FILES` verbatim, licence included. Both sides are
+  `## LoadOnDemand: 1` with `## Dependencies: MoltenCodesBench`, and every
+  `.toc` carries the supported-client `## Interface` line. No other addon is
+  touched; `--dry-run` changes nothing and downloads nothing. Ace3 is never
+  in the repository: copying it into the local game folder is use, not
+  redistribution.
+- **Remove** deletes `MoltenCodesBench` and every `MoltenCodesBench_*` entry
+  of `AddOns`, every `MoltenCodesBench.lua` and `.lua.bak` under
+  `WTF/Account/*/SavedVariables/` and `WTF/Account/*/*/*/SavedVariables/`,
+  and the bench addons' lines in every `AddOns.txt`, with the same link and
+  line-ending care as the test installer (whose removal helpers it shares,
+  with its own notion of which addons it owns). The two installers never
+  remove each other's addons.
+- **Report** reads the account-wide `MoltenCodesBench.lua` of each flavour
+  folder (or the files given) without running Lua, keeps the most recent
+  installation's entries, leaves out test builds, and writes one
+  `kind = "client"` file per flavour; `tooling.bench.report` refuses such a
+  file and `--render` refuses a host file.
+- **Tests.** `tooling/tests/test_bench_client.py` installs into and removes
+  from a fake game folder with a neighbouring addon and saved variables that
+  must survive, with a fake verified Ace3 cache; holds the catalogue to the
+  host's and to the Lua files; and feeds the report saved variables written in
+  the client's format. No network, no Lua, no real game folder.
+- **Lint and checks.** `tooling/bench/client/` is runtime Lua for
+  `python3 -m tooling.lint`, StyLua formats it, and
+  `lua-language-server --check tooling/bench/client --checklevel=Warning` reads
+  its `.luarc.json`. Repository validation holds the harness `.toc` to the
+  supported-client line.
 
 ## Future tooling
 

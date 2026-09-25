@@ -312,6 +312,11 @@ def render_environment(document: dict[str, Any]) -> list[str]:
 
 def render(document: dict[str, Any]) -> str:
     """The whole report."""
+    if document.get("kind", "host") != "host":
+        raise ReportError(
+            f"this is a {document.get('kind')!r} results file; host and client results are never "
+            "rendered together: render it with python3 -m tooling.bench.client_report --render"
+        )
     if document.get("schema") != RESULTS_SCHEMA:
         raise ReportError(
             f"unsupported results schema {document.get('schema')!r}; expected {RESULTS_SCHEMA}"

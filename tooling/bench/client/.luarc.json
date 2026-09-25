@@ -1,0 +1,19 @@
+{
+  "runtime": {
+    "version": "Lua 5.1",
+    "path": [
+      "lua/?.lua",
+      "../lua/?.lua"
+    ]
+  },
+  "workspace": {
+    "library": [
+      "../../../meta",
+      "../lua"
+    ],
+    "checkThirdParty": false
+  },
+  "format": {
+    "enable": false
+  }
+}

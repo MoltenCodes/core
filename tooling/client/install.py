@@ -469,16 +469,27 @@ def is_owned_addon(name: str) -> bool:
     return name in (FRAMEWORK_ADDON, HARNESS_ADDON) or name.startswith(TEST_ADDON_PREFIX)
 
 
-def addons_to_remove(layout: ClientLayout) -> list[Path]:
-    """Every installed folder or link this command owns in ``AddOns``."""
-    return [path for path in sorted(layout.addons_dir.iterdir()) if is_owned_addon(path.name)]
+#: Decides whether an addon name belongs to the installer that removes it.
+OwnsAddon = Callable[[str], bool]
 
 
-def saved_variables_to_remove(layout: ClientLayout) -> tuple[list[Path], list[Path]]:
-    """The harness's and test addons' saved-variables files, and the folders skipped as links out.
+def addons_to_remove(layout: ClientLayout, owns: OwnsAddon = is_owned_addon) -> list[Path]:
+    """Every installed folder or link in ``AddOns`` whose name ``owns`` claims."""
+    return [path for path in sorted(layout.addons_dir.iterdir()) if owns(path.name)]
 
-    ``glob`` would walk through a linked account or character folder; a folder
-    that resolves outside the game folder is reported instead of searched.
+
+def saved_variables_to_remove(
+    layout: ClientLayout,
+    names: Sequence[str] = SAVED_VARIABLES_NAMES,
+    patterns: Sequence[str] = TEST_ADDON_SAVED_VARIABLES_PATTERNS,
+) -> tuple[list[Path], list[Path]]:
+    """The saved-variables files to remove, and the folders skipped as links out.
+
+    ``names`` are exact file names and ``patterns`` globs, both looked for in
+    every account and character ``SavedVariables`` folder; the defaults are the
+    test harness's and test addons' files. ``glob`` would walk through a linked
+    account or character folder; a folder that resolves outside the game
+    folder is reported instead of searched.
     """
     files: list[Path] = []
     skipped: list[Path] = []
@@ -487,11 +498,11 @@ def saved_variables_to_remove(layout: ClientLayout) -> tuple[list[Path], list[Pa
             if not is_inside(folder, layout.wow_dir):
                 skipped.append(folder)
                 continue
-            for name in SAVED_VARIABLES_NAMES:
+            for name in names:
                 candidate = folder / name
                 if candidate.is_file() or candidate.is_symlink():
                     files.append(candidate)
-            for file_pattern in TEST_ADDON_SAVED_VARIABLES_PATTERNS:
+            for file_pattern in patterns:
                 for candidate in sorted(folder.glob(file_pattern)):
                     if candidate.is_file() or candidate.is_symlink():
                         files.append(candidate)
@@ -504,16 +515,16 @@ def read_addon_state(path: Path) -> str:
         return handle.read()
 
 
-def owned_addon_state_lines(text: str) -> list[str]:
-    """The lines of an ``AddOns.txt`` that name an addon this command installs."""
+def owned_addon_state_lines(text: str, owns: OwnsAddon = is_owned_addon) -> list[str]:
+    """The lines of an ``AddOns.txt`` that name an addon ``owns`` claims."""
     return [
-        line
-        for line in text.splitlines(keepends=True)
-        if is_owned_addon(line.split(":", 1)[0].strip())
+        line for line in text.splitlines(keepends=True) if owns(line.split(":", 1)[0].strip())
     ]
 
 
-def addon_state_files_to_clean(layout: ClientLayout) -> tuple[list[Path], list[Path]]:
+def addon_state_files_to_clean(
+    layout: ClientLayout, owns: OwnsAddon = is_owned_addon
+) -> tuple[list[Path], list[Path]]:
     """The ``AddOns.txt`` files that list an owned addon, and the ones skipped as links out."""
     files: list[Path] = []
     skipped: list[Path] = []
@@ -522,19 +533,19 @@ def addon_state_files_to_clean(layout: ClientLayout) -> tuple[list[Path], list[P
             if not is_inside(candidate, layout.wow_dir):
                 skipped.append(candidate)
                 continue
-            if owned_addon_state_lines(read_addon_state(candidate)):
+            if owned_addon_state_lines(read_addon_state(candidate), owns):
                 files.append(candidate)
     return files, skipped
 
 
-def drop_owned_addon_state_lines(path: Path) -> None:
-    """Rewrite one ``AddOns.txt`` without the lines of the addons this command installs.
+def drop_owned_addon_state_lines(path: Path, owns: OwnsAddon = is_owned_addon) -> None:
+    """Rewrite one ``AddOns.txt`` without the lines of the addons ``owns`` claims.
 
     Every other line, its order and its line ending stay as the client wrote
     them; bytes that are not UTF-8 survive through ``surrogateescape``.
     """
     text = read_addon_state(path)
-    owned = set(owned_addon_state_lines(text))
+    owned = set(owned_addon_state_lines(text, owns))
     kept = [line for line in text.splitlines(keepends=True) if line not in owned]
     with path.open("w", encoding="utf-8", errors="surrogateescape", newline="") as handle:
         handle.write("".join(kept))
