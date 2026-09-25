@@ -4,7 +4,7 @@ local expectErrorContaining = TestEnv.expectErrorContaining
 
 ---The implementation revision `src/SignalKit.lua` carries; `Manifest_spec.lua`
 ---pins the same number against `package.manifest.json`.
-local CURRENT_REVISION = 8
+local CURRENT_REVISION = 9
 
 ---The package-wide limits a fresh session starts with.
 local DEFAULT_LIMITS = { maxBuses = 64, maxJournalCapacity = 1024, maxJournalArguments = 8 }
@@ -172,7 +172,7 @@ describe("SignalKit package bootstrap", function()
 
     assert.are.equal(SignalKit, upgraded)
     assert.are.equal(CURRENT_REVISION, upgraded.REVISION)
-    assert.are.equal(4, rawget(state, "schema"))
+    assert.are.equal(5, rawget(state, "schema"))
     assert.are.equal("table", type(upgraded.UNBOUNDED))
     assert.are.equal(rawget(state, "unbounded"), upgraded.UNBOUNDED)
     assert.are.same(DEFAULT_LIMITS, upgraded:GetLimits())
@@ -311,7 +311,7 @@ describe("SignalKit package bootstrap", function()
 
     assert.are.equal(SignalKit, upgraded)
     assert.are.equal(CURRENT_REVISION, upgraded.REVISION)
-    assert.are.equal(4, rawget(state, "schema"))
+    assert.are.equal(5, rawget(state, "schema"))
     assert.are.same(DEFAULT_LIMITS, upgraded:GetLimits())
     -- The older signal reports generation 0 until it fires, and connects
     -- and disconnects without hooks.
@@ -368,6 +368,82 @@ describe("SignalKit package bootstrap", function()
       journal:Fire(1, 2, 3, 4)
     end)
   end)
+
+  it(
+    "upgrades revision-8 state in place: delivery closures kept, topics isolated by Fire",
+    function()
+      TestEnv.Reset()
+      require("Registry")
+      local SignalKit = TestEnv.LoadRevision(8)
+      TestEnv.InstallHostErrorHandler()
+      local state = rawget(SignalKit, "_state")
+      local bus = SignalKit:Bus("Older", { openTopics = true })
+      local order = {}
+      local function legacyCallback(value)
+        order[#order + 1] = "legacy:" .. value
+      end
+      local function legacyFailing()
+        order[#order + 1] = "failing"
+        error("legacy failure", 0)
+      end
+      local legacy = bus:Subscribe("Topic", legacyCallback)
+      local failing = bus:Subscribe("Topic", legacyFailing)
+      local rawSignal = SignalKit:New()
+      local rawConnections = {}
+      for index = 1, 4 do
+        rawConnections[index] = rawSignal:Connect(function() end)
+      end
+
+      -- Reduce the state, the topic signal, the raw signal and the two
+      -- subscriptions to the shape revision 8 left behind: schema 4, no
+      -- isolation flag and no dispatch depth, and a subscription that holds a
+      -- delivery closure isolating the callback it keeps in `_busCallback`.
+      rawset(state, "schema", 4)
+      local topicSignal = rawget(rawget(rawget(bus, "_topics"), "Topic"), "signal")
+      for _, signal in ipairs({ topicSignal, rawSignal }) do
+        rawset(signal, "_isolated", nil)
+        rawset(signal, "_firing", nil)
+      end
+      for _, connection in ipairs({ legacy, failing }) do
+        local callback = rawget(connection, "_callback")
+        rawset(connection, "_busCallback", callback)
+        rawset(connection, "_callback", function(...)
+          return rawget(state, "isolate")(callback, ...)
+        end)
+      end
+
+      local upgraded = TestEnv.ReloadPackage()
+      local added = bus:Subscribe("Topic", function(value)
+        order[#order + 1] = "added:" .. value
+      end)
+      bus:Publish("Topic", "after upgrade")
+
+      assert.are.equal(SignalKit, upgraded)
+      assert.are.equal(CURRENT_REVISION, upgraded.REVISION)
+      assert.are.equal(5, rawget(state, "schema"))
+      assert.is_true(rawget(topicSignal, "_isolated"))
+      -- Older subscriptions come first, the failing one is reported exactly
+      -- once although it is isolated twice, and delivery goes on after it.
+      assert.are.same({ "legacy:after upgrade", "failing", "added:after upgrade" }, order)
+      assert.are.equal(1, #TestEnv.TakeReportedErrors())
+      -- Unsubscribe still finds an older subscription by its callback.
+      assert.are.equal(1, bus:Unsubscribe("Topic", legacyCallback))
+      assert.is_false(legacy:IsConnected())
+      assert.is_true(failing:Disconnect())
+      assert.is_true(added:Disconnect())
+
+      -- A signal from revision 8 carries no depth, since an older Fire may
+      -- still be walking it, so its array is replaced, never edited in place.
+      local listeners = rawget(rawSignal, "_listeners")
+      rawConnections[4]:Disconnect()
+      assert.are.equal(listeners, rawget(rawSignal, "_listeners"))
+      assert.are.equal(4, #listeners)
+      rawConnections[3]:Disconnect()
+      assert.are_not.equal(listeners, rawget(rawSignal, "_listeners"))
+      assert.are.equal(4, #listeners)
+      assert.is_nil(rawget(rawSignal, "_firing"))
+    end
+  )
 
   it("rejects schema-3 state that carries no limits table instead of indexing it", function()
     TestEnv.Reset()

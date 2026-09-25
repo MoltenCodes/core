@@ -120,13 +120,16 @@ Dispatch is optimized for the common pattern where signals fire more often than 
 
 `Fire()` captures the current listener-array reference and its length without allocating a copy. `Connect()` appends in `O(1)`; an in-progress dispatch keeps its original length boundary, so the new listener is deferred.
 
-`Disconnect()` marks the shared connection inactive in `O(1)` without allocating, so in-progress dispatches skip it immediately. The handle stays in the listener array as a tombstone until at least half the array is tombstones, at which point the array is compacted. Disconnection is therefore amortized `O(1)` and the array never retains more than twice the live listener count.
+`Disconnect()` marks the shared connection inactive in `O(1)`, so in-progress dispatches skip it immediately. Outside a dispatch of the signal it then edits the array in place without allocating: an entry disconnected at the end is dropped at once, and once at least half the array is disconnected the live entries are shifted down. During a dispatch the handle stays as a tombstone and compaction replaces the array, so the running dispatch keeps its own. Disconnection is therefore amortized `O(1)` and the array never retains more than twice the live listener count.
 
-This keeps the hot dispatch path allocation-free while making both connection and bulk teardown cheap and deterministic. See [`docs/API.md`](docs/API.md) for measured numbers.
+Connecting allocates exactly one table, the connection handle, which the contract needs: it keeps answering `IsConnected` after `Disconnect`. A bus subscription holds the subscriber's own callback, and the topic's dispatch isolates it, so there is no wrapper closure per subscription and no extra call per delivery.
+
+This keeps the hot dispatch path allocation-free while making both connection and bulk teardown cheap and deterministic. See [`docs/API.md`](docs/API.md) for measured numbers and [`docs/INTERNALS.md`](docs/INTERNALS.md) for the storage layout.
 
 ## Documentation
 
 - [`docs/API.md`](docs/API.md) — complete API, mutation semantics, hooks, generations, journals and named buses.
+- [`docs/INTERNALS.md`](docs/INTERNALS.md) — listener storage, dispatch depth, handle layout and bus isolation, for maintainers.
 - [`CHANGELOG.md`](CHANGELOG.md) — package evolution.
 - [`tests/README.md`](tests/README.md) — behavior covered by executable specs.
 

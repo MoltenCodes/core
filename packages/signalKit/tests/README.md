@@ -14,6 +14,14 @@ Coverage includes:
 - receiver validation for signal and connection methods, including the line the
   error points at;
 - tombstone/compaction retention bounds and listener order across compaction;
+- listener storage edited in place outside a dispatch (tail drop, in-place
+  compaction, `DisconnectAll` and `Unsubscribe` settling once) and replaced
+  during one, a `Once` tombstone settled later, a connect behind a tail
+  tombstone deferred, the dispatch depth restored by an outer `Fire` and left
+  raised by an escaped error (replacement from then on), live subscriptions
+  against `maxListeners`, and a bus scope closed during a publish;
+- allocation guards: only the handle per connect and disconnect (raw and bus),
+  nothing for a one-by-one teardown, `DisconnectAll` or `Unsubscribe`;
 - allocation guards for `Fire()` and `Disconnect()` using `collectgarbage("count")`
   deltas with tolerance;
 - the in-place upgrade path for signals created by implementation revision 1;
@@ -67,7 +75,10 @@ Coverage includes:
   without state, the upgrade from revision-4 state (sentinel, limits, the
   logout watcher and the journal tables added), the upgrade from revision-6
   state (journal tables and limits added, older signals reporting generation
-  0 and connecting without hooks), refusal of schema-3 state without a
+  0 and connecting without hooks), the upgrade from revision-8 state (topic
+  signals marked isolated, older subscriptions delivered first with their
+  delivery closure and found by `Unsubscribe`, an error reported once, older
+  signals compacting by replacement), refusal of schema-3 state without a
   limits table, buses, set limits, the sentinel identity
   and journals with their history carried into a newer revision, refusal of an
   incomplete journal prototype, and refusal to reinterpret a newer revision's
@@ -85,6 +96,7 @@ Spec files:
 | `Errors_spec.lua` | argument and receiver validation at the calling line, listener error propagation |
 | `Connection_spec.lua` | connection lifecycle and idempotent `Disconnect` |
 | `Compaction_spec.lua` | tombstones, compaction, allocation guards, the revision-1 upgrade |
+| `Storage_spec.lua` | in-place settling outside a dispatch, replacement during one, dispatch depth after errors, bus storage, handle-only allocation guards |
 | `Hooks_spec.lua` | `onFirst` and `onLast`: options, transitions, `Once` and `DisconnectAll`, re-entrancy, hook errors |
 | `Generation_spec.lua` | `GetGeneration` |
 | `Journal_spec.lua` | `NewJournal`, `History`, the entry shape, the argument cap, secret values, allocation guards |

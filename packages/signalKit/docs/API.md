@@ -144,12 +144,19 @@ Each `Fire()` captures the active listener-array identity **and its current leng
 - `DisconnectAll()` prevents not-yet-run callbacks in the current snapshot from running.
 - A nested `Fire()` captures the then-current active listener array and therefore observes connects/disconnects performed before the nested call.
 
-A disconnect marks its connection rather than removing it from the array, and
-array compaction replaces the array instead of editing it. Already-running
-dispatches may therefore continue to hold an older array. Connection objects are
-shared across those arrays, so the disconnected flag makes a disconnect
-immediately visible everywhere, including to a dispatch that is mid-walk over an
-array the compaction has already superseded.
+A disconnect marks its connection at once, so every dispatch skips it from
+then on. How the array itself changes depends on whether a dispatch of that
+signal is walking it:
+
+- While none is, the disconnect edits the array in place and allocates
+  nothing: a disconnected entry at the end is dropped at once, and compaction
+  shifts the live entries down.
+- While one is, the entry stays in place as a tombstone, and compaction
+  replaces the array instead of editing it, so the running dispatch keeps the
+  array and the length it captured. Connection objects are shared across those
+  arrays, so the disconnected flag makes a disconnect visible everywhere,
+  including to a dispatch that is mid-walk over an array the compaction has
+  already superseded.
 
 These rules make re-entrant dispatch deterministic without allocating a listener-array copy for each `Fire()`.
 
@@ -157,7 +164,13 @@ These rules make re-entrant dispatch deterministic without allocating a listener
 
 Listener errors are not swallowed or converted into status values. The error propagates to the caller and the current dispatch stops immediately; later listeners in that dispatch are not invoked.
 
-SignalKit keeps no mutable dispatch-depth bookkeeping, so the signal remains usable after the caller handles an error.
+The signal remains usable after the caller handles an error. Its one piece of
+dispatch bookkeeping is a depth counter that tells a disconnect whether a
+dispatch is walking the array. An error that escapes the outermost `Fire`
+leaves that counter raised, and from then on the signal compacts by replacing
+its array, as every revision before 9 did: always safe, and nothing observable
+changes. An outer `Fire` restores the depth of a nested one that an error cut
+short and a listener caught.
 
 Bus deliveries are the exception: a bus is shared across addons, so its
 listener errors are isolated and reported instead. See
@@ -171,7 +184,9 @@ Disconnects every listener connected at the moment of the call and returns the n
 local removed = changed:DisconnectAll()
 ```
 
-Calling it when no listeners are connected returns `0`.
+Calling it when no listeners are connected returns `0`. Outside a dispatch of
+the signal the array is emptied in place; during one it is replaced, so the
+running dispatch finds every remaining connection disconnected.
 
 ## `signal:GetGeneration()`
 
@@ -332,41 +347,55 @@ Let `n` be the number of currently connected listeners.
 | `Fire(...)` | `O(n)` | none |
 | `Connect(...)` | amortized `O(1)` | none |
 | `Once(...)` | amortized `O(1)` | none |
-| `Disconnect()` | amortized `O(1)` | none, except on compaction |
-| `DisconnectAll()` | `O(n)` | one empty array |
+| `Disconnect()` | amortized `O(1)` | none; during a dispatch of the signal, one array per compaction |
+| `DisconnectAll()` | `O(n)` | none; during a dispatch of the signal, one empty array |
 | `GetGeneration()` | `O(1)` | none |
 | `journal:Fire(...)` | `O(n)` plus the argument count | none once every slot has seen the widest firing |
 | `journal:History()` | `O(1)`, then `O(1)` per entry walked | none |
 | `bus:Publish(...)` | `O(n)` plus the validator | none |
-| `bus:Subscribe(...)` | amortized `O(1)` | one handle and one delivery closure |
-| `bus:Unsubscribe(...)` | `O(n)` | none, except on compaction |
+| `bus:Subscribe(...)` | amortized `O(1)` | the connection handle only |
+| `bus:Unsubscribe(...)` | `O(n)` | none; during a publish of the topic, one array per compaction |
+
+`Connect`, `Once` and a bus subscription allocate exactly one table, the
+connection handle: a table with four fields (`_signal`, `_callback`,
+`_connected`, `_once`), 224 bytes on a 64-bit Lua 5.1, plus `_busScope` for a
+bus scope's subscription. The handle is inherent to the contract: it stays
+valid after `Disconnect` and keeps answering `IsConnected` with `false`, so
+SignalKit cannot take it back and reuse it. Specs guard the bound
+(`Storage_spec.lua`).
 
 ### Tombstones and compaction
 
-`Disconnect()` marks its connection as disconnected and leaves the handle in the
-listener array as a tombstone. The array is compacted — replaced by one holding
-only live entries — as soon as at least half of its slots are tombstones.
+`Disconnect()` marks its connection as disconnected. Outside a dispatch of the
+signal it then settles the array in place: a disconnected entry at the end
+is dropped at once (the common case of a listener connected and disconnected
+again leaves no trace), and as soon as at least half of the slots are
+disconnected the live entries are shifted down in connection order. During a
+dispatch the entry stays in the array as a tombstone and, at the same
+threshold, the array is replaced by a compacted copy (see
+[Mutation semantics](#mutation-semantics)).
 
 Each compaction is `O(n)` but removes `n/2` slots, so disconnect stays amortized
 `O(1)`, and the array never retains more than twice the live listener count. A
 disconnected handle's callback is released immediately; only the small handle
-table survives until the next compaction.
+table survives until it is settled away.
 
 Copying the whole array on every `Disconnect()`, the obvious alternative, makes
 tearing a signal down quadratic. Measured on Lua 5.1.5, disconnecting every
-listener of a signal one handle at a time:
+listener of a signal one handle at a time, front to back:
 
-| Listeners | Copy per disconnect | Tombstones and compaction |
-|---:|---:|---:|
-| 100 | 0.13 ms, 119 KB | 0.04 ms, 2 KB |
-| 500 | 2.03 ms, 2,658 KB | 0.18 ms, 9 KB |
-| 1000 | 7.22 ms, 10,585 KB | 0.34 ms, 17 KB |
-| 2000 | 28.53 ms, 42,248 KB | 0.68 ms, 33 KB |
-| 4000 | 97.55 ms, 168,805 KB | 1.45 ms, 65 KB |
+| Listeners | Copy per disconnect | Replacing compaction (revisions 2 to 8) | In place (revision 9) |
+|---:|---:|---:|---:|
+| 100 | 0.13 ms, 119 KB | 0.04 ms, 2 KB | 0.02 ms, 0 KB |
+| 500 | 2.03 ms, 2,658 KB | 0.21 ms, 9 KB | 0.12 ms, 0 KB |
+| 1000 | 7.22 ms, 10,585 KB | 0.45 ms, 17 KB | 0.26 ms, 0 KB |
+| 2000 | 28.53 ms, 42,248 KB | 0.82 ms, 33 KB | 0.49 ms, 0 KB |
+| 4000 | 97.55 ms, 168,805 KB | 1.67 ms, 65 KB | 1.01 ms, 0 KB |
 
-Copying grows by roughly 3.4× per doubling of `n` (quadratic); tombstones grow
-by roughly 2.1× (linear). At 4000 listeners the teardown is 67× faster and
-allocates 2,600× less.
+Copying grows by roughly 3.4× per doubling of `n` (quadratic); compaction
+grows by roughly 2× (linear). The last two columns were measured side by side
+on 2026-09-25 (best of five, collector stopped for the allocation); the first
+comes from the revision-2 measurement.
 
 `Fire()` allocates 0 KB, and the two type tests that validate the receiver are
 within measurement noise of a dispatch without them across repeated
@@ -413,7 +442,9 @@ Each topic is dispatched through an ordinary SignalKit signal, created when the
 topic is first subscribed to. Ordering, mutation during dispatch, `Once`
 semantics and re-entrancy are therefore exactly those documented for
 `signal:Fire` above; the bus adds naming, a topic policy and listener
-isolation, and never a second dispatch model.
+isolation, and never a second dispatch model. The topic's signal is marked
+isolated and holds each subscriber's own callback; its `Fire` wraps every
+delivery in the isolation (see `bus:Publish` below).
 
 ### Bounds
 
@@ -586,9 +617,11 @@ handler (`geterrorhandler()`, or `print` outside the client) and never reaches
 the publisher. See the taint section of
 [`docs/EMBEDDING.md`](../../../docs/EMBEDDING.md#taint).
 
-The `xpcall` path stages the payload in one reusable buffer and one reusable
-trampoline, so a steady-state publish allocates nothing of SignalKit's own on
-either path. The `xpcall` path is guarded by a spec; on the other path the cost
+The isolation is applied by the topic's own dispatch around each
+subscriber's callback: no wrapper closure per subscription and no extra call
+per delivery. The `xpcall` path stages the payload in one reusable buffer and
+one reusable trampoline, so a steady-state publish allocates nothing of
+SignalKit's own on either path. The `xpcall` path is guarded by a spec; on the other path the cost
 of `securecallfunction` itself is the client's.
 
 ### `bus:Subscribe(topic, callback)` and `bus:SubscribeOnce(topic, callback)`
@@ -599,8 +632,14 @@ and `connection:IsConnected()` behave exactly as documented above — or
 `nil, "full"` at the topic or listener bound. A `SubscribeOnce` subscription is
 disconnected before its callback runs, like `signal:Once`.
 
-Each subscription allocates one connection handle and one delivery closure; no
-publish allocates.
+Each subscription allocates its connection handle and nothing else; no
+publish allocates. Measured with the host benchmark (`docs/BENCHMARKS.md`, Lua
+5.1.5, both sides in the same run, 2026-09-25) against AceEvent-3.0 messages:
+a publish to 1, 10 and 100 subscribers takes 1.58×, 1.03× and 1.01× of
+`SendMessage`'s time, and a subscribe with its disconnect 1.55× to 1.60×, with
+224 bytes against none. The fixed part of a publish pays for the receiver
+check, the secret-value refusal of the topic, the topic policy and the
+generation; the subscribe pays for the handle.
 
 ### `bus:Unsubscribe(topic, callback)`
 
@@ -831,5 +870,19 @@ limits.
 Revision 8 keeps state schema 4. It refuses secret values at the caller
 before comparing them and tests outside values for absence with `type`; an
 upgrade over revision 7 changes no state.
+
+Revision 9 moves the state to schema 5, which marks every bus topic signal
+isolated (`_isolated`): the topic's `Fire` isolates each delivery around the
+subscriber's own callback, so a subscription no longer carries a delivery
+closure. An upgrade over revision 7 or 8 marks the topic signals it inherits.
+Their subscriptions keep the delivery closure they were made with, and with
+it the subscriber's callback in `_busCallback`, where `Unsubscribe` still
+finds it; such a subscription is isolated twice, which reports an error once.
+Their `_callback` is not rewritten, because an older copy's `Fire` may still be
+walking the signal on the stack below the upgrade and would then call the bare
+callback without isolation. Signals revision 9 creates carry a dispatch depth
+(`_firing`) and are edited in place outside a dispatch; a signal an older
+revision created carries none and keeps compacting by replacement, for the same
+reason.
 
 As with every Registry-managed package, a revision is selected before package initialization completes. Package initialization is therefore written so that all fallible dependency validation occurs before registration and the post-registration commit path performs only local deterministic mutations.

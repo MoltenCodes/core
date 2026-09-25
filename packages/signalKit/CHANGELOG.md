@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.7.4 — 2026-09-25
+
+- Performance round against AceEvent-3.0 messages (host benchmark, `docs/BENCHMARKS.md`). Before, a bus subscription was a six-field handle (an eight-slot hash part) plus a delivery closure that isolated the callback, every disconnect that crossed the compaction threshold allocated a new listener array, and a publish reached a subscriber through `Fire` and the closure.
+- A bus topic's signal is marked isolated and holds the subscriber's own callback; its dispatch calls the isolation function around each callback. No closure per subscription and one call less per delivery. `Publish` hands the validated topic straight to that dispatch.
+- Connection handles carry four fields (`_signal`, `_callback`, `_connected`, `_once`; a bus scope's subscription adds `_busScope`) built with a constructor of exactly those fields, so a handle is 224 bytes. Absent fields are never written.
+- Outside a dispatch of the signal, a disconnect edits the listener array in place and allocates nothing: a tombstone at the tail is dropped at once and compaction shifts the live entries down. During a dispatch the array is replaced at the threshold as before, so the running dispatch keeps its own. Signals carry a dispatch depth (`_firing`) for this; `Fire` restores it to the value it read, so an outer `Fire` repairs a nested one an error cut short, and an error escaping the outermost `Fire` only leaves that signal compacting by replacement. `DisconnectAll` empties the array in place outside a dispatch, and `Unsubscribe` marks every match and settles once.
+- The dispatch and connection paths read SignalKit's own tables with plain indexing instead of `rawget` C calls, and `Publish` and `Subscribe` recognise a valid call inline, running the validators (which still raise at the caller's line, in the same order, the secret refusal first) only for a call that fails a test.
+- No contract changed. `docs/API.md` no longer says that compaction always replaces the array or that SignalKit keeps no dispatch-depth bookkeeping; it states the in-place settling, the depth and its behaviour after an error, the handle as the only allocation, and the teardown measured side by side (4,000 listeners disconnected one by one: 1.01 ms and 0 KB against 1.67 ms and 65 KB).
+- Host benchmark, same run for both sides; before on 2026-09-25 under load average 5.7 (other agents benchmarking), after under load average 2.0. The ratio against Ace3 is the comparable figure:
+
+  | Case | Before | After | Before B/op | After B/op | Ace3 B/op |
+  |---|---:|---:|---:|---:|---:|
+  | publish to 1 subscriber | 627 ns, 3.04× | 305 ns, 1.58× | 0 | 0 | 0 |
+  | publish to 10 subscribers | 2,031 ns, 1.98× | 987 ns, 1.03× | 0 | 0 | 0 |
+  | publish to 100 subscribers | 15,782 ns, 1.84× | 7,937 ns, 1.01× | 0 | 0 | 0 |
+  | subscribe and disconnect beside 10 others | 1,414 ns, 3.72× | 575 ns, 1.60× | 538 | 224 | 0 |
+  | subscribe and disconnect the only subscriber | 1,447 ns, 3.67× | 561 ns, 1.55× | 560 | 224 | 0 |
+
+  What remains is the handle, which the contract keeps valid after `Disconnect` (so it cannot be reused), and per publish the receiver check, the secret-value refusal of the topic, the topic policy and the generation counter.
+- Implementation revision 9, package state schema 5: every bus topic signal is marked `_isolated`. An upgrade over revision 7 or 8 marks the topic signals it inherits; their subscriptions keep the delivery closure and `_busCallback` (found by `Unsubscribe`) and are isolated twice, which reports an error once. Signals an older revision created carry no depth and keep compacting by replacement, because an older copy's `Fire` may still walk them below the upgrade. `docs/INTERNALS.md` is new.
+- 241 specs (21 new): `Storage_spec.lua` covers in-place settling outside a dispatch and replacement during one, `Once` tombstones, a connect behind a tail tombstone, the depth after nested and escaped errors, bus storage (the callback held and isolated, `Unsubscribe` settling once, `maxListeners` against live subscriptions, a scope closed during a publish) and allocation guards (only the handle per connect and disconnect, raw and bus; nothing for a one-by-one teardown, `DisconnectAll` or `Unsubscribe`); `Bootstrap_spec.lua` upgrades emulated revision-8 state in place. `SignalKit` API generation 1 is unchanged.
+
 ## 0.7.3 — 2026-09-24
 
 - Secret values: API.md (validators and error behaviour) and the source comment on `isSecret` no longer claim that comparing a secret with anything, `nil` included, raises, or that a raw identity test is safe whatever the other side. They state what was measured on Retail 12.1.0 b69933 (2026-09-24): a secret compared with a value of its own type raises (`==`, `~=`, `<`, `<=` and `rawequal` alike) and a secret used as a table key raises, while a comparison with `nil` or with a value of another type answers without raising. The `type(value) == "nil"` rule stays, as the repository's uniform rule that never compares anything. Comments and documentation only: `luac -s -l` gives the same instruction listing before and after, so the implementation revision is unchanged.

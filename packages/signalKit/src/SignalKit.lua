@@ -31,7 +31,8 @@
 --   Bootstrap ............. Registry resolution and registration
 --   Shared state .......... LuaCATS types, state creation and migration
 --   Receiver validation ... signal and connection receiver checks
---   Listener storage ...... tombstones, compaction, connect and disconnect
+--   Listener storage ...... tombstones, in-place settling, compaction, connect,
+--                           disconnect
 --   Signal methods ........ New, Connect, Once, Fire, DisconnectAll, GetGeneration
 --   Listener isolation .... allocation-free protected delivery for buses
 --   Bus validation ........ receiver, name, topic and policy checks
@@ -47,16 +48,17 @@
 
 local PACKAGE_NAME = "signalKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 8
+local IMPLEMENTATION_REVISION = 9
 local REQUIRED_REGISTRY_API = 2
 
 -- Schema of the private `_state` table. Revisions 1 to 3 carried no state at
 -- all; revision 4 introduced it together with named buses (schema 1),
 -- revision 5 added the `UNBOUNDED` sentinel and the package-wide limits
 -- (schema 2), revision 6 the logout watcher and the two logout fields of
--- every bus (schema 3), and revision 7 the journal prototype and the two
--- journal limits (schema 4).
-local STATE_SCHEMA = 4
+-- every bus (schema 3), revision 7 the journal prototype and the two journal
+-- limits (schema 4), and revision 9 the isolation flag every bus topic signal
+-- carries (schema 5).
+local STATE_SCHEMA = 5
 
 -- Who closes an addon's bus at logout, as the bus's `_logoutCloser` records it
 -- (docs/API.md, "At logout"). A bus nobody asked for through `ForAddon`
@@ -328,6 +330,12 @@ end
 ---@class SignalKit.Connection
 ---@field Disconnect fun(self: SignalKit.Connection): boolean
 ---@field IsConnected fun(self: SignalKit.Connection): boolean
+---@field package _connected boolean Whether the connection still delivers; private to this file.
+---@field package _signal SignalKit.Signal? The signal it is on, `nil` once disconnected.
+---@field package _callback function? The listener, `nil` once disconnected.
+---@field package _once boolean Whether it disconnects before its first call.
+---@field package _busScope SignalKit.BusScope? The bus scope that owns it, if any.
+---@field package _busCallback function? Only on a bus subscription made before revision 9.
 
 ---A hook `SignalKit:New` takes in `options.onFirst` or `options.onLast`. It
 ---receives the signal and no payload: it is not a listener and `Fire` never
@@ -343,6 +351,13 @@ end
 
 ---An independent dispatch point created by `SignalKit:New()`.
 ---@class SignalKit.Signal
+---@field package _listeners SignalKit.Connection[] Connections in connection order, tombstones included; private to this file.
+---@field package _tombstones integer? Disconnected connections still in `_listeners`; absent before revision 2.
+---@field package _generation integer? Firings so far; absent before revision 7.
+---@field package _firing integer? `Fire` calls walking `_listeners`; absent before revision 9.
+---@field package _isolated boolean? Whether `Fire` isolates each delivery (a bus topic).
+---@field package _onFirst SignalKit.SignalHook|false|nil
+---@field package _onLast SignalKit.SignalHook|false|nil
 ---@field Connect fun(self: SignalKit.Signal, callback: fun(...)): SignalKit.Connection
 ---@field Once fun(self: SignalKit.Signal, callback: fun(...)): SignalKit.Connection
 ---@field Fire fun(self: SignalKit.Signal, ...: any)
@@ -390,6 +405,11 @@ end
 ---A named message bus shared by everything in the session that asks for its
 ---name. Obtained from `SignalKit:Bus(name)` or `SignalKit:ForAddon(addonName)`.
 ---@class SignalKit.Bus
+---@field package _name string The bus name; private to this file.
+---@field package _closed boolean Whether the bus is closed.
+---@field package _openTopics boolean Whether undeclared topics may be published.
+---@field package _topics table<string, SignalKit.TopicRecord> Topic records by name.
+---@field package _maxListeners integer|table Live listeners one topic may hold, or `UNBOUNDED`.
 ---@field DeclareTopic fun(self: SignalKit.Bus, topic: string, options: SignalKit.TopicOptions?): true|nil, "full"?
 ---@field Publish fun(self: SignalKit.Bus, topic: string, ...: any)
 ---@field Subscribe fun(self: SignalKit.Bus, topic: string, callback: fun(...: any)): SignalKit.Connection|nil, "full"?
@@ -540,6 +560,31 @@ local function upgradeSchemaThree(oldState)
   rawset(oldState, "journalMetatable", journalMetatable)
   rawset(limits, "maxJournalCapacity", DEFAULT_MAX_JOURNAL_CAPACITY)
   rawset(limits, "maxJournalArguments", DEFAULT_MAX_JOURNAL_ARGUMENTS)
+  rawset(oldState, "schema", 4)
+end
+
+---Bring schema-4 state (revisions 7 and 8) to schema 5 in place: flag every
+---existing bus topic signal as isolated, so `Fire` isolates each delivery
+---itself from now on (see "Listener isolation").
+---
+---Subscriptions those revisions made wrap their callback in a delivery closure
+---that isolates on its own; they keep it and are isolated twice, which reports
+---an error exactly once and costs only them an extra call. Their `_callback` is
+---not rewritten, because an older copy's `Fire` may still be walking the
+---signal below this upgrade and would then call the bare callback without isolation.
+---@param oldState table
+local function upgradeSchemaFour(oldState)
+  for _, bus in pairs(rawget(oldState, "buses")) do
+    local topics = type(bus) == "table" and rawget(bus, "_topics") or nil
+    if type(topics) == "table" then
+      for _, record in pairs(topics) do
+        local signal = type(record) == "table" and rawget(record, "signal") or nil
+        if type(signal) == "table" then
+          rawset(signal, "_isolated", true)
+        end
+      end
+    end
+  end
   rawset(oldState, "schema", STATE_SCHEMA)
 end
 
@@ -571,6 +616,9 @@ else
   end
   if rawget(state, "schema") == 3 then
     upgradeSchemaThree(state)
+  end
+  if rawget(state, "schema") == 4 then
+    upgradeSchemaFour(state)
   end
   if not validateState(state) then
     error("MoltenCodes SignalKit package state is corrupted or incomplete", 2)
@@ -652,16 +700,28 @@ end
 -- Listener storage -------------------------------------------------------------
 --
 -- A disconnect marks its connection and leaves it in place as a tombstone, so
--- disconnecting is O(1) and allocates nothing. The array is compacted once at
--- least half of its slots are tombstones: each compaction is O(n) but removes
--- n/2 slots, which keeps disconnect amortized O(1) and bounds the array at
--- twice the live listener count.
+-- disconnecting is O(1). The array is compacted once at least half of its
+-- slots are tombstones: each compaction is O(n) but removes n/2 slots, which
+-- keeps disconnect amortized O(1) and bounds the array at twice the live
+-- listener count.
 --
--- Compaction replaces the array instead of editing it, exactly as the previous
--- copy-on-write disconnect did. A dispatch already iterating an older array
--- therefore keeps its own fixed boundary, and because connection objects are
--- shared between the old and new arrays the disconnected flag stays visible in
--- both.
+-- How the array is edited depends on whether a dispatch of the signal is
+-- walking it. `Fire` raises the signal's `_firing` depth for the length of its
+-- walk. At depth zero nothing holds a position in the array, so a disconnect
+-- edits it in place and allocates nothing: tombstones at the tail are dropped
+-- at once, which is where connect-then-disconnect churn leaves them, and a
+-- compaction shifts the live entries down. While a dispatch runs, compaction
+-- replaces the array instead of editing it, as every revision before 9 always
+-- did: the dispatch keeps its own array and fixed boundary, and because
+-- connection objects are shared between the old and new arrays the
+-- disconnected flag stays visible in both.
+--
+-- A listener error that escapes the outermost `Fire` of a raw signal skips the
+-- restore and leaves the depth raised. That signal then compacts by
+-- replacement, which is always safe; nothing else changes. A signal created by
+-- an older revision carries no depth and is treated the same way for good,
+-- because an older copy's `Fire` may still be walking it on the stack below an
+-- in-place upgrade.
 --
 -- The live listener count is the array length minus the tombstones, both of
 -- which connect and disconnect already maintain, so the `onFirst` and `onLast`
@@ -669,6 +729,13 @@ end
 -- disconnect. A hook runs after its transition is committed and after the
 -- array is in its final shape, so a hook that connects or disconnects inside
 -- itself sees a consistent signal and causes, at most, the opposite hook.
+--
+-- Connection handles are the only per-connection allocation. A handle carries
+-- exactly the four fields every connection needs (`_signal`, `_callback`,
+-- `_connected`, `_once`), which fill a four-slot hash part; a bus scope's
+-- subscription adds `_busScope`. Fields are only ever written when they exist:
+-- in Lua 5.1 assigning even `nil` to a missing key inserts it, which can grow
+-- a full table.
 
 ---Returns the tombstone count of `signal`.
 ---
@@ -692,7 +759,8 @@ local function shouldCompact(tombstones, total)
   return tombstones > 0 and tombstones * 2 >= total
 end
 
----Replaces the listener array of `signal` with one holding only live entries.
+---Replaces the listener array of `signal` with one holding only live entries,
+---leaving the old array untouched for a dispatch that is walking it.
 ---@param signal table
 ---@param listeners table
 local function compact(signal, listeners)
@@ -701,7 +769,7 @@ local function compact(signal, listeners)
 
   for index = 1, #listeners do
     local connection = listeners[index]
-    if rawget(connection, "_connected") == true then
+    if connection._connected == true then
       compacted[nextIndex] = connection
       nextIndex = nextIndex + 1
     end
@@ -711,26 +779,64 @@ local function compact(signal, listeners)
   rawset(signal, "_tombstones", 0)
 end
 
+---Drop the tombstones of an array no dispatch is walking, without allocating:
+---first those at the tail, then, past the compaction threshold, every other
+---one by shifting the live entries down in order.
+---@param listeners table
+---@param total integer the array length
+---@param tombstones integer the tombstones in the array
+---@return integer tombstones the tombstones left in the array
+local function settleInPlace(listeners, total, tombstones)
+  while total > 0 and listeners[total]._connected ~= true do
+    listeners[total] = nil
+    total = total - 1
+    tombstones = tombstones - 1
+  end
+
+  if not shouldCompact(tombstones, total) then
+    return tombstones
+  end
+
+  local live = 0
+  for index = 1, total do
+    local connection = listeners[index]
+    if connection._connected == true then
+      live = live + 1
+      listeners[live] = connection
+    end
+  end
+  for index = live + 1, total do
+    listeners[index] = nil
+  end
+  return 0
+end
+
 -- Assigned in the bus scope section; a scope-owned connection reports its
 -- disconnect so the scope can compact its list.
 local noteScopeDisconnect
 
 ---Mark `connection` disconnected and release what it references.
 ---
----The handle stays in the listener array until the next compaction, but the
----callback closures are released immediately: they are normally far larger
----than the handle that holds them. `_busCallback` and `_busScope` exist only on
----bus subscriptions; clearing an absent field is a no-op.
+---The handle stays in the listener array until it is settled or compacted
+---away, but the callback is released immediately: it is normally far larger
+---than the handle that holds it. `_busCallback` exists only on bus
+---subscriptions made before revision 9 and `_busScope` only on a bus scope's
+---subscriptions, so each is cleared only where it exists.
 ---@param connection table
 local function releaseConnection(connection)
-  rawset(connection, "_connected", false)
-  rawset(connection, "_signal", nil)
-  rawset(connection, "_callback", nil)
-  rawset(connection, "_busCallback", nil)
+  connection._connected = false
+  connection._signal = nil
+  connection._callback = nil
 
-  local scope = rawget(connection, "_busScope")
+  -- An absent field reads `nil` through the connection prototype, which has
+  -- no such field; plain indexing keeps these reads VM instructions.
+  if connection._busCallback ~= nil then
+    connection._busCallback = nil
+  end
+
+  local scope = connection._busScope
   if scope ~= nil then
-    rawset(connection, "_busScope", nil)
+    connection._busScope = nil
     noteScopeDisconnect(scope)
   end
 end
@@ -738,43 +844,95 @@ end
 ---@param connection table
 ---@return boolean disconnected `true` only for the call that transitioned the state.
 local function disconnectConnection(connection)
-  if rawget(connection, "_connected") ~= true then
+  if connection._connected ~= true then
     return false
   end
 
-  local signal = rawget(connection, "_signal")
+  local signal = connection._signal
   releaseConnection(connection)
 
-  local listeners = rawget(signal, "_listeners")
+  -- A signal from revision 1 has no counter and reads as zero tombstones.
+  local listeners = signal._listeners
   local total = #listeners
-  local tombstones = tombstoneCount(signal) + 1
-  rawset(signal, "_tombstones", tombstones)
+  local tombstones = (signal._tombstones or 0) + 1
+  -- The live count before the array is settled; settling only removes
+  -- tombstones, so it is the same afterwards.
+  local live = total - tombstones
 
-  if shouldCompact(tombstones, total) then
+  if signal._firing == 0 then
+    if tombstones == 1 and listeners[total] == connection then
+      -- The churn case, a connect undone before anything else: the only
+      -- tombstone is the tail, so settling is one removal.
+      listeners[total] = nil
+      tombstones = 0
+    else
+      tombstones = settleInPlace(listeners, total, tombstones)
+    end
+    signal._tombstones = tombstones
+  elseif shouldCompact(tombstones, total) then
     compact(signal, listeners)
+  else
+    signal._tombstones = tombstones
   end
 
-  -- `total - tombstones` is the live count whether or not compaction ran.
   -- A signal without hooks, or one created before hooks existed, stores
   -- `false` or nothing here and pays only this test.
-  local onLast = rawget(signal, "_onLast")
-  if onLast and total - tombstones == 0 then
+  local onLast = signal._onLast
+  if onLast and live == 0 then
     onLast(signal)
   end
 
   return true
 end
 
----Shared implementation of `Connect`, `Once` and bus subscriptions.
+---Append a new connection of `callback` to `signal`, whose listener array is
+---`listeners`; the caller validated both.
+---@param signal table
+---@param listeners table
+---@param callback function
+---@param once boolean whether the connection disconnects before its first call
+---@param busScope table|nil the bus scope that owns the subscription
+---@return SignalKit.Connection
+local function attach(signal, listeners, callback, once, busScope)
+  -- Two constructors rather than one with a `nil` field: a constructor sizes
+  -- the hash part by the fields it names, so naming `_busScope` for every
+  -- connection would double the handle of the ones that have none.
+  local connection
+  if busScope == nil then
+    connection = { _signal = signal, _callback = callback, _connected = true, _once = once }
+  else
+    connection = {
+      _signal = signal,
+      _callback = callback,
+      _connected = true,
+      _once = once,
+      _busScope = busScope,
+    }
+  end
+  setmetatable(connection, CONNECTION_METATABLE)
+
+  local nextIndex = #listeners + 1
+  listeners[nextIndex] = connection
+
+  -- The listener is in place before the hook runs, so a hook that connects
+  -- again sees two live listeners and one that disconnects everything sees
+  -- the 1→0 transition. The subtraction is paid only when a hook exists.
+  local onFirst = signal._onFirst
+  if onFirst and nextIndex - (signal._tombstones or 0) == 1 then
+    onFirst(signal)
+  end
+
+  return connection
+end
+
+---Shared implementation of `Connect` and `Once`.
 ---@param signal any receiver the public method was called on
 ---@param callback any candidate listener, validated here
 ---@param once boolean whether the connection disconnects before its first call
 ---@param methodName "Connect"|"Once" public method name, used in the argument error
 ---@param receiverMessage string error text raised when `signal` is not a signal
----@param busCallback function|nil the subscriber's own callback, for `Unsubscribe`
----@param busScope table|nil the bus scope that owns the subscription
 ---@return SignalKit.Connection
-local function connect(signal, callback, once, methodName, receiverMessage, busCallback, busScope)
+local function connect(signal, callback, once, methodName, receiverMessage)
   local listeners = listenersOf(signal)
   if listeners == nil then
     error(receiverMessage, 3)
@@ -784,26 +942,7 @@ local function connect(signal, callback, once, methodName, receiverMessage, busC
     error("SignalKit:" .. methodName .. " callback must be a function", 3)
   end
 
-  local connection = setmetatable({
-    _signal = signal,
-    _callback = callback,
-    _connected = true,
-    _once = once,
-    _busCallback = busCallback,
-    _busScope = busScope,
-  }, CONNECTION_METATABLE)
-
-  local nextIndex = #listeners + 1
-  rawset(listeners, nextIndex, connection)
-
-  -- The listener is in place before the hook runs, so a hook that connects
-  -- again sees two live listeners and one that disconnects everything sees
-  -- the 1→0 transition. The subtraction is paid only when a hook exists.
-  local onFirst = rawget(signal, "_onFirst")
-  if onFirst and nextIndex - tombstoneCount(signal) == 1 then
-    onFirst(signal)
-  end
-
+  local connection = attach(signal, listeners, callback, once, nil)
   return connection
 end
 
@@ -856,13 +995,17 @@ end
 ---Build a signal table with the shared listener layout.
 ---@param onFirst SignalKit.SignalHook|false
 ---@param onLast SignalKit.SignalHook|false
+---@param isolated boolean whether `Fire` isolates each delivery (bus topics)
 ---@return table
-local function newSignalTable(onFirst, onLast)
+local function newSignalTable(onFirst, onLast, isolated)
   return {
     _listeners = {},
     _tombstones = 0,
     -- Incremented by every `Fire`; a Lua 5.1 double counts exactly to 2^53.
     _generation = 0,
+    -- How many `Fire` calls are walking `_listeners`; see "Listener storage".
+    _firing = 0,
+    _isolated = isolated,
     _onFirst = onFirst,
     _onLast = onLast,
   }
@@ -882,7 +1025,7 @@ local function newSignal(self, options)
     error("SignalKit:New options must be passed with a colon call: SignalKit:New(options)", 2)
   end
   local onFirst, onLast = readSignalOptions(options, "SignalKit:New", 3)
-  return setmetatable(newSignalTable(onFirst, onLast), SIGNAL_METATABLE)
+  return setmetatable(newSignalTable(onFirst, onLast, false), SIGNAL_METATABLE)
 end
 
 ---Connects `callback` for every future dispatch.
@@ -899,6 +1042,41 @@ end
 ---@return SignalKit.Connection connection
 local function connectOnce(self, callback)
   return connect(self, callback, true, "Once", ONCE_RECEIVER_MESSAGE)
+end
+
+---Deliver `...` to every eligible listener of a bus topic's signal, each
+---delivery isolated (see "Listener isolation"), with the generation and the
+---dispatch depth kept exactly as `fire` keeps them.
+---
+---`Publish` calls this directly, because the bus has already validated
+---everything `fire` would check; `fire` calls it for an isolated signal.
+---@param signal table a bus topic signal
+---@param ... any
+local function fireIsolated(signal, ...)
+  local listeners = signal._listeners
+  signal._generation = (signal._generation or 0) + 1
+  local depth = signal._firing
+  if depth ~= nil then
+    signal._firing = depth + 1
+  end
+
+  -- The isolation function is read from shared state once per dispatch, so
+  -- a newer revision replaces it for the signals that already exist.
+  local isolateDelivery = state.isolate
+  for index = 1, #listeners do
+    local connection = listeners[index]
+    if connection._connected == true then
+      local callback = connection._callback
+      if connection._once == true then
+        disconnectConnection(connection)
+      end
+      isolateDelivery(callback, ...)
+    end
+  end
+
+  if depth ~= nil then
+    signal._firing = depth
+  end
 end
 
 ---Invokes every currently eligible listener in connection order.
@@ -921,19 +1099,35 @@ local function fire(self, ...)
     error(FIRE_RECEIVER_MESSAGE, 2)
   end
 
+  -- Past the receiver check the signal is known, so its fields are read
+  -- with plain indexing, a VM instruction, instead of `rawget`, a C call. A
+  -- field an older revision's signal lacks falls through to the facade,
+  -- which carries no underscore field of a signal, and reads as `nil`.
+  if self._isolated == true then
+    fireIsolated(self, ...)
+    return
+  end
+
   -- The generation moves before any listener runs, so a listener reading it
   -- sees the firing it is being delivered. A signal created before revision
   -- 7 has no counter; `or 0` is its in-place upgrade path.
-  rawset(self, "_generation", (rawget(self, "_generation") or 0) + 1)
+  self._generation = (self._generation or 0) + 1
 
-  local count = #listeners
+  -- The depth is restored to the value read here rather than decremented,
+  -- so an outer dispatch also repairs a nested one an error cut short. A
+  -- signal from before revision 9 has no depth and keeps none (see
+  -- "Listener storage").
+  local depth = self._firing
+  if depth ~= nil then
+    self._firing = depth + 1
+  end
 
-  for index = 1, count do
+  for index = 1, #listeners do
     local connection = listeners[index]
-    if rawget(connection, "_connected") == true then
-      local callback = rawget(connection, "_callback")
+    if connection._connected == true then
+      local callback = connection._callback
 
-      if rawget(connection, "_once") == true then
+      if connection._once == true then
         -- Disconnect before invocation so recursive Fire calls cannot
         -- observe the once-listener a second time.
         disconnectConnection(connection)
@@ -941,6 +1135,10 @@ local function fire(self, ...)
 
       callback(...)
     end
+  end
+
+  if depth ~= nil then
+    self._firing = depth
   end
 end
 
@@ -950,18 +1148,29 @@ end
 ---@return integer disconnected
 local function disconnectEveryListener(signal, listeners)
   local disconnected = 0
+  local count = #listeners
 
-  -- Replace the active array first. If a callback is currently dispatching
-  -- an older snapshot, marking these shared connection objects disconnected
-  -- prevents all remaining callbacks from that snapshot from running.
-  rawset(signal, "_listeners", {})
+  -- With no dispatch walking the array it is emptied in place. Otherwise it
+  -- is replaced first: a callback dispatching the older array finds these
+  -- shared connection objects disconnected and none of the remaining
+  -- callbacks in it runs.
+  local idle = rawget(signal, "_firing") == 0
+  if not idle then
+    rawset(signal, "_listeners", {})
+  end
   rawset(signal, "_tombstones", 0)
 
-  for index = 1, #listeners do
+  for index = 1, count do
     local connection = listeners[index]
-    if rawget(connection, "_connected") == true then
+    if connection._connected == true then
       disconnected = disconnected + 1
       releaseConnection(connection)
+    end
+  end
+
+  if idle then
+    for index = count, 1, -1 do
+      listeners[index] = nil
     end
   end
 
@@ -1005,7 +1214,9 @@ end
 ---@param self SignalKit.Connection
 ---@return boolean disconnected `true` only for the call that transitioned the state.
 local function disconnect(self)
-  if not isConnectionHandle(self) then
+  -- `isConnectionHandle`, inlined: this is half of every connect-disconnect
+  -- pair, and the call frame would cost more than the test.
+  if type(self) ~= "table" or type(rawget(self, "_connected")) ~= "boolean" then
     error(DISCONNECT_RECEIVER_MESSAGE, 2)
   end
 
@@ -1038,6 +1249,13 @@ end
 -- in one reusable buffer and a single reusable trampoline forwards it, so no
 -- closure or argument table is allocated per publish. This is the same model
 -- EventKit uses at its own multi-tenant boundary.
+--
+-- A bus topic's signal is flagged `_isolated`, and `Fire` calls the isolation
+-- function around each subscriber's own callback. Revisions before 9 wrapped
+-- every subscription in a delivery closure instead: one closure per
+-- subscription, and one more call per delivery. Subscriptions those revisions
+-- made keep their closure after an upgrade and are isolated twice, which still
+-- reports an error once.
 
 local stagedCallback = nil
 local stagedCount = 0
@@ -1123,19 +1341,6 @@ local isolate = isolateWithXpcall
 if type(secureCallFunction) == "function" then
   -- Its signature is already `(callback, ...)`, so no adapter frame is needed.
   isolate = secureCallFunction
-end
-
----Build the one delivery closure a bus subscription connects to its signal.
----
----One closure per subscription, never per publish. It reads the isolation
----function from shared state so a newer revision can replace it for
----subscriptions that already exist.
----@param callback function the subscriber's callback
----@return function delivery
-local function newDelivery(callback)
-  return function(...)
-    return rawget(state, "isolate")(callback, ...)
-  end
 end
 
 -- Bus validation ---------------------------------------------------------------
@@ -1476,7 +1681,7 @@ local function facadeNewJournal(self, capacity, options)
   local ringCapacity = readJournalCapacity(capacity, 3)
   local onFirst, onLast = readSignalOptions(options, "SignalKit:NewJournal", 3)
 
-  local journal = newSignalTable(onFirst, onLast)
+  local journal = newSignalTable(onFirst, onLast, false)
   rawset(journal, "_journalCapacity", ringCapacity)
   rawset(journal, "_journalSlots", newJournalSlots(ringCapacity))
   -- The slot the next firing writes, and how many slots hold a firing.
@@ -1521,42 +1726,46 @@ end
 ---@return SignalKit.Connection|nil connection
 ---@return "full"|nil reason
 local function subscribe(bus, label, level, topic, callback, once, scope)
-  validateNonEmptyString(topic, label .. " topic", level + 1)
+  -- The tests run inline and the validators, which raise at the public
+  -- caller's line, only for a call that fails one; see `busPublish`.
+  -- issecretvalue is a World of Warcraft client API reachable only through the global table.
+  -- selene: allow(global_usage)
+  local isSecretValue = rawget(_G, "issecretvalue")
+  if
+    (type(isSecretValue) == "function" and isSecretValue(topic) == true)
+    or type(topic) ~= "string"
+    or topic == ""
+  then
+    validateNonEmptyString(topic, label .. " topic", level + 1)
+  end
   if type(callback) ~= "function" then
     error(label .. " callback must be a function", level)
   end
-  ensureBusOpen(bus, label, level + 1)
+  if bus._closed == true then
+    ensureBusOpen(bus, label, level + 1)
+  end
 
-  local record = obtainTopicRecord(bus, topic)
+  local record = bus._topics[topic] or obtainTopicRecord(bus, topic)
   if record == nil then
     return nil, "full"
   end
 
-  local signal = rawget(record, "signal")
+  local signal = record.signal
   if signal == false then
     -- A topic signal carries no hooks: the bus, not the topic, is what a
-    -- consumer observes.
-    signal = setmetatable(newSignalTable(false, false), SIGNAL_METATABLE)
-    rawset(record, "signal", signal)
+    -- consumer observes. It isolates every delivery itself, so the
+    -- subscriber's own callback is what it holds.
+    signal = setmetatable(newSignalTable(false, false, true), SIGNAL_METATABLE)
+    record.signal = signal
   end
 
-  local maxListeners = rawget(bus, "_maxListeners")
-  if maxListeners ~= UNBOUNDED then
-    local listeners = rawget(signal, "_listeners")
-    if #listeners - tombstoneCount(signal) >= maxListeners then
-      return nil, "full"
-    end
+  local listeners = signal._listeners
+  local maxListeners = bus._maxListeners
+  if maxListeners ~= UNBOUNDED and #listeners - (signal._tombstones or 0) >= maxListeners then
+    return nil, "full"
   end
 
-  local connection = connect(
-    signal,
-    newDelivery(callback),
-    once,
-    "Connect",
-    CONNECT_RECEIVER_MESSAGE,
-    callback,
-    scope
-  )
+  local connection = attach(signal, listeners, callback, once, scope)
   return connection, nil
 end
 
@@ -1666,22 +1875,40 @@ end
 ---@param topic string
 ---@param ... any
 local function busPublish(self, topic, ...)
-  validateBus(self, "SignalKit.Bus:Publish", 3)
-  validateNonEmptyString(topic, "SignalKit.Bus:Publish topic", 3)
-  if rawget(self, "_closed") == true then
+  -- Publish is the bus's hot path, so the receiver and the topic are tested
+  -- inline and the validators, which raise at the caller's line, run only
+  -- for a call that fails a test. The secret test comes first, because
+  -- comparing a secret with `""` would raise here instead of at the caller.
+  if type(self) ~= "table" or getmetatable(self) ~= BUS_METATABLE then
+    validateBus(self, "SignalKit.Bus:Publish", 3)
+  end
+  -- issecretvalue is a World of Warcraft client API reachable only through the global table.
+  -- selene: allow(global_usage)
+  local isSecretValue = rawget(_G, "issecretvalue")
+  if
+    (type(isSecretValue) == "function" and isSecretValue(topic) == true)
+    or type(topic) ~= "string"
+    or topic == ""
+  then
+    validateNonEmptyString(topic, "SignalKit.Bus:Publish topic", 3)
+  end
+  -- Past the receiver check every table read here is one SignalKit created
+  -- and fills completely, so plain indexing (a VM instruction) replaces
+  -- `rawget` (a C call) on this per-publish path.
+  if self._closed == true then
     -- A closed bus belongs to an addon that has shut down. Late publishes
     -- from other addons' shutdown paths are expected and deliver nothing,
     -- so the topic policy is not applied to them.
     return
   end
 
-  local record = rawget(rawget(self, "_topics"), topic)
-  if record == nil or rawget(record, "declared") ~= true then
-    if rawget(self, "_openTopics") ~= true then
+  local record = self._topics[topic]
+  if record == nil or record.declared ~= true then
+    if self._openTopics ~= true then
       refuseUndeclared(self, topic)
     end
   else
-    local arguments = rawget(record, "arguments")
+    local arguments = record.arguments
     if type(arguments) == "number" then
       local count = select("#", ...)
       if count ~= arguments then
@@ -1691,7 +1918,7 @@ local function busPublish(self, topic, ...)
       -- The validator may belong to another addon, so its failure is
       -- turned into a refusal at the publisher's line. `pcall` with the
       -- arguments passed through allocates nothing.
-      local ran, accepted, reason = pcall(arguments, ...)
+      local ran, accepted, reason = pcall(arguments --[[@as SignalKit.TopicValidator]], ...)
       if not ran then
         refuseFailedValidator(self, topic, describeRefusal(accepted, "a non-string error"))
       elseif isSecret(accepted) or accepted ~= true then
@@ -1702,9 +1929,9 @@ local function busPublish(self, topic, ...)
   end
 
   if record ~= nil then
-    local signal = rawget(record, "signal")
+    local signal = record.signal
     if signal ~= false then
-      fire(signal, ...)
+      fireIsolated(signal, ...)
     end
   end
 end
@@ -1719,7 +1946,9 @@ end
 ---@return SignalKit.Connection|nil connection
 ---@return "full"|nil reason
 local function busSubscribe(self, topic, callback)
-  validateBus(self, "SignalKit.Bus:Subscribe", 3)
+  if type(self) ~= "table" or getmetatable(self) ~= BUS_METATABLE then
+    validateBus(self, "SignalKit.Bus:Subscribe", 3)
+  end
   local connection, reason = subscribe(self, "SignalKit.Bus:Subscribe", 3, topic, callback, false)
   return connection, reason
 end
@@ -1754,16 +1983,35 @@ local function busUnsubscribe(self, topic, callback)
     return 0
   end
 
-  -- A disconnect may compact and replace the array. This walk keeps the
-  -- array it started with; connection objects are shared, so the flags it
-  -- reads stay current.
-  local listeners = rawget(rawget(record, "signal"), "_listeners")
+  -- The walk only marks: every matching connection is released in place,
+  -- and the array is settled once afterwards, exactly as that many single
+  -- disconnects would leave it. Settling inside the walk would move entries
+  -- underneath it. A topic signal has no hooks, so nothing runs meanwhile.
+  local signal = rawget(record, "signal")
+  local listeners = rawget(signal, "_listeners")
+  local total = #listeners
   local disconnected = 0
-  for index = 1, #listeners do
+  for index = 1, total do
     local connection = listeners[index]
-    if rawget(connection, "_busCallback") == callback and disconnectConnection(connection) then
+    -- A subscription made before revision 9 holds a delivery closure in
+    -- `_callback` and the subscriber's function in `_busCallback`.
+    local subscribed = connection._busCallback or connection._callback
+    if subscribed == callback and connection._connected == true then
+      releaseConnection(connection)
       disconnected = disconnected + 1
     end
+  end
+  if disconnected == 0 then
+    return 0
+  end
+
+  local tombstones = tombstoneCount(signal) + disconnected
+  if rawget(signal, "_firing") == 0 then
+    rawset(signal, "_tombstones", settleInPlace(listeners, total, tombstones))
+  elseif shouldCompact(tombstones, total) then
+    compact(signal, listeners)
+  else
+    rawset(signal, "_tombstones", tombstones)
   end
   return disconnected
 end
