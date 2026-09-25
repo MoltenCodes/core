@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.1.4 — 2026-09-25
+
+- Performance. Registering an addon, skipping a locale the client does not need and the first read of a missing key cost less, and an addon's record takes 376 bytes instead of 696 (plus 56 for an empty missing-key set it no longer creates up front). Measured with the host benchmark (`python3 -m tooling.bench.run --workload locale --rounds 3`, before and after this change, median ns per operation with AceLocale-3.0 measured in the same run; other agents' benchmarks and specs ran on the machine at the same time, load average about 2.5 before and 3 after, so compare the ratios and the allocation, which is deterministic):
+
+  | Case | Before | After | AceLocale (before / after) | Ratio before → after | Allocated before → after (AceLocale) |
+  |---|---:|---:|---:|---|---|
+  | `register` | 24,662 | 19,246 | 14,756 / 14,772 | 1.67× → 1.30× | 6,059 → 5,675 B (5,187 B) |
+  | `unneeded-locale` | 207 | 120 | 48.0 / 49.2 | 4.32× → 2.44× | 0 → 0 B (0 B) |
+  | `first-miss` | 314 | 295 | 86.4 / 102 | 3.64× → 2.90× | 0 → 0 B (0 B) |
+  | `lookup` | 13.8 | 13.8 | 13.8 / 13.7 | 1.00× → 1.01× | 0 → 0 B (0 B) |
+
+  Retained per registered addon of 100 strings: 5,993 → 5,609 B (AceLocale 5,225 B). The `first-miss` row is noisy on both sides (its ranges span 195–621 ns); its minimum ratio moved from 3.01× to 2.64×.
+- How. The twelve locale codes clients report are recognised by a table lookup before the `^%l%l%u%u$` pattern, which still decides every other code, so the accepted set is unchanged; `NewLocale` checks its name and a known code inline. The write proxies check the key and value inline and store with a plain assignment (raw, because the read metatables have no `__newindex`), and look at the missing-key set only when it holds keys. A record is built with the eight fields every addon uses (layout 2), the most an eight-slot Lua hash holds; the default missing-key limit and the cap-reported flag are implicit until an addon sets them, and the missing-key set is created at the first recorded miss.
+- What remains against AceLocale is what LocaleKit promises and AceLocale does not: a proxy per `NewLocale` call instead of one shared table, the argument and value checks, the missing-key record behind `MissingKeys` (a second table write on every first miss) and its bound, and the call-time secret probe on a missing key.
+- Guarantees are unchanged: write proxies, value validation and missing-key recording, bounded at 1,024 keys by default, behave as before, with the same messages at the same lines.
+- Implementation revision 3, record layout 2. No state changed. Records revision 1 or 2 built (layout 1, ten fields) are kept as they are after an in-place upgrade and read the same; no migration runs. `docs/INTERNALS.md` ("Addon records", "Locale codes") and the performance table in `docs/API.md` describe the change.
+- Specs: new `FastPaths_spec.lua` (known and unknown well-formed codes accepted and malformed ones refused, from `NewLocale` and from `GetLocale()`; `true` stored as the key in the client's locale, a `GetLocale` answer that is not a string falling back to `enUS`, the proxies' refusals and a default defining a key read while missing; an eight-field record whose limit and cap flag appear on demand and whose limit comparison is unchanged; the cap reported once; a layout-1 record recording, reporting, clearing and comparing its limit after an upgrade, bounded and unbounded; an unneeded locale allocating nothing and a new addon allocating less than the old record alone). The revision 1 upgrade spec compares with the working revision instead of a fixed number. 98 → 112 specs.
+
 ## 0.1.3 — 2026-09-24
 
 - Documentation and comments only; the executed code is unchanged (`luac -s -l` listings identical), so the implementation revision stays 2.

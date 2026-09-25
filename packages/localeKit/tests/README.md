@@ -25,6 +25,7 @@ The shared fixture does not stub `GetLocale`, so `support/LocaleKitTestEnv.lua` 
 | `SecretValues_spec.lua` | secret templates, arguments and keys |
 | `ClientLocale_spec.lua` | `enGB` folding, a missing `GetLocale`, the override |
 | `Allocation_spec.lua` | allocation guards |
+| `FastPaths_spec.lua` | revision 3 fast paths: known and pattern-checked locale codes, inline proxy checks, the eight-field record (layout 2), layout-1 records after an upgrade, allocation of an unneeded locale and a new addon |
 | `ErrorLevels_spec.lua` | errors reported at the caller's line |
 | `Bootstrap_spec.lua` | publication, duplicate loads, upgrades |
 | `Manifest_spec.lua` | manifest and runtime metadata |

@@ -107,6 +107,7 @@ describe("LocaleKit bootstrap", function()
 
   it("upgrades a revision 1 package in place to the working file", function()
     local previousRevision = 1
+    local workingRevision = TestEnv.NewPackage().REVISION
     TestEnv.Reset()
     TestEnv.InstallWowApi()
     TestEnv.SetClientLocale("deDE")
@@ -121,7 +122,7 @@ describe("LocaleKit bootstrap", function()
 
     local current = require("LocaleKit")
     assert.are.equal(previous, current)
-    assert.are.equal(previousRevision + 1, current.REVISION)
+    assert.are.equal(workingRevision, current.REVISION)
     assert.are.equal(state, current._state)
     assert.are.equal(L, current:GetLocale("MyAddon", { maxMissingKeys = 3 }))
     assert.are.equal("Hallo", L.Hello)

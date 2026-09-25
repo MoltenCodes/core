@@ -36,13 +36,16 @@
 
 local PACKAGE_NAME = "localeKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 2
+local IMPLEMENTATION_REVISION = 3
 local REQUIRED_REGISTRY_API = 2
 local STATE_SCHEMA = 1
 
 -- Every addon record carries the layout it was built with, so a later revision
--- that changes the layout can upgrade old records lazily.
-local RECORD_SCHEMA = 1
+-- that changes the layout can upgrade old records lazily. Layout 2 (revision 3)
+-- builds a record with eight fields instead of ten and creates `missing` on the
+-- first recorded miss; see "Addon records" below. Every function here reads
+-- both layouts.
+local RECORD_SCHEMA = 2
 
 -- The locale a client without `GetLocale` is treated as, and the one `enGB`
 -- clients are folded to: the game ships one English and reports British
@@ -54,6 +57,25 @@ local FOLDED_LOCALES = { enGB = "enUS" }
 -- letters. Checking the shape catches `"dede"` and `"de"` at the caller instead
 -- of silently registering a locale no client will ever ask for.
 local LOCALE_CODE_PATTERN = "^%l%l%u%u$"
+
+-- The codes World of Warcraft clients report, every one of them of the shape
+-- above. A code found here needs no pattern match, which is most of what
+-- `NewLocale` costs on a client that does not need the locale; any other code
+-- is still checked against the pattern, so the accepted set is unchanged.
+local CLIENT_LOCALE_CODES = {
+  deDE = true,
+  enGB = true,
+  enUS = true,
+  esES = true,
+  esMX = true,
+  frFR = true,
+  itIT = true,
+  koKR = true,
+  ptBR = true,
+  ruRU = true,
+  zhCN = true,
+  zhTW = true,
+}
 
 -- A missing key is stored as its own value so its cost is paid once. A caller
 -- that indexes the read table with unbounded runtime data (a unit name, say)
@@ -273,7 +295,10 @@ end
 ---@param label string argument description, used in the argument error
 ---@param level integer stack level the failure is reported at
 local function validateLocaleCode(value, label, level)
-  if type(value) ~= "string" or type(value:match(LOCALE_CODE_PATTERN)) == "nil" then
+  if type(value) ~= "string" then
+    error(label .. ' must be a client locale code such as "deDE"', level)
+  end
+  if CLIENT_LOCALE_CODES[value] ~= true and type(value:match(LOCALE_CODE_PATTERN)) == "nil" then
     error(label .. ' must be a client locale code such as "deDE"', level)
   end
 end
@@ -373,7 +398,10 @@ local function resolveClientLocale()
     return FALLBACK_LOCALE
   end
   local locale = getLocale()
-  if type(locale) ~= "string" or type(locale:match(LOCALE_CODE_PATTERN)) == "nil" then
+  if type(locale) ~= "string" then
+    return FALLBACK_LOCALE
+  end
+  if CLIENT_LOCALE_CODES[locale] ~= true and type(locale:match(LOCALE_CODE_PATTERN)) == "nil" then
     return FALLBACK_LOCALE
   end
   return foldLocale(locale)
@@ -404,7 +432,15 @@ end
 -- Addon records --------------------------------------------------------------
 --
 -- One record per addon name, created by the first `NewLocale` the client
--- needs. Every field exists from construction, so no later write rehashes it.
+-- needs. The eight fields every addon uses exist from construction, which is
+-- the most Lua fits in an eight-slot hash; ten fields would round it up to
+-- sixteen slots, 320 bytes more per addon. The two fields almost no addon
+-- sets are left out until they are: `maxMissingKeys` (absent means the
+-- default, `MAX_MISSING_KEYS`) and `capReported` (absent means `false`).
+-- Writing one of them later rehashes the record once. `missing` is `false`
+-- until the first miss is recorded. Records a revision before 3 built
+-- (layout 1) carry all ten fields and an empty `missing` table; both layouts
+-- read the same through `recordLimit` and the `missing` checks below.
 
 ---@class LocaleKit.Record
 ---@field schema integer
@@ -412,10 +448,10 @@ end
 ---@field locale string the client locale this addon's strings are for, fixed at creation
 ---@field defaultLocale string|false the locale registered with `isDefault`
 ---@field strings table<string, string> the read table
----@field missing table<string, true> keys read but never defined
+---@field missing table<string, true>|false keys read but never defined, `false` before the first
 ---@field missingCount integer
----@field capReported boolean whether the missing-key cap has been reported
----@field maxMissingKeys integer|table the most missing keys recorded, or `UNBOUNDED`
+---@field capReported boolean? whether the missing-key cap has been reported; absent means `false`
+---@field maxMissingKeys (integer|table)? the most missing keys recorded, or `UNBOUNDED`; absent means `MAX_MISSING_KEYS`
 ---@field mode string|false the missing-key mode fixed by the first `GetLocale`
 
 ---@param addonName string
@@ -429,10 +465,8 @@ local function newRecord(addonName, locale)
     locale = locale,
     defaultLocale = false,
     strings = strings,
-    missing = {},
+    missing = false,
     missingCount = 0,
-    capReported = false,
-    maxMissingKeys = MAX_MISSING_KEYS,
     mode = false,
   }
   addons[addonName] = record
@@ -440,12 +474,24 @@ local function newRecord(addonName, locale)
   return record
 end
 
+---The most missing keys `record` records: a positive integer or `UNBOUNDED`.
+---@param record LocaleKit.Record
+---@return integer|table limit
+local function recordLimit(record)
+  local limit = record.maxMissingKeys
+  if limit == nil then
+    return MAX_MISSING_KEYS
+  end
+  return limit
+end
+
 ---Forget that `key` was missing, because a translation file has now defined it.
 ---@param record LocaleKit.Record
 ---@param key string
 local function clearMissing(record, key)
-  if record.missing[key] == true then
-    record.missing[key] = nil
+  local missing = record.missing
+  if missing and missing[key] == true then
+    missing[key] = nil
     record.missingCount = record.missingCount - 1
   end
 end
@@ -464,23 +510,21 @@ end
 local FOREIGN_PROXY_MESSAGE =
   "LocaleKit translation target is not a proxy returned by LocaleKit:NewLocale"
 
----Refuse an assignment that is not `L["non-empty string"] = "text" | true`
----and return the text to store. Level 3 is the assignment line: this
----function, the `__newindex` metamethod, then the line that assigned.
----@param key any
----@param value any
----@return string text
-local function translationText(key, value)
-  if type(key) ~= "string" or key == "" then
-    error("LocaleKit translation key must be a non-empty string", 3)
-  end
-  if value == true then
-    return key
-  end
-  if type(value) ~= "string" then
-    error('LocaleKit translation "' .. key .. '" must be a string or true', 3)
-  end
-  return value
+-- The two write functions run once per translated string, so each checks the
+-- assignment inline rather than through a helper, and writes the read table by
+-- plain assignment: its metatables (`reportMetatable`, `silentMetatable`, or
+-- none in `"raw"` mode) have no `__newindex`, so the assignment is raw. Every
+-- check raises at level 2, the assignment line: the metamethod, then the line
+-- that assigned.
+
+local KEY_MESSAGE = "LocaleKit translation key must be a non-empty string"
+
+---Refuse a translation value that is neither a string nor `true`. Only called
+---to raise; level 3 is the assignment line: this function, the `__newindex`
+---metamethod, then the line that assigned.
+---@param key string
+local function refuseTranslation(key)
+  error('LocaleKit translation "' .. key .. '" must be a string or true', 3)
 end
 
 ---`__newindex` of a proxy for the client's own locale: always writes, so a
@@ -493,9 +537,20 @@ local function writeTranslated(proxy, key, value)
   if record == nil then
     error(FOREIGN_PROXY_MESSAGE, 2)
   end
-  local text = translationText(key, value)
-  rawset(record.strings, key, text)
-  clearMissing(record, key)
+  if type(key) ~= "string" or key == "" then
+    error(KEY_MESSAGE, 2)
+  end
+  local text = value
+  if value == true then
+    text = key
+  elseif type(value) ~= "string" then
+    refuseTranslation(key)
+  end
+  record.strings[key] = text
+  -- A key read while missing is defined now.
+  if record.missingCount > 0 then
+    clearMissing(record, key)
+  end
 end
 
 ---`__newindex` of a proxy for the default locale: writes only a key that is
@@ -509,10 +564,21 @@ local function writeDefault(proxy, key, value)
   if record == nil then
     error(FOREIGN_PROXY_MESSAGE, 2)
   end
-  local text = translationText(key, value)
+  if type(key) ~= "string" or key == "" then
+    error(KEY_MESSAGE, 2)
+  end
+  local text = value
+  if value == true then
+    text = key
+  elseif type(value) ~= "string" then
+    refuseTranslation(key)
+  end
+  -- `rawget`: the read table's `__index` would record the key as missing.
   local strings = record.strings
-  if rawget(strings, key) == nil or record.missing[key] == true then
-    rawset(strings, key, text)
+  if rawget(strings, key) == nil then
+    strings[key] = text
+  elseif record.missingCount > 0 and record.missing[key] == true then
+    strings[key] = text
     clearMissing(record, key)
   end
 end
@@ -562,9 +628,13 @@ local function readMissing(strings, key, reports)
     return key
   end
 
+  -- `recordLimit`, inline: this runs on every first read of a missing key.
   local limit = record.maxMissingKeys
+  if limit == nil then
+    limit = MAX_MISSING_KEYS
+  end
   if limit ~= UNBOUNDED and record.missingCount >= limit then
-    if reports and not record.capReported then
+    if reports and record.capReported ~= true then
       record.capReported = true
       report(
         "LocaleKit: "
@@ -578,8 +648,14 @@ local function readMissing(strings, key, reports)
     return key
   end
 
-  rawset(strings, key, key)
-  record.missing[key] = true
+  -- A plain assignment is raw here: the read metatables have no `__newindex`.
+  strings[key] = key
+  local missing = record.missing
+  if missing == false then
+    missing = {}
+    record.missing = missing
+  end
+  missing[key] = true
   record.missingCount = record.missingCount + 1
   if reports then
     report(
@@ -716,8 +792,15 @@ end
 ---@param options LocaleKit.NewLocaleOptions?
 ---@return LocaleKit.WriteProxy? proxy
 local function packageNewLocale(_, addonName, locale, options)
-  validateNonEmptyString(addonName, "LocaleKit:NewLocale addonName", 3)
-  validateLocaleCode(locale, "LocaleKit:NewLocale locale", 3)
+  -- `validateNonEmptyString` and the common case of `validateLocaleCode`,
+  -- inline: a translation file for every locale an addon ships calls this, and
+  -- on most clients it only learns that the locale is not needed.
+  if type(addonName) ~= "string" or addonName == "" then
+    error("LocaleKit:NewLocale addonName must be a non-empty string", 2)
+  end
+  if type(locale) ~= "string" or CLIENT_LOCALE_CODES[locale] ~= true then
+    validateLocaleCode(locale, "LocaleKit:NewLocale locale", 3)
+  end
   local isDefault = false
   if type(options) ~= "nil" then
     validateOptionKeys(options, NEW_LOCALE_OPTION_KEYS, "LocaleKit:NewLocale", 3)
@@ -827,14 +910,18 @@ local function packageGetLocale(_, addonName, options)
   end
 
   if type(maxMissingKeys) ~= "nil" then
+    local limit = recordLimit(record)
     if firstCall then
-      record.maxMissingKeys = maxMissingKeys
-    elseif not rawequal(maxMissingKeys, record.maxMissingKeys) then
+      -- The default is left implicit, so the record keeps its eight fields.
+      if not rawequal(maxMissingKeys, limit) then
+        record.maxMissingKeys = maxMissingKeys
+      end
+    elseif not rawequal(maxMissingKeys, limit) then
       error(
         "LocaleKit:GetLocale "
           .. addonName
           .. " already uses options.maxMissingKeys "
-          .. describeLimit(record.maxMissingKeys)
+          .. describeLimit(limit)
           .. ", not "
           .. describeLimit(maxMissingKeys),
         2
@@ -858,8 +945,12 @@ local function packageMissingKeys(_, addonName)
   if record == nil then
     return keys
   end
+  local missing = record.missing
+  if missing == false then
+    return keys
+  end
   local count = 0
-  for key in next, record.missing do
+  for key in next, missing do
     count = count + 1
     keys[count] = key
   end

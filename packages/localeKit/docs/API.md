@@ -2,7 +2,7 @@
 
 LocaleKit API generation **1** provides translations per addon and locale: write proxies for translation files, one read table per addon with a chosen missing-key behaviour, a report of the keys read but never defined, and a formatter with indexed specifiers.
 
-Implementation revision: **2**.
+Implementation revision: **3**.
 
 ## Loading
 
@@ -216,10 +216,10 @@ Argument failures report the line that called the public method, and write-proxy
 | Operation | Cost |
 |---|---|
 | Lookup of a defined key | One table read, no allocation. |
-| Lookup of a missing key | First read: one `rawset` and one report. Later reads: one table read. |
-| `NewLocale` for an unneeded locale | Argument checks only; nothing allocated or retained. |
-| `NewLocale` for a needed locale | One proxy table; the addon's record on its first call. |
-| Proxy write | One `rawset`. |
+| Lookup of a missing key | First read: the key stored in the read table and in the addon's missing-key set (the set is created at the first miss), and one report. Later reads: one table read. |
+| `NewLocale` for an unneeded locale | Argument checks only; nothing allocated or retained. A code clients report (`enUS`, `deDE`, ...) is recognised without a pattern match. |
+| `NewLocale` for a needed locale | One proxy table; on the addon's first call, its record (eight fields, 376 bytes on a 64-bit Lua 5.1) and its read table. |
+| Proxy write | One table write (a default-locale write also one `rawget`), no allocation beyond the read table's growth. |
 | `Format` | One `string.gsub`; allocates only strings, no tables. |
 | `MissingKeys` | O(k log k) for k missing keys; allocates the result array. |
 
