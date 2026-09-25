@@ -3236,7 +3236,7 @@ local function showText(widget, key, value, secret)
       end
       target:SetJustifyH(source:GetJustifyH())
       target:SetTextColor(source:GetTextColor())
-      target:SetWordWrap(source:GetWordWrap())
+      target:SetWordWrap(source:CanWordWrap())
     end
     current:SetText("")
     if current == slot.secret then

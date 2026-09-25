@@ -31,7 +31,7 @@
 ---                              a secret for a plain text (measured
 ---                              2026-09-25, 11:09);
 ---   style getters              a font string answers `GetJustifyH` and
----                              `GetWordWrap` with what its setters were given
+---                              `CanWordWrap` with what its setters were given
 ---                              (`"CENTER"` and `true` before that), as the
 ---                              client's do; the shared stub only stores them;
 ---   strata follow the parent   `SetParent` gives a frame its new parent's
@@ -173,7 +173,7 @@ local function applyFontStringRules(fontString)
   fontString.GetJustifyH = function(self)
     return self.justifyH or "CENTER"
   end
-  fontString.GetWordWrap = function(self)
+  fontString.CanWordWrap = function(self)
     if self.wordWrap == nil then
       return true
     end

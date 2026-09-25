@@ -61,14 +61,14 @@ describe("WidgetKit fixture client rules", function()
     end
   )
 
-  it("answer GetJustifyH and GetWordWrap with what the setters stored", function()
+  it("answer GetJustifyH and CanWordWrap with what the setters stored", function()
     local fontString = TestEnv.GetGlobal("CreateFrame")("Frame"):CreateFontString()
     assert.are.equal("CENTER", fontString:GetJustifyH())
-    assert.is_true(fontString:GetWordWrap())
+    assert.is_true(fontString:CanWordWrap())
     fontString:SetJustifyH("RIGHT")
     fontString:SetWordWrap(false)
     assert.are.equal("RIGHT", fontString:GetJustifyH())
-    assert.is_false(fontString:GetWordWrap())
+    assert.is_false(fontString:CanWordWrap())
   end)
 
   it("give a re-parented frame its parent's strata unless its strata is fixed", function()

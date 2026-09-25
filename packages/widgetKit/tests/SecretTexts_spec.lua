@@ -141,7 +141,7 @@ describe("WidgetKit secret texts", function()
     assert.are.same({ plain:GetPoint(1) }, { secretText:GetPoint(1) })
     assert.are.equal("GameFontNormal", secretText:GetFontObject())
     assert.are.equal("RIGHT", secretText:GetJustifyH())
-    assert.is_true(secretText:GetWordWrap())
+    assert.is_true(secretText:CanWordWrap())
     assert.are.same({ 0.25, 0.5, 0.75, 1 }, { secretText:GetTextColor() })
     assert.are.equal(150, secretText:GetWidth())
 
