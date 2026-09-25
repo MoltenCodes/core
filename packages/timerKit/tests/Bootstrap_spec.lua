@@ -254,6 +254,79 @@ describe("TimerKit bootstrap", function()
     assert.are.equal(0, timers:GetActiveCount())
   end)
 
+  it(
+    "keeps the generation-bound callbacks of revision 9 timers working after an upgrade",
+    function()
+      local current = currentRevision()
+      TestEnv.Reset()
+      TestEnv.InstallWowApi()
+      require("Registry")
+      local old = TestEnv.LoadRevision(9)
+      local state = rawget(old, "_state")
+      local scope = old:CreateScope()
+
+      -- Timers exactly as revision 9 built and started them: every field
+      -- present, a `_generation` counter, and a host callback that passes the
+      -- generation of its start to `dispatch.fire`.
+      local calls = {}
+      local function legacyTimer(name, repeating)
+        local timer = setmetatable({
+          _id = #calls + 100,
+          _scope = scope,
+          _callback = function()
+            calls[name] = (calls[name] or 0) + 1
+          end,
+          _delay = 1,
+          _repeating = repeating,
+          _state = "running",
+          _native = nil,
+          _generation = 1,
+          _deadline = false,
+        }, rawget(state, "timerMetatable"))
+        local generation = 1
+        -- The fixture's C_Timer is a global, as the client's is.
+        -- selene: allow(global_usage)
+        local hostTimers = rawget(_G, "C_Timer")
+        local constructor = repeating and hostTimers.NewTicker or hostTimers.NewTimer
+        timer._native = constructor(1, function()
+          return rawget(rawget(state, "dispatch"), "fire")(timer, generation)
+        end)
+        rawset(scope._active, timer, true)
+        scope._activeCount = scope._activeCount + 1
+        return timer
+      end
+      local fires = legacyTimer("fires", false)
+      local cancelled = legacyTimer("cancelled", false)
+      local restarted = legacyTimer("restarted", false)
+      local ticker = legacyTimer("ticker", true)
+
+      local upgraded = require("TimerKit")
+      assert.are.equal(old, upgraded)
+      assert.are.equal(current, upgraded.REVISION)
+
+      TestEnv.FireNative(1)
+      assert.are.equal(1, calls.fires)
+      assert.are.equal("completed", fires:GetState())
+
+      assert.is_true(cancelled:Cancel())
+      TestEnv.InvokeRaw(2)
+      assert.is_nil(calls.cancelled)
+
+      assert.is_true(restarted:Restart())
+      TestEnv.InvokeRaw(3)
+      assert.is_nil(calls.restarted)
+      TestEnv.FireNative(5)
+      assert.are.equal(1, calls.restarted)
+
+      TestEnv.FireNative(4)
+      TestEnv.FireNative(4)
+      assert.are.equal(2, calls.ticker)
+      assert.is_true(ticker:IsPending())
+      assert.is_true(ticker:Cancel())
+      assert.are.equal(0, scope:GetActiveCount())
+    end
+  )
+
   it("reports no remaining time for a timer an older revision started", function()
     local TimerKit = TestEnv.NewPackage()
     local timer = TimerKit:After(2, function() end)

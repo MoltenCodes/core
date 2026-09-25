@@ -19,7 +19,7 @@ end)
 
 `timer:GetRemaining()` and `timer:GetDeadline()` answer "how long until this fires?" for a running timer and return `nil` otherwise. They read `GetTimePreciseSec`, which is optional: on a host without it TimerKit still loads, and both methods return `nil`.
 
-TimerKit adds a logical timer state machine, restart/cancel generation guards, deterministic scope cleanup, and per-addon ownership without exposing native FunctionContainer details to consumers.
+TimerKit adds a logical timer state machine, restart/cancel guards against stale native callbacks, deterministic scope cleanup, and per-addon ownership without exposing native FunctionContainer details to consumers.
 
 Use `TimerKit:CreateScope()` for manually owned groups and `TimerKit:ForAddon(addonName)` for the addon's canonical scope. `TimerKit:CloseAddonScopes(addonName)` closes the addon scope and cancels every timer in it. An addon scope closes at logout whenever LifecycleKit or EventKit is loaded, and otherwise by your own call: TimerKit finds either through `Registry:Find` without depending on it (see "At logout" in [`docs/API.md`](docs/API.md)). Package-level `TimerKit:New` / `After` / `Every` are convenience methods backed by an internal manual scope and are therefore not tied to an addon.
 
@@ -27,7 +27,7 @@ A caller that needs to carry its own bookkeeping on a timer attaches it through 
 
 Two timers that expire at the same instant fire in whatever order the client dispatches them; TimerKit imposes no ordering of its own. See [`docs/API.md`](docs/API.md).
 
-See [`docs/API.md`](docs/API.md) for the full state model, scope semantics, error behavior, and native API boundary.
+See [`docs/API.md`](docs/API.md) for the full state model, scope semantics, error behavior, and native API boundary, and [`docs/INTERNALS.md`](docs/INTERNALS.md) for the timer record, stale-callback protection and upgrade invariants.
 
 ## Embedding
 

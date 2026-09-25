@@ -29,7 +29,7 @@ Timer handles:
 | `IsCancelled()` | Return whether it was logically cancelled. |
 | `Start()` | Start an idle/completed/cancelled timer; return `false` if already running. |
 | `Cancel()` | Cancel a running timer; return `false` if it is not running. |
-| `Restart()` | Cancel if necessary and start a fresh generation. |
+| `Restart()` | Cancel if necessary and start again; the earlier start's native callback is ignored. |
 | `GetRemaining()` | Seconds until the next fire while running; `nil` otherwise. |
 | `GetDeadline()` | Monotonic instant of the next fire while running; `nil` otherwise. |
 
@@ -216,9 +216,9 @@ Repeating timers remain `running` after each callback until cancelled or restart
 
 ## Stale callback protection
 
-Every start/restart receives a monotonically increasing logical generation. Cancellation invalidates that generation **before** TimerKit asks the native handle to cancel.
+Every start or restart binds the timer to the native handle that start created, and the native callback of a start fires the timer only while the timer is running and still bound to that handle. Cancellation unbinds the handle **before** TimerKit asks it to cancel, and a restart binds the new one.
 
-This means an already-queued or otherwise stale native callback cannot execute user code after a logical cancel/restart, even if native cancellation fails.
+This means an already-queued or otherwise stale native callback cannot execute user code after a logical cancel/restart, even if native cancellation fails. It relies only on what `C_Timer` already promises: each `NewTimer`/`NewTicker` call returns its own handle. Revision 9 and older bound each start to a per-timer generation counter instead; the callbacks those revisions left running keep that check after an in-place upgrade, as [`INTERNALS.md`](INTERNALS.md#stale-host-callbacks) describes.
 
 For one-shot timers, TimerKit marks the logical timer `completed` and removes it from its active scope before invoking user code. A callback can therefore safely call `Restart()` on itself.
 
@@ -360,9 +360,11 @@ first`, `MoltenCodes TimerKit requires a valid Registry API 2 facade`,
 
 - Every getter, `SetUserData`, `IsPending`, `IsCancelled` and
   `GetActiveCount` is a receiver check and a field read; none allocates.
-- `New`, `After` and `Every` allocate the timer handle. Every start
-  (`Start`, `Restart`, `After`, `Every`) allocates one callback closure and
-  whatever the host allocates for its native handle, and reads
+- `New`, `After` and `Every` allocate the timer handle: one table, sized once
+  for every field it will hold, `SetUserData` included (384 bytes for a
+  one-shot timer and 704 for a repeating one on a 64-bit Lua 5.1). Every start
+  (`Start`, `Restart`, `After`, `Every`) allocates one callback closure (about 140
+  bytes) and whatever the host allocates for its native handle, and reads
   `GetTimePreciseSec` once when the client has it.
 - `Cancel()` allocates nothing beyond what the host's `Cancel` does.
 - A delivered repeating tick allocates nothing and reads the clock once; a
