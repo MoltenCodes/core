@@ -7,7 +7,9 @@
 ---
 ---   MoltenCodes  `EventKit:Coalesce(events, interval, callback)`, whose
 ---                timing half is a SchedulerKit `Coalesce` handle on a
----                TimerKit timer; `handle:Close()`
+---                TimerKit timer (every handle's in one EventKit-private
+---                SchedulerKit scope since EventKit revision 18);
+---                `handle:Close()`
 ---   Ace3         `object:RegisterBucketEvent(events, interval, callback)`
 ---                on AceEvent-3.0 and AceTimer-3.0; `UnregisterBucket`
 ---

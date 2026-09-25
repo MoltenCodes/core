@@ -18,6 +18,11 @@
 ---   compaction. Each side does what it does on a switch, so the row compares
 ---   the switch a user of each library pays for.
 --- - `validate` has no AceDB counterpart and is reported for SettingsKit alone.
+--- - **Getters.** `db:Getter(source, key)` is SettingsKit's answer to a hot
+---   loop of view reads: a function that returns what `view[key]` would. The
+---   AceDB side gets the closest plain equivalent, a closure over the table
+---   that returns `t[key]` (through AceDB's default metatables), so the
+---   `read-getter` rows compare one function call per read on both sides.
 
 local Bench = require("Bench")
 
@@ -124,6 +129,11 @@ local function kitAdapter(host)
     return db:Validate("profile", path, value)
   end
 
+  ---A function that reads `key` from `source`: a scope name or a view.
+  function adapter.getter(db, source, key)
+    return db:Getter(source, key)
+  end
+
   return adapter,
     {
       { name = "SettingsKit", revision = SettingsKit.REVISION },
@@ -168,6 +178,18 @@ local function aceAdapter(host, directory)
 
   function adapter.setProfile(db, name)
     db:SetProfile(name)
+  end
+
+  ---A closure that reads `key` from `source`: a scope name or a table of the
+  ---database (AceDB has no getter, so this is the plain equivalent).
+  function adapter.getter(db, source, key)
+    local container = source
+    if type(source) == "string" then
+      container = db[source]
+    end
+    return function()
+      return container[key]
+    end
   end
 
   return adapter,
@@ -344,6 +366,32 @@ local function cases(adapter)
     end
   )
 
+  onDatabase(
+    "read-getter",
+    "read a saved profile value through a getter (profile.scale)",
+    200000,
+    function(db, count)
+      local get = adapter.getter(db, "profile", "scale")
+      for _ = 1, count do
+        local _ = get()
+      end
+    end,
+    { note = "AceDB has no getter: its side is a closure returning the table's field" }
+  )
+
+  onDatabase(
+    "read-getter-entry",
+    "read a field of an unsaved keyed entry through a getter (profile.auras[118].shown)",
+    200000,
+    function(db, count)
+      local get = adapter.getter(db, db.profile.auras[AURA], "shown")
+      for _ = 1, count do
+        local _ = get()
+      end
+    end,
+    { note = "AceDB has no getter: its side is a closure returning the table's field" }
+  )
+
   onDatabase("write-scalar", "write a profile number (profile.scale)", 100000, function(db, count)
     local profile = db.profile
     for index = 1, count do
@@ -418,10 +466,33 @@ function Settings.Build(side, host, settings)
       "auras[" .. AURA .. "].shown: " .. tostring(profile.auras[AURA].shown)
     )
 
+    local getScale = adapter.getter(db, "profile", "scale")
+    local getShown = adapter.getter(db, profile.auras[AURA], "shown")
+    check(
+      "getter-reads-saved",
+      getScale() == 1.5,
+      "getter for profile.scale on Alpha: " .. tostring(getScale())
+    )
+    check(
+      "getter-reads-entry-wildcard",
+      getShown() == true,
+      "getter for auras[" .. AURA .. "].shown: " .. tostring(getShown())
+    )
+
     profile.frame.x = 42
     adapter.setProfile(db, "Beta")
     local betaScale, betaX = db.profile.scale, db.profile.frame.x
+    local betaGetterScale = getScale()
     adapter.setProfile(db, "Alpha")
+    check(
+      "getter-follows-profile",
+      betaGetterScale == 0.75 and getScale() == 1.5,
+      "profile getter after switching to Beta: "
+        .. tostring(betaGetterScale)
+        .. ", back on Alpha: "
+        .. tostring(getScale()),
+      side == "moltencodes"
+    )
     check(
       "profiles-are-separate",
       betaScale == 0.75 and betaX == 0 and db.profile.frame.x == 42,

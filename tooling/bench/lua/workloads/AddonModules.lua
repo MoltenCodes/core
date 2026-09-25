@@ -26,8 +26,9 @@
 ---
 --- What differs, and stays in the numbers because it is each library's own
 --- work for the same request: ModuleKit validates and orders the module graph
---- on every whole-container pass (there are no dependencies here, so the order
---- is creation order), records intent apart from state, and runs every hook
+--- once and reuses it until the graph changes (there are no dependencies
+--- here, so the order is creation order), records intent apart from state,
+--- and runs every hook
 --- under `pcall`; AceAddon walks its list in creation order and runs every
 --- hook under `xpcall`. Dependencies, injection and `requiresAddons` have no
 --- AceAddon counterpart and are not measured; the checks show the ordering

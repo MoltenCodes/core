@@ -150,7 +150,7 @@ unregister the event every time.
 | `eventDispatch` | EventKit (on SignalKit) | AceEvent-3.0 events (on CallbackHandler-1.0) | `UNIT_POWER_UPDATE` with two payload values to 1, 10 and 100 listeners; connect and disconnect beside ten listeners and as the only one |
 | `messageDispatch` | a SignalKit bus, `openTopics = true` | AceEvent-3.0 messages | the same, for a named message any addon can subscribe to |
 | `timers` | TimerKit scope timers | AceTimer-3.0 | start and cancel a one-shot; start one and let it fire; one tick of 100 repeating timers; what a cancelled timer leaves pending |
-| `settings` | SettingsKit with a SchemaKit schema | AceDB-3.0 with the same defaults | open empty and populated saved variables (22 profiles, 50 characters); profile switch; reads (default, saved, nested, keyed-entry wildcard); writes; `Validate`; memory held per open database |
+| `settings` | SettingsKit with a SchemaKit schema | AceDB-3.0 with the same defaults | open empty and populated saved variables (22 profiles, 50 characters); profile switch; reads (default, saved, nested, keyed-entry wildcard), direct and through a getter; writes; `Validate`; memory held per open database |
 | `codec` | CodecKit, `channel = "addon"`, no compression | AceSerializer-3.0 | encode and decode a small, a medium (50 records) and a large (500 numbers, 200 strings, 100 records) payload; output size |
 | `comm` | CommKit | AceComm-3.0 with ChatThrottleLib | send 200-, 1000- and 8000-byte messages until every chunk left; receive and reassemble them; wire bytes; memory an incomplete stream holds |
 | `libraryRegistry` | Registry (`Register`, `Get`, `Find`), InteropKit's LibStub bridge | LibStub | register a new library, upgrade it, refuse a stale copy; look up one of 50 by name; a silent miss; reach a LibStub library through the bridge; expose a Kit to LibStub (MoltenCodes only) |
@@ -173,6 +173,13 @@ What each pairing leaves out, on purpose:
   and notification. On a profile switch AceDB also strips default-equal values
   from the old profile, which SettingsKit leaves to its logout compaction; each
   side does what it does on a switch, and the row says so.
+- **Settings getters.** `db:Getter(source, key)` returns a function that
+  answers what `view[key]` would, for hot loops. AceDB has no getter, so its
+  side of `read-getter` and `read-getter-entry` is the plain equivalent, a
+  closure over the table that returns `t[key]` (through AceDB's default
+  metatables): one function call per read on both sides. A SettingsKit scope
+  getter follows `SetProfile`; the AceDB closure keeps reading the table it
+  captured (check `getter-follows-profile`).
 - **Compression.** Ace3 has no compressor. Comparing CodecKit's DEFLATE stage
   would need a second library on the Ace side (LibDeflate), fetched and named
   separately; this benchmark does not fetch it, so compression is off on both
@@ -181,8 +188,10 @@ What each pairing leaves out, on purpose:
   `maxCps = 100000, burst = 1000000`, its ceilings; ChatThrottleLib
   `MAX_CPS` and `BURST` the same) and refilled between batches, so neither
   side waits for bandwidth and the rows measure each library's own path.
-  CommKit's send includes one frame of its SchedulerKit driver; ChatThrottleLib
-  sends at once while bandwidth is available (`framesPerMessage`).
+  With the opened throttle both send at once: CommKit sends inside `Send`
+  when its driver is idle and the bucket pays (its SchedulerKit driver runs
+  only when the bucket runs short), and ChatThrottleLib while bandwidth is
+  available (`framesPerMessage`).
 - **Library bootstrap.** `Registry:Bootstrap`, the path a Kit's own file
   takes (surface validation, retire hooks, migrations, sealing), has no
   LibStub counterpart: LibStub libraries write their upgrade code by hand.
@@ -196,8 +205,7 @@ What each pairing leaves out, on purpose:
   ModuleKit module's `scope` fields are created on first read, so the two
   mechanisms are compared only in the listener cycle, where both give a module
   an event registration that disable releases. ModuleKit validates and orders
-  the module graph on every whole-container pass, which is its documented
-  cost. Neither side can delete an addon, so the create and load cases grow
+  the module graph once and reuses it until the graph changes. Neither side can delete an addon, so the create and load cases grow
   both registries by a few thousand addons per process.
 - **Hook calls.** HookKit runs pre-hook and post-hook handlers under `pcall`
   and reports a failure to the host error handler, so a failing handler never
@@ -217,12 +225,14 @@ What each pairing leaves out, on purpose:
 - **Slash-command arguments.** An AceConsole handler receives the raw text and
   splits it with `GetArgs`; its checks are the handler's own code, written as
   AceConsole addons write them (`dispatch-subcommand`). CommandKit's
-  registration also checks the name against other addons, chat types and up to
-  1,024 emote indexes (`EMOTE<n>_CMD1`; the host defines neither
-  `MAXEMOTEINDEX` nor any emote, so every index is read, as the client's
-  several hundred emotes would be);
-  `register-unregister-one-emote` shows the price of that scan. Tab completion
-  (AceTab) is not compared.
+  registration also checks the name against other addons, chat types and
+  emotes. The emote globals (`EMOTE<n>_CMD<m>`, up to 1,024 indexes; the host
+  defines neither `MAXEMOTEINDEX` nor any emote) are read once into an index
+  since CommandKit revision 7, and every later check asks the index; the
+  foreign commands' `SLASH_` globals are read on every call. The former
+  `register-unregister-one-emote` case (the emote scan capped at one index)
+  is dropped: with the index it measured the same work as
+  `register-unregister`. Tab completion (AceTab) is not compared.
 - **Missing translations.** The first-miss row runs both libraries in silent
   mode, so no error report is timed, and opens LocaleKit's missing-key bound
   (`maxMissingKeys = UNBOUNDED`) so both store every key; LocaleKit also
@@ -241,18 +251,22 @@ What each pairing leaves out, on purpose:
   asks for it, so the Ace side is `RegisterOptionsTable` plus
   `GetOptionsTable(name, "dialog", ...)`, with the "already validated" mark
   cleared, since it has no unregistration. `OptionsKit:Define` also copies and
-  indexes the tree and builds one schema per value option.
+  indexes the tree and resolves a schema per value option; options of one kind
+  with the same inputs share one sealed schema for the session.
 - **Options: command line.** Both parse the line, find the option, convert the
   text, check it and call `set`. CommandKit's bound command also echoes
-  `path = value` and calls `tree:Describe()` of the whole tree once per
-  command; AceConfigCmd prints nothing on success.
+  `path = value` and describes the named option once per command
+  (`tree:DescribeOption(path)`); AceConfigCmd prints nothing on success.
 - **Options: get and set.** AceConfigRegistry has no call that reads or writes
   an option through the table, so `tree-get` and `tree-set` are OptionsKit
   only. AceConfigDialog needs real frames and is left to the in-client runner.
 - **Profile options.** AceDBOptions keeps one group per database and one
-  shared args table, so building it again is cheap; `OptionsKit:ProfileOptions`
-  builds a new group of closures. Choosing a profile includes each database's
-  own switch (see `settings`).
+  shared args table; since OptionsKit revision 8 `OptionsKit:ProfileOptions`
+  also returns one cached group per database and options, so both sides return
+  a group they already hold. OptionsKit still runs its argument and database
+  checks (SettingsKit loaded, the ten profile methods, the options) on every
+  call. Choosing a profile includes each database's own switch (see
+  `settings`).
 - **Widgets are indicative.** The frames are the fake client's: a `SetPoint`
   or `SetText` is a Lua table write, where the client's is a native call, and
   nothing is drawn. The rows compare each toolkit's own Lua work around its
@@ -554,18 +568,43 @@ Development Team."* The conclusion for this repository:
 ## Results
 
 The current run is
-[`tooling/bench/results/2026-09-25-host-2.json`](../tooling/bench/results/2026-09-25-host-2.json):
-the whole catalogue (fourteen workloads) in one default run, on an otherwise
-idle machine (load average about 2 on 18 logical CPUs, no game client or
-virtual machine running), rendered below with `python3 -m tooling.bench.report`.
+[`tooling/bench/results/2026-09-25-host-3.json`](../tooling/bench/results/2026-09-25-host-3.json):
+the whole catalogue (fourteen workloads) in one default run
+(`python3 -m tooling.bench.run`: 3 rounds, 2 warm-up and 5 timed batches) at
+commit `74de590`, on an otherwise idle machine (load average 1.2 to 1.9 on 18
+logical CPUs, no game client, virtual machine or other benchmark running),
+rendered below with `python3 -m tooling.bench.report`.
 
-**History.** The first host run,
-[`2026-09-25-host.json`](../tooling/bench/results/2026-09-25-host.json), covered
-the first six workloads only. It was made before the performance round of
-2026-09-25 (commKit r5, settingsKit r6, signalKit r9, eventKit r17, timerKit
-r10, codecKit r5) and on a machine shared with a game client and a virtual
-machine, so its numbers are not comparable with the current ones and are kept
-only as a record.
+**History.**
+
+- The first host run,
+  [`2026-09-25-host.json`](../tooling/bench/results/2026-09-25-host.json),
+  covered the first six workloads only. It was made before the first
+  performance round (commKit r5, settingsKit r6, signalKit r9, eventKit r17,
+  timerKit r10, codecKit r5) and on a machine shared with a game client and a
+  virtual machine, so its numbers are not comparable with the later ones and
+  are kept only as a record.
+- The second,
+  [`2026-09-25-host-2.json`](../tooling/bench/results/2026-09-25-host-2.json),
+  covered all fourteen workloads after the first round (commit `e43d939`). The
+  roadmap of the second round was built from it.
+- This run follows the second round. The packages changed since `e43d939`,
+  with their revisions now: commKit 0.4.0 r7 (was r5), commandKit 0.2.6 r7
+  (r6), eventKit 0.9.5 r18 (r17), hookKit 0.3.0 r7 (r5), interopKit 0.1.2 r3
+  (r2), lifecycleKit 0.6.5 r15 (r14), localeKit 0.1.4 r3 (r2), moduleKit
+  0.8.5 r19 (r18), optionsKit 0.4.0 r8 (r6), poolKit 0.4.6 r9 (r8), registry
+  0.6.8 r14 (r13), schedulerKit 0.8.6 r18 (r17), settingsKit 0.3.1 r8 (r6),
+  timerKit 0.7.0 r11 (r10), widgetKit 0.2.1 r9 (r8). The `settings` workload
+  gained `read-getter` and `read-getter-entry`, and the `slashCommands`
+  workload dropped `register-unregister-one-emote` (see
+  [Workloads](#workloads)).
+
+**Checks stay; speed comes without dropping them.** The owner decided on
+2026-09-25 that every check a Kit makes and Ace3 skips stays: argument and
+receiver validation, secret-value refusals, bounds, isolation of callbacks,
+ordering guarantees and the like. Speed is pursued only in ways that keep
+them. The remaining gaps listed below are therefore mostly the cost of those
+checks, and each row names the checks that make up its gap.
 
 ### What the numbers show
 
@@ -575,44 +614,58 @@ overlap or the ratio is within 1.15× either way.
 
 | Package | Ace3 counterpart | Verdict (MoltenCodes ÷ Ace3) | Allocation (MoltenCodes against Ace3) | Why the remaining gap |
 |---|---|---|---|---|
-| eventKit | AceEvent-3.0 events (CallbackHandler-1.0) | dispatch at parity (0.95× faster at 10 listeners, 1.00× within noise at 100, 1.13× at 1); connect and disconnect slower, 1.29–1.53× | dispatch 0 against 0; 224–328 B against 0–104 B per connect and disconnect | a connection object per connect, which the caller holds and can disconnect by |
-| signalKit (bus) | AceEvent-3.0 messages (CallbackHandler-1.0) | dispatch at parity at 10 and 100 listeners (1.06×, 1.01×), slower at 1 (1.57×); connect and disconnect slower, 1.57–1.64× | 0 against 0 per dispatch; 224 B against 0 per connect and disconnect | fixed per-dispatch cost of error isolation and the firing generation, visible with one listener; a connection object per connect |
-| timerKit | AceTimer-3.0 | slower, 2.24–3.07× to start a one-shot; repeating tick at parity (1.09×) | 752 B against 512 B per one-shot (224 B of it the simulated `C_Timer` handle) | one cancellable native timer and one handle per timer; in exchange a cancelled timer leaves nothing (41 B against 553 B retained, 0 against 1,000 pending host timers) |
-| settingsKit (with schemaKit) | AceDB-3.0 | profile switch faster, 0.28×; open slower, 2.3–4.5×; reads slower, 57–71×; writes are *different work* (validated, signalled) | open 6.6–7.2 KB against 3.3–3.8 KB, 6.2 KB against 3.9 KB held per database; switch 0 against 496 B | a read goes through the scope view and the schema's path lookup where AceDB indexes a plain table |
-| codecKit (compression off) | AceSerializer-3.0 | from 0.90× (large decode, faster) to 1.53× (small encode); encode 1.20–1.53×, decode 0.90–1.25× | encode less: 138 B against 201 B, 4.2 KB against 4.8 KB, 18 KB against 28 KB; decode equal | the channel-escaping pass and type tags; output is 11–28% smaller |
-| commKit | AceComm-3.0 with ChatThrottleLib | slower: send 5.0–19.0×, receive 2.7–4.3× | send-200 4.8 KB against 104 B; larger sends within 10%; receive about equal | a SchedulerKit job per wake and a PoolKit lease per message; the send leaves on the next frame (proposal pending) |
-| registry | LibStub | slower, 2.5–9.5× (lookup 9.5×, silent miss 6.3×) | 288 B against 64 B per new library; 0 otherwise | `Get` and `Find` re-validate the name and check for a secret value on every call (`packages/registry/src/Registry.lua:66-71`, `:112-126`) |
-| interopKit | LibStub (the bridge side) | slower, 3.1× to reach a LibStub library; exposing a Kit to LibStub has no counterpart | 0 against 0 | the same validation as Registry, per call |
-| moduleKit with lifecycleKit | AceAddon-3.0 | create at parity (1.10×); load 2.2×; one module disable and enable 4.3×; all ten 8.3×; ten with a listener each 5.3× | 18.7 KB against 0 per disable-and-enable-all; 28.7 KB against 19.4 KB held per addon of ten modules | the module graph is validated and ordered on every whole-container pass |
-| hookKit | AceHook-3.0 | install and unhook slower, 2.4–3.8×; a call through a raw hook 1.66×; an unhooked post-hook 0.91× (faster); calls through pre- and post-hooks are *different work* (isolated, about 2×) | 584–720 B against 288–688 B per install and unhook; 0 per call on both | a hook record and argument validation per install; `pcall` isolation per hooked call |
-| commandKit | AceConsole-3.0 | slower: parse 2.2–3.7×, dispatch 4.2–4.7×, register and unregister 682× (64× with the emote scan limited to one index) | parse and dispatch equal (32–97 B against 32–130 B); register 1.75 KB against 96 B | `Register` builds up to 1,024 `EMOTE<n>_CMD<m>` names to refuse a taken emote (`packages/commandKit/src/CommandKit.lua:1696`) |
-| localeKit | AceLocale-3.0 | lookup at parity (0.99×); register 1.72×; asking for an unneeded locale 4.1×; first miss 3.3× | register 6.1 KB against 5.2 KB; 6.0 KB against 5.2 KB held per addon | per-call write proxies, value validation and missing-key recording |
-| eventKit `Coalesce` (schedulerKit, timerKit) | AceBucket-3.0 | slower: 2.4× per event and per burst, 4.3× to create and remove a bucket | burst 752 B against 528 B; create and remove 3.7 KB against 272 B | a coalescing handle, a scheduler job and an EventKit subscription per bucket |
-| optionsKit (with commandKit's `BindOptions`) | AceConfigRegistry-3.0, AceConfigCmd-3.0, AceDBOptions-3.0 | define and check 1.51–1.55×; a typed option command 15–26×; profile group build 21.8×; choosing a profile by command 6.1× | define 177–698 KB against 0.2 KB; 53 KB against 0.7–0.9 KB per command; profile group 6.5 KB against 0 | `Define` copies and indexes the tree and builds a schema per option; every bound command calls `tree:Describe()` over the whole tree (`packages/commandKit/src/CommandKit.lua:2195`); AceDBOptions caches its group per database |
-| widgetKit (indicative, fake frames) | AceGUI-3.0 | pooled widget cycle slower, 1.04–2.31×; group layout is *different work* (the fake client's anchor check dominates AceGUI's time) | 0 against 0 per cycle (AceGUI EditBox 256 B) | PoolKit's lease and release bookkeeping per acquire and release (`validatePool`, release accounting in PoolKit) |
+| eventKit | AceEvent-3.0 events (CallbackHandler-1.0) | dispatch at parity (0.98× faster at 10 listeners, 1.01× at 100, 1.07× at 1); connect and disconnect slower, 1.30–1.53× | dispatch 0 against 0; 224–328 B against 0–104 B per connect and disconnect | a connection handle per connect, which the contract keeps valid after `Disconnect`; the event-name, callback and secret-value checks and the ordering and scope bookkeeping |
+| signalKit (bus) | AceEvent-3.0 messages (CallbackHandler-1.0) | dispatch at parity at 10 and 100 listeners (1.08×, 1.02×), slower at 1 (1.56×); connect and disconnect slower, 1.54–1.60× | 0 against 0 per dispatch; 224 B against 0 per connect and disconnect | per publish the receiver check, the secret-value refusal of the topic, the topic policy and the firing generation, visible with one listener; a connection handle per connect |
+| timerKit | AceTimer-3.0 | slower, 1.99–2.33× to start a one-shot; repeating tick at parity (1.09×) | 752 B against 512 B per one-shot (224 B of it the simulated `C_Timer` handle) | one cancellable native timer and one handle per timer, the delay and callback checks and the stale-callback check; in exchange a cancelled timer leaves nothing (41 B against 553 B retained, 0 against 1,000 pending host timers) |
+| settingsKit (with schemaKit) | AceDB-3.0 | profile switch faster, 0.24×; reads through a getter 1.62–2.61×; direct view reads 30–40×; open 2.4–4.6×; writes are *different work* (validated, signalled) | reads, getters and switch 0 (AceDB switch 496 B); open 7.3–7.9 KB against 3.3–3.8 KB, 6.8 KB against 3.9 KB held per database | a view is an empty proxy (validated writes need the metamethod) whose read also probes the key with `issecretvalue`; a getter skips both but still checks that its cached table is current, which is what keeps it correct after `SetProfile` and every mutation; open compiles and checks the schema and the saved layout |
+| codecKit (compression off) | AceSerializer-3.0 | from 0.88× (large decode, faster) to 1.55× (medium encode); encode 1.16–1.55×, decode 0.88–1.28× | encode less: 138 B against 201 B, 4.2 KB against 4.8 KB, 18 KB against 28 KB; decode about equal | the secret probe before every value, the value-count, string-length, depth and output-size bounds, cycle detection and exact IEEE-754 doubles; on decode the header, bounds, duplicate-key and `nil`-value checks; output is 11–28% smaller |
+| commKit | AceComm-3.0 with ChatThrottleLib | slower: send 4.4–7.1×, receive 2.4–3.6×; both now send inside the call (0 frames per message) | send-200 834 B against 104 B; larger sends 2.5 KB against 2.1 KB and 19 KB against 22 KB; receive within 20% | the send handle the caller keeps (384 B) and the request validation, the bucket and per-destination rotation bookkeeping and the client-result classification per chunk; on receive the stream, byte and sender bounds |
+| registry | LibStub | slower, 1.2–5.2× (upgrade 1.22×, lookup 3.6×, silent miss 5.2×) | 288 B against 64 B per new library; 0 otherwise | the `issecretvalue` probe of the name, the API generation and the stored revision on every call, which the fast path keeps; a miss runs the full name check so it can say why it missed |
+| interopKit | LibStub (the bridge side) | slower, 2.1× to reach a LibStub library; exposing a Kit to LibStub has no counterpart | 0 against 0 | the secret probe of the major name and the adoption record read |
+| moduleKit with lifecycleKit | AceAddon-3.0 | create faster, 0.79×; load at parity (1.04×); disable and enable all ten 1.35×, one module 1.53×; ten with a listener each 2.21× | create 17.7 KB against 19.9 KB, held 16.8 KB against 19.4 KB per addon of ten; cycles 0 against 0; with listeners 7.8 KB against 104 B | every hook under `pcall`, intent recorded apart from state, the dependency and failed-module rules on every pass; with listeners an EventKit scope per module that ModuleKit closes on disable (AceAddon's embedded AceEvent keeps its tables) |
+| hookKit | AceHook-3.0 | install and unhook slower, 1.19–1.86×; a call through a raw hook 1.23×; an unhooked post-hook 0.94× (faster); calls through pre- and post-hooks are *different work* (isolated, about 1.6–1.8×) | 480–720 B against 288–688 B per install and unhook; 0 per call on both | the receiver, handler and secret checks, the secure-target memo, the protected-frame rules, the capacity check, the per-scope record and the restore-only-when-still-ours rule per install; `pcall` isolation per hooked call |
+| commandKit | AceConsole-3.0 | slower: parse 1.5–2.0×, dispatch 2.1–2.9×, register and unregister 30× | parse and dispatch equal or less (32–97 B against 32–130 B); register 977 B against 96 B | `Register` refuses a name another addon, a chat type, a secure command or an emote holds, reading the 50 foreign commands' `SLASH_` globals on every call (most of its 11 µs), and compiles the command spec; dispatch and parse check the line's bounds and hand typed, schema-checked arguments to the handler |
+| localeKit | AceLocale-3.0 | lookup at parity (0.99×); register 1.34×; asking for an unneeded locale 2.4×; first miss 3.1× | register 5.7 KB against 5.2 KB; 5.6 KB against 5.2 KB held per addon | a write proxy per `NewLocale` call, the argument and value checks, the missing-key record behind `MissingKeys` and its bound, and the secret probe of a missing key |
+| eventKit `Coalesce` (schedulerKit, timerKit) | AceBucket-3.0 | slower: 1.9× per event and per burst, 2.4× to create and remove a bucket | burst 752 B against 528 B; create and remove 1.9 KB against 272 B | a handle, a SchedulerKit timing handle and an EventKit subscription per bucket; per event the key's secret probe and the 256-key bound; in exchange no timer stays armed after a delivery |
+| optionsKit (with commandKit's `BindOptions`) | AceConfigRegistry-3.0, AceConfigCmd-3.0, AceDBOptions-3.0 | define and check faster, 0.86–0.90×; a typed option command 1.35–2.02×; profile group 6.1×; choosing a profile by command 2.6× | define 46–174 KB against 0.2 KB; 0.8–1.6 KB against 0.7–0.9 KB per command; profile group 0 against 0 | the profile group is cached as AceDBOptions' is; what remains are the checks every call keeps (SettingsKit loaded, the database's ten profile methods, the options, secret refusals; about 1.3 µs); a command also enforces `min`/`max` (which AceConfigCmd skips), echoes the value and describes the named option; `Define` copies and indexes the tree it seals |
+| widgetKit (indicative, fake frames) | AceGUI-3.0 | pooled widget cycle from 0.66× (CheckBox, faster) and 0.81× (Label) to 1.00× (EditBox), 1.39× (Button) and 1.56× (Slider); group layout is *different work* (the fake client's anchor check dominates AceGUI's time) | 0 against 0 per cycle (AceGUI EditBox 256 B) | PoolKit's acquire and release (the pool's bound and ownership bookkeeping), the protected calls around `OnAcquire` and `OnRelease`, and the checks every setter makes (the secret probe and `type` for the nil rule); a Slider validates three numbers and its widget in `SetSliderValues` |
 
-**Ahead or at parity.** Profile switch 0.28× with no allocation (AceDB 496 B);
-EventKit dispatch to 10 listeners 0.95×, to 100 at parity; SignalKit bus
-dispatch to 10 and 100 at parity; large decode 0.90×; a call through an
-unhooked post-hook 0.91×; locale lookup 0.99×; addon creation 1.10×; repeating
-timer tick 1.09×. CodecKit encodes with less garbage at every size and writes
-11–28% fewer bytes.
+**Ahead or at parity.** Profile switch 0.24× with no allocation (AceDB
+496 B); options define 0.86–0.90×; WidgetKit CheckBox and Label cycles 0.66×
+and 0.81×, EditBox 1.00× with no allocation (AceGUI 256 B); addon creation
+0.79× with less memory held (16.8 KB against 19.4 KB per addon of ten
+modules), addon load 1.04×; large decode 0.88×; a call through an unhooked
+post-hook 0.94×; EventKit dispatch to 10 listeners 0.98×, to 100 and to 1 at
+parity; SignalKit bus dispatch to 10 and 100 at parity; locale lookup 0.99×;
+repeating timer tick 1.09×. CodecKit encodes with less garbage at every size
+and writes 11–28% fewer bytes.
 
-**Behind, largest gap first** (worst median ratio per package):
-CommandKit registration 682×; SettingsKit reads 57–71×; OptionsKit command
-line 15–26× and profile group build 22×; CommKit send 5–19×; Registry lookup
-9.5×; ModuleKit disable-and-enable-all 8.3×; CommandKit dispatch and parsing
-2.2–4.7×; EventKit `Coalesce` bucket create and remove 4.3×; LocaleKit unneeded
-locale 4.1×; HookKit install 3.8×; InteropKit lookup 3.1×; TimerKit one-shot
-3.1×; WidgetKit widget cycle 2.3×; SignalKit bus churn 1.6×; EventKit churn
-1.5×; CodecKit small encode 1.5×.
+**Behind, largest gap first** (worst median ratio per package): SettingsKit
+direct view reads 30–40× (1.6–2.6× through `db:Getter`) and open 4.6×;
+CommandKit registration 30×; CommKit send 4.4–7.1×; OptionsKit profile group
+6.1×; Registry silent miss 5.2×; LocaleKit first miss 3.1×; CommandKit
+dispatch 2.9×; OptionsKit profile choice by command 2.6×; EventKit
+`Coalesce` bucket create and remove 2.4×; TimerKit one-shot 2.3×; ModuleKit
+cycle with listeners 2.2×; InteropKit lookup 2.1×; HookKit install 1.9×;
+SignalKit bus churn 1.6×; WidgetKit Slider cycle 1.6×; CodecKit encode 1.55×;
+EventKit churn 1.5×.
+
+Since the second run: CommandKit registration 682× → 30×, OptionsKit
+command line 15–26× → 1.4–2.0× and profile group 22× → 6.1× (0 bytes),
+SettingsKit reads 57–71× → 30–40×, Registry lookup 9.5× → 3.6×, ModuleKit
+disable-and-enable-all 8.3× → 1.35× (0 bytes), EventKit `Coalesce` create and
+remove 4.3× → 2.4×, options define 1.5× → 0.87×, WidgetKit cycles 1.04–2.31×
+→ 0.66–1.56×.
 
 **Advantages outside time**, from the checks:
 
 - *Ordering.* EventKit and SignalKit deliver in connection order
-  (CallbackHandler delivered 6 5 4 3 2 1 7 8); ModuleKit disables in reverse
-  order and enables a dependency first; WidgetKit releases children last
-  first.
+  (CallbackHandler delivered 4 3 2 1 7 6 5 8 in this run; its order depends
+  on table layout); ModuleKit disables in reverse order and enables a
+  dependency first; WidgetKit releases children last first.
+- *Following the current state.* A SettingsKit scope getter follows
+  `SetProfile` (0.75 on Beta, 1.5 back on Alpha); an AceDB closure over
+  `db.profile` keeps reading the profile it captured.
 - *Bounds.* LocaleKit keeps at most 1,024 missing keys (AceLocale kept 2,000
   of 2,000); EventKit `Coalesce` takes at most 256 keys per interval
   (AceBucket 300 of 300); WidgetKit gives at most 256 widgets of a type
@@ -632,7 +685,8 @@ locale 4.1×; HookKit install 3.8×; InteropKit lookup 3.1×; TimerKit one-shot
 - *An Ace3 defect.* AceConfigCmd-3.0 (minor 14 at the pinned commit) does not
   enforce a range's `min` and `max` on the command line: it reads `info.min`
   and `info.max`, which its `handle` never sets, so `/cmd g2 scale 5` stored 5
-  for a 0.5..2 range. This is the one failed promised check in the summary.
+  for a 0.5..2 range. This is the one failed promised check in the summary;
+  every promised check passes on the MoltenCodes side.
 - AceBucket counts arrivals per key; EventKit `Coalesce` delivers `true`
   (reported as *not promised* on the MoltenCodes side).
 
@@ -666,30 +720,30 @@ locale 4.1×; HookKit install 3.8×; InteropKit lookup 3.1×; TimerKit one-shot
 | Lua | Lua 5.1.5  Copyright (C) 1994-2012 Lua.org, PUC-Rio |
 | Batches | 3 round(s) per case and side, each a fresh process with 2 warm-up, 5 timed and 1 allocation batch |
 | Clock | os.clock (process CPU time) |
-| Load average (1, 5, 15 min) | 2.14 / 2.30 / 2.29 at the start, 1.31 / 1.80 / 2.07 at the end |
-| Empty loop iteration | 0.78 ns (included in every ns/op) |
-| MoltenCodes | commit `e43d939233a718457fe47bb90d731e6b9bf5fbb2`, packages/ unmodified |
+| Load average (1, 5, 15 min) | 1.24 / 1.83 / 2.15 at the start, 1.84 / 1.91 / 2.13 at the end |
+| Empty loop iteration | 0.7678 ns (included in every ns/op) |
+| MoltenCodes | commit `74de59004e6808f479f8a24c8150e9c958bbdbeb`, packages/ unmodified |
 | Ace3 | `WoWUIDev/Ace3` commit `5e2e0d3b3fd125ef1518744c6a9dd21f68f6e773` |
-| Command | `python3 -m tooling.bench.run --out tooling/bench/results/2026-09-25-host-2.json` |
+| Command | `python3 -m tooling.bench.run --out tooling/bench/results/2026-09-25-host-3.json` |
 
 ### Summary
 
-Comparable cases: MoltenCodes faster in 4, slower in 69, within noise in 3.
+Comparable cases: MoltenCodes faster in 9, slower in 67, within noise in 2.
 Failed checks of promised behaviour: options / Ace3 / `cmd-range-bounds-enforced`.
 
 ### Game-event dispatch
 
 EventKit (on SignalKit) against AceEvent-3.0 events (on CallbackHandler-1.0).
 
-Libraries: MoltenCodes: EventKit revision 17, SignalKit revision 9; Ace3: AceEvent-3.0 minor 4, CallbackHandler-1.0 minor 8.
+Libraries: MoltenCodes: EventKit revision 18, SignalKit revision 9; Ace3: AceEvent-3.0 minor 4, CallbackHandler-1.0 minor 8.
 
 | Case | One operation | MoltenCodes ns/op | Ace3 ns/op | MoltenCodes ÷ Ace3 | MoltenCodes B/op | Ace3 B/op |
 |---|---|---:|---:|---|---:|---:|
-| `dispatch-1` | UNIT_POWER_UPDATE with 2 payload values to 1 listener(s) | 226 [216–230] | 199 [195–203] | 1.13× (min 1.10×, slower) | 0.0 | 0.0 |
-| `dispatch-10` | UNIT_POWER_UPDATE with 2 payload values to 10 listener(s) | 890 [879–938] | 934 [917–966] | 0.95× (min 0.96×, faster) | 0.0 | 0.0 |
-| `dispatch-100` | UNIT_POWER_UPDATE with 2 payload values to 100 listener(s) | 7,550 [7,466–7,852] | 7,577 [7,498–7,713] | 1.00× (min 1.00×, within noise) | 0.0 | 0.0 |
-| `churn-warm` | connect and disconnect one listener beside 10 others | 466 [457–479] | 362 [347–386] | 1.29× (min 1.32×, slower) | 224 | 0.0 |
-| `churn-cold` | connect and disconnect the only listener | 973 [942–1,031] | 637 [621–698] | 1.53× (min 1.52×, slower) | 328 | 104 |
+| `dispatch-1` | UNIT_POWER_UPDATE with 2 payload values to 1 listener(s) | 216 [212–232] | 202 [197–206] | 1.07× (min 1.07×, slower) | 0.0 | 0.0 |
+| `dispatch-10` | UNIT_POWER_UPDATE with 2 payload values to 10 listener(s) | 904 [866–917] | 926 [908–948] | 0.98× (min 0.95×, faster) | 0.0 | 0.0 |
+| `dispatch-100` | UNIT_POWER_UPDATE with 2 payload values to 100 listener(s) | 7,649 [7,560–7,757] | 7,567 [7,496–7,644] | 1.01× (min 1.01×, slower) | 0.0 | 0.0 |
+| `churn-warm` | connect and disconnect one listener beside 10 others | 469 [447–484] | 360 [337–368] | 1.30× (min 1.33×, slower) | 224 | 0.0 |
+| `churn-cold` | connect and disconnect the only listener | 989 [952–1,027] | 645 [615–704] | 1.53× (min 1.55×, slower) | 328 | 104 |
 
 Other measurements:
 
@@ -707,7 +761,7 @@ Checks:
 | `disconnect-during-dispatch-skips` | pass: listeners that ran after the first removed all: 1 | pass: listeners that ran after the first removed all: 1 |
 | `nested-dispatch` | pass: listener calls for one outer and one nested dispatch: 6 of 6 | pass: listener calls for one outer and one nested dispatch: 6 of 6 |
 | `error-isolated` | pass: dispatch returned normally: true, other listener ran: 1, errors reported: 1 | pass: dispatch returned normally: true, other listener ran: 1, errors reported: 1 |
-| `connection-order` | pass: delivery order of 8 listeners: 1 2 3 4 5 6 7 8 | fail (not promised): delivery order of 8 listeners: 6 5 4 3 2 1 7 8 |
+| `connection-order` | pass: delivery order of 8 listeners: 1 2 3 4 5 6 7 8 | fail (not promised): delivery order of 8 listeners: 4 3 2 1 7 6 5 8 |
 
 ### Addon-message dispatch
 
@@ -717,11 +771,11 @@ Libraries: MoltenCodes: SignalKit revision 9; Ace3: AceEvent-3.0 minor 4, Callba
 
 | Case | One operation | MoltenCodes ns/op | Ace3 ns/op | MoltenCodes ÷ Ace3 | MoltenCodes B/op | Ace3 B/op |
 |---|---|---:|---:|---|---:|---:|
-| `dispatch-1` | one message with 2 values to 1 listener(s) | 293 [291–304] | 186 [183–193] | 1.57× (min 1.59×, slower) | 0.0 | 0.0 |
-| `dispatch-10` | one message with 2 values to 10 listener(s) | 998 [989–1,015] | 939 [910–957] | 1.06× (min 1.09×, slower) | 0.0 | 0.0 |
-| `dispatch-100` | one message with 2 values to 100 listener(s) | 7,694 [7,519–7,853] | 7,599 [7,549–7,794] | 1.01× (min 1.00×, within noise) | 0.0 | 0.0 |
-| `churn-warm` | connect and disconnect one listener beside 10 others | 557 [543–572] | 340 [329–365] | 1.64× (min 1.65×, slower) | 224 | 0.0 |
-| `churn-cold` | connect and disconnect the only listener | 542 [531–564] | 345 [332–357] | 1.57× (min 1.60×, slower) | 224 | 0.0 |
+| `dispatch-1` | one message with 2 values to 1 listener(s) | 294 [291–299] | 188 [179–193] | 1.56× (min 1.63×, slower) | 0.0 | 0.0 |
+| `dispatch-10` | one message with 2 values to 10 listener(s) | 980 [952–993] | 912 [905–917] | 1.08× (min 1.05×, slower) | 0.0 | 0.0 |
+| `dispatch-100` | one message with 2 values to 100 listener(s) | 7,665 [7,497–7,864] | 7,537 [7,481–7,764] | 1.02× (min 1.00×, slower) | 0.0 | 0.0 |
+| `churn-warm` | connect and disconnect one listener beside 10 others | 557 [527–596] | 348 [330–375] | 1.60× (min 1.60×, slower) | 224 | 0.0 |
+| `churn-cold` | connect and disconnect the only listener | 533 [528–542] | 345 [330–358] | 1.54× (min 1.60×, slower) | 224 | 0.0 |
 
 Other measurements:
 
@@ -739,21 +793,21 @@ Checks:
 | `disconnect-during-dispatch-skips` | pass: listeners that ran after the first removed all: 1 | pass: listeners that ran after the first removed all: 1 |
 | `nested-dispatch` | pass: listener calls for one outer and one nested dispatch: 6 of 6 | pass: listener calls for one outer and one nested dispatch: 6 of 6 |
 | `error-isolated` | pass: dispatch returned normally: true, other listener ran: 1, errors reported: 1 | pass: dispatch returned normally: true, other listener ran: 1, errors reported: 1 |
-| `connection-order` | pass: delivery order of 8 listeners: 1 2 3 4 5 6 7 8 | fail (not promised): delivery order of 8 listeners: 6 5 4 3 2 1 7 8 |
+| `connection-order` | pass: delivery order of 8 listeners: 1 2 3 4 5 6 7 8 | fail (not promised): delivery order of 8 listeners: 1 7 6 5 4 3 2 8 |
 
 ### Timers on a simulated clock
 
 TimerKit against AceTimer-3.0.
 
-Libraries: MoltenCodes: TimerKit revision 10; Ace3: AceTimer-3.0 minor 17.
+Libraries: MoltenCodes: TimerKit revision 11; Ace3: AceTimer-3.0 minor 17.
 
 | Case | One operation | MoltenCodes ns/op | Ace3 ns/op | MoltenCodes ÷ Ace3 | MoltenCodes B/op | Ace3 B/op |
 |---|---|---:|---:|---|---:|---:|
-| `oneshot-create-cancel` | start a 10 s one-shot timer and cancel it | 1,010 [982–1,067] | 329 [320–334] | 3.07× (min 3.07×, slower) | 752 | 512 |
-| `oneshot-create-fire` | start a 1 s one-shot timer and let it fire | 991 [978–1,036] | 443 [423–471] | 2.24× (min 2.31×, slower) | 752 | 512 |
-| `repeat-tick` | deliver one tick of a 1 s repeating timer (100 running) | 252 [248–269] | 232 [223–249] | 1.09× (min 1.11×, slower) | 0.0 | 0.0 |
-| `host-stub-oneshot-create-cancel` | the simulated C_Timer alone, one one-shot start and cancel in this library's style | 215 [208–221] | 105 [100–106] | different work | 224 | 0.0 |
-| `host-stub-repeat-tick` | the simulated C_Timer alone, one tick in this library's style | 86.7 [83.9–94.2] | 127 [123–134] | different work | 0.0 | 0.0 |
+| `oneshot-create-cancel` | start a 10 s one-shot timer and cancel it | 773 [761–835] | 331 [319–338] | 2.33× (min 2.39×, slower) | 752 | 512 |
+| `oneshot-create-fire` | start a 1 s one-shot timer and let it fire | 855 [815–913] | 430 [423–478] | 1.99× (min 1.93×, slower) | 752 | 512 |
+| `repeat-tick` | deliver one tick of a 1 s repeating timer (100 running) | 252 [247–264] | 232 [223–243] | 1.09× (min 1.11×, slower) | 0.0 | 0.0 |
+| `host-stub-oneshot-create-cancel` | the simulated C_Timer alone, one one-shot start and cancel in this library's style | 215 [208–221] | 104 [101–108] | different work | 224 | 0.0 |
+| `host-stub-repeat-tick` | the simulated C_Timer alone, one tick in this library's style | 84.3 [82.4–92.9] | 125 [120–131] | different work | 0.0 | 0.0 |
 
 - `host-stub-oneshot-create-cancel`: host stub cost, not a library cost: NewTimer and Cancel (TimerKit) or After (AceTimer)
 - `host-stub-repeat-tick`: host stub cost, not a library cost: After re-armed per tick (AceTimer) or one ticker (TimerKit)
@@ -783,22 +837,26 @@ Checks:
 
 SettingsKit (with SchemaKit) against AceDB-3.0.
 
-Libraries: MoltenCodes: SettingsKit revision 6, SchemaKit revision 4, SignalKit revision 9, EventKit revision 17; Ace3: AceDB-3.0 minor 37, CallbackHandler-1.0 minor 8.
+Libraries: MoltenCodes: SettingsKit revision 8, SchemaKit revision 4, SignalKit revision 9, EventKit revision 18; Ace3: AceDB-3.0 minor 37, CallbackHandler-1.0 minor 8.
 
 | Case | One operation | MoltenCodes ns/op | Ace3 ns/op | MoltenCodes ÷ Ace3 | MoltenCodes B/op | Ace3 B/op |
 |---|---|---:|---:|---|---:|---:|
-| `open-empty` | open a database over a new, empty saved variable | 9,092 [8,819–9,615] | 2,003 [1,900–2,096] | 4.54× (min 4.64×, slower) | 7,235 | 3,299 |
-| `open-populated` | open a database over a saved variable with 22 profiles and 50 characters | 9,550 [9,365–10,060] | 4,080 [3,920–4,170] | 2.34× (min 2.39×, slower) | 6,640 | 3,792 |
-| `switch-profile` | switch between two existing profiles and read one value | 799 [763–828] | 2,889 [2,850–2,963] | 0.28× (min 0.27×, faster) | 0.0 | 496 |
-| `read-default` | read a profile value nothing was saved for | 213 [202–216] | 3.7 [3.5–3.8] | 57.13× (min 57.99×, slower) | 0.0 | 0.0 |
-| `read-saved` | read a saved profile value | 199 [196–205] | 3.4 [3.3–3.4] | 59.46× (min 59.97×, slower) | 0.0 | 0.0 |
-| `read-nested` | read a nested record value (profile.frame.x) | 448 [441–456] | 6.7 [6.2–7.4] | 67.01× (min 70.48×, slower) | 0.0 | 0.0 |
-| `read-entry-default` | read a field of an unsaved keyed entry (profile.auras[118].shown) | 753 [742–764] | 10.7 [10.4–11.0] | 70.63× (min 71.41×, slower) | 0.0 | 0.0 |
-| `write-scalar` | write a profile number (profile.scale) | 452 [445–461] | 8.5 [7.1–9.7] | different work | 0.0 | 0.0 |
-| `write-nested` | write a nested record value (profile.frame.x) | 1,021 [998–1,029] | 4.9 [4.7–6.6] | different work | 0.0 | 0.0 |
-| `validate` | check a write without writing it (db:Validate) | 1,372 [1,335–1,392] | — | one side only | 0.0 | — |
+| `open-empty` | open a database over a new, empty saved variable | 9,314 [8,923–9,670] | 2,044 [1,911–2,112] | 4.56× (min 4.67×, slower) | 7,875 | 3,299 |
+| `open-populated` | open a database over a saved variable with 22 profiles and 50 characters | 9,810 [9,520–10,930] | 4,065 [3,840–4,580] | 2.41× (min 2.48×, slower) | 7,280 | 3,792 |
+| `switch-profile` | switch between two existing profiles and read one value | 694 [664–727] | 2,897 [2,828–3,057] | 0.24× (min 0.23×, faster) | 0.0 | 496 |
+| `read-default` | read a profile value nothing was saved for | 113 [108–118] | 3.8 [3.5–3.9] | 30.04× (min 30.63×, slower) | 0.0 | 0.0 |
+| `read-saved` | read a saved profile value | 106 [102–109] | 3.3 [3.3–3.4] | 31.80× (min 31.34×, slower) | 0.0 | 0.0 |
+| `read-nested` | read a nested record value (profile.frame.x) | 227 [221–231] | 6.5 [6.3–6.9] | 34.73× (min 35.16×, slower) | 0.0 | 0.0 |
+| `read-entry-default` | read a field of an unsaved keyed entry (profile.auras[118].shown) | 423 [415–427] | 10.7 [10.3–11.1] | 39.60× (min 40.42×, slower) | 0.0 | 0.0 |
+| `read-getter` | read a saved profile value through a getter (profile.scale) | 39.8 [36.7–44.7] | 15.2 [14.8–18.0] | 2.61× (min 2.49×, slower) | 0.0 | 0.0 |
+| `read-getter-entry` | read a field of an unsaved keyed entry through a getter (profile.auras[118].shown) | 24.6 [23.4–30.1] | 15.1 [14.4–18.7] | 1.62× (min 1.62×, slower) | 0.0 | 0.0 |
+| `write-scalar` | write a profile number (profile.scale) | 391 [383–407] | 7.4 [7.2–7.8] | different work | 0.0 | 0.0 |
+| `write-nested` | write a nested record value (profile.frame.x) | 910 [895–940] | 5.0 [4.8–5.1] | different work | 0.0 | 0.0 |
+| `validate` | check a write without writing it (db:Validate) | 1,338 [1,325–1,347] | — | one side only | 0.0 | — |
 
 - `switch-profile`: AceDB also strips default-equal values from the old profile on every switch
+- `read-getter`: AceDB has no getter: its side is a closure returning the table's field
+- `read-getter-entry`: AceDB has no getter: its side is a closure returning the table's field
 - `write-scalar`: SettingsKit validates the value and fires its change signal; AceDB stores it unchecked
 - `write-nested`: SettingsKit validates the value and fires its change signal; AceDB stores it unchecked
 - `validate`: SettingsKit only: AceDB has no validation
@@ -808,7 +866,7 @@ Other measurements:
 | Case | Measurement | MoltenCodes | Ace3 |
 |---|---|---:|---:|
 | `open-populated` | databasesHeld | 1 | 1 |
-| `open-populated` | retainedBytesPerOpenDatabase | 6,168 | 3,872 |
+| `open-populated` | retainedBytesPerOpenDatabase | 6,808 | 3,872 |
 
 Checks:
 
@@ -817,6 +875,9 @@ Checks:
 | `reads-default` | pass: fontSize: 12 | pass: fontSize: 12 |
 | `reads-saved` | pass: scale on Alpha: 1.5 | pass: scale on Alpha: 1.5 |
 | `reads-entry-wildcard` | pass: auras[118].shown: true | pass: auras[118].shown: true |
+| `getter-reads-saved` | pass: getter for profile.scale on Alpha: 1.5 | pass: getter for profile.scale on Alpha: 1.5 |
+| `getter-reads-entry-wildcard` | pass: getter for auras[118].shown: true | pass: getter for auras[118].shown: true |
+| `getter-follows-profile` | pass: profile getter after switching to Beta: 0.75, back on Alpha: 1.5 | fail (not promised): profile getter after switching to Beta: 1.5, back on Alpha: 1.5 |
 | `profiles-are-separate` | pass: Beta scale 0.75, Beta frame.x 0, Alpha frame.x 42 | pass: Beta scale 0.75, Beta frame.x 0, Alpha frame.x 42 |
 | `refuses-invalid-write` | pass: writing a string to a number field raised | fail (not promised): writing a string to a number field was stored |
 
@@ -824,16 +885,16 @@ Checks:
 
 CodecKit (addon channel) against AceSerializer-3.0.
 
-Libraries: MoltenCodes: CodecKit revision 5, PoolKit revision 8; Ace3: AceSerializer-3.0 minor 5.
+Libraries: MoltenCodes: CodecKit revision 5, PoolKit revision 9; Ace3: AceSerializer-3.0 minor 5.
 
 | Case | One operation | MoltenCodes ns/op | Ace3 ns/op | MoltenCodes ÷ Ace3 | MoltenCodes B/op | Ace3 B/op |
 |---|---|---:|---:|---|---:|---:|
-| `encode-small` | serialise the small payload for the addon channel | 5,698 [5,616–5,843] | 3,716 [3,668–3,888] | 1.53× (min 1.53×, slower) | 138 | 201 |
-| `decode-small` | deserialise the small payload | 4,743 [4,693–4,914] | 3,794 [3,756–3,817] | 1.25× (min 1.25×, slower) | 512 | 600 |
-| `encode-medium` | serialise the medium payload for the addon channel | 147,475 [143,327–152,820] | 98,048 [96,141–105,004] | 1.50× (min 1.49×, slower) | 4,234 | 4,786 |
-| `decode-medium` | deserialise the medium payload | 124,865 [122,711–129,861] | 110,936 [109,383–111,610] | 1.13× (min 1.12×, slower) | 20,298 | 20,384 |
-| `encode-large` | serialise the large payload for the addon channel | 654,240 [643,190–667,730] | 544,430 [539,030–550,740] | 1.20× (min 1.19×, slower) | 18,120 | 28,080 |
-| `decode-large` | deserialise the large payload | 509,910 [496,950–518,650] | 567,170 [563,950–574,090] | 0.90× (min 0.88×, faster) | 71,033 | 71,050 |
+| `encode-small` | serialise the small payload for the addon channel | 5,750 [5,696–6,011] | 3,728 [3,686–3,937] | 1.54× (min 1.55×, slower) | 138 | 201 |
+| `decode-small` | deserialise the small payload | 4,820 [4,756–4,935] | 3,762 [3,736–3,853] | 1.28× (min 1.27×, slower) | 512 | 600 |
+| `encode-medium` | serialise the medium payload for the addon channel | 149,507 [143,699–151,151] | 96,485 [95,728–97,663] | 1.55× (min 1.50×, slower) | 4,234 | 4,786 |
+| `decode-medium` | deserialise the medium payload | 124,421 [122,513–131,249] | 112,560 [111,606–114,094] | 1.11× (min 1.10×, slower) | 20,298 | 20,384 |
+| `encode-large` | serialise the large payload for the addon channel | 636,020 [632,990–662,540] | 547,570 [544,680–553,200] | 1.16× (min 1.16×, slower) | 18,120 | 28,080 |
+| `decode-large` | deserialise the large payload | 498,860 [494,660–502,630] | 568,950 [563,560–584,050] | 0.88× (min 0.88×, faster) | 71,033 | 71,050 |
 
 Other measurements:
 
@@ -862,33 +923,33 @@ Checks:
 
 CommKit against AceComm-3.0 (with ChatThrottleLib).
 
-Libraries: MoltenCodes: CommKit revision 5, SchedulerKit revision 17, TimerKit revision 10, EventKit revision 17, SignalKit revision 9, PoolKit revision 8; Ace3: AceComm-3.0 minor 14, ChatThrottleLib minor 32, CallbackHandler-1.0 minor 8.
+Libraries: MoltenCodes: CommKit revision 7, SchedulerKit revision 18, TimerKit revision 11, EventKit revision 18, SignalKit revision 9, PoolKit revision 9; Ace3: AceComm-3.0 minor 14, ChatThrottleLib minor 32, CallbackHandler-1.0 minor 8.
 
 | Case | One operation | MoltenCodes ns/op | Ace3 ns/op | MoltenCodes ÷ Ace3 | MoltenCodes B/op | Ace3 B/op |
 |---|---|---:|---:|---|---:|---:|
-| `send-200` | send a 200-byte message until every chunk left | 13,341 [13,146–13,592] | 701 [666–741] | 19.02× (min 19.73×, slower) | 4,778 | 104 |
-| `receive-200` | receive and reassemble a 200-byte message | 942 [922–972] | 295 [284–312] | 3.19× (min 3.24×, slower) | 225 | 0.0 |
-| `send-1000` | send a 1000-byte message until every chunk left | 24,000 [23,131–24,467] | 2,723 [2,603–2,894] | 8.81× (min 8.89×, slower) | 6,437 | 2,086 |
-| `receive-1000` | receive and reassemble a 1000-byte message | 7,593 [7,442–7,751] | 1,772 [1,712–1,837] | 4.28× (min 4.35×, slower) | 2,014 | 1,703 |
-| `send-8000` | send a 8000-byte message until every chunk left | 107,025 [102,450–112,425] | 21,575 [21,225–22,913] | 4.96× (min 4.83×, slower) | 23,223 | 21,679 |
-| `receive-8000` | receive and reassemble a 8000-byte message | 36,428 [35,440–37,376] | 13,724 [13,512–14,092] | 2.65× (min 2.62×, slower) | 30,188 | 29,848 |
+| `send-200` | send a 200-byte message until every chunk left | 5,110 [4,931–5,356] | 722 [689–763] | 7.08× (min 7.16×, slower) | 834 | 104 |
+| `receive-200` | receive and reassemble a 200-byte message | 959 [928–993] | 294 [279–311] | 3.27× (min 3.33×, slower) | 225 | 0.0 |
+| `send-1000` | send a 1000-byte message until every chunk left | 15,094 [14,693–15,561] | 2,699 [2,590–2,896] | 5.59× (min 5.67×, slower) | 2,493 | 2,086 |
+| `receive-1000` | receive and reassemble a 1000-byte message | 6,312 [6,135–6,603] | 1,756 [1,718–1,812] | 3.59× (min 3.57×, slower) | 2,014 | 1,703 |
+| `send-8000` | send a 8000-byte message until every chunk left | 97,150 [94,325–102,975] | 22,175 [21,025–23,225] | 4.38× (min 4.49×, slower) | 19,276 | 21,679 |
+| `receive-8000` | receive and reassemble a 8000-byte message | 33,800 [33,368–35,932] | 13,884 [13,464–14,192] | 2.43× (min 2.48×, slower) | 30,188 | 29,848 |
 
 Other measurements:
 
 | Case | Measurement | MoltenCodes | Ace3 |
 |---|---|---:|---:|
 | `send-200` | chunks | 1 | 1 |
-| `send-200` | framesPerMessage | 1 | 0 |
+| `send-200` | framesPerMessage | 0 | 0 |
 | `send-200` | wireBytesWithPrefix | 210 | 209 |
 | `receive-200` | chunks | 1 | 1 |
 | `send-1000` | chunks | 4 | 4 |
-| `send-1000` | framesPerMessage | 1 | 0 |
+| `send-1000` | framesPerMessage | 0 | 0 |
 | `send-1000` | wireBytesWithPrefix | 1,052 | 1,040 |
 | `receive-1000` | chunks | 4 | 4 |
 | `receive-1000` | delivered | yes | yes |
 | `receive-1000` | retainedBytesMidStream | 1,257 | 1,023 |
 | `send-8000` | chunks | 32 | 32 |
-| `send-8000` | framesPerMessage | 1 | 0 |
+| `send-8000` | framesPerMessage | 0 | 0 |
 | `send-8000` | wireBytesWithPrefix | 8,416 | 8,320 |
 | `receive-8000` | chunks | 32 | 32 |
 | `receive-8000` | delivered | yes | yes |
@@ -907,17 +968,17 @@ Checks:
 
 Registry (and InteropKit's LibStub bridge) against LibStub.
 
-Libraries: MoltenCodes: Registry revision 13, InteropKit revision 2; Ace3: LibStub minor 2.
+Libraries: MoltenCodes: Registry revision 14, InteropKit revision 3; Ace3: LibStub minor 2.
 
 | Case | One operation | MoltenCodes ns/op | Ace3 ns/op | MoltenCodes ÷ Ace3 | MoltenCodes B/op | Ace3 B/op |
 |---|---|---:|---:|---|---:|---:|
-| `new-library` | register a library name never seen, at its first revision | 820 [737–1,018] | 326 [276–592] | 2.51× (min 2.67×, slower) | 288 | 64 |
-| `upgrade` | register a higher revision of an existing library (same table back) | 825 [810–847] | 308 [301–320] | 2.67× (min 2.69×, slower) | 0.0 | 38 |
-| `stale-copy` | register an equal revision of an existing library (refused) | 782 [759–795] | 191 [173–199] | 4.10× (min 4.38×, slower) | 0.0 | 0.0 |
-| `lookup` | look up a registered library by name (50 registered) | 638 [637–660] | 66.9 [65.9–68.8] | 9.54× (min 9.66×, slower) | 0.0 | 0.0 |
-| `silent-miss` | look up a library nobody registered, without raising | 344 [341–348] | 55.0 [51.2–56.2] | 6.26× (min 6.66×, slower) | 0.0 | 0.0 |
-| `foreign-lookup` | reach a LibStub library by its major (InteropKit:Find or LibStub:GetLibrary silent) | 170 [165–172] | 54.5 [53.2–57.5] | 3.12× (min 3.11×, slower) | 0.0 | 0.0 |
-| `expose-to-libstub` | make a registered Kit a LibStub library (InteropKit:ExposeToLibStub) | 2,125 [2,051–2,417] | — | one side only | 203 | — |
+| `new-library` | register a library name never seen, at its first revision | 719 [620–904] | 327 [273–623] | 2.20× (min 2.27×, slower) | 288 | 64 |
+| `upgrade` | register a higher revision of an existing library (same table back) | 379 [363–389] | 310 [300–324] | 1.22× (min 1.21×, slower) | 0.0 | 38 |
+| `stale-copy` | register an equal revision of an existing library (refused) | 341 [320–352] | 190 [181–196] | 1.79× (min 1.77×, slower) | 0.0 | 0.0 |
+| `lookup` | look up a registered library by name (50 registered) | 238 [233–241] | 66.2 [65.4–68.2] | 3.60× (min 3.56×, slower) | 0.0 | 0.0 |
+| `silent-miss` | look up a library nobody registered, without raising | 267 [264–269] | 51.4 [48.8–56.2] | 5.19× (min 5.41×, slower) | 0.0 | 0.0 |
+| `foreign-lookup` | reach a LibStub library by its major (InteropKit:Find or LibStub:GetLibrary silent) | 117 [115–120] | 55.1 [52.5–58.3] | 2.12× (min 2.19×, slower) | 0.0 | 0.0 |
+| `expose-to-libstub` | make a registered Kit a LibStub library (InteropKit:ExposeToLibStub) | 1,583 [1,508–1,884] | — | one side only | 203 | — |
 
 - `expose-to-libstub`: MoltenCodes only: Ace3 has no bridge from another registry into LibStub
 
@@ -941,23 +1002,23 @@ Checks:
 
 ModuleKit with LifecycleKit against AceAddon-3.0.
 
-Libraries: MoltenCodes: ModuleKit revision 18, LifecycleKit revision 14, EventKit revision 17, SignalKit revision 9; Ace3: AceAddon-3.0 minor 13, AceEvent-3.0 minor 4, CallbackHandler-1.0 minor 8.
+Libraries: MoltenCodes: ModuleKit revision 19, LifecycleKit revision 15, EventKit revision 18, SignalKit revision 9; Ace3: AceAddon-3.0 minor 13, AceEvent-3.0 minor 4, CallbackHandler-1.0 minor 8.
 
 | Case | One operation | MoltenCodes ns/op | Ace3 ns/op | MoltenCodes ÷ Ace3 | MoltenCodes B/op | Ace3 B/op |
 |---|---|---:|---:|---|---:|---:|
-| `create-addon` | create an addon with 10 modules (not loaded yet) | 21,873 [21,600–22,093] | 19,920 [19,520–20,680] | 1.10× (min 1.11×, slower) | 29,650 | 19,881 |
-| `load-addon` | create an addon with 10 modules, then its ADDON_LOADED after login (initialise and enable all) | 64,053 [62,340–65,503] | 28,673 [27,867–31,363] | 2.23× (min 2.24×, slower) | 50,986 | 20,565 |
-| `disable-enable-all` | disable and enable an addon's 10 modules | 45,181 [43,942–45,946] | 5,445 [5,369–5,581] | 8.30× (min 8.18×, slower) | 18,656 | 0.0 |
-| `disable-enable-module` | disable and enable one module | 2,947 [2,894–3,017] | 680 [653–693] | 4.33× (min 4.43×, slower) | 392 | 0.0 |
-| `disable-enable-all-listening` | disable and enable 10 modules that each hold one game-event listener while enabled | 72,793 [71,933–73,498] | 13,722 [13,500–13,824] | 5.30× (min 5.33×, slower) | 26,440 | 104 |
+| `create-addon` | create an addon with 10 modules (not loaded yet) | 15,713 [15,247–15,983] | 19,873 [19,423–21,380] | 0.79× (min 0.78×, faster) | 17,658 | 19,881 |
+| `load-addon` | create an addon with 10 modules, then its ADDON_LOADED after login (initialise and enable all) | 30,117 [29,377–30,780] | 29,010 [28,070–30,340] | 1.04× (min 1.05×, slower) | 21,746 | 20,565 |
+| `disable-enable-all` | disable and enable an addon's 10 modules | 7,391 [7,134–7,625] | 5,493 [5,388–5,670] | 1.35× (min 1.32×, slower) | 0.3 | 0.0 |
+| `disable-enable-module` | disable and enable one module | 1,031 [1,015–1,051] | 676 [652–700] | 1.53× (min 1.56×, slower) | 0.0 | 0.0 |
+| `disable-enable-all-listening` | disable and enable 10 modules that each hold one game-event listener while enabled | 30,320 [30,087–30,745] | 13,733 [13,578–14,087] | 2.21× (min 2.22×, slower) | 7,784 | 104 |
 
 Other measurements:
 
 | Case | Measurement | MoltenCodes | Ace3 |
 |---|---|---:|---:|
-| `create-addon` | retainedBytesPerAddon | 28,714.08 | 19,447.28 |
+| `create-addon` | retainedBytesPerAddon | 16,786.08 | 19,447.28 |
 | `load-addon` | onEnableCallsPerAddon | 10 | 10 |
-| `load-addon` | retainedBytesPerLoadedAddon | 28,210.88 | 20,132.08 |
+| `load-addon` | retainedBytesPerLoadedAddon | 16,634.88 | 20,132.08 |
 | `disable-enable-all` | onEnableCallsPerCycle | 10 | 10 |
 | `disable-enable-module` | onEnableCallsPerCycle | 1 | 1 |
 | `disable-enable-all-listening` | onEnableCallsPerCycle | 10 | 10 |
@@ -978,20 +1039,20 @@ Checks:
 
 HookKit against AceHook-3.0.
 
-Libraries: MoltenCodes: HookKit revision 5; Ace3: AceHook-3.0 minor 9.
+Libraries: MoltenCodes: HookKit revision 7; Ace3: AceHook-3.0 minor 9.
 
 | Case | One operation | MoltenCodes ns/op | Ace3 ns/op | MoltenCodes ÷ Ace3 | MoltenCodes B/op | Ace3 B/op |
 |---|---|---:|---:|---|---:|---:|
-| `hook-unhook-function` | pre-hook a global function and unhook it | 2,534 [2,521–2,628] | 674 [648–691] | 3.76× (min 3.89×, slower) | 584 | 288 |
-| `hook-unhook-method` | pre-hook a method and unhook it | 2,622 [2,603–2,649] | 1,013 [978–1,031] | 2.59× (min 2.66×, slower) | 584 | 496 |
-| `rawhook-unhook-method` | replace a method (raw hook) and unhook it | 2,654 [2,632–2,679] | 1,109 [1,081–1,126] | 2.39× (min 2.44×, slower) | 624 | 688 |
-| `hook-unhook-script` | pre-hook a frame's OnShow script and unhook it | 3,406 [3,369–3,439] | 1,126 [1,098–1,145] | 3.02× (min 3.07×, slower) | 584 | 496 |
-| `securehook-unhook-method` | post-hook a method (hooksecurefunc) and unhook it, on a fresh object each time | 2,416 [2,382–2,467] | 986 [942–1,110] | 2.45× (min 2.53×, slower) | 720 | 640 |
-| `call-prehooked-method` | call a pre-hooked method (empty handler) | 96.2 [95.5–98.3] | 48.4 [44.6–51.3] | different work | 0.0 | 0.0 |
-| `call-posthooked-method` | call a post-hooked method (hooksecurefunc, empty handler) | 109 [109–110] | 61.1 [59.9–64.1] | different work | 0.0 | 0.0 |
-| `call-rawhooked-method` | call a raw-hooked method whose handler calls the original | 89.4 [87.8–91.9] | 53.7 [51.6–57.8] | 1.66× (min 1.70×, slower) | 0.0 | 0.0 |
-| `call-unhooked-posthook` | call a method whose post-hook was unhooked (inert closure left in the chain) | 49.7 [48.3–52.0] | 54.3 [51.5–58.6] | 0.91× (min 0.94×, faster) | 0.0 | 0.0 |
-| `call-prehooked-script` | run a frame script that is pre-hooked (empty handler) | 96.7 [96.1–97.7] | 47.2 [44.7–51.2] | different work | 0.0 | 0.0 |
+| `hook-unhook-function` | pre-hook a global function and unhook it | 1,232 [1,189–1,266] | 661 [643–685] | 1.86× (min 1.85×, slower) | 480 | 288 |
+| `hook-unhook-method` | pre-hook a method and unhook it | 1,286 [1,266–1,309] | 999 [972–1,031] | 1.29× (min 1.30×, slower) | 480 | 496 |
+| `rawhook-unhook-method` | replace a method (raw hook) and unhook it | 1,302 [1,281–1,320] | 1,096 [1,088–1,119] | 1.19× (min 1.18×, slower) | 520 | 688 |
+| `hook-unhook-script` | pre-hook a frame's OnShow script and unhook it | 1,716 [1,704–1,759] | 1,138 [1,097–1,160] | 1.51× (min 1.55×, slower) | 480 | 496 |
+| `securehook-unhook-method` | post-hook a method (hooksecurefunc) and unhook it, on a fresh object each time | 1,196 [1,169–1,277] | 987 [943–1,117] | 1.21× (min 1.24×, slower) | 720 | 640 |
+| `call-prehooked-method` | call a pre-hooked method (empty handler) | 86.3 [85.1–87.4] | 48.0 [44.4–49.4] | different work | 0.0 | 0.0 |
+| `call-posthooked-method` | call a post-hooked method (hooksecurefunc, empty handler) | 99.3 [98.3–101.7] | 60.8 [59.9–62.4] | different work | 0.0 | 0.0 |
+| `call-rawhooked-method` | call a raw-hooked method whose handler calls the original | 66.2 [65.0–69.5] | 53.9 [51.4–55.4] | 1.23× (min 1.26×, slower) | 0.0 | 0.0 |
+| `call-unhooked-posthook` | call a method whose post-hook was unhooked (inert closure left in the chain) | 49.9 [48.7–50.4] | 52.8 [50.5–56.2] | 0.94× (min 0.96×, faster) | 0.0 | 0.0 |
+| `call-prehooked-script` | run a frame script that is pre-hooked (empty handler) | 86.1 [84.3–88.2] | 47.2 [44.8–49.0] | different work | 0.0 | 0.0 |
 
 - `call-prehooked-method`: HookKit isolates the handler with pcall and reports its errors; AceHook calls it directly
 - `call-posthooked-method`: HookKit isolates the handler with pcall and reports its errors; AceHook calls it directly
@@ -1009,7 +1070,7 @@ Other measurements:
 | `rawhook-unhook-method` | retainedBytesPerCycle | 0 | 0 |
 | `hook-unhook-script` | originalRestored | yes | yes |
 | `hook-unhook-script` | retainedBytesPerCycle | 0 | 0 |
-| `securehook-unhook-method` | retainedBytesPerRepeatedCycleOnOneTarget | 616 | 472.06 |
+| `securehook-unhook-method` | retainedBytesPerRepeatedCycleOnOneTarget | 616.10 | 472.06 |
 | `call-prehooked-method` | resultsReturned | yes | yes |
 | `call-posthooked-method` | resultsReturned | yes | yes |
 | `call-rawhooked-method` | resultsReturned | yes | yes |
@@ -1036,21 +1097,19 @@ Checks:
 
 CommandKit against AceConsole-3.0.
 
-Libraries: MoltenCodes: CommandKit revision 6, SchemaKit revision 4; Ace3: AceConsole-3.0 minor 7.
+Libraries: MoltenCodes: CommandKit revision 7, SchemaKit revision 4; Ace3: AceConsole-3.0 minor 7.
 
 | Case | One operation | MoltenCodes ns/op | Ace3 ns/op | MoltenCodes ÷ Ace3 | MoltenCodes B/op | Ace3 B/op |
 |---|---|---:|---:|---|---:|---:|
-| `register-unregister` | register a slash command and unregister it (50 foreign commands present) | 251,737 [248,647–254,640] | 369 [348–383] | 682.21× (min 714.50×, slower) | 1,751 | 96 |
-| `dispatch-words` | run a typed /command with two words, handed to the handler | 2,014 [1,988–2,125] | 479 [451–509] | 4.20× (min 4.40×, slower) | 66 | 66 |
-| `dispatch-subcommand` | run /command scale <number>, checked against 0.5..2 | 2,447 [2,384–2,512] | 519 [495–538] | 4.71× (min 4.81×, slower) | 32 | 32 |
-| `register-unregister-one-emote` | register-unregister with the emote check limited to one emote index | 23,764 [23,146–24,175] | — | one side only | 1,683 | — |
-| `parse-plain` | split five plain words | 3,852 [3,728–4,083] | 1,054 [1,036–1,092] | 3.66× (min 3.60×, slower) | 97 | 130 |
-| `parse-quoted` | split a word and two quoted strings | 2,823 [2,641–2,887] | 835 [791–880] | 3.38× (min 3.34×, slower) | 82 | 81 |
-| `parse-link` | split a word, a colour-wrapped item link with spaces, and a word | 2,111 [2,083–2,207] | 978 [926–1,011] | 2.16× (min 2.25×, slower) | 89 | 89 |
+| `register-unregister` | register a slash command and unregister it (50 foreign commands present) | 11,187 [10,834–11,499] | 372 [356–396] | 30.07× (min 30.43×, slower) | 977 | 96 |
+| `dispatch-words` | run a typed /command with two words, handed to the handler | 1,001 [976–1,059] | 485 [465–510] | 2.06× (min 2.10×, slower) | 66 | 66 |
+| `dispatch-subcommand` | run /command scale <number>, checked against 0.5..2 | 1,478 [1,426–1,530] | 517 [502–550] | 2.86× (min 2.84×, slower) | 32 | 32 |
+| `parse-plain` | split five plain words | 1,807 [1,746–1,851] | 1,074 [1,023–1,108] | 1.68× (min 1.71×, slower) | 97 | 130 |
+| `parse-quoted` | split a word and two quoted strings | 1,642 [1,584–1,702] | 823 [786–855] | 1.99× (min 2.02×, slower) | 81 | 81 |
+| `parse-link` | split a word, a colour-wrapped item link with spaces, and a word | 1,447 [1,405–1,505] | 960 [916–980] | 1.51× (min 1.53×, slower) | 89 | 89 |
 
 - `register-unregister`: CommandKit also checks the name against other addons', chat types and emotes
 - `dispatch-subcommand`: Ace3: the handler's own GetArgs, tonumber and bounds test; CommandKit: a sub-command with a number schema
-- `register-unregister-one-emote`: CommandKit only, maxEmotes = 1: how much of register-unregister is the emote check
 
 Other measurements:
 
@@ -1074,15 +1133,15 @@ Checks:
 
 LocaleKit against AceLocale-3.0.
 
-Libraries: MoltenCodes: LocaleKit revision 2; Ace3: AceLocale-3.0 minor 6.
+Libraries: MoltenCodes: LocaleKit revision 3; Ace3: AceLocale-3.0 minor 6.
 
 | Case | One operation | MoltenCodes ns/op | Ace3 ns/op | MoltenCodes ÷ Ace3 | MoltenCodes B/op | Ace3 B/op |
 |---|---|---:|---:|---|---:|---:|
-| `register` | register a default locale with 100 strings and get its read table | 24,486 [23,908–25,750] | 14,248 [13,898–15,146] | 1.72× (min 1.72×, slower) | 6,059 | 5,187 |
-| `unneeded-locale` | ask for a locale the client does not need (frFR on enUS): nil | 193 [191–198] | 47.5 [45.9–49.2] | 4.06× (min 4.17×, slower) | 0.0 | 0.0 |
-| `lookup` | read a defined key from the read table (100 defined) | 13.6 [13.4–14.5] | 13.7 [13.3–14.0] | 0.99× (min 1.00×, within noise) | 0.0 | 0.0 |
-| `first-miss` | first read of a key no file defined, silent mode (stored as itself) | 218 [183–535] | 65.8 [59.6–216.1] | 3.31× (min 3.06×, slower) | 0.0 | 0.0 |
-| `format` | LocaleKit:Format("%2$s has %1$d items", count, name) | 972 [950–1,013] | — | one side only | 96 | — |
+| `register` | register a default locale with 100 strings and get its read table | 18,682 [18,118–19,202] | 13,962 [13,554–14,608] | 1.34× (min 1.34×, slower) | 5,675 | 5,187 |
+| `unneeded-locale` | ask for a locale the client does not need (frFR on enUS): nil | 116 [114–130] | 47.8 [45.8–51.5] | 2.42× (min 2.49×, slower) | 0.0 | 0.0 |
+| `lookup` | read a defined key from the read table (100 defined) | 13.8 [13.4–14.6] | 14.0 [13.5–14.6] | 0.99× (min 0.99×, within noise) | 0.0 | 0.0 |
+| `first-miss` | first read of a key no file defined, silent mode (stored as itself) | 204 [168–557] | 65.3 [59.7–209.9] | 3.13× (min 2.82×, slower) | 0.0 | 0.0 |
+| `format` | LocaleKit:Format("%2$s has %1$d items", count, name) | 967 [957–982] | — | one side only | 96 | — |
 
 - `first-miss`: LocaleKit's missing-key bound is opened for this row, so both sides store every key
 - `format`: LocaleKit only: AceLocale has no formatter
@@ -1091,7 +1150,7 @@ Other measurements:
 
 | Case | Measurement | MoltenCodes | Ace3 |
 |---|---|---:|---:|
-| `register` | retainedBytesPerAddon | 5,993.08 | 5,225.08 |
+| `register` | retainedBytesPerAddon | 5,609.08 | 5,225.08 |
 | `first-miss` | returnedKeyPerMiss | 1 | 1 |
 
 Checks:
@@ -1109,13 +1168,13 @@ Checks:
 
 SchedulerKit coalescing against AceBucket-3.0.
 
-Libraries: MoltenCodes: EventKit revision 17, SchedulerKit revision 17, TimerKit revision 10, SignalKit revision 9; Ace3: AceBucket-3.0 minor 4, AceEvent-3.0 minor 4, AceTimer-3.0 minor 17, CallbackHandler-1.0 minor 8.
+Libraries: MoltenCodes: EventKit revision 18, SchedulerKit revision 18, TimerKit revision 11, SignalKit revision 9; Ace3: AceBucket-3.0 minor 4, AceEvent-3.0 minor 4, AceTimer-3.0 minor 17, CallbackHandler-1.0 minor 8.
 
 | Case | One operation | MoltenCodes ns/op | Ace3 ns/op | MoltenCodes ÷ Ace3 | MoltenCodes B/op | Ace3 B/op |
 |---|---|---:|---:|---|---:|---:|
-| `record-event` | one event into an open interval, its key already collected (10 units) | 567 [555–576] | 238 [234–246] | 2.39× (min 2.37×, slower) | 0.0 | 0.0 |
-| `burst` | a burst of 10 events for 10 units, then the interval ends and delivers it | 8,873 [8,801–8,960] | 3,671 [3,607–3,760] | 2.42× (min 2.44×, slower) | 752 | 528 |
-| `register-remove` | create a bucket over 2 events and remove it, beside another bucket | 5,696 [5,589–5,841] | 1,341 [1,292–1,407] | 4.25× (min 4.33×, slower) | 3,664 | 272 |
+| `record-event` | one event into an open interval, its key already collected (10 units) | 458 [446–463] | 241 [236–246] | 1.90× (min 1.89×, slower) | 0.0 | 0.0 |
+| `burst` | a burst of 10 events for 10 units, then the interval ends and delivers it | 7,005 [6,723–7,093] | 3,775 [3,706–3,800] | 1.86× (min 1.81×, slower) | 752 | 528 |
+| `register-remove` | create a bucket over 2 events and remove it, beside another bucket | 3,219 [3,145–3,366] | 1,346 [1,296–1,411] | 2.39× (min 2.43×, slower) | 1,952 | 272 |
 
 Other measurements:
 
@@ -1144,28 +1203,28 @@ Checks:
 
 OptionsKit (with CommandKit's command line and SettingsKit's profiles) against AceConfigRegistry-3.0, AceConfigCmd-3.0 and AceDBOptions-3.0 (with AceDB-3.0).
 
-Libraries: MoltenCodes: OptionsKit revision 6, CommandKit revision 6, SchemaKit revision 4, SettingsKit revision 6, SignalKit revision 9, EventKit revision 17; Ace3: AceConfigRegistry-3.0 minor 22, AceConfigCmd-3.0 minor 14, AceConsole-3.0 minor 7, AceDBOptions-3.0 minor 17, AceDB-3.0 minor 37, CallbackHandler-1.0 minor 8.
+Libraries: MoltenCodes: OptionsKit revision 8, CommandKit revision 7, SchemaKit revision 4, SettingsKit revision 8, SignalKit revision 9, EventKit revision 18; Ace3: AceConfigRegistry-3.0 minor 22, AceConfigCmd-3.0 minor 14, AceConsole-3.0 minor 7, AceDBOptions-3.0 minor 17, AceDB-3.0 minor 37, CallbackHandler-1.0 minor 8.
 
 | Case | One operation | MoltenCodes ns/op | Ace3 ns/op | MoltenCodes ÷ Ace3 | MoltenCodes B/op | Ace3 B/op |
 |---|---|---:|---:|---|---:|---:|
-| `define-50` | define and check a 50-option table, then drop it | 241,035 [239,410–243,010] | 159,830 [156,775–162,085] | 1.51× (min 1.53×, slower) | 176,649 | 200 |
-| `define-200` | define and check a 200-option table, then drop it | 979,480 [971,320–1,003,120] | 631,180 [616,720–640,680] | 1.55× (min 1.57×, slower) | 697,828 | 201 |
-| `cmd-set-range` | type a command setting a range option to a number | 83,003 [82,516–84,042] | 3,944 [3,861–3,990] | 21.05× (min 21.37×, slower) | 53,305 | 768 |
-| `cmd-set-toggle` | type a command turning a toggle on or off | 82,401 [80,411–82,850] | 3,164 [3,134–3,280] | 26.04× (min 25.66×, slower) | 53,200 | 736 |
-| `cmd-set-select` | type a command choosing a select value by key | 82,774 [82,236–83,710] | 5,017 [4,882–5,118] | 16.50× (min 16.85×, slower) | 53,280 | 736 |
-| `cmd-refused` | type a command choosing a value the select does not have | 82,830 [81,712–83,589] | 5,411 [5,279–5,504] | 15.31× (min 15.48×, slower) | 53,641 | 932 |
-| `profile-options-build` | build the profile options group for a database | 5,240 [5,084–5,383] | 240 [230–247] | 21.83× (min 22.10×, slower) | 6,460 | 0.0 |
-| `profile-choose-cmd` | type a command choosing the profile (Alpha and Beta in turn) | 36,193 [35,864–36,607] | 5,964 [5,848–6,071] | 6.07× (min 6.13×, slower) | 11,314 | 1,761 |
-| `tree-get` | read a range option through the tree (tree:Get) | 322 [316–348] | — | one side only | 0.0 | — |
-| `tree-set` | write a range option through the tree (tree:Set, checked and signalled) | 1,202 [1,185–1,225] | — | one side only | 0.0 | — |
+| `define-50` | define and check a 50-option table, then drop it | 139,395 [138,005–141,085] | 161,965 [159,350–165,990] | 0.86× (min 0.87×, faster) | 46,180 | 200 |
+| `define-200` | define and check a 200-option table, then drop it | 553,700 [545,960–563,280] | 617,040 [605,980–621,840] | 0.90× (min 0.90×, faster) | 174,203 | 201 |
+| `cmd-set-range` | type a command setting a range option to a number | 6,796 [6,569–6,959] | 3,926 [3,807–4,134] | 1.73× (min 1.73×, slower) | 1,033 | 768 |
+| `cmd-set-toggle` | type a command turning a toggle on or off | 6,423 [6,218–6,542] | 3,187 [3,154–3,283] | 2.02× (min 1.97×, slower) | 808 | 736 |
+| `cmd-set-select` | type a command choosing a select value by key | 7,819 [7,612–8,098] | 4,996 [4,891–5,082] | 1.57× (min 1.56×, slower) | 1,280 | 736 |
+| `cmd-refused` | type a command choosing a value the select does not have | 7,302 [7,159–7,474] | 5,429 [5,327–5,641] | 1.35× (min 1.34×, slower) | 1,641 | 932 |
+| `profile-options-build` | build the profile options group for a database | 1,511 [1,416–1,641] | 246 [238–256] | 6.14× (min 5.95×, slower) | 0.0 | 0.0 |
+| `profile-choose-cmd` | type a command choosing the profile (Alpha and Beta in turn) | 15,425 [15,082–15,566] | 6,015 [5,822–6,253] | 2.56× (min 2.59×, slower) | 2,297 | 1,761 |
+| `tree-get` | read a range option through the tree (tree:Get) | 343 [337–356] | — | one side only | 0.0 | — |
+| `tree-set` | write a range option through the tree (tree:Set, checked and signalled) | 901 [866–924] | — | one side only | 0.0 | — |
 
-- `define-50`: Ace3 checks on the first GetOptionsTable; OptionsKit also copies, indexes and builds schemas
-- `define-200`: Ace3 checks on the first GetOptionsTable; OptionsKit also copies, indexes and builds schemas
-- `cmd-set-range`: CommandKit echoes the new value and describes the tree once per command; AceConfigCmd prints nothing
-- `cmd-set-toggle`: CommandKit echoes the new value and describes the tree once per command; AceConfigCmd prints nothing
-- `cmd-set-select`: CommandKit echoes the new value and describes the tree once per command; AceConfigCmd prints nothing
-- `cmd-refused`: both print the refusal; CommandKit describes the tree once per command
-- `profile-options-build`: AceDBOptions reuses one group per database and one shared args table; OptionsKit builds a new group
+- `define-50`: Ace3 checks on the first GetOptionsTable; OptionsKit also copies, indexes and builds schemas, shared per kind and inputs
+- `define-200`: Ace3 checks on the first GetOptionsTable; OptionsKit also copies, indexes and builds schemas, shared per kind and inputs
+- `cmd-set-range`: CommandKit echoes the new value and describes the named option once per command; AceConfigCmd prints nothing
+- `cmd-set-toggle`: CommandKit echoes the new value and describes the named option once per command; AceConfigCmd prints nothing
+- `cmd-set-select`: CommandKit echoes the new value and describes the named option once per command; AceConfigCmd prints nothing
+- `cmd-refused`: both print the refusal; CommandKit describes the named option once per command
+- `profile-options-build`: AceDBOptions and OptionsKit (revision 8) both return one cached group per database; OptionsKit still runs its argument and database checks on every call
 - `profile-choose-cmd`: includes each database's own profile switch
 - `tree-get`: OptionsKit only: AceConfigRegistry has no call that reads or writes an option
 - `tree-set`: OptionsKit only: AceConfigRegistry has no call that reads or writes an option
@@ -1197,19 +1256,19 @@ Checks:
 
 WidgetKit against AceGUI-3.0 on the shared fake client.
 
-Libraries: MoltenCodes: WidgetKit revision 8, PoolKit revision 8, SignalKit revision 9; Ace3: AceGUI-3.0 minor 41.
+Libraries: MoltenCodes: WidgetKit revision 9, PoolKit revision 9, SignalKit revision 9; Ace3: AceGUI-3.0 minor 41.
 
 | Case | One operation | MoltenCodes ns/op | Ace3 ns/op | MoltenCodes ÷ Ace3 | MoltenCodes B/op | Ace3 B/op |
 |---|---|---:|---:|---|---:|---:|
-| `cycle-label` | acquire a pooled Label, give it a text or value, release it (fake frames) | 3,491 [3,471–3,524] | 2,839 [2,819–2,851] | 1.23× (min 1.23×, slower) | 0.0 | 0.0 |
-| `cycle-button` | acquire a pooled Button, give it a text or value, release it (fake frames) | 2,992 [2,962–3,028] | 1,293 [1,278–1,317] | 2.31× (min 2.32×, slower) | 0.0 | 0.0 |
-| `cycle-checkbox` | acquire a pooled CheckBox, give it a text or value, release it (fake frames) | 3,370 [3,358–3,391] | 3,252 [3,203–3,330] | 1.04× (min 1.05×, slower) | 0.0 | 0.0 |
-| `cycle-slider` | acquire a pooled Slider, give it a text or value, release it (fake frames) | 4,912 [4,849–4,950] | 2,243 [2,219–2,283] | 2.19× (min 2.19×, slower) | 0.0 | 0.0 |
-| `cycle-editbox` | acquire a pooled EditBox, give it a text or value, release it (fake frames) | 4,046 [4,001–4,107] | 2,789 [2,759–2,813] | 1.45× (min 1.45×, slower) | 0.0 | 256 |
-| `group-10` | acquire a titled group, add 10 labels, lay it out once, release it with its children (fake frames) | 69,040 [67,698–71,004] | 105,022 [101,916–107,232] | different work | 1.4 | 9.5 |
-| `group-50` | acquire a titled group, add 50 labels, lay it out once, release it with its children (fake frames) | 306,500 [304,700–314,700] | 1,313,120 [1,191,540–1,348,020] | different work | 6.8 | 64 |
-| `relayout-50` | lay out a titled group of 50 labels again (fake frames) | 92,635 [90,950–95,040] | 1,047,615 [1,023,565–1,085,370] | different work | 3.4 | 32 |
-| `host-stub-list-anchors-50` | the fake client alone: anchor 50 frames as this library's List layout does, read their heights | 75,975 [73,470–79,845] | 508,145 [477,950–519,700] | different work | 0.0 | 71 |
+| `cycle-label` | acquire a pooled Label, give it a text or value, release it (fake frames) | 2,305 [2,265–2,351] | 2,859 [2,815–3,071] | 0.81× (min 0.80×, faster) | 0.0 | 0.0 |
+| `cycle-button` | acquire a pooled Button, give it a text or value, release it (fake frames) | 1,804 [1,784–1,840] | 1,301 [1,281–1,336] | 1.39× (min 1.39×, slower) | 0.0 | 0.0 |
+| `cycle-checkbox` | acquire a pooled CheckBox, give it a text or value, release it (fake frames) | 2,132 [2,118–2,143] | 3,233 [3,212–3,273] | 0.66× (min 0.66×, faster) | 0.0 | 0.0 |
+| `cycle-slider` | acquire a pooled Slider, give it a text or value, release it (fake frames) | 3,482 [3,436–3,525] | 2,239 [2,222–2,275] | 1.56× (min 1.55×, slower) | 0.0 | 0.0 |
+| `cycle-editbox` | acquire a pooled EditBox, give it a text or value, release it (fake frames) | 2,793 [2,749–2,821] | 2,801 [2,765–2,817] | 1.00× (min 0.99×, within noise) | 0.0 | 256 |
+| `group-10` | acquire a titled group, add 10 labels, lay it out once, release it with its children (fake frames) | 51,944 [51,508–53,976] | 101,374 [100,116–108,218] | different work | 1.4 | 9.5 |
+| `group-50` | acquire a titled group, add 50 labels, lay it out once, release it with its children (fake frames) | 238,930 [234,700–241,980] | 1,217,130 [1,189,380–1,237,990] | different work | 6.8 | 64 |
+| `relayout-50` | lay out a titled group of 50 labels again (fake frames) | 81,720 [80,635–85,265] | 1,045,950 [1,031,350–1,107,345] | different work | 3.4 | 32 |
+| `host-stub-list-anchors-50` | the fake client alone: anchor 50 frames as this library's List layout does, read their heights | 75,240 [73,920–78,515] | 482,795 [475,345–531,250] | different work | 0.0 | 71 |
 
 - `cycle-label`: indicative: fake-client frames, no native frame cost
 - `cycle-button`: indicative: fake-client frames, no native frame cost

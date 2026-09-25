@@ -23,8 +23,8 @@
 ---   `BindOptions` (`/cmd set g1.scale 1.25`) against AceConfigCmd's
 ---   `CreateChatCommand` (`/cmd g1 scale 1.25`). Both parse the line, find the
 ---   option, convert the text for the option's kind, check it and call `set`.
----   CommandKit also echoes `path = value` to the chat frame and builds the
----   tree's description once per command; AceConfigCmd prints nothing on
+---   CommandKit also echoes `path = value` to the chat frame and describes
+---   the named option once per command; AceConfigCmd prints nothing on
 ---   success.
 --- - **Profile options** (`profile-*`): the ready-made profile group over a
 ---   database, `OptionsKit:ProfileOptions(db)` over SettingsKit against
@@ -353,7 +353,7 @@ end
 
 --- The note of the command-line cases that succeed.
 local ECHO_NOTE =
-  "CommandKit echoes the new value and describes the tree once per command; AceConfigCmd prints nothing"
+  "CommandKit echoes the new value and describes the named option once per command; AceConfigCmd prints nothing"
 
 ---@param adapter table
 ---@param side string
@@ -368,7 +368,7 @@ local function cases(adapter, side, host)
       name = "define-" .. size,
       iterations = DEFINE_ITERATIONS[size],
       operation = "define and check a " .. size .. "-option table, then drop it",
-      note = "Ace3 checks on the first GetOptionsTable; OptionsKit also copies, indexes and builds schemas",
+      note = "Ace3 checks on the first GetOptionsTable; OptionsKit also copies, indexes and builds schemas, shared per kind and inputs",
       prepare = function()
         local tree = buildTree(groups, side, {})
         return {
@@ -442,7 +442,7 @@ local function cases(adapter, side, host)
   list[#list + 1] = commandCase(
     "cmd-refused",
     "type a command choosing a value the select does not have",
-    "both print the refusal; CommandKit describes the tree once per command",
+    "both print the refusal; CommandKit describes the named option once per command",
     function(index)
       return adapter.setLine("g4", "anchor", "LEFT" .. index)
     end
@@ -452,7 +452,7 @@ local function cases(adapter, side, host)
     name = "profile-options-build",
     iterations = PROFILE_ITERATIONS,
     operation = "build the profile options group for a database",
-    note = "AceDBOptions reuses one group per database and one shared args table; OptionsKit builds a new group",
+    note = "AceDBOptions and OptionsKit (revision 8) both return one cached group per database; OptionsKit still runs its argument and database checks on every call",
     prepare = function()
       local db = openProfiles(adapter)
       return {

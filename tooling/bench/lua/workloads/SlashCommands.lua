@@ -7,10 +7,11 @@
 ---   `UnregisterChatCommand`. Both write `SlashCmdList` and the `SLASH_<key>1`
 ---   global. CommandKit also compiles the spec and checks that no other addon,
 ---   chat type or emote owns the name (its "taken" check reads the foreign
----   commands' `SLASH_` globals and up to 1024 `EMOTE<n>_CMD1` globals, none of
----   which the host defines); AceConsole overwrites whatever held the name. The
----   host holds 50 foreign commands on both sides, as a client with a few addons
----   would.
+---   commands' `SLASH_` globals on every call; the `EMOTE<n>_CMD<m>` globals,
+---   none of which the host defines, are read once into an index since
+---   CommandKit revision 7, and every later check asks the index); AceConsole
+---   overwrites whatever held the name. The host holds 50 foreign commands on
+---   both sides, as a client with a few addons would.
 --- - **Dispatch** a typed line: the client calls the function under the
 ---   command's `SlashCmdList` key with the text after the slash name, so the
 ---   cases call that function. An AceConsole handler receives the raw text and
@@ -27,6 +28,12 @@
 --- Every typed line is different (a pool of distinct texts, one per operation
 --- of a batch), so the tokens are new strings on every operation and interning
 --- cannot hide their allocation.
+---
+--- Dropped: `register-unregister-one-emote`, which ran `register-unregister`
+--- with `maxEmotes = 1` to show how much of it the emote scan cost. Since
+--- CommandKit revision 7 the scan runs once per session and later checks ask
+--- the index, so capping it no longer isolates anything: the case measured
+--- the same work as `register-unregister`.
 ---
 --- Left out: AceConfigCmd-3.0, which is AceConsole's command line over an
 --- options table; the `options` workload compares it with CommandKit's
@@ -132,11 +139,6 @@ local function kitAdapter(host)
   ---The tokens of `text`, or `nil` and the reason when it is refused.
   function adapter.tokens(text)
     return CommandKit:Parse(text)
-  end
-
-  ---Limit the emote check to one index, the smallest `maxEmotes`.
-  function adapter.capEmoteScan()
-    CommandKit:SetLimits({ maxEmotes = 1 })
   end
 
   return adapter,
@@ -315,28 +317,6 @@ local function cases(adapter)
       end,
     },
   }
-
-  if adapter.capEmoteScan ~= nil then
-    list[#list + 1] = {
-      name = "register-unregister-one-emote",
-      iterations = REGISTER_ITERATIONS,
-      operation = "register-unregister with the emote check limited to one emote index",
-      equivalent = false,
-      note = "CommandKit only, maxEmotes = 1: how much of register-unregister is the emote check",
-      prepare = function()
-        adapter.capEmoteScan()
-        local function receive() end
-        return {
-          run = function(iterations)
-            for _ = 1, iterations do
-              adapter.registerWords(COMMAND, receive)
-              adapter.unregister(COMMAND)
-            end
-          end,
-        }
-      end,
-    }
-  end
 
   for _, kind in ipairs({ "plain", "quoted", "link" }) do
     local descriptions = {

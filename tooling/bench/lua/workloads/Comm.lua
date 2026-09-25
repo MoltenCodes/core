@@ -5,9 +5,11 @@
 ---
 --- - **Send** is the library's whole path from the call to the last chunk
 ---   reaching `C_ChatInfo.SendAddonMessage` (the host stub records it): for
----   CommKit its queue, bandwidth bucket and SchedulerKit driver, run by
----   ticking frames until every chunk left; for AceComm the split and
----   ChatThrottleLib, which sends at once while bandwidth is available.
+---   CommKit its queue and bandwidth bucket, which send inside `Send` when
+---   its driver is idle and the bucket pays, and its SchedulerKit driver only
+---   when the bucket runs short (the case ticks frames until every chunk
+---   left, which with the opened throttle takes none); for AceComm the split
+---   and ChatThrottleLib, which sends at once while bandwidth is available.
 --- - **Receive** delivers every chunk of one message to the frame the library
 ---   registered for `CHAT_MSG_ADDON` and ends when the listener got the text.
 ---
