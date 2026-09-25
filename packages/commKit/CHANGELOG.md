@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.2.4 — 2026-09-25
+
+Performance round against AceComm-3.0 with ChatThrottleLib. The wire protocol, the API and every documented bound are unchanged; peers on revision 4 and earlier interoperate.
+
+- **Frame-rate ticker started only when needed.** Waking the driver from idle still samples `GetFramerate` once, but the one-second TimerKit ticker is now started by the first run that leaves something queued instead of by every wake. A message the first run sends in full (the usual case) no longer builds and cancels a repeating timer. `docs/API.md` states when the ticker starts.
+- **Pipes and per-sender records recycled.** An emptied pipe (two tables) and a sender's reassembly record go to bounded free lists (`state.spares`, 16 each) and are reset on reuse, so a send to an idle destination and a stream from a sender with nothing open build no table.
+- **One expiry timer restarted.** Arming a full reassembly timeout, as the first stream to open does, restarts one kept TimerKit timer (`expiry.idleTimer`) instead of building a timer handle per stream; an earlier deadline still gets a one-shot timer, and the timer still runs only while a stream is open.
+- **One pooled table per stream.** A stream record keeps its chunks in its own array part instead of a second pooled list, halving the PoolKit leases and releases per stream.
+- **Cheaper hot paths.** The send, driver and receive paths index CommKit's own tables directly instead of through `rawget`/`rawset` (none has a metatable); `issecretvalue` is read once per call rather than once per value checked; reassembly keys end in a precomputed per-stream-id suffix instead of formatting the id with `sprintf` on every chunk; a run on an emptied queue ends without walking the priority rotation; the head of a pipe and the oldest stream are removed without a search.
+- Host benchmark, `python3 -m tooling.bench.run --workload comm --rounds 3` on an Apple M5 Pro under concurrent load (load average about 6, other packages benchmarked at the same time; the sides are interleaved, so the ratios are the comparable figures). Before: CommKit revision 4 with EventKit 16, SignalKit 8, TimerKit 9; after: revision 5 with EventKit 17, SignalKit 9, TimerKit 10, which other work changed in between. Ratios are CommKit time over AceComm time; allocation is deterministic.
+
+  | Case | Before | After | Allocation before → after (Ace3) |
+  |---|---:|---:|---|
+  | `send-200` | 29.6× | 19.0× | 6,314 → 4,778 B (104 B) |
+  | `send-1000` | 12.7× | 9.3× | 7,973 → 6,437 B (2,086 B) |
+  | `send-8000` | 6.4× | 4.9× | 24,761 → 23,223 B (21,679 B) |
+  | `receive-200` | 5.8× | 3.3× | 225 → 225 B (0 B) |
+  | `receive-1000` | 8.0× | 4.5× | 2,864 → 2,014 B (1,638 B) |
+  | `receive-8000` | 4.7× | 2.6× | 31,050 → 30,188 B (30,372 B) |
+
+  Memory an incomplete stream holds: 2,105 → 1,257 B for a 1000-byte message (Ace3 1,023 B), 9,396 → 8,548 B for 8000 bytes (Ace3 8,845 B). Measured with the other Kits held at their current revisions, revision 5 alone takes 28 % off `send-200`, 23 % off `send-1000` and `send-8000`, and 30 to 35 % off every receive case (the same host, one process per case).
+- What remains is paid outside CommKit's own code: one SchedulerKit job (its handle, context and coroutine, about 4 KB) each time the driver wakes from idle, which is also why a send takes one frame where ChatThrottleLib sends at once; the send handle the caller keeps (384 B); PoolKit's lease and release of the queue record and the stream record; TimerKit's start of the expiry timer; and EventKit's and SignalKit's isolated dispatch of every chunk and message. The control byte every message carries costs one substring per received single chunk (225 B for 200 bytes), which AceComm, sending single messages unmarked, does not pay.
+- Implementation revision 5. The state gains `spares` and `expiry.idleTimer`, added empty by an upgrade over revision 4; a stream a revision 4 copy opened keeps its separate `parts` list until it closes, and a new state creates no `parts` pool. `Bootstrap_spec.lua` upgrades a state in revision 4's layout with a send and a stream in flight.
+- 208 specs; `FastPaths_spec.lua` pins each change to the behaviour it keeps (pipe reset, free-list bounds, ticker start and stop, expiry at the timeout and after a timeout change, every stream id of both digit schemes, out-of-order completion), `Allocation_spec.lua` guards that a two-chunk message from a new sender allocates only its three strings, and `ErrorLevels_spec.lua` covers the rewritten prefix checks.
+
 ## 0.2.3 — 2026-09-24
 
 - Secret values: the source comments on limit validation, send-request fields and `SetLimits` no longer claim that comparing a secret with anything, `nil` included, raises, or that a raw identity test is safe whatever the other side. They state what was measured on Retail 12.1.0 b69933 (2026-09-24): a secret compared with a value of its own type raises (`==`, `~=`, `<`, `<=` and `rawequal` alike) and a secret used as a table key raises, while a comparison with `nil` or with a value of another type answers without raising. The `type(value) == "nil"` rule stays, as the repository's uniform rule that never compares anything. Comments and documentation only: `luac -s -l` gives the same instruction listing before and after, so the implementation revision is unchanged.

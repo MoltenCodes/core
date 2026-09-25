@@ -179,6 +179,59 @@ describe("CommKit bootstrap", function()
     assert.are.same({ text }, received)
   end)
 
+  it("upgrades a revision 4 state in place with a send and a stream in flight", function()
+    local older, loaded = TestEnv.Load({ commKitRevision = 4 })
+    assert.are.equal(4, older.REVISION)
+    local olderState = rawget(older, "_state")
+    older:SetLimits({ burst = 400, maxCps = 100 })
+    local scope = older:ForAddon("MyAddon")
+    local received = {}
+    scope:Register(PREFIX, function(_, text)
+      received[#received + 1] = text
+    end)
+    local text = TestEnv.Text(700)
+    local handle = scope:Send({ prefix = PREFIX, text = text, distribution = "PARTY" })
+    TestEnv.Advance(0)
+    assert.are.equal("sending", handle:GetState())
+    local streamText = TestEnv.Text(300)
+    TestEnv.Deliver(PREFIX, "\002\129\128\130" .. streamText:sub(1, 251), "PARTY", "Peer-Realm")
+
+    -- The copy loaded above runs this file's code, so its state is put back
+    -- into revision 4's layout: no free lists, no reusable expiry timer (the
+    -- armed one is a plain one-shot), and the stream's chunks in a separate
+    -- list leased from the `parts` pool.
+    olderState.pools.parts = loaded.PoolKit:NewTablePool({ maxRetained = 32 })
+    local stream = olderState.streamList[1]
+    local parts = olderState.pools.parts:Acquire()
+    parts[1], stream[1] = stream[1], nil
+    stream.parts = parts
+    olderState.expiry.idleTimer:Cancel()
+    olderState.expiry.timer = olderState.kitScopes.timer:After(30, olderState.trampolines.expire)
+    olderState.expiry.idleTimer = nil
+    olderState.spares = nil
+
+    package.loaded["CommKit"] = nil
+    local CommKit = require("CommKit")
+    assert.are.equal(older, CommKit)
+    assert.is_true(CommKit.REVISION > 4)
+    assert.are.equal(olderState, rawget(CommKit, "_state"))
+    assert.are.same({ pipes = {}, senders = {} }, olderState.spares)
+    assert.is_false(olderState.expiry.idleTimer)
+
+    TestEnv.Deliver(PREFIX, "\004\129\128\130" .. streamText:sub(252), "PARTY", "Peer-Realm")
+    assert.are.same({ streamText }, received)
+    assert.are.equal(0, olderState.pools.parts:GetActiveCount())
+    assert.are.equal(0, CommKit:GetStatistics().openStreams)
+    assert.is_false(olderState.expiry.timer)
+    assert.are.equal(1, #olderState.spares.senders)
+
+    TestEnv.Advance(10)
+    assert.are.equal("sent", handle:GetState())
+    TestEnv.Loopback("Friend-Realm")
+    assert.are.same({ streamText, text }, received)
+    assert.are.equal(1, #olderState.spares.pipes)
+  end)
+
   it("requires Registry", function()
     TestEnv.Reset()
     TestEnv.InstallWowApi()

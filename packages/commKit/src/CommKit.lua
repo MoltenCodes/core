@@ -69,7 +69,7 @@
 
 local PACKAGE_NAME = "commKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 4
+local IMPLEMENTATION_REVISION = 5
 
 -- The API generation of every package CommKit uses: required (Registry,
 -- SignalKit, EventKit, TimerKit, SchedulerKit, PoolKit) and optional
@@ -148,6 +148,17 @@ WIRE.chunkPayloadBytes = WIRE.maxMessageBytes - WIRE.chunkHeaderBytes
 WIRE.plain.maxChunks = WIRE.plain.radix * WIRE.plain.radix - 1
 WIRE.logged.maxChunks = WIRE.logged.radix * WIRE.logged.radix - 1
 WIRE.singleControlText = string.char(WIRE.single)
+-- The end of a reassembly key, by stream id, for each digit scheme: the
+-- channel marker and the id in decimal, as every revision writes keys.
+-- Built once, because converting a number inside a concatenation formats it
+-- with `sprintf` on every chunk.
+WIRE.plain.keySuffix, WIRE.logged.keySuffix = {}, {}
+for streamId = 0, WIRE.plain.radix - 1 do
+  WIRE.plain.keySuffix[streamId] = "\t" .. streamId
+end
+for streamId = 0, WIRE.logged.radix - 1 do
+  WIRE.logged.keySuffix[streamId] = "\tlogged\t" .. streamId
+end
 -- What a message whose size cannot be read (a secret argument) is charged:
 -- the most one addon message can cost.
 WIRE.unknownSizeBytes = WIRE.maxPrefixBytes + WIRE.maxMessageBytes
@@ -500,7 +511,9 @@ local OPTION_KEYS = {
 }
 
 -- Table pool retention. Pools hold records between uses, never more.
-local POOL_RETAINED = { records = 64, streams = 32 }
+-- `spares` bounds each of CommKit's own free lists (`state.spares`): idle
+-- pipes and per-sender reassembly records.
+local POOL_RETAINED = { records = 64, streams = 32, spares = 16 }
 
 -- Options every send driver job is created with.
 local DRIVER_JOB_OPTIONS = { name = "CommKit send driver" }
@@ -980,7 +993,12 @@ local function newState()
     streams = {},
     streamList = {},
     senders = {},
-    expiry = { timer = false, due = false },
+    -- `idleTimer` is the one-shot TimerKit timer reused for the common
+    -- case of arming a full reassembly timeout (revision 5).
+    expiry = { timer = false, due = false, idleTimer = false },
+    -- Emptied pipes and per-sender records kept for reuse, each list at
+    -- most `POOL_RETAINED.spares` long (revision 5).
+    spares = { pipes = {}, senders = {} },
     -- Sender to { reportedAt, pending, reasons }: the aggregated drop
     -- reports, and the one timer that flushes them.
     dropReports = { bySender = {}, count = 0, timer = false, due = false },
@@ -1001,7 +1019,9 @@ local function newState()
     pools = {
       records = PoolKit:NewTablePool({ maxRetained = POOL_RETAINED.records }),
       streams = PoolKit:NewTablePool({ maxRetained = POOL_RETAINED.streams }),
-      parts = PoolKit:NewTablePool({ maxRetained = POOL_RETAINED.streams }),
+      -- No `parts`: revision 4 and earlier leased each stream's chunk list
+      -- from a third pool, which an inherited state still holds and
+      -- `closeStream` still returns those lists to.
     },
     trampolines = {},
     -- `CommKit.UNBOUNDED` lives here so every revision publishes the same
@@ -1087,6 +1107,15 @@ local trampolines = rawget(state, "trampolines")
 -- `ForAddon` do. A manual scope needs neither field and is left as built.
 if rawget(kitScopes, "logout") == nil then
   rawset(kitScopes, "logout", false)
+end
+-- Revision 5 added the free lists and the reusable expiry timer. Both start
+-- empty over an older state: the pipes and sender records it built stay in
+-- use and are recycled once they empty, and an armed expiry timer runs out.
+if rawget(state, "spares") == nil then
+  rawset(state, "spares", { pipes = {}, senders = {} })
+end
+if rawget(expiry, "idleTimer") == nil then
+  rawset(expiry, "idleTimer", false)
 end
 for _, addonScope in next, addonScopes do
   if rawget(addonScope, "_schema") == 1 then
@@ -1416,13 +1445,13 @@ end
 ---@param currentTime number
 ---@return number factor, number capacity, string mode
 local function currentMode(currentTime)
-  local maxCps = rawget(limits, "maxCps")
-  local burst = rawget(limits, "burst")
-  if currentTime < rawget(budget, "zoningUntil") then
+  local maxCps = limits.maxCps
+  local burst = limits.burst
+  if currentTime < budget.zoningUntil then
     local capacity = math.min(burst, maxCps * POLICY.zoningCapacitySeconds)
     return POLICY.zoningFactor, capacity, POLICY.modeZoning
   end
-  local framesPerSecond = rawget(budget, "framesPerSecond")
+  local framesPerSecond = budget.framesPerSecond
   if framesPerSecond ~= false and framesPerSecond < POLICY.lowFrameRate then
     return POLICY.lowFrameRateFactor, burst, POLICY.modeLowFrameRate
   end
@@ -1432,17 +1461,17 @@ end
 ---Add what the elapsed time earned to the bucket, in the current mode.
 ---@param currentTime number
 local function refill(currentTime)
-  local lastRefill = rawget(budget, "lastRefill")
-  rawset(budget, "lastRefill", currentTime)
+  local lastRefill = budget.lastRefill
+  budget.lastRefill = currentTime
   local factor, capacity = currentMode(currentTime)
-  local tokens = rawget(budget, "tokens")
+  local tokens = budget.tokens
   if lastRefill ~= false and currentTime > lastRefill then
-    tokens = tokens + (currentTime - lastRefill) * rawget(limits, "maxCps") * factor
+    tokens = tokens + (currentTime - lastRefill) * limits.maxCps * factor
   end
   if tokens > capacity then
     tokens = capacity
   end
-  rawset(budget, "tokens", tokens)
+  budget.tokens = tokens
 end
 
 ---The bytes one message of `prefix` and `text` costs the bucket.
@@ -1450,7 +1479,7 @@ end
 ---@param textLength integer
 ---@return integer
 local function messageCost(prefixLength, textLength)
-  return prefixLength + textLength + rawget(limits, "messageOverhead")
+  return prefixLength + textLength + limits.messageOverhead
 end
 
 ---Charge `cost` bytes someone else sent, down to the debt floor.
@@ -1473,8 +1502,8 @@ end
 ---@return number
 local function secondsUntilAffordable(cost, currentTime)
   local factor, capacity = currentMode(currentTime)
-  local rate = rawget(limits, "maxCps") * factor
-  local missing = math.min(cost, capacity) - rawget(budget, "tokens")
+  local rate = limits.maxCps * factor
+  local missing = math.min(cost, capacity) - budget.tokens
   -- Less than a byte short is rounding in the refill arithmetic, not a
   -- reason to wait a few nanoseconds.
   if missing < 1 then
@@ -1483,8 +1512,9 @@ local function secondsUntilAffordable(cost, currentTime)
   return missing / rate
 end
 
----Sample the frame rate. Runs on a TimerKit ticker while something is queued,
----never on the send path: `GetFramerate` is not free.
+---Sample the frame rate: once when the driver wakes from idle, then on a
+---TimerKit ticker while something is queued, never on the send path:
+---`GetFramerate` is not free.
 local function sampleFrameRate()
   local getFramerate = readHostFunction("GetFramerate")
   if getFramerate == nil then
@@ -1499,28 +1529,30 @@ local function sampleFrameRate()
   rawset(budget, "framesPerSecond", framesPerSecond)
 end
 
----Start the frame-rate sampler if it is not running, sampling once at once.
+---Start the frame-rate ticker if it is not running. Called when a driver run
+---ends with something still queued, not when the driver wakes: a message the
+---first run sends in full leaves the queue before the ticker's first second
+---would have passed, so it never needed one, and the wake's own sample stands
+---for that run.
 local function startSampler()
-  if rawget(driver, "sampler") ~= false then
+  if driver.sampler ~= false then
     return
   end
-  sampleFrameRate()
-  local timer = getTimerScope():Every(POLICY.frameRateSampleSeconds, rawget(trampolines, "sample"))
-  rawset(driver, "sampler", timer)
+  driver.sampler = getTimerScope():Every(POLICY.frameRateSampleSeconds, trampolines.sample)
 end
 
 ---Cancel any scheduled driver run and stop the frame-rate sampler: nothing is
 ---queued, so nothing may stay armed.
 local function stopDriver()
-  local job = rawget(driver, "job")
+  local job = driver.job
   if job ~= false then
-    rawset(driver, "job", false)
-    rawset(driver, "delayed", false)
+    driver.job = false
+    driver.delayed = false
     job:Cancel()
   end
-  local timer = rawget(driver, "sampler")
+  local timer = driver.sampler
   if timer ~= false then
-    rawset(driver, "sampler", false)
+    driver.sampler = false
     timer:Cancel()
   end
 end
@@ -1560,18 +1592,18 @@ end
 ---@param queue table
 ---@param pipe table
 local function ringRemove(queue, pipe)
-  local ring = rawget(queue, "ring")
+  local ring = queue.ring
   for index = 1, #ring do
     if ring[index] == pipe then
       table.remove(ring, index)
-      local cursor = rawget(queue, "cursor")
+      local cursor = queue.cursor
       if index < cursor then
         cursor = cursor - 1
       end
       if cursor > #ring or cursor < 1 then
         cursor = 1
       end
-      rawset(queue, "cursor", cursor)
+      queue.cursor = cursor
       return
     end
   end
@@ -1588,37 +1620,57 @@ local function blockedRemove(pipe)
   end
 end
 
----Forget an empty pipe wherever it waits.
+---Forget an empty pipe wherever it waits, and keep the table for the next
+---destination while the free list has room: a pipe (with its FIFO) is two
+---tables, and a send to an idle destination would otherwise build them anew.
 ---@param pipe table
 local function removePipe(pipe)
-  local queue = rawget(queues, rawget(pipe, "priority"))
-  if rawget(pipe, "blocked") then
+  local queue = queues[pipe.priority]
+  if pipe.blocked then
     blockedRemove(pipe)
   else
     ringRemove(queue, pipe)
   end
-  rawset(rawget(queue, "pipes"), rawget(pipe, "key"), nil)
+  queue.pipes[pipe.key] = nil
+  local sparePipes = state.spares.pipes
+  if #sparePipes < POOL_RETAINED.spares then
+    sparePipes[#sparePipes + 1] = pipe
+  end
 end
 
 ---Return the pipe for `key` in `priority`, creating it at the end of the ring.
+---A pipe from the free list is reset to what a new one holds; its FIFO is
+---already empty, because only an emptied pipe is forgotten.
 ---@param priority string
 ---@param key string
 ---@return table
 local function obtainPipe(priority, key)
-  local queue = rawget(queues, priority)
-  local pipes = rawget(queue, "pipes")
-  local pipe = rawget(pipes, key)
+  local queue = queues[priority]
+  local pipes = queue.pipes
+  local pipe = pipes[key]
   if pipe == nil then
-    pipe = {
-      key = key,
-      priority = priority,
-      fifo = {},
-      blocked = false,
-      blockedUntil = 0,
-      backoff = POLICY.throttleBackoffSeconds,
-    }
-    rawset(pipes, key, pipe)
-    local ring = rawget(queue, "ring")
+    local sparePipes = state.spares.pipes
+    local spareCount = #sparePipes
+    if spareCount > 0 then
+      pipe = sparePipes[spareCount]
+      sparePipes[spareCount] = nil
+      pipe.key = key
+      pipe.priority = priority
+      pipe.blocked = false
+      pipe.blockedUntil = 0
+      pipe.backoff = POLICY.throttleBackoffSeconds
+    else
+      pipe = {
+        key = key,
+        priority = priority,
+        fifo = {},
+        blocked = false,
+        blockedUntil = 0,
+        backoff = POLICY.throttleBackoffSeconds,
+      }
+    end
+    pipes[key] = pipe
+    local ring = queue.ring
     ring[#ring + 1] = pipe
   end
   return pipe
@@ -1627,49 +1679,54 @@ end
 ---Append a message record to its pipe and count it.
 ---@param record table
 local function enqueueRecord(record)
-  local priority = rawget(record, "priority")
-  local pipe = obtainPipe(priority, rawget(record, "pipeKey"))
-  local fifo = rawget(pipe, "fifo")
+  local priority = record.priority
+  local pipe = obtainPipe(priority, record.pipeKey)
+  local fifo = pipe.fifo
   fifo[#fifo + 1] = record
-  rawset(record, "pipe", pipe)
+  record.pipe = pipe
 
-  local length = rawget(record, "textLength")
-  local queue = rawget(queues, priority)
-  rawset(queue, "messages", rawget(queue, "messages") + 1)
-  rawset(queue, "bytes", rawget(queue, "bytes") + length)
-  rawset(state, "queuedMessages", rawget(state, "queuedMessages") + 1)
-  rawset(state, "queuedBytes", rawget(state, "queuedBytes") + length)
+  local length = record.textLength
+  local queue = queues[priority]
+  queue.messages = queue.messages + 1
+  queue.bytes = queue.bytes + length
+  state.queuedMessages = state.queuedMessages + 1
+  state.queuedBytes = state.queuedBytes + length
 end
 
 ---Take a message record out of its pipe and uncount it; an emptied pipe is
 ---forgotten.
 ---@param record table
 local function dequeueRecord(record)
-  local pipe = rawget(record, "pipe")
-  local fifo = rawget(pipe, "fifo")
-  for index = 1, #fifo do
-    if fifo[index] == record then
-      table.remove(fifo, index)
-      break
+  local pipe = record.pipe
+  local fifo = pipe.fifo
+  if fifo[1] == record then
+    -- The head, almost always: the message that just finished.
+    table.remove(fifo, 1)
+  else
+    for index = 2, #fifo do
+      if fifo[index] == record then
+        table.remove(fifo, index)
+        break
+      end
     end
   end
-  if #fifo == 0 then
+  if fifo[1] == nil then
     removePipe(pipe)
   end
 
-  local length = rawget(record, "textLength")
-  local queue = rawget(queues, rawget(record, "priority"))
-  rawset(queue, "messages", rawget(queue, "messages") - 1)
-  rawset(queue, "bytes", rawget(queue, "bytes") - length)
-  rawset(state, "queuedMessages", rawget(state, "queuedMessages") - 1)
-  rawset(state, "queuedBytes", rawget(state, "queuedBytes") - length)
+  local length = record.textLength
+  local queue = queues[record.priority]
+  queue.messages = queue.messages - 1
+  queue.bytes = queue.bytes - length
+  state.queuedMessages = state.queuedMessages - 1
+  state.queuedBytes = state.queuedBytes - length
 end
 
 ---Add one to a statistics counter.
 ---@param name string
 ---@param amount integer?
 local function count(name, amount)
-  rawset(statistics, name, rawget(statistics, name) + (amount or 1))
+  statistics[name] = statistics[name] + (amount or 1)
 end
 
 ---Remove `value` from the array `list`, if present.
@@ -1716,18 +1773,18 @@ local function queueAbort(record)
   local abort = rawget(pools, "records"):Acquire()
   abort.kind = "abort"
   abort.inFlight = true
-  abort.prefix = rawget(record, "prefix")
+  abort.prefix = record.prefix
   abort.textLength = 0
-  abort.distribution = rawget(record, "distribution")
-  abort.target = rawget(record, "target")
-  abort.priority = rawget(record, "priority")
-  abort.logged = rawget(record, "logged")
-  abort.pipeKey = rawget(record, "pipeKey")
-  abort.totalChunks = rawget(record, "totalChunks")
-  abort.streamId = rawget(record, "streamId")
+  abort.distribution = record.distribution
+  abort.target = record.target
+  abort.priority = record.priority
+  abort.logged = record.logged
+  abort.pipeKey = record.pipeKey
+  abort.totalChunks = record.totalChunks
+  abort.streamId = record.streamId
   enqueueRecord(abort)
   -- Move it from the tail to the head of its pipe.
-  local fifo = rawget(rawget(abort, "pipe"), "fifo")
+  local fifo = abort.pipe.fifo
   table.remove(fifo)
   table.insert(fifo, 1, abort)
 end
@@ -1736,16 +1793,12 @@ end
 ---abort that took it over, holds.
 ---@param record table
 local function releaseInFlight(record)
-  if not rawget(record, "inFlight") then
+  if not record.inFlight then
     return
   end
-  rawset(record, "inFlight", false)
-  rawset(state, "inFlightStreams", rawget(state, "inFlightStreams") - 1)
-  rawset(
-    state,
-    "inFlightBytes",
-    rawget(state, "inFlightBytes") - declaredBytes(rawget(record, "totalChunks"))
-  )
+  record.inFlight = false
+  state.inFlightStreams = state.inFlightStreams - 1
+  state.inFlightBytes = state.inFlightBytes - declaredBytes(record.totalChunks)
 end
 
 ---Move a queued message to a terminal state, release its record and tell the
@@ -1757,21 +1810,21 @@ end
 ---@param terminalState string
 ---@param reason string|nil
 local function completeSend(record, terminalState, reason)
-  local handle = rawget(record, "handle")
-  local onComplete = rawget(record, "onComplete")
+  local handle = record.handle
+  local onComplete = record.onComplete
   dequeueRecord(record)
-  if rawget(record, "inFlight") == true and terminalState ~= SEND_STATE.sent then
-    rawset(record, "inFlight", false)
+  if record.inFlight == true and terminalState ~= SEND_STATE.sent then
+    record.inFlight = false
     queueAbort(record)
   else
     releaseInFlight(record)
   end
   rawset(handle, "_state", terminalState)
   rawset(handle, "_record", false)
-  removeFromList(rawget(rawget(record, "scope"), "_pending"), handle)
+  removeFromList(rawget(record.scope, "_pending"), handle)
   count(STATISTIC_FOR.terminal[terminalState])
   rawget(pools, "records"):Release(record)
-  if rawget(state, "queuedMessages") == 0 and not rawget(driver, "running") then
+  if state.queuedMessages == 0 and not driver.running then
     stopDriver()
   end
 
@@ -1805,19 +1858,19 @@ end
 ---@param delay number seconds; 0 means the next frame
 ---@param why string `"budget"`, `"blocked"`, `"frame"` or `"retry"`
 local function scheduleDriver(delay, why)
-  local existing = rawget(driver, "job")
+  local existing = driver.job
   if existing ~= false then
     existing:Cancel()
   end
   local scope = getSchedulerScope()
   local job
   if delay <= 0 then
-    job = scope:NextFrame(rawget(trampolines, "driver"), DRIVER_JOB_OPTIONS)
+    job = scope:NextFrame(trampolines.driver, DRIVER_JOB_OPTIONS)
   else
-    job = scope:After(delay, rawget(trampolines, "driver"), DRIVER_JOB_OPTIONS)
+    job = scope:After(delay, trampolines.driver, DRIVER_JOB_OPTIONS)
   end
-  rawset(driver, "job", job)
-  rawset(driver, "delayed", why)
+  driver.job = job
+  driver.delayed = why
 end
 
 ---The client's send result as `"sent"`, `"throttled"` or `"failed"` and a
@@ -1828,8 +1881,11 @@ end
 ---@return string outcome
 ---@return string|nil reason
 local function classifySendResult(result)
-  -- Asked first: every test below compares the result.
-  if isSecret(result) then
+  -- Asked first: every test below compares the result. The probe is read
+  -- once for the result and the client's `Success` entry, both on every
+  -- chunk.
+  local probe = readHostFunction("issecretvalue")
+  if probe ~= nil and probe(result) == true then
     return "throttled", nil
   end
   if type(result) == "nil" or result == true then
@@ -1838,7 +1894,17 @@ local function classifySendResult(result)
   if result == false then
     return SEND_STATE.failed, "GeneralError"
   end
-  if result == readEnumValue("SendAddonMessageResult", "Success", CLIENT_RESULT.sendSuccess) then
+  -- `readEnumValue("SendAddonMessageResult", "Success", ...)`, inlined.
+  local success = CLIENT_RESULT.sendSuccess
+  local enums = readHostTable("Enum")
+  local values = enums ~= nil and rawget(enums, "SendAddonMessageResult") or nil
+  if type(values) == "table" then
+    local value = rawget(values, "Success")
+    if type(value) ~= "nil" and (probe == nil or probe(value) ~= true) then
+      success = value
+    end
+  end
+  if result == success then
     return SEND_STATE.sent, nil
   end
   if
@@ -1873,20 +1939,14 @@ end
 ---@return string outcome
 ---@return string|nil reason
 local function transmit(record, chunk)
-  local functionName = rawget(record, "logged") and "SendAddonMessageLogged" or "SendAddonMessage"
+  local functionName = record.logged and "SendAddonMessageLogged" or "SendAddonMessage"
   local send = readChatFunction(functionName)
   if send == nil then
     return SEND_STATE.failed, REASON.unavailable
   end
-  rawset(state, "sendingOwnTraffic", true)
-  local ok, result = pcall(
-    send,
-    rawget(record, "prefix"),
-    chunk,
-    rawget(record, "distribution"),
-    rawget(record, "target")
-  )
-  rawset(state, "sendingOwnTraffic", false)
+  state.sendingOwnTraffic = true
+  local ok, result = pcall(send, record.prefix, chunk, record.distribution, record.target)
+  state.sendingOwnTraffic = false
   if not ok then
     reportError(result)
     return SEND_STATE.failed, "error"
@@ -1907,10 +1967,8 @@ do
   ---@param streamId integer
   ---@return boolean
   local function headHolds(pipe, logged, streamId)
-    local head = rawget(pipe, "fifo")[1]
-    return rawget(head, "inFlight") == true
-      and rawget(head, "logged") == logged
-      and rawget(head, "streamId") == streamId
+    local head = pipe.fifo[1]
+    return head.inFlight == true and head.logged == logged and head.streamId == streamId
   end
 
   ---Whether a started message or a queued abort holds `streamId`.
@@ -1919,7 +1977,7 @@ do
   ---@return boolean
   local function streamIdInUse(logged, streamId)
     for _, queue in pairs(queues) do
-      local ring = rawget(queue, "ring")
+      local ring = queue.ring
       for index = 1, #ring do
         if headHolds(ring[index], logged, streamId) then
           return true
@@ -1943,14 +2001,10 @@ do
   ---id is chosen again on every attempt until then.
   ---@param record table
   function assignStreamId(record)
-    if
-      rawget(record, "kind") ~= "message"
-      or rawget(record, "totalChunks") == 1
-      or rawget(record, "nextIndex") ~= 1
-    then
+    if record.kind ~= "message" or record.totalChunks == 1 or record.nextIndex ~= 1 then
       return
     end
-    local logged = rawget(record, "logged")
+    local logged = record.logged
     local radix = digitScheme(logged).radix
     local candidate = rawget(state, logged and "nextLoggedStreamId" or "nextStreamId")
     for _ = 1, radix do
@@ -1959,7 +2013,7 @@ do
       end
       candidate = (candidate + 1) % radix
     end
-    rawset(record, "streamId", candidate)
+    record.streamId = candidate
   end
 end
 
@@ -1969,15 +2023,15 @@ end
 ---@return string chunk
 ---@return integer payloadBytes
 local function buildChunk(record)
-  local text = rawget(record, "text")
-  local totalChunks = rawget(record, "totalChunks")
-  local isAbort = rawget(record, "kind") == "abort"
+  local text = record.text
+  local totalChunks = record.totalChunks
+  local isAbort = record.kind == "abort"
   if totalChunks == 1 and not isAbort then
     return WIRE.singleControlText .. text, #text
   end
 
-  local scheme = digitScheme(rawget(record, "logged"))
-  local index = rawget(record, "nextIndex")
+  local scheme = digitScheme(record.logged)
+  local index = record.nextIndex
   local control, number
   if isAbort then
     control, number = WIRE.abort, totalChunks
@@ -1991,7 +2045,7 @@ local function buildChunk(record)
   local high = math.floor(number / scheme.radix)
   local header = string.char(
     control,
-    scheme.offset + rawget(record, "streamId"),
+    scheme.offset + record.streamId,
     scheme.offset + high,
     scheme.offset + number - high * scheme.radix
   )
@@ -2010,15 +2064,14 @@ end
 ---@param pipe table
 ---@return boolean
 local function headMayStart(pipe)
-  local record = rawget(pipe, "fifo")[1]
-  local totalChunks = rawget(record, "totalChunks")
+  local record = pipe.fifo[1]
+  local totalChunks = record.totalChunks
   -- A started message or an abort already holds its allowance.
-  if totalChunks == 1 or rawget(record, "inFlight") then
+  if totalChunks == 1 or record.inFlight then
     return true
   end
-  return rawget(state, "inFlightStreams") < rawget(limits, "maxInFlightPerSender")
-    and rawget(state, "inFlightBytes") + declaredBytes(totalChunks)
-      <= rawget(limits, "maxReassemblyBytesPerSender")
+  return state.inFlightStreams < limits.maxInFlightPerSender
+    and state.inFlightBytes + declaredBytes(totalChunks) <= limits.maxReassemblyBytesPerSender
 end
 
 ---Find the pipe the rotation serves next without moving any cursor: in the
@@ -2029,12 +2082,13 @@ end
 ---@return integer slot
 local function peekNextPipe()
   local rotationLength = #PRIORITY_ROTATION
-  local slot = rawget(state, "rotationCursor")
+  local slot = state.rotationCursor
   for _ = 1, rotationLength do
-    local queue = rawget(queues, PRIORITY_ROTATION[slot])
-    local ring = rawget(queue, "ring")
-    local ringLength = #ring
-    local index = rawget(queue, "cursor")
+    local queue = queues[PRIORITY_ROTATION[slot]]
+    local ring = queue.ring
+    -- A priority with nothing queued has an empty ring.
+    local ringLength = queue.messages > 0 and #ring or 0
+    local index = queue.cursor
     for _ = 1, ringLength do
       if index > ringLength then
         index = 1
@@ -2054,8 +2108,8 @@ end
 ---@param ringIndex integer
 ---@param slot integer
 local function advanceCursors(queue, ringIndex, slot)
-  rawset(state, "rotationCursor", slot % #PRIORITY_ROTATION + 1)
-  rawset(queue, "cursor", ringIndex % #rawget(queue, "ring") + 1)
+  state.rotationCursor = slot % #PRIORITY_ROTATION + 1
+  queue.cursor = ringIndex % #queue.ring + 1
 end
 
 ---Take a throttled pipe out of the ring until its backoff has passed.
@@ -2064,10 +2118,10 @@ end
 ---@param currentTime number
 local function setPipeAside(queue, pipe, currentTime)
   ringRemove(queue, pipe)
-  local backoff = rawget(pipe, "backoff")
-  rawset(pipe, "blocked", true)
-  rawset(pipe, "blockedUntil", currentTime + backoff)
-  rawset(pipe, "backoff", math.min(backoff * 2, POLICY.maxThrottleBackoffSeconds))
+  local backoff = pipe.backoff
+  pipe.blocked = true
+  pipe.blockedUntil = currentTime + backoff
+  pipe.backoff = math.min(backoff * 2, POLICY.maxThrottleBackoffSeconds)
   blockedPipes[#blockedPipes + 1] = pipe
   count("throttled")
 end
@@ -2078,10 +2132,10 @@ local function reinstatePipes(currentTime)
   local index = 1
   while index <= #blockedPipes do
     local pipe = blockedPipes[index]
-    if rawget(pipe, "blockedUntil") <= currentTime + POLICY.dueToleranceSeconds then
+    if pipe.blockedUntil <= currentTime + POLICY.dueToleranceSeconds then
       table.remove(blockedPipes, index)
-      rawset(pipe, "blocked", false)
-      local ring = rawget(rawget(queues, rawget(pipe, "priority")), "ring")
+      pipe.blocked = false
+      local ring = queues[pipe.priority].ring
       ring[#ring + 1] = pipe
     else
       index = index + 1
@@ -2097,41 +2151,41 @@ end
 ---@param chunkBytes integer the chunk's length on the wire, header included
 ---@param payloadBytes integer the message bytes the chunk carries
 local function acceptChunk(record, pipe, cost, chunkBytes, payloadBytes)
-  rawset(budget, "tokens", rawget(budget, "tokens") - cost)
-  rawset(pipe, "backoff", POLICY.throttleBackoffSeconds)
-  count("chunksSent")
-  count("bytesSent", chunkBytes)
-  if rawget(record, "kind") == "abort" then
+  budget.tokens = budget.tokens - cost
+  pipe.backoff = POLICY.throttleBackoffSeconds
+  statistics.chunksSent = statistics.chunksSent + 1
+  statistics.bytesSent = statistics.bytesSent + chunkBytes
+  if record.kind == "abort" then
     finishAbort(record)
     return
   end
 
-  local handle = rawget(record, "handle")
-  local totalChunks = rawget(record, "totalChunks")
-  local bytesSent = rawget(record, "bytesSent") + payloadBytes
-  local nextIndex = rawget(record, "nextIndex") + 1
-  rawset(record, "bytesSent", bytesSent)
-  rawset(record, "nextIndex", nextIndex)
+  local handle = record.handle
+  local totalChunks = record.totalChunks
+  local bytesSent = record.bytesSent + payloadBytes
+  local nextIndex = record.nextIndex + 1
+  record.bytesSent = bytesSent
+  record.nextIndex = nextIndex
   rawset(handle, "_bytesSent", bytesSent)
   local finished = nextIndex > totalChunks
   if not finished then
     rawset(handle, "_state", SEND_STATE.sending)
     if nextIndex == 2 then
-      local logged = rawget(record, "logged")
+      local logged = record.logged
       rawset(
         state,
         logged and "nextLoggedStreamId" or "nextStreamId",
-        (rawget(record, "streamId") + 1) % digitScheme(logged).radix
+        (record.streamId + 1) % digitScheme(logged).radix
       )
-      rawset(record, "inFlight", true)
-      rawset(state, "inFlightStreams", rawget(state, "inFlightStreams") + 1)
-      rawset(state, "inFlightBytes", rawget(state, "inFlightBytes") + declaredBytes(totalChunks))
+      record.inFlight = true
+      state.inFlightStreams = state.inFlightStreams + 1
+      state.inFlightBytes = state.inFlightBytes + declaredBytes(totalChunks)
     end
   end
 
-  local onProgress = rawget(record, "onProgress")
+  local onProgress = record.onProgress
   if onProgress ~= false then
-    isolatedCall(onProgress, handle, bytesSent, rawget(record, "textLength"))
+    isolatedCall(onProgress, handle, bytesSent, record.textLength)
   end
   -- The progress callback may have cancelled the message.
   if finished and rawget(handle, "_record") == record then
@@ -2144,7 +2198,7 @@ end
 ---@param currentTime number
 ---@param hitRunCap boolean
 local function finishRun(currentTime, hitRunCap)
-  if rawget(state, "queuedMessages") == 0 then
+  if state.queuedMessages == 0 then
     stopDriver()
     return
   end
@@ -2172,16 +2226,21 @@ local function driveChunks()
   reinstatePipes(currentTime)
 
   for _ = 1, POLICY.maxChunksPerRun do
+    -- An emptied queue ends the run without walking the rotation.
+    if state.queuedMessages == 0 then
+      finishRun(currentTime, false)
+      return
+    end
     local queue, ringIndex, slot = peekNextPipe()
     if queue == nil then
       finishRun(currentTime, false)
       return
     end
-    local pipe = rawget(queue, "ring")[ringIndex]
-    local record = rawget(pipe, "fifo")[1]
+    local pipe = queue.ring[ringIndex]
+    local record = pipe.fifo[1]
     assignStreamId(record)
     local chunk, payloadBytes = buildChunk(record)
-    local cost = messageCost(#rawget(record, "prefix"), #chunk)
+    local cost = messageCost(#record.prefix, #chunk)
     local wait = secondsUntilAffordable(cost, currentTime)
     if wait > 0 then
       scheduleDriver(wait, "budget")
@@ -2194,7 +2253,7 @@ local function driveChunks()
       acceptChunk(record, pipe, cost, #chunk, payloadBytes)
     elseif outcome == "throttled" then
       setPipeAside(queue, pipe, currentTime)
-    elseif rawget(record, "kind") == "abort" then
+    elseif record.kind == "abort" then
       finishAbort(record)
     else
       completeSend(record, SEND_STATE.failed, reason)
@@ -2208,19 +2267,22 @@ end
 ---disarmed when nothing is queued, rather than left marked as running for the
 ---session.
 local function runDriver()
-  rawset(driver, "job", false)
-  rawset(driver, "delayed", false)
-  rawset(driver, "running", true)
+  driver.job = false
+  driver.delayed = false
+  driver.running = true
   local ok, failure = pcall(driveChunks)
-  rawset(driver, "running", false)
-  if ok then
-    return
+  driver.running = false
+  if not ok then
+    reportError(failure)
+    if state.queuedMessages > 0 then
+      scheduleDriver(1, "retry")
+    else
+      stopDriver()
+    end
   end
-  reportError(failure)
-  if rawget(state, "queuedMessages") > 0 then
-    scheduleDriver(1, "retry")
-  else
-    stopDriver()
+  -- Only a run that leaves work behind needs the frame-rate ticker.
+  if state.queuedMessages > 0 then
+    startSampler()
   end
 end
 
@@ -2307,20 +2369,24 @@ end
 ---scheduled is kept, unless it waits only for a throttled pipe: the new
 ---message may use another pipe.
 local function wakeDriver()
-  if rawget(driver, "running") then
+  if driver.running then
     return
   end
-  local job = rawget(driver, "job")
+  local job = driver.job
   if job ~= false then
-    if rawget(driver, "delayed") ~= "blocked" then
+    if driver.delayed ~= "blocked" then
       return
     end
     job:Cancel()
   end
   local scope = getSchedulerScope()
-  rawset(driver, "job", scope:Schedule(rawget(trampolines, "driver"), DRIVER_JOB_OPTIONS))
-  rawset(driver, "delayed", false)
-  startSampler()
+  driver.job = scope:Schedule(trampolines.driver, DRIVER_JOB_OPTIONS)
+  driver.delayed = false
+  -- Waking from idle samples once; the ticker, once a run left work behind,
+  -- samples from then on (`startSampler`).
+  if driver.sampler == false then
+    sampleFrameRate()
+  end
   installOutsideHooks()
 end
 
@@ -2341,12 +2407,12 @@ end
 ---@param distribution string
 ---@param sender string
 local function deliverMessage(prefix, text, distribution, sender)
-  local signal = rawget(prefixSignals, prefix)
+  local signal = prefixSignals[prefix]
   if signal == nil then
     return
   end
-  count("messagesReceived")
-  count("bytesReceived", #text)
+  statistics.messagesReceived = statistics.messagesReceived + 1
+  statistics.bytesReceived = statistics.bytesReceived + #text
   signal:Fire(prefix, text, distribution, sender)
 end
 
@@ -2354,28 +2420,43 @@ end
 ---expiry timer. Reports nothing.
 ---@param stream table
 local function closeStream(stream)
-  local sender = rawget(stream, "sender")
-  rawset(streams, rawget(stream, "key"), nil)
-  removeFromList(streamList, stream)
+  local sender = stream.sender
+  streams[stream.key] = nil
+  if streamList[1] == stream then
+    -- The oldest stream, almost always: streams complete in the order
+    -- they opened.
+    table.remove(streamList, 1)
+  else
+    removeFromList(streamList, stream)
+  end
 
-  local senderRecord = rawget(senders, sender)
+  local senderRecord = senders[sender]
   if senderRecord ~= nil then
-    local remaining = rawget(senderRecord, "streams") - 1
-    rawset(senderRecord, "streams", remaining)
-    rawset(senderRecord, "bytes", rawget(senderRecord, "bytes") - rawget(stream, "reserved"))
+    local remaining = senderRecord.streams - 1
+    senderRecord.streams = remaining
+    senderRecord.bytes = senderRecord.bytes - stream.reserved
     if remaining <= 0 then
-      rawset(senders, sender, nil)
+      senders[sender] = nil
+      local spareSenders = state.spares.senders
+      if #spareSenders < POOL_RETAINED.spares then
+        spareSenders[#spareSenders + 1] = senderRecord
+      end
     end
   end
 
-  rawget(pools, "parts"):Release(rawget(stream, "parts"))
-  rawget(pools, "streams"):Release(stream)
+  -- Only a stream a revision 4 copy opened has a separate chunk list; from
+  -- revision 5 the chunks are the stream record's own array part.
+  local parts = stream.parts
+  if parts ~= nil then
+    pools.parts:Release(parts)
+  end
+  pools.streams:Release(stream)
 
   -- The expiry timer runs only while a stream is open.
-  local timer = rawget(expiry, "timer")
+  local timer = expiry.timer
   if #streamList == 0 and timer ~= false then
-    rawset(expiry, "timer", false)
-    rawset(expiry, "due", false)
+    expiry.timer = false
+    expiry.due = false
     timer:Cancel()
   end
 end
@@ -2507,7 +2588,7 @@ end
 ---@param stream table
 ---@param why string
 local function dropStream(stream, why)
-  local sender = rawget(stream, "sender")
+  local sender = stream.sender
   closeStream(stream)
   count(STATISTIC_FOR.drop[why])
   if why ~= DROP.aborted then
@@ -2521,7 +2602,7 @@ local function discardStreamsOf(prefix)
   local index = 1
   while index <= #streamList do
     local stream = streamList[index]
-    if rawget(stream, "prefix") == prefix then
+    if stream.prefix == prefix then
       closeStream(stream)
       count(STATISTIC_FOR.drop[DROP.discarded])
     else
@@ -2533,8 +2614,8 @@ end
 ---Arm the expiry timer for `deadline` unless it is already due no later.
 ---@param deadline number
 local function armExpiry(deadline)
-  local timer = rawget(expiry, "timer")
-  local due = rawget(expiry, "due")
+  local timer = expiry.timer
+  local due = expiry.due
   if timer ~= false and due ~= false and due <= deadline then
     return
   end
@@ -2542,20 +2623,39 @@ local function armExpiry(deadline)
     timer:Cancel()
   end
   local delay = math.max(deadline - now(), 0)
-  rawset(expiry, "timer", getTimerScope():After(delay, rawget(trampolines, "expire")))
-  rawset(expiry, "due", deadline)
+  local timeout = limits.reassemblyTimeout
+  local timerScope = getTimerScope()
+  if delay >= timeout - POLICY.dueToleranceSeconds then
+    -- A full timeout, as for the first stream to open: the idle timer is
+    -- restarted instead of a timer handle being built per stream. It is
+    -- replaced when `SetLimits` changed the timeout or its scope was closed.
+    local idleTimer = expiry.idleTimer
+    if
+      idleTimer == false
+      or idleTimer:GetDelay() ~= timeout
+      or idleTimer:GetScope() ~= timerScope
+    then
+      idleTimer = timerScope:New({ delay = timeout, callback = trampolines.expire })
+      expiry.idleTimer = idleTimer
+    end
+    idleTimer:Restart()
+    expiry.timer = idleTimer
+  else
+    expiry.timer = timerScope:After(delay, trampolines.expire)
+  end
+  expiry.due = deadline
 end
 
 ---The expiry timer fired: drop every stream past its deadline, then arm the
 ---timer for the earliest one left.
 local function onExpiryTimer()
-  rawset(expiry, "timer", false)
-  rawset(expiry, "due", false)
+  expiry.timer = false
+  expiry.due = false
   local currentTime = now()
   local index = 1
   while index <= #streamList do
     local stream = streamList[index]
-    if rawget(stream, "deadline") <= currentTime + POLICY.dueToleranceSeconds then
+    if stream.deadline <= currentTime + POLICY.dueToleranceSeconds then
       dropStream(stream, DROP.expired)
     else
       index = index + 1
@@ -2591,19 +2691,19 @@ local function openStream(key, prefix, distribution, sender, total, text, scheme
     count("chunksRefused")
     return
   end
-  local existing = rawget(streams, key)
+  local existing = streams[key]
   if existing ~= nil then
     dropStream(existing, DROP.restarted)
   end
 
-  local senderRecord = rawget(senders, sender)
-  local senderStreams = senderRecord ~= nil and rawget(senderRecord, "streams") or 0
-  local senderBytes = senderRecord ~= nil and rawget(senderRecord, "bytes") or 0
+  local senderRecord = senders[sender]
+  local senderStreams = senderRecord ~= nil and senderRecord.streams or 0
+  local senderBytes = senderRecord ~= nil and senderRecord.bytes or 0
   local reserved = declaredBytes(total)
   if
-    #streamList >= rawget(limits, "maxReassemblyStreams")
-    or senderStreams >= rawget(limits, "maxInFlightPerSender")
-    or senderBytes + reserved > rawget(limits, "maxReassemblyBytesPerSender")
+    #streamList >= limits.maxReassemblyStreams
+    or senderStreams >= limits.maxInFlightPerSender
+    or senderBytes + reserved > limits.maxReassemblyBytesPerSender
   then
     count("chunksRefused")
     count(STATISTIC_FOR.drop[DROP.quota])
@@ -2612,15 +2712,23 @@ local function openStream(key, prefix, distribution, sender, total, text, scheme
   end
 
   if senderRecord == nil then
-    senderRecord = { streams = 0, bytes = 0 }
-    rawset(senders, sender, senderRecord)
+    local spareSenders = state.spares.senders
+    local spareCount = #spareSenders
+    if spareCount > 0 then
+      senderRecord = spareSenders[spareCount]
+      spareSenders[spareCount] = nil
+    else
+      senderRecord = { streams = 0, bytes = 0 }
+    end
+    senders[sender] = senderRecord
   end
-  rawset(senderRecord, "streams", senderStreams + 1)
-  rawset(senderRecord, "bytes", senderBytes + reserved)
+  senderRecord.streams = senderStreams + 1
+  senderRecord.bytes = senderBytes + reserved
 
-  local parts = rawget(pools, "parts"):Acquire()
-  parts[1] = string.sub(text, WIRE.chunkHeaderBytes + 1)
-  local stream = rawget(pools, "streams"):Acquire()
+  -- The chunk payloads are the record's array part, indexed by chunk number,
+  -- beside its named fields: one pooled table per stream, not two.
+  local stream = pools.streams:Acquire()
+  stream[1] = string.sub(text, WIRE.chunkHeaderBytes + 1)
   stream.key = key
   stream.prefix = prefix
   stream.distribution = distribution
@@ -2628,12 +2736,12 @@ local function openStream(key, prefix, distribution, sender, total, text, scheme
   stream.total = total
   stream.received = 1
   stream.reserved = reserved
-  stream.parts = parts
-  stream.deadline = now() + rawget(limits, "reassemblyTimeout")
-  rawset(streams, key, stream)
+  local deadline = now() + limits.reassemblyTimeout
+  stream.deadline = deadline
+  streams[key] = stream
   streamList[#streamList + 1] = stream
-  count("streamsOpened")
-  armExpiry(rawget(stream, "deadline"))
+  statistics.streamsOpened = statistics.streamsOpened + 1
+  armExpiry(deadline)
 end
 
 ---Add a middle or last chunk to its stream, completing the message when it is
@@ -2643,12 +2751,12 @@ end
 ---@param number integer the chunk's index
 ---@param text string the whole chunk, header included
 local function continueStream(control, key, number, text)
-  local stream = rawget(streams, key)
+  local stream = streams[key]
   if stream == nil then
     count("chunksRefused")
     return
   end
-  local total = rawget(stream, "total")
+  local total = stream.total
   if control == WIRE.abort then
     -- The sender cancelled the message; the abort names its chunk count.
     if number == total then
@@ -2659,7 +2767,8 @@ local function continueStream(control, key, number, text)
     return
   end
   local payloadLength = #text - WIRE.chunkHeaderBytes
-  local parts = rawget(stream, "parts")
+  -- A stream a revision 4 copy opened keeps its chunks in `parts`.
+  local parts = stream.parts or stream
   if
     number < 2
     or number > total
@@ -2673,19 +2782,19 @@ local function continueStream(control, key, number, text)
   end
 
   parts[number] = string.sub(text, WIRE.chunkHeaderBytes + 1)
-  local received = rawget(stream, "received") + 1
-  rawset(stream, "received", received)
-  rawset(stream, "deadline", now() + rawget(limits, "reassemblyTimeout"))
+  local received = stream.received + 1
+  stream.received = received
+  stream.deadline = now() + limits.reassemblyTimeout
   if received < total then
     return
   end
 
   local message = table.concat(parts, "", 1, total)
-  local prefix = rawget(stream, "prefix")
-  local distribution = rawget(stream, "distribution")
-  local sender = rawget(stream, "sender")
+  local prefix = stream.prefix
+  local distribution = stream.distribution
+  local sender = stream.sender
   closeStream(stream)
-  count("streamsCompleted")
+  statistics.streamsCompleted = statistics.streamsCompleted + 1
   deliverMessage(prefix, message, distribution, sender)
 end
 
@@ -2721,13 +2830,7 @@ local function receiveChunk(control, prefix, text, distribution, sender, logged)
   end
   local streamId = streamByte - lowest
   local number = (highByte - lowest) * scheme.radix + lowByte - lowest
-  local key = prefix
-    .. "\t"
-    .. distribution
-    .. "\t"
-    .. sender
-    .. (logged and "\tlogged\t" or "\t")
-    .. streamId
+  local key = prefix .. "\t" .. distribution .. "\t" .. sender .. scheme.keySuffix[streamId]
   if control == WIRE.first then
     openStream(key, prefix, distribution, sender, number, text, scheme)
   else
@@ -2752,17 +2855,27 @@ local function onAddonMessage(prefix, text, channel, sender, logged)
     return
   end
   -- A secret may not be used as a table key, compared or measured, so the
-  -- check comes before the prefix lookup.
-  if isSecret(prefix) or isSecret(text) or isSecret(channel) or isSecret(sender) then
+  -- check comes before the prefix lookup. The probe is read once for the
+  -- four arguments, as `isSecret` would read it four times.
+  local probe = readHostFunction("issecretvalue")
+  if
+    probe ~= nil
+    and (
+      probe(prefix) == true
+      or probe(text) == true
+      or probe(channel) == true
+      or probe(sender) == true
+    )
+  then
     count("secretsDropped")
     return
   end
-  local listeners = rawget(prefixCounts, prefix)
+  local listeners = prefixCounts[prefix]
   if listeners == nil or listeners == 0 then
     return
   end
 
-  count("chunksReceived")
+  statistics.chunksReceived = statistics.chunksReceived + 1
   local control = string.byte(text, 1)
   if control == WIRE.single then
     deliverMessage(prefix, string.sub(text, 2), channel, sender)
@@ -3546,19 +3659,16 @@ enqueueSend = function(
   end
   -- The two byte bounds also keep every message within the chunk numbers
   -- the header can write: see `LIMIT_RANGES`.
-  local maxQueuedBytes = rawget(limits, "maxQueuedBytes")
+  local maxQueuedBytes = limits.maxQueuedBytes
   if
     length > maxQueuedBytes
-    or (
-      totalChunks > 1
-      and declaredBytes(totalChunks) > rawget(limits, "maxReassemblyBytesPerSender")
-    )
+    or (totalChunks > 1 and declaredBytes(totalChunks) > limits.maxReassemblyBytesPerSender)
   then
     return refuseSend(REASON.tooLarge)
   end
   if
-    rawget(state, "queuedMessages") >= rawget(limits, "maxQueuedMessages")
-    or rawget(state, "queuedBytes") + length > maxQueuedBytes
+    state.queuedMessages >= limits.maxQueuedMessages
+    or state.queuedBytes + length > maxQueuedBytes
   then
     return refuseSend(REASON.queueFull)
   end
@@ -3615,15 +3725,25 @@ local function readSendRequest(request, level)
     error(label .. " must be a table", level)
   end
   validateKeys(request, OPTION_KEYS.sendRequest, label, level + 1)
+  -- The probe is read once for every field below; `isSecret` would read it
+  -- again for each. `nil` means a client without secret values.
+  local probe = readHostFunction("issecretvalue")
 
   local prefix = rawget(request, "prefix")
-  validateBoundedString(prefix, label .. ".prefix", WIRE.maxPrefixBytes, level + 1)
+  if type(prefix) ~= "string" or (probe ~= nil and probe(prefix) == true) then
+    -- The ordinary check raises with the message for either failure.
+    validateBoundedString(prefix, label .. ".prefix", WIRE.maxPrefixBytes, level + 1)
+  end
+  local prefixLength = #prefix
+  if prefixLength == 0 or prefixLength > WIRE.maxPrefixBytes then
+    validateBoundedString(prefix, label .. ".prefix", WIRE.maxPrefixBytes, level + 1)
+  end
 
   local text = rawget(request, "text")
   if type(text) ~= "string" then
     error(label .. ".text must be a string", level)
   end
-  if isSecret(text) then
+  if probe ~= nil and probe(text) == true then
     error(label .. ".text must not be a secret value", level)
   end
 
@@ -3631,18 +3751,18 @@ local function readSendRequest(request, level)
   if type(distribution) ~= "string" then
     error(label .. ".distribution must be a string", level)
   end
-  if isSecret(distribution) then
+  if probe ~= nil and probe(distribution) == true then
     error(label .. ".distribution must not be a secret value", level)
   end
 
   -- A field may hold a secret; by the repository rule only `type` and
-  -- `isSecret` look at a value before it is known not to be one.
+  -- the probe look at a value before it is known not to be one.
   local target = rawget(request, "target")
   local targetType = type(target)
   if targetType ~= "nil" and targetType ~= "string" and targetType ~= "number" then
     error(label .. ".target must be a string, a number or nil", level)
   end
-  if isSecret(target) then
+  if targetType ~= "nil" and probe ~= nil and probe(target) == true then
     error(label .. ".target must not be a secret value", level)
   end
 

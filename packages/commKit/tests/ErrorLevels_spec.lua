@@ -147,6 +147,14 @@ describe("CommKit error levels", function()
         { prefix = "", text = "t", distribution = "PARTY" },
       },
       {
+        "CommKit.Scope:Send request.prefix must be a string of 1 to 16 bytes",
+        { prefix = string.rep("P", 17), text = "t", distribution = "PARTY" },
+      },
+      {
+        "CommKit.Scope:Send request.prefix must be a string of 1 to 16 bytes",
+        { prefix = 5, text = "t", distribution = "PARTY" },
+      },
+      {
         "CommKit.Scope:Send request.text must be a string",
         { prefix = "P", text = 5, distribution = "PARTY" },
       },
@@ -295,6 +303,13 @@ describe("CommKit error levels", function()
       return value == secret
     end)
     local sync = assert(scope:SyncSet("CKSync", { fields = { "a" } }))
+    assertReportedAtCaller(
+      "CommKit.Scope:Send request.prefix must not be a secret value",
+      function(mark)
+        mark()
+        scope:Send({ prefix = secret, text = "t", distribution = "PARTY" })
+      end
+    )
     assertReportedAtCaller(
       "CommKit.Scope:Send request.text must not be a secret value",
       function(mark)
