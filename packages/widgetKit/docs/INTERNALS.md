@@ -16,7 +16,7 @@ an upgrade hangs off it, under `_state`, and is never replaced:
 | `types` | type name → type record `{ name, version, constructor, maxCallbacks, pool, borrowed }`; `maxCallbacks` is `math.huge` for `UNBOUNDED`, and `borrowed` counts the widgets of each version currently acquired |
 | `layouts` | layout name → layout function |
 | `records` | widget → widget record, weak-keyed |
-| `dispatch` | `build` and `retire`, the pool callbacks, and `closeOpenDropdown`, the catcher's script; rewritten by every copy |
+| `dispatch` | `build` and `retire`, the pool callbacks, `closeOpenDropdown`, the catcher's script, and `saveBinding`, the save a binding's SchedulerKit debounce calls (since revision 8); rewritten by every copy |
 | `widgetMetatable`, `containerMetatable` | `{ __index = Widget }`, `{ __index = Container }` |
 | `bindingMetatable`, `renderingMetatable` | the metatables of bindings and renderings |
 | `scratch` | the PoolKit table pool layouts borrow from |
@@ -221,15 +221,36 @@ container is laid out once unless it is being released.
 
 ## Bindings
 
-A binding holds the frame, the storage table and key, its anchor table, two
-reusable rect tables, a SignalKit signal and, when SchedulerKit was registered
-when it was made, a debounce handle whose callback saves. `Capture` computes the
-frame's and its parent's rectangles in screen coordinates (rect × effective scale),
-elects the anchor into the binding's own table with `FromRect`, divides the
-offsets by the frame's effective scale, re-anchors the frame, saves or arms the
-debounce, and fires the signal. A save always writes a fresh plain table: a
-SettingsKit view refuses a table that is a view or carries a metatable, and a
-fresh table can never alias the binding's working copy.
+A binding holds the frame, the storage (a table, or a function returning one)
+and key, its anchor table, two reusable rect tables, a SignalKit signal and,
+when SchedulerKit was registered when it was made, a debounce handle whose
+callback calls `dispatch.saveBinding`. `Capture` computes the frame's and its
+parent's rectangles in screen coordinates (rect × effective scale), elects the
+anchor into the binding's own table with `FromRect`, divides the offsets by the
+frame's effective scale, re-anchors the frame, saves or arms the debounce, and
+fires the signal. A save always writes a fresh plain table: a SettingsKit view
+refuses a table that is a view or carries a metatable, and a fresh table can
+never alias the binding's working copy.
+
+The storage is resolved at every save and every `Restore` (`resolveStorage`):
+a function is called under `pcall` and must return a table. The write
+(`store`) and `Restore`'s read (`fetch`) run under `pcall` too, through two
+small functions rather than a closure per call. A save runs after the frame has
+moved — from a drag handler, a debounce timer or a release flush — so every
+failure goes to the host error handler and the frame keeps the anchor `Capture`
+gave it. These helpers sit in a `do` block with `saveBinding` and `Restore`,
+because the main chunk peaks at 198 of Lua 5.1's 200 active locals and a block's
+locals end with it.
+
+`Anchor.Apply` (and so `Restore`) refuses a `relativeTo` that is the frame
+itself before touching anything. Otherwise it borrows a scratch table from the
+layouts' pool, copies the frame's points (five values each, from `GetPoint`)
+and scale into it, applies the scale, clears the points and calls `SetPoint`
+under `pcall`. When the client refuses the point (an anchor cycle), the points
+are cleared again, each kept point is set again under `pcall` (a point the
+client answered with secret values cannot be set from addon code and stays
+lost), and the kept scale is restored when it is a plain number. The table goes
+back to the pool either way.
 
 ## The dropdown catcher
 

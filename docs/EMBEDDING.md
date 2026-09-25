@@ -1067,9 +1067,15 @@ embedding addon's state depend on which copy won.
   clears its text on release, so a recycled region never shows a value from
   its previous life (taint rule 6).
 - **Positions persist through SettingsKit.** `WidgetKit:BindPosition(frame,
-  db.profile.window)` saves a plain anchor table `{ point, relativeTo,
-  relativePoint, x, y, scale }` into a record you declare in your schema,
-  debounced through SchedulerKit when it is present, and restores it on bind.
+  db.global)` saves a plain anchor table `{ point, relativeTo, relativePoint,
+  x, y, scale }` into a record you declare in your schema, debounced through
+  SchedulerKit when it is present, and restores it on bind. For a profile, pass
+  a function, `function() return db.profile end`, so every save lands in the
+  current profile, and call `binding:Restore()` from `db:OnProfileChanged`: a
+  `db.profile` view kept from before keeps the profile it was made for and is
+  detached once that profile is deleted. A failed save is reported through the
+  error handler, never raised from the drag, and an anchor the client refuses
+  leaves the frame where it was.
 
 Rendering an options tree is one call: `WidgetKit:RenderOptions(tree,
 container)` walks `tree:Describe()`, creates one widget per option, writes

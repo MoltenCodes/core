@@ -27,9 +27,10 @@ The WidgetKit suite covers:
 | `Release_spec.lua` | the release contract, `IsReleasing`, refusals, the holder frame, focus on release |
 | `Widget_spec.lua` | the widget base: callbacks, user data, size requests, forwarded methods, `SetParent`, focus |
 | `Layout_spec.lua` | `List`, `Fill`, `Flow`, nesting, pausing, recursion and depth refusals, children, custom layouts |
-| `Anchor_spec.lua` | `FromRect` election and ties, `Normalize`, `Apply`, `Read`, forbidden frames, argument refusals |
-| `Binding_spec.lua` | position bindings without SchedulerKit, and the window scale reset |
-| `BindingHost_spec.lua` | debounced saves, `Flush` and SettingsKit scope views, with the host chain |
+| `Anchor_spec.lua` | `FromRect` election and ties, `Normalize`, `Apply`, `Read`, forbidden frames, anchors the client refuses (the frame itself, a cycle) with points and scale put back, argument refusals |
+| `Binding_spec.lua` | position bindings without SchedulerKit, a refused saved anchor leaving the frame in place, and the window scale reset |
+| `BindingStorage_spec.lua` | storage functions resolved at every save and restore, a SettingsKit profile switch, failed saves and reads reported rather than raised from the drag, storage refusals |
+| `BindingHost_spec.lua` | debounced saves, `Flush` and SettingsKit scope views, a detached view on a debounced save and a release flush, a storage function naming the current profile, with the host chain |
 | `Widgets_spec.lua` | each base widget's behaviour, callbacks and setter refusals, and secret values |
 | `FrameScripts_spec.lua` | `OnHide`, edit-focus scripts and anchor refusals run by the fixture |
 | `Renderer_spec.lua` | `RenderOptions` against a real OptionsKit tree, and without OptionsKit |

@@ -117,6 +117,33 @@ describe("WidgetKit position binding without SchedulerKit", function()
     assert.are.equal(2, #TestEnv.TakeReportedErrors())
   end)
 
+  it("keeps a frame in place when the client refuses its saved anchor", function()
+    TestEnv.TakeReportedErrors()
+    local frame = TestEnv.GetGlobal("CreateFrame")(
+      "Frame",
+      "WidgetKitSpecBoundFrame",
+      TestEnv.GetGlobal("UIParent")
+    )
+    frame:SetSize(100, 100)
+    frame:SetPoint("CENTER")
+    -- A saved anchor naming the frame itself, as a renamed or corrupted
+    -- saved variable may hold: every session would restore it again.
+    local storage = {
+      anchor = { point = "CENTER", relativeTo = "WidgetKitSpecBoundFrame", x = 0, y = 0, scale = 3 },
+    }
+    local binding = WidgetKit:BindPosition(frame, storage)
+    assert.are.equal(1, frame:GetNumPoints())
+    assert.are.equal("CENTER", (frame:GetPoint(1)))
+    assert.are.equal(1, frame:GetScale())
+    assert.is_false(binding:Restore())
+    assert.are.equal(0, #TestEnv.TakeReportedErrors())
+
+    -- The frame can still be moved, and the next capture replaces the anchor.
+    local anchor = binding:Capture()
+    assert.are.equal("CENTER", anchor.point)
+    assert.are.equal("UIParent", storage.anchor.relativeTo)
+  end)
+
   it("releases the window's binding with the window", function()
     local window = WidgetKit:Create("Frame")
     local binding = window:BindPosition({})

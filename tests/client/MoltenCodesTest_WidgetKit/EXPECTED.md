@@ -22,7 +22,7 @@ client may stutter for a moment; the List test waits for one rendered frame:
 
 ```text
 MoltenCodes Test: running widgetKit: 10 suites. Results follow when every test has finished.
-MoltenCodes Test: PASS widgetKit.facade: Registry:Get('widgetKit', 1) is the WidgetKit facade with API 1, its sixteen methods, the four Anchor functions, the defaults 256/256/16 and UNBOUNDED, and the twelve base types at their documented versions (3, ScrollFrame and Spacer 1)
+MoltenCodes Test: PASS widgetKit.facade: Registry:Get('widgetKit', 1) is the WidgetKit facade with API 1, its sixteen methods, the four Anchor functions, the defaults 256/256/16 and UNBOUNDED, and the twelve base types at their documented versions (Frame 4, nine at 3, ScrollFrame and Spacer 1)
 MoltenCodes Test: PASS widgetKit.facade: the installed WidgetKit carries the revision of the committed manifest
 MoltenCodes Test: PASS widgetKit.facade: the client has CreateFrame and UIParent, and OptionsKit, MediaKit and SchedulerKit are registered; ColorPickerFrame, the secret functions, ACCEPT, NOT_BOUND and UIParent's rect and scale are logged
 MoltenCodes Test: PASS widgetKit.types: text getters answer "" once cleared, as docs/API.md says, on the client's font strings, buttons and edit boxes: Label, Heading, Button, EditBox and Dropdown texts, Frame and Group titles and a CheckBox label, after a fresh Create and after SetText(nil)
@@ -44,6 +44,7 @@ MoltenCodes Test: PASS widgetKit.layout: Flow places children left to right on r
 MoltenCodes Test: PASS widgetKit.anchors: Anchor.Normalize turns the SetPoint argument forms into anchors on a real frame: nil as the parent, UIParent as its global name, an unnamed parent as the frame itself, missing offsets as 0 and the frame's scale
 MoltenCodes Test: PASS widgetKit.anchors: Anchor.Read of a real frame names UIParent by its global name; Anchor.Apply of that anchor puts another frame on the same rect with the anchor's scale; an unknown relative name leaves the frame alone
 MoltenCodes Test: PASS widgetKit.anchors: a window's position binding captures the nearest point of UIParent from the client's rects (TOPLEFT, BOTTOMRIGHT, CENTER, TOP), saves a plain table after Flush, and a second binding restores that anchor onto another frame
+MoltenCodes Test: PASS widgetKit.anchors: Anchor.Apply of an anchor the client refuses answers false, refused: to the frame itself before anything changes, and into an anchor cycle after the client's SetPoint raised, with the frame's two points and scale put back; a binding restoring such an anchor keeps the frame in place and reports nothing
 MoltenCodes Test: PASS widgetKit.media: CreateMediaPicker lists MediaKit's font and statusbar names in MediaKit's order, PickIndex fires each name, and RenderOptions with options.media draws a select over MediaKit's fonts that writes the picked name
 MoltenCodes Test: PASS widgetKit.renderer: RenderOptions draws one widget per visible option into a hidden container, in order, hidden ones skipped, each showing the value Get returns
 MoltenCodes Test: PASS widgetKit.renderer: user input through the rendered widgets reaches tree:Set, a Validate refusal is shown in a Label right below the edit box and cleared by the next accepted write, tree:Set from code refreshes the widget in place, and a real click on the execute Button runs func
@@ -62,7 +63,7 @@ MoltenCodes Test: PASS widgetKit.secrets: a layout function that returns secret 
 MoltenCodes Test: PASS widgetKit.secrets: RenderOptions shows a secret input value as '<secret value>' and disables it, disables a toggle whose value is secret, and refuses a secret options.allowSecret at the calling line
 MoltenCodes Test: PASS widgetKit.secrets: EditBox:SetText refuses a secret at the calling line even with allowSecret, as the client's edit box refuses one from addon code (logged), and RenderOptions with allowSecret shows a secret input value as '<secret value>', disabled
 MoltenCodes Test: PASS widgetKit.taint: the client reported no ADDON_ACTION_BLOCKED or ADDON_ACTION_FORBIDDEN for a MoltenCodes addon since this addon loaded; every report and the security of the client globals WidgetKit reads are logged
-MoltenCodes Test: widgetKit: 40 passed, 0 failed, 0 skipped, 0 timed out (40 tests)
+MoltenCodes Test: widgetKit: 41 passed, 0 failed, 0 skipped, 0 timed out (41 tests)
 MoltenCodes Test: results saved in MoltenCodesTestResults; /reload or log out to write them to disk.
 ```
 
@@ -98,9 +99,9 @@ is in its pool again. What stays:
   frees a frame; they wait in their pools for the next `Create`), the
   session's dropdown catcher and the sixteen list rows of the dropdown the test
   opened;
-- four plain frames of this addon's own, created once and reused by later runs:
-  the stage, two 10 by 10 probes for the anchor tests (alpha 0, no texture,
-  hidden after each test) and a hidden listener registered for
+- ten plain frames of this addon's own, created once and reused by later runs:
+  the stage, eight 10 by 10 probes for the anchor, binding and secret tests
+  (alpha 0, no texture, hidden after each test) and a hidden listener registered for
   `ADDON_ACTION_BLOCKED` and `ADDON_ACTION_FORBIDDEN`, which only records what
   the client reports;
 - the fields `ColorPickerFrame:SetupColorPickerAndShow` stored on the client's
@@ -116,7 +117,7 @@ written to a global or a saved variable other than the harness's own results.
 The seven `widgetKit.secrets` tests need the client's `issecretvalue` and
 `secretwrap`. Retail 12.1 has both. A client without them prints these seven
 lines instead, and the totals line reads
-`33 passed, 0 failed, 7 skipped, 0 timed out (40 tests)`:
+`34 passed, 0 failed, 7 skipped, 0 timed out (41 tests)`:
 
 ```text
 MoltenCodes Test: SKIP widgetKit.secrets: text setters refuse a secretwrap string at the calling line; with allowSecret a Label shows it one line high on a font string of its own, and the next use of the same Label shows a plain empty text and measures plain texts again, wrapped ones included -- the client has no issecretvalue and secretwrap; the secret path was not exercised
@@ -136,7 +137,7 @@ client's ColorPickerFrame is open; it was not touched`. Close it and run again.
 
 | Test | Proves in the real client |
 |---|---|
-| `Registry:Get('widgetKit', 1) is the WidgetKit facade ...` | The facade the client loaded is API 1 with its sixteen methods, the four `Anchor` functions and nine points, the defaults and `UNBOUNDED`, the three built-in layouts and the twelve base types at the versions docs/API.md gives (3; `ScrollFrame` and `Spacer` 1). The log gives the session's limits and pool statistics before the run. |
+| `Registry:Get('widgetKit', 1) is the WidgetKit facade ...` | The facade the client loaded is API 1 with its sixteen methods, the four `Anchor` functions and nine points, the defaults and `UNBOUNDED`, the three built-in layouts and the twelve base types at the versions docs/API.md gives (`Frame` 4, nine at 3; `ScrollFrame` and `Spacer` 1). The log gives the session's limits and pool statistics before the run. |
 | `the installed WidgetKit carries the revision ...` | Registry's selected revision and the facade's `REVISION` are both the committed manifest's. The log gives `REVISION`. |
 | `the client has CreateFrame and UIParent, ...` | What WidgetKit builds on exists, and its optional Kits are registered. The log records `ColorPickerFrame` and its methods, the secret functions, the `ACCEPT` and `NOT_BOUND` strings, and `UIParent`'s rect and effective scale. |
 | `text getters answer "" once cleared ...` | docs/API.md's "Text getters return what the widget shows (`""` once cleared)" against the client's font strings, buttons and edit boxes. Every answer is logged before any is checked; the other type tests read a `nil` answer as `""`, so only this test fails if a getter answers `nil`. The run of 2026-09-25 (revision 5) failed here: the client's font strings and buttons answer `nil` for an empty text, and revision 6 turns that into `""`. |
@@ -159,6 +160,7 @@ client's ColorPickerFrame is open; it was not touched`. Close it and run again.
 | `Anchor.Normalize turns the SetPoint argument forms ...` | Six argument forms on a real frame of scale 0.8: an omitted or `nil` relative frame becomes the parent (the stage, unnamed, so the frame itself), `UIParent` becomes `"UIParent"`, a name stays a name, offsets default to 0 and `scale` is the client's `GetScale`. |
 | `Anchor.Read of a real frame names UIParent ...` | `Read` of a real anchor, `Apply` of it to another frame (same rect on the client), `Apply` with a scale (the client's `GetScale` is 0.5), and `false, "unknownRelative"` leaving the frame's anchor as it was; `Read` of a frame without anchors is `nil`. |
 | `a window's position binding captures the nearest point ...` | `Capture` from the window's drag-stop script elects `TOPLEFT` with offsets -3000, 3000 in `UIParent`'s units (the log gives the effective scale), fires the binding's `OnMoved` and the window's `OnMoved`, saves nothing until `Flush` (SchedulerKit's debounce), then a plain table naming `"UIParent"`; `BOTTOMRIGHT`, `CENTER` and `TOP` are elected from the client's rectangles of an invisible 10 by 10 probe; `Release` flushes, and a second binding restores the saved anchor onto another frame. |
+| `Anchor.Apply of an anchor the client refuses ...` | The client's own `SetPoint` raises for a frame anchored to itself and for an anchor cycle (a frame anchored to a frame that is anchored to it); both messages are logged. `Anchor.Apply` answers `false, "refused"` for each, and the probe keeps its two points (`TOPLEFT` and `BOTTOMRIGHT` on the stage) and a scale of 1: the self anchor is refused before anything changes, the cycle after `ClearAllPoints` and the refused `SetPoint`, when WidgetKit puts the points and scale back. `BindPosition` over a saved anchor into the cycle leaves the frame the same way and reports nothing through the client's error handler, and `Restore` answers `false`. Revision 7 left such a frame with no point at all and the saved scale, every session. |
 | `CreateMediaPicker lists MediaKit's font and statusbar names ...` | Both pickers list exactly `MediaKit:List`'s names, in that order (up to 32 checked by `PickIndex`); `RenderOptions` with `options.media` fills a `select` from MediaKit's fonts, and picking the first writes it through the tree. The log gives the counts and the first and last names. |
 | `RenderOptions draws one widget per visible option ...` | The widget type of every kind, full width, in `Describe` order, the hidden option skipped, the inline group nested, and every value read with `Get`. The container stays hidden throughout. |
 | `user input through the rendered widgets reaches tree:Set, ...` | `PickIndex`, real clicks on the check box, the multiselect's second box and the execute button, and the client's slider write through `Validate` and `Set`; the edit box's Enter script with `bad` shows `no bad names` in a `Label` right below it, keeps the stored value, and the next accepted text removes the message; `tree:Set` from code refreshes the slider and the dropdown in place. |
@@ -182,7 +184,7 @@ client's ColorPickerFrame is open; it was not touched`. Close it and run again.
 
 - Any `FAIL` or `TIMEOUT` line, a `SKIP` line on Retail 12.1 (other than the
   open colour picker), or a totals line other than
-  `40 passed, 0 failed, 0 skipped, 0 timed out (40 tests)`.
+  `41 passed, 0 failed, 0 skipped, 0 timed out (41 tests)`.
 - No login line, or `Expected.lua is missing`: the harness or the installer
   did not run as intended.
 - Anything appearing on screen: a window, a list, the colour picker, a flicker

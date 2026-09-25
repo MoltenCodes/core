@@ -178,6 +178,79 @@ describe("WidgetKit anchors", function()
     )
   end)
 
+  it("refuses an anchor to the frame itself before changing anything", function()
+    local frame = TestEnv.GetGlobal("CreateFrame")(
+      "Frame",
+      "WidgetKitSpecAnchorSelf",
+      TestEnv.GetGlobal("UIParent")
+    )
+    frame:SetPoint("CENTER")
+    local clears = frame.clearAllPointsCount or 0
+    for _, relativeTo in ipairs({ "WidgetKitSpecAnchorSelf", frame }) do
+      local applied, reason =
+        Anchor.Apply(frame, { point = "TOP", relativeTo = relativeTo, scale = 3 })
+      assert.is_false(applied)
+      assert.are.equal("refused", reason)
+    end
+    assert.are.equal(clears, frame.clearAllPointsCount or 0)
+    assert.are.equal(1, frame:GetNumPoints())
+    assert.are.equal("CENTER", (frame:GetPoint(1)))
+    assert.are.equal(1, frame:GetScale())
+  end)
+
+  it("puts the points and scale back when the client refuses an anchor cycle", function()
+    local createFrame = TestEnv.GetGlobal("CreateFrame")
+    local uiParent = TestEnv.GetGlobal("UIParent")
+    local frame = createFrame("Frame", nil, uiParent)
+    frame:SetPoint("TOPLEFT", uiParent, "TOPLEFT", 10, -10)
+    frame:SetPoint("BOTTOMRIGHT", uiParent, "BOTTOMRIGHT", -10, 10)
+    local follower = createFrame("Frame", "WidgetKitSpecAnchorFollower", uiParent)
+    follower:SetPoint("TOP", frame, "BOTTOM", 0, 0)
+
+    local applied, reason = Anchor.Apply(frame, {
+      point = "TOP",
+      relativeTo = "WidgetKitSpecAnchorFollower",
+      scale = 2,
+    })
+    assert.is_false(applied)
+    assert.are.equal("refused", reason)
+    assert.are.equal(1, frame:GetScale())
+    assert.are.equal(2, frame:GetNumPoints())
+    local point, relativeTo, relativePoint, x, y = frame:GetPoint(1)
+    assert.are.same({ "TOPLEFT", uiParent, "TOPLEFT", 10, -10 }, {
+      point,
+      relativeTo,
+      relativePoint,
+      x,
+      y,
+    })
+    point, relativeTo, relativePoint, x, y = frame:GetPoint(2)
+    assert.are.same({ "BOTTOMRIGHT", uiParent, "BOTTOMRIGHT", -10, 10 }, {
+      point,
+      relativeTo,
+      relativePoint,
+      x,
+      y,
+    })
+  end)
+
+  it("keeps no table for a refused anchor #allocation", function()
+    local createFrame = TestEnv.GetGlobal("CreateFrame")
+    local uiParent = TestEnv.GetGlobal("UIParent")
+    local frame = createFrame("Frame", nil, uiParent)
+    frame:SetPoint("CENTER")
+    local follower = createFrame("Frame", "WidgetKitSpecAnchorLoop", uiParent)
+    follower:SetPoint("TOP", frame, "BOTTOM", 0, 0)
+    local anchor = { point = "TOP", relativeTo = "WidgetKitSpecAnchorLoop" }
+    Anchor.Apply(frame, anchor)
+    local kilobytes = TestEnv.AllocatedKilobytes(function()
+      for _ = 1, 200 do
+        Anchor.Apply(frame, anchor)
+      end
+    end)
+    assert.is_true(kilobytes < 1, "allocated " .. kilobytes .. " KiB")
+  end)
+
   it("leaves a frame the current code may not touch alone", function()
     local frame = TestEnv.GetGlobal("CreateFrame")("Frame", nil, TestEnv.GetGlobal("UIParent"))
     frame:SetPoint("CENTER")

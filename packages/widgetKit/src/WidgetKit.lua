@@ -56,7 +56,7 @@
 
 local PACKAGE_NAME = "widgetKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 7
+local IMPLEMENTATION_REVISION = 8
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_POOLKIT_API = 1
 local REQUIRED_SIGNALKIT_API = 1
@@ -161,8 +161,11 @@ local POINT_VERTICAL = {
 -- Version 3 (implementation revision 7): every text a text setter may give a
 -- secret shows a secret on a font string of its own (`showText`), so a font
 -- string whose measurements stay secret never shows a plain text again.
+--
+-- Frame version 4 (implementation revision 8): the window's `BindPosition`,
+-- stored on the widget by its constructor, accepts a storage function.
 local BASE_TYPE_VERSIONS = {
-  Frame = 3,
+  Frame = 4,
   Group = 3,
   ScrollFrame = 1,
   Label = 3,
@@ -368,7 +371,7 @@ local WEAK_KEYS = { __mode = "k" }
 ---@field GetTitle fun(self: WidgetKit.Window): any
 ---@field SetResizable fun(self: WidgetKit.Window, resizable: boolean)
 ---@field SetMovable fun(self: WidgetKit.Window, movable: boolean)
----@field BindPosition fun(self: WidgetKit.Window, storageTable: table, options: WidgetKit.BindingOptions?): WidgetKit.Binding
+---@field BindPosition fun(self: WidgetKit.Window, storage: table|fun(): table, options: WidgetKit.BindingOptions?): WidgetKit.Binding
 ---@field GetBinding fun(self: WidgetKit.Window): WidgetKit.Binding?
 
 ---An inline group with a title.
@@ -477,7 +480,7 @@ local WEAK_KEYS = { __mode = "k" }
 ---@field POINTS string[] The nine points, in election order.
 ---@field FromRect fun(rect: WidgetKit.Rect, parentRect: WidgetKit.Rect, into: table?): WidgetKit.Anchor
 ---@field Normalize fun(frame: WidgetKit.Frame, point: string, ...: any): WidgetKit.Anchor
----@field Apply fun(frame: WidgetKit.Frame, anchor: WidgetKit.Anchor): true|false, "forbidden"|"unknownRelative"|nil
+---@field Apply fun(frame: WidgetKit.Frame, anchor: WidgetKit.Anchor): true|false, "forbidden"|"unknownRelative"|"refused"|nil
 ---@field Read fun(frame: WidgetKit.Frame): WidgetKit.Anchor?
 
 ---Options for `WidgetKit:BindPosition`.
@@ -554,7 +557,7 @@ local WEAK_KEYS = { __mode = "k" }
 ---@field ClearFocus fun(self: WidgetKit): boolean
 ---@field GetFocus fun(self: WidgetKit): WidgetKit.Widget?
 ---@field GetStatistics fun(self: WidgetKit): WidgetKit.Statistics
----@field BindPosition fun(self: WidgetKit, frame: WidgetKit.Frame, storageTable: table, options: WidgetKit.BindingOptions?): WidgetKit.Binding
+---@field BindPosition fun(self: WidgetKit, frame: WidgetKit.Frame, storage: table|fun(): table, options: WidgetKit.BindingOptions?): WidgetKit.Binding
 ---@field RenderOptions fun(self: WidgetKit, tree: table, container: WidgetKit.Container, options: WidgetKit.RenderOptions?): WidgetKit.Rendering
 ---@field CreateMediaPicker fun(self: WidgetKit, mediaType: string): WidgetKit.Widget|nil, string?
 
@@ -2771,11 +2774,13 @@ local function readAnchor(anchor, label, level)
 end
 
 ---Anchor `frame` at `anchor`, replacing its anchors and applying its scale.
----A frame `IsForbidden` or `CanBeAccessedInContext` refuses is left alone.
+---A frame `IsForbidden` or `CanBeAccessedInContext` refuses is left alone, and
+---so is one whose anchor the client refuses: the frame keeps its points and
+---scale.
 ---@param frame WidgetKit.Frame
 ---@param anchor WidgetKit.Anchor
 ---@return boolean applied
----@return string? reason `"forbidden"`, or `"unknownRelative"` when `relativeTo` names no frame
+---@return string? reason `"forbidden"`, `"unknownRelative"` when `relativeTo` names no frame, or `"refused"` when the client refuses the anchor
 local function anchorApply(frame, anchor)
   validateAnchorFrame(frame, "WidgetKit.Anchor.Apply frame", 3)
   local point, relativeTo, relativePoint, x, y, scale =
@@ -2790,11 +2795,68 @@ local function anchorApply(frame, anchor)
     end
     relativeTo = resolved
   end
-  if type(scale) ~= "nil" and type(frame.SetScale) == "function" then
+  -- The client refuses a frame anchored to itself (`Cannot anchor to
+  -- itself`); a saved anchor naming the frame is refused before anything
+  -- changes. `readAnchor` refused a secret `relativeTo`, so this compares a
+  -- plain value.
+  if rawequal(relativeTo, frame) then
+    return false, "refused"
+  end
+
+  -- An anchor into a frame that depends on this one (an anchor cycle) is
+  -- refused by `SetPoint` only after `ClearAllPoints` ran, which would leave
+  -- the frame with no point at all: not drawn, and never draggable back.
+  -- The current points and scale are kept in a scratch table first, so a
+  -- refusal puts them back. The count and the scale are plain numbers in the
+  -- client's documentation; `GetPoint` answers are secret while the frame's
+  -- anchoring is, and then cannot be set again from addon code, so each
+  -- point is put back under `pcall` and a secret one stays lost.
+  local count = 0
+  if type(frame.GetNumPoints) == "function" then
+    count = frame:GetNumPoints()
+  end
+  if type(count) ~= "number" or isSecret(count) then
+    count = 0
+  end
+  local canScale = type(scale) ~= "nil" and type(frame.SetScale) == "function"
+  local kept = scratchPool:Acquire()
+  for index = 1, count do
+    local base = (index - 1) * 5
+    kept[base + 1], kept[base + 2], kept[base + 3], kept[base + 4], kept[base + 5] =
+      frame:GetPoint(index)
+  end
+  if canScale and type(frame.GetScale) == "function" then
+    kept.scale = frame:GetScale()
+  end
+
+  if canScale then
     frame:SetScale(scale)
   end
   frame:ClearAllPoints()
-  frame:SetPoint(point, relativeTo, relativePoint, x, y)
+  local applied = pcall(frame.SetPoint, frame, point, relativeTo, relativePoint, x, y)
+  if not applied then
+    frame:ClearAllPoints()
+    for index = 1, count do
+      local base = (index - 1) * 5
+      pcall(
+        frame.SetPoint,
+        frame,
+        kept[base + 1],
+        kept[base + 2],
+        kept[base + 3],
+        kept[base + 4],
+        kept[base + 5]
+      )
+    end
+    local previousScale = kept.scale
+    if type(previousScale) == "number" and not isSecret(previousScale) then
+      frame:SetScale(previousScale)
+    end
+  end
+  scratchPool:Release(kept)
+  if not applied then
+    return false, "refused"
+  end
   return true
 end
 
@@ -2847,28 +2909,6 @@ local function screenRect(frame)
   return left * scale, bottom * scale, width * scale, height * scale
 end
 
----Write the binding's current anchor into its storage table as a fresh plain
----table, so a SettingsKit view validates and stores it like any record.
----@param binding table
-local function saveBinding(binding)
-  local anchor = binding._anchor
-  if type(anchor.point) == "nil" then
-    return
-  end
-  local relativeTo = anchor.relativeTo
-  if type(relativeTo) ~= "string" then
-    relativeTo = nil
-  end
-  binding._storage[binding._key] = {
-    point = anchor.point,
-    relativeTo = relativeTo,
-    relativePoint = anchor.relativePoint,
-    x = anchor.x,
-    y = anchor.y,
-    scale = anchor.scale,
-  }
-end
-
 ---@param binding any
 ---@param methodName string qualified public method name, used in the argument error
 ---@param level integer stack level the failure is reported at
@@ -2878,21 +2918,143 @@ local function validateBinding(binding, methodName, level)
   end
 end
 
+-- The storage a binding saves into is resolved at every save and restore: a
+-- storage function (`function() return db.profile end`) follows a SettingsKit
+-- profile switch, where a view captured once would keep writing into the
+-- profile it was made for, and turn detached once that profile is deleted or
+-- reset away. A save runs from a drag handler or a SchedulerKit debounce,
+-- after the frame already moved, so a storage that fails is reported through
+-- the host error handler, never raised: the frame stays where the user put
+-- it. The helpers live in this block because the main chunk is close to Lua
+-- 5.1's limit of 200 active locals.
+local saveBinding
+do
+  ---The binding's storage table, or `nil` and the failure to report.
+  ---@param binding table
+  ---@return table? storage
+  ---@return any failure
+  local function resolveStorage(binding)
+    local storage = binding._storage
+    if type(storage) == "function" then
+      local ok, resolved = pcall(storage)
+      if not ok then
+        return nil, resolved
+      end
+      if type(resolved) ~= "table" then
+        return nil,
+          "WidgetKit.Binding storage function must return a table; it returned a " .. type(resolved)
+      end
+      return resolved
+    end
+    return storage
+  end
+
+  ---`storage[key] = value`, as a function `pcall` can call without a closure.
+  ---@param storage table
+  ---@param key string
+  ---@param value table
+  local function store(storage, key, value)
+    storage[key] = value
+  end
+
+  ---`storage[key]`, likewise: a storage table's `__index` may raise.
+  ---@param storage table
+  ---@param key string
+  ---@return any
+  local function fetch(storage, key)
+    return storage[key]
+  end
+
+  ---Write the binding's current anchor into its storage as a fresh plain
+  ---table, so a SettingsKit view validates and stores it like any record. A
+  ---storage that cannot be resolved or refuses the write is reported.
+  ---@param binding table
+  function saveBinding(binding)
+    local anchor = binding._anchor
+    if type(anchor.point) == "nil" then
+      return
+    end
+    local storage, failure = resolveStorage(binding)
+    if type(storage) == "nil" then
+      reportError(failure)
+      return
+    end
+    local relativeTo = anchor.relativeTo
+    if type(relativeTo) ~= "string" then
+      relativeTo = nil
+    end
+    local ok, refusal = pcall(store, storage, binding._key, {
+      point = anchor.point,
+      relativeTo = relativeTo,
+      relativePoint = anchor.relativePoint,
+      x = anchor.x,
+      y = anchor.y,
+      scale = anchor.scale,
+    })
+    if not ok then
+      reportError(refusal)
+    end
+  end
+
+  ---Apply the saved anchor, when the storage holds a valid one. A storage
+  ---that cannot be resolved, or an anchor that cannot be read, is reported;
+  ---an anchor the client refuses is not applied. Either way the frame keeps
+  ---its place.
+  ---@return boolean restored
+  function BindingPrototype:Restore()
+    validateBinding(self, "WidgetKit.Binding:Restore", 3)
+    if self._released then
+      return false
+    end
+    local storage, failure = resolveStorage(self)
+    if type(storage) == "nil" then
+      reportError(failure)
+      return false
+    end
+    local ok, saved = pcall(fetch, storage, self._key)
+    if not ok then
+      reportError(saved)
+      return false
+    end
+    if type(saved) ~= "table" or not canTouchFrame(self._frame) then
+      return false
+    end
+    local applied
+    ok, applied = pcall(anchorApply, self._frame, saved)
+    if not ok then
+      -- A saved anchor this copy cannot read is reported, never raised:
+      -- the frame keeps the position it had.
+      reportError(applied)
+      return false
+    end
+    if applied then
+      local anchor = self._anchor
+      anchor.point = saved.point
+      anchor.relativeTo = saved.relativeTo
+      anchor.relativePoint = saved.relativePoint or saved.point
+      anchor.x = saved.x or 0
+      anchor.y = saved.y or 0
+      anchor.scale = saved.scale
+    end
+    return applied == true
+  end
+end
+
 ---Build a binding. Shared by `WidgetKit:BindPosition` and the `Frame`
 ---widget's `BindPosition`, so both report argument errors at their caller.
 ---@param frame WidgetKit.Frame
----@param storageTable any
+---@param storage any a table, or a function returning the table at each save and restore
 ---@param options any
 ---@param methodName string qualified public method name, used in the argument errors
 ---@param level integer stack level the failures are reported at
 ---@return WidgetKit.Binding
-local function newBinding(frame, storageTable, options, methodName, level)
+local function newBinding(frame, storage, options, methodName, level)
   validateAnchorFrame(frame, methodName .. " frame", level + 1)
   if type(frame.GetRect) ~= "function" then
     error(methodName .. " frame must be a frame", level)
   end
-  if type(storageTable) ~= "table" then
-    error(methodName .. " storageTable must be a table", level)
+  if type(storage) ~= "table" and type(storage) ~= "function" then
+    error(methodName .. " storage must be a table or a function that returns one", level)
   end
 
   local key, delay, restore = "anchor", DEFAULT_SAVE_DELAY, true
@@ -2921,7 +3083,7 @@ local function newBinding(frame, storageTable, options, methodName, level)
 
   local binding = setmetatable({
     _frame = frame,
-    _storage = storageTable,
+    _storage = storage,
     _key = key,
     _anchor = {},
     _signal = SignalKit:New(),
@@ -2930,11 +3092,13 @@ local function newBinding(frame, storageTable, options, methodName, level)
   }, BINDING_METATABLE)
 
   -- SchedulerKit, when an addon embeds it, coalesces a burst of moves into
-  -- one save. Without it every capture saves at once.
+  -- one save. Without it every capture saves at once. The debounced save
+  -- calls through `dispatch`, so a newer revision replaces how a pending
+  -- save of this binding is written.
   local SchedulerKit = findPackage(Registry, "schedulerKit", OPTIONAL_SCHEDULERKIT_API)
   if type(SchedulerKit) == "table" and type(SchedulerKit.Debounce) == "function" then
     binding._debounce = SchedulerKit:Debounce(function()
-      saveBinding(binding)
+      dispatch.saveBinding(binding)
     end, delay)
   end
 
@@ -2944,14 +3108,14 @@ local function newBinding(frame, storageTable, options, methodName, level)
   return binding
 end
 
----Bind `frame`'s position to `storageTable[options.key or "anchor"]`.
+---Bind `frame`'s position to `storage[options.key or "anchor"]`.
 ---@param frame WidgetKit.Frame
----@param storageTable table a plain table or a SettingsKit scope view
+---@param storage table|fun(): table a plain table or a SettingsKit scope view, or a function returning one at each save and restore (`function() return db.profile end`)
 ---@param options WidgetKit.BindingOptions?
 ---@return WidgetKit.Binding
-local function bindPosition(self, frame, storageTable, options)
+local function bindPosition(self, frame, storage, options)
   validateFacade(self, "WidgetKit:BindPosition", 3)
-  return newBinding(frame, storageTable, options, "WidgetKit:BindPosition", 3)
+  return newBinding(frame, storage, options, "WidgetKit:BindPosition", 3)
 end
 
 ---Read the frame's position, re-anchor it at the nearest point of its parent,
@@ -3015,36 +3179,6 @@ function BindingPrototype:Capture()
   end
   self._signal:Fire(self, anchor)
   return anchor
-end
-
----Apply the saved anchor, when the storage table holds a valid one.
----@return boolean restored
-function BindingPrototype:Restore()
-  validateBinding(self, "WidgetKit.Binding:Restore", 3)
-  if self._released then
-    return false
-  end
-  local saved = self._storage[self._key]
-  if type(saved) ~= "table" or not canTouchFrame(self._frame) then
-    return false
-  end
-  local ok, applied = pcall(anchorApply, self._frame, saved)
-  if not ok then
-    -- A saved anchor this copy cannot read is reported, never raised:
-    -- the frame keeps the position it had.
-    reportError(applied)
-    return false
-  end
-  if applied then
-    local anchor = self._anchor
-    anchor.point = saved.point
-    anchor.relativeTo = saved.relativeTo
-    anchor.relativePoint = saved.relativePoint or saved.point
-    anchor.x = saved.x or 0
-    anchor.y = saved.y or 0
-    anchor.scale = saved.scale
-  end
-  return applied == true
 end
 
 ---Save a debounced anchor now.
@@ -3373,12 +3507,12 @@ do
 
   ---Bind the window's position, replacing a binding it already had. The binding
   ---is released with the window.
-  ---@param storageTable table
+  ---@param storage table|fun(): table a table, or a function returning one at each save and restore
   ---@param options WidgetKit.BindingOptions?
   ---@return WidgetKit.Binding
-  local function windowBindPosition(self, storageTable, options)
+  local function windowBindPosition(self, storage, options)
     activeRecord(self, "WidgetKit Frame:BindPosition", 3)
-    local binding = newBinding(self.frame, storageTable, options, "WidgetKit Frame:BindPosition", 3)
+    local binding = newBinding(self.frame, storage, options, "WidgetKit Frame:BindPosition", 3)
     local previous = self._binding
     if previous ~= nil then
       previous:Release()
@@ -6582,6 +6716,7 @@ end
 rawset(dispatch, "build", buildWidget)
 rawset(dispatch, "retire", retireWidget)
 rawset(dispatch, "closeOpenDropdown", closeOpenDropdown)
+rawset(dispatch, "saveBinding", saveBinding)
 
 -- Built-in layouts are this package's own, so each copy installs its own
 -- functions over whatever an older copy registered under the same names.

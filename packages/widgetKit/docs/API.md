@@ -2,7 +2,7 @@
 
 WidgetKit API generation **1** provides pooled, versioned widgets on frames WidgetKit creates itself, containers with explicit layouts, a normalised anchor value type with position persistence, and a renderer for OptionsKit trees.
 
-Implementation revision: **7**.
+Implementation revision: **8**.
 
 ## Loading
 
@@ -30,7 +30,7 @@ WidgetKit does not rely on `require()` at runtime. Loading it without one of its
 | OptionsKit API 1, through `Registry:Find` | `RenderOptions` | `RenderOptions` raises at the caller. |
 | SchedulerKit API 1, through `Registry:Find` | `BindPosition` (found when the binding is made) | Every capture saves at once. |
 | MediaKit API 1, through `Registry:Find` | `CreateMediaPicker`; `RenderOptions` with `options.media` | `CreateMediaPicker` raises at the caller; the renderer shows the option's own `values`. |
-| SettingsKit API 1 | nothing directly | A scope view is simply one kind of storage table `BindPosition` accepts. |
+| SettingsKit API 1 | nothing directly | A scope view is one kind of storage table `BindPosition` accepts; a storage function (`function() return db.profile end`) follows a profile switch. See [Profiles](#settingskit-profiles). |
 | `CreateFrame` | every constructor | `Create` raises `MoltenCodes WidgetKit requires the World of Warcraft CreateFrame API`. |
 | `UIParent` | the parent of released frames; the parent a binding measures against when a frame has none | Released frames rest on a hidden holder frame WidgetKit creates once. |
 | `issecretvalue` | every text setter and every value a widget would compare | Nothing is treated as secret. Read at every call. |
@@ -53,7 +53,7 @@ Package facade:
 | `RegisterLayout(name, layout)` / `GetLayout(name)` | Layout registry. `RegisterLayout` returns `true`, or `false, "taken"` for a name in use; `GetLayout` the function or `nil`. |
 | `SetFocus(widget)` / `ClearFocus()` / `GetFocus()` | One focused widget per session. `SetFocus` returns `true` and calls the previous widget's `OnFocusLost` hook; `ClearFocus` returns `false` when nothing was focused; `GetFocus` returns the widget or `nil`. |
 | `GetStatistics()` | Counters per type and in total (allocates). |
-| `BindPosition(frame, storageTable, options?)` | Bind a frame's position to a storage table; returns a binding. |
+| `BindPosition(frame, storage, options?)` | Bind a frame's position to a storage table, or to a function returning one at every save and restore; returns a binding. |
 | `RenderOptions(tree, container, options?)` | Render an OptionsKit tree; returns a rendering. |
 | `CreateMediaPicker(mediaType)` | A `Dropdown` over MediaKit's names, or `nil, "exhausted"`. Raises at the caller without MediaKit, for a type MediaKit does not know, and, before any `Dropdown` is acquired, when MediaKit lists more names than `maxDropdownEntries` allows. |
 | `Anchor` | `FromRect`, `Normalize`, `Apply`, `Read`, `POINTS`. |
@@ -61,7 +61,7 @@ Package facade:
 | `MAX_CREATED`, `MAX_CHILDREN`, `MAX_CALLBACKS` | `256`, `256`, `16`: the defaults. See [Limits](#limits). |
 | `SetLimits(limits)` / `GetLimits()` | Change or read the package-wide limits `maxCreatedCeiling` and `maxDropdownEntries`; `GetLimits` returns a fresh table. |
 | `UNBOUNDED` | Sentinel `maxCallbacks`, `SetMaxChildren` and the `maxDropdownEntries` limit accept to lift a bound. |
-| `API`, `REVISION` | `1`, `7`. |
+| `API`, `REVISION` | `1`, `8`. |
 
 Widget base (`WidgetKit.Widget`), on every widget:
 
@@ -208,7 +208,7 @@ local anchor = { point = "TOPLEFT", relativeTo = "UIParent", relativePoint = "TO
 |---|---|
 | `Anchor.FromRect(rect, parentRect, into?)` | Pure: for rectangles `{ left, bottom, width, height }`, elect the nearest point and return the anchor (without `relativeTo` and `scale`) that keeps the rect where it is. With `into`, fills that table and allocates nothing. |
 | `Anchor.Normalize(frame, point, ...)` | Turn any `SetPoint` argument form into an anchor. `nil` as the relative frame is resolved to the parent. |
-| `Anchor.Apply(frame, anchor)` | `ClearAllPoints`, `SetScale` when the anchor has a scale, `SetPoint`. `true`; or, leaving the frame alone, `false, "forbidden"` for a frame `IsForbidden` or `CanBeAccessedInContext` refuses and `false, "unknownRelative"` when `relativeTo` names no frame. An anchor it cannot read raises at the caller. |
+| `Anchor.Apply(frame, anchor)` | `SetScale` when the anchor has a scale, `ClearAllPoints`, `SetPoint`. `true`; or, leaving the frame alone, `false, "forbidden"` for a frame `IsForbidden` or `CanBeAccessedInContext` refuses, `false, "unknownRelative"` when `relativeTo` names no frame, and `false, "refused"` when the client refuses the anchor: `relativeTo` is the frame itself (refused before anything changes) or a frame anchored to it, directly or through others (an anchor cycle, which `SetPoint` refuses after `ClearAllPoints`; the frame's points and scale are put back). An anchor it cannot read raises at the caller. |
 | `Anchor.Read(frame)` | The frame's first anchor, normalised, or `nil`; also `nil` when the client answers `GetPoint` with secret values (the frame's anchoring is secret). |
 | `Anchor.POINTS` | The nine points in election order. |
 
@@ -221,6 +221,8 @@ local binding = WidgetKit:BindPosition(frame, db.global, { key = "mainFrame" })
 binding:OnMoved(function(binding, anchor) end)
 ```
 
+`storage` is a table (a plain table or a SettingsKit scope view), or a function that returns one. A function is called at every save and every restore, so the binding saves into whatever table it names at that moment; anything else is refused at your line: `WidgetKit:BindPosition storage must be a table or a function that returns one`.
+
 | Option | Default | Meaning |
 |---|---|---|
 | `key` | `"anchor"` | The field of the storage table the anchor is saved in. |
@@ -229,14 +231,35 @@ binding:OnMoved(function(binding, anchor) end)
 
 | Binding method | Purpose |
 |---|---|
-| `Capture()` | Read the frame's rect in screen coordinates, elect the nearest point of its parent, re-anchor the frame there, save (debounced), fire `OnMoved`. Returns the anchor, or `nil` and `"notPositioned"` (also when the client answers `GetRect` with secret values), `"released"` or `"forbidden"` (a frame `IsForbidden` or `CanBeAccessedInContext` refuses, which `Restore` leaves alone too). |
-| `Restore()` | Apply the saved anchor; `false` when none is saved. An anchor it cannot read is reported and the frame keeps its place. |
+| `Capture()` | Read the frame's rect in screen coordinates, elect the nearest point of its parent, re-anchor the frame there, save (debounced), fire `OnMoved`. Returns the anchor, or `nil` and `"notPositioned"` (also when the client answers `GetRect` with secret values), `"released"` or `"forbidden"` (a frame `IsForbidden` or `CanBeAccessedInContext` refuses, which `Restore` leaves alone too). A save that fails is reported, never raised (below). |
+| `Restore()` | Apply the saved anchor; `false` when none is saved, when the frame is left alone, and when `Anchor.Apply` answers `"unknownRelative"` or `"refused"`. An anchor it cannot read, and a storage it cannot resolve or read, are reported. In every one of these cases the frame keeps its place and scale. |
 | `Flush()` | Save a debounced anchor now; `false` when nothing was pending, without SchedulerKit, or once released. |
 | `OnMoved(callback)` | Connect `callback(binding, anchor)`; returns a SignalKit connection. Raises on a released binding. |
 | `Release()` | Flush, stop the debounce, disconnect every listener. `true`, or `false` when it was already released. |
 | `IsReleased()` | Whether `Release` ran. |
 
 A save writes a fresh plain table, so a SettingsKit scope view validates and stores it like any record; declare the fields `point`, `relativeTo`, `relativePoint` (strings), `x`, `y` and `scale` (numbers), all optional. An unnamed relative frame is saved as `nil`, meaning the parent. A binding never sets a script on the frame: call `Capture()` from your own drag handler, as the `Frame` widget does from its title bar.
+
+**A failed save is reported, never raised.** A save runs after the frame moved: from `Capture`, from the SchedulerKit debounce, or from the flush in `Flush` and `Release`. When the storage function raises or returns something other than a table (`WidgetKit.Binding storage function must return a table; it returned a nil`), or the storage refuses the write (a SettingsKit view of a deleted or reset profile: `... belongs to a profile that was deleted or reset away`), the failure goes to the host error handler unchanged and nothing is saved; the frame stays where the user put it, `Capture` still returns the anchor and fires `OnMoved`, the `Frame` widget's drag still fires its `OnMoved` callback, and `Release` still releases.
+
+#### SettingsKit profiles
+
+`db.profile` is a different view after `SetProfile`, and a view kept from before keeps reading and writing the profile it was made for; once that profile is deleted, or reset away by `ResetDatabase`, the view is detached and refuses every write. So bind a profile through a function, and restore when the profile changes:
+
+```lua
+local binding = window:BindPosition(function()
+  return db.profile
+end, { key = "anchor" })
+local changed = db:OnProfileChanged(function()
+  binding:Restore()
+end)
+local copied = db:OnProfileCopied(function()
+  binding:Restore()
+end)
+-- When the window goes away: changed:Disconnect(); copied:Disconnect()
+```
+
+Every save then lands in the current profile, and a switch moves the frame to the new profile's saved anchor. A profile that saved none leaves the frame where it is (`Restore` answers `false`); give the anchor field a default in the schema to send it somewhere else, since `Restore` reads through the view like any field. `Restore` on a released binding answers `false`, so a connection left behind does nothing, but disconnect it when the binding goes: WidgetKit never looks SettingsKit up, so it cannot do that for you. A save still debounced when the profile changes is written to the new profile; call `binding:Flush()` before `SetProfile` to keep it in the old one.
 
 ## The renderer
 
@@ -285,7 +308,7 @@ Every widget is full width and the container uses its own layout. Nodes are rend
 
 ## Base widgets
 
-The twelve base types are registered at version 3, except `ScrollFrame` and `Spacer` at version 1 (see [Embedded copies and upgrades](#embedded-copies-and-upgrades)).
+The twelve base types are registered at version 3, except `Frame` at version 4 and `ScrollFrame` and `Spacer` at version 1 (see [Embedded copies and upgrades](#embedded-copies-and-upgrades)).
 
 Text setters take `(text, options?)`: a string or a number is shown, `nil` clears the text, anything else raises, and a secret is refused unless `options.allowSecret` is `true` (`EditBox:SetText` refuses one even then). Text getters return what the widget shows, `""` once cleared: the client's font strings and buttons answer an empty text with `nil` (measured on Retail 12.1.0 b69933, 2026-09-25), and every getter turns that into `""`. Every argument error is raised at the caller's line and names the method, as in `WidgetKit Slider:SetSliderValues minimum must not be greater than maximum`.
 
@@ -296,7 +319,7 @@ Text setters take `(text, options?)`: a string or a number is shown, `nil` clear
 | `Frame` | `SetTitle(text, options?)`, `GetTitle()` | The title bar's text. |
 | | `SetResizable(resizable)`, `SetMovable(movable)` | Booleans only. A new window is both. |
 | | — | The window stays at the `DIALOG` strata whatever you parent it to: it calls `SetFixedFrameStrata(true)` where the client has it, because `SetParent` otherwise hands a frame its parent's strata. |
-| | `BindPosition(storageTable, options?)` | A binding, as `WidgetKit:BindPosition` makes for the window's frame; a binding the window already had is released first. Released with the window. |
+| | `BindPosition(storage, options?)` | A binding, as `WidgetKit:BindPosition` makes for the window's frame (`storage` is a table or a function returning one); a binding the window already had is released first. Released with the window. |
 | | `GetBinding()` | The binding, or `nil`. |
 | `Group` | `SetTitle(text, options?)`, `GetTitle()` | The content moves below a title and back up without one. |
 | `ScrollFrame` | `GetContentHeight()`, `GetScrollRange()`, `GetScroll()` | Numbers: the height the last layout used, how far it can scroll, the current offset. |
@@ -409,6 +432,7 @@ Every argument failure and refusal reports the line that called WidgetKit and na
 | `Fire` | One table read and a protected call; no allocation. |
 | `Anchor.FromRect` with `into` | Nine distance computations; no allocation. |
 | `BindPosition` | One binding, one SignalKit signal and, with SchedulerKit, one debounce handle. Each save allocates the saved anchor table. |
+| `Anchor.Apply`, `Binding:Restore` | The frame's current points and scale are kept in a scratch table borrowed from the layouts' pool and returned, so a refused anchor can be undone; no allocation once the pool holds a table. |
 | `RenderOptions`, `Rebuild` | Proportional to the tree: one `Describe`, the widgets and one record per option. `Refresh` allocates only what `Get` returns. |
 | `GetStatistics` | Allocates the result. |
 
@@ -488,7 +512,7 @@ To change `MyAddonProgress` later, register the new constructor with version `2`
 
 ## Embedded copies and upgrades
 
-Several addons may embed WidgetKit; Registry selects the newest compatible revision and every copy shares one facade. An upgrade happens in place: the widget and container prototypes, the type registry, the pools, every live widget's record, and the binding and rendering prototypes are kept, and gain the newer copy's methods. Pools call through a shared dispatch table, so a newer copy's build and retire steps run for pools an older copy created. Built-in layouts are resolved by name on every pass, so they are replaced for existing containers too. Base widget types are registered again with this copy's versions: an equal version keeps the older constructor, a higher one retires the older widgets. Revisions 2, 3, 4 and 5 keep the revision 1 state as it is and replace the methods only; every base widget stays at version 1. Revision 6 keeps the state too and raises `Frame`, `Group`, `Label`, `Button`, `CheckBox`, `Slider`, `EditBox`, `Dropdown`, `ColorPicker` and `Heading` to version 2, because it changed their constructors: an upgrade from an older revision retires their pooled widgets at once and their borrowed ones when they are released (the frame cap grows by what is retired, as [The frame cap](#the-frame-cap) says), so every `Create` after it hands out a widget with the revision 6 behaviour. `ScrollFrame` and `Spacer` stay at version 1. Revision 7 keeps the state as well and raises the same ten types to version 3, because it changed their text methods (secret texts on a font string of their own): an upgrade from revision 6 or older retires their pooled widgets at once, among them any whose font string showed a secret and would measure every later text as one, and their borrowed ones when they are released. `ScrollFrame` and `Spacer` stay at version 1.
+Several addons may embed WidgetKit; Registry selects the newest compatible revision and every copy shares one facade. An upgrade happens in place: the widget and container prototypes, the type registry, the pools, every live widget's record, and the binding and rendering prototypes are kept, and gain the newer copy's methods. Pools call through a shared dispatch table, so a newer copy's build and retire steps run for pools an older copy created. Built-in layouts are resolved by name on every pass, so they are replaced for existing containers too. Base widget types are registered again with this copy's versions: an equal version keeps the older constructor, a higher one retires the older widgets. Revisions 2, 3, 4 and 5 keep the revision 1 state as it is and replace the methods only; every base widget stays at version 1. Revision 6 keeps the state too and raises `Frame`, `Group`, `Label`, `Button`, `CheckBox`, `Slider`, `EditBox`, `Dropdown`, `ColorPicker` and `Heading` to version 2, because it changed their constructors: an upgrade from an older revision retires their pooled widgets at once and their borrowed ones when they are released (the frame cap grows by what is retired, as [The frame cap](#the-frame-cap) says), so every `Create` after it hands out a widget with the revision 6 behaviour. `ScrollFrame` and `Spacer` stay at version 1. Revision 7 keeps the state as well and raises the same ten types to version 3, because it changed their text methods (secret texts on a font string of their own): an upgrade from revision 6 or older retires their pooled widgets at once, among them any whose font string showed a secret and would measure every later text as one, and their borrowed ones when they are released. `ScrollFrame` and `Spacer` stay at version 1. Revision 8 keeps the state too and raises `Frame` alone to version 4, because the window's `BindPosition`, stored on each window by its constructor, now accepts a storage function: an upgrade from revision 7 or older retires pooled windows at once and borrowed ones when they are released. A binding an older revision made keeps working and runs this revision's methods (`Capture`, `Restore`, `Release` and the saves `Capture` makes at once); only its SchedulerKit debounce keeps the older copy's save until the binding is made again. A binding this revision makes debounces through the shared `dispatch` table, so a later revision replaces its save as well. The other nine text-bearing types stay at version 3.
 
 Nothing survives `/reload`: widgets are created again when the addon loads.
 
@@ -503,7 +527,7 @@ The nine-point plan in `docs/ROADMAP.md` is followed except where recorded here:
 - **`RegisterLayout` never replaces a layout** (`false, "taken"`): layouts are shared by every addon in the session.
 - **`RegisterType` takes a fourth `options` argument** (`maxCreated`, `maxCallbacks`), so a type can ask for a cap other than 256 and a callback bound other than 16.
 - **`Frame:BindPosition(storage, options?)`** binds the window to a storage table and releases the binding with the window; the plan named only `WidgetKit:BindPosition`.
-- **A SettingsKit scope view is passed directly as the storage table**; WidgetKit never looks SettingsKit up, which is why it appears among the optional dependencies only as a documented storage shape.
+- **A SettingsKit scope view is passed directly as the storage table**, or returned by a storage function (revision 8) so the binding follows the current profile; WidgetKit never looks SettingsKit up, which is why it appears among the optional dependencies only as a documented storage shape, and why re-applying a position after a profile switch is the consumer's `OnProfileChanged` connection rather than an option.
 - **The `execute` confirmation text is a render option (`confirmText`),** not an option field: OptionsKit refuses fields its kinds do not declare. A `confirm` string on the option is still asked as it is.
 - **Additions:** `IsWidget`, `GetFocus`, `GetParentContainer`, `GetChildren`, `GetNumChildren`, `GetContent`, `GetLayoutName`, `IsLayoutPaused`, `Anchor.POINTS`, `SetLimits`, `GetLimits`, `UNBOUNDED`, `SetMaxChildren`, `GetMaxChildren`, an `into` table for `FromRect`, `binding:Capture`, `Restore`, `Flush`, `IsReleased`, `rendering:Rebuild`, `IsReleased`, `GetWidget`, `GetMessage`, `CreateMediaPicker`, and `options.allowSecret` / `options.media` for the renderer.
 - **Not rendered in generation 1:** an option's `desc` (there is no tooltip widget), `softMin` / `softMax`, `bigStep`, and `usage`. Groups are always nested `Group`s; tabs and trees of pages wait for a widget set that provides them.

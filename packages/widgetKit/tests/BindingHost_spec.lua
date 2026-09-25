@@ -74,4 +74,77 @@ describe("WidgetKit position binding with SchedulerKit and SettingsKit", functio
     local point, _, _, x, y = other.frame:GetPoint(1)
     assert.are.same({ "BOTTOMLEFT", 20, 20 }, { point, x, y })
   end)
+
+  it("reports a debounced save and a release flush into a detached profile view", function()
+    local S = modules.SchemaKit
+    local db = modules.SettingsKit:Open(TestEnv.SavedVariable("WidgetKitSpecDetachedDB"), {
+      profile = S.table({
+        fields = {
+          anchor = S.optional(S.table({
+            fields = {
+              point = S.optional(S.string()),
+              relativeTo = S.optional(S.string()),
+              relativePoint = S.optional(S.string()),
+              x = S.optional(S.number()),
+              y = S.optional(S.number()),
+              scale = S.optional(S.number()),
+            },
+          })),
+        },
+      }),
+    })
+    TestEnv.TakeReportedErrors()
+    local window = WidgetKit:Create("Frame")
+    local binding = window:BindPosition(db.profile)
+    db:SetProfile("Second")
+    db:DeleteProfile("Default")
+
+    TestEnv.MoveFrame(window.frame, 20, 560)
+    binding:Capture()
+    TestEnv.AdvanceMs(200)
+    assert.has_no.errors(function()
+      TestEnv.FireLatestTimer()
+    end)
+    assert.are.equal(1, #TestEnv.TakeReportedErrors())
+
+    TestEnv.MoveFrame(window.frame, 30, 560)
+    binding:Capture()
+    local ok, released = pcall(binding.Release, binding)
+    assert.is_true(ok)
+    assert.is_true(released)
+    assert.is_true(binding:IsReleased())
+    assert.are.equal(1, #TestEnv.TakeReportedErrors())
+    assert.are.equal(30, select(4, window.frame:GetPoint(1)))
+  end)
+
+  it("saves a debounced anchor into the profile a storage function names", function()
+    local S = modules.SchemaKit
+    local db = modules.SettingsKit:Open(TestEnv.SavedVariable("WidgetKitSpecFollowDB"), {
+      profile = S.table({
+        fields = {
+          anchor = S.optional(S.table({
+            fields = {
+              point = S.optional(S.string()),
+              relativeTo = S.optional(S.string()),
+              relativePoint = S.optional(S.string()),
+              x = S.optional(S.number()),
+              y = S.optional(S.number()),
+              scale = S.optional(S.number()),
+            },
+          })),
+        },
+      }),
+    })
+    local window = WidgetKit:Create("Frame")
+    local binding = window:BindPosition(function()
+      return db.profile
+    end)
+    db:SetProfile("Second")
+    db:DeleteProfile("Default")
+    TestEnv.MoveFrame(window.frame, 20, 560)
+    binding:Capture()
+    assert.is_true(binding:Flush())
+    assert.are.equal("Second", db:GetProfile())
+    assert.are.equal("TOPLEFT", db.profile.anchor.point)
+  end)
 end)

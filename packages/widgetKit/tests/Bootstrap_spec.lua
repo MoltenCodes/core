@@ -271,7 +271,9 @@ describe("WidgetKit bootstrap", function()
       "ColorPicker",
       "Heading",
     }) do
-      versionOne["  " .. typeName .. " = 3,"] = "  " .. typeName .. " = 1,"
+      -- `Frame` is at version 4 in the current file (revision 8), the rest at 3.
+      local current = typeName == "Frame" and 4 or 3
+      versionOne["  " .. typeName .. " = " .. current .. ","] = "  " .. typeName .. " = 1,"
     end
     local old = TestEnv.LoadRevision(5, versionOne)
     local state = old._state
@@ -289,9 +291,9 @@ describe("WidgetKit bootstrap", function()
     local upgraded = require("WidgetKit")
     assert.are.equal(old, upgraded)
     assert.are.equal(state, upgraded._state)
-    assert.are.equal(7, upgraded.REVISION)
+    assert.are.equal(8, upgraded.REVISION)
     assert.are.equal(3, upgraded:GetTypeVersion("Label"))
-    assert.are.equal(3, upgraded:GetTypeVersion("Frame"))
+    assert.are.equal(4, upgraded:GetTypeVersion("Frame"))
     assert.are.equal(1, upgraded:GetTypeVersion("ScrollFrame"))
     assert.are.equal(1, upgraded:GetTypeVersion("Spacer"))
     assert.are.equal(old.UNBOUNDED, upgraded:GetLimits().maxDropdownEntries)
@@ -336,7 +338,9 @@ describe("WidgetKit bootstrap", function()
       "ColorPicker",
       "Heading",
     }) do
-      versionTwo["  " .. typeName .. " = 3,"] = "  " .. typeName .. " = 2,"
+      -- `Frame` is at version 4 in the current file (revision 8), the rest at 3.
+      local current = typeName == "Frame" and 4 or 3
+      versionTwo["  " .. typeName .. " = " .. current .. ","] = "  " .. typeName .. " = 2,"
     end
     local old = TestEnv.LoadRevision(6, versionTwo)
     local state = old._state
@@ -355,7 +359,7 @@ describe("WidgetKit bootstrap", function()
     local upgraded = require("WidgetKit")
     assert.are.equal(old, upgraded)
     assert.are.equal(state, upgraded._state)
-    assert.are.equal(7, upgraded.REVISION)
+    assert.are.equal(8, upgraded.REVISION)
     assert.are.equal(3, upgraded:GetTypeVersion("Label"))
     assert.are.equal(3, upgraded:GetTypeVersion("Button"))
     assert.are.equal(1, upgraded:GetTypeVersion("Spacer"))
@@ -371,6 +375,58 @@ describe("WidgetKit bootstrap", function()
     assert.is_true(borrowed:GetUserData("kept"))
     upgraded:Release(borrowed)
     assert.are_not.equal(borrowed, upgraded:Create("Label"))
+  end)
+
+  it("upgrades a revision 7 copy in place, raising Frame for its storage function", function()
+    TestEnv.Reset()
+    TestEnv.InstallWowApi()
+    TestEnv.InstallClientRules()
+    TestEnv.InstallScreen()
+    for _, name in ipairs({ "Registry", "SignalKit", "PoolKit", "SchemaKit", "OptionsKit" }) do
+      require(name)
+    end
+    -- Revision 7 registered `Frame` at version 3 and took only a storage
+    -- table: its window's `BindPosition` is stored on each widget.
+    local old = TestEnv.LoadRevision(7, {
+      ["  Frame = 4,"] = "  Frame = 3,",
+      ['if type(storage) ~= "table" and type(storage) ~= "function" then'] = 'if type(storage) ~= "table" then',
+    })
+    local state = old._state
+    assert.are.equal(3, old:GetTypeVersion("Frame"))
+    local pooled = old:Create("Frame") ---@cast pooled -nil
+    old:Release(pooled)
+    local borrowed = old:Create("Frame") ---@cast borrowed -nil
+    local storage = {}
+    local binding = borrowed:BindPosition(storage)
+    assert.is_false(pcall(borrowed.BindPosition, borrowed, function()
+      return storage
+    end))
+
+    local upgraded = require("WidgetKit")
+    assert.are.equal(old, upgraded)
+    assert.are.equal(state, upgraded._state)
+    assert.are.equal(8, upgraded.REVISION)
+    assert.are.equal(4, upgraded:GetTypeVersion("Frame"))
+    assert.are.equal(3, upgraded:GetTypeVersion("Label"))
+
+    -- The binding revision 7 made runs the current methods: a drag saves.
+    TestEnv.RunScript(borrowed.titleBar, "OnDragStart")
+    TestEnv.MoveFrame(borrowed.frame, 20, 560)
+    TestEnv.RunScript(borrowed.titleBar, "OnDragStop")
+    assert.are.equal("TOPLEFT", storage.anchor.point)
+    assert.are.equal(binding, borrowed:GetBinding())
+
+    -- The pooled window was built by the version 3 constructor and is
+    -- discarded; the next window takes a storage function.
+    local fresh = upgraded:Create("Frame") ---@cast fresh -nil
+    assert.are_not.equal(pooled, fresh)
+    local followed = fresh:BindPosition(function()
+      return storage
+    end)
+    assert.is_true(followed:Restore())
+    upgraded:Release(borrowed)
+    assert.is_true(binding:IsReleased())
+    assert.are_not.equal(borrowed, upgraded:Create("Frame"))
   end)
 
   it("discards pooled base widgets when a newer copy raises their version", function()

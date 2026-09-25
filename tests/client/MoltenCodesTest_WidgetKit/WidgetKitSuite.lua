@@ -19,8 +19,10 @@
 --     `GetRect` from real frames, with the client's own font metrics (string
 --     widths and heights are logged);
 --   * anchors: `Anchor.Normalize`, `Anchor.Read` and `Anchor.Apply` on real
---     frames, and a position binding that captures the nearest point of
---     `UIParent`, saves a plain table and restores it on another frame;
+--     frames, an anchor the client's `SetPoint` refuses (the frame itself, an
+--     anchor cycle) leaving the frame on its points and scale, and a position
+--     binding that captures the nearest point of `UIParent`, saves a plain
+--     table and restores it on another frame;
 --   * the media picker over MediaKit's real font and status-bar lists;
 --   * `RenderOptions` of a small OptionsKit tree into a hidden container, with
 --     writes through the widgets, an inline refusal and in-place refreshes;
@@ -54,9 +56,10 @@
 -- unclamped gets its alpha and clamping back once it is in its pool again.
 -- What stays in the session: the frames WidgetKit's pools built (the client
 -- never frees a frame; they are pooled for the next `Create`), the dropdown
--- catcher and the sixteen list rows of a `Dropdown` once opened, and four
--- plain frames of this file's own (the stage, two anchor probes and the event
--- listener below), created once and reused by later runs. The event listener
+-- catcher and the sixteen list rows of a `Dropdown` once opened, and ten
+-- plain frames of this file's own (the stage, eight probes for the anchor,
+-- binding and secret tests, and the event listener below), created once and
+-- reused by later runs. The event listener
 -- stays registered for `ADDON_ACTION_BLOCKED` and `ADDON_ACTION_FORBIDDEN`
 -- so the taint test can report them. WidgetKit's package-wide limits are not
 -- changed: every `SetLimits` call here is a refusal the tests check. No type
@@ -103,10 +106,11 @@ local BASE_TYPES = {
 }
 
 --- The version docs/API.md ("Base widgets") gives each base type: revision 6
---- raised every type whose constructor it changed to 2, and revision 7 raised
---- the same ten to 3 (secret texts on a font string of their own).
+--- raised every type whose constructor it changed to 2, revision 7 raised the
+--- same ten to 3 (secret texts on a font string of their own), and revision 8
+--- raised `Frame` to 4 (its `BindPosition` takes a storage function).
 local BASE_TYPE_VERSIONS = {
-  Frame = 3,
+  Frame = 4,
   Group = 3,
   ScrollFrame = 1,
   Label = 3,
@@ -770,7 +774,7 @@ end
 local facade = newSuite("facade")
 
 facade:Test(
-  "Registry:Get('widgetKit', 1) is the WidgetKit facade with API 1, its sixteen methods, the four Anchor functions, the defaults 256/256/16 and UNBOUNDED, and the twelve base types at their documented versions (3, ScrollFrame and Spacer 1)",
+  "Registry:Get('widgetKit', 1) is the WidgetKit facade with API 1, its sixteen methods, the four Anchor functions, the defaults 256/256/16 and UNBOUNDED, and the twelve base types at their documented versions (Frame 4, nine at 3, ScrollFrame and Spacer 1)",
   function(ctx)
     ctx:Expect(rawget(WidgetKit, "API")):ToBe(WIDGET_KIT_API)
     for _, methodName in ipairs({
@@ -2052,6 +2056,68 @@ anchors:Test(
       savedPos.y
     )
     ctx:Expect(restoring:Restore()):ToBe(true)
+  end
+)
+
+anchors:Test(
+  "Anchor.Apply of an anchor the client refuses answers false, refused: to the frame itself before anything changes, and into an anchor cycle after the client's SetPoint raised, with the frame's two points and scale put back; a binding restoring such an anchor keeps the frame in place and reports nothing",
+  function(ctx)
+    local Anchor = WidgetKit.Anchor
+    local frame = probeFrame("anchorSource")
+    frame:SetPoint("TOPLEFT", stage(), "TOPLEFT", 10, -10)
+    frame:SetPoint("BOTTOMRIGHT", stageFrame, "TOPLEFT", 60, -60)
+    local follower = probeFrame("anchorTarget")
+    follower:SetPoint("TOP", frame, "BOTTOM", 0, 0)
+
+    ---The frame is on its two original points at scale 1.
+    ---@param label string
+    local function expectUnchanged(label)
+      ctx:Expect(frame:GetNumPoints()):ToBe(2)
+      expectPoint(ctx, label .. " TOPLEFT", frame, "TOPLEFT", stageFrame, "TOPLEFT", 10, -10)
+      expectPoint(
+        ctx,
+        label .. " BOTTOMRIGHT",
+        frame,
+        "BOTTOMRIGHT",
+        stageFrame,
+        "TOPLEFT",
+        60,
+        -60
+      )
+      expectNear(ctx, label .. " scale", frame:GetScale(), 1, 1e-6)
+    end
+
+    -- What the client's own SetPoint does with both, logged: it raises, and
+    -- WidgetKit's refusal rests on that.
+    local selfOk, selfProblem = pcall(frame.SetPoint, frame, "TOP", frame, "BOTTOM", 0, 0)
+    local cycleOk, cycleProblem = pcall(frame.SetPoint, frame, "TOP", follower, "BOTTOM", 0, 0)
+    ctx:Expect(selfOk):ToBe(false)
+    ctx:Expect(cycleOk):ToBe(false)
+    ctx:Log("client SetPoint to itself: " .. tostring(selfProblem))
+    ctx:Log("client SetPoint into a cycle: " .. tostring(cycleProblem))
+    expectUnchanged("after the client's refusals")
+
+    local applied, reason = Anchor.Apply(frame, { point = "TOP", relativeTo = frame, scale = 3 })
+    ctx:Expect(applied):ToBe(false)
+    ctx:Expect(reason):ToBe("refused")
+    expectUnchanged("itself")
+
+    applied, reason = Anchor.Apply(frame, { point = "TOP", relativeTo = follower, scale = 3 })
+    ctx:Expect(applied):ToBe(false)
+    ctx:Expect(reason):ToBe("refused")
+    expectUnchanged("cycle")
+
+    local storage = { anchor = { point = "CENTER", relativeTo = follower, scale = 2 } }
+    local binding
+    local reported, observed = collectReportedErrors(function()
+      binding = WidgetKit:BindPosition(frame, storage)
+      trackedBindings[#trackedBindings + 1] = binding
+    end)
+    ctx:Expect(observed):ToBe(true)
+    ctx:Expect(#reported):ToBe(0)
+    expectUnchanged("restored")
+    ctx:Expect(binding:Restore()):ToBe(false)
+    expectUnchanged("restored again")
   end
 )
 

@@ -160,7 +160,7 @@ describe("WidgetKit error levels", function()
     end)
     local window = WidgetKit:Create("Frame")
     assertReportedAtCaller(
-      "WidgetKit Frame:BindPosition storageTable must be a table",
+      "WidgetKit Frame:BindPosition storage must be a table or a function that returns one",
       function(mark)
         mark()
         window:BindPosition(nil)

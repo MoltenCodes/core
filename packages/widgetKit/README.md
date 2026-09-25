@@ -33,7 +33,7 @@ What each piece promises:
 - **A released widget is clean.** `Release` fires `OnRelease`, releases children last first, clears callbacks, user data, size requests and anchors, hides the frame and re-parents it. Releasing twice, or releasing something that is not a widget, is refused at your line. `IsReleasing()` sees a release anywhere above the widget.
 - **Explicit layout.** `List`, `Fill` and `Flow` run when a child is added or when you call `PerformLayout`, never from `OnSizeChanged`; a layout pass inside a pass of the same container is refused rather than looped. Containers hold at most 256 children.
 - **Bounded by default, opened on purpose.** Every cap has a documented default and a way to open it: `maxCallbacks` per type, `container:SetMaxChildren` (both accept `WidgetKit.UNBOUNDED`), `WidgetKit:SetLimits{ maxDropdownEntries }` (accepts `UNBOUNDED`) and `WidgetKit:SetLimits{ maxCreatedCeiling }` (up to 16384; frames are never freed, so never unbounded). See *Limits* in the API.
-- **Anchors you can save.** `WidgetKit.Anchor` elects the nearest of the nine points (`FromRect`), normalises any `SetPoint` argument form (`Normalize`), and applies and reads anchors. `BindPosition` saves a frame's anchor into any table, a SettingsKit scope view included, debounced through SchedulerKit when it is present.
+- **Anchors you can save.** `WidgetKit.Anchor` elects the nearest of the nine points (`FromRect`), normalises any `SetPoint` argument form (`Normalize`), and applies and reads anchors. `BindPosition` saves a frame's anchor into any table, a SettingsKit scope view included, or into the table a function returns at each save (`function() return db.profile end` follows a profile switch), debounced through SchedulerKit when it is present. A save that fails is reported, never raised, and an anchor the client refuses leaves the frame where it was.
 - **Options, rendered.** Every OptionsKit kind has a widget; `order`, `disabled` and `hidden` are honoured, writes go through `Validate` and `Set`, a refusal is shown in a line below the widget, and `OnChange` refreshes the widgets in place.
 - **Secrets stay the caller's decision.** Text setters refuse a secret value unless you pass `{ allowSecret = true }` (an `EditBox` refuses one always: the client's edit box takes a secret only from untainted code), and a released widget never carries a secret into its next use.
 
@@ -65,7 +65,7 @@ order:
 | OptionsKit API 1 | `RenderOptions` | `RenderOptions` raises at the caller. |
 | SchedulerKit API 1 | `BindPosition` | Every captured position is saved at once instead of debounced. |
 | MediaKit API 1 | `CreateMediaPicker`, `RenderOptions` with `options.media` | `CreateMediaPicker` raises at the caller; the renderer shows the option's own `values`. |
-| SettingsKit API 1 | nothing directly: a scope view is a valid `BindPosition` storage table | Any plain table works. |
+| SettingsKit API 1 | nothing directly: a scope view, or a function returning one, is a valid `BindPosition` storage | Any plain table works. |
 
 Taint, in short: WidgetKit creates every frame it scripts, never sets a script
 on a frame it did not create, never writes a field onto a client frame, and

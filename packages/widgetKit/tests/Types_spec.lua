@@ -22,9 +22,9 @@ describe("WidgetKit type registry", function()
   end)
   after_each(TestEnv.Reset)
 
-  it("registers the twelve base widget types, ten at version 3 and two at version 1", function()
+  it("registers the twelve base widget types: Frame at 4, nine at 3 and two at 1", function()
     for name, version in pairs({
-      Frame = 3,
+      Frame = 4,
       Group = 3,
       ScrollFrame = 1,
       Label = 3,
