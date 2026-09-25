@@ -12,11 +12,17 @@ client loads them. This command does that and nothing else:
   - ``MoltenCodesTest/``, the harness, with a fresh copy of
     ``packages/testKit/src/TestKit.lua`` (TestKit is a development package, so
     the bundle never carries it) and a generated ``Expected.lua`` listing every
-    package's ID, API and revision from the committed manifests;
+    package's ID, API and revision from the committed manifests, and the
+    installation: the commit ``git rev-parse HEAD`` names, whether the working
+    tree had changes, the flavour folder and the time;
   - ``MoltenCodesTest_<Facade>/`` for each requested package.
 
-  Exactly these folders are replaced when they already exist; no other addon
-  is touched.
+  Every installed ``.toc`` of the harness and the test addons carries the
+  ``## Interface`` line of ``tooling/validation/supported_clients.json``,
+  written at install time, so one install folder layout serves Retail, Classic
+  Era and Mists Classic, and the numbers never drift from the table the bundle's
+  own ``.toc`` is generated from. Exactly these folders are replaced when they
+  already exist; no other addon is touched.
 
 * ``--remove`` deletes ``MoltenCodes``, ``MoltenCodesTest`` and every
   ``MoltenCodesTest_*`` folder from ``AddOns``, and every
@@ -35,18 +41,19 @@ changes nothing.
 from __future__ import annotations
 
 import argparse
+import datetime
+import re
 import shutil
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
 from typing import Any, Callable, NamedTuple, Sequence
 
+from tooling.client.flavours import CLIENT_FLAVOURS, DEFAULT_FLAVOUR_DIRECTORY
 from tooling.package import build as bundle_builder
+from tooling.validation.interface_numbers import load_supported_clients
 from tooling.validation.validate_manifests import ROOT, load_manifests
-
-
-#: The flavour folder under the game folder, as the Retail client names it.
-DEFAULT_FLAVOUR_DIRECTORY = "_retail_"
 
 #: The installed framework addon; the bundle's own name.
 FRAMEWORK_ADDON = bundle_builder.FRAMEWORK_BUNDLE_NAME
@@ -68,6 +75,10 @@ EXPECTED_FILE_NAME = "Expected.lua"
 #: File kinds copied from an addon folder in the repository. Documentation
 #: next to a test addon (EXPECTED.md) is for the owner, not for the client.
 ADDON_FILE_SUFFIXES = (".toc", ".lua")
+
+#: The ``## Interface`` line of a ``.toc``; exactly the field, not
+#: ``## Interface-Mists:`` or another per-flavour field.
+TOC_INTERFACE_LINE_RE = re.compile(r"^##[ \t]*Interface[ \t]*:.*$", re.M)
 
 #: The saved-variables files the harness writes, per account or per character.
 SAVED_VARIABLES_NAMES = (f"{HARNESS_ADDON}.lua", f"{HARNESS_ADDON}.lua.bak")
@@ -104,6 +115,20 @@ class ClientLayout(NamedTuple):
     wow_dir: Path
     flavour_dir: Path
     addons_dir: Path
+
+
+class Installation(NamedTuple):
+    """What ``Expected.lua`` records about one install, for the saved results.
+
+    ``commit`` is ``None`` when the repository is not a git checkout or git is
+    missing; ``dirty`` is then ``None`` too. The report tool shows either as
+    unknown rather than guessing.
+    """
+
+    commit: str | None
+    dirty: bool | None
+    flavour_directory: str
+    installed_at: str
 
 
 # Paths and safety -------------------------------------------------------------
@@ -179,6 +204,72 @@ def select_test_addons(
     return addons
 
 
+# The installed commit -------------------------------------------------------------------
+
+
+def run_git(*arguments: str) -> str | None:
+    """Run a read-only git command in the repository; its output, or ``None``."""
+    try:
+        result = subprocess.run(
+            ["git", *arguments],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except OSError:
+        return None
+    if result.returncode != 0:
+        return None
+    return result.stdout
+
+
+def current_installation(flavour_directory: str) -> Installation:
+    """The commit and working-tree state of the repository now, for ``Expected.lua``.
+
+    Untracked files count as changes: a new suite file that is not committed
+    yet is exactly what a later reader of the results must be told about.
+    """
+    head = run_git("rev-parse", "HEAD")
+    commit = head.strip() if head else None
+    dirty: bool | None = None
+    if commit:
+        status = run_git("status", "--porcelain")
+        dirty = None if status is None else bool(status.strip())
+    installed_at = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return Installation(commit or None, dirty, flavour_directory, installed_at)
+
+
+def describe_installation(installation: Installation) -> str:
+    """The commit as the install report prints it: short hash and state, or unknown."""
+    if installation.commit is None:
+        return "commit unknown (not a git checkout)"
+    state = {True: ", working tree has changes", False: "", None: ", working tree state unknown"}
+    return f"commit {installation.commit[:12]}{state[installation.dirty]}"
+
+
+# .toc files ------------------------------------------------------------------------------
+
+
+def supported_interface_line() -> str:
+    """The ``## Interface`` line of the supported-client table, refusing a broken table."""
+    try:
+        return load_supported_clients().toc_line()
+    except (OSError, ValueError) as failure:
+        raise InstallError(f"supported_clients.json: {failure}") from failure
+
+
+def with_interface_line(toc_text: str, interface_line: str) -> str:
+    """``toc_text`` with its ``## Interface`` line replaced by ``interface_line``.
+
+    A ``.toc`` without the field gets it as its first line, where the client
+    and every reader expect it.
+    """
+    if TOC_INTERFACE_LINE_RE.search(toc_text) is None:
+        return interface_line + "\n" + toc_text
+    return TOC_INTERFACE_LINE_RE.sub(lambda _: interface_line, toc_text)
+
+
 # Expected.lua -----------------------------------------------------------------------
 
 
@@ -221,17 +312,34 @@ def lua_string(value: str) -> str:
     return f'"{escaped}"'
 
 
-def render_expected(rows: Sequence[dict[str, Any]]) -> str:
-    """The text of ``Expected.lua``: the rows, handed to the harness's private table."""
+def lua_optional(value: str | bool | None) -> str:
+    """A Lua literal for an optional string or boolean; ``nil`` for ``None``."""
+    if value is None:
+        return "nil"
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    return lua_string(value)
+
+
+def render_expected(rows: Sequence[dict[str, Any]], installation: Installation) -> str:
+    """The text of ``Expected.lua``: the rows and the installation, for the harness."""
     lines = [
         "-- MoltenCodes Test: Expected.lua",
         "--",
         "-- Generated by python3 -m tooling.client.install; do not edit. Every",
         "-- package the client loads for the tests, with the API and revision its",
-        "-- committed manifest declares. The harness reads it from the addon's",
-        "-- private table; see tests/client/README.md.",
+        "-- committed manifest declares, and what was installed from where. The",
+        "-- harness reads both from the addon's private table and saves the",
+        "-- installation with every result; see tests/client/README.md.",
         "",
         "local _, private = ...",
+        "",
+        "private.installation = {",
+        f"    commit = {lua_optional(installation.commit)},",
+        f"    dirty = {lua_optional(installation.dirty)},",
+        f"    flavourDirectory = {lua_string(installation.flavour_directory)},",
+        f"    installedAt = {lua_string(installation.installed_at)},",
+        "}",
         "",
         "private.expectedPackages = {",
     ]
@@ -252,14 +360,25 @@ def render_expected(rows: Sequence[dict[str, Any]]) -> str:
 # Installing ---------------------------------------------------------------------------
 
 
-def copy_addon_files(source: Path, destination: Path) -> list[str]:
-    """Copy an addon folder's ``.toc`` and ``.lua`` files; return their names."""
+def copy_addon_files(source: Path, destination: Path, interface_line: str) -> list[str]:
+    """Copy an addon folder's ``.toc`` and ``.lua`` files; return their names.
+
+    Each ``.toc`` is written with ``interface_line`` in place of its own
+    ``## Interface`` line; every other byte is copied as committed.
+    """
     destination.mkdir(parents=True)
     copied: list[str] = []
     for path in sorted(source.iterdir()):
-        if path.is_file() and path.suffix in ADDON_FILE_SUFFIXES:
+        if not path.is_file() or path.suffix not in ADDON_FILE_SUFFIXES:
+            continue
+        if path.suffix == ".toc":
+            text = path.read_text(encoding="utf-8")
+            (destination / path.name).write_text(
+                with_interface_line(text, interface_line), encoding="utf-8"
+            )
+        else:
             shutil.copyfile(path, destination / path.name)
-            copied.append(path.name)
+        copied.append(path.name)
     return copied
 
 
@@ -285,11 +404,15 @@ def install(
     if errors:
         raise InstallError("package manifests are invalid: " + "; ".join(errors))
     test_addons = select_test_addons(package_ids, manifests)
+    interface_line = supported_interface_line()
+    installation = current_installation(layout.flavour_dir.name)
 
     planned = [FRAMEWORK_ADDON, HARNESS_ADDON, *test_addons]
     if dry_run:
         for name in planned:
             report(f"would install {layout.addons_dir / name}")
+        report(f'would write "{interface_line}" into every installed test .toc')
+        report(f"would record {describe_installation(installation)} in {EXPECTED_FILE_NAME}")
         return
 
     with tempfile.TemporaryDirectory(prefix="moltencodes-client-") as temporary:
@@ -312,24 +435,30 @@ def install(
     rows = expected_packages(bundle_manifest, manifests)
 
     def fill_harness(destination: Path) -> None:
-        copy_addon_files(CLIENT_TESTS / HARNESS_ADDON, destination)
+        copy_addon_files(CLIENT_TESTS / HARNESS_ADDON, destination, interface_line)
         shutil.copyfile(TEST_KIT_SOURCE, destination / TEST_KIT_SOURCE.name)
-        (destination / EXPECTED_FILE_NAME).write_text(render_expected(rows), encoding="utf-8")
+        (destination / EXPECTED_FILE_NAME).write_text(
+            render_expected(rows, installation), encoding="utf-8"
+        )
 
     verb = replace_addon(layout.addons_dir, HARNESS_ADDON, fill_harness)
     test_kit = manifests[TEST_KIT_PACKAGE]
     report(
         f"{verb} {layout.addons_dir / HARNESS_ADDON} "
-        f"(TestKit revision {test_kit['revision']}, {EXPECTED_FILE_NAME} lists {len(rows)} packages)"
+        f"(TestKit revision {test_kit['revision']}, {EXPECTED_FILE_NAME} lists "
+        f"{len(rows)} packages and {describe_installation(installation)})"
     )
 
     for name in test_addons:
         verb = replace_addon(
             layout.addons_dir,
             name,
-            lambda destination, name=name: copy_addon_files(CLIENT_TESTS / name, destination),
+            lambda destination, name=name: copy_addon_files(
+                CLIENT_TESTS / name, destination, interface_line
+            ),
         )
         report(f"{verb} {layout.addons_dir / name}")
+    report(f'every installed test .toc carries "{interface_line}"')
 
 
 # Removing -------------------------------------------------------------------------------
@@ -460,11 +589,17 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         metavar="DIR",
         help='the game folder, for example "/Applications/World of Warcraft"',
     )
+    known = ", ".join(
+        f"{flavour.directory} ({flavour.display_name})" for flavour in CLIENT_FLAVOURS
+    )
     parser.add_argument(
         "--flavour-dir",
         default=DEFAULT_FLAVOUR_DIRECTORY,
         metavar="NAME",
-        help=f"the flavour folder inside it (default: {DEFAULT_FLAVOUR_DIRECTORY})",
+        help=(
+            f"the flavour folder inside it (default: {DEFAULT_FLAVOUR_DIRECTORY}; "
+            f"covered: {known})"
+        ),
     )
     action = parser.add_mutually_exclusive_group(required=True)
     action.add_argument(

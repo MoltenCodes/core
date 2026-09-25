@@ -104,6 +104,10 @@ REQUIRED_INTERFACE_DOCUMENTS = (
 #: occurrence must equal the table when they do.
 OPTIONAL_INTERFACE_DOCUMENTS = (Path("README.md"),)
 
+#: The real-client test addons, each of whose `.toc` must carry the table's
+#: full `## Interface` line; see `validate_client_test_tocs`.
+CLIENT_TESTS = Path("tests/client")
+
 #: The document whose supported-client table is checked row by row.
 SUPPORTED_CLIENTS_DOCUMENT = Path("docs/EMBEDDING.md")
 
@@ -629,6 +633,45 @@ def validate_supported_client_table(path: Path, expected: SupportedClients) -> l
     return errors
 
 
+def validate_client_test_tocs(expected: SupportedClients) -> list[str]:
+    """Check the `.toc` of every real-client test addon under `tests/client/`.
+
+    The installer writes the table's `## Interface` line into every test `.toc`
+    it installs, so one install layout serves every supported flavour; the
+    committed files must carry exactly that line too, once, so a copy loaded
+    straight from the repository behaves the same and a reader sees what the
+    client will. A single-number line, which `validate_interface_lines` allows
+    for a per-flavour example, is refused here: a test addon is never
+    per-flavour.
+    """
+    errors: list[str] = []
+    tocs = sorted((ROOT / CLIENT_TESTS).glob("*/*.toc"))
+    if not tocs:
+        return [error(ROOT / CLIENT_TESTS, "no test addon .toc to check Interface numbers in")]
+    wanted = expected.interface_numbers()
+    for toc_path in tocs:
+        lines = INTERFACE_LINE_RE.findall(toc_path.read_text(encoding="utf-8"))
+        if len(lines) != 1:
+            errors.append(
+                error(
+                    toc_path,
+                    f'needs exactly one "## Interface" line, found {len(lines)}; '
+                    f'expected "{expected.toc_line()}"',
+                )
+            )
+            continue
+        numbers = parse_interface_numbers(lines[0])
+        if numbers is None or sorted(numbers) != sorted(wanted):
+            errors.append(
+                error(
+                    toc_path,
+                    f'"## Interface: {lines[0]}" does not match {SUPPORTED_CLIENTS}; '
+                    f'expected "{expected.toc_line()}"',
+                )
+            )
+    return errors
+
+
 def validate_interface_numbers(expected: SupportedClients | None = None) -> list[str]:
     """Check that every quoted `## Interface` number agrees with the one table.
 
@@ -655,6 +698,7 @@ def validate_interface_numbers(expected: SupportedClients | None = None) -> list
         errors.extend(validate_interface_lines(ROOT / relative, expected, required=False))
 
     errors.extend(validate_supported_client_table(ROOT / SUPPORTED_CLIENTS_DOCUMENT, expected))
+    errors.extend(validate_client_test_tocs(expected))
     return errors
 
 

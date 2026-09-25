@@ -1,0 +1,120 @@
+MoltenCodesTestResults = {
+["registry"] = {
+["package"] = "registry",
+["mode"] = "default",
+["schema"] = 2,
+["installation"] = {
+["commit"] = "0123456789abcdef0123456789abcdef01234567",
+["dirty"] = false,
+["flavourDirectory"] = "_retail_",
+["installedAt"] = "2026-09-26T08:00:00Z",
+},
+["client"] = {
+["version"] = "12.1.0",
+["build"] = "69933",
+["buildDate"] = "Sep 18 2026",
+["interface"] = 120100,
+["projectId"] = 1,
+["flavour"] = "retail",
+["os"] = "macOS",
+["locale"] = "enUS",
+["note"] = "café",
+["date"] = "2026-09-26 10:00:00",
+["registryRevision"] = 13,
+["expectedInstalled"] = true,
+["packages"] = {
+{
+["package"] = "registry",
+["api"] = 2,
+["revision"] = 13,
+["status"] = "active",
+["facadeRevision"] = 13,
+["expectedRevision"] = 13,
+}, -- [1]
+},
+},
+["report"] = {
+["totals"] = {
+["suites"] = 2,
+["tests"] = 3,
+["passed"] = 1,
+["failed"] = 1,
+["skipped"] = 1,
+["timeout"] = 0,
+},
+["suites"] = {
+{
+["name"] = "registry.lookup",
+["phase"] = "ready",
+["addonName"] = "MoltenCodesTest_Registry",
+["tests"] = {
+{
+["name"] = "Find of an unknown package returns nil",
+["status"] = "passed",
+["durationMs"] = 0.25,
+["logs"] = {
+"quoted \"text\" and a back\\slash\nsecond line",
+},
+},
+{
+["name"] = "a player named P\195\169ter is read",
+["status"] = "skipped",
+["message"] = "the client has no C_Spell.GetSpellInfo (Classic Era)",
+},
+},
+},
+{
+["name"] = "registry.facade",
+["tests"] = {
+{
+["name"] = "the facade carries the revision | of the manifest",
+["status"] = "failed",
+["message"] = "RegistrySuite.lua:185: expected number 11 to be number 12",
+["durationMs"] = -0.5,
+},
+},
+},
+},
+},
+},
+["hookKit:combat"] = {
+["package"] = "hookKit",
+["mode"] = "combat",
+["schema"] = 2,
+["installation"] = {
+["commit"] = "0123456789abcdef0123456789abcdef01234567",
+["dirty"] = true,
+["flavourDirectory"] = "_retail_",
+["installedAt"] = "2026-09-26T08:00:00Z",
+},
+["client"] = {
+["version"] = "12.1.0",
+["build"] = "69933",
+["interface"] = 120100,
+["projectId"] = 1,
+["locale"] = "enUS",
+["date"] = "2026-09-26 10:05:00",
+},
+["report"] = {
+["totals"] = {
+["suites"] = 1,
+["tests"] = 1,
+["passed"] = 1,
+["failed"] = 0,
+["skipped"] = 0,
+["timeout"] = 0,
+},
+["suites"] = {
+{
+["name"] = "hookKit.combat",
+["tests"] = {
+{
+["name"] = "during combat lockdown a forced script hook is refused",
+["status"] = "passed",
+},
+},
+},
+},
+},
+},
+}

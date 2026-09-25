@@ -27,7 +27,10 @@ tooling/
 ├── ci/
 │   └── check_commits.py           # checks commit subjects and pull request titles
 ├── client/
-│   └── install.py                 # installs the bundle and the real-client test addons into a game folder, or removes them
+│   ├── flavours.py                # the client flavours the real-client tests cover: folder, project ID
+│   ├── install.py                 # installs the bundle and the real-client test addons into a game folder, or removes them
+│   ├── report.py                  # merges the harness's saved results into the committed result matrix
+│   └── saved_variables.py         # reads a saved-variables file as Lua literals, without running Lua
 ├── package/
 │   ├── build.py                   # assembles a checksummed bundle that installs as an addon
 │   ├── list.py                    # prints package IDs from the manifests
@@ -149,8 +152,9 @@ where there is one, the line to add:
   declares `api`;
 - each `src/.luarc.json` and `examples/.luarc.json` against the dependency
   closure and the example's `embeds.xml`;
-- every quoted `## Interface` line and the supported-client table (see
-  "Supported clients: one table") and the apiKit flavour table;
+- every quoted `## Interface` line, the supported-client table and the
+  `.toc` of every real-client test addon (see "Supported clients: one table")
+  and the apiKit flavour table;
 - `.pkgmeta`: every release package moved (`src` and `docs`) exactly once, no
   development or unknown package moved, every development package ignored,
   and every root entry except `LICENSE` and `packages/` ignored, so the
@@ -247,7 +251,14 @@ Every other occurrence is checked against it by
 - every `## Interface` line quoted in `docs/EMBEDDING.md`,
   `packages/registry/docs/API.md` and, if it ever quotes one, `README.md`;
 - the supported-client table in `docs/EMBEDDING.md`, row by row, and the
-  verification date stated above it.
+  verification date stated above it;
+- the `## Interface` line of every real-client test addon's `.toc` under
+  `tests/client/`: exactly one, listing exactly the table's numbers. A
+  single-number line, which a document may quote as a per-flavour example, is
+  refused there, because a test addon is never per-flavour. The installer
+  writes the table's line into every test `.toc` it installs as well
+  (see "Real-client install"), so an installed test addon never drifts from
+  the table even before validation runs.
 
 A quoted line may list the numbers in any order, because the client and the
 packager do; it may not add, drop or repeat one. A per-flavour field such as
@@ -448,15 +459,40 @@ python3 -m tooling.client.install --wow-dir DIR [--flavour-dir _retail_] --packa
 python3 -m tooling.client.install --wow-dir DIR [--flavour-dir _retail_] --remove [--dry-run]
 ```
 
+- **Flavours.** `--flavour-dir` names the client folder under the game folder:
+  `_retail_` (the default), `_classic_era_` (Classic Era, which Hardcore and
+  Season of Discovery share) or `_classic_` (Mists of Pandaria Classic), the
+  promised flavours, or `_anniversary_` (Burning Crusade Classic Anniversary,
+  listed but not promised), the names the Battle.net launcher creates.
+  `tooling/client/flavours.py` holds that table with each flavour's ID,
+  `WOW_PROJECT_ID` and row of `supported_clients.json`, and
+  `tooling/tests/test_client_flavours.py` holds it to `tooling/api/flavours.json`
+  and to that table's `promised` flags. Any other folder (a test realm's
+  `_ptr_` folder, say) is accepted by the installer, but its runs never enter
+  the result matrix.
 - **Install** builds the bundle with `tooling.package.build` (`--all`) into a
   temporary directory and copies, under `<DIR>/<flavour>/Interface/AddOns`,
   `MoltenCodes/`, the harness `MoltenCodesTest/` with a fresh copy of
-  `packages/testKit/src/TestKit.lua` and a generated `Expected.lua` (every
-  bundled package plus TestKit, with the API, revision and version of its
-  committed manifest), and `MoltenCodesTest_<Facade>/` for each `--package`.
+  `packages/testKit/src/TestKit.lua` and a generated `Expected.lua`, and
+  `MoltenCodesTest_<Facade>/` for each `--package`.
   A package without a test addon under `tests/client/` is refused. Exactly
   these folders are replaced when they exist; only `.toc` and `.lua` files are
   copied from the repository's addon folders.
+- **One `## Interface` line for every flavour.** Every `.toc` of the harness
+  and the test addons is written with the line
+  `python3 -m tooling.validation.interface_numbers` prints, taken from
+  `supported_clients.json` at install time, the same line the bundle's
+  generated `.toc` carries. The committed `.toc` files carry it too, and
+  repository validation holds them to it; every other line is copied as
+  committed.
+- **`Expected.lua`** lists every bundled package plus TestKit with the API,
+  revision and version of its committed manifest, and the installation: the
+  commit `git rev-parse HEAD` names, `dirty = true` when `git status
+  --porcelain` lists any change (untracked files included), the flavour folder
+  and the UTC time. Outside a git checkout the commit and the flag are `nil`.
+  The harness saves the installation with every result, which is how
+  `tooling.client.report` ties a run to the commit that was installed. The
+  install report and `--dry-run` print the commit.
 - **Remove** deletes `MoltenCodes`, `MoltenCodesTest` and every
   `MoltenCodesTest_*` entry of `AddOns`, and every `MoltenCodesTest.lua`,
   `MoltenCodesTest_*.lua` and their `.bak` copies under `WTF/Account/*/SavedVariables/` and
@@ -464,16 +500,78 @@ python3 -m tooling.client.install --wow-dir DIR [--flavour-dir _retail_] --remov
   also drops the lines naming those addons from every `WTF/Account/*/AddOns.txt`
   and `WTF/Account/*/*/*/AddOns.txt`, the client's addon list, which keeps a
   line for an addon after its folder is gone; every other line, its order and
-  its line ending stay as the client wrote them.
+  its line ending stay as the client wrote them. Run `tooling.client.report`
+  first: removing deletes the saved results.
 - **Safety.** Both refuse, with exit status 1, when the `AddOns` folder does
   not exist. A symbolic link is removed as a link and never followed; a
   saved-variables folder or `AddOns.txt` reached through a link out of the
   game folder is reported as skipped. `--dry-run` prints every path it would install or
-  remove and changes nothing.
+  remove, the `## Interface` line and the commit, and changes nothing.
 
 `tooling/tests/test_client_install.py` runs both against a fake game folder in
 a temporary directory, with a neighbouring addon and saved variables that must
 survive.
+
+## Real-client results
+
+`python3 -m tooling.client.report` turns what the harness saved into the
+committed result matrix. It only reads the game folder:
+
+```bash
+python3 -m tooling.client.report --wow-dir DIR [--flavour-dir NAME ...] [--dry-run | --check]
+python3 -m tooling.client.report --saved-variables FILE [--saved-variables FILE ...] [--dry-run | --check]
+python3 -m tooling.client.report --unavailable FLAVOUR=REASON | --available FLAVOUR
+python3 -m tooling.client.report --check
+```
+
+- **Inputs.** With `--wow-dir` it reads
+  `<DIR>/<flavour>/WTF/Account/*/SavedVariables/MoltenCodesTest.lua` (the
+  harness's variable is account-wide; `.bak` copies are never read) for each
+  `--flavour-dir`, or for every one of `_retail_`, `_classic_era_`,
+  `_classic_` and `_anniversary_` that exists. `--saved-variables` names a file directly, for
+  example one the owner sent. A run is attributed to the flavour its client
+  reported (`client.projectId`), then to the installer's flavour folder, then
+  to the folder the file was found in. A run on a test build
+  (`client.testBuild`) or installed into a folder that is not a known flavour
+  is reported as a warning and left out: the matrix records live clients.
+- **Parsing.** The file is read as bytes and decoded as UTF-8 with
+  `errors="replace"`, because the client may write bytes that are not UTF-8.
+  `tooling/client/saved_variables.py` parses the Lua literal subset the client
+  writes (strings with every Lua 5.1 escape and long brackets, numbers
+  including hexadecimal and the C runtime's spellings of infinity and NaN,
+  booleans, `nil`, table constructors, comments) and never executes anything;
+  a file that holds anything else is refused with its line and column.
+- **The record.** `tests/client/results.json` is the one source of truth: a
+  row per flavour, package and run mode (`default` or `combat`) with the
+  totals, the skipped tests and their reasons, the failed and timed-out tests
+  and their messages, the build, interface, locale, operating system, date
+  and the installed commit with its dirty flag. A run replaces the row of its
+  flavour, package and mode unless the recorded row is newer; every other row
+  is kept with its own date and commit. The record also keeps, per flavour,
+  why no session of it can run for now: `--unavailable FLAVOUR=REASON` sets
+  it (refused for a flavour with recorded runs), `--available FLAVOUR` drops
+  it, and a recorded run of the flavour drops it on its own. The rows moved from the README's
+  first Retail table carry the ISO 8601 interval `2026-09-24/2026-09-25`, no
+  commit and no skip reasons, and show them as such.
+- **The matrix.** `tests/client/RESULTS.md` is rendered from the record and
+  never edited: a status line per known flavour (packages recorded, or
+  `not run` with the reason), one column group (tests, passed, failed,
+  skipped, timeout) per promised flavour and per optional flavour that has a
+  run, a runs table per flavour (build, interface, locale, OS, date,
+  commit), every skipped test with its reason, every failure, and the gaps:
+  Windows, group communication with a second character, conditions a solo
+  session cannot create, flavours and packages without a run, and combat runs
+  not recorded yet (packages whose suites use the `combat = true` option).
+- **`--check`** writes nothing and exits 1 when either file differs from what
+  the command would write for the given inputs; without inputs it checks that
+  the matrix is what the record renders. **`--dry-run`** prints each row it
+  would add or update and the files it would write.
+
+`tooling/tests/test_client_report.py` and
+`tooling/tests/test_client_saved_variables.py` run the command and the parser
+against the fixtures in `tooling/tests/fixtures/client/`: a schema 2 file with
+a combat run, escapes and a byte that is not UTF-8, and a schema 1 Classic Era
+file with an entry the command must skip with a warning.
 
 ## Release tooling
 

@@ -18,6 +18,7 @@ import unittest
 from pathlib import Path
 
 from tooling.client import install as module
+from tooling.validation.interface_numbers import load_supported_clients
 from tooling.validation.validate_manifests import load_manifests
 
 
@@ -674,6 +675,74 @@ class InstallTests(FakeClientTests):
         )
         self.assertEqual(0, result.returncode, result.stderr)
 
+    def test_every_installed_toc_carries_the_supported_interface_line(self):
+        status, output, errors = self.run_command("--package", "registry", "--package", "hookKit")
+
+        self.assertEqual(0, status, errors)
+        expected_line = load_supported_clients().toc_line()
+        for toc in (
+            self.addons / "MoltenCodesTest" / "MoltenCodesTest.toc",
+            self.addons / "MoltenCodesTest_Registry" / "MoltenCodesTest_Registry.toc",
+            self.addons / "MoltenCodesTest_HookKit" / "MoltenCodesTest_HookKit.toc",
+        ):
+            with self.subTest(toc=toc.name):
+                lines = toc.read_text(encoding="utf-8").splitlines()
+                interface_lines = [line for line in lines if line.startswith("## Interface:")]
+                self.assertEqual([expected_line], interface_lines)
+                self.assertEqual(expected_line, lines[0])
+        self.assertIn(expected_line, output)
+
+    def test_installed_tocs_differ_from_the_committed_ones_only_in_the_interface_line(self):
+        self.run_command("--package", "registry")
+
+        committed = (
+            module.CLIENT_TESTS / "MoltenCodesTest_Registry" / "MoltenCodesTest_Registry.toc"
+        ).read_text(encoding="utf-8")
+        installed = (
+            self.addons / "MoltenCodesTest_Registry" / "MoltenCodesTest_Registry.toc"
+        ).read_text(encoding="utf-8")
+        def without_interface(text: str) -> list[str]:
+            return [line for line in text.splitlines() if not line.startswith("## Interface:")]
+
+        self.assertEqual(without_interface(committed), without_interface(installed))
+
+    def test_expected_lua_records_the_installed_commit_and_flavour_folder(self):
+        self.run_command("--package", "registry")
+
+        text = (self.addons / "MoltenCodesTest" / "Expected.lua").read_text(encoding="utf-8")
+        self.assertIn('flavourDirectory = "_retail_",', text)
+        self.assertRegex(text, r'installedAt = "\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z",')
+        head = module.run_git("rev-parse", "HEAD")
+        if head is None:
+            self.assertIn("commit = nil,", text)
+            self.assertIn("dirty = nil,", text)
+        else:
+            self.assertIn(f'commit = "{head.strip()}",', text)
+            self.assertRegex(text, r"dirty = (true|false),")
+
+    def test_installs_into_a_classic_flavour_folder_and_records_it(self):
+        classic_addons = self.wow / "_classic_era_" / "Interface" / "AddOns"
+        classic_addons.mkdir(parents=True)
+
+        status, _, errors = self.run_command(
+            "--flavour-dir", "_classic_era_", "--package", "registry"
+        )
+
+        self.assertEqual(0, status, errors)
+        text = (classic_addons / "MoltenCodesTest" / "Expected.lua").read_text(encoding="utf-8")
+        self.assertIn('flavourDirectory = "_classic_era_",', text)
+        registry_suite = classic_addons / "MoltenCodesTest_Registry" / "RegistrySuite.lua"
+        self.assertTrue(registry_suite.is_file())
+        self.assertFalse((self.addons / "MoltenCodesTest").exists())
+
+    def test_dry_run_names_the_interface_line_and_the_commit(self):
+        status, output, _ = self.run_command("--package", "registry", "--dry-run")
+
+        self.assertEqual(0, status)
+        self.assertIn(load_supported_clients().toc_line(), output)
+        self.assertIn("would record", output)
+        self.assertIn("Expected.lua", output)
+
     def test_replaces_earlier_copies_of_exactly_its_own_folders(self):
         stale = self.addons / "MoltenCodes" / "stale.lua"
         stale.parent.mkdir()
@@ -840,6 +909,54 @@ class RemoveTests(FakeClientTests):
         self.assertEqual(1, status)
         self.assertIn("does not exist", errors)
         self.assertTrue((account / "MoltenCodesTest.lua").is_file())
+
+
+class TocAndExpectedRenderingTests(unittest.TestCase):
+    INTERFACE_LINE = "## Interface: 120100, 50504, 20506, 11509"
+
+    def test_with_interface_line_replaces_the_field_and_keeps_every_other_line(self):
+        text = "## Interface: 120100\n## Interface-Mists: 50504\n## Title: Test\n\nSuite.lua\n"
+
+        rewritten = module.with_interface_line(text, self.INTERFACE_LINE)
+
+        self.assertEqual(
+            self.INTERFACE_LINE + "\n## Interface-Mists: 50504\n## Title: Test\n\nSuite.lua\n",
+            rewritten,
+        )
+
+    def test_with_interface_line_adds_a_missing_field_as_the_first_line(self):
+        rewritten = module.with_interface_line("## Title: Test\n", self.INTERFACE_LINE)
+
+        self.assertEqual(self.INTERFACE_LINE + "\n## Title: Test\n", rewritten)
+
+    def test_render_expected_writes_nil_for_an_unknown_commit(self):
+        installation = module.Installation(None, None, "_classic_", "2026-09-25T10:00:00Z")
+
+        text = module.render_expected([], installation)
+
+        self.assertIn("    commit = nil,\n", text)
+        self.assertIn("    dirty = nil,\n", text)
+        self.assertIn('    flavourDirectory = "_classic_",\n', text)
+        self.assertIn('    installedAt = "2026-09-25T10:00:00Z",\n', text)
+
+    def test_render_expected_writes_the_commit_and_the_dirty_flag(self):
+        installation = module.Installation("a" * 40, True, "_retail_", "2026-09-25T10:00:00Z")
+
+        text = module.render_expected([], installation)
+
+        self.assertIn(f'    commit = "{"a" * 40}",\n', text)
+        self.assertIn("    dirty = true,\n", text)
+
+    def test_describe_installation_names_the_short_commit_and_the_state(self):
+        clean = module.Installation("0123456789abcdef" * 2 + "01234567", False, "_retail_", "t")
+        dirty = clean._replace(dirty=True)
+        unknown = module.Installation(None, None, "_retail_", "t")
+
+        self.assertEqual("commit 0123456789ab", module.describe_installation(clean))
+        self.assertEqual(
+            "commit 0123456789ab, working tree has changes", module.describe_installation(dirty)
+        )
+        self.assertIn("unknown", module.describe_installation(unknown))
 
 
 class CommandLineTests(unittest.TestCase):

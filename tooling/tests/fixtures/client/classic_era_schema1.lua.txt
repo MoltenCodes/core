@@ -1,0 +1,30 @@
+MoltenCodesTestResults = {
+["registry"] = {
+["package"] = "registry",
+["schema"] = 1,
+["client"] = {
+["version"] = "1.15.9",
+["build"] = 70001,
+["interface"] = 11509,
+["projectId"] = 2,
+["locale"] = "deDE",
+["date"] = "2026-09-26 11:00:00",
+},
+["report"] = {
+["totals"] = {
+["suites"] = 1,
+["tests"] = 2,
+["passed"] = 2,
+["failed"] = 0,
+["skipped"] = 0,
+["timeout"] = 0,
+},
+["suites"] = {
+},
+},
+},
+["broken"] = {
+["package"] = "broken",
+["schema"] = 9,
+},
+}

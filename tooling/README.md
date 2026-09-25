@@ -79,14 +79,34 @@ python3 -m tooling.ci.check_commits origin/main..HEAD
 ```
 
 Install the bundle, the real-client test harness and a package's test addon
-into a game folder, and remove them again with their saved variables and
-their lines in the client's `AddOns.txt`;
+into a game folder of any covered flavour, and remove them again with their
+saved variables and their lines in the client's `AddOns.txt`;
 see `tests/client/README.md`:
 
 ```bash
 python3 -m tooling.client.install --wow-dir "/Applications/World of Warcraft" --package registry
+python3 -m tooling.client.install --wow-dir "/Applications/World of Warcraft" --flavour-dir _classic_era_ --package registry
 python3 -m tooling.client.install --wow-dir "/Applications/World of Warcraft" --remove --dry-run
 python3 -m tooling.client.install --wow-dir "/Applications/World of Warcraft" --remove
+```
+
+`--flavour-dir` is `_retail_` (the default), `_classic_era_`, `_classic_` or
+the optional `_anniversary_`.
+Every installed test `.toc` carries the supported `## Interface` line, and the
+generated `Expected.lua` records the installed commit, which the harness saves
+with every result.
+
+Merge the saved results of every flavour folder into the committed result
+matrix (`tests/client/results.json`, rendered as `tests/client/RESULTS.md`),
+preview it, or check that the committed files are current; the game folder is
+only read:
+
+```bash
+python3 -m tooling.client.report --wow-dir "/Applications/World of Warcraft"
+python3 -m tooling.client.report --wow-dir "/Applications/World of Warcraft" --dry-run
+python3 -m tooling.client.report --saved-variables path/to/MoltenCodesTest.lua
+python3 -m tooling.client.report --unavailable "classic-era=no client session available"
+python3 -m tooling.client.report --check
 ```
 
 Build a distributable bundle:

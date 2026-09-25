@@ -476,6 +476,10 @@ class InterfaceNumberTests(unittest.TestCase):
         self.write(
             "packages/registry/docs/API.md", "```toc\n## Interface: 120100, 11509\n```\n"
         )
+        self.write(
+            "tests/client/MoltenCodesTest/MoltenCodesTest.toc",
+            "## Interface: 120100, 11509\n## Title: Harness\n",
+        )
 
     def test_consistent_repository_is_accepted(self):
         self.write_consistent_repository()
@@ -575,6 +579,58 @@ class InterfaceNumberTests(unittest.TestCase):
 
         self.assertEqual(1, len(errors))
         self.assertIn("README.md", errors[0])
+
+    def test_client_test_toc_with_a_single_number_is_reported(self):
+        # A per-flavour line is fine in a document, never in a test addon.
+        self.write_consistent_repository()
+        self.write(
+            "tests/client/MoltenCodesTest_Registry/MoltenCodesTest_Registry.toc",
+            "## Interface: 120100\n",
+        )
+
+        errors = module.validate_interface_numbers(self.EXPECTED)
+
+        self.assertEqual(1, len(errors))
+        self.assertIn("MoltenCodesTest_Registry.toc", errors[0])
+        self.assertIn('expected "## Interface: 120100, 11509"', errors[0])
+
+    def test_client_test_toc_without_an_interface_line_is_reported(self):
+        self.write_consistent_repository()
+        self.write("tests/client/MoltenCodesTest/MoltenCodesTest.toc", "## Title: Harness\n")
+
+        errors = module.validate_interface_numbers(self.EXPECTED)
+
+        self.assertEqual(1, len(errors))
+        self.assertIn('exactly one "## Interface" line, found 0', errors[0])
+
+    def test_client_test_toc_with_two_interface_lines_is_reported(self):
+        self.write_consistent_repository()
+        self.write(
+            "tests/client/MoltenCodesTest/MoltenCodesTest.toc",
+            "## Interface: 120100, 11509\n## Interface: 120100, 11509\n",
+        )
+
+        errors = module.validate_interface_numbers(self.EXPECTED)
+
+        self.assertEqual(1, len(errors))
+        self.assertIn("found 2", errors[0])
+
+    def test_client_test_toc_in_another_order_is_accepted(self):
+        self.write_consistent_repository()
+        self.write(
+            "tests/client/MoltenCodesTest/MoltenCodesTest.toc", "## Interface: 11509, 120100\n"
+        )
+
+        self.assertEqual([], module.validate_interface_numbers(self.EXPECTED))
+
+    def test_missing_client_test_tocs_are_reported(self):
+        self.write_consistent_repository()
+        (self.root / "tests/client/MoltenCodesTest/MoltenCodesTest.toc").unlink()
+
+        errors = module.validate_interface_numbers(self.EXPECTED)
+
+        self.assertEqual(1, len(errors))
+        self.assertIn("no test addon .toc", errors[0])
 
     def test_example_directory_without_a_toc_is_reported(self):
         self.write_consistent_repository()
