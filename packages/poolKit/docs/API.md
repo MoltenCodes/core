@@ -83,7 +83,9 @@ Errors of `New`; `NewTablePool` raises the ones for the options it accepts, name
 Returns `object` or `nil, reason` (`"exhausted"`, `"waiting"`, `"queueFull"`;
 see [When the pool is at capacity](#when-the-pool-is-at-capacity)). Cost: O(1)
 and allocates nothing when an object is retained; otherwise one factory call.
-When requests are waiting, they are served first.
+When requests are waiting, they are served first. The common case (an open pool
+without `maxActive`, nobody waiting, no `onAvailable`, an object retained) takes
+a fast path that makes the same checks with no helper call (since revision 9).
 
 Errors: `PoolKit.Pool:Acquire cannot use a closed pool`,
 `PoolKit.Pool:Acquire onAvailable must be a function`,
@@ -93,8 +95,13 @@ and a raising `create`, unchanged.
 
 ### `pool:Release(object)` — mutating
 
-Returns `true`. Cost: O(1) and allocates nothing, plus one release per attached
-child and the service of any waiting requests.
+Returns `true`. Cost: O(1) and allocates nothing, plus the `reset` callback,
+one release per attached child and the service of any waiting requests. Every
+release of a borrowed object makes the ownership, double-release and
+re-entrancy checks; a generic pool's `reset` runs under one protected call, a
+table pool's shallow clear under none. An acquire and release of a table pool
+object with twelve fields costs about 0.7 µs on the host benchmark's Lua 5.1,
+a generic pool's about 0.45 µs (since revision 9; 1.7 and 1.5 µs before).
 
 Errors: `PoolKit.Pool:Release object must be a table or userdata`,
 `PoolKit.Pool:Release object was not acquired from this pool`,
@@ -622,6 +629,11 @@ with it stays unbounded after an upgrade.
 ## Embedded copies
 
 PoolKit is registered as `poolKit`, API generation `1`, through Registry API 2. The facade, `Pool` prototype, metatable, and `UNBOUNDED` sentinel live in Registry-owned shared state, so compatible future revisions can preserve existing pool identity while replacing methods in place.
+
+Revision 9 changes no state and no pool shape: its `Acquire` and `Release` fast
+paths read the fields every pool of the current shape carries (every pool
+revisions 4 to 8 built has it), and a pool built by revisions 1 to 3 takes the
+general path once, which upgrades it as before.
 
 The shared state carries schema `2`; loading over schema-`1` state left by
 revisions 1 to 3 adds the deferred-release tables in place. Pools are not

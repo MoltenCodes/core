@@ -36,7 +36,7 @@
 
 local PACKAGE_NAME = "poolKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 8
+local IMPLEMENTATION_REVISION = 9
 local REQUIRED_REGISTRY_API = 2
 local STATE_SCHEMA = 2
 local DEFAULT_MAX_RETAINED = 128
@@ -135,6 +135,38 @@ local REASON_CLOSED = "closed"
 ---@field AttachChild fun(self: PoolKit.Pool, parent: table|userdata, child: table|userdata, childPool: PoolKit.Pool): PoolKit.Pool
 ---@field DetachChild fun(self: PoolKit.Pool, child: table|userdata): boolean
 ---@field ReleaseAfter fun(self: PoolKit.Pool, object: table|userdata, animationGroup: PoolKit.AnimationGroup): boolean
+---@field package _schema integer pool shape; see `upgradePool`
+---@field package _create PoolKit.Factory
+---@field package _reset PoolKit.ObjectCallback|false
+---@field package _destroy PoolKit.ObjectCallback|false
+---@field package _maxRetained integer|table a count or `UNBOUNDED`
+---@field package _available table<integer, table|userdata> retained objects, newest last
+---@field package _availableCount integer
+---@field package _active table<table|userdata, integer> borrowed and parked objects and their status
+---@field package _activeCount integer
+---@field package _maxActiveWarning integer|false
+---@field package _activeWarned boolean
+---@field package _retained table<table|userdata, boolean> identity set of `_available`
+---@field package _released table|false weak set of discarded objects, for strict pools
+---@field package _createdCount integer
+---@field package _discardedCount integer
+---@field package _closed boolean
+---@field package _callbackPhase string|false the lifecycle callback running, for the refusal message
+---@field package _callbackDepth integer lifecycle callbacks running on this pool
+---@field package _trustedCallbacks boolean built-in table-pool callbacks
+---@field package _generation integer
+---@field package _baseGeneration integer
+---@field package _stamps table|false
+---@field package _maxCreated integer|false
+---@field package _maxActive integer|false
+---@field package _maxWaiting integer
+---@field package _waiting table|false
+---@field package _waitingHead integer
+---@field package _waitingCount integer
+---@field package _parked table|false
+---@field package _parkedCount integer
+---@field package _children table|false
+---@field package _attachedTo table|false
 
 ---The PoolKit package facade published through Registry.
 ---@class PoolKit
@@ -769,14 +801,6 @@ local function createObject(pool, methodName, level)
   return object
 end
 
----Whether the pool has room to retain one more released object.
----@param pool PoolKit.Pool
----@return boolean
-local function canRetain(pool)
-  local maxRetained = rawget(pool, "_maxRetained")
-  return maxRetained == UNBOUNDED or rawget(pool, "_availableCount") < maxRetained
-end
-
 ---Drop one retained object, reporting a failing `destroy` to the caller.
 ---@param pool PoolKit.Pool
 ---@param object table|userdata
@@ -1282,23 +1306,42 @@ end
 ---it or retire it, and finally hand freed capacity to waiting requests.
 ---
 ---The caller has validated the pool and that `object` is `ACTIVE`.
+---
+---This is the hot half of every `Release`, so pool fields and the pool's own
+---maps are read and written by plain indexing rather than `rawget`/`rawset`.
+---That is the same operation here: every field it touches is always present on
+---a pool of the current schema (a pool reaches this point only after
+---`validatePool` upgraded it), the maps have no metatable, `_released` has only
+---`__mode`, and the pool metatable has no `__newindex`. A plain index is a VM
+---instruction; `rawget` is a C call, which dominated this path.
 ---@param pool PoolKit.Pool
 ---@param object table|userdata
 ---@return boolean released
 function releaseActive(pool, object)
-  local active = rawget(pool, "_active")
-  rawset(active, object, RELEASING)
+  local active = pool._active
+  active[object] = RELEASING
 
-  local firstError = releaseChildren(pool, object)
+  local firstError = nil
+  if pool._children ~= false then
+    firstError = releaseChildren(pool, object)
+  end
 
-  local reset = rawget(pool, "_reset")
+  local reset = pool._reset
   if reset ~= false then
-    if rawget(pool, "_trustedCallbacks") == true then
+    if pool._trustedCallbacks == true then
       reset(object, pool)
     else
-      local ok, value = pcall(invokeLifecycleCallback, pool, "reset", reset, object, pool)
+      -- The re-entrancy guard of `invokeLifecycleCallback`, inlined so one
+      -- protected call covers both the guard and the rollback below.
+      local depth = pool._callbackDepth + 1
+      local previousPhase = pool._callbackPhase
+      pool._callbackDepth = depth
+      pool._callbackPhase = "reset"
+      local ok, value = pcall(reset, object, pool)
+      pool._callbackDepth = depth - 1
+      pool._callbackPhase = previousPhase
       if not ok then
-        rawset(active, object, ACTIVE)
+        active[object] = ACTIVE
         -- First error wins: a child that failed before this reset ran
         -- is the error the caller hears about.
         firstError = captureFirstError(firstError, false, value)
@@ -1307,25 +1350,35 @@ function releaseActive(pool, object)
     end
   end
 
-  detachFromParent(pool, object)
-  rawset(active, object, nil)
-  rawset(pool, "_activeCount", rawget(pool, "_activeCount") - 1)
+  if pool._attachedTo ~= false then
+    detachFromParent(pool, object)
+  end
+  active[object] = nil
+  pool._activeCount = pool._activeCount - 1
 
-  if rawget(pool, "_closed") ~= true and canRetain(pool) and not isStale(pool, object) then
-    local count = rawget(pool, "_availableCount") + 1
-    rawset(rawget(pool, "_available"), count, object)
-    rawset(rawget(pool, "_retained"), object, true)
-    rawset(pool, "_availableCount", count)
+  local count = pool._availableCount
+  local maxRetained = pool._maxRetained
+  if
+    pool._closed ~= true
+    and (maxRetained == UNBOUNDED or count < maxRetained)
+    and (pool._generation == pool._baseGeneration or not isStale(pool, object))
+  then
+    count = count + 1
+    pool._available[count] = object
+    pool._retained[object] = true
+    pool._availableCount = count
   else
     local ok, value = pcall(destroyDiscarded, pool, object)
     firstError = captureFirstError(firstError, ok, value)
   end
 
-  if rawget(pool, "_waitingCount") > 0 then
+  if pool._waitingCount > 0 then
     drainWaiting(pool)
   end
 
-  raiseCaptured(firstError)
+  if firstError ~= nil then
+    raiseCaptured(firstError)
+  end
   return true
 end
 
@@ -1547,6 +1600,42 @@ end
 ---@return table|userdata|nil object
 ---@return PoolKit.AcquireReason? reason why no object was returned
 local function poolAcquire(self, onAvailable)
+  -- Fast path: a current, open, unguarded pool with no live limit, nobody
+  -- waiting, a retained object to hand out and no `onAvailable`. Every check
+  -- the general path below makes is made here too, in the same order of
+  -- outcome, by plain indexing (see `releaseActive` for why that is the same
+  -- operation on a pool); anything unusual falls through to the general path.
+  if
+    type(self) == "table"
+    and getmetatable(self) == POOL_METATABLE
+    and self._schema == POOL_SCHEMA
+    and self._callbackDepth == 0
+    and self._closed ~= true
+    and type(onAvailable) == "nil"
+    and self._waitingCount == 0
+    and self._maxActive == false
+  then
+    local count = self._availableCount
+    if count > 0 then
+      local available = self._available
+      local object = available[count]
+      available[count] = nil
+      self._availableCount = count - 1
+      self._retained[object] = nil
+      -- A retained object is never in `_released`: an object is marked
+      -- there only as it leaves the pool, and a factory result or a newly
+      -- borrowed object is unmarked, so `markActive`'s unmarking is skipped.
+      self._active[object] = ACTIVE
+      local activeCount = self._activeCount + 1
+      self._activeCount = activeCount
+      local warnAt = self._maxActiveWarning
+      if warnAt ~= false and activeCount >= warnAt and self._activeWarned ~= true then
+        warnActiveThreshold(self, activeCount)
+      end
+      return object
+    end
+  end
+
   validatePool(self, "PoolKit.Pool:Acquire", 3)
   ensureMutationAllowed(self, "PoolKit.Pool:Acquire", 3)
   if rawget(self, "_closed") == true then
@@ -1586,6 +1675,21 @@ end
 ---@param object table|userdata
 ---@return boolean released
 local function poolRelease(self, object)
+  -- Fast path: a current, unguarded pool releasing a borrowed object. The
+  -- general path below makes the same checks through its helpers.
+  if
+    type(self) == "table"
+    and getmetatable(self) == POOL_METATABLE
+    and self._schema == POOL_SCHEMA
+    and self._callbackDepth == 0
+  then
+    local objectType = type(object)
+    if (objectType == "table" or objectType == "userdata") and self._active[object] == ACTIVE then
+      local released = releaseActive(self, object)
+      return released
+    end
+  end
+
   validatePool(self, "PoolKit.Pool:Release", 3)
   ensureMutationAllowed(self, "PoolKit.Pool:Release", 3)
   validatePoolObject(object, "PoolKit.Pool:Release object", 3)
@@ -2092,10 +2196,16 @@ local function tableCreate()
 end
 
 ---Shallow-clearing reset for `PoolKit:NewTablePool`.
+---
+---A plain assignment rather than `rawset`: every key `next` returns holds a
+---non-`nil` value, and assigning to a key that is present never consults a
+---metatable, so the two are the same operation and the assignment is a VM
+---instruction instead of a C call per field. Assigning `nil` to a field
+---already visited is legal during `next` traversal.
 ---@param object table
 local function tableReset(object)
   for key in next, object do
-    rawset(object, key, nil)
+    object[key] = nil
   end
 end
 

@@ -13,9 +13,19 @@ Each pool uses:
 
 `Acquire` and the normal retained `Release` path perform O(1) table operations and create no framework-owned temporary tables. User callbacks may allocate independently.
 
-Both paths also make a few constant-cost checks, each a `rawget` and a comparison against a `false` or `0` default: the pool schema (see *Lazy pool upgrade*), the creation cap and live limit in `hasCapacity`, the waiting count, the child and attachment tables, and the generation (`isStale` compares `_generation` with `_baseGeneration` and reads a stamp only when they differ). Draining the waiting queue, cascading to children and completing a deferred release are the only loops, each bounded by the queue size or the number of attached children.
+Both paths also make a few constant-cost checks, each a field read and a comparison against a `false` or `0` default: the pool schema (see *Lazy pool upgrade*), the creation cap and live limit in `hasCapacity`, the waiting count, the child and attachment tables, and the generation (`isStale` compares `_generation` with `_baseGeneration` and reads a stamp only when they differ). Draining the waiting queue, cascading to children and completing a deferred release are the only loops, each bounded by the queue size or the number of attached children.
 
-`Acquire` also compares `_maxActiveWarning` against the new active count. The field is `false` when leak warnings are not configured, so the default path is one `rawget` and one comparison, and the message-building work lives in a separate function that the hot path never enters.
+`Acquire` also compares `_maxActiveWarning` against the new active count. The field is `false` when leak warnings are not configured, so the default path is one field read and one comparison, and the message-building work lives in a separate function that the hot path never enters.
+
+## Fast paths and plain indexing
+
+`Acquire` and `Release` start with a fast path for the common case, and the release transaction (`releaseActive`) reads and writes the pool by plain indexing (`pool._activeCount`) instead of `rawget`/`rawset`. On Lua 5.1 a plain index is one VM instruction while `rawget` is a C function call, and the calls dominated both methods (revision 8: about 1.5 µs per acquire and release of a generic pool, 0.45 µs in revision 9).
+
+Plain indexing is the same operation here, not a weaker one. Every field the hot paths touch is present on a pool of the current schema (`newPool` writes them all, and `upgradePool` fills them in before any method of this revision uses an older pool), so a read never reaches the metatable's `__index`, except `_callbackPhase` on a pool revision 1 built, whose read falls through to the `Pool` prototype, which holds only methods, and gives `nil` either way; the pool metatable has no `__newindex`, so a write to a present field is a raw write; and the maps (`_active`, `_available`, `_retained`, `_released`) are PoolKit's own tables with no metatable but `_released`'s `__mode`. The slower paths keep `rawget`.
+
+The `Acquire` fast path is taken when the receiver is a pool of the current schema, no lifecycle callback of this pool is running, the pool is open, `onAvailable` is absent, nobody waits and there is no `maxActive`, and an object is retained. It makes every check the general path makes, so anything else falls through to the general path with its exact errors. It skips `markActive`'s unmarking of `_released`: an object is marked there only as it leaves the pool, and a factory result or a newly borrowed object is unmarked, so a retained object is never marked.
+
+The `Release` fast path is taken when the receiver is a pool of the current schema, no lifecycle callback of this pool is running, and the object is a table or userdata the pool lists as `ACTIVE`. A parked, retained, discarded or foreign object, and any receiver problem, falls through to the general path and its exact errors. For a generic pool, `releaseActive` inlines the re-entrancy guard of `invokeLifecycleCallback` so a single protected call covers the guard and the rollback (revision 8 nested two), and it skips the child cascade and the parent detach with one field test each when the pool has no children or attachments.
 
 `_active` is intentionally the one unbounded structure in a pool. It must hold strong references for ownership, duplicate-release, and foreign-object checks to stay correct, and PoolKit cannot reclaim an object the caller never returns. The bound therefore belongs to the caller; `GetActiveCount` and `maxActiveWarning` make it observable.
 
@@ -53,7 +63,7 @@ Note for maintainers: with the current public surface, same-pool nesting is not 
 
 ## Table-pool fast path
 
-`NewTablePool` marks its built-in create/reset lifecycle as trusted. Those callbacks use only framework-owned `{}` allocation and `next/rawset` shallow clearing, so the hot path skips generic protected-callback and callback-phase bookkeeping. Generic pools never receive this optimization because user callbacks require rollback and re-entrancy enforcement.
+`NewTablePool` marks its built-in create/reset lifecycle as trusted. Those callbacks use only framework-owned `{}` allocation and `next`-driven shallow clearing, so the hot path skips generic protected-callback and callback-phase bookkeeping. The clear assigns `nil` to each key `next` returns (revision 8 called `rawset`): the key holds a value, and assigning to a present key never consults a metatable, so a borrower's `__newindex` is not called either way. Generic pools never receive this optimization because user callbacks require rollback and re-entrancy enforcement.
 
 ## Lazy pool upgrade
 

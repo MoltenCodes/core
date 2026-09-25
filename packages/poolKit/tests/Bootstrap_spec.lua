@@ -257,6 +257,39 @@ describe("PoolKit bootstrap", function()
     assert.is_true(pool:IsActive(borrowed))
   end)
 
+  it("upgrades revision 8, whose borrowed objects return through the fast paths", function()
+    local current = currentRevision()
+    require("Registry")
+    local previous = Env.LoadRevision(8)
+    assert.are.equal(8, previous.REVISION)
+    local resets = 0
+    local generic = previous:New({
+      create = function()
+        return {}
+      end,
+      reset = function()
+        resets = resets + 1
+      end,
+    })
+    local records = previous:NewTablePool()
+    local object = generic:Acquire()
+    local record = records:Acquire()
+    record.field = "kept until release"
+
+    local PoolKit = Env.ReloadPackage()
+    assert.are.equal(previous, PoolKit)
+    assert.are.equal(current, PoolKit.REVISION)
+
+    assert.is_true(generic:Release(object))
+    assert.are.equal(1, resets)
+    assert.are.equal(object, generic:Acquire())
+    assert.is_true(records:Release(record))
+    assert.is_nil(record.field)
+    assert.are.equal(record, records:Acquire())
+    local ok = pcall(generic.Release, generic, {})
+    assert.is_false(ok)
+  end)
+
   it("rejects same-revision UNBOUNDED sentinel drift", function()
     local PoolKit = Env.NewPackage()
     rawset(PoolKit, "UNBOUNDED", {})
