@@ -254,6 +254,41 @@ describe("TimerKit bootstrap", function()
     assert.are.equal(0, timers:GetActiveCount())
   end)
 
+  it("cancels and restarts a one-shot the previous revision started", function()
+    local current = currentRevision()
+    TestEnv.Reset()
+    TestEnv.InstallWowApi()
+    require("Registry")
+    local old = TestEnv.LoadRevision(current - 1)
+    local scope = old:CreateScope()
+    local calls = 0
+    local pending = scope:After(1, function()
+      calls = calls + 1
+    end)
+    local firing = scope:After(1, function()
+      calls = calls + 10
+    end)
+
+    local upgraded = require("TimerKit")
+    assert.are.equal(current, upgraded.REVISION)
+
+    -- The handle the previous revision stored is cancelled directly, and the
+    -- callback it bound goes stale.
+    assert.is_true(pending:Cancel())
+    assert.is_true(TestEnv.NativeTimers()[1].cancelled)
+    TestEnv.InvokeRaw(1)
+    assert.are.equal(0, calls)
+
+    TestEnv.FireNative(2)
+    assert.are.equal(10, calls)
+    assert.are.equal("completed", firing:GetState())
+
+    assert.is_true(pending:Restart())
+    TestEnv.FireNative(3)
+    assert.are.equal(11, calls)
+    assert.are.equal(0, scope:GetActiveCount())
+  end)
+
   it(
     "keeps the generation-bound callbacks of revision 9 timers working after an upgrade",
     function()

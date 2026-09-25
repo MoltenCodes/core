@@ -52,7 +52,9 @@ A timer is in `_active` exactly while its state is `"running"`.
 
 ## Stale host callbacks
 
-Every start creates one host handle and one callback closure, which captures the timer and, once the host constructor has returned, that handle. The closure calls `dispatch.fireStarted(timer, handle)`, which fires the timer only while it is running and `_native` is still that handle (`rawequal`, so no host `__eq` runs). Cancellation sets `_native` to `false` before it asks the host to cancel, a delivered one-shot does so before it calls the owner, and a restart binds the new handle; so a host callback of an earlier start never re-enters the timer, even when the host's own cancellation raised. A host that called back from inside its constructor would find `_native` still `false` and be ignored.
+Every start creates one host handle and one callback closure, which captures the timer and, once the host constructor has returned, that handle. The closure calls `dispatch.fireStarted(timer, handle)`, which fires the timer only while it is running and `_native` is still that handle (`rawequal`, so no host `__eq` runs). Cancellation sets `_native` to `false` before it asks the host to cancel, a delivered one-shot does so before it calls the owner, and a restart binds the new handle; so a host callback of an earlier start never re-enters the timer, even when the host's own cancellation raised. A host that called back from inside its constructor would find the timer not yet running, with `_native` still `false`, and be ignored.
+
+**Order of a start (revision 11).** `armTimer` builds the closure, calls the host constructor directly and only then writes `_native`, `_state = "running"`, the scope's active set and `_deadline`. A constructor that raises therefore leaves the timer exactly as it was, with no `pcall` and no rollback; revision 10 and older marked the timer running first and undid it under `pcall`. The handle is trusted (API.md, "Trusting the host handle"): a start refuses only `nil` or `false`, which the closure's captured `nil` could not be told from, and `cancelTimer` calls `native:Cancel()` directly after the logical cancellation.
 
 This relies on one property of `C_Timer`: every `NewTimer` and `NewTicker` call returns its own handle. The closure keeps its handle alive, so the host cannot hand the same object to a later start while the earlier callback can still run.
 
@@ -77,3 +79,5 @@ A newer revision must keep publishing every entry an older revision's callbacks 
 ## Upgrades
 
 A newer revision keeps `_state`, the prototypes and the metatables, rewrites the prototypes' methods and the dispatch entries, and leaves every timer and scope object in place. Timers an older revision built keep their field layout; the table above says how each difference reads.
+
+Revision 11 changes no state and no layout. A timer revision 10 started keeps its handle and its callback closure, which calls `dispatch.fireStarted` and so runs the new code; cancelling it after the upgrade calls its handle's `Cancel` directly.

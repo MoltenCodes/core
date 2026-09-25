@@ -52,10 +52,10 @@ describe("TimerKit validation and host failures", function()
     assert.is_true(timer:Start())
   end)
 
-  it("rolls back if the host returns an invalid native handle", function()
+  it("refuses a missing native handle and leaves the timer as it was", function()
     local TimerKit = TestEnv.NewPackage()
     local timer = TimerKit:New({ delay = 1, callback = function() end })
-    TestEnv.ReturnNextNative("invalid-handle")
+    TestEnv.ReturnNextNative(false)
 
     local ok, value = pcall(function()
       timer:Start()
@@ -63,9 +63,62 @@ describe("TimerKit validation and host failures", function()
     assert.is_false(ok)
     assert.is_true(tostring(value):find("invalid native timer handle", 1, true) ~= nil)
     assert.are.equal("idle", timer:GetState())
+    assert.is_nil(timer:GetDeadline())
     assert.are.equal(0, timer:GetScope():GetActiveCount())
 
     assert.is_true(timer:Start())
+  end)
+
+  -- Revision 11 trusts the handle the host returns (docs/API.md, "Native
+  -- boundary"): a start no longer checks that it has `Cancel`, and a cancel no
+  -- longer re-reads it under `pcall`. A handle without `Cancel` therefore
+  -- starts, and its cancellation raises the host's own error after the
+  -- logical cancellation is complete.
+  it("trusts a handle without Cancel and raises only when it is cancelled", function()
+    local TimerKit = TestEnv.NewPackage()
+    local timer = TimerKit:New({ delay = 1, callback = function() end })
+    local scope = timer:GetScope()
+    TestEnv.ReturnNextNative({})
+
+    assert.is_true(timer:Start())
+    assert.are.equal("running", timer:GetState())
+    assert.are.equal(1, scope:GetActiveCount())
+
+    local ok = pcall(function()
+      timer:Cancel()
+    end)
+    assert.is_false(ok)
+    assert.are.equal("cancelled", timer:GetState())
+    assert.are.equal(0, scope:GetActiveCount())
+    assert.is_nil(timer:GetDeadline())
+
+    assert.is_true(timer:Start())
+    assert.is_true(timer:Cancel())
+  end)
+
+  it("leaves a started timer untouched when the host constructor raises", function()
+    local TimerKit = TestEnv.NewPackage()
+    local scope = TimerKit:CreateScope()
+    TestEnv.FailNextCreate("constructor failed")
+
+    local ok, value = pcall(function()
+      scope:After(1, function() end)
+    end)
+    assert.is_false(ok)
+    assert.are.equal("constructor failed", value)
+    assert.are.equal(0, scope:GetActiveCount())
+
+    local completed = scope:After(1, function() end)
+    TestEnv.FireNative(1)
+    assert.are.equal("completed", completed:GetState())
+    TestEnv.FailNextCreate("restart failed")
+    ok, value = pcall(function()
+      completed:Restart()
+    end)
+    assert.is_false(ok)
+    assert.are.equal("restart failed", value)
+    assert.are.equal("completed", completed:GetState())
+    assert.are.equal(0, scope:GetActiveCount())
   end)
 
   it("keeps logical cancellation final if native cancellation errors", function()

@@ -190,7 +190,7 @@ scope:After(1, "nope")
 This holds for every public entry point — package-level and scope-level
 constructors, option-table fields, closed-scope rejections, and methods invoked
 on something that is not a TimerKit timer or scope. Host failures reported
-through TimerKit, such as an invalid native timer handle, use the same position.
+through TimerKit, such as a missing native timer handle, use the same position.
 
 Errors that are re-raised after best-effort cleanup — the first native
 cancellation error from `CancelAll()` or `Close()` — deliberately keep the
@@ -335,7 +335,7 @@ message in the first table is raised at the caller's line (see
 | `TimerKit:ForAddon addonName must be a non-empty string` | `ForAddon` |
 | `TimerKit:CloseAddonScopes addonName must be a non-empty string` | `CloseAddonScopes` |
 | `TimerKit:CloseAddonScopes must be called on the TimerKit facade; use TimerKit:CloseAddonScopes(addonName)` | `CloseAddonScopes` with another receiver |
-| `MoltenCodes TimerKit host returned an invalid native timer handle` | a start whose `C_Timer` constructor returned something without a `Cancel` method; the start is rolled back |
+| `MoltenCodes TimerKit host returned an invalid native timer handle` | a start whose `C_Timer` constructor returned `nil` or `false` instead of a handle; the timer is left in the state it had |
 
 A secret value (Retail 12.0.0 and later) raises when it is compared, so the
 secret refusals above run before any other check of that argument. An absent
@@ -347,8 +347,8 @@ Host and internal failures carry no added position:
 
 | Message | Raised by |
 |---|---|
-| the host's own error object, unchanged | a start whose `C_Timer` constructor raised (the start is rolled back), and the first native `Cancel` failure of `Cancel()`, `Restart()`, `CancelAll()`, `Close()` and `CloseAddonScopes` |
-| `MoltenCodes TimerKit native timer handle is invalid` | a cancellation whose stored host handle lost its `Cancel` method after the start checked it |
+| the host's own error object, unchanged | a start whose `C_Timer` constructor raised (the timer is left in the state it had), and the first native `Cancel` failure of `Cancel()`, `Restart()`, `CancelAll()`, `Close()` and `CloseAddonScopes` |
+| Lua's own error for calling a missing method, such as `attempt to call method 'Cancel' (a nil value)` | a cancellation of a timer whose host handle has no `Cancel` method; TimerKit trusts the handle (see [Native boundary](#native-boundary)), and the timer is already logically cancelled when it raises |
 | `MoltenCodes TimerKit runtime dispatch is corrupted` | a native callback that finds the shared dispatch table damaged |
 
 Loading raises `MoltenCodes TimerKit requires Registry API 2 to be loaded
@@ -365,8 +365,11 @@ first`, `MoltenCodes TimerKit requires a valid Registry API 2 facade`,
   one-shot timer and 704 for a repeating one on a 64-bit Lua 5.1). Every start
   (`Start`, `Restart`, `After`, `Every`) allocates one callback closure (about 140
   bytes) and whatever the host allocates for its native handle, and reads
-  `GetTimePreciseSec` once when the client has it.
-- `Cancel()` allocates nothing beyond what the host's `Cancel` does.
+  `GetTimePreciseSec` once when the client has it. The host constructor is
+  called directly, not under `pcall`, and the handle it returns is not
+  inspected.
+- `Cancel()` allocates nothing beyond what the host's `Cancel` does, and calls
+  it directly on the stored handle.
 - A delivered repeating tick allocates nothing and reads the clock once; a
   delivered one-shot allocates nothing.
 - `CancelAll()`, `Close()` and `CloseAddonScopes` allocate one snapshot array
@@ -419,6 +422,18 @@ GetTimePreciseSec()   -- optional; deadlines only, never used to schedule
 ```
 
 It does not inspect native timer userdata or depend on undocumented implementation fields. This is important because modern WoW timer handles are native FunctionContainer userdata.
+
+### Trusting the host handle
+
+Since revision 11 (0.7.0) TimerKit trusts the handle `C_Timer.NewTimer` and `C_Timer.NewTicker` return. A start refuses only a missing handle (`nil` or `false`, which the stale-callback check could not tell from "not started yet"); it no longer reads the handle's `Cancel` field under `pcall` to check that it is a function, and a cancellation calls `handle:Cancel()` directly instead of reading `Cancel` again, protected, first. Every supported client returns a FunctionContainer with `Cancel` from both constructors. The checks cost about 110 ns per start and 60 ns per cancellation, on paths every timer takes.
+
+What a host that breaks this promise now sees:
+
+- a start whose constructor returns a handle without `Cancel` succeeds, and the timer runs;
+- cancelling it (`Cancel()`, `Restart()`, `CancelAll()`, `Close()`, `CloseAddonScopes`) raises Lua's own error for the missing method instead of `MoltenCodes TimerKit native timer handle is invalid`. The timer is logically cancelled before the call, so its callback still never runs, and the bulk operations still cancel every timer and re-raise the first error afterwards;
+- a constructor that raises leaves the timer in the state it had, as before; TimerKit now asks the host before it marks the timer running, so there is nothing to roll back.
+
+Revision 10 and older raised `MoltenCodes TimerKit host returned an invalid native timer handle` at the start for a handle without `Cancel`, and `MoltenCodes TimerKit native timer handle is invalid` at a cancellation whose handle had lost it.
 
 LifecycleKit API 1 and EventKit API 1 are optional. TimerKit finds them through `Registry:Find` (an older Registry's `Get` is the equivalent fallback) only inside `ForAddon`, to arrange the logout closing described under [At logout](#at-logout); nothing else reads them.
 

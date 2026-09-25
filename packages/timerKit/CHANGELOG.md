@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.7.0 — 2026-09-25
+
+- Contract change, approved by the owner: TimerKit trusts the handle `C_Timer.NewTimer` and `C_Timer.NewTicker` return. A start no longer reads the handle's `Cancel` field under `pcall` to check that it is a function, and a cancellation no longer reads it again, protected, before calling it: it calls `handle:Cancel()` directly. A start still refuses a missing handle (`nil` or `false`) with `MoltenCodes TimerKit host returned an invalid native timer handle`, because the stale-callback check could not tell it from "not started yet". What a host that breaks the promise now sees is documented under "Trusting the host handle" in `docs/API.md`: a handle without `Cancel` starts, and cancelling it raises Lua's own missing-method error after the logical cancellation, instead of `MoltenCodes TimerKit native timer handle is invalid`; every other error keeps its message and position. Every supported client returns a FunctionContainer with `Cancel` from both constructors.
+- Performance. Measured with the host benchmark (`python3 -m tooling.bench.run --workload timers --rounds 3`, before and after this change, median ns per operation with AceTimer-3.0 minor 17 measured in the same run; other agents' benchmarks and specs ran on the machine at the same time, load average about 2.5 before and 3 after, so compare the ratios and the allocation, which is deterministic):
+
+  | Case | Before | After | AceTimer (before / after) | Ratio before → after | Allocated before → after (AceTimer) |
+  |---|---:|---:|---:|---|---|
+  | `oneshot-create-cancel` | 1,067 | 834 | 344 / 352 | 3.10× → 2.37× | 752 → 752 B (512 B) |
+  | `oneshot-create-fire` | 1,055 | 891 | 464 / 474 | 2.27× → 1.88× | 752 → 752 B (512 B) |
+  | `repeat-tick` | 266 | 263 | 236 / 242 | 1.12× → 1.09× | 0 → 0 B (0 B) |
+
+  224 B and about 225 ns of every one-shot row is the benchmark's simulated `C_Timer` handle (its `host-stub` row).
+- How. Besides the two checks, a start asks the host before it marks the timer running, so a constructor that raises leaves the timer as it was without a `pcall` and a rollback (the host's error object still reaches the caller unchanged, and a callback the host delivers from inside its constructor is still ignored); the active-set bookkeeping and the deadline read are inline on the start and cancel paths, and `Cancel` checks its receiver inline.
+- Not done, with the reason. A lazy deadline cannot keep the documented behaviour: `GetDeadline` reports `GetTimePreciseSec()` at the start plus the delay, so the clock has to be read when the timer starts whatever is stored. Dropping the per-start closure would need `C_Timer` to pass the handle it returned to the callback; the metadata (`packages/apiKit/metadata`, Retail, Classic Era and Classic MoP) types the callback argument as `TimerCallback` and the returned object as `TickerCallback` and states no identity between them, so it is not provable on every promised flavour and the closure stays.
+- Implementation revision 11. No state and no timer layout changed: a timer revision 10 started keeps its handle and callback, fires through the new code and is cancelled by calling its handle's `Cancel`. `docs/API.md` ("Errors", "Cost", "Trusting the host handle") and `docs/INTERNALS.md` ("Order of a start") describe the change.
+- Specs: `Errors_spec.lua` pins the new contract (a missing handle refused with the timer left as it was, a handle without `Cancel` accepted and raising only at cancellation after the logical cancel, a raising constructor leaving a new and a completed timer untouched); `Bootstrap_spec.lua` cancels, fires and restarts one-shot timers the previous revision started. 104 → 107 specs.
+
 ## 0.6.4 — 2026-09-25
 
 - Performance. A one-shot start costs less time and less memory, measured with the host benchmark (`python3 -m tooling.bench.run --workload timers --workload codec --rounds 3`, before and after this change, median ns per operation with AceTimer-3.0 minor 17 measured in the same run; other benchmarks ran on the machine at the same time, load average about 6 before and 2.5 after, so compare the ratios and the allocation, which is deterministic):

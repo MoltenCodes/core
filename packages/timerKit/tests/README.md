@@ -31,7 +31,7 @@ Spec files:
 | `Scope_spec.lua` | active tracking, bulk cancel, terminal close, package-level convenience recovery |
 | `LogoutCoverage_spec.lua` | the four logout routes, re-examination, subscription release on close, carrying routes across an upgrade |
 | `AddonScopes_spec.lua` | canonical per-addon scopes, `CloseAddonScopes`, terminal closure, unknown addons, facade receiver, manual scopes |
-| `Errors_spec.lua` | definition validation, non-finite delays, native creation and cancellation failures |
+| `Errors_spec.lua` | definition validation, non-finite delays, native creation and cancellation failures, the trusted host handle (a missing handle refused, one without `Cancel` raising only when cancelled) |
 | `ErrorLevels_spec.lua` | every argument failure at the caller's line |
 | `UserData_spec.lua` | opaque per-timer user data |
 | `Remaining_spec.lua` | `GetRemaining`/`GetDeadline` in every state, restarts, late hosts, rolled-back starts |

@@ -36,7 +36,7 @@
 
 local PACKAGE_NAME = "timerKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 10
+local IMPLEMENTATION_REVISION = 11
 local REQUIRED_REGISTRY_API = 2
 local STATE_SCHEMA = 1
 
@@ -599,44 +599,6 @@ local function deadlineAfter(delay)
   return nativeGetTimePreciseSec() + delay
 end
 
----Read the `Cancel` field of a host handle. Kept at file level so the
----protected read in `getNativeCancel` allocates no closure per start or cancel.
----@param native table|userdata
----@return any cancel
-local function readNativeCancel(native)
-  return native.Cancel
-end
-
----Return the host handle's `Cancel` method, or `nil` when it has none.
----
----The read is protected because indexing a userdata the host does not expect
----to be indexed raises rather than returning `nil`.
----@param native any handle returned by `C_Timer.NewTimer`/`NewTicker`
----@return fun(native: any)|nil
-local function getNativeCancel(native)
-  local nativeType = type(native)
-  if nativeType ~= "table" and nativeType ~= "userdata" then
-    return nil
-  end
-
-  local ok, cancel = pcall(readNativeCancel, native)
-  if not ok or type(cancel) ~= "function" then
-    return nil
-  end
-  return cancel
-end
-
----Record `timer` as running inside `scope`.
----@param scope TimerKit.ScopeRecord
----@param timer TimerKit.TimerRecord
-local function attachActive(scope, timer)
-  local active = scope._active
-  if active[timer] ~= true then
-    active[timer] = true
-    scope._activeCount = scope._activeCount + 1
-  end
-end
-
 ---Record `timer` as no longer running inside `scope`.
 ---@param scope TimerKit.ScopeRecord
 ---@param timer TimerKit.TimerRecord
@@ -646,23 +608,6 @@ local function detachActive(scope, timer)
     active[timer] = nil
     scope._activeCount = scope._activeCount - 1
   end
-end
-
----Cancel one host timer handle, failing loudly when it is unusable.
----
----`Cancel` is read again rather than trusted from the start: the handle may
----have lost it since. A running timer's handle is a table or userdata, which
----the start checked, so only the protected read remains.
----@param native any|false the stored host handle; `false` or `nil` when none
-local function cancelNative(native)
-  if not native then
-    return
-  end
-  local ok, cancel = pcall(readNativeCancel, native)
-  if not ok or type(cancel) ~= "function" then
-    error("MoltenCodes TimerKit native timer handle is invalid", 0)
-  end
-  cancel(native)
 end
 
 ---Cancel `timer` logically, then ask the host to cancel its native handle.
@@ -683,9 +628,21 @@ local function cancelTimer(timer)
   timer._native = false
   timer._state = "cancelled"
   timer._deadline = false
-  detachActive(timer._scope, timer)
+  -- `detachActive`, inline: this is the path every `Cancel` takes.
+  local scope = timer._scope
+  local active = scope._active
+  if active[timer] == true then
+    active[timer] = nil
+    scope._activeCount = scope._activeCount - 1
+  end
 
-  cancelNative(native)
+  -- The handle is trusted to have `Cancel` (docs/API.md, "Native
+  -- boundary"): a handle without one raises here, after the logical
+  -- cancellation above is complete. `false` is a timer an older revision
+  -- left without a handle.
+  if native then
+    native:Cancel()
+  end
   return true
 end
 
@@ -753,32 +710,27 @@ local function dispatchFire(timer, native)
   return fire(timer, native)
 end
 
----Undo the bookkeeping of a start whose host call failed.
----@param timer TimerKit.TimerRecord
----@param previousState TimerKit.TimerState
-local function rollbackStart(timer, previousState)
-  timer._native = false
-  timer._state = previousState
-  timer._deadline = false
-  detachActive(timer._scope, timer)
-end
-
 ---Bind a fresh host callback to `timer` and ask the host for its handle.
 ---
 ---The caller has checked that the timer is not running and its scope is open,
 ---and made older revisions' callbacks stale; `level` identifies the public
----caller so an invalid host handle is reported at its line.
+---caller so a missing host handle is reported at its line.
+---
+---The host is asked first and the timer marked running only once it has
+---answered, so a constructor that raises leaves the timer exactly as it was
+---and its error object reaches the caller unchanged, with no `pcall` on the
+---start path. The handle is trusted: TimerKit does not check that it has a
+---`Cancel` method (docs/API.md, "Native boundary"). Only a missing handle is
+---refused, because the stale-callback check compares `_native` with the
+---handle the callback captured, and a callback created before the host
+---returned still holds `nil`.
 ---@param timer TimerKit.TimerRecord
 ---@param scope TimerKit.ScopeRecord the timer's scope
----@param previousState TimerKit.TimerState the state a failed start restores
 ---@param level integer stack level the failure is reported at
-local function armTimer(timer, scope, previousState, level)
-  timer._state = "running"
-  attachActive(scope, timer)
-
+local function armTimer(timer, scope, level)
   -- The callback's only per-start state is the timer and the handle, which is
-  -- assigned once the host returns it: until then `native` is `nil`, which no
-  -- `_native` ever equals, so a host that called back from inside the
+  -- assigned once the host returns it: until then `native` is `nil` and the
+  -- timer is not running, so a host that called back from inside the
   -- constructor would be ignored rather than fire a half-started timer.
   local native
   local callback = function()
@@ -787,20 +739,23 @@ local function armTimer(timer, scope, previousState, level)
 
   local delay = timer._delay
   local constructor = timer._repeating == true and nativeNewTicker or nativeNewTimer
-  local ok, handle = pcall(constructor, delay, callback)
-  if not ok then
-    rollbackStart(timer, previousState)
-    error(handle, 0)
-  end
-
-  if getNativeCancel(handle) == nil then
-    rollbackStart(timer, previousState)
+  local handle = constructor(delay, callback)
+  if not handle then
     error("MoltenCodes TimerKit host returned an invalid native timer handle", level)
   end
 
   native = handle
   timer._native = handle
-  timer._deadline = deadlineAfter(delay)
+  timer._state = "running"
+  -- Record the timer as running in its scope. Inline: every start takes this path.
+  local active = scope._active
+  if active[timer] ~= true then
+    active[timer] = true
+    scope._activeCount = scope._activeCount + 1
+  end
+  if nativeGetTimePreciseSec ~= nil then
+    timer._deadline = nativeGetTimePreciseSec() + delay
+  end
 end
 
 -- The caller has already validated `timer`; `level` identifies that caller so a
@@ -831,7 +786,7 @@ local function startTimer(timer, methodName, level)
   end
   timer._native = false
 
-  armTimer(timer, scope, previousState, level + 1)
+  armTimer(timer, scope, level + 1)
   return true
 end
 
@@ -935,7 +890,7 @@ local function startTimerInScope(scope, delay, callback, repeating, methodName, 
   local timer = constructTimer(scope, delay, callback, repeating)
   -- A timer built a line above is idle, holds no handle and has no older
   -- revision's callbacks, so it goes straight to the host.
-  armTimer(timer, scope, "idle", level + 1)
+  armTimer(timer, scope, level + 1)
   return timer
 end
 
@@ -1316,7 +1271,11 @@ end
 ---@param self TimerKit.TimerRecord
 ---@return boolean cancelled `false` when the timer was not running.
 local function timerCancel(self)
-  validateTimer(self, "TimerKit.Timer:Cancel", 3)
+  -- The receiver check of `validateTimer`, inline: `Cancel` is the one timer
+  -- method on the start-and-cancel path.
+  if type(self) ~= "table" or getmetatable(self) ~= TIMER_METATABLE then
+    error("TimerKit.Timer:Cancel must be called on a TimerKit timer", 2)
+  end
   return cancelTimer(self)
 end
 
