@@ -290,7 +290,7 @@ report = {
 | `uiType` | `"dialog"` | `"dialog"`, `"dropdown"` or `"cmd"`: passed to a function `source` and set as `info.uiType`; also selects which per-interface flags fold into `hidden` and `inline` (section 6.2). |
 | `uiName` | `"BridgeKit-1"` | `info.uiName`. Must match Ace's own check `[A-Za-z]%-[0-9]` (`AceConfigRegistry-3.0.lua:307`). |
 | `bind` | none | `{ [optionsPath] = "<scope>.<key>..." }`: that option is bound to the database instead of calling its Ace `get`/`set`; the report notes it (`boundToDatabase`). Paths are the converted ones (after renaming). |
-| `replace` | none | `{ [optionsPath] = optionTable }`: that option or group is replaced by the given OptionsKit option, used as it is. The use: `replace = { profiles = OptionsKit:ProfileOptions(db) }` in place of an AceDBOptions-3.0 group. |
+| `replace` | none | `{ [optionsPath] = optionTable }`: that option or group is replaced by the given OptionsKit option, used as it is. The use: `replace = { profiles = OptionsKit:ProfileOptions(db) }` in place of an AceDBOptions-3.0 group. `ProfileOptions` returns one cached group per database and options (OptionsKit revision 8), as AceDBOptions keeps one group per database, and `Define` refuses a profile group another defined tree holds, so the converted tree must be the only defined tree holding that group (or pass other options, such as another `order`, to get a group of its own). |
 | `strict` | `false` | Raise at the caller, after converting, when the report holds any `dropped`, `changed` or `unsupported` entry: `BridgeKit:ConvertAceConfig strict: 3 fields changed or dropped; first: general.scale step (stepNotEnforced)`. |
 | `maxOptions` | 1024, OptionsKit's `MAX_OPTIONS` | The most options converted; one more raises at the caller, naming the limit. `BridgeKit.UNBOUNDED` accepted. |
 | `maxDepth` | `8` | The most keys in an option path, 1 to 32, as OptionsKit's `Define`; deeper raises at the caller. It also stops a cyclic table. |
@@ -518,7 +518,8 @@ package's `API.md`.
   `rendering:Refresh()` (see `MIGRATING_FROM_ACE3.md`).
 - It does not convert an AceDBOptions-3.0 group. Such a group calls AceDB
   methods; after an import the addon passes `replace = { profiles =
-  OptionsKit:ProfileOptions(db) }`.
+  OptionsKit:ProfileOptions(db) }`, the database's one cached profile group,
+  which one defined tree holds at a time (see the `replace` option).
 
 ## 7. AceDB importer
 

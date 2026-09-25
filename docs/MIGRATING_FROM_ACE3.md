@@ -624,6 +624,11 @@ end)
   first without raising.
 - **Views are not plain tables.** `pairs(db.profile)` sees nothing; use
   `db:Pairs(db.profile)`.
+- **Views hold their saved tables.** SettingsKit views keep a reference to
+  the saved tables they read; if you edit the saved variable directly after
+  `Open`, call `db:Resync()`. For hot loops, `db:Getter("profile", key)`
+  replaces repeated `db.profile.key` reads: it returns a function that answers
+  what the view would, defaults included, and follows `SetProfile`.
 - **Versioned data.** `Open(name, schema, { version = 2, migrations = { [2] =
   function(raw) end } })` runs each migration once, transactionally, and a
   saved table written by a newer version of the addon opens read-only.
@@ -658,6 +663,11 @@ local tree = OptionsKit:Define(ADDON_NAME, {
 
 - Place the returned group in `args` **as it is**: `Define` recognises the
   table and connects it to the database's profile signals.
+- `ProfileOptions` returns one cached group per database and options, like
+  AceDBOptions' one group per database: later calls with the same database
+  and options return the same table. One group can sit in one defined tree
+  at a time; two trees that each show profile options at once need two
+  option sets (for example another `order`) or two databases.
 - Current profile, new, copy, reset and delete, with confirmations, and a
   `localize` option for every string.
 
