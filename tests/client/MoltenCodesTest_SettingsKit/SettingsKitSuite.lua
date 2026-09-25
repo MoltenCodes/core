@@ -598,6 +598,11 @@ local function restoreDatabases()
   removeScopeField("faction", plainName((callHost("UnitFactionGroup", "player"))))
 
   rawset(rawTableField(readHost(CHARACTER_DB_NAME), "global") or {}, "probe", nil)
+  -- The cleanup edited both saved tables directly and removed scope entries
+  -- the views read, so the views resolve their tables again (SettingsKit
+  -- revision 7 caches them); a later run in this session writes through them.
+  db:Resync()
+  openedDatabases.character:Resync()
 end
 
 ---The After hook of every suite: disconnect, remove scratch globals, restore.
@@ -730,7 +735,7 @@ end
 local facade = newSuite("facade")
 
 facade:Test(
-  "Registry:Get('settingsKit', 1) is the SettingsKit facade with API 1, Open, SetLimits, GetLimits, UNBOUNDED, DEFAULT_PROFILE 'Default', MAX_PROFILE_NAME_LENGTH 64 and the Database prototype's seventeen methods",
+  "Registry:Get('settingsKit', 1) is the SettingsKit facade with API 1, Open, SetLimits, GetLimits, UNBOUNDED, DEFAULT_PROFILE 'Default', MAX_PROFILE_NAME_LENGTH 64 and the Database prototype's nineteen methods",
   function(ctx)
     ctx:Expect(type(SettingsKit)):ToBe("table")
     ctx:Expect(rawget(SettingsKit, "API")):ToBe(SETTINGS_KIT_API)
@@ -760,6 +765,8 @@ facade:Test(
       "Pairs",
       "Validate",
       "IsReadOnly",
+      "Resync",
+      "Getter",
     }) do
       ctx:Expect(type(rawget(prototype, methodName))):ToBe("function")
     end

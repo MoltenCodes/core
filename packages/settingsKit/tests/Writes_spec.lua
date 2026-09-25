@@ -288,6 +288,8 @@ describe("SettingsKit and secret values", function()
     local secret = TestEnv.NewSecret()
     local saved = TestEnv.GetGlobal("MyAddonDB")
     saved.profiles.Default.name = secret
+    -- A direct edit of the saved variable after Open: the documented resync.
+    db:Resync()
 
     assert.is_true(rawequal(secret, db.profile.name))
     local seen = nil

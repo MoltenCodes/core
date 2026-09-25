@@ -258,7 +258,7 @@ describe("SettingsKit bootstrap", function()
     assert.are.equal(newer, upgraded:Open("NewerDB"))
     assert.are.equal(profile, newer.profile)
     for _, db in ipairs({ current, newer }) do
-      assert.are.equal(3, rawget(db, "_layout"))
+      assert.are.equal(4, rawget(db, "_layout"))
       assert.is_false(db:IsReadOnly())
     end
     assert.is_false(rawget(current, "_newerVersion"))
@@ -334,11 +334,14 @@ describe("SettingsKit bootstrap", function()
     -- purpose: revision 6 must derive it, never read it.
     for _, node in pairs(views) do
       local root = node.root
+      -- Revision 5 named the kind of view; revision 7 derives it from `kinds`.
+      node.kind = node.kinds ~= nil and "record" or "map"
       node.layout = 1
       node.db, node.scope = root.db, root.scope
       node.displayPath = "legacy"
       node.sectionName = root.scope.sectionName
-      node.dead = node.dead or false
+      node.dead = node.generation == false
+      node.generation, node.cache = nil, nil
       node.sectionKey = node.sectionKey or false
       node.probeSet, node.probeKey = false, false
       if node.kind == "map" then
@@ -379,13 +382,13 @@ describe("SettingsKit bootstrap", function()
     assert.is_true(upgraded.REVISION > 5)
     assert.are.equal(state, rawget(upgraded, "_state"))
     assert.are.equal(db, upgraded:Open("MyAddonDB"))
-    assert.are.equal(3, rawget(db, "_layout"))
+    assert.are.equal(4, rawget(db, "_layout"))
     assert.is_nil(rawget(db, "_unavailable"))
     assert.are.equal(profile, db.profile)
     assert.are.equal(frame, profile.frame)
     assert.are.equal(aura, profile.auras[5])
     for _, node in pairs(views) do
-      assert.are.equal(2, node.layout)
+      assert.are.equal(3, node.layout)
       assert.is_nil(node.displayPath)
       assert.is_nil(node.probeSet)
       assert.is_nil(node.entries)

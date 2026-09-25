@@ -118,6 +118,58 @@ describe("SettingsKit allocation #allocation", function()
     assert.are.equal(ITERATIONS, sum)
   end)
 
+  it("allocates nothing for reads that resolve again after Resync or a table write", function()
+    local profile = db.profile
+    local frame = profile.frame
+    local aura = profile.auras[7]
+    profile.scale = 1.5
+    frame.x = 2
+    local sum = 0
+
+    local allocated = TestEnv.AllocatedKilobytes(function()
+      for index = 1, ITERATIONS do
+        if index % 2 == 0 then
+          db:Resync()
+        else
+          profile.auras[7] = nil
+        end
+        sum = sum + profile.scale + frame.x
+        if aura.shown then
+          sum = sum + 1
+        end
+      end
+    end)
+    assert.is_true(
+      allocated < THRESHOLD_KILOBYTES,
+      "resolving read allocated " .. allocated .. " KiB"
+    )
+    assert.are.equal(ITERATIONS * 4.5, sum)
+  end)
+
+  it("allocates nothing for getter calls, cached or after a mutation", function()
+    local profile = db.profile
+    profile.scale = 1.5
+    local scale = db:Getter("profile", "scale")
+    local x = db:Getter(profile.frame, "x")
+    local shown = db:Getter(profile.auras[7], "shown")
+    local frame = db:Getter("profile", "frame")
+    local sum = 0
+
+    local allocated = TestEnv.AllocatedKilobytes(function()
+      for index = 1, ITERATIONS do
+        if index % 100 == 0 then
+          db:Resync()
+        end
+        sum = sum + scale() + x() + frame().x
+        if shown() then
+          sum = sum + 1
+        end
+      end
+    end)
+    assert.is_true(allocated < THRESHOLD_KILOBYTES, "getter allocated " .. allocated .. " KiB")
+    assert.are.equal(ITERATIONS * 2.5, sum)
+  end)
+
   it("allocates nothing for a validated write of an existing key", function()
     local profile = db.profile
     local frame = profile.frame

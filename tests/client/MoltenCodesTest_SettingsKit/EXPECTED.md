@@ -72,7 +72,7 @@ moment:
 
 ```text
 MoltenCodes Test: running settingsKit: 9 suites. Results follow when every test has finished.
-MoltenCodes Test: PASS settingsKit.facade: Registry:Get('settingsKit', 1) is the SettingsKit facade with API 1, Open, SetLimits, GetLimits, UNBOUNDED, DEFAULT_PROFILE 'Default', MAX_PROFILE_NAME_LENGTH 64 and the Database prototype's seventeen methods
+MoltenCodes Test: PASS settingsKit.facade: Registry:Get('settingsKit', 1) is the SettingsKit facade with API 1, Open, SetLimits, GetLimits, UNBOUNDED, DEFAULT_PROFILE 'Default', MAX_PROFILE_NAME_LENGTH 64 and the Database prototype's nineteen methods
 MoltenCodes Test: PASS settingsKit.facade: the installed SettingsKit carries the revision of the committed manifest
 MoltenCodes Test: PASS settingsKit.facade: GetLimits answers a fresh table holding the session's shared limits at their defaults: maxProfileNameLength 64 and pathKeyLimit 32
 MoltenCodes Test: PASS settingsKit.savedVariables: Open over the two saved variables of the toc, after the loaded phase, uses each global as the raw table, stamps its version, creates every layout section, and a second Open returns the same database
@@ -150,7 +150,7 @@ The client may order the keys differently.
 
 ```text
 MoltenCodes Test: running settingsKit: 9 suites. Results follow when every test has finished.
-MoltenCodes Test: PASS settingsKit.facade: Registry:Get('settingsKit', 1) is the SettingsKit facade with API 1, Open, SetLimits, GetLimits, UNBOUNDED, DEFAULT_PROFILE 'Default', MAX_PROFILE_NAME_LENGTH 64 and the Database prototype's seventeen methods
+MoltenCodes Test: PASS settingsKit.facade: Registry:Get('settingsKit', 1) is the SettingsKit facade with API 1, Open, SetLimits, GetLimits, UNBOUNDED, DEFAULT_PROFILE 'Default', MAX_PROFILE_NAME_LENGTH 64 and the Database prototype's nineteen methods
 MoltenCodes Test: PASS settingsKit.facade: the installed SettingsKit carries the revision of the committed manifest
 MoltenCodes Test: PASS settingsKit.facade: GetLimits answers a fresh table holding the session's shared limits at their defaults: maxProfileNameLength 64 and pathKeyLimit 32
 MoltenCodes Test: PASS settingsKit.savedVariables: Open over the two saved variables of the toc, after the loaded phase, uses each global as the raw table, stamps its version, creates every layout section, and a second Open returns the same database
@@ -318,8 +318,8 @@ and in every case, since the six secrets tests skip there either way.
 
 | Test | Proves in the real client |
 |---|---|
-| `Registry:Get('settingsKit', 1) is the SettingsKit facade ...` | The facade the client loaded is API 1 with `Open`, `SetLimits`, `GetLimits`, `UNBOUNDED`, `DEFAULT_PROFILE` `"Default"`, `MAX_PROFILE_NAME_LENGTH` 64 and a `Database` prototype carrying all seventeen documented methods, `IsReadOnly` included. |
-| `the installed SettingsKit carries the revision ...` | Registry's selected revision and the facade's `REVISION` are both the committed manifest's (6), not an older or newer embedded copy. |
+| `Registry:Get('settingsKit', 1) is the SettingsKit facade ...` | The facade the client loaded is API 1 with `Open`, `SetLimits`, `GetLimits`, `UNBOUNDED`, `DEFAULT_PROFILE` `"Default"`, `MAX_PROFILE_NAME_LENGTH` 64 and a `Database` prototype carrying all nineteen documented methods, `IsReadOnly`, `Resync` and `Getter` included. |
+| `the installed SettingsKit carries the revision ...` | Registry's selected revision and the facade's `REVISION` are both the committed manifest's (7), not an older or newer embedded copy. |
 | `GetLimits answers a fresh table ...` | A new table per call holding `maxProfileNameLength` 64 and `pathKeyLimit` 32; a difference means another addon changed the shared limits. |
 | `Open over the two saved variables of the toc ...` | After the loaded phase, `Open` works on the tables the client restored (or creates them on a first install), stamps `version` 2 and 1, creates all eight layout sections, `GetSavedVariable` names each global, a second `Open` (with or without the schema) returns the same database, and views report `getmetatable` `"SettingsKit.View"`. The log says what the client restored at the loaded phase. |
 | `the current profile and the char scope are keyed '<name> - <realm>' ...` | With `defaultProfile = "char"`, the current profile is `UnitName("player") .. " - " .. GetRealmName()` from the live client, its table exists in the saved `profiles`, and a write through `db.char` lands in `char["<name> - <realm>"]`. The log gives the key. |

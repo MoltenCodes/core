@@ -1,5 +1,37 @@
 # Changelog
 
+## 0.3.0 — 2026-09-25
+
+A contract change inside API generation 1, approved by the owner, and a new opt-in read API, after the host benchmark against AceDB-3.0 (`docs/BENCHMARKS.md`).
+
+- Changed: **views hold their saved tables.** Each view caches the saved table it resolved, stamped with a per-database generation that every SettingsKit mutation able to change it bumps: a write storing, replacing or removing a table or creating the tables on its path, `SetProfile` to a new profile, `CopyProfile`, `ResetProfile`, `DeleteProfile`, `ResetDatabase`, `Compact` (and the logout compaction) and `Resync`. A scalar written over a scalar bumps nothing. Nothing SettingsKit does is ever answered from a stale table, through detached views and in read-only databases too. The consequence: a **direct edit of the saved variable after `Open`** that adds, replaces or removes a table (or sets a metatable) is no longer seen by views that already hold their tables until the addon calls `db:Resync()`; a scalar edited inside a table a view holds still shows at once. A saved table with a metatable is never cached and is read with `rawget`.
+- Added: `db:Resync()`: every view finds its saved table again on its next access. One field write; allowed on a read-only database.
+- Added: `db:Getter(source, key)`, for hot loops: a function returning exactly what `view[key]` returns, where `source` is a view (read for good) or a scope name (whose current view it follows, the new profile after `SetProfile`). It skips the metamethod dispatch, the per-call `issecretvalue` probe of the key (the key is probed, and a secret, `nil` or NaN key refused, when the getter is made) and, for a plain-valued field, the choice of how to answer; it keeps defaults, wildcard defaults, mutation tracking, detached views and read-only databases exactly as views do, and keeps working across an in-place upgrade. A call allocates nothing.
+- Reads through a cached table use plain indexing (a raw lookup, since a cached table has no metatable) instead of `rawget`.
+
+Measured with `python3 -m tooling.bench.run --workload settings --rounds 3`, host Lua 5.1 on a shared machine with other agents' benchmarks and suites running (load average about 2.5 in both runs), so compare the ratios and bytes:
+
+| Case | 0.2.1 (revision 6) | 0.3.0 (revision 7) |
+|---|---|---|
+| `read-default` | 213 ns, 56.7× AceDB | 115 ns, 29.0× AceDB |
+| `read-saved` | 191 ns, 55.7× AceDB | 109 ns, 30.7× AceDB |
+| `read-nested` | 454 ns, 68.7× AceDB | 232 ns, 34.3× AceDB |
+| `read-entry-default` | 758 ns, 70.0× AceDB | 449 ns, 41.0× AceDB |
+| `switch-profile` | 784 ns, 0.27× AceDB, 0 B | 731 ns, 0.24× AceDB, 0 B |
+| `write-scalar` (not compared) | 460 ns | 430 ns |
+| `write-nested` (not compared) | 1,020 ns | 965 ns |
+| `validate` (SettingsKit only) | 1,377 ns | 1,420 ns (noise) |
+| `open-empty` | 4.58× AceDB, 7,235 B | 4.62× AceDB, 7,875 B |
+| `open-populated` | 2.38× AceDB, 6,640 B | 2.52× AceDB, 7,280 B |
+| held per open database | 6,168 B | 6,808 B |
+
+Getters, measured with a standalone host Lua 5.1 script in the same sitting (the benchmark has no getter case yet): 48 ns for a getter bound to a view (`db.profile` or `db.profile.frame`), 55 ns for one following the `profile` scope, 25 ns for a field of an unsaved keyed-section entry, against 109 ns for `db.profile.scale` and 3 to 11 ns for AceDB's tables. The 640 bytes per database are the `_generation` field taking the database table of the benchmark (two scopes) past 16 fields.
+
+- Implementation revision 7: database layout 4 (`_generation`), node layout 3 (`cache`, `generation`; `kind`, `depth` and a root's `dead` are derived instead, so a node still fits 16 fields) and `dispatch.readView`. An in-place upgrade over revisions 1 to 6 gives every database a generation and every live view an empty cache, keeping detached views detached. API generation 1 is unchanged.
+- API.md: *Views hold their saved tables*, `db:Resync()`, `db:Getter(source, key)` (what it skips and what it still guarantees), the performance table, the deviation on resolution, the revision 7 refusals and upgrade. INTERNALS.md: databases, nodes, resolution (the mutations that bump and why), a read, getters, a write and the revision 7 upgrade. README: both additions.
+- Real-client suite `MoltenCodesTest_SettingsKit`: the facade test checks nineteen methods (`Resync`, `Getter`), the revision test expects 7, and the cleanup calls `Resync` after editing the saved tables directly; `EXPECTED.md` follows.
+- 228 specs (197 before): `Caching_spec.lua` (direct edits before and after `Resync`, a read-only resync, a saved table with a metatable, and a held view and its nested views across every mutation path: table writes, `nil` resets, keyed entries created, replaced and removed, a corrupted scalar replaced, a materialising read, `SetProfile`, `CopyProfile`, `ResetProfile`, `DeleteProfile`, `ResetDatabase`, `Compact`, the logout compaction and a migration; the upgrade over revision 6), `Getter_spec.lua` (every kind of field against the view's answer, mutations, scope and view getters across profile changes, detached views, read-only databases, `Resync`, the key probed once, refusals at the caller's line, an in-place upgrade), two allocation guards, and `Resync` in the one existing spec that edits the saved variable after `Open`.
+
 ## 0.2.1 — 2026-09-25
 
 Internal speed-ups after the host benchmark against AceDB-3.0 (`docs/BENCHMARKS.md`). No documented behaviour changes: every check, refusal, message, error level, default, signal and limit is as in 0.2.0.

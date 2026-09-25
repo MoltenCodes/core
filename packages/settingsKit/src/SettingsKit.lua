@@ -49,7 +49,7 @@
 
 local PACKAGE_NAME = "settingsKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 6
+local IMPLEMENTATION_REVISION = 7
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_SCHEMAKIT_API = 1
 local REQUIRED_SIGNALKIT_API = 1
@@ -66,9 +66,14 @@ local STATE_SCHEMA = 1
 -- and kept each node to at most 16 fields: `db`, `scope`, `dead` and
 -- `sectionKey` only on a scope root, no `displayPath`, `sectionName` or
 -- `probeSet`, and a keyed section's entry cache in `children`. Plan layout 2
--- (revision 6) added `ownKinds`, `fastChecks` and `defaultKind`.
-local DATABASE_SCHEMA = 3
-local NODE_SCHEMA = 2
+-- (revision 6) added `ownKinds`, `fastChecks` and `defaultKind`. Database
+-- layout 4 (revision 7) added `_generation`; node layout 3 (revision 7) added
+-- the resolved-table cache (`cache`, `generation`) and, to stay within 16
+-- fields, dropped `kind` (a record node is the one with `kinds`), `depth`
+-- (one more than the length of `pathKeys`) and the root's `dead` (a detached
+-- root's `generation` is `DETACHED`).
+local DATABASE_SCHEMA = 4
+local NODE_SCHEMA = 3
 local PLAN_SCHEMA = 2
 
 -- The profile every character shares unless the addon asks otherwise.
@@ -168,6 +173,8 @@ local DATABASE_METHODS = {
   "Pairs",
   "Validate",
   "IsReadOnly",
+  "Resync",
+  "Getter",
 }
 
 -- How a record view answers a read of one declared field, decided once per
@@ -198,6 +205,15 @@ local FAST_CHECK_FIELDS = {
   boolean = { kind = true, optional = true, default = true },
   enum = { kind = true, optional = true, default = true, values = true },
 }
+
+-- The `generation` of a node whose saved table was never resolved: no
+-- database generation is negative, so its first read resolves.
+local NEVER_RESOLVED = -1
+
+-- The `generation` of a detached scope root (`DeleteProfile`,
+-- `ResetDatabase`): it never equals a database generation, so the root never
+-- serves a cached table again, and it is how a root says it is detached.
+local DETACHED = false
 
 -- The `probeKey` of a view whose probe table holds nothing: a table no caller
 -- can ever write as a key, since it never leaves this file.
@@ -285,6 +301,8 @@ local WEAK_VALUES = { __mode = "v" }
 ---@field Validate fun(self: SettingsKit.Database, scope: SettingsKit.ScopeName, path: string|any[], value: any): boolean, string?
 ---@field Pairs fun(self: SettingsKit.Database, view: table): (fun(view: table, key: any): any, any), table, nil
 ---@field IsReadOnly fun(self: SettingsKit.Database): boolean
+---@field Resync fun(self: SettingsKit.Database)
+---@field Getter fun(self: SettingsKit.Database, source: SettingsKit.ScopeName|table, key: any): fun(): any
 
 ---The SettingsKit package facade published through Registry.
 ---@class SettingsKit
@@ -322,45 +340,50 @@ local WEAK_VALUES = { __mode = "v" }
 local rawget = rawget
 local type = type
 
--- The shared MoltenCodes namespace is the one documented global handoff point between independently embedded copies.
--- selene: allow(global_usage)
-local namespace = rawget(_G, "MoltenCodes")
-local generations = type(namespace) == "table" and rawget(namespace, "Registries") or nil
-
 -- Ask for Registry by generation and fall back to the alias. A future Registry
 -- API generation takes over `MoltenCodes.Registry`, so reading the alias first
 -- would hand this file a facade whose contract it was not written against.
-local Registry = type(generations) == "table" and rawget(generations, REQUIRED_REGISTRY_API) or nil
-if type(Registry) == "nil" and type(namespace) == "table" then
-  Registry = rawget(namespace, "Registry")
+-- The lookup's temporaries live in a block: Lua 5.1 allows the main chunk
+-- only 200 locals.
+local Registry
+do
+  -- The shared MoltenCodes namespace is the one documented global handoff point between independently embedded copies.
+  -- selene: allow(global_usage)
+  local namespace = rawget(_G, "MoltenCodes")
+  local generations = type(namespace) == "table" and rawget(namespace, "Registries") or nil
+  Registry = type(generations) == "table" and rawget(generations, REQUIRED_REGISTRY_API) or nil
+  if type(Registry) == "nil" and type(namespace) == "table" then
+    Registry = rawget(namespace, "Registry")
+  end
 end
 if type(Registry) ~= "table" or rawget(Registry, "API") ~= REQUIRED_REGISTRY_API then
   error("MoltenCodes SettingsKit requires Registry API 2 to be loaded first", 2)
 end
 
 local bootstrapPackage = rawget(Registry, "Bootstrap")
-local getPackage = rawget(Registry, "Get")
-if type(bootstrapPackage) ~= "function" or type(getPackage) ~= "function" then
+if type(bootstrapPackage) ~= "function" or type(rawget(Registry, "Get")) ~= "function" then
   error("MoltenCodes SettingsKit requires a valid Registry API 2 facade", 2)
 end
 
 -- SchemaKit compiles, checks and describes every scope schema.
-local SchemaKit = getPackage(Registry, "schemaKit", REQUIRED_SCHEMAKIT_API)
-local SchemaPrototype = type(SchemaKit) == "table" and rawget(SchemaKit, "Schema") or nil
-if
-  type(SchemaKit) ~= "table"
-  or rawget(SchemaKit, "API") ~= REQUIRED_SCHEMAKIT_API
-  or type(rawget(SchemaKit, "Seal")) ~= "function"
-  or type(rawget(SchemaKit, "MAX_DEPTH")) ~= "number"
-  or type(SchemaPrototype) ~= "table"
-  or type(rawget(SchemaPrototype, "Check")) ~= "function"
-  or type(rawget(SchemaPrototype, "Describe")) ~= "function"
-then
-  error("MoltenCodes SettingsKit requires SchemaKit API 1 to be loaded first", 2)
+local SchemaKit = rawget(Registry, "Get")(Registry, "schemaKit", REQUIRED_SCHEMAKIT_API)
+do
+  local SchemaPrototype = type(SchemaKit) == "table" and rawget(SchemaKit, "Schema") or nil
+  if
+    type(SchemaKit) ~= "table"
+    or rawget(SchemaKit, "API") ~= REQUIRED_SCHEMAKIT_API
+    or type(rawget(SchemaKit, "Seal")) ~= "function"
+    or type(rawget(SchemaKit, "MAX_DEPTH")) ~= "number"
+    or type(SchemaPrototype) ~= "table"
+    or type(rawget(SchemaPrototype, "Check")) ~= "function"
+    or type(rawget(SchemaPrototype, "Describe")) ~= "function"
+  then
+    error("MoltenCodes SettingsKit requires SchemaKit API 1 to be loaded first", 2)
+  end
 end
 
 -- SignalKit carries the change and profile signals.
-local SignalKit = getPackage(Registry, "signalKit", REQUIRED_SIGNALKIT_API)
+local SignalKit = rawget(Registry, "Get")(Registry, "signalKit", REQUIRED_SIGNALKIT_API)
 if
   type(SignalKit) ~= "table"
   or rawget(SignalKit, "API") ~= REQUIRED_SIGNALKIT_API
@@ -1435,53 +1458,93 @@ end
 -- `db.profile` and the other scopes are empty proxy tables. Lua 5.1 calls
 -- `__newindex` only for a key the table does not hold, so a proxy that stored
 -- anything would stop seeing writes to it; the saved data therefore lives
--- behind the proxy and is found again on every access. Each proxy has a private
--- node (in `state.views`) naming its parent node and its key in the parent, so
--- the table behind it is resolved from the saved variable downwards. That keeps
--- every view valid across `ResetProfile`, `CopyProfile` and `ResetDatabase`,
--- which change the saved tables in place or replace them.
+-- behind the proxy. Each proxy has a private node (in `state.views`) naming
+-- its parent node and its key in the parent, so the table behind it can be
+-- resolved from the saved variable downwards. That keeps every view valid
+-- across `ResetProfile`, `CopyProfile` and `ResetDatabase`, which change the
+-- saved tables in place or replace them.
+--
+-- Resolving on every access costs one lookup per nesting level, so each node
+-- caches the table it resolved (`cache`, `false` when there is none) with the
+-- database generation it resolved it in (`generation`). Every SettingsKit
+-- mutation that can change which table a view resolves to bumps the
+-- database's `_generation` (`bumpGeneration`), and a node whose generation
+-- differs resolves again. A direct edit of the saved variable after `Open` is
+-- not a SettingsKit mutation: views see it once the addon calls `db:Resync()`.
 --
 -- Reads and writes are the hot paths. They index SettingsKit's own tables
--- (nodes, plans, defaults, probes) directly, reach saved tables only with
--- `rawget` and `rawset`, and decide everything that depends only on the
--- schema when a plan or view is built (`kinds`, `fastChecks`, `defaultKind`),
--- so a read tests the type only of what it finds in the saved variable.
+-- (nodes, plans, defaults, probes) directly, reach saved tables with plain
+-- indexing only through a cached table (cached only when it has no
+-- metatable, so the lookup is a raw one) and with `rawget` and `rawset`
+-- otherwise, and decide everything that depends only on the schema when a
+-- plan or view is built (`kinds`, `fastChecks`, `defaultKind`), so a read
+-- tests the type only of what it finds in the saved variable.
 
----Resolve the saved table behind `node`, or `nil` when it does not exist yet.
+---Bump the generation of `db`: every node's cached table is stale from now
+---on and is resolved again on its next use. One field write, no allocation.
+---@param db table
+local function bumpGeneration(db)
+  db._generation = db._generation + 1
+end
+
+---Resolve the saved table behind `node` from the saved variable again, and
+---cache the answer for the database's current generation. Returns `nil` when
+---the table does not exist yet or the view is detached.
 ---
 ---Walks down from the saved variable: the root's section, its entry, then one
 ---key per nesting level below the root (`pathKeys`), stopping at anything
 ---missing or not a table. One `rawget` and one `type` per level, no
----allocation.
+---allocation. A table with a metatable (a direct edit) is returned but not
+---cached, so every access to it resolves again and uses `rawget`: plain
+---indexing through the cache is a raw lookup only because a cached table has
+---no metatable. A missing table is cached as `false`, except by a detached
+---root, which keeps its `DETACHED` generation.
+---@param node table
+---@return table|nil
+local function refreshContainer(node)
+  local root = node.root
+  local container = nil
+  if root.generation ~= DETACHED then
+    container = rawget(root.db._raw, root.scope.sectionName)
+    local sectionKey = root.sectionKey
+    if type(container) == "table" and sectionKey ~= false then
+      container = rawget(container, sectionKey)
+    end
+    local pathKeys = node.pathKeys
+    if pathKeys ~= nil then
+      for index = 1, #pathKeys do
+        if type(container) ~= "table" then
+          break
+        end
+        container = rawget(container, pathKeys[index])
+      end
+    end
+    if type(container) ~= "table" then
+      container = nil
+    end
+  end
+
+  if container == nil then
+    if node ~= root or root.generation ~= DETACHED then
+      node.cache = false
+      node.generation = root.db._generation
+    end
+  elseif type(getmetatable(container)) == "nil" then
+    node.cache = container
+    node.generation = root.db._generation
+  end
+  return container
+end
+
+---The saved table behind `node`, or `nil`: the cached one while the
+---database's generation is unchanged, else resolved again.
 ---@param node table
 ---@return table|nil
 local function resolveContainer(node)
-  local root = node.root
-  if root.dead then
-    return nil
+  if node.generation == node.root.db._generation then
+    return node.cache or nil
   end
-  local container = rawget(root.db._raw, root.scope.sectionName)
-  if type(container) ~= "table" then
-    return nil
-  end
-  local sectionKey = root.sectionKey
-  if sectionKey ~= false then
-    container = rawget(container, sectionKey)
-    if type(container) ~= "table" then
-      return nil
-    end
-  end
-  local pathKeys = node.pathKeys
-  if pathKeys == nil then
-    return container
-  end
-  for index = 1, #pathKeys do
-    container = rawget(container, pathKeys[index])
-    if type(container) ~= "table" then
-      return nil
-    end
-  end
-  return container
+  return refreshContainer(node)
 end
 
 ---Return the table at `container[key]`, creating it, or replacing a non-table
@@ -1499,11 +1562,18 @@ local function descendForWrite(container, key)
 end
 
 ---Resolve the saved table behind `node`, creating it and every missing table
----above it. A non-table value in the way is replaced.
+---above it. A non-table value in the way is replaced. The cached table is
+---used while it is current; otherwise the walk may create tables, which
+---changes what views resolve to, so it bumps the database's generation.
 ---@param node table
 ---@return table
 local function resolveForWrite(node)
+  local cached = resolveContainer(node)
+  if cached ~= nil then
+    return cached
+  end
   local root = node.root
+  bumpGeneration(root.db)
   local container = descendForWrite(root.db._raw, root.scope.sectionName)
   local sectionKey = root.sectionKey
   if sectionKey ~= false then
@@ -1629,17 +1699,18 @@ local function ensureDepthProbe(depth)
   depthProbes[depth] = { schema = SchemaKit:Seal(node), value = value }
 end
 
----Whether a probe chain of `depth` tables is within SchemaKit's `maxDepth`
----now. `depth` is `nil` for a scope root, whose chain is one table. `false`
----when no probe of that depth was built, so the caller runs the full check
----instead.
----@param depth integer|nil
+---Whether the probe chain of a view is within SchemaKit's `maxDepth` now.
+---The chain holds one table per view from the scope root down, one more than
+---the view's `pathKeys`; a scope root has none, and its chain of one table
+---always passes. `false` when no probe of that depth was built, so the
+---caller runs the full check instead.
+---@param pathKeys any[]|nil the view's `pathKeys`
 ---@return boolean
-local function depthAllows(depth)
-  if depth == nil then
+local function depthAllows(pathKeys)
+  if pathKeys == nil then
     return true
   end
-  local probe = depthProbes[depth]
+  local probe = depthProbes[#pathKeys + 1]
   if probe == nil then
     return false
   end
@@ -1657,7 +1728,7 @@ local function attachView(node)
   views[proxy] = node
 
   local plan = node.plan
-  if node.kind == KIND_RECORD then
+  if node.kinds ~= nil then
     local children = {}
     local fieldNames = plan.fieldNames --[[@as string[] ]]
     for index = 1, #fieldNames do
@@ -1680,9 +1751,10 @@ end
 ---field's view, or a keyed-section entry's.
 ---
 ---A node has at most 16 fields, so Lua gives it a 16-slot table rather than a
----32-slot one: what only a scope root needs (`db`, `scope`, `dead`,
----`sectionKey`) lives on the root, reached through `root`, and the message
----path is derived from `path` (`displayPathOf`).
+---32-slot one: what only a scope root needs (`db`, `scope`, `sectionKey`)
+---lives on the root, reached through `root`, the message path is derived
+---from `path` (`displayPathOf`), the kind of view from whether `kinds` is set
+---and the nesting depth from `pathKeys`.
 ---@param parent table
 ---@param key any
 ---@param plan SettingsKit.Plan
@@ -1690,39 +1762,36 @@ end
 newChildView = function(parent, key, plan)
   local defaults = viewDefaults(parent.defaults, key, plan)
   local path = joinRelative(parent.path, formatKey(key))
-  local depth = (parent.depth or 1) + 1
   local pathKeys = extendPathKeys(parent, key)
   local node
   if plan.proxied == KIND_RECORD then
-    ensureDepthProbe(depth)
+    ensureDepthProbe(#pathKeys + 1)
     node = {
       layout = NODE_SCHEMA,
-      kind = KIND_RECORD,
       plan = plan,
       parent = parent,
       key = key,
       root = parent.root,
       defaults = defaults,
       path = path,
-      depth = depth,
       pathKeys = pathKeys,
       verified = false,
       probe = {},
       probeKey = NO_PROBE_KEY,
       children = false,
       kinds = readKindsOf(plan, defaults),
+      cache = false,
+      generation = NEVER_RESOLVED,
     }
   else
     node = {
       layout = NODE_SCHEMA,
-      kind = KIND_MAP,
       plan = plan,
       parent = parent,
       key = key,
       root = parent.root,
       defaults = defaults,
       path = path,
-      depth = depth,
       pathKeys = pathKeys,
       verified = false,
       probe = {},
@@ -1730,6 +1799,8 @@ newChildView = function(parent, key, plan)
       children = false,
       ownEntries = ownEntriesOf(defaults),
       valuesProxied = plan.values.proxied ~= false,
+      cache = false,
+      generation = NEVER_RESOLVED,
     }
   end
   return attachView(node)
@@ -1744,7 +1815,6 @@ local function newRootView(db, scope, sectionKey)
   local plan = scope.plan
   local node = {
     layout = NODE_SCHEMA,
-    kind = KIND_RECORD,
     plan = plan,
     parent = false,
     root = false,
@@ -1758,9 +1828,10 @@ local function newRootView(db, scope, sectionKey)
     kinds = readKindsOf(plan, plan.ownDefaults),
     db = db,
     scope = scope,
-    -- Set by `DeleteProfile` and `ResetDatabase`: the view is detached.
-    dead = false,
     sectionKey = sectionKey,
+    cache = false,
+    -- `DETACHED` once `DeleteProfile` or `ResetDatabase` detached the view.
+    generation = NEVER_RESOLVED,
   }
   node.root = node
   return attachView(node)
@@ -1808,7 +1879,7 @@ local function wouldCreateEntry(node)
   local child = node
   local parent = child.parent
   while parent ~= false do
-    if parent.kind == KIND_MAP then
+    if parent.kinds == nil then
       local container = resolveContainer(parent)
       if container == nil or type(rawget(container, child.key)) ~= "table" then
         return true
@@ -1837,7 +1908,7 @@ end
 local function materialise(node, key, default)
   local copy = copyPlain(default)
   local root = node.root
-  if root.dead or root.db._readOnly == true or wouldCreateEntry(node) then
+  if root.generation == DETACHED or root.db._readOnly == true or wouldCreateEntry(node) then
     return copy
   end
   local container = resolveForWrite(node)
@@ -1861,31 +1932,29 @@ end
 
 ---Read `key` through a keyed-section view, falling back to the section's own
 ---default entries and then to its wildcard default. The key was asked about
----secrecy, and `container` is the resolved saved table (`nil` when absent).
+---secrecy, and `value` is what the saved table holds at `key` (`nil` when
+---the table or the key is absent).
 ---@param node table
 ---@param key any
----@param container table|nil
+---@param value any
 ---@return any
-local function readMap(node, key, container)
+local function readMap(node, key, value)
   -- Without this, `view[nil]` would answer with the wildcard default.
   if type(key) == "nil" then
     return nil
   end
 
   local valuesProxied = node.valuesProxied
-  if container ~= nil then
-    local value = rawget(container, key)
-    local valueType = type(value)
-    if valueType ~= "nil" then
-      if not valuesProxied then
-        return value
-      end
-      if valueType == "table" then
-        return entryView(node, key)
-      end
-      -- An entry declared as a record or keyed section but stored as a
-      -- scalar reads as absent, as in a record read.
+  local valueType = type(value)
+  if valueType ~= "nil" then
+    if not valuesProxied then
+      return value
     end
+    if valueType == "table" then
+      return entryView(node, key)
+    end
+    -- An entry declared as a record or keyed section but stored as a
+    -- scalar reads as absent, as in a record read.
   end
 
   local ownEntries = node.ownEntries
@@ -1922,9 +1991,11 @@ end
 ---The `__index` of every view: every read through a view is one call of it.
 ---
 ---The secret probe comes first: the key is compared and used to index below,
----and either raises on a secret. A keyed-section read continues in
----`readMap`; a record read, the common one, is answered here, so it costs
----this call and `resolveContainer` only. `kinds` answers everything that
+---and either raises on a secret. The saved value is read from the node's
+---cached table while the database's generation is unchanged, with plain
+---indexing (a cached table has no metatable), and after resolving the table
+---again otherwise. A keyed-section read continues in `readMap`; a record
+---read, the common one, is answered here. `kinds` answers everything that
 ---depends only on the schema: an undeclared key (`nil` there) returns what is
 ---saved or `nil`, a record or keyed-section field returns its child view, and
 ---a missing value its default.
@@ -1943,27 +2014,36 @@ local function viewIndex(proxy, key)
     raiseSecretRead(node)
   end
 
-  local container = resolveContainer(node)
-  if node.kind ~= KIND_RECORD then
-    return readMap(node, key, container)
+  local value = nil
+  if node.generation == node.root.db._generation then
+    local container = node.cache
+    if container then
+      value = container[key]
+    end
+  else
+    local container = refreshContainer(node)
+    if container ~= nil then
+      value = rawget(container, key)
+    end
   end
 
-  local kind = node.kinds[key]
-  if container ~= nil then
-    local value = rawget(container, key)
-    local valueType = type(value)
-    if valueType ~= "nil" then
-      if kind == nil or kind < READ_VIEW then
-        return value
-      end
-      if valueType == "table" then
-        return node.children[key]
-      end
-      -- A record or keyed section stored as something other than a table:
-      -- corrupted or hand-edited data. It reads as absent, so the view
-      -- below and its defaults stay usable, and the next write through that
-      -- view replaces it (`resolveForWrite`).
+  local kinds = node.kinds
+  if kinds == nil then
+    return readMap(node, key, value)
+  end
+  local kind = kinds[key]
+  local valueType = type(value)
+  if valueType ~= "nil" then
+    if kind == nil or kind < READ_VIEW then
+      return value
     end
+    if valueType == "table" then
+      return node.children[key]
+    end
+    -- A record or keyed section stored as something other than a table:
+    -- corrupted or hand-edited data. It reads as absent, so the view below
+    -- and its defaults stay usable, and the next write through that view
+    -- replaces it (`resolveForWrite`).
   end
 
   if kind == READ_DEFAULT then
@@ -2067,12 +2147,12 @@ end
 ---@param valueType string `type(value)`
 ---@return boolean ok, SchemaKit.Failure|nil failure
 local function checkWrite(node, key, value, valueType)
-  if node.verified and valueType ~= "table" and node.kind == KIND_RECORD then
+  if node.verified and valueType ~= "table" and node.kinds ~= nil then
     local fastCheck = node.plan.fastChecks[key]
     if
       fastCheck ~= nil
       and passesFastCheck(fastCheck, value, valueType)
-      and depthAllows(node.depth)
+      and depthAllows(node.pathKeys)
     then
       return true, nil
     end
@@ -2107,7 +2187,7 @@ end
 ---@param key any
 ---@return table|nil
 local function findFullMap(node, key)
-  if node.kind == KIND_MAP then
+  if node.kinds == nil then
     local container = resolveContainer(node)
     local max = node.plan.max
     if
@@ -2121,7 +2201,7 @@ local function findFullMap(node, key)
   local child = node
   local parent = child.parent
   while parent ~= false do
-    if parent.kind == KIND_MAP then
+    if parent.kinds == nil then
       local container = resolveContainer(parent)
       local max = parent.plan.max
       if
@@ -2196,7 +2276,7 @@ local function refuseWrite(node, key, value, valueType)
   if db._readOnly == true then
     return refusalLabel(node) .. displayPathOf(node) .. " is read-only: " .. readOnlyReason(db)
   end
-  if node.root.dead then
+  if node.root.generation == DETACHED then
     return refusalLabel(node)
       .. displayPathOf(node)
       .. " belongs to a profile that was deleted or reset away"
@@ -2251,6 +2331,10 @@ end
 ---this function is called by `viewNewIndex`, which is called by the writer,
 ---so the level is 3.
 ---
+---A write that stores or replaces a table changes what views below `node`
+---resolve to, so it bumps the database's generation; a scalar written over a
+---scalar does not, and leaves every cached table current.
+---
 ---A nil or NaN key never gets here: Lua 5.1 refuses it while looking for the
 ---slot, before it consults `__newindex`.
 ---@param node table
@@ -2269,12 +2353,15 @@ local function writeView(node, key, value)
   else
     container = resolveForWrite(node)
   end
+  local root = node.root
   if container ~= nil then
+    if valueType == "table" or type(rawget(container, key)) == "table" then
+      bumpGeneration(root.db)
+    end
     rawset(container, key, value)
   end
 
   -- The signal is created by the first `OnChange` of the scope.
-  local root = node.root
   local scope = root.scope
   local signal = scope.signal
   if signal ~= false then
@@ -2472,6 +2559,9 @@ local function compactDatabase(db)
   local raw = db._raw
   local isSecretValue = readIsSecret()
   local maxDepth = readMaxDepth()
+  -- Compaction removes tables views may have cached. Bumped first, so even a
+  -- compaction that raises halfway leaves no stale cache behind.
+  bumpGeneration(db)
   local removed = 0
   for index = 1, #SCOPE_NAMES do
     local scope = rawget(db._scopes, SCOPE_NAMES[index])
@@ -2782,15 +2872,20 @@ end
 ---Make sure the profile `name` has a table.
 ---@param raw table
 ---@param name string
+---@return boolean created whether a table was created, which changes what views resolve to
 local function ensureProfile(raw, name)
   local profiles = rawget(raw, "profiles")
+  local created = false
   if type(profiles) ~= "table" then
     profiles = {}
     rawset(raw, "profiles", profiles)
+    created = true
   end
   if type(rawget(profiles, name)) ~= "table" then
     rawset(profiles, name, {})
+    created = true
   end
+  return created
 end
 
 ---Return the cached root view of profile `name`, building it on first use.
@@ -2808,7 +2903,9 @@ local function profileView(db, name)
 end
 
 ---Detach the cached root view of profile `name`: reads fall back to defaults
----and writes are refused from now on.
+---and writes are refused from now on. The views below it resolve again on
+---their next read, because every caller also bumps the database's
+---generation.
 ---@param db table
 ---@param name string
 local function detachProfileView(db, name)
@@ -2817,7 +2914,9 @@ local function detachProfileView(db, name)
   if proxy ~= nil then
     local node = rawget(views, proxy)
     if node ~= nil then
-      node.dead = true
+      node.generation = DETACHED
+      -- Dropped so a detached view does not keep a deleted profile alive.
+      node.cache = false
     end
     rawset(roots, name, nil)
   end
@@ -2904,7 +3003,12 @@ local function databaseSetProfile(self, name)
   end
 
   local raw = db._raw
-  ensureProfile(raw, name)
+  -- Switching to an existing profile changes no saved table, so every cached
+  -- one stays current, the new profile's included; getters that follow the
+  -- profile scope notice the new `db.profile` themselves.
+  if ensureProfile(raw, name) then
+    bumpGeneration(db)
+  end
   if db._charKey ~= false then
     rawset(rawget(raw, "profileKeys"), db._charKey, name)
   end
@@ -2970,6 +3074,7 @@ local function databaseCopyProfile(self, from)
   for key, value in next, source do
     rawset(target, key, copyPlain(value))
   end
+  bumpGeneration(db)
   fireProfileSignal(db, "profileCopied", self, from, current)
 end
 
@@ -2982,6 +3087,7 @@ local function databaseResetProfile(self)
   local current = db._profile
   ensureProfile(db._raw, current)
   wipe(rawget(rawget(db._raw, "profiles"), current))
+  bumpGeneration(db)
   fireProfileSignal(db, "profileReset", self, current)
 end
 
@@ -3013,6 +3119,7 @@ local function databaseDeleteProfile(self, name)
     end
   end
   detachProfileView(db, name)
+  bumpGeneration(db)
   fireProfileSignal(db, "profileDeleted", self, name)
 end
 
@@ -3040,14 +3147,12 @@ local function databaseResetDatabase(self)
     rawset(raw, "version", stamp)
   end
   createLayout(raw)
+  bumpGeneration(db)
 
+  -- Clearing a field during a traversal is allowed in Lua 5.1.
   for name in next, db._profileRoots do
-    local node = rawget(views, rawget(db._profileRoots, name))
-    if node ~= nil then
-      node.dead = true
-    end
+    detachProfileView(db, name)
   end
-  wipe(db._profileRoots)
 
   local name = db._defaultProfile
   ensureProfile(raw, name)
@@ -3180,7 +3285,7 @@ local function descendPath(node, key)
   end
 
   local child = nil
-  if node.kind == KIND_RECORD then
+  if node.kinds ~= nil then
     child = node.children[key]
   elseif node.plan.values.proxied ~= false then
     child = entryView(node, key)
@@ -3201,7 +3306,7 @@ end
 ---@param segment string
 ---@return string|number
 local function segmentKey(node, segment)
-  if node.kind == KIND_MAP and node.plan.keyKind == "number" then
+  if node.kinds == nil and node.plan.keyKind == "number" then
     local number = tonumber(segment)
     if number ~= nil then
       return number
@@ -3301,6 +3406,128 @@ local function databaseCompact(self)
   validateDatabase(self, "SettingsKit.Database:Compact", 3)
   refuseReadOnly(self, "SettingsKit.Database:Compact", 3)
   return compactDatabase(self)
+end
+
+---Make every view resolve its saved table again on its next read. Call it
+---after changing the saved variable directly (not through a view or a
+---database method) once the database is open.
+---
+---Costs one field write now, and one walk from the saved variable (one
+---lookup per nesting level) on the next read through each view.
+---@param self SettingsKit.Database
+local function databaseResync(self)
+  validateDatabase(self, "SettingsKit.Database:Resync", 3)
+  bumpGeneration(self)
+end
+
+---The getter of a field with a plain answer (an undeclared key, a scalar
+---default or none): the saved value, else `default`. While the node's cached
+---table is current it reads that table directly; otherwise it reads through
+---the newest revision's `__index` (`dispatch.readView`), which resolves the
+---table again and caches it. A getter that follows a scope first compares
+---the scope's current view (`db[scopeName]`, a plain field of the database,
+---which only `db.profile` ever changes) with the one it read last.
+---
+---A getter made by this revision may outlive it: a later revision keeps the
+---meaning of `node.generation`, `node.cache` and `db._generation`, or makes
+---`db._generation` differ from every node's `generation`, so old getters
+---take the dispatched path.
+---@param db table
+---@param scopeName string|false the scope followed, or `false` for a getter bound to `proxy`
+---@param proxy table
+---@param key any
+---@param default any
+---@return fun(): any
+local function plainGetter(db, scopeName, proxy, key, default)
+  local node = views[proxy]
+  return function()
+    if scopeName then
+      local current = db[scopeName]
+      if current ~= proxy then
+        proxy = current
+        node = views[current]
+      end
+    end
+    if node.generation == db._generation then
+      local container = node.cache
+      if container then
+        local value = container[key]
+        if type(value) ~= "nil" then
+          return value
+        end
+      end
+      return default
+    end
+    return dispatch.readView(proxy, key)
+  end
+end
+
+---Return a function that reads `key` from a view, for hot loops: each call
+---returns exactly what `view[key]` would, defaults and wildcard defaults
+---included, and follows every SettingsKit mutation.
+---
+---`source` is a view of this database, which the getter reads for good, or a
+---scope name, whose current view the getter follows (after `SetProfile`, the
+---new profile). The key is checked once, here: a secret, `nil` or NaN key is
+---refused at the caller's line, so no call probes it again. Allocates the
+---getter; a call allocates nothing.
+---@param self SettingsKit.Database
+---@param source SettingsKit.ScopeName|table
+---@param key any
+---@return fun(): any getter
+local function databaseGetter(self, source, key)
+  validateDatabase(self, "SettingsKit.Database:Getter", 3)
+  local db = self --[[@as table]]
+  ---@type string|false
+  local scopeName = false
+  local proxy = nil
+  validateScopeName(source, "SettingsKit.Database:Getter", 3)
+  if type(source) == "string" then
+    local scope = rawget(db._scopes, source)
+    if scope == nil or not scope.available then
+      error("SettingsKit.Database:Getter scope must name a declared, available scope", 2)
+    end
+    scopeName = source
+    proxy = rawget(db, source)
+  elseif type(source) == "table" then
+    local node = rawget(views, source)
+    if node ~= nil and node.root.db == db then
+      proxy = source
+    end
+  end
+  if proxy == nil then
+    error("SettingsKit.Database:Getter source must be a scope name or a view of this database", 2)
+  end
+  if isSecret(key) then
+    error("SettingsKit.Database:Getter key must not be a secret value", 2)
+  end
+  if type(key) == "nil" or key ~= key then
+    error("SettingsKit.Database:Getter key must not be nil or NaN", 2)
+  end
+
+  local node = rawget(views, proxy)
+  local kinds = node.kinds
+  if kinds ~= nil then
+    local kind = kinds[key]
+    if kind == nil or kind == READ_NIL or kind == READ_DEFAULT then
+      -- Every profile view shares the scope's plan and defaults, so the
+      -- kind and default hold for whichever view a scope getter follows.
+      local default = nil
+      if kind == READ_DEFAULT then
+        default = node.defaults[key]
+      end
+      return plainGetter(db, scopeName, proxy, key, default)
+    end
+  end
+  -- A field whose answer is a view or a stored copy, or a keyed-section
+  -- entry: every call reads through the newest revision's `__index`
+  -- directly, which skips only the metamethod dispatch.
+  return function()
+    if scopeName then
+      proxy = db[scopeName]
+    end
+    return dispatch.readView(proxy, key)
+  end
 end
 
 ---The database metatable's `__index`: methods from the prototype, and a clear
@@ -3505,6 +3732,10 @@ local function open(_, savedVariable, schema, options)
     _maxScannedEntries = maxScannedEntries,
     -- The four profile signals, each created by its first `OnProfile*`.
     _signals = {},
+    -- Bumped by every mutation that can change which saved table a view
+    -- resolves to; a node's cached table is current while its `generation`
+    -- equals this.
+    _generation = 0,
   }, DATABASE_METATABLE)
 
   for index = 1, #SCOPE_NAMES do
@@ -3635,10 +3866,15 @@ if previousRevision ~= nil and previousRevision < 2 then
     node.defaults = viewDefaults(parent.defaults, node.key, node.plan)
   end
 
-  local repaired = {}
-  for _, node in next, views do
-    repairNodeDefaults(node, repaired)
+  ---Repair every live node. A function of its own so its loop variables do
+  ---not count against the main chunk's 200 locals.
+  local function repairAllNodeDefaults()
+    local repaired = {}
+    for _, node in next, views do
+      repairNodeDefaults(node, repaired)
+    end
   end
+  repairAllNodeDefaults()
 end
 
 -- Revision 5 records on every database whether it is read-only and which
@@ -3670,11 +3906,16 @@ if previousRevision ~= nil and previousRevision < 5 then
     rawset(db, "_layout", 2)
   end
 
-  for _, db in next, databases do
-    if rawget(db, "_layout") == 1 then
-      upgradeDatabaseLayout(db)
+  ---Upgrade every layout 1 database. A function of its own so its loop
+  ---variables do not count against the main chunk's 200 locals.
+  local function upgradeDatabaseLayouts()
+    for _, db in next, databases do
+      if rawget(db, "_layout") == 1 then
+        upgradeDatabaseLayout(db)
+      end
     end
   end
+  upgradeDatabaseLayouts()
 end
 
 -- Revision 6 reads through `kinds`, `pathKeys` and the plans' `ownKinds` and
@@ -3750,7 +3991,13 @@ if previousRevision ~= nil and previousRevision < 6 then
     end
     node.probeSet = nil
 
-    if node.kind == KIND_RECORD then
+    -- Revisions 1 to 6 named the kind of view in `kind`; a node without it
+    -- is already in layout 3, where a record is the node with `kinds`.
+    local isRecord = node.kind == KIND_RECORD
+    if node.kind == nil then
+      isRecord = node.kinds ~= nil
+    end
+    if isRecord then
       node.kinds = readKindsOf(plan, node.defaults)
       if parent ~= false then
         ensureDepthProbe(node.depth)
@@ -3789,6 +4036,41 @@ if previousRevision ~= nil and previousRevision < 6 then
   upgradeLayouts()
 end
 
+-- Revision 7 caches each node's resolved saved table against a per-database
+-- generation. Databases an older revision opened get a generation, and every
+-- live node gets an empty cache and moves to layout 3: `kind` and `depth` are
+-- derived now, and a root's `dead` flag becomes its `DETACHED` generation.
+-- This runs after the revision 6 upgrade above, which reads `kind` and sets
+-- `depth` on older nodes.
+if previousRevision ~= nil and previousRevision < 7 then
+  ---Bring every database to layout 4 and every live node to layout 3. A
+  ---function of its own so its loop variables do not count against the main
+  ---chunk's 200 locals.
+  local function upgradeCaches()
+    for _, db in next, databases do
+      if type(rawget(db, "_generation")) ~= "number" then
+        rawset(db, "_generation", 0)
+      end
+      rawset(db, "_layout", DATABASE_SCHEMA)
+    end
+    for _, node in next, views do
+      -- A layout 3 node (which has no `dead`) keeps a `DETACHED`
+      -- generation it already has.
+      if node.parent == false and (node.dead == true or node.generation == DETACHED) then
+        node.generation = DETACHED
+      else
+        node.generation = NEVER_RESOLVED
+      end
+      node.cache = false
+      node.dead = nil
+      node.kind = nil
+      node.depth = nil
+      node.layout = NODE_SCHEMA
+    end
+  end
+  upgradeCaches()
+end
+
 -- Commit ---------------------------------------------------------------------
 
 rawset(Database, "GetProfile", databaseGetProfile)
@@ -3808,6 +4090,8 @@ rawset(Database, "GetSavedVariable", databaseGetSavedVariable)
 rawset(Database, "Pairs", databasePairs)
 rawset(Database, "Validate", databaseValidate)
 rawset(Database, "IsReadOnly", databaseIsReadOnly)
+rawset(Database, "Resync", databaseResync)
+rawset(Database, "Getter", databaseGetter)
 
 rawset(VIEW_METATABLE, "__index", viewIndex)
 rawset(VIEW_METATABLE, "__newindex", viewNewIndex)
@@ -3826,6 +4110,7 @@ rawset(SettingsKit, "GetLimits", getLimits)
 
 rawset(dispatch, "compactOnLogout", compactOnLogout)
 rawset(dispatch, "compactAllOnLogout", compactAllOnLogout)
+rawset(dispatch, "readView", viewIndex)
 rawset(state, "runtimeRevision", IMPLEMENTATION_REVISION)
 
 if not validatePublicSurface(SettingsKit) or not validateCurrentState(SettingsKit) then

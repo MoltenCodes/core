@@ -2,7 +2,7 @@
 
 SettingsKit API generation **1** opens a database over an addon's saved variable: scoped views whose reads fall back to schema defaults and whose writes are validated at the writer's line, profiles, change signals, versioned migrations and compaction.
 
-Implementation revision: **6**.
+Implementation revision: **7**.
 
 ## Loading
 
@@ -30,7 +30,7 @@ SettingsKit does not rely on `require()` at runtime. Loading it without one of i
 | `UnitName("player")`, `GetRealmName()` | the `char` scope key `"<name> - <realm>"`; `realm` needs only `GetRealmName` | The scope is unavailable (below). `defaultProfile = "char"` falls back to `"Default"` and the profile choice is not recorded. |
 | `UnitClass("player")` | the `class` scope key, its second result (`"MAGE"`) | The `class` scope is unavailable. |
 | `UnitFactionGroup("player")` | the `faction` scope key (`"Alliance"`, `"Horde"`, `"Neutral"`) | The `faction` scope is unavailable. |
-| `issecretvalue` | every read and validated write through a view, `Validate`, `Compact`, profile names, the scope keys | Nothing is treated as secret, which is correct on clients without secret values. Read at every call. |
+| `issecretvalue` | every read and validated write through a view, the key of `Getter`, `Validate`, `Compact`, profile names, the scope keys | Nothing is treated as secret, which is correct on clients without secret values. Read at every call. |
 | `geterrorhandler` | reporting a logout compaction that failed | Falls back to `print`. |
 | EventKit API 1 | compaction on `PLAYER_LOGOUT` | `db:Compact()` is the addon's to call. |
 
@@ -71,6 +71,8 @@ Databases:
 | `Pairs(view)` | Iterate a view: keys with defaults, then saved keys. |
 | `Validate(scope, path, value)` | Whether a write would be accepted, without writing. |
 | `IsReadOnly()` | Whether the database refuses every write because a newer version of the addon saved the data (see [Newer stored data](#newer-stored-data-read-only-databases)). |
+| `Resync()` | Make every view see direct edits of the saved variable (see [Views hold their saved tables](#views-hold-their-saved-tables)). |
+| `Getter(source, key)` | A function reading one field, for hot loops (see [`db:Getter`](#dbgettersource-key)). |
 
 The `On*` methods return SignalKit connections; `connection:Disconnect()` stops the listener.
 
@@ -259,6 +261,21 @@ Reading a default never writes, with the one exception in the table: an array (o
 
 Every refusal is raised at the writing line and stores nothing. A table you assign is stored as it is, by reference: later changes through your own reference to it are not validated. Read the field back to change it through a view.
 
+### Views hold their saved tables
+
+Each view holds the saved table it reads and writes (revision 7), instead of finding it from the saved variable on every access. Every SettingsKit mutation that can change which table a view finds tells the database, and each view finds its table again on its next access: a write through a view that stores, replaces or removes a table or creates the tables on its path, `SetProfile` to a new profile, `CopyProfile`, `ResetProfile`, `DeleteProfile`, `ResetDatabase`, `Compact` (also at logout), `Resync` and the first read of a plain-table default that creates tables on its way. Migrations run before the views exist. So nothing SettingsKit does is ever answered from a table it replaced, emptied or removed, in any scope, through detached views and in read-only databases too.
+
+**Direct edits of the saved variable after `Open` need `db:Resync()`.** Changing `MyAddonDB` yourself (not through a view or a database method) once the database is open is not something SettingsKit sees:
+
+- a scalar you change inside a table a view already holds is read at once, because the view reads that very table;
+- a table you add, replace or remove (`MyAddonDB.profiles.Default.frame = { x = 3 }`), or a metatable you set on a saved table, is **not** seen by views that already found their tables: they keep reading, and writing into, the tables they hold, and a write into a table you detached from the saved variable is not saved.
+
+Call `db:Resync()` after such an edit, before the next access through a view. Edits made before `Open` need nothing. A saved table carrying a metatable is always read with `rawget` and never invokes it.
+
+### `db:Resync()`
+
+Makes every view of this database find its saved table again on its next access, so the direct edits made since `Open` (or the last `Resync`) show through views, getters and `Pairs`. Allowed on a read-only database; it writes nothing. It costs one field write now, and one lookup per nesting level on the next access through each view (the cost every access paid before revision 7). Not needed after anything SettingsKit does itself.
+
 ### What a view cannot do
 
 - `pairs`, `next` and `#` see an empty table: Lua 5.1 has no `__pairs` or `__len` for tables. Use `db:Pairs(view)` instead.
@@ -337,6 +354,30 @@ The signal fires after the value is stored. SignalKit's dispatch rules apply: li
 
 `for key, value in db:Pairs(db.profile) do ... end` iterates a view of this database: first every key that has a default (a record's field defaults, or a keyed section's own default entries — never its wildcard, which covers every possible key), then every saved key without a default, including undeclared ones. Each value is what reading `view[key]` returns, so a record field yields its child view. Order within each phase is `next` order. The iterator is stateless and allocates nothing beyond what the reads themselves do (the first read of a plain-table default stores a copy, as above). As with `pairs`, do not add keys to the view while iterating it. Anything but a view of this database is refused at your line.
 
+## `db:Getter(source, key)`
+
+```lua
+local getScale = db:Getter("profile", "scale")       -- follows the current profile
+local getX = db:Getter(db.profile.frame, "x")          -- reads that frame view for good
+for index = 1, #frames do
+  frames[index]:SetScale(getScale())
+end
+```
+
+Returns a function that reads `key` from a view for a hot loop: every call returns exactly what `view[key]` returns at that moment. `source` is a view of this database, which the getter reads for good (a view of a profile keeps reading that profile after `SetProfile`, as the view itself does), or a scope name, whose current view the getter reads (after `SetProfile`, the new profile's).
+
+What a call **skips**, compared with `view[key]`:
+
+- the `__index` metamethod dispatch and the lookup of the view's private state;
+- the `issecretvalue` probe of the key: the key cannot change, so it is probed once, when the getter is made;
+- for a field whose answer is a plain value (a scalar with a default or without one, or an undeclared key), the choice of how to answer, made once when the getter is made.
+
+What a call **still guarantees**: the saved value, else the default (record field defaults, a keyed section's own default entries and its wildcard default); every SettingsKit mutation followed as views follow it (see [Views hold their saved tables](#views-hold-their-saved-tables)); detached views reading defaults; read-only databases read without any write; the first read of a plain-table default storing its copy as a view read does; and direct edits shown after `Resync`, as for views. A getter keeps working across an in-place upgrade.
+
+`Getter` refuses at your line a secret key (`SettingsKit.Database:Getter key must not be a secret value`), a `nil` or NaN key, a secret scope, a scope that is not declared and available, and a `source` that is neither a scope name nor a view of this database. It allocates the getter; a call allocates nothing.
+
+A call reads the table the view holds directly while nothing changed since the last call, and otherwise reads through the view once (which also probes the key). A field whose answer is a view or a stored copy, or any key of a keyed-section view, reads through the view on every call, skipping only the metamethod dispatch; for a nested field, make the getter from the nested view (`db:Getter(db.profile.frame, "x")`). Measured on host Lua 5.1 (2026-09-25): about 48 ns for a getter bound to a view, 55 ns following a scope, and 25 ns for a field of an unsaved keyed-section entry, against 110 ns for `db.profile.scale`, 235 ns for `db.profile.frame.x` and 3 to 11 ns for AceDB's plain tables. What remains is the Lua call and the type test the repository rule asks for on every value read from a saved variable.
+
 ## `db:Validate(scope, path, value)`
 
 ```lua
@@ -407,6 +448,12 @@ Revision 5 adds these refusals:
 - `SettingsKit.Database:IsReadOnly must be called on a SettingsKit database`
 - `SettingsKit:Open migration <step> of <name> failed: <name>.<section> must be a table`, when the last migration step leaves a layout section that is not a table
 
+Revision 7 adds these refusals, each at the caller's line:
+
+- `SettingsKit.Database:Resync must be called on a SettingsKit database` and `SettingsKit.Database:Getter must be called on a SettingsKit database`
+- `SettingsKit.Database:Getter key must not be a secret value`, asked before the key is compared or used, and `SettingsKit.Database:Getter key must not be nil or NaN`
+- `SettingsKit.Database:Getter scope must not be a secret value`, `SettingsKit.Database:Getter scope must name a declared, available scope` and `SettingsKit.Database:Getter source must be a scope name or a view of this database`
+
 SettingsKit never tests a value it did not create as a boolean (`if x`, `x and y`, `x or y`, `not x`), which raises on a secret as well: the host identity returns are type-tested and asked about secrecy before they are used, and the only answers it tests (SchemaKit's `Check`, `pcall`) are its dependencies' own booleans.
 
 A secret stored `version` in the saved table is refused as `SettingsKit:Open MyAddonDB.version must be a non-negative integer`, and a secret profile choice in `profileKeys` is ignored (never compared) by `DeleteProfile`, as `Open` already ignored it.
@@ -415,10 +462,12 @@ A secret stored `version` in the saved table is refused as `SettingsKit:Open MyA
 
 | Operation | Cost |
 |---|---|
-| Reading a field through a view | One call of the view's `__index`, one `issecretvalue` probe of the key, one table lookup and one type test per nesting level to find the saved table, then one read or one default lookup. No allocation. On host Lua 5.1 (2026-09-25) about 0.2 µs for `db.profile.scale` and 0.45 µs for `db.profile.frame.x`, against 3 to 7 ns for a plain table: an empty proxy needs the metamethod call, the secret-key refusal needs the probe, and resolving the saved table on every read keeps views valid (see [`INTERNALS.md`](INTERNALS.md#a-read)). |
+| Reading a field through a view | One call of the view's `__index`, one `issecretvalue` probe of the key, one comparison of the view's generation with the database's, then one read of the table the view holds and one type test, or one default lookup. After a mutation that can change the saved tables, the first access through each view finds its table again: one table lookup and one type test per nesting level. No allocation. On host Lua 5.1 (2026-09-25, revision 7) about 110 ns for `db.profile.scale` and 235 ns for `db.profile.frame.x` (revision 6: 210 ns and 450 ns), against 3 to 7 ns for a plain table: an empty proxy needs the metamethod call and the secret-key refusal needs the probe (see [`INTERNALS.md`](INTERNALS.md#a-read)). |
+| Calling a getter (`db:Getter`) | One Lua call, one generation comparison, one table read and one type test, or one default. No allocation. About 48 ns on host Lua 5.1 (2026-09-25); see [`db:Getter`](#dbgettersource-key). |
+| `db:Resync()` | One field write; each view then finds its table again once. |
 | Reading a keyed-section entry the first time | Builds that entry's view (cached while referenced). |
 | A validated write | The same checks and messages in every case. A value that is not a table, written to a declared `string`, `number`, `boolean` or `enum` field through a view that already took one valid write, is checked against the field's rules by SettingsKit, plus one small SchemaKit depth check below the scope's top level; any other write, and every refused one, runs one SchemaKit check of a probe holding only the written path. Then one table write and, once a listener was connected to the scope, one signal dispatch. No allocation when the key already exists and the value is not a table; a table value adds the scan of its contents and the one table `SchemaKit:GetLimits()` returns. On host Lua 5.1 (2026-09-25) about 0.45 µs for `db.profile.scale = 1.5` and 1 µs for `db.profile.frame.x = 3`. |
-| `Open`, `SetProfile` to a new profile | Build the views of the scope: one proxy and node per record and keyed section in the schema. The first `Open` of a schema also seals, describes and compiles it; later ones with the same schema reuse that. Signals are created when a listener first connects. On host Lua 5.1 (2026-09-25) an `Open` of the benchmark schema (two scopes, a nested record and a keyed section) takes about 9 µs and allocates about 7 KB; an open database holds about 6 KB beyond its saved variable. |
+| `Open`, `SetProfile` to a new profile | Build the views of the scope: one proxy and node per record and keyed section in the schema. The first `Open` of a schema also seals, describes and compiles it; later ones with the same schema reuse that. Signals are created when a listener first connects. On host Lua 5.1 (2026-09-25) an `Open` of the benchmark schema (two scopes, a nested record and a keyed section) takes about 10 µs and allocates about 7.9 KB; an open database holds about 6.8 KB beyond its saved variable (revision 7 adds 640 bytes: the database's generation takes its table past 16 fields when two scopes are declared). |
 | `GetProfiles`, `CopyProfile`, `Compact` | Allocate or walk by design; not for hot paths. |
 | A pending migration step | One deep copy of the saved table and one walk of the result, once per step with a function, only while the stored version is behind (see [Migrations](#migrations)). |
 
@@ -433,10 +482,10 @@ The nine-point plan in `docs/ROADMAP.md` is followed except where recorded here:
 - **Newer stored data opens read-only** (revision 5). The plan says nothing about downgrades; writing a newer version's data with an older layout can corrupt it, so writing it is an explicit opt-in (`allowNewerData`).
 - **Every field of a record read through a view must be `optional`.** A write is validated by checking a probe that holds only the written path; that is what makes a write one schema check with no allocation, and it is only sound when every other field may be absent.
 - **Plain table defaults are copied into the saved table on first read.** Arrays and other tables without their own view would otherwise hand out the shared default to be edited in place. Records and keyed sections, the common case, are never written back.
-- **A read resolves the saved table through each nesting level** instead of holding it. That keeps every view valid across `ResetProfile`, `CopyProfile` and `ResetDatabase`, which replace or empty saved tables, at the cost of one lookup per level.
+- **A view holds its saved table until a SettingsKit mutation may have changed it** (revision 7). Revisions 1 to 6 found the table through each nesting level on every access, which also showed direct edits of the saved variable at once; revision 7 finds it again only after a mutation or `db:Resync()`, which halves the cost of a read. Every view stays valid across `ResetProfile`, `CopyProfile`, `ResetDatabase` and the rest; direct edits after `Open` need `Resync` (see [Views hold their saved tables](#views-hold-their-saved-tables)).
 - **The profile choice is recorded by `SetProfile`**, not at `Open`, so a character that never switches writes nothing.
 - **Views are refused as values**, together with any table carrying a metatable. A stored view would alias another view's data and be written through without validation, because Lua 5.1 calls `__newindex` only for absent keys.
-- **Additions:** `db:Validate(scope, path, value)`, for an options layer that checks a value before it writes it (optionsKit binds options to database paths); `db:Pairs(view)`, because Lua 5.1 cannot iterate a proxy with `pairs`; `OnProfileCopied`, `OnProfileReset` and `OnProfileDeleted` methods; a fifth `path` argument to `OnChange` listeners; `db:GetSavedVariable()`; `Compact` returns a count; `SettingsKit.DEFAULT_PROFILE` and `SettingsKit.MAX_PROFILE_NAME_LENGTH`; `SetLimits`, `GetLimits`, `UNBOUNDED` and the `maxScannedEntries` option (principle 4a, *Bounded by default, opened on purpose*).
+- **Additions:** `db:Validate(scope, path, value)`, for an options layer that checks a value before it writes it (optionsKit binds options to database paths); `db:Pairs(view)`, because Lua 5.1 cannot iterate a proxy with `pairs`; `OnProfileCopied`, `OnProfileReset` and `OnProfileDeleted` methods; a fifth `path` argument to `OnChange` listeners; `db:GetSavedVariable()`; `db:Resync()` and `db:Getter(source, key)` (revision 7); `Compact` returns a count; `SettingsKit.DEFAULT_PROFILE` and `SettingsKit.MAX_PROFILE_NAME_LENGTH`; `SetLimits`, `GetLimits`, `UNBOUNDED` and the `maxScannedEntries` option (principle 4a, *Bounded by default, opened on purpose*).
 
 ## Embedded copies and upgrades
 
@@ -445,5 +494,7 @@ Several addons may embed SettingsKit; Registry selects the newest compatible rev
 Revision 5 gives every database opened by an older revision the fields it reads (database layout 2). Such a database stays writable, as it was opened, even over newer data — turning it read-only in the middle of a session would break an addon already writing through it — but it records the newer stored version, so `ResetDatabase` never lowers it. `IsReadOnly` answers `false` for it. Databases opened after the upgrade follow the read-only rule.
 
 Revision 6 changes no documented behaviour. An in-place upgrade brings the views, plans and databases an older revision built to its own layouts, so they keep working and gain the faster reads and writes; a database an older revision opened keeps the logout listener it connected, and is compacted by it once.
+
+Revision 7 changes one documented behaviour, by the owner's decision: a direct edit of the saved variable after `Open` that adds, replaces or removes a table shows through views only after `db:Resync()` (see [Views hold their saved tables](#views-hold-their-saved-tables)). It adds `Resync` and `Getter`. An in-place upgrade gives every database an older revision opened a generation (database layout 4) and every live view an empty cache (node layout 3), keeping detached views detached; a getter made by revision 7 keeps working under a later revision.
 
 Nothing survives `/reload` except the saved variable itself: open the database again in the loaded phase.
