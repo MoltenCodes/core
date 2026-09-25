@@ -36,9 +36,17 @@
 
 -- Constants ------------------------------------------------------------------
 
+-- Standard functions `Find` calls, read once: a global read is a hash lookup in
+-- `_G` on every call, a local is not.
+local type = type
+local rawget = rawget
+-- The global table is where `issecretvalue`, LibStub and the namespace live.
+-- selene: allow(global_usage)
+local globals = _G
+
 local PACKAGE_NAME = "interopKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 2
+local IMPLEMENTATION_REVISION = 3
 local REQUIRED_REGISTRY_API = 2
 local STATE_SCHEMA = 1
 
@@ -101,8 +109,7 @@ local STATUS_ACTIVE = "active"
 -- Dependencies ---------------------------------------------------------------
 
 -- The shared MoltenCodes namespace is the one documented global handoff point between independently embedded copies.
--- selene: allow(global_usage)
-local namespace = rawget(_G, "MoltenCodes")
+local namespace = rawget(globals, "MoltenCodes")
 local generations = type(namespace) == "table" and rawget(namespace, "Registries") or nil
 
 -- Ask for Registry by generation and fall back to the alias. A future Registry
@@ -221,8 +228,7 @@ local adopted = rawget(state, "adopted")
 ---@return boolean
 local function isSecret(value)
   -- The World of Warcraft client API is reachable only through the global table.
-  -- selene: allow(global_usage)
-  local isSecretValue = rawget(_G, "issecretvalue")
+  local isSecretValue = rawget(globals, "issecretvalue")
   return type(isSecretValue) == "function" and isSecretValue(value) == true
 end
 
@@ -276,8 +282,7 @@ end
 ---@return table|nil
 local function findLibStub()
   -- LibStub publishes itself only as a global; there is no other way to find it.
-  -- selene: allow(global_usage)
-  local libStub = rawget(_G, LIBSTUB_GLOBAL)
+  local libStub = rawget(globals, LIBSTUB_GLOBAL)
   if
     type(libStub) ~= "table"
     or type(rawget(libStub, "NewLibrary")) ~= "function"
@@ -326,8 +331,7 @@ local function findPackage(packageName, api)
   end
 
   -- The shared MoltenCodes namespace is the documented handoff point.
-  -- selene: allow(global_usage)
-  local currentNamespace = rawget(_G, "MoltenCodes")
+  local currentNamespace = rawget(globals, "MoltenCodes")
   local published = type(currentNamespace) == "table" and rawget(currentNamespace, "Registries")
     or nil
   local facade = type(published) == "table" and rawget(published, api) or nil
@@ -549,7 +553,16 @@ end
 ---@return table|nil library
 ---@return number|InteropKit.Reason minorOrReason
 local function packageFind(_, major)
-  validateName(major, "InteropKit:Find", "major", 3)
+  -- `validateName`'s checks, inlined for the common valid call; any failure
+  -- calls it to raise its own message.
+  local isSecretValue = rawget(globals, "issecretvalue")
+  if
+    type(major) ~= "string"
+    or type(isSecretValue) == "function" and isSecretValue(major) == true
+    or major == ""
+  then
+    validateName(major, "InteropKit:Find", "major", 3)
+  end
 
   local record = rawget(adopted, major)
   if record == nil then

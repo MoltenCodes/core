@@ -139,6 +139,34 @@ describe("InteropKit error levels", function()
     )
   end)
 
+  it("points every Find refusal at the caller, a secret adopted major included", function()
+    local libStub = Env.InstallLibStub()
+    libStub:NewLibrary("LibDataBroker-1.1", 4)
+    InteropKit:AdoptFromLibStub("LibDataBroker-1.1")
+    local secretTable = {}
+    Env.InstallSecretProbe(function(value)
+      return value == "LibDataBroker-1.1" or rawequal(value, secretTable)
+    end)
+    local cases = {
+      { nil, "InteropKit:Find major must be a non-empty string" },
+      { 1, "InteropKit:Find major must be a non-empty string" },
+      { {}, "InteropKit:Find major must be a non-empty string" },
+      { "", "InteropKit:Find major must be a non-empty string" },
+      { "LibDataBroker-1.1", "InteropKit:Find major must not be a secret value" },
+      { secretTable, "InteropKit:Find major must not be a secret value" },
+    }
+
+    for index = 1, #cases do
+      local major, message = cases[index][1], cases[index][2]
+      local line
+      local ok, value = pcall(function()
+        line = currentLine() + 1
+        InteropKit:Find(major)
+      end)
+      assertReportedAt(line, message, ok, value)
+    end
+  end)
+
   it("points a secret major at the caller", function()
     local secret = {}
     Env.InstallSecretProbe(function(value)

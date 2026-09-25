@@ -34,11 +34,12 @@ The suite covers:
   and an allocation guard on `Find`;
 - secret values: a secret `major`, `packageName` or `api`, and a secret package
   name in `options.except`, refused at the caller;
-- `error` levels: every argument failure reports the caller's own line;
+- `error` levels: every argument failure reports the caller's own line,
+  including every `Find` refusal on its inlined checks;
 - Registry publication, duplicate loads, a newer revision not being
   downgraded, an in-place upgrade that keeps adoptions (the source loaded with
-  its revision raised by one), a revision 1 copy upgraded with the current
-  file, load-order failures, and corrupted-state refusal;
+  its revision raised by one), revision 1 and revision 2 copies upgraded with
+  the current file, load-order failures, and corrupted-state refusal;
 - manifest/runtime API and revision consistency.
 
 | Spec | Covers |

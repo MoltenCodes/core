@@ -115,7 +115,10 @@ again refreshes the recorded minor after the library upgraded itself.
 
 `Find(major)` returns the recorded library and minor, or `nil, "unknown"`. It
 answers from the record, so it keeps working if the global `LibStub` is later
-replaced, and it allocates nothing. The minor is the one recorded at the last
+replaced, and it allocates nothing. It costs one `issecretvalue` probe of
+`major` (on a client that has one) and three raw table reads; revision 3 checks
+the argument inline instead of through a shared helper, with the same messages
+at the same caller line. The minor is the one recorded at the last
 adoption. The library table is LibStub's own and upgrades in place, so the
 table stays current even when the recorded minor does not.
 
@@ -173,8 +176,8 @@ identity across compatible revisions: a newer copy rewrites the facade methods
 in place and reuses the records, so adoptions made through an older copy stay
 readable through `Find`. An older copy loading after a newer one yields to it.
 Exposures live in LibStub, not in InteropKit's state, and are unaffected by an
-InteropKit upgrade. Revision 2 keeps the revision 1 state as it is and
-replaces the methods only.
+InteropKit upgrade. Revisions 2 and 3 keep the revision 1 state as it is and
+replace the methods only.
 
 `_state` is private; its layout is not part of the contract.
 
