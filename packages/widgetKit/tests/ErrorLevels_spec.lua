@@ -72,6 +72,48 @@ describe("WidgetKit error levels", function()
       mark()
       WidgetKit:Release({})
     end)
+    assertReportedAtCaller(
+      "WidgetKit:Release must be called on the WidgetKit facade",
+      function(mark)
+        mark()
+        WidgetKit.Release({}, WidgetKit:Create("Label"))
+      end
+    )
+  end)
+
+  it("points the checks revision 9 made inline at the caller", function()
+    assertReportedAtCaller("WidgetKit:Create name must be a non-empty string", function(mark)
+      mark()
+      WidgetKit:Create("")
+    end)
+    assertReportedAtCaller("WidgetKit:Create name must be a non-empty string", function(mark)
+      mark()
+      WidgetKit:Create(42)
+    end)
+    local button = WidgetKit:Create("Button")
+    assertReportedAtCaller(
+      "WidgetKit Button:SetText must be called on a WidgetKit widget",
+      function(mark)
+        mark()
+        button.SetText({}, "text")
+      end
+    )
+    WidgetKit:Release(button)
+    assertReportedAtCaller(
+      "WidgetKit Button:SetText cannot be called on a released widget",
+      function(mark)
+        mark()
+        button:SetText("text")
+      end
+    )
+    local editBox = WidgetKit:Create("EditBox")
+    assertReportedAtCaller(
+      "WidgetKit EditBox:SetText text must be a string, a number or nil",
+      function(mark)
+        mark()
+        editBox:SetText(true)
+      end
+    )
   end)
 
   it("points constructor contract failures at the caller of Create", function()

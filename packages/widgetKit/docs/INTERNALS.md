@@ -95,7 +95,25 @@ PoolKit:New({
 borrowed for its version, runs `OnAcquire` and shows the frame. Every other
 field is already at its default: `build` sets them and `Release` resets them.
 `Release` performs the steps listed in the release contract, then
-`pool:Release(widget)`. PoolKit's own `AttachChild` is not used for
+`pool:Release(widget)`.
+
+Both are the hot half of every widget's use, so since revision 9 they do
+inline what their helpers do, with the same checks, messages and order:
+`Create` checks the facade and the name itself (the secret probe first, then
+the type), and `releaseWidget` fires the `OnRelease` callback, calls the
+type's hook, wipes a non-empty callback or user-data table (the callback table
+is read again after the hooks, which may have set the first callback), reads
+the resting parent (`UIParent` when it is a frame, otherwise the holder) and
+detaches from a parent only when there is one. `state`, the records and the
+type records are WidgetKit's own tables without a metatable, so they are read
+and written by plain indexing, not `rawget`/`rawset`; the widget tables a
+constructor returned keep `rawget`, because their metatable falls back to the
+widget base. Text setters make one call for their checks: `checkText(widget,
+text, options, methodName, level)` checks the widget as `activeRecord` would,
+then the options and the text. The secret probe is read from the global table
+at every call, inline where it runs for every value (`isSecret`,
+`validateNumber`, `validateName`, `refuseSecret`, `checkText`, `Create`), so the
+old extra `readGlobal` call is gone from those paths. PoolKit's own `AttachChild` is not used for
 children: children come from other pools, their order is WidgetKit's, and a
 child must also leave its container's array, which only WidgetKit knows.
 
@@ -113,9 +131,14 @@ child must also leave its container's array, which only WidgetKit knows.
 4. call the type's `OnLayoutStart` hook, borrow a scratch table, call the
    layout under `pcall`, return the scratch table, clear `layingOut`;
    re-raise a layout error;
-5. call `LayoutFinished(width, height)`.
+5. refuse a container that a hook or the layout released during the pass,
+   with `LayoutFinished`'s own message, then finish the pass.
 
-`LayoutFinished` remembers the container's height, runs `OnLayoutFinished`, and
+Finishing is `finishLayout(container, record, width, height)`, which the pass
+calls directly with sizes it has already checked (since revision 9; before, it
+went through the public `LayoutFinished`, which checks its caller's arguments
+again). `LayoutFinished` checks them and calls the same function. It remembers
+the container's height, runs `OnLayoutFinished`, and
 when the height changed lays out the parent — unless the parent is paused,
 being released, or inside its own pass. Inside a parent's pass the parent reads
 the child's new height itself, after the child's `PerformLayout` returns, so a
@@ -129,10 +152,16 @@ for each shown child:
     anchor TOPLEFT at (0, -offset)
     full width:     also anchor TOPRIGHT at (0, -offset)
     relative width: set width = width * fraction
+    told a width:   call its OnWidthSet hook
     container:      lay it out now
     offset = offset + child height
 return width, offset
 ```
+
+`List` is the default layout and runs once per child per pass, so it calls the
+`OnWidthSet` hook and the nested pass itself rather than through `notifySized`
+and `callHook`, and reads `issecretvalue` once per pass for the content width
+and every child height (`Fill` and `Flow` still use `notifySized`).
 
 ### Fill
 
@@ -239,7 +268,7 @@ small functions rather than a closure per call. A save runs after the frame has
 moved — from a drag handler, a debounce timer or a release flush — so every
 failure goes to the host error handler and the frame keeps the anchor `Capture`
 gave it. These helpers sit in a `do` block with `saveBinding` and `Restore`,
-because the main chunk peaks at 198 of Lua 5.1's 200 active locals and a block's
+because the main chunk peaks at 197 of Lua 5.1's 200 active locals and a block's
 locals end with it.
 
 `Anchor.Apply` (and so `Restore`) refuses a `relativeTo` that is the frame

@@ -56,7 +56,7 @@
 
 local PACKAGE_NAME = "widgetKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 8
+local IMPLEMENTATION_REVISION = 9
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_POOLKIT_API = 1
 local REQUIRED_SIGNALKIT_API = 1
@@ -164,6 +164,9 @@ local POINT_VERTICAL = {
 --
 -- Frame version 4 (implementation revision 8): the window's `BindPosition`,
 -- stored on the widget by its constructor, accepts a storage function.
+--
+-- Implementation revision 9 changed no constructor and no behaviour of a type
+-- method (only their cost), so every version stays.
 local BASE_TYPE_VERSIONS = {
   Frame = 4,
   Group = 3,
@@ -371,7 +374,7 @@ local WEAK_KEYS = { __mode = "k" }
 ---@field GetTitle fun(self: WidgetKit.Window): any
 ---@field SetResizable fun(self: WidgetKit.Window, resizable: boolean)
 ---@field SetMovable fun(self: WidgetKit.Window, movable: boolean)
----@field BindPosition fun(self: WidgetKit.Window, storage: table|fun(): table, options: WidgetKit.BindingOptions?): WidgetKit.Binding
+---@field BindPosition fun(self: WidgetKit.Window, storage: table|(fun(): table), options: WidgetKit.BindingOptions?): WidgetKit.Binding
 ---@field GetBinding fun(self: WidgetKit.Window): WidgetKit.Binding?
 
 ---An inline group with a title.
@@ -557,7 +560,7 @@ local WEAK_KEYS = { __mode = "k" }
 ---@field ClearFocus fun(self: WidgetKit): boolean
 ---@field GetFocus fun(self: WidgetKit): WidgetKit.Widget?
 ---@field GetStatistics fun(self: WidgetKit): WidgetKit.Statistics
----@field BindPosition fun(self: WidgetKit, frame: WidgetKit.Frame, storage: table|fun(): table, options: WidgetKit.BindingOptions?): WidgetKit.Binding
+---@field BindPosition fun(self: WidgetKit, frame: WidgetKit.Frame, storage: table|(fun(): table), options: WidgetKit.BindingOptions?): WidgetKit.Binding
 ---@field RenderOptions fun(self: WidgetKit, tree: table, container: WidgetKit.Container, options: WidgetKit.RenderOptions?): WidgetKit.Rendering
 ---@field CreateMediaPicker fun(self: WidgetKit, mediaType: string): WidgetKit.Widget|nil, string?
 
@@ -842,7 +845,10 @@ end
 ---@param value any
 ---@return boolean
 local function isSecret(value)
-  local probe = readGlobal("issecretvalue")
+  -- `readGlobal`, inlined: this runs for every text and every compared value,
+  -- and the extra Lua call was a measurable share of a text setter.
+  -- selene: allow(global_usage)
+  local probe = rawget(_G, "issecretvalue")
   if type(probe) == "function" then
     return probe(value) == true
   end
@@ -941,7 +947,11 @@ end
 ---@param label string argument description, used in the argument error
 ---@param level integer stack level the failure is reported at
 local function validateName(value, label, level)
-  if isSecret(value) then
+  -- `isSecret`, inlined as in `validateNumber`: names are checked on every
+  -- `SetCallback`.
+  -- selene: allow(global_usage)
+  local probe = rawget(_G, "issecretvalue")
+  if type(probe) == "function" and probe(value) == true then
     error(label .. " must not be a secret value", level)
   end
   if type(value) ~= "string" or value == "" then
@@ -953,7 +963,11 @@ end
 ---@param label string argument description, used in the argument error
 ---@param level integer stack level the failure is reported at
 local function validateNumber(value, label, level)
-  if isSecret(value) then
+  -- `isSecret`, inlined: numbers are checked on every slider, size and
+  -- colour setter, and the extra call showed in their cost.
+  -- selene: allow(global_usage)
+  local probe = rawget(_G, "issecretvalue")
+  if type(probe) == "function" and probe(value) == true then
     error(label .. " must not be a secret value", level)
   end
   -- `value ~= value` is true only for NaN.
@@ -1045,7 +1059,10 @@ end
 ---@param label string argument description, used in the argument error
 ---@param level integer stack level the failure is reported at
 local function refuseSecret(value, label, level)
-  if isSecret(value) then
+  -- `isSecret`, inlined, as in `validateNumber`.
+  -- selene: allow(global_usage)
+  local probe = rawget(_G, "issecretvalue")
+  if type(probe) == "function" and probe(value) == true then
     error(label .. " must not be a secret value", level)
   end
 end
@@ -1186,13 +1203,15 @@ end
 function WidgetBase:SetCallback(name, callback)
   local record = activeRecord(self, "WidgetKit.Widget:SetCallback", 3)
   validateName(name, "WidgetKit.Widget:SetCallback name", 3)
-  if type(callback) ~= "nil" and type(callback) ~= "function" then
+  -- Asked once: `type` is a call, and the answer is needed up to three times.
+  local clearing = type(callback) == "nil"
+  if not clearing and type(callback) ~= "function" then
     error("WidgetKit.Widget:SetCallback callback must be a function or nil", 2)
   end
 
   local callbacks = record.callbacks
   if callbacks == nil then
-    if type(callback) == "nil" then
+    if clearing then
       return
     end
     callbacks = {}
@@ -1200,7 +1219,7 @@ function WidgetBase:SetCallback(name, callback)
   end
 
   local existing = callbacks[name]
-  if type(callback) == "nil" then
+  if clearing then
     if existing ~= nil then
       callbacks[name] = nil
       record.callbackCount = record.callbackCount - 1
@@ -1518,16 +1537,22 @@ local function insertChild(container, record, child, childRecord, beforeWidget)
   end
 
   local children = record.children
-  local position = #children + 1
+  local count = #children
+  local position = count + 1
   if type(beforeWidget) ~= "nil" then
-    for index = 1, #children do
+    for index = 1, count do
       if children[index] == beforeWidget then
         position = index
         break
       end
     end
   end
-  table.insert(children, position, child)
+  if position > count then
+    -- Appending, the common case: a plain store instead of `table.insert`.
+    children[position] = child
+  else
+    table.insert(children, position, child)
+  end
 
   childRecord.parent = container
   local frame = child.frame
@@ -1675,101 +1700,121 @@ function ContainerBase:PerformLayout()
   return performLayout(self, record)
 end
 
----The upward size report a layout pass ends with. Records nothing itself:
----it calls the type's `OnLayoutFinished(width, height)` hook, and when that
----changed the container's height, lays out the container holding it — unless
----that one is laying out already, paused or being released.
----@param width number?
----@param height number?
-function ContainerBase:LayoutFinished(width, height)
-  local record = activeContainerRecord(self, "WidgetKit.Container:LayoutFinished", 3)
-  if type(width) ~= "nil" then
-    validateNumber(width, "WidgetKit.Container:LayoutFinished width", 3)
-  end
-  if type(height) ~= "nil" then
-    validateNumber(height, "WidgetKit.Container:LayoutFinished height", 3)
+do
+  ---The upward size report, once `width` and `height` are known to be plain
+  ---numbers or `nil`: what `LayoutFinished` does after its checks. A layout
+  ---pass calls this directly, since it has the record and has already
+  ---checked the sizes its layout returned.
+  ---@param container WidgetKit.Widget a container
+  ---@param record table
+  ---@param width number?
+  ---@param height number?
+  local function finishLayout(container, record, width, height)
+    local frame = container.frame
+    local heightBefore = frame:GetHeight()
+    callHook(container, "OnLayoutFinished", width, height)
+    -- A secret height (Retail 12.x) raises when compared, so a height that
+    -- is secret before or after the hook is unknown and counts as unchanged:
+    -- the parent is not asked to lay out again, and would read it as 0 anyway.
+    local heightAfter = frame:GetHeight()
+    if isSecret(heightBefore) or isSecret(heightAfter) or heightAfter == heightBefore then
+      return
+    end
+
+    local parent = record.parent
+    local parentRecord = parent ~= nil and records[parent] or nil
+    if
+      parentRecord ~= nil
+      and parentRecord.active
+      and not parentRecord.layingOut
+      and not parentRecord.layoutPaused
+      and not isReleasingRecord(parentRecord)
+    then
+      performLayout(parent, parentRecord)
+    end
   end
 
-  local frame = self.frame
-  local heightBefore = frame:GetHeight()
-  callHook(self, "OnLayoutFinished", width, height)
-  -- A secret height (Retail 12.x) raises when compared, so a height that is
-  -- secret before or after the hook is unknown and counts as unchanged: the
-  -- parent is not asked to lay out again, and would read it as 0 anyway.
-  local heightAfter = frame:GetHeight()
-  if isSecret(heightBefore) or isSecret(heightAfter) or heightAfter == heightBefore then
-    return
+  ---The upward size report a layout pass ends with. Records nothing itself:
+  ---it calls the type's `OnLayoutFinished(width, height)` hook, and when that
+  ---changed the container's height, lays out the container holding it —
+  ---unless that one is laying out already, paused or being released.
+  ---@param width number?
+  ---@param height number?
+  function ContainerBase:LayoutFinished(width, height)
+    local record = activeContainerRecord(self, "WidgetKit.Container:LayoutFinished", 3)
+    if type(width) ~= "nil" then
+      validateNumber(width, "WidgetKit.Container:LayoutFinished width", 3)
+    end
+    if type(height) ~= "nil" then
+      validateNumber(height, "WidgetKit.Container:LayoutFinished height", 3)
+    end
+    finishLayout(self, record, width, height)
   end
 
-  local parent = record.parent
-  local parentRecord = parent ~= nil and records[parent] or nil
-  if
-    parentRecord ~= nil
-    and parentRecord.active
-    and not parentRecord.layingOut
-    and not parentRecord.layoutPaused
-    and not isReleasingRecord(parentRecord)
-  then
-    performLayout(parent, parentRecord)
-  end
-end
+  ---Run the container's layout once.
+  ---
+  ---The layout is resolved by name on every pass, so a newer copy's built-in
+  ---layouts take over containers an older copy built. A pass inside a pass
+  ---of the same container is refused, never looped; a layout error is
+  ---re-raised unchanged after the container's layout state was restored.
+  ---@param container WidgetKit.Widget a container
+  ---@param record table
+  ---@return boolean done
+  ---@return string? reason
+  function performLayout(container, record)
+    if record.layoutPaused then
+      return false, "paused"
+    end
+    if record.layingOut then
+      return false, "recursion"
+    end
+    if isReleasingRecord(record) then
+      return false, "releasing"
+    end
+    -- `state` has no metatable: plain indexing is `rawget` without the call.
+    local depth = state.layoutDepth
+    if depth >= MAX_LAYOUT_DEPTH then
+      return false, "depth"
+    end
 
----Run the container's layout once.
----
----The layout is resolved by name on every pass, so a newer copy's built-in
----layouts take over containers an older copy built. A pass inside a pass of
----the same container is refused, never looped; a layout error is re-raised
----unchanged after the container's layout state was restored.
----@param container WidgetKit.Widget a container
----@param record table
----@return boolean done
----@return string? reason
-function performLayout(container, record)
-  if record.layoutPaused then
-    return false, "paused"
-  end
-  if record.layingOut then
-    return false, "recursion"
-  end
-  if isReleasingRecord(record) then
-    return false, "releasing"
-  end
-  local depth = rawget(state, "layoutDepth")
-  if depth >= MAX_LAYOUT_DEPTH then
-    return false, "depth"
-  end
+    local layout = record.layoutFunction
+    if layout == nil then
+      layout = layouts[record.layoutName] or layouts[LAYOUT_LIST]
+    end
 
-  local layout = record.layoutFunction
-  if layout == nil then
-    layout = layouts[record.layoutName] or layouts[LAYOUT_LIST]
-  end
+    -- The pass is marked before `OnLayoutStart` runs, so a hook that asks for
+    -- a layout of its own container is refused with `"recursion"` instead of
+    -- recursing without bound.
+    record.layingOut = true
+    state.layoutDepth = depth + 1
+    callHook(container, "OnLayoutStart")
+    local scratch = scratchPool:Acquire()
+    local ok, width, height =
+      pcall(layout, rawget(container, "content"), record.children, container, scratch)
+    scratchPool:Release(scratch)
+    state.layoutDepth = depth
+    record.layingOut = false
 
-  -- The pass is marked before `OnLayoutStart` runs, so a hook that asks for
-  -- a layout of its own container is refused with `"recursion"` instead of
-  -- recursing without bound.
-  record.layingOut = true
-  rawset(state, "layoutDepth", depth + 1)
-  callHook(container, "OnLayoutStart")
-  local scratch = scratchPool:Acquire()
-  local ok, width, height =
-    pcall(layout, rawget(container, "content"), record.children, container, scratch)
-  scratchPool:Release(scratch)
-  rawset(state, "layoutDepth", depth)
-  record.layingOut = false
-
-  if not ok then
-    error(width, 0)
+    if not ok then
+      error(width, 0)
+    end
+    -- A layout's size is the consumer's value: a secret one is ignored like a
+    -- non-number, before the NaN test would compare it and raise.
+    if type(width) ~= "number" or isSecret(width) or width ~= width then
+      width = nil
+    end
+    if type(height) ~= "number" or isSecret(height) or height ~= height then
+      height = nil
+    end
+    -- A hook or the layout itself released the container during the pass:
+    -- refused as `LayoutFinished`'s own check refused it before the pass
+    -- called `finishLayout` directly, with the same message.
+    if not record.active then
+      error("WidgetKit.Container:LayoutFinished cannot be called on a released widget", 1)
+    end
+    finishLayout(container, record, width, height)
+    return true
   end
-  -- A layout's size is the consumer's value: a secret one is ignored like a
-  -- non-number, before the NaN test would compare it and raise.
-  if type(width) ~= "number" or isSecret(width) or width ~= width then
-    width = nil
-  end
-  if type(height) ~= "number" or isSecret(height) or height ~= height then
-    height = nil
-  end
-  ContainerBase.LayoutFinished(container, width, height)
-  return true
 end
 
 -- Layouts --------------------------------------------------------------------
@@ -1803,26 +1848,25 @@ local function notifySized(child, width, height)
   end
 end
 
----Lay a child container out once its size is set.
----@param child WidgetKit.Widget
----@param childRecord table
-local function layoutNested(child, childRecord)
-  if childRecord.isContainer then
-    performLayout(child, childRecord)
-  end
-end
-
 ---`List`: children stacked from the top, each below the previous one.
 ---Full-width children span the content; relative widths are a fraction of it.
+---
+---`List` is the default layout and runs once per child per pass, so it does
+---inline what `notifySized` and `callHook` would do for the one hook it calls,
+---and reads the host's `issecretvalue` once per pass, not once per size: a
+---pass is one call of the layout, and the probe is still read at every call.
 ---@type WidgetKit.Layout
 local function listLayout(content, children)
+  -- selene: allow(global_usage)
+  local probe = rawget(_G, "issecretvalue")
+  local probeSecrets = type(probe) == "function"
   -- Insets larger than the container leave the content a negative width;
   -- no child is ever sized below zero. A secret width is unknown (`nil`).
   local width = content:GetWidth()
-  if isSecret(width) then
+  if probeSecrets and probe(width) == true then
     width = nil
-  else
-    width = math.max(width, 0)
+  elseif width < 0 then
+    width = 0
   end
   local offset = 0
   for index = 1, #children do
@@ -1832,17 +1876,29 @@ local function listLayout(content, children)
     if childRecord ~= nil and frame:IsShown() then
       frame:ClearAllPoints()
       frame:SetPoint("TOPLEFT", content, "TOPLEFT", 0, -offset)
+      -- The width the child is told, if any: `notifySized(child, sized, nil)`.
+      local sized = nil
       if childRecord.fullWidth then
         frame:SetPoint("TOPRIGHT", content, "TOPRIGHT", 0, -offset)
-        notifySized(child, width, nil)
+        sized = width
       elseif childRecord.relativeWidth ~= nil and width ~= nil then
-        local childWidth = width * childRecord.relativeWidth
-        frame:SetWidth(childWidth)
-        notifySized(child, childWidth, nil)
+        sized = width * childRecord.relativeWidth
+        frame:SetWidth(sized)
       end
-      layoutNested(child, childRecord)
+      if sized ~= nil then
+        local hook = rawget(child, "OnWidthSet")
+        if type(hook) == "function" then
+          local ok, failure = pcall(hook, child, sized)
+          if not ok then
+            reportError(failure)
+          end
+        end
+      end
+      if childRecord.isContainer then
+        performLayout(child, childRecord)
+      end
       local childHeight = frame:GetHeight()
-      if not isSecret(childHeight) then
+      if not (probeSecrets and probe(childHeight) == true) then
         offset = offset + childHeight
       end
     end
@@ -1874,7 +1930,9 @@ local function fillLayout(content, children)
       frame:SetPoint("TOPLEFT", content, "TOPLEFT", 0, 0)
       frame:SetPoint("BOTTOMRIGHT", content, "BOTTOMRIGHT", 0, 0)
       notifySized(child, width, height)
-      layoutNested(child, childRecord)
+      if childRecord.isContainer then
+        performLayout(child, childRecord)
+      end
       return width, height
     end
   end
@@ -1952,7 +2010,9 @@ local function flowLayout(content, children)
         frame:SetHeight(sizedHeight)
       end
       notifySized(child, sizedWidth, sizedHeight)
-      layoutNested(child, childRecord)
+      if childRecord.isContainer then
+        performLayout(child, childRecord)
+      end
 
       local childHeight = frame:GetHeight()
       if isSecret(childHeight) then
@@ -2084,8 +2144,12 @@ local releaseContainerRenderings
 ---@param widget table
 ---@param record table
 local function releaseWidget(widget, record)
+  -- This runs for every release, so it reads the record, `state` and the
+  -- type record by plain indexing (none has a metatable) and does inline
+  -- what `Fire`, `callHook`, `wipe`, `releaseParent` and `detachFromParent`
+  -- would do: the same steps in the same order, without their calls.
   record.releasing = true
-  if rawget(state, "focus") == widget then
+  if state.focus == widget then
     WidgetKit:ClearFocus()
   end
 
@@ -2096,7 +2160,17 @@ local function releaseWidget(widget, record)
     releaseContainerRenderings(renderings)
   end
 
-  WidgetBase.Fire(widget, "OnRelease")
+  -- The `OnRelease` callback, as `Fire` calls it: the record is active here.
+  local callbacks = record.callbacks
+  if callbacks ~= nil then
+    local onRelease = callbacks.OnRelease
+    if onRelease ~= nil then
+      local ok, failure = pcall(onRelease, widget, "OnRelease")
+      if not ok then
+        reportError(failure)
+      end
+    end
+  end
 
   local children = record.children
   if children ~= nil then
@@ -2113,16 +2187,26 @@ local function releaseWidget(widget, record)
     end
   end
 
-  callHook(widget, "OnRelease")
+  -- The type's `OnRelease` hook, as `callHook` calls it.
+  local hook = rawget(widget, "OnRelease")
+  if type(hook) == "function" then
+    local ok, failure = pcall(hook, widget)
+    if not ok then
+      reportError(failure)
+    end
+  end
 
-  local callbacks = record.callbacks
-  if callbacks ~= nil then
+  -- Callbacks, user data and size requests go back to their defaults. The
+  -- tables are kept for the next use; an empty one is left as it is. Read
+  -- again: a callback or hook above may have set the first callback.
+  callbacks = record.callbacks
+  if callbacks ~= nil and next(callbacks) ~= nil then
     wipe(callbacks)
   end
   record.callbackCount = 0
   record.maxChildren = MAX_CHILDREN
   local userData = record.userData
-  if userData ~= nil then
+  if userData ~= nil and next(userData) ~= nil then
     wipe(userData)
   end
   record.fullWidth = false
@@ -2135,14 +2219,25 @@ local function releaseWidget(widget, record)
   local frame = widget.frame
   frame:ClearAllPoints()
   frame:Hide()
-  frame:SetParent(releaseParent())
+  -- `releaseParent`: `UIParent` when the client has it, read at every
+  -- release, otherwise the hidden holder frame.
+  -- selene: allow(global_usage)
+  local uiParent = rawget(_G, "UIParent")
+  if type(uiParent) == "table" and type(uiParent.GetWidth) == "function" then
+    frame:SetParent(uiParent)
+  else
+    frame:SetParent(holderFrame())
+  end
 
-  detachFromParent(record, widget)
+  if record.parent ~= nil then
+    detachFromParent(record, widget)
+  end
   record.releasing = false
   record.active = false
   local typeRecord = record.typeRecord
   local borrowed = typeRecord.borrowed
-  borrowed[record.version] = borrowed[record.version] - 1
+  local version = record.version
+  borrowed[version] = borrowed[version] - 1
   typeRecord.pool:Release(widget)
 end
 
@@ -2272,8 +2367,20 @@ end
 ---@return WidgetKit.Widget|nil widget
 ---@return string? reason `"unknownType"` or `"exhausted"`
 local function create(self, name)
-  validateFacade(self, "WidgetKit:Create", 3)
-  validateName(name, "WidgetKit:Create name", 3)
+  -- `validateFacade` and `validateName`, inlined: this is the hot half of
+  -- every widget's use. The secret check still comes first, before the name
+  -- is compared or used as a key.
+  if self ~= WidgetKit then
+    error("WidgetKit:Create must be called on the WidgetKit facade", 2)
+  end
+  -- selene: allow(global_usage)
+  local probe = rawget(_G, "issecretvalue")
+  if type(probe) == "function" and probe(name) == true then
+    error("WidgetKit:Create name must not be a secret value", 2)
+  end
+  if type(name) ~= "string" or name == "" then
+    error("WidgetKit:Create name must be a non-empty string", 2)
+  end
   local typeRecord = types[name]
   if typeRecord == nil then
     return nil, "unknownType"
@@ -2282,8 +2389,8 @@ local function create(self, name)
   local pool = typeRecord.pool
   local ok, widget, reason = pcall(pool.Acquire, pool)
   if not ok then
-    local problem = rawget(state, "buildProblem")
-    rawset(state, "buildProblem", nil)
+    local problem = state.buildProblem
+    state.buildProblem = nil
     if problem ~= nil then
       error("WidgetKit:Create " .. problem, 2)
     end
@@ -2296,13 +2403,16 @@ local function create(self, name)
 
   -- `buildWidget` and `releaseWidget` leave every other field of the record
   -- at its default, so acquiring only marks it active and counts it.
+  -- `state` has no metatable, so plain indexing reads and writes the same
+  -- fields `rawget` and `rawset` would, without a C call each.
   local record = records[widget]
   record.active = true
-  local serial = (rawget(state, "serial") or 0) + 1
-  rawset(state, "serial", serial)
+  local serial = (state.serial or 0) + 1
+  state.serial = serial
   record.serial = serial
   local borrowed = typeRecord.borrowed
-  borrowed[record.version] = (borrowed[record.version] or 0) + 1
+  local version = record.version
+  borrowed[version] = (borrowed[version] or 0) + 1
 
   local onAcquire = rawget(widget, "OnAcquire")
   if type(onAcquire) ~= "nil" then
@@ -2320,7 +2430,9 @@ end
 ---@param widget WidgetKit.Widget
 ---@return true
 local function release(self, widget)
-  validateFacade(self, "WidgetKit:Release", 3)
+  if self ~= WidgetKit then
+    error("WidgetKit:Release must be called on the WidgetKit facade", 2)
+  end
   local record = type(widget) == "table" and records[widget] or nil
   if record == nil then
     error("WidgetKit:Release widget must be a WidgetKit widget", 2)
@@ -3110,7 +3222,7 @@ end
 
 ---Bind `frame`'s position to `storage[options.key or "anchor"]`.
 ---@param frame WidgetKit.Frame
----@param storage table|fun(): table a plain table or a SettingsKit scope view, or a function returning one at each save and restore (`function() return db.profile end`)
+---@param storage table|(fun(): table) a plain table or a SettingsKit scope view, or a function returning one at each save and restore (`function() return db.profile end`)
 ---@param options WidgetKit.BindingOptions?
 ---@return WidgetKit.Binding
 local function bindPosition(self, frame, storage, options)
@@ -3259,18 +3371,30 @@ local LABEL_RED, LABEL_GREEN, LABEL_BLUE = 1, 0.82, 0
 local TEXT_RED, TEXT_GREEN, TEXT_BLUE = 1, 1, 1
 local DISABLED_RED, DISABLED_GREEN, DISABLED_BLUE = 0.5, 0.5, 0.5
 
----Check the text a widget is asked to display.
+---Check that `widget` is active and the text it is asked to display.
 ---
 ---`nil` clears; a string or number is shown; a secret value is refused unless
 ---`options.allowSecret` is `true`. A font string can display a secret, but
 ---whether one should appear is the caller's decision (`docs/EMBEDDING.md`).
+---
+---The widget is checked here, as `activeRecord` would with the same messages,
+---so a text setter makes one call for all its checks: text setters run for
+---every text an options dialog shows.
+---@param widget any
 ---@param text any
 ---@param options any
 ---@param methodName string qualified public method name, used in the argument error
 ---@param level integer stack level the failure is reported at
 ---@return string|number text
 ---@return boolean secret
-local function checkText(text, options, methodName, level)
+local function checkText(widget, text, options, methodName, level)
+  local record = type(widget) == "table" and records[widget] or nil
+  if record == nil then
+    error(methodName .. " must be called on a WidgetKit widget", level)
+  end
+  if not record.active then
+    error(methodName .. " cannot be called on a released widget", level)
+  end
   local allowSecret = false
   if type(options) ~= "nil" then
     validateOptionKeys(options, TEXT_OPTION_KEYS, methodName .. " options", level + 1)
@@ -3278,7 +3402,10 @@ local function checkText(text, options, methodName, level)
     refuseSecret(options.allowSecret, methodName .. " options.allowSecret", level + 1)
     allowSecret = options.allowSecret == true
   end
-  if isSecret(text) then
+  -- `isSecret`, inlined as in `validateNumber`.
+  -- selene: allow(global_usage)
+  local probe = rawget(_G, "issecretvalue")
+  if type(probe) == "function" and probe(text) == true then
     if not allowSecret then
       error(
         methodName .. " text must not be a secret value unless options.allowSecret is true",
@@ -3287,14 +3414,15 @@ local function checkText(text, options, methodName, level)
     end
     return text, true
   end
-  if type(text) == "nil" then
+  -- One `type` call answers all three questions; a string is the common case.
+  local kind = type(text)
+  if kind == "string" or kind == "number" then
+    return text, false
+  end
+  if kind == "nil" then
     return "", false
   end
-  local kind = type(text)
-  if kind ~= "string" and kind ~= "number" then
-    error(methodName .. " text must be a string, a number or nil", level)
-  end
-  return text, false
+  error(methodName .. " text must be a string, a number or nil", level)
 end
 
 ---Show a checked text in the widget's text slot `key`: the field (`text`,
@@ -3321,8 +3449,10 @@ end
 ---@param value string|number
 ---@param secret boolean
 local function showText(widget, key, value, secret)
+  -- `_secretTexts` and its slots are WidgetKit's own tables, so absence is
+  -- tested with `== nil` (the nil rule's exception) rather than a `type` call.
   local slots = widget._secretTexts
-  if type(slots) == "nil" then
+  if slots == nil then
     if not secret then
       widget[key]:SetText(value)
       return
@@ -3331,7 +3461,7 @@ local function showText(widget, key, value, secret)
     widget._secretTexts = slots
   end
   local slot = slots[key]
-  if type(slot) == "nil" then
+  if slot == nil then
     if not secret then
       widget[key]:SetText(value)
       return
@@ -3439,8 +3569,7 @@ end
 ---@param text any
 ---@param options WidgetKit.TextOptions?
 local function setWidgetLabel(self, text, options)
-  activeRecord(self, "WidgetKit.Widget:SetLabel", 3)
-  local value, secret = checkText(text, options, "WidgetKit.Widget:SetLabel", 3)
+  local value, secret = checkText(self, text, options, "WidgetKit.Widget:SetLabel", 3)
   showText(self, "labelText", value, secret)
 end
 
@@ -3469,8 +3598,7 @@ do
   ---@param text any
   ---@param options WidgetKit.TextOptions?
   local function windowSetTitle(self, text, options)
-    activeRecord(self, "WidgetKit Frame:SetTitle", 3)
-    local value, secret = checkText(text, options, "WidgetKit Frame:SetTitle", 3)
+    local value, secret = checkText(self, text, options, "WidgetKit Frame:SetTitle", 3)
     showText(self, "titleText", value, secret)
   end
 
@@ -3507,7 +3635,7 @@ do
 
   ---Bind the window's position, replacing a binding it already had. The binding
   ---is released with the window.
-  ---@param storage table|fun(): table a table, or a function returning one at each save and restore
+  ---@param storage table|(fun(): table) a table, or a function returning one at each save and restore
   ---@param options WidgetKit.BindingOptions?
   ---@return WidgetKit.Binding
   local function windowBindPosition(self, storage, options)
@@ -3683,8 +3811,7 @@ do
   ---@param text any
   ---@param options WidgetKit.TextOptions?
   local function groupSetTitle(self, text, options)
-    activeRecord(self, "WidgetKit Group:SetTitle", 3)
-    local value, secret = checkText(text, options, "WidgetKit Group:SetTitle", 3)
+    local value, secret = checkText(self, text, options, "WidgetKit Group:SetTitle", 3)
     showText(self, "titleText", value, secret)
     groupPlaceContent(self)
   end
@@ -3940,8 +4067,7 @@ do
   ---@param text any
   ---@param options WidgetKit.TextOptions?
   local function labelSetText(self, text, options)
-    activeRecord(self, "WidgetKit Label:SetText", 3)
-    local value, secret = checkText(text, options, "WidgetKit Label:SetText", 3)
+    local value, secret = checkText(self, text, options, "WidgetKit Label:SetText", 3)
     self._secret = secret
     showText(self, "text", value, secret)
     -- The font string showing the text may have changed.
@@ -4082,8 +4208,7 @@ do
   ---@param text any
   ---@param options WidgetKit.TextOptions?
   local function buttonSetText(self, text, options)
-    activeRecord(self, "WidgetKit Button:SetText", 3)
-    local value, secret = checkText(text, options, "WidgetKit Button:SetText", 3)
+    local value, secret = checkText(self, text, options, "WidgetKit Button:SetText", 3)
     showText(self, "text", value, secret)
   end
 
@@ -4495,7 +4620,13 @@ do
     colourLabel(self.labelText, false)
     self.lowText:SetText("0")
     self.highText:SetText("100")
-    sliderStore(self, 0)
+    -- `sliderStore(self, 0)` with the text `sliderShowValue` would format for
+    -- 0 on a slider that is not a percent one, written out: acquire is hot.
+    self._value = 0
+    self._updating = true
+    self.slider:SetValue(0)
+    self._updating = false
+    self.valueBox:SetText("0")
   end
 
   local function sliderOnRelease(self)
@@ -4640,7 +4771,7 @@ do
         2
       )
     end
-    local value = checkText(text, options, "WidgetKit EditBox:SetText", 3)
+    local value = checkText(self, text, options, "WidgetKit EditBox:SetText", 3)
     self._settingText = true
     activeEditBox(self):SetText(value)
     self._settingText = false
@@ -5538,8 +5669,7 @@ do
   ---@param text any
   ---@param options WidgetKit.TextOptions?
   local function headingSetText(self, text, options)
-    activeRecord(self, "WidgetKit Heading:SetText", 3)
-    local value, secret = checkText(text, options, "WidgetKit Heading:SetText", 3)
+    local value, secret = checkText(self, text, options, "WidgetKit Heading:SetText", 3)
     showText(self, "text", value, secret)
     -- The lines meet in the middle when there is no text.
     local empty = not secret and value == ""

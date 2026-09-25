@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.2.1 — 2026-09-25
+
+Performance round 2: WidgetKit's own cost per acquire, release, text and layout pass, with no documented behaviour changed.
+
+- Changed (internal): `Create` and `Release` do inline what their helpers did, with the same checks, messages and order. `Create` checks the facade and the name itself; `releaseWidget` fires the `OnRelease` callback and the type's hook without going through `Fire` and `callHook`, wipes a callback or user-data table only when it holds something (the callback table is read again after the hooks, so one a hook creates while releasing is still cleared), reads `UIParent` at every release as before and detaches from a parent only when there is one. `state` and the records are read and written by plain indexing instead of `rawget`/`rawset`: they are WidgetKit's own tables and have no metatable. Widget tables keep `rawget`.
+- Changed (internal): the secret probe is read inline where it runs for every value (`isSecret`, `validateNumber`, `validateName`, `refuseSecret`), still from the global table at every call. Text setters make one call for their checks: `checkText` now checks the widget first, with `activeRecord`'s messages and levels, then the options and the text, asking `type` once. `showText` tests its own tables with `== nil`. `SetCallback` asks `type` once. A slider's `OnAcquire` writes the `"0"` its value shows instead of formatting it.
+- Changed (internal): `List` calls a sized child's `OnWidthSet` hook and a nested pass itself and reads `issecretvalue` once per pass, not once per size; the pass finishes through a shared `finishLayout` instead of the public `LayoutFinished`, which checked the sizes and the container again. A container that a hook or its layout releases during the pass is still refused with `LayoutFinished`'s message. `AddChild` appends with a plain store. `layoutNested` is gone, and the main chunk peaks at 197 active locals (198 before; counted with `luac -p -l -l` as the most locals whose ranges overlap in the main function).
+- Fixed: the LuaLS annotations of `WidgetKit:BindPosition` and the window's `BindPosition` read `storage: table|fun(): table, options: ...`, which LuaLS parses as a second return value of the storage function, so `window:BindPosition(fn, { key = "anchor" })` reported `redundant-parameter`. They now read `table|(fun(): table)`, as do the two `@param` lines.
+- Measured on the host (`python3 -m tooling.bench.run --workload widgets --rounds 3`, fake-client frames, indicative only; the after run under concurrent load, load average 4.6 to 5.0 against 1.7 before, so compare the ratios, which interleave both sides):
+
+  | Case | Before | After | Allocation |
+  |---|---:|---:|---:|
+  | `cycle-button` | 1.66× AceGUI | 1.37× | 0 B |
+  | `cycle-slider` | 1.81× | 1.56× | 0 B |
+  | `cycle-editbox` | 1.14× | 0.99× | 0 B |
+  | `cycle-label` | 0.94× | 0.80× | 0 B |
+  | `cycle-checkbox` | 0.78× | 0.67× | 0 B |
+  | `relayout-50`, own time above `host-stub-list-anchors-50` | 18.0 µs | 5.4 µs | 3.4 B (one-time, not per pass) |
+  | `group-50` | 266 µs | 252 µs | 6.8 B (same) |
+
+  What remains of the button and slider gap is PoolKit's acquire and release (about 360 ns a cycle on this host, where AceGUI pops a table), the protected calls around the pool, `OnAcquire` and `OnRelease`, and the checks every setter makes (the secret probe read at every call, as documented, and `type` for the nil rule); a slider's `SetSliderValues` spends about 300 ns validating three numbers and its widget.
+- Base widget versions: unchanged (`Frame` 4, the other nine text-bearing types 3, `ScrollFrame` and `Spacer` 1). No constructor changed and no type method behaves differently.
+- Implementation revision 9. No state changed: an in-place upgrade from revision 8 keeps the prototypes, types, pools, live and pooled widgets, bindings, renderings and limits. The shared routines take over at once; a widget an older revision built keeps that revision's type methods, which behave the same.
+- `docs/API.md`: implementation revision and `REVISION` 9, the costs of `Create`/`Release`, text setters and `PerformLayout`, the revision 9 upgrade; `docs/INTERNALS.md`: the inlined create and release, `checkText`, `finishLayout` and `List`.
+- Specs: new `FastPaths_spec.lua` (the release order and a callback set by a hook while releasing, a failing `OnRelease` callback reported, the resting parent with and without a `UIParent` frame, borrowed counts and serials, `Create` refusals, text setters checking the widget before the text, `SetCallback` clearing and replacing, `List` sizing, hidden children, a failing `OnWidthSet`, a nested container, a container released mid-pass, `AddChild` order, a slider's acquire state); `Allocation_spec.lua` adds the slider and edit box to the warm cycles, the benchmark's five fills and a group of ten labels laid out and released; `ErrorLevels_spec.lua` the inlined `Create`, `Release` and text-setter refusals at the caller's line; `Bootstrap_spec.lua` an in-place upgrade of a revision 8 copy. 243 specs (223 before).
+- The real-client suite is unchanged: no expectation changed (it reads the revision from the manifest).
+
 ## 0.2.0 — 2026-09-25
 
 Two persistence defects a read-only audit found in position bindings, and the fixes.

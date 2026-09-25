@@ -291,7 +291,7 @@ describe("WidgetKit bootstrap", function()
     local upgraded = require("WidgetKit")
     assert.are.equal(old, upgraded)
     assert.are.equal(state, upgraded._state)
-    assert.are.equal(8, upgraded.REVISION)
+    assert.are.equal(9, upgraded.REVISION)
     assert.are.equal(3, upgraded:GetTypeVersion("Label"))
     assert.are.equal(4, upgraded:GetTypeVersion("Frame"))
     assert.are.equal(1, upgraded:GetTypeVersion("ScrollFrame"))
@@ -359,7 +359,7 @@ describe("WidgetKit bootstrap", function()
     local upgraded = require("WidgetKit")
     assert.are.equal(old, upgraded)
     assert.are.equal(state, upgraded._state)
-    assert.are.equal(8, upgraded.REVISION)
+    assert.are.equal(9, upgraded.REVISION)
     assert.are.equal(3, upgraded:GetTypeVersion("Label"))
     assert.are.equal(3, upgraded:GetTypeVersion("Button"))
     assert.are.equal(1, upgraded:GetTypeVersion("Spacer"))
@@ -405,7 +405,7 @@ describe("WidgetKit bootstrap", function()
     local upgraded = require("WidgetKit")
     assert.are.equal(old, upgraded)
     assert.are.equal(state, upgraded._state)
-    assert.are.equal(8, upgraded.REVISION)
+    assert.are.equal(9, upgraded.REVISION)
     assert.are.equal(4, upgraded:GetTypeVersion("Frame"))
     assert.are.equal(3, upgraded:GetTypeVersion("Label"))
 
@@ -427,6 +427,65 @@ describe("WidgetKit bootstrap", function()
     upgraded:Release(borrowed)
     assert.is_true(binding:IsReleased())
     assert.are_not.equal(borrowed, upgraded:Create("Frame"))
+  end)
+
+  it("upgrades a revision 8 copy in place, keeping every pooled and borrowed widget", function()
+    TestEnv.Reset()
+    TestEnv.InstallWowApi()
+    TestEnv.InstallClientRules()
+    TestEnv.InstallScreen()
+    for _, name in ipairs({ "Registry", "SignalKit", "PoolKit", "SchemaKit", "OptionsKit" }) do
+      require(name)
+    end
+    -- Revision 9 changed no state and no base widget version: its speed-ups
+    -- are in the shared routines and in methods whose behaviour is the same.
+    local old = TestEnv.LoadRevision(8)
+    local state = old._state
+    local pooled = old:Create("Slider") ---@cast pooled -nil
+    pooled:SetSliderValues(0, 10, 1)
+    old:Release(pooled)
+    local group = old:Create("Group") ---@cast group -nil
+    group:PauseLayout()
+    local released = {}
+    for index = 1, 3 do
+      local label = old:Create("Label") ---@cast label -nil
+      label:SetText("line " .. index)
+      label:SetFullWidth(true)
+      label:SetCallback("OnRelease", function()
+        released[#released + 1] = index
+      end)
+      group:AddChild(label)
+    end
+    group:ResumeLayout()
+    group:SetUserData("kept", true)
+    local serial = state.serial
+
+    local upgraded = require("WidgetKit")
+    assert.are.equal(old, upgraded)
+    assert.are.equal(state, upgraded._state)
+    assert.are.equal(9, upgraded.REVISION)
+    assert.are.equal(4, upgraded:GetTypeVersion("Frame"))
+    assert.are.equal(3, upgraded:GetTypeVersion("Slider"))
+    assert.are.equal(3, upgraded:GetTypeVersion("Label"))
+
+    -- No version was raised, so the pooled slider is handed out again, reset.
+    local reused = upgraded:Create("Slider") ---@cast reused -nil
+    assert.are.equal(pooled, reused)
+    assert.are.equal(serial + 1, state.serial)
+    assert.are.equal(0, reused:GetValue())
+    reused:SetValue(40)
+    assert.are.equal(40, reused:GetValue())
+
+    -- The borrowed group lays out and releases through this revision's
+    -- routines: children last first, callbacks and user data cleared.
+    assert.is_true(group:PerformLayout())
+    assert.is_true(group:GetUserData("kept"))
+    upgraded:Release(group)
+    assert.are.same({ 3, 2, 1 }, released)
+    local again = upgraded:Create("Group") ---@cast again -nil
+    assert.are.equal(group, again)
+    assert.is_nil(again:GetUserData("kept"))
+    assert.are.equal(0, #again:GetChildren())
   end)
 
   it("discards pooled base widgets when a newer copy raises their version", function()
