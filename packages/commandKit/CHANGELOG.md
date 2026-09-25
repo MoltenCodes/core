@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.5 — 2026-09-25
+
+- The taken check finds the client's own commands on Retail 12.1. Its chat frame (Blizzard_ChatFrameBase, build 69933) moves every entry of `SlashCmdList`, `ChatTypeInfo` and its private secure-command list into lookup tables keyed by the upper-case slash text when it loads, and again before each typed line, then wipes the lists; `SecureCmdList` is no longer a global. Revision 5 scanned only the lists' keys, so on that client it refused none of Blizzard's commands (`/reload`), chat types (`/s`) or secure commands (`/cast`), nor another addon's command once a line had been typed. The real-client run of 2026-09-25 showed it: `SecureCmdList` was `nil` and no `SlashCmdList` key had a `SLASH_<key>1`, while `hash_SlashCmdList` was a table.
+- The check now also reads `hash_ChatTypeInfoList["/NAME"]` (unless it names a key CommandKit wrote), `hash_SlashCmdList["/NAME"]` (unless it holds a CommandKit dispatcher) and `IsSecureCmd("/NAME")`, answering `nil, "taken"`, and the emote check reads `hash_EmoteTokenList["/NAME"]` before its scan, answering `nil, "emote"`. A secret entry or answer is skipped, like a secret `SLASH_<key><n>`. `docs/API.md` describes the sources and the client's resolution order (secure commands first).
+- Implementation revision 6. No layout changes: revision 6 takes over revision 5's state as it is, and a command an older copy registered is recognised as CommandKit's own in the client's lookup tables.
+- `CommandKitTestEnv.ImportListsToHash` models the client's import. 157 specs: a client slash command, a chat type and a secure command after the lists are wiped, `IsSecureCmd`, `hash_EmoteTokenList`, CommandKit's own hashed command, a foreign hashed handler, secret entries, and the upgrade from revision 5.
+
 ## 0.2.4 — 2026-09-24
 
 - Secret values: a boolean test on a secret raises on Retail 12.1.0 b69933 (measured 2026-09-24), as a comparison with a value of its own type does. `BindOptions` no longer tests for truth, or compares with `true`, the `confirm` and `tristate` flags an OptionsKit description passes through as the addon wrote them. A secret `confirm` asks for confirmation (as `true` does, without printing a question); a secret `tristate` reads as absent, so `set <path> default` answers `expected on, off or toggle`. One file-level helper, `readTreeFlag`, reads both. `docs/API.md` says so under "Secret values".

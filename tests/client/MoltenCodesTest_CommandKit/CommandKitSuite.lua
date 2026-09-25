@@ -971,19 +971,63 @@ local function slashNameIn(global)
   return name
 end
 
+---Whether `key` is a slash-table key CommandKit writes.
+---@param key any
+---@return boolean
+local function isCommandKitKey(key)
+  return type(key) == "string" and key:sub(1, #"MOLTENCODES") == "MOLTENCODES"
+end
+
+---The client's own slash command from Retail 12.1's lookup tables: the first
+---slash text, in sorted order, of `hash_SlashCmdList` that is a plain slash
+---name and that `hash_ChatTypeInfoList` does not attribute to a CommandKit key.
+---Retail 12.1's chat frame moves every `SlashCmdList` entry into these tables
+---and wipes `SlashCmdList`, so its own commands are only found here.
+---@return string|nil key the key `hash_ChatTypeInfoList` names, or `nil`
+---@return string|nil name lower-case, without the slash
+local function firstHashedSlashCommand()
+  local slashHash = readHost("hash_SlashCmdList")
+  if type(slashHash) ~= "table" then
+    return nil, nil
+  end
+  local owners = readHost("hash_ChatTypeInfoList")
+  local texts = {}
+  for text, handler in next, slashHash do
+    if type(text) == "string" and type(handler) == "function" then
+      local owner = type(owners) == "table" and rawget(owners, text) or nil
+      local name = text:match("^/(%a[%w_]*)$")
+      if
+        type(name) ~= "nil"
+        and #name <= 32
+        and not isSecret(owner)
+        and not isCommandKitKey(owner)
+      then
+        texts[#texts + 1] = text
+      end
+    end
+  end
+  table.sort(texts)
+  local text = texts[1]
+  if type(text) == "nil" then
+    return nil, nil
+  end
+  local owner = type(owners) == "table" and rawget(owners, text) or nil
+  return type(owner) == "string" and owner or nil, text:sub(2):lower()
+end
+
 ---The first key, in sorted order, of the client's `SlashCmdList` that
 ---CommandKit did not write and whose `SLASH_<key>1` is a plain slash name, and
----that name.
+---that name: where a client before Retail 12.1 keeps its own commands.
 ---@return string|nil key
 ---@return string|nil name
-local function firstClientSlashCommand()
+local function firstListedSlashCommand()
   local slashList = readHost("SlashCmdList")
   if type(slashList) ~= "table" then
     return nil, nil
   end
   local keys = {}
   for key in next, slashList do
-    if type(key) == "string" and key:sub(1, #"MOLTENCODES") ~= "MOLTENCODES" then
+    if type(key) == "string" and not isCommandKitKey(key) then
       keys[#keys + 1] = key
     end
   end
@@ -997,24 +1041,86 @@ local function firstClientSlashCommand()
   return nil, nil
 end
 
+---A slash command of the client's own, from the lookup tables when the client
+---has them, else from `SlashCmdList`, with the source it came from.
+---@return string|nil key
+---@return string|nil name
+---@return string source `"hash_SlashCmdList"`, `"SlashCmdList"` or `"none"`
+local function firstClientSlashCommand()
+  local key, name = firstHashedSlashCommand()
+  if type(name) ~= "nil" then
+    return key, name, "hash_SlashCmdList"
+  end
+  key, name = firstListedSlashCommand()
+  if type(name) ~= "nil" then
+    return key, name, "SlashCmdList"
+  end
+  return nil, nil, "none"
+end
+
+---Count the entries of the host table `name`, or describe what it is.
+---@param name string
+---@return string
+local function describeHostTable(name)
+  local value = readHost(name)
+  if type(value) ~= "table" then
+    return name .. ": " .. type(value)
+  end
+  local count = 0
+  for _ in next, value do
+    count = count + 1
+  end
+  local metatable = getmetatable(value)
+  local proxy = type(metatable) == "table" and type(rawget(metatable, "__index")) == "table"
+  return ("%s: %d entries%s"):format(name, count, proxy and ", with an __index proxy" or "")
+end
+
+---The name, without the slash, of a secure command the client's `IsSecureCmd`
+---confirms, from `SLASH_CAST1`, or `nil`.
+---@return string|nil
+local function clientSecureCommand()
+  local isSecureCommand = readHost("IsSecureCmd")
+  local name = slashNameIn("SLASH_CAST1")
+  if type(isSecureCommand) ~= "function" or type(name) == "nil" then
+    return nil
+  end
+  local answered, secure = pcall(isSecureCommand, "/" .. name:upper())
+  if answered and type(secure) == "boolean" and not isSecret(secure) and secure then
+    return name
+  end
+  return nil
+end
+
 registration:Test(
-  "a name the client uses for a chat type (SLASH_SAY1) or for one of its slash commands is refused as taken, and an emote's name (EMOTE1_CMD1) as emote",
+  "a name the client uses for a chat type (SLASH_SAY1), for one of its slash commands (from hash_SlashCmdList on Retail 12.1) or for a secure command (IsSecureCmd) is refused as taken, and an emote's name (EMOTE1_CMD1) as emote",
   function(ctx)
     local chatTypeName = slashNameIn("SLASH_SAY1")
-    local slashKey, slashName = firstClientSlashCommand()
+    local slashKey, slashName, slashSource = firstClientSlashCommand()
+    local secureName = clientSecureCommand()
     local emoteName = slashNameIn("EMOTE1_CMD1")
     ctx:Log(
-      ("SLASH_SAY1: %s; first client slash command: %s (%s); EMOTE1_CMD1: %s"):format(
+      ("SLASH_SAY1: %s; first client slash command: %s (key %s, from %s); secure command: %s; EMOTE1_CMD1: %s"):format(
         tostring(chatTypeName),
         tostring(slashName),
         tostring(slashKey),
+        slashSource,
+        tostring(secureName),
         tostring(emoteName)
       )
     )
+    ctx:Log(table.concat({
+      describeHostTable("SlashCmdList"),
+      describeHostTable("hash_SlashCmdList"),
+      describeHostTable("hash_ChatTypeInfoList"),
+      describeHostTable("hash_EmoteTokenList"),
+      describeHostTable("ChatTypeInfo"),
+      describeHostTable("SecureCmdList"),
+      "IsSecureCmd: " .. type(readHost("IsSecureCmd")),
+    }, "; "))
     if type(chatTypeName) == "nil" or type(slashName) == "nil" or type(emoteName) == "nil" then
       Harness:SkipTest(
         ctx,
-        "the client has no SLASH_SAY1, no plain SLASH_<key>1 in SlashCmdList, or no EMOTE1_CMD1, so CommandKit's taken and emote checks have nothing to find (docs/API.md); send the log"
+        "the client has no SLASH_SAY1, no slash command of its own in hash_SlashCmdList or SlashCmdList, or no EMOTE1_CMD1, so CommandKit's taken and emote checks have nothing to find (docs/API.md); send the log"
       )
     end
     ---@cast chatTypeName string
@@ -1026,6 +1132,11 @@ registration:Test(
     local slashResult, slashReason = registerExpectingRefusal(ctx, slashName)
     ctx:Expect(slashResult):ToBeNil()
     ctx:Expect(slashReason):ToBe("taken")
+    if type(secureName) ~= "nil" then
+      local secureResult, secureReason = registerExpectingRefusal(ctx, secureName)
+      ctx:Expect(secureResult):ToBeNil()
+      ctx:Expect(secureReason):ToBe("taken")
+    end
     local emoteResult, emoteReason = registerExpectingRefusal(ctx, emoteName)
     ctx:Expect(emoteResult):ToBeNil()
     ctx:Expect(emoteReason):ToBe("emote")

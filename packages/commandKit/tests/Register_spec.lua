@@ -170,3 +170,105 @@ describe("CommandKit registration", function()
     end)
   end)
 end)
+
+describe("CommandKit registration on Retail 12.1's hashed command lists", function()
+  -- Retail 12.1 moves every SlashCmdList, ChatTypeInfo and secure-command
+  -- entry into hash_* lookup tables and wipes the lists, so a scan of their
+  -- keys finds nothing; TestEnv.ImportListsToHash models that.
+  local CommandKit
+  before_each(function()
+    CommandKit = TestEnv.NewPackage()
+  end)
+  after_each(TestEnv.Reset)
+
+  it(
+    "refuses a Blizzard slash command, a chat type and a secure command after the lists are wiped",
+    function()
+      TestEnv.GetGlobal("SlashCmdList").RELOAD = noop
+      TestEnv.SetGlobal("SLASH_RELOAD1", "/reload")
+      TestEnv.SetGlobal("SLASH_RELOAD2", "/rl")
+      TestEnv.SetGlobal("SLASH_CAST1", "/cast")
+      TestEnv.ImportListsToHash({ CAST = noop })
+      assert.is_nil(next(TestEnv.GetGlobal("SlashCmdList")))
+      assert.is_nil(next(TestEnv.GetGlobal("ChatTypeInfo")))
+      assert.is_nil(TestEnv.GetGlobal("SecureCmdList"))
+
+      local scope = CommandKit:CreateScope()
+      assert.are.same({ nil, "taken" }, { scope:Register("reload", { handler = noop }) })
+      assert.are.same({ nil, "taken" }, { scope:Register("RL", { handler = noop }) })
+      assert.are.same({ nil, "taken" }, { scope:Register("s", { handler = noop }) })
+      assert.are.same({ nil, "taken" }, { scope:Register("guild", { handler = noop }) })
+      assert.are.same({ nil, "taken" }, { scope:Register("cast", { handler = noop }) })
+      assert.is_true(scope:Register("reloads", { handler = noop }))
+    end
+  )
+
+  it("refuses a secure command IsSecureCmd names although no hash lists it", function()
+    TestEnv.ImportListsToHash()
+    TestEnv.SetGlobal("IsSecureCmd", function(command)
+      if command == "/STARTATTACK" then
+        return true
+      end
+      return nil
+    end)
+    local scope = CommandKit:CreateScope()
+    assert.are.same({ nil, "taken" }, { scope:Register("startattack", { handler = noop }) })
+    assert.is_true(scope:Register("attack", { handler = noop }))
+  end)
+
+  it("refuses an emote hash_EmoteTokenList holds past the scanned indexes", function()
+    TestEnv.ImportListsToHash()
+    TestEnv.SetGlobal("MAXEMOTEINDEX", 1)
+    TestEnv.GetGlobal("hash_EmoteTokenList")["/CHEER"] = "CHEER"
+    local scope = CommandKit:CreateScope()
+    assert.are.same({ nil, "emote" }, { scope:Register("cheer", { handler = noop }) })
+    assert.are.same({ nil, "emote" }, { scope:Register("wave", { handler = noop }) })
+  end)
+
+  it("does not count its own hashed command as taken once it is unregistered", function()
+    local first = CommandKit:ForAddon("First")
+    assert.is_true(first:Register("mine", { handler = noop }))
+    TestEnv.ImportListsToHash()
+    local key = "MOLTENCODES_FIRST_MINE"
+    assert.are.equal(key, TestEnv.GetGlobal("hash_ChatTypeInfoList")["/MINE"])
+    assert.are.equal("function", type(TestEnv.GetGlobal("hash_SlashCmdList")["/MINE"]))
+
+    local second = CommandKit:ForAddon("Second")
+    assert.are.same({ nil, "taken" }, { second:Register("mine", { handler = noop }) })
+    assert.is_true(first:Unregister("mine"))
+    local calls = 0
+    assert.is_true(second:Register("mine", {
+      handler = function()
+        calls = calls + 1
+      end,
+    }))
+    TestEnv.GetGlobal("hash_SlashCmdList")["/MINE"]("")
+    assert.are.equal(1, calls)
+  end)
+
+  it("counts a foreign handler hash_SlashCmdList holds as taken", function()
+    TestEnv.ImportListsToHash()
+    TestEnv.GetGlobal("hash_SlashCmdList")["/OTHER"] = noop
+    assert.are.same(
+      { nil, "taken" },
+      { CommandKit:CreateScope():Register("other", { handler = noop }) }
+    )
+  end)
+
+  it("skips a secret hash entry and a secret IsSecureCmd answer", function()
+    TestEnv.ImportListsToHash()
+    local secret = {}
+    -- `true` stands in for a secret IsSecureCmd answer, the table for a
+    -- secret hash entry.
+    TestEnv.SetGlobal("issecretvalue", function(value)
+      return value == secret or value == true
+    end)
+    TestEnv.GetGlobal("hash_ChatTypeInfoList")["/HIDDEN"] = secret
+    TestEnv.GetGlobal("hash_SlashCmdList")["/HIDDEN"] = secret
+    TestEnv.GetGlobal("hash_EmoteTokenList")["/HIDDEN"] = secret
+    TestEnv.SetGlobal("IsSecureCmd", function()
+      return true
+    end)
+    assert.is_true(CommandKit:CreateScope():Register("hidden", { handler = noop }))
+  end)
+end)

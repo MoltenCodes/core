@@ -14,6 +14,10 @@
 ---   `ChatTypeInfo`                 two chat types, `SAY` (`/s`, `/say`) and
 ---                                  `GUILD` (`/g`, `/guild`), as `SLASH_<TYPE><n>`;
 ---   `EMOTE<n>_CMD<m>`              two emotes, `/dance` and `/wave` (`/greet`);
+---   `ImportListsToHash(secure)`    what Retail 12.1's chat frame does at load
+---                                  and before each typed line: move the
+---                                  command lists into `hash_*` lookup tables
+---                                  and wipe them (see the function);
 ---   `RunSlash(text)`               what the client does with a typed line:
 ---                                  find the key whose `SLASH_<key><n>` matches
 ---                                  and call `SlashCmdList[key](rest, editBox)`.
@@ -48,6 +52,10 @@ local CHAT_GLOBALS = {
   "ChatEdit_GetActiveWindow",
   "ChatTypeInfo",
   "MAXEMOTEINDEX",
+  "hash_SlashCmdList",
+  "hash_ChatTypeInfoList",
+  "hash_EmoteTokenList",
+  "IsSecureCmd",
 }
 
 --- Every module a variant of `NewPackage` may load, cleared by `Reset`.
@@ -229,6 +237,92 @@ function CommandKitTestEnv.SetClosesAddonScopes(LifecycleKit, closesAddonScopes)
     value = closesAddonScopes
   end
   rawset(LifecycleKit, "CLOSES_ADDON_SCOPES", value)
+end
+
+---Every `SLASH_<key><n>` text of `key`, upper-cased, up to the first gap.
+---@param key string
+---@return string[]
+local function slashTextsOf(key)
+  local texts = {}
+  local index = 1
+  local text = getGlobal("SLASH_" .. key .. index)
+  while type(text) == "string" do
+    texts[#texts + 1] = text:upper()
+    index = index + 1
+    text = getGlobal("SLASH_" .. key .. index)
+  end
+  return texts
+end
+
+---Move every entry of `list` into the lookup tables and an `__index` proxy,
+---then wipe `list`, as the client's `ImportListToHash` does.
+---@param list table
+---@param hash table|nil slash text to entry, or `nil` for `ChatTypeInfo`
+---@param chatTypeHash table
+local function importListToHash(list, hash, chatTypeHash)
+  local metatable = getmetatable(list)
+  if metatable == nil then
+    metatable = { __index = {} }
+    setmetatable(list, metatable)
+  end
+  local keys = {}
+  for key in pairs(list) do
+    keys[#keys + 1] = key
+  end
+  for _, key in ipairs(keys) do
+    local value = rawget(list, key)
+    for _, text in ipairs(slashTextsOf(key)) do
+      if hash ~= nil then
+        hash[text] = value
+      end
+      chatTypeHash[text] = key
+    end
+    metatable.__index[key] = value
+    rawset(list, key, nil)
+  end
+end
+
+---Model Retail 12.1's `ChatFrameUtil.ImportAllListsToHash` and
+---`ImportEmoteTokensToHash` (Blizzard_ChatFrameBase, build 69933): the
+---entries of `SlashCmdList` and `ChatTypeInfo` move into `hash_SlashCmdList`
+---(slash text to function) and `hash_ChatTypeInfoList` (slash text to key or
+---chat type), stay reachable through an `__index` proxy and are wiped from the
+---tables themselves; every `EMOTE<n>_CMD<m>` goes into `hash_EmoteTokenList`.
+---`secureCommands`, keyed like `SlashCmdList`, models the chat frame's private
+---secure-command list: it is hashed the same way, `SecureCmdList` is removed,
+---and `IsSecureCmd(command)` answers `true` or `nil` as the client's does.
+---@param secureCommands table<string, function>|nil
+function CommandKitTestEnv.ImportListsToHash(secureCommands)
+  local slashHash = getGlobal("hash_SlashCmdList") or {}
+  local chatTypeHash = getGlobal("hash_ChatTypeInfoList") or {}
+  local emoteHash = getGlobal("hash_EmoteTokenList") or {}
+  setGlobal("hash_SlashCmdList", slashHash)
+  setGlobal("hash_ChatTypeInfoList", chatTypeHash)
+  setGlobal("hash_EmoteTokenList", emoteHash)
+
+  local secureHash = {}
+  importListToHash(secureCommands or {}, secureHash, chatTypeHash)
+  setGlobal("SecureCmdList", nil)
+  setGlobal("IsSecureCmd", function(command)
+    if secureHash[command:upper()] then
+      return true
+    end
+    return nil
+  end)
+  importListToHash(getGlobal("SlashCmdList"), slashHash, chatTypeHash)
+  importListToHash(getGlobal("ChatTypeInfo"), nil, chatTypeHash)
+
+  local index = 1
+  while type(getGlobal("EMOTE" .. index .. "_CMD1")) == "string" do
+    local command = 1
+    local text = getGlobal("EMOTE" .. index .. "_CMD" .. command)
+    while type(text) == "string" do
+      emoteHash[text:upper()] = "EMOTE" .. index
+      command = command + 1
+      text = getGlobal("EMOTE" .. index .. "_CMD" .. command)
+    end
+    index = index + 1
+  end
 end
 
 ---Read a global, for specs that inspect the slash tables.

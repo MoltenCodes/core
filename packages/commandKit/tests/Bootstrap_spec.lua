@@ -222,6 +222,24 @@ describe("CommandKit bootstrap", function()
     assert.is_true(current:CloseAddonScopes("MyAddon"))
   end)
 
+  it(
+    "upgrades a revision 5 package in place and refuses a hashed client command at once",
+    function()
+      local current = upgradeFrom(5)
+      TestEnv.GetGlobal("SlashCmdList").RELOAD = function() end
+      TestEnv.SetGlobal("SLASH_RELOAD1", "/reload")
+      TestEnv.ImportListsToHash()
+      local scope = current:CreateScope()
+      assert.are.same({ nil, "taken" }, { scope:Register("reload", { handler = function() end }) })
+      -- The command the revision 5 copy registered is CommandKit's own in the
+      -- client's hashes, and keeps dispatching.
+      assert.are.same({ nil, "taken" }, { scope:Register("kept", { handler = function() end }) })
+      assert.are.equal("function", type(TestEnv.GetGlobal("hash_SlashCmdList")["/KEPT"]))
+      assert.is_true(current:CloseAddonScopes("MyAddon"))
+      assert.is_true(scope:Register("kept", { handler = function() end }))
+    end
+  )
+
   it("requires Registry", function()
     TestEnv.Reset()
     TestEnv.InstallWowApi()

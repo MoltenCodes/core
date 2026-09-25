@@ -15,8 +15,8 @@ This document describes implementation invariants for maintainers. It is not an 
 | `addonScopes` | Addon name to that addon's canonical scope. Only `ForAddon` adds to it. |
 | `activeByName` | Lower-case slash name to the top-level record that currently owns it. At most one owner per name, across every scope. |
 | `keyByName` | Lower-case slash name to the slash-table key it was first registered under. Never shrinks during a session. |
-| `ownedKeys` | Slash-table key to the lower-case name it serves, for every key CommandKit ever wrote. The taken check skips these keys, and the dispatcher reads its name here. |
-| `slashHandlers` | Slash-table key to the permanent dispatcher closure written under it. One closure per key for the session. |
+| `ownedKeys` | Slash-table key to the lower-case name it serves, for every key CommandKit ever wrote. The taken check skips these keys (also when `hash_ChatTypeInfoList` names one), and the dispatcher reads its name here. |
+| `slashHandlers` | Slash-table key to the permanent dispatcher closure written under it. One closure per key for the session. The taken check does not count a `hash_SlashCmdList` entry holding one of these closures. |
 | `frames`, `frameDepth` | The dispatch frames, one per nesting level up to `MAX_NESTING` (4), and how many are in use. |
 | `completion` | `installed`, `previous` (the function the replacement forwards to, or `false`), `handler` (the replacement closure, or `false` before the first install) and `enabledScopes`. |
 | `unbounded` | The `CommandKit.UNBOUNDED` sentinel, created once so every revision publishes the same table; the state predicate checks the facade field against it. |
@@ -139,3 +139,5 @@ Revision 2 does this for scope layout 2: it walks `addonScopes`, gives every lay
 Revision 3 changes no layout and inherits revision 2's state unchanged. Its fixes reach every existing command through `dispatch` and the shared prototypes, except the sub-command handlers `BindOptions` compiled into a bound command's records, which stay those of the revision that bound it.
 
 Revision 4 changes no layout either and inherits revision 3's state unchanged; its nil checks on outside values reach existing commands the same way.
+
+Revision 6 changes no layout and inherits revision 5's state unchanged. Its taken check also asks the client's `hash_*` lookup tables and `IsSecureCmd`, and tells CommandKit's own entries there apart by `ownedKeys` and by the closures in `slashHandlers`, so a name an older copy registered is still CommandKit's after the upgrade.

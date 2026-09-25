@@ -2,7 +2,7 @@
 
 CommandKit API generation **1** provides slash commands for World of Warcraft addons: collision-safe registration owned by a scope, a hyperlink-aware argument parser, sub-commands with generated usage, schema-checked arguments, output sinks, optional tab completion, and a command line over an OptionsKit tree.
 
-Implementation revision: **5**.
+Implementation revision: **6**.
 
 ## Loading
 
@@ -27,7 +27,7 @@ CommandKit does not rely on `require()` at runtime.
 | Facility | Used by | Without it |
 |---|---|---|
 | `SlashCmdList` | `Register`, `BindOptions` | Both raise at the caller. |
-| `SLASH_<key><n>`, `SecureCmdList`, `ChatTypeInfo`, `EMOTE<n>_CMD<m>`, `MAXEMOTEINDEX` | the taken and emote checks | Nothing is found taken. |
+| `SLASH_<key><n>`, `SecureCmdList`, `ChatTypeInfo`, `hash_ChatTypeInfoList`, `hash_SlashCmdList`, `IsSecureCmd`, `hash_EmoteTokenList`, `EMOTE<n>_CMD<m>`, `MAXEMOTEINDEX` | the taken and emote checks | That source is not consulted; with none of them, nothing is found taken. |
 | `DEFAULT_CHAT_FRAME` | the default sink | Output goes to `print`. |
 | `ChatEdit_CustomTabPressed` | `EnableCompletion` | `EnableCompletion` returns `false`; nothing is installed. |
 | `ChatEdit_GetActiveWindow` | completion, when the client passes no edit box | That Tab press is not completed. |
@@ -212,11 +212,14 @@ The key is `MOLTENCODES_<ADDON>_<NAME>` for a `ForAddon` scope and `MOLTENCODES_
 
 The spec is checked in full first; every problem with it raises at your line (below). Registering one name twice in one scope raises (`Unregister` it first); registering it from a second scope returns `nil, "taken"`.
 
-**The taken check is best effort.** The client resolves a typed `/name` in this order: chat types, then slash commands, then emotes. A command named like a chat type would never run, and one named like an emote would hide it, so CommandKit refuses both. It compares `/NAME` without case with:
+**The taken check is best effort.** The client resolves a typed `/name` in this order: secure commands, chat types, then slash commands, then emotes. A command named like a secure command or a chat type would never run, and one named like an emote would hide it, so CommandKit refuses all of them. It compares `/NAME` without case with:
 
 - for every key of `SlashCmdList` and `SecureCmdList` it did not write, the `SLASH_<key>1`, `SLASH_<key>2`, … globals up to the first gap, at most the scope's `maxSlashAliases` (`nil, "taken"`);
 - for every key of `ChatTypeInfo`, the `SLASH_<TYPE>1`, … globals the same way (`nil, "taken"`);
-- `EMOTE<n>_CMD<m>` for `n` from 1 to `MAXEMOTEINDEX` when the host has it and it is smaller, else the `maxEmotes` limit (1024), and `m` up to the first gap, at most 8 (`nil, "emote"`).
+- the client's lookup tables, one read each: `hash_ChatTypeInfoList["/NAME"]` unless it names a key CommandKit wrote, `hash_SlashCmdList["/NAME"]` unless it is a dispatcher CommandKit wrote, and `IsSecureCmd("/NAME")` answering `true` (`nil, "taken"`);
+- `hash_EmoteTokenList["/NAME"]`, then `EMOTE<n>_CMD<m>` for `n` from 1 to `MAXEMOTEINDEX` when the host has it and it is smaller, else the `maxEmotes` limit (1024), and `m` up to the first gap, at most 8 (`nil, "emote"`).
+
+The lookup tables are where Retail 12.1 keeps its own commands. Its chat frame (Blizzard_ChatFrameBase, build 69933) moves every entry of `SlashCmdList`, `ChatTypeInfo` and its private secure-command list into them when it loads, and again before each typed line is parsed, then wipes the lists themselves, whose entries stay reachable only through an `__index` proxy; `SecureCmdList` is no longer a global. A scan of the lists' keys therefore finds none of the client's commands (`/reload`, `/s`, `/cast`), nor another addon's once a line has been typed; the lookup tables find them all. Revisions before 6 read only the lists and missed them.
 
 Every global is read by its constructed name with `rawget`; nothing scans the whole global table. A registration made some other way, such as a command table another library keeps, is not seen, and a command another addon registers *after* yours is outside CommandKit's reach: that addon's registration is what overwrites.
 
@@ -407,7 +410,7 @@ On Retail 12.x some client APIs hand addon code secret values (see [`docs/EMBEDD
 - `context:Print` and `context:Printf` refuse a secret argument (the template included) at the caller: `CommandKit.Context:Print argument 2 must not be a secret value`. A secret never becomes part of chat output by accident.
 - `Parse`, `ParseInto`, every name argument, and `Fail`'s reason refuse a secret before comparing it.
 - A bound option whose getter returns a secret prints as `(secret value)`, as does a `multiselect` or `color` value holding a secret, and a `desc` text that is secret; a secret `select` label is neither shown nor matched, and a secret `confirm` question is not printed.
-- A secret completion candidate is skipped, and the taken check skips a secret `SLASH_<key><n>` or `EMOTE<n>_CMD<m>` value.
+- A secret completion candidate is skipped, and the taken check skips a secret `SLASH_<key><n>` or `EMOTE<n>_CMD<m>` value, a secret entry of the client's lookup tables and a secret `IsSecureCmd` answer.
 - A handler failure whose message is secret is written to the sink without the message and handed to the host error handler unchanged.
 - A secret sub-command key is refused before the keys are sorted: `CommandKit.Scope:Register spec.subcommands key must not be a secret value`.
 - A secret limit, as a scope option or in `SetLimits`, is refused before it is compared with `CommandKit.UNBOUNDED`, with the message a value of the wrong type gets: `CommandKit:CreateScope options.maxCommands must be a positive integer or CommandKit.UNBOUNDED`, `CommandKit:SetLimits limits.maxCaptured must be a positive integer or CommandKit.UNBOUNDED`, and for a limit with a ceiling `CommandKit:SetLimits limits.maxCompletions must be an integer from 1 to 256`.
@@ -493,7 +496,7 @@ The nine-point plan in `docs/ROADMAP.md` is followed except where recorded here:
 
 - **`complete(context, text, position)`** instead of `complete(text)`: a completion function needs the sink and the command path for output, and the argument position to know what to offer.
 - **Registration keys are kept per slash name for the session.** The plan derives the key from the addon and command names; the first registration does, and a re-registration of the same name by another owner reuses that key so the client's cached function keeps working.
-- **The taken check reads `SlashCmdList`, `SecureCmdList` and `ChatTypeInfo`** and their `SLASH_<key><n>` globals, and the `EMOTE<n>_CMD<m>` globals, best effort as documented, rather than every `SLASH_*` global: scanning the global table would be unbounded. An emote's name is refused with `nil, "emote"`, an addition to the planned results.
+- **The taken check reads `SlashCmdList`, `SecureCmdList` and `ChatTypeInfo`** and their `SLASH_<key><n>` globals, the client's `hash_*` lookup tables and `IsSecureCmd`, and the `EMOTE<n>_CMD<m>` globals, best effort as documented, rather than every `SLASH_*` global: scanning the global table would be unbounded. An emote's name is refused with `nil, "emote"`, an addition to the planned results.
 - **`BindOptions` adds `exec`** beside `get`, `set`, `reset` and `list`, honours `confirm` with an explicit word, and parses values per option kind before OptionsKit's schema and `validate` check them; it calls `Describe` once per run.
 - **Completion is opt-in per scope** (`EnableCompletion`), because it replaces a client global; the plan made it optional without naming the switch.
 - **Additions:** `scope:IsRegistered`, `scope:DisableCompletion`, `scope:GetAddonName`, `CommandKit.MAX_COMMANDS`, `CommandKit.MAX_DEPTH`, the `CommandKit.Context` prototype, and the limits (scope options, `SetLimits`, `GetLimits` and `CommandKit.UNBOUNDED`); argument tokens are converted for number and boolean schemas; textures are single tokens; `Print` writes no prefix.
@@ -504,6 +507,6 @@ The nine-point plan in `docs/ROADMAP.md` is followed except where recorded here:
 
 Several addons may embed CommandKit; Registry selects the newest compatible revision and every copy shares one facade. An upgrade happens in place: scopes, commands, the slash dispatchers already in the client's tables and the completion replacement stay, because every one of them calls through shared package state that the newer copy rewrites. Scopes and contexts gain the newer copy's methods through the shared `CommandKit.Scope` and `CommandKit.Context` prototypes. The `CommandKit.UNBOUNDED` sentinel and the package-wide limits live in the package state too, so a newer copy publishes the same sentinel and inherits every limit a consumer set, and a scope keeps the limits it was created with.
 
-Revision 2 upgrades the addon scopes revision 1 built in place and arranges their [logout close](#at-logout) while it loads, for every open one. Revisions 3, 4 and 5 change no layout: each takes over the state of the one before as it is. A command bound with `BindOptions` keeps the sub-command handlers of the revision that bound it, because they are compiled into its record; binding it again after the upgrade gives it the newer ones. A later revision keeps the `OnShutdown` subscriptions and the `PLAYER_LOGOUT` watcher it inherits: both call through the facade or the shared package state, so they run the newest code, and nothing is subscribed twice.
+Revision 2 upgrades the addon scopes revision 1 built in place and arranges their [logout close](#at-logout) while it loads, for every open one. Revisions 3, 4, 5 and 6 change no layout: each takes over the state of the one before as it is. A command bound with `BindOptions` keeps the sub-command handlers of the revision that bound it, because they are compiled into its record; binding it again after the upgrade gives it the newer ones. A later revision keeps the `OnShutdown` subscriptions and the `PLAYER_LOGOUT` watcher it inherits: both call through the facade or the shared package state, so they run the newest code, and nothing is subscribed twice.
 
 Nothing survives `/reload`: commands are registered again when the addon loads.

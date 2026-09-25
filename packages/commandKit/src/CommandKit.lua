@@ -53,7 +53,7 @@
 
 local PACKAGE_NAME = "commandKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 5
+local IMPLEMENTATION_REVISION = 6
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_SCHEMAKIT_API = 1
 local OPTIONAL_OPTIONSKIT_API = 1
@@ -1603,19 +1603,94 @@ local function isChatTypeSlash(upperSlash, maxAliases)
   return false
 end
 
+---Whether `value` is secret on this host. `probe` is the host's
+---`issecretvalue`, or not a function on a host without secret values.
+---@param probe any
+---@param value any
+---@return boolean
+local function isSecretOnHost(probe, value)
+  return type(probe) == "function" and probe(value) == true
+end
+
+---Whether `handler` is a dispatcher CommandKit wrote.
+---@param handler function
+---@return boolean
+local function isOwnHandler(handler)
+  for _, own in next, slashHandlers do
+    if own == handler then
+      return true
+    end
+  end
+  return false
+end
+
+---Whether the client's own command hashes claim `upperSlash`.
+---
+---Retail 12.1 (Blizzard_ChatFrameBase, build 69933) no longer leaves its
+---commands where the scans above look: at load, and again before each typed
+---line is parsed, `ChatFrameUtil.ImportAllListsToHash` moves every entry of
+---`SlashCmdList`, `ChatTypeInfo` and the chat frame's private secure-command
+---list into lookup tables keyed by the upper-case slash text, then wipes the
+---source tables (their entries stay reachable only through an `__index`
+---proxy, which `next` does not see), and `SecureCmdList` is no longer a
+---global. The global lookup tables are `hash_ChatTypeInfoList` (every
+---imported slash text of all three lists, to its key or chat type) and
+---`hash_SlashCmdList` (slash text to function); `IsSecureCmd(command)` answers
+---for the secure list. An entry that is CommandKit's own, by key or by
+---dispatcher, is not a claim; a secret entry is skipped, as in the scans.
+---@param upperSlash string
+---@return boolean
+local function isHostHashedSlash(upperSlash)
+  local probe = readGlobal("issecretvalue")
+  local chatTypeHash = readGlobal("hash_ChatTypeInfoList")
+  if type(chatTypeHash) == "table" then
+    local owner = rawget(chatTypeHash, upperSlash)
+    if type(owner) ~= "nil" and not isSecretOnHost(probe, owner) then
+      if type(owner) ~= "string" or ownedKeys[owner] == nil then
+        return true
+      end
+    end
+  end
+  local slashHash = readGlobal("hash_SlashCmdList")
+  if type(slashHash) == "table" then
+    local handler = rawget(slashHash, upperSlash)
+    if type(handler) ~= "nil" and not isSecretOnHost(probe, handler) then
+      if type(handler) ~= "function" or not isOwnHandler(handler) then
+        return true
+      end
+    end
+  end
+  local isSecureCommand = readGlobal("IsSecureCmd")
+  if type(isSecureCommand) == "function" then
+    local answered, secure = pcall(isSecureCommand, upperSlash)
+    if answered and type(secure) == "boolean" and not isSecretOnHost(probe, secure) then
+      return secure
+    end
+  end
+  return false
+end
+
 ---Whether an emote claims `upperSlash`. The client resolves slash commands
 ---before emotes, so a command with an emote's name would silently shadow it.
----Reads `EMOTE<index>_CMD<n>` by constructed name, never by scanning the
----global table.
+---Asks the client's `hash_EmoteTokenList` (upper-case slash text to emote
+---token) first, then reads `EMOTE<index>_CMD<n>` by constructed name, never
+---by scanning the global table.
 ---@param upperSlash string
 ---@return boolean
 local function isEmoteSlash(upperSlash)
+  local probe = readGlobal("issecretvalue")
+  local emoteHash = readGlobal("hash_EmoteTokenList")
+  if type(emoteHash) == "table" then
+    local token = rawget(emoteHash, upperSlash)
+    if type(token) ~= "nil" and not isSecretOnHost(probe, token) then
+      return true
+    end
+  end
   local count = rawget(sharedLimits, "maxEmotes")
   local hostCount = readGlobal("MAXEMOTEINDEX")
   if type(hostCount) == "number" and hostCount >= 0 and hostCount < count then
     count = hostCount
   end
-  local probe = readGlobal("issecretvalue")
   for index = 1, count do
     for command = 1, MAX_EMOTE_COMMANDS do
       local value = readGlobal("EMOTE" .. index .. "_CMD" .. command)
@@ -1687,6 +1762,7 @@ local function registerCommand(scope, name, spec, methodName, level)
     hasForeignSlash("SlashCmdList", upperSlash, maxAliases)
     or hasForeignSlash("SecureCmdList", upperSlash, maxAliases)
     or isChatTypeSlash(upperSlash, maxAliases)
+    or isHostHashedSlash(upperSlash)
   then
     return nil, "taken"
   end

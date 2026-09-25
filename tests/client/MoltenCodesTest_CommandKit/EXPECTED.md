@@ -31,7 +31,7 @@ MoltenCodes Test: PASS commandKit.facade: Registry:Get('commandKit', 1) is the C
 MoltenCodes Test: PASS commandKit.facade: the installed CommandKit carries the revision of the committed manifest
 MoltenCodes Test: PASS commandKit.facade: the client has SlashCmdList and a default chat frame with AddMessage, OptionsKit is found, and the other host facilities are logged
 MoltenCodes Test: PASS commandKit.registration: Register('mcttestcmd') writes a function to the client's SlashCmdList under MOLTENCODES_<ADDON>_MCTTESTCMD and '/mcttestcmd' to its SLASH_ global
-MoltenCodes Test: PASS commandKit.registration: a name the client uses for a chat type (SLASH_SAY1) or for one of its slash commands is refused as taken, and an emote's name (EMOTE1_CMD1) as emote
+MoltenCodes Test: PASS commandKit.registration: a name the client uses for a chat type (SLASH_SAY1), for one of its slash commands (from hash_SlashCmdList on Retail 12.1) or for a secure command (IsSecureCmd) is refused as taken, and an emote's name (EMOTE1_CMD1) as emote
 MoltenCodes Test: PASS commandKit.registration: a closed scope leaves the client's SlashCmdList entry and SLASH_ global in place, inert and silent, and registering the name again answers through the same function
 MoltenCodes Test: PASS commandKit.registration: the addon scope is arranged to close at logout: LifecycleKit announces it closes commandKit scopes, and the scope is open now
 MoltenCodes Test: SKIP commandKit.registration: typing /mcttestcmd in the chat box reaches the same SlashCmdList entry -- needs the player to type; the tests call the SlashCmdList entry the chat box calls, see EXPECTED.md for the optional manual check
@@ -161,7 +161,7 @@ way: the facade test records whether `ChatEdit_CustomTabPressed` and
 | `the installed CommandKit carries the revision ...` | Registry's selected revision and the facade's `REVISION` are both the committed manifest's. |
 | `the client has SlashCmdList and a default chat frame ...` | The two host facilities CommandKit cannot work without exist, and OptionsKit is found for `BindOptions`. The log records every other facility docs/API.md names (`SecureCmdList`, `ChatTypeInfo`, `MAXEMOTEINDEX`, `EMOTE1_CMD1`, `SLASH_SAY1`, `hash_SlashCmdList`, `ChatEdit_CustomTabPressed`, `ChatEdit_GetActiveWindow`, `ChatFrame1EditBox`, `securecallfunction`), `issecurevariable` of the two chat edit functions, and which optional Kits are loaded. |
 | `Register('mcttestcmd') writes a function to the client's SlashCmdList ...` | The client's own `SlashCmdList` gets a function under `MOLTENCODES_MOLTENCODESTEST_COMMANDKIT_MCTTESTCMD`, `SLASH_<key>1` is `/mcttestcmd` and there is no second alias; the scope answers for the name in any case; `ForAddon` returns the same scope. The log says whether the client's slash cache holds the name (it only does once the name was typed). |
-| `a name the client uses for a chat type ... an emote's name ...` | The taken check reads the client's real tables: the name in `SLASH_SAY1` (a chat type) and the first plain `SLASH_<key>1` of a Blizzard `SlashCmdList` entry, in sorted key order, are refused as `taken`; the name in `EMOTE1_CMD1` is refused as `emote`. The log names the three names tried. Should one be registered after all, the test unregisters it and clears its `SLASH_` global at once, so the client's own command keeps working. |
+| `a name the client uses for a chat type ... an emote's name ...` | The taken check reads the client's real tables: the name in `SLASH_SAY1` (a chat type), a slash command of the client's own and, when `IsSecureCmd` confirms it, the name in `SLASH_CAST1` (a secure command) are refused as `taken`; the name in `EMOTE1_CMD1` is refused as `emote`. The client's own command is the first plain slash text of `hash_SlashCmdList`, in sorted order, that `hash_ChatTypeInfoList` does not attribute to a CommandKit key; only a client without that table falls back to the first plain `SLASH_<key>1` of a `SlashCmdList` key. Retail 12.1's chat frame (Blizzard_ChatFrameBase, build 69933) moves every `SlashCmdList`, `ChatTypeInfo` and secure-command entry into the `hash_*` tables at load and before each typed line, wipes the lists and keeps `SecureCmdList` private, so the lists hold none of its commands: the run of 2026-09-25 logged `SecureCmdList: nil` and found no `SlashCmdList` key with a `SLASH_<key>1`, and this test was skipped. CommandKit revision 6 reads the `hash_*` tables and `IsSecureCmd` too. The log names each name tried, its key and source, and the size of `SlashCmdList`, the three `hash_*` tables, `ChatTypeInfo` and `SecureCmdList` (with whether a list has an `__index` proxy). Should one be registered after all, the test unregisters it and clears its `SLASH_` global at once, so the client's own command keeps working. |
 | `a closed scope leaves the client's SlashCmdList entry ...` | After `Close` the function stays in the client's `SlashCmdList` and `SLASH_MOLTENCODES_MCTTESTINERT1` stays `/mcttestinert`; calling it writes nothing and reports no error; a second scope registering the name gets the very same function, which now reaches the new handler. |
 | `the addon scope is arranged to close at logout ...` | The installed LifecycleKit publishes `CLOSES_ADDON_SCOPES.commandKit`, so this addon's scope is closed by LifecycleKit at logout (case (a)); the scope is open during the run. |
 | `calling SlashCmdList.<key>('scale 1.5', the chat frame's edit box) ...` | Dispatch through the client's entry with the real edit box converts `1.5` for the number schema, gives the context the command path and the raw text, writes `Scale 1.50.` to the capture sink only, and the chat frame's line count and last line do not change. |
@@ -206,10 +206,13 @@ way: the facade test records whether `ChatEdit_CustomTabPressed` and
 - Any chat line from CommandKit other than the one default-sink line (usage
   text, `Scale 1.50.`, a refusal): a capture sink did not receive it.
 - `a name the client uses for a chat type ...` failing, or ending as `SKIP`:
-  the log names the three names tried and what `Register` answered. A `SKIP`
-  means the client lacks `SLASH_SAY1`, a plain Blizzard `SLASH_<key>1`, or
-  `EMOTE1_CMD1`, so CommandKit's taken and emote checks find nothing on this
-  client and docs/API.md needs correcting. After such a failure, `/reload`
+  the log names the names tried and what `Register` answered. A `SKIP`
+  means the client lacks `SLASH_SAY1`, a slash command of its own in
+  `hash_SlashCmdList` or `SlashCmdList`, or `EMOTE1_CMD1`, so CommandKit's
+  taken and emote checks find nothing on this client and docs/API.md needs
+  correcting. The run of 2026-09-25 (CommandKit revision 5) ended here as
+  `SKIP` with `32 passed, 0 failed, 4 skipped`, because the test looked only
+  in `SlashCmdList`. After such a failure, `/reload`
   before typing any slash command.
 - A parser test ending as `SKIP` because the server did not send item data
   within five seconds: run again once the client is connected.
