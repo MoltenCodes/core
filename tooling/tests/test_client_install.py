@@ -417,6 +417,139 @@ class InstallTests(FakeClientTests):
         self.assertIn(str(comm_kit_addon), output)
         self.assert_neighbour_untouched()
 
+    def test_installs_the_interopkit_test_addon_without_its_expected_md(self):
+        status, output, errors = self.run_command("--package", "interopKit")
+
+        self.assertEqual(0, status, errors)
+        interop_kit_addon = self.addons / "MoltenCodesTest_InteropKit"
+        self.assertEqual(
+            ['InteropKitSuite.lua', 'MoltenCodesTest_InteropKit.toc'],
+            sorted(path.name for path in interop_kit_addon.iterdir()),
+        )
+        toc = (interop_kit_addon / "MoltenCodesTest_InteropKit.toc").read_text(encoding="utf-8")
+        self.assertIn("## Dependencies: MoltenCodesTest\n", toc)
+        self.assertIn("\nInteropKitSuite.lua\n", toc)
+        self.assertTrue((self.addons / "MoltenCodes" / "interopKit" / "InteropKit.lua").is_file())
+        self.assertTrue((self.addons / "MoltenCodesTest" / "Harness.lua").is_file())
+        self.assertFalse((self.addons / "MoltenCodesTest_Registry").exists())
+        self.assertIn(str(interop_kit_addon), output)
+        self.assert_neighbour_untouched()
+
+    def test_installs_the_mediakit_test_addon_without_its_expected_md(self):
+        status, output, errors = self.run_command("--package", "mediaKit")
+
+        self.assertEqual(0, status, errors)
+        media_kit_addon = self.addons / "MoltenCodesTest_MediaKit"
+        self.assertEqual(
+            ['MediaKitSuite.lua', 'MoltenCodesTest_MediaKit.toc'],
+            sorted(path.name for path in media_kit_addon.iterdir()),
+        )
+        toc = (media_kit_addon / "MoltenCodesTest_MediaKit.toc").read_text(encoding="utf-8")
+        self.assertIn("## Dependencies: MoltenCodesTest\n", toc)
+        self.assertIn("\nMediaKitSuite.lua\n", toc)
+        self.assertTrue((self.addons / "MoltenCodes" / "mediaKit" / "MediaKit.lua").is_file())
+        self.assertTrue((self.addons / "MoltenCodesTest" / "Harness.lua").is_file())
+        self.assertFalse((self.addons / "MoltenCodesTest_Registry").exists())
+        self.assertIn(str(media_kit_addon), output)
+        self.assert_neighbour_untouched()
+
+    def test_installs_the_widgetkit_test_addon_without_its_expected_md(self):
+        status, output, errors = self.run_command("--package", "widgetKit")
+
+        self.assertEqual(0, status, errors)
+        widget_kit_addon = self.addons / "MoltenCodesTest_WidgetKit"
+        self.assertEqual(
+            ['MoltenCodesTest_WidgetKit.toc', 'WidgetKitSuite.lua'],
+            sorted(path.name for path in widget_kit_addon.iterdir()),
+        )
+        toc = (widget_kit_addon / "MoltenCodesTest_WidgetKit.toc").read_text(encoding="utf-8")
+        self.assertIn("## Dependencies: MoltenCodesTest\n", toc)
+        self.assertIn("\nWidgetKitSuite.lua\n", toc)
+        self.assertTrue((self.addons / "MoltenCodes" / "widgetKit" / "WidgetKit.lua").is_file())
+        self.assertTrue((self.addons / "MoltenCodes" / "optionsKit/OptionsKit.lua").is_file())
+        self.assertTrue((self.addons / "MoltenCodes" / "mediaKit/MediaKit.lua").is_file())
+        self.assertTrue((self.addons / "MoltenCodesTest" / "Harness.lua").is_file())
+        self.assertFalse((self.addons / "MoltenCodesTest_Registry").exists())
+        self.assertIn(str(widget_kit_addon), output)
+        self.assert_neighbour_untouched()
+
+    def test_installs_the_brokerkit_test_addon_without_its_expected_md(self):
+        status, output, errors = self.run_command("--package", "brokerKit")
+
+        self.assertEqual(0, status, errors)
+        broker_kit_addon = self.addons / "MoltenCodesTest_BrokerKit"
+        self.assertEqual(
+            ['BrokerKitSuite.lua', 'LibDataBrokerStandIn.lua', 'MoltenCodesTest_BrokerKit.toc'],
+            sorted(path.name for path in broker_kit_addon.iterdir()),
+        )
+        toc = (broker_kit_addon / "MoltenCodesTest_BrokerKit.toc").read_text(encoding="utf-8")
+        self.assertIn("## Dependencies: MoltenCodesTest\n", toc)
+        self.assertIn("\nLibDataBrokerStandIn.lua\nBrokerKitSuite.lua\n", toc)
+        self.assertTrue((self.addons / "MoltenCodes" / "brokerKit" / "BrokerKit.lua").is_file())
+        self.assertTrue((self.addons / "MoltenCodesTest" / "Harness.lua").is_file())
+        self.assertFalse((self.addons / "MoltenCodesTest_Registry").exists())
+        self.assertIn(str(broker_kit_addon), output)
+        self.assert_neighbour_untouched()
+
+    def test_installs_the_logkit_test_addon_without_its_expected_md(self):
+        status, output, errors = self.run_command("--package", "logKit")
+
+        self.assertEqual(0, status, errors)
+        log_kit_addon = self.addons / "MoltenCodesTest_LogKit"
+        self.assertEqual(
+            ['LogKitSuite.lua', 'MoltenCodesTest_LogKit.toc'],
+            sorted(path.name for path in log_kit_addon.iterdir()),
+        )
+        toc = (log_kit_addon / "MoltenCodesTest_LogKit.toc").read_text(encoding="utf-8")
+        self.assertIn("## Dependencies: MoltenCodesTest\n", toc)
+        self.assertIn("\nLogKitSuite.lua\n", toc)
+        self.assertTrue((self.addons / "MoltenCodes" / "logKit" / "LogKit.lua").is_file())
+        self.assertTrue((self.addons / "MoltenCodesTest" / "Harness.lua").is_file())
+        self.assertFalse((self.addons / "MoltenCodesTest_Registry").exists())
+        self.assertIn(str(log_kit_addon), output)
+        self.assert_neighbour_untouched()
+
+    def test_installs_the_compatkit_test_addon_without_its_expected_md(self):
+        status, output, errors = self.run_command("--package", "compatKit")
+
+        self.assertEqual(0, status, errors)
+        compat_kit_addon = self.addons / "MoltenCodesTest_CompatKit"
+        self.assertEqual(
+            ['CompatKitSuite.lua', 'MoltenCodesTest_CompatKit.toc'],
+            sorted(path.name for path in compat_kit_addon.iterdir()),
+        )
+        toc = (compat_kit_addon / "MoltenCodesTest_CompatKit.toc").read_text(encoding="utf-8")
+        self.assertIn("## Dependencies: MoltenCodesTest\n", toc)
+        self.assertIn("\nCompatKitSuite.lua\n", toc)
+        self.assertTrue((self.addons / "MoltenCodes" / "compatKit" / "CompatKit.lua").is_file())
+        self.assertTrue((self.addons / "MoltenCodesTest" / "Harness.lua").is_file())
+        self.assertFalse((self.addons / "MoltenCodesTest_Registry").exists())
+        self.assertIn(str(compat_kit_addon), output)
+        self.assert_neighbour_untouched()
+
+    def test_installs_the_apikit_test_addon_without_its_expected_md(self):
+        status, output, errors = self.run_command("--package", "apiKit")
+
+        self.assertEqual(0, status, errors)
+        api_kit_addon = self.addons / "MoltenCodesTest_ApiKit"
+        self.assertEqual(
+            ['ApiKitSuite.lua', 'MoltenCodesTest_ApiKit.toc'],
+            sorted(path.name for path in api_kit_addon.iterdir()),
+        )
+        toc = (api_kit_addon / "MoltenCodesTest_ApiKit.toc").read_text(encoding="utf-8")
+        self.assertIn("## Dependencies: MoltenCodesTest\n", toc)
+        self.assertIn("\nApiKitSuite.lua\n", toc)
+        self.assertTrue((self.addons / "MoltenCodes" / "apiKit" / "ApiKit.lua").is_file())
+        self.assertTrue((self.addons / "MoltenCodes" / "apiKit/flavours/Retail.lua").is_file())
+        self.assertTrue((self.addons / "MoltenCodes" / "apiKit/flavours/ClassicEra.lua").is_file())
+        self.assertTrue((self.addons / "MoltenCodes" / "apiKit/flavours/ClassicMop.lua").is_file())
+        self.assertTrue((self.addons / "MoltenCodes" / "apiKit/flavours/Ptr.lua").is_file())
+        self.assertTrue((self.addons / "MoltenCodes" / "apiKit/flavours/Beta.lua").is_file())
+        self.assertTrue((self.addons / "MoltenCodesTest" / "Harness.lua").is_file())
+        self.assertFalse((self.addons / "MoltenCodesTest_Registry").exists())
+        self.assertIn(str(api_kit_addon), output)
+        self.assert_neighbour_untouched()
+
     def test_installs_the_schedulerkit_test_addon_without_its_expected_md(self):
         status, output, errors = self.run_command("--package", "schedulerKit")
 
@@ -503,7 +636,14 @@ class InstallTests(FakeClientTests):
         self.assertIn("commandKit", available)
         self.assertIn("codecKit", available)
         self.assertIn("commKit", available)
-        self.assertNotIn("widgetKit", available)
+        self.assertIn("interopKit", available)
+        self.assertIn("mediaKit", available)
+        self.assertIn("widgetKit", available)
+        self.assertIn("brokerKit", available)
+        self.assertIn("logKit", available)
+        self.assertIn("compatKit", available)
+        self.assertIn("apiKit", available)
+        self.assertNotIn("testKit", available)
 
     def test_expected_lua_lists_every_bundled_package_and_testkit_at_their_manifest_revisions(self):
         self.run_command("--package", "registry")
@@ -551,7 +691,8 @@ class InstallTests(FakeClientTests):
         self.assert_neighbour_untouched()
 
     def test_refuses_a_package_without_a_test_addon(self):
-        status, _, errors = self.run_command("--package", "widgetKit")
+        # TestKit is the harness's own engine and has no test addon of its own.
+        status, _, errors = self.run_command("--package", "testKit")
 
         self.assertEqual(1, status)
         self.assertIn("has no test addon", errors)

@@ -1,0 +1,11 @@
+## Interface: 120100
+## Title: MoltenCodes Test: InteropKit
+## Notes: Real-client test suites for MoltenCodes InteropKit. Run them with /mct run interopKit. Without another addon's LibStub they install a LibStub stand-in only for the length of a test.
+## Author: MoltenCodes
+## Version: 1.0.0
+## Dependencies: MoltenCodesTest
+## X-Category: Development Tools
+## X-License: MIT
+
+# Development only: never ship this addon. See tests/client/README.md.
+InteropKitSuite.lua

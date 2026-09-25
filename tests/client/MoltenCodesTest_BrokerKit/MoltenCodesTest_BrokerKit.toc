@@ -1,0 +1,16 @@
+## Interface: 120100
+## Title: MoltenCodes Test: BrokerKit
+## Notes: Real-client test suites for MoltenCodes BrokerKit. Run them with /mct run brokerKit.
+## Author: MoltenCodes
+## Version: 1.0.0
+## Dependencies: MoltenCodesTest
+## X-Category: Development Tools
+## X-License: MIT
+
+# Development only: never ship this addon. See tests/client/README.md.
+#
+# LibDataBrokerStandIn.lua is this addon's own minimal LibStub and
+# LibDataBroker-1.1 for the bridge tests (no third-party code); it loads first
+# and hands itself to the suite through the addon's private table.
+LibDataBrokerStandIn.lua
+BrokerKitSuite.lua
