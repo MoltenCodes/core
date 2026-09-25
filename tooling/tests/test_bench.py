@@ -104,6 +104,17 @@ class Ace3FetchTests(unittest.TestCase):
         self.assertEqual([], second.urls)
         self.assertEqual(self.digest, source.content_digest)
 
+    def test_a_reused_cache_reports_the_digest_just_verified(self) -> None:
+        source = self.fetch(FakeTransport(archive_bytes(self.files)))
+        provenance = source.directory / ace3.PROVENANCE_NAME
+        recorded = json.loads(provenance.read_text(encoding="utf-8"))
+        recorded["contentDigest"] = "digest of an older, shorter file list"
+        provenance.write_text(json.dumps(recorded), encoding="utf-8")
+
+        reused = self.fetch(FakeTransport(b"never read"))
+
+        self.assertEqual(self.digest, reused.content_digest)
+
     def test_downloads_again_when_a_cached_file_changed(self) -> None:
         source = self.fetch(FakeTransport(archive_bytes(self.files)))
         (source.directory / "LibStub" / "LibStub.lua").write_text("-- edited\n", encoding="utf-8")

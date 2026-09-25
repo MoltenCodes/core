@@ -25,6 +25,17 @@
 ---                      `UnitInParty`, `UnitInRaid`, `Ambiguate`
 ---   helpers            `hooksecurefunc`, `wipe` / `table.wipe`, `strlenutf8`
 ---   frames             `Frame:UnregisterAllEvents`, added to every frame
+---   widgets            frame types the fake client lacks (`GameTooltip`)
+---                      built as a plain `Frame`; no-op `SetBackdrop`,
+---                      `SetBackdropColor`, `SetBackdropBorderColor`,
+---                      `SetHitRectInsets`, `EditBox:SetTextColor` and
+---                      `FontString:SetVertexColor` (`installWidgetHost`)
+---   hooks              `issecurevariable` (always `false`: every target is
+---                      the benchmark's own), `Frame:HasScript` and
+---                      `Frame:HookScript` with the client's chaining
+---   slash commands     `SlashCmdList`, `hash_SlashCmdList`, a counting
+---                      `DEFAULT_CHAT_FRAME`, `strtrim` / `string.trim`,
+---                      `strsplit` / `string.split`
 ---   language           `xpcall(f, handler, ...)` forwarding its extra
 ---                      arguments, as the client's Lua does
 ---
@@ -195,6 +206,62 @@ local function installHelpers()
   end)
 end
 
+---Install the slash-command host: `SlashCmdList`, `hash_SlashCmdList`, a
+---`DEFAULT_CHAT_FRAME` that counts its lines, and the client's `strtrim` /
+---`string.trim` and `strsplit` / `string.split`.
+---
+---AceConsole-3.0 writes `SlashCmdList` and clears `hash_SlashCmdList` entries;
+---CommandKit writes `SlashCmdList` and reads `hash_SlashCmdList`; AceConfigCmd-3.0
+---captures `string.trim` and `string.split` at load and prints to
+---`DEFAULT_CHAT_FRAME`, which is also CommandKit's default sink. The chat frame
+---keeps only a count and the last line, so printing allocates nothing beyond the
+---text the library built.
+---@return table chatFrame
+local function installSlashCommandHost()
+  setGlobal("SlashCmdList", {})
+  setGlobal("hash_SlashCmdList", {})
+
+  local chatFrame = { lines = 0, lastLine = nil }
+  function chatFrame:AddMessage(text)
+    self.lines = self.lines + 1
+    self.lastLine = text
+  end
+  setGlobal("DEFAULT_CHAT_FRAME", chatFrame)
+
+  ---The client's `strtrim(text, characters)`: whitespace by default.
+  local function trim(text, characters)
+    local set = "[" .. (characters or " \t\r\n") .. "]"
+    return (text:gsub("^" .. set .. "+", ""):gsub(set .. "+$", ""))
+  end
+
+  ---The client's `strsplit(delimiters, text, pieces)`: every piece as a result.
+  local function split(delimiters, text, pieces)
+    local results, count, position = {}, 0, 1
+    local pattern = "[" .. delimiters .. "]"
+    while true do
+      if pieces ~= nil and count == pieces - 1 then
+        break
+      end
+      local first, last = text:find(pattern, position)
+      if first == nil then
+        break
+      end
+      count = count + 1
+      results[count] = text:sub(position, first - 1)
+      position = last + 1
+    end
+    count = count + 1
+    results[count] = text:sub(position)
+    return unpack(results, 1, count)
+  end
+
+  setGlobal("strtrim", trim)
+  setGlobal("strsplit", split)
+  rawset(string, "trim", trim)
+  rawset(string, "split", split)
+  return chatFrame
+end
+
 ---Replace `xpcall` with one that forwards extra arguments, as the client's does.
 ---
 ---The client's Lua 5.1 accepts `xpcall(f, handler, ...)` and passes `...` to
@@ -262,6 +329,127 @@ local function installUnregisterAllEvents()
   end)
 end
 
+---Install what hooking needs from the client: `issecurevariable`, and
+---`Frame:HasScript` and `Frame:HookScript` on every frame.
+---
+---AceHook-3.0 reads `issecurevariable` at load and calls it for every
+---function or method hook; HookKit reads it once at load and asks it before
+---every non-secure hook. Every benchmark target is a table or global the
+---benchmark itself wrote, which the client reports as not secure, so the stub
+---answers `false`. `HookScript` behaves as the client's does: it sets the
+---handler when the script has none, and otherwise chains the new one after
+---the existing one; a later `SetScript` replaces the whole chain.
+local function installHookHost()
+  setGlobal("issecurevariable", function()
+    return false
+  end)
+  -- The fake client publishes CreateFrame only as a global, as the client does.
+  -- selene: allow(global_usage)
+  local createFrame = rawget(_G, "CreateFrame")
+  setGlobal("CreateFrame", function(...)
+    local frame = createFrame(...)
+    function frame:HasScript()
+      return true
+    end
+    function frame:HookScript(scriptName, hook)
+      local previous = self.scripts[scriptName]
+      if previous == nil then
+        self.scripts[scriptName] = hook
+        return
+      end
+      self.scripts[scriptName] = function(...)
+        previous(...)
+        hook(...)
+      end
+    end
+    return frame
+  end)
+end
+
+--- Frame types the fake client builds; `installWidgetHost` builds any other
+--- type as a plain `Frame`.
+local STUB_FRAME_TYPES = {
+  Frame = true,
+  Button = true,
+  CheckButton = true,
+  Slider = true,
+  EditBox = true,
+  ScrollFrame = true,
+}
+
+---A method that accepts anything and does nothing.
+local function ignoreCall() end
+
+--- Methods the client's widgets have and the fake client lacks, by the kind
+--- of object that carries them. Each is a no-op: none of them changes a
+--- size, an anchor, a text or anything else a layout or a check reads.
+--- `SetBackdrop*` come from the client's `BackdropTemplate` mixin, which
+--- AceGUI-3.0 asks for by template name.
+local MISSING_FRAME_METHODS =
+  { "SetBackdrop", "SetBackdropColor", "SetBackdropBorderColor", "SetHitRectInsets" }
+local MISSING_EDIT_BOX_METHODS = { "SetTextColor" }
+local MISSING_FONT_STRING_METHODS = { "SetVertexColor" }
+
+---Add `names` as no-op methods to the method table behind `object`, when it
+---does not already answer them. The fake client keeps one method table per
+---frame or region type, so this changes the type once and never allocates
+---per frame.
+---@param object table a frame or region
+---@param names string[]
+local function addMissingMethods(object, names)
+  local methods = getmetatable(object).__index
+  for index = 1, #names do
+    if object[names[index]] == nil then
+      rawset(methods, names[index], ignoreCall)
+    end
+  end
+end
+
+---Complete the fake client for the widget toolkits, for both sides alike.
+---
+---AceGUI-3.0 creates one `GameTooltip` at load and calls a few frame, edit
+---box and font string methods the fake client lacks; WidgetKit calls none of
+---them. The additions are installed on the shared method tables the first
+---time a frame of each type is created, so a widget built later pays nothing
+---for them, and a method the fake client gains later is never replaced.
+local function installWidgetHost()
+  -- The fake client publishes CreateFrame only as a global, as the client does.
+  -- selene: allow(global_usage)
+  local createFrame = rawget(_G, "CreateFrame")
+  local completed = {}
+
+  ---Complete one frame type's method table, and its font strings' table.
+  ---@param frame table
+  local function completeType(frame)
+    local methods = getmetatable(frame).__index
+    if completed[methods] then
+      return
+    end
+    completed[methods] = true
+    addMissingMethods(frame, MISSING_FRAME_METHODS)
+    if frame.frameType == "EditBox" then
+      addMissingMethods(frame, MISSING_EDIT_BOX_METHODS)
+    end
+    local createFontString = frame.CreateFontString
+    rawset(methods, "CreateFontString", function(self, ...)
+      local fontString = createFontString(self, ...)
+      if fontString.SetVertexColor == nil then
+        addMissingMethods(fontString, MISSING_FONT_STRING_METHODS)
+      end
+      return fontString
+    end)
+  end
+
+  setGlobal("CreateFrame", function(frameType, ...)
+    if not STUB_FRAME_TYPES[frameType] then
+      frameType = "Frame"
+    end
+    local frame = createFrame(frameType, ...)
+    completeType(frame)
+    return frame
+  end)
+end
+
 ---Build the host: the fake client, then everything this module adds.
 ---@return table host
 function BenchHost.New()
@@ -276,8 +464,11 @@ function BenchHost.New()
   installIdentity()
   host.chat = installChat()
   installHelpers()
+  installWidgetHost()
   installUnregisterAllEvents()
+  installHookHost()
   installClientXpcall()
+  host.chatFrame = installSlashCommandHost()
 
   ---Read a host global, such as `LibStub` after an Ace3 file created it.
   ---@param name string

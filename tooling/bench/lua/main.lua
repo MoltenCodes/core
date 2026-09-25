@@ -28,6 +28,14 @@ local WORKLOADS = {
   settings = "workloads.Settings",
   codec = "workloads.Codec",
   comm = "workloads.Comm",
+  libraryRegistry = "workloads.LibraryRegistry",
+  addonModules = "workloads.AddonModules",
+  hooks = "workloads.Hooks",
+  slashCommands = "workloads.SlashCommands",
+  locale = "workloads.Locale",
+  buckets = "workloads.Buckets",
+  options = "workloads.Options",
+  widgets = "workloads.Widgets",
 }
 
 local SIDES = { moltencodes = true, ace3 = true }

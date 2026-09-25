@@ -26,6 +26,7 @@ substitute an in-memory archive and never touch the network.
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import datetime
 import hashlib
 import io
@@ -60,10 +61,29 @@ LOADED_FILES: tuple[str, ...] = (
     "AceSerializer-3.0/AceSerializer-3.0.lua",
     "AceComm-3.0/ChatThrottleLib.lua",
     "AceComm-3.0/AceComm-3.0.lua",
+    "AceAddon-3.0/AceAddon-3.0.lua",
+    "AceHook-3.0/AceHook-3.0.lua",
+    "AceConsole-3.0/AceConsole-3.0.lua",
+    "AceLocale-3.0/AceLocale-3.0.lua",
+    "AceBucket-3.0/AceBucket-3.0.lua",
+    "AceConfig-3.0/AceConfigRegistry-3.0/AceConfigRegistry-3.0.lua",
+    "AceConfig-3.0/AceConfigCmd-3.0/AceConfigCmd-3.0.lua",
+    "AceDBOptions-3.0/AceDBOptions-3.0.lua",
+    "AceGUI-3.0/AceGUI-3.0.lua",
+    "AceGUI-3.0/widgets/AceGUIWidget-Label.lua",
+    "AceGUI-3.0/widgets/AceGUIWidget-Button.lua",
+    "AceGUI-3.0/widgets/AceGUIWidget-CheckBox.lua",
+    "AceGUI-3.0/widgets/AceGUIWidget-Slider.lua",
+    "AceGUI-3.0/widgets/AceGUIWidget-EditBox.lua",
+    "AceGUI-3.0/widgets/AceGUIWidget-Heading.lua",
+    "AceGUI-3.0/widgets/AceGUIContainer-SimpleGroup.lua",
+    "AceGUI-3.0/widgets/AceGUIContainer-InlineGroup.lua",
+    "AceGUI-3.0/widgets/AceGUIContainer-ScrollFrame.lua",
+    "AceGUI-3.0/widgets/AceGUIContainer-Frame.lua",
 )
 
 #: SHA-256 over `LOADED_FILES` at `ACE3_COMMIT`, as `content_digest` computes it.
-EXPECTED_CONTENT_DIGEST = "a967f70be11d2996ed841ad6fe9466364f91f9f431cb3c2587d65b17659e29c7"
+EXPECTED_CONTENT_DIGEST = "01f8e275ce38c4f739781feaf3bd95589d7cee854a7da953eb1ec3efcac24412"
 
 #: The provenance file written beside an extracted copy.
 PROVENANCE_NAME = "fetch.json"
@@ -245,7 +265,9 @@ def fetch_ace3(
     cached = read_provenance(directory)
     if cached is not None and cached.commit == ACE3_COMMIT:
         if content_digest(directory) == expected_digest:
-            return cached
+            # The recorded digest may cover an older, shorter `LOADED_FILES`;
+            # the one just verified is what the results must name.
+            return dataclasses.replace(cached, content_digest=expected_digest)
 
     url = archive_url()
     try:

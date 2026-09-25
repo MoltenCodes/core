@@ -82,6 +82,73 @@ WORKLOADS: tuple[Workload, ...] = (
             "commKit",
         ),
     ),
+    Workload(
+        name="libraryRegistry",
+        module="workloads.LibraryRegistry",
+        title="Library registration and lookup",
+        compares="Registry (and InteropKit's LibStub bridge) against LibStub",
+        packages=("registry", "interopKit"),
+    ),
+    Workload(
+        name="addonModules",
+        module="workloads.AddonModules",
+        title="Addons, modules and their lifecycle",
+        compares="ModuleKit with LifecycleKit against AceAddon-3.0",
+        packages=("registry", "signalKit", "eventKit", "lifecycleKit", "moduleKit"),
+    ),
+    Workload(
+        name="hooks",
+        module="workloads.Hooks",
+        title="Function, method and script hooks",
+        compares="HookKit against AceHook-3.0",
+        packages=("registry", "hookKit"),
+    ),
+    Workload(
+        name="slashCommands",
+        module="workloads.SlashCommands",
+        title="Slash commands and argument parsing",
+        compares="CommandKit against AceConsole-3.0",
+        packages=("registry", "schemaKit", "commandKit"),
+    ),
+    Workload(
+        name="locale",
+        module="workloads.Locale",
+        title="Translations",
+        compares="LocaleKit against AceLocale-3.0",
+        packages=("registry", "localeKit"),
+    ),
+    Workload(
+        name="buckets",
+        module="workloads.Buckets",
+        title="Event bucketing",
+        compares="SchedulerKit coalescing against AceBucket-3.0",
+        packages=("registry", "signalKit", "eventKit", "timerKit", "schedulerKit"),
+    ),
+    Workload(
+        name="options",
+        module="workloads.Options",
+        title="Options tables",
+        compares=(
+            "OptionsKit (with CommandKit's command line and SettingsKit's profiles) against "
+            "AceConfigRegistry-3.0, AceConfigCmd-3.0 and AceDBOptions-3.0 (with AceDB-3.0)"
+        ),
+        packages=(
+            "registry",
+            "signalKit",
+            "eventKit",
+            "schemaKit",
+            "settingsKit",
+            "optionsKit",
+            "commandKit",
+        ),
+    ),
+    Workload(
+        name="widgets",
+        module="workloads.Widgets",
+        title="Widgets on the fake client (indicative)",
+        compares="WidgetKit against AceGUI-3.0 on the shared fake client",
+        packages=("registry", "poolKit", "signalKit", "widgetKit"),
+    ),
 )
 
 #: Workloads by name.

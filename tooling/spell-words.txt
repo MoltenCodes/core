@@ -107,14 +107,28 @@ shellcheck
 stylua
 
 # Terms of art the documentation uses deliberately.
+benchcheck
 deserialise
+editbox
 entrancy
+funcref
 indegree
 introspectable
 memoises
+nosuch
 oneshot
+posthook
+posthooked
+prehook
+prehooked
+rawhook
+rawhooked
+relayout
 resetless
+securehook
 serialiser
+strsplit
+strtrim
 unregistration
 versionable
 worklist
