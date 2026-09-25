@@ -52,6 +52,32 @@ describe("ApiKit Retail bindings", function()
     assert.is_nil(api.profiler)
   end)
 
+  it(
+    "binds a function its documentation places outside its system's namespace from where it lives",
+    function()
+      -- `InCombatLockdown` is documented in the `C_RestrictedActions` system with
+      -- `Namespace = ""`: the client has it as a global, and a client without the
+      -- `C_RestrictedActions` table still gets the wrapper (CHANGELOG 0.1.4).
+      local function inCombatLockdown()
+        return false
+      end
+      TestEnv.NewPackageFor("retail")
+      -- The fixture stands in for the client, whose globals only exist in the global table.
+      -- selene: allow(global_usage)
+      rawset(_G, "InCombatLockdown", inCombatLockdown)
+      -- selene: allow(global_usage)
+      assert.is_nil(rawget(_G, "C_RestrictedActions"))
+      require("flavours.Retail")
+
+      -- selene: allow(global_usage)
+      local api = rawget(_G, "MoltenCodes").wow.retail.api
+      -- selene: allow(global_usage)
+      rawset(_G, "InCombatLockdown", nil)
+      assert.are.equal(inCombatLockdown, api.restrictedActions.inCombatLockdown)
+      assert.is_nil(api.restrictedActions.checkAllowProtectedFunctions)
+    end
+  )
+
   it("costs nothing but its registration on another flavour", function()
     local ApiKit = TestEnv.NewPackageFor("classic-era")
     require("flavours.Retail")

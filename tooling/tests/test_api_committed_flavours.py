@@ -1,20 +1,26 @@
 """The committed flavour files bind exactly what their metadata says.
 
 For every flavour whose metadata is committed under `packages/apiKit/metadata/`,
-this suite builds a stub host from that metadata (every Blizzard namespace with
-every documented function, every global function, `Enum` and `Constants`
-tables), loads the committed `src/flavours/<Flavour>.lua` under Lua 5.1 with a
+this suite builds a stub host from that metadata (every function placed where
+its binding says, which for a function with its own `Namespace` attribute is
+not its system's namespace, plus `Enum` and `Constants` tables), loads the committed `src/flavours/<Flavour>.lua` under Lua 5.1 with a
 stand-in facade, runs the installer against the stub and checks that every
 binding resolves to the stub function it names and that nothing else was
 bound. It is the "sampled generated-output spec" the roadmap asks for, made
 exhaustive because the check is cheap.
 
-The suite needs a Lua 5.1 interpreter on the path and is skipped without one.
+It also holds the real-client suite's `RELOCATED_BINDINGS` (the Retail
+bindings its identity walk cannot derive from the names) to the Retail
+metadata.
+
+The binding checks need a Lua 5.1 interpreter on the path and are skipped
+without one.
 """
 
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import subprocess
 import tempfile
@@ -57,7 +63,7 @@ HARNESS = textwrap.dedent(
         local namespace = api[entry.namespace]
         local value = namespace and namespace[entry.wrapper]
         local wanted = entry.global and host[entry.name] or host[entry.source][entry.name]
-        if value ~= wanted then
+        if type(wanted) ~= "function" or value ~= wanted then
             problems[#problems + 1] = entry.namespace .. "." .. entry.wrapper
         else
             bound = bound + 1
@@ -98,19 +104,37 @@ def _lua_string(text: str) -> str:
 
 
 def stub_host_lua(metadata: model.FlavourMetadata) -> str:
-    """A Lua chunk returning a host table with a distinct function for every binding."""
-    lines = ["local host = {}", "local function stub() end"]
+    """A Lua chunk returning a host table with a distinct function for every binding.
+
+    Each function is placed where its binding says, not where its system is
+    documented, so a function the tables move with their own `Namespace`
+    attribute (`InCombatLockdown` of `C_RestrictedActions` is a global,
+    `count` of `C_TableUtil` is `table.count`) is only found by a runtime file
+    that reads it from there. Every `C_*` namespace table exists, as on a
+    client that has them all.
+    """
+    lines = ["local host = {}"]
+    tables: set[str] = set()
     for namespace in metadata.namespaces:
         if namespace.kind == "namespace":
             assert namespace.blizzard_namespace is not None
-            lines.append(f"host[{_lua_string(namespace.blizzard_namespace)}] = {{}}")
-            for function in namespace.functions:
-                lines.append(
-                    f"host[{_lua_string(namespace.blizzard_namespace)}][{_lua_string(function.name)}] = function() end"
-                )
-        elif namespace.kind == "global":
-            for function in namespace.functions:
-                lines.append(f"host[{_lua_string(function.name)}] = function() end")
+            tables.add(namespace.blizzard_namespace)
+        for function in namespace.functions:
+            if function.binding is not None:
+                table, _ = model.split_binding(function.binding)
+                if table is not None:
+                    tables.add(table)
+    for table in sorted(tables):
+        lines.append(f"host[{_lua_string(table)}] = {{}}")
+    for namespace in metadata.namespaces:
+        for function in namespace.functions:
+            if function.binding is None:
+                continue
+            table, name = model.split_binding(function.binding)
+            if table is None:
+                lines.append(f"host[{_lua_string(name)}] = function() end")
+            else:
+                lines.append(f"host[{_lua_string(table)}][{_lua_string(name)}] = function() end")
     lines.append("host.Enum = {}")
     for enum in metadata.enums:
         lines.append(f"host.Enum[{_lua_string(enum.name)}] = {{}}")
@@ -134,11 +158,13 @@ def expected_lua(metadata: model.FlavourMetadata) -> str:
             namespaces.add(namespace.alias)
             aliases.append(f"{{ alias = {_lua_string(namespace.alias)}, namespace = {_lua_string(namespace.wrapper)} }}")
         for function in namespace.functions:
-            source = _lua_string(namespace.blizzard_namespace or "")
-            is_global = "true" if namespace.kind == "global" else "false"
+            assert function.binding is not None
+            table, name = model.split_binding(function.binding)
+            source = _lua_string(table or "")
+            is_global = "true" if table is None else "false"
             bindings.append(
                 f"{{ namespace = {_lua_string(namespace.wrapper)}, wrapper = {_lua_string(function.wrapper)}, "
-                f"name = {_lua_string(function.name)}, source = {source}, global = {is_global} }}"
+                f"name = {_lua_string(name)}, source = {source}, global = {is_global} }}"
             )
     events = [f"{{ wrapper = {_lua_string(event.wrapper)}, literal = {_lua_string(event.literal_name)} }}" for event in metadata.events]
     enums = [f"{{ wrapper = {_lua_string(enum.wrapper)}, name = {_lua_string(enum.name)} }}" for enum in metadata.enums]
@@ -155,6 +181,45 @@ def expected_lua(metadata: model.FlavourMetadata) -> str:
         "    enums = {\n        " + ",\n        ".join(enums) + "\n    },\n"
         "}\n"
     )
+
+
+#: The real-client suite, whose `RELOCATED_BINDINGS` lists the Retail bindings
+#: the naming rules cannot derive.
+CLIENT_SUITE = ROOT / "tests" / "client" / "MoltenCodesTest_ApiKit" / "ApiKitSuite.lua"
+
+#: One entry of `RELOCATED_BINDINGS`: four fields, the third `nil` or a string.
+RELOCATED_ENTRY_RE = re.compile(
+    r'\{\s*"([^"]+)",\s*"([^"]+)",\s*(nil|"[^"]+"),\s*"([^"]+)",?\s*\}'
+)
+
+
+def relocated_bindings(metadata: model.FlavourMetadata) -> set[tuple[str, str, str | None, str]]:
+    """Every binding the metadata places outside its system's own table.
+
+    As `(namespace wrapper, function wrapper, host table or None, host name)`,
+    the shape of `RELOCATED_BINDINGS` in the real-client suite.
+    """
+    relocated = set()
+    for namespace in metadata.namespaces:
+        home = namespace.blizzard_namespace if namespace.kind == "namespace" else None
+        for function in namespace.functions:
+            if function.binding is None:
+                continue
+            table, name = model.split_binding(function.binding)
+            if table != home:
+                relocated.add((namespace.wrapper, function.wrapper, table, name))
+    return relocated
+
+
+def suite_relocated_bindings(text: str) -> set[tuple[str, str, str | None, str]]:
+    """`RELOCATED_BINDINGS` as the real-client suite writes it."""
+    block = re.search(r"^local RELOCATED_BINDINGS = \{\n(.*?)^\}", text, re.MULTILINE | re.DOTALL)
+    if block is None:
+        raise AssertionError(f"{CLIENT_SUITE}: no RELOCATED_BINDINGS table")
+    entries = set()
+    for namespace, wrapper, table, name in RELOCATED_ENTRY_RE.findall(block.group(1)):
+        entries.add((namespace, wrapper, None if table == "nil" else table.strip('"'), name))
+    return entries
 
 
 def committed_flavours() -> list[flavours.Flavour]:
@@ -216,6 +281,19 @@ class CommittedFlavourTests(unittest.TestCase):
                     result.up_to_date,
                     "stale generated files: " + ", ".join(str(path) for path in [*result.changed, *result.removed]),
                 )
+
+
+class ClientSuiteTests(unittest.TestCase):
+    """The real-client suite's hand-kept binding list agrees with the Retail metadata."""
+
+    def test_the_client_suite_lists_every_relocated_retail_binding(self):
+        """The real-client walk resolves these by hand, so the list must be the metadata's."""
+        metadata = model.read_metadata(PACKAGE_DIR / "metadata" / "retail")
+
+        self.assertEqual(
+            relocated_bindings(metadata),
+            suite_relocated_bindings(CLIENT_SUITE.read_text(encoding="utf-8")),
+        )
 
 
 if __name__ == "__main__":

@@ -22,7 +22,9 @@ step by `tooling/tests/test_api_model.py`.
   field does not change it.
 - Names: `name` is always the Blizzard name exactly as the tables spell it;
   `wrapper` is the MoltenCodes name produced by the rules in
-  `tooling/api/naming.py`; `binding` is the raw expression the wrapper aliases.
+  `tooling/api/naming.py`; `binding` is the raw expression the wrapper aliases,
+  which for a function with its own `Namespace` attribute is not in its
+  system's namespace (see Function).
 - Documentation prose from the tables is kept as `documentation`, a list of
   paragraphs, with provenance in `provenance.json`.
 - Attributes the model does not name are never dropped, on any entry kind: a
@@ -88,7 +90,7 @@ An entry of `namespaces.json`.
 |---|---|---|
 | `name` | string | Blizzard name (`DisableAddOn`) |
 | `wrapper` | string | `api.<namespace>.<wrapper>` |
-| `binding` | string, absent for kind `object` | the raw expression aliased: `C_AddOns.DisableAddOn` or `UnitName` |
+| `binding` | string, absent for kind `object` | the raw expression aliased: `C_AddOns.DisableAddOn` or `UnitName`; when the function carries its own `Namespace` attribute (kept under `attributes`), that namespace instead of the system's: `""` binds the global (`InCombatLockdown` of `C_RestrictedActions`), any other name that table (`table.count` of `C_TableUtil`). The validator refuses a binding that disagrees with the attribute |
 | `arguments` | list of Parameter, optional | in call order |
 | `returns` | list of Parameter, optional | in return order |
 | `documentation` | list of strings, optional | |

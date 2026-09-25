@@ -60,6 +60,60 @@ class HeaderAndDependencyTests(unittest.TestCase):
         self.assertTrue(render(metadata).endswith("end)\n"))
 
 
+def with_moved_functions(metadata: model.FlavourMetadata) -> model.FlavourMetadata:
+    """Add the three shapes a function's own `Namespace` attribute produces.
+
+    `restrictedActions` mirrors the client's `C_RestrictedActions`: one
+    function of its own, `InCombatLockdown` a global and `count` in `table`.
+    `tableUtil` binds nothing through `C_TableUtil`. `localization` is a global
+    system with one function in `C_StringUtil`.
+    """
+    restricted = model.Namespace(
+        wrapper="restrictedActions",
+        kind="namespace",
+        system="RestrictedActions",
+        blizzard_namespace="C_RestrictedActions",
+        functions=(
+            model.Function(
+                name="CheckAllowProtectedFunctions",
+                wrapper="checkAllowProtectedFunctions",
+                binding="C_RestrictedActions.CheckAllowProtectedFunctions",
+            ),
+            model.Function(
+                name="InCombatLockdown",
+                wrapper="inCombatLockdown",
+                binding="InCombatLockdown",
+                attributes={"Namespace": ""},
+            ),
+            model.Function(name="count", wrapper="count", binding="table.count", attributes={"Namespace": "table"}),
+        ),
+    )
+    table_util = model.Namespace(
+        wrapper="tableUtil",
+        kind="namespace",
+        system="LuaTableUtil",
+        blizzard_namespace="C_TableUtil",
+        functions=(
+            model.Function(name="create", wrapper="create", binding="table.create", attributes={"Namespace": "table"}),
+        ),
+    )
+    localization = model.Namespace(
+        wrapper="localization",
+        kind="global",
+        system="Localization",
+        functions=(
+            model.Function(name="DeclineName", wrapper="declineName", binding="DeclineName"),
+            model.Function(
+                name="GetDefaultAbbreviationBreakpoints",
+                wrapper="getDefaultAbbreviationBreakpoints",
+                binding="C_StringUtil.GetDefaultAbbreviationBreakpoints",
+                attributes={"Namespace": "C_StringUtil"},
+            ),
+        ),
+    )
+    return dataclasses.replace(metadata, namespaces=(*metadata.namespaces, restricted, table_util, localization))
+
+
 class BindingTests(unittest.TestCase):
     def test_namespace_functions_are_direct_aliases_guarded_by_the_host_table(self):
         text = render()
@@ -92,6 +146,74 @@ class BindingTests(unittest.TestCase):
         text = render(metadata)
 
         self.assertIn("    api.unit = target\n    target.name = host.UnitName\n", text)
+
+    def test_functions_with_their_own_namespace_are_read_from_where_they_live(self):
+        text = render(with_moved_functions(sample_metadata()))
+
+        block = textwrap.dedent(
+            """\
+                do
+                  local source = host.C_RestrictedActions
+                  local target = {}
+                  if source then
+                    target.checkAllowProtectedFunctions = source.CheckAllowProtectedFunctions
+                  end
+                  target.inCombatLockdown = host.InCombatLockdown
+                  do
+                    local elsewhere = host.table
+                    if elsewhere then
+                      target.count = elsewhere.count
+                    end
+                  end
+                  if source or next(target) then
+                    api.restrictedActions = target
+                  end
+                end
+            """
+        )
+        self.assertIn(textwrap.indent(block, module.INDENT), text)
+
+    def test_a_namespace_whose_functions_all_live_elsewhere_reads_only_its_table(self):
+        text = render(with_moved_functions(sample_metadata()))
+
+        block = textwrap.dedent(
+            """\
+                do
+                  local source = host.C_TableUtil
+                  local target = {}
+                  do
+                    local elsewhere = host.table
+                    if elsewhere then
+                      target.create = elsewhere.create
+                    end
+                  end
+                  if source or next(target) then
+                    api.tableUtil = target
+                  end
+                end
+            """
+        )
+        self.assertIn(textwrap.indent(block, module.INDENT), text)
+
+    def test_a_global_system_function_in_a_namespace_is_guarded_by_that_namespace(self):
+        text = render(with_moved_functions(sample_metadata()))
+
+        block = textwrap.dedent(
+            """\
+                do
+                  local target = {}
+                  api.localization = target
+                  target.declineName = host.DeclineName
+                  do
+                    local elsewhere = host.C_StringUtil
+                    if elsewhere then
+                      target.getDefaultAbbreviationBreakpoints = elsewhere.GetDefaultAbbreviationBreakpoints
+                    end
+                  end
+                end
+            """
+        )
+        self.assertIn(textwrap.indent(block, module.INDENT), text)
 
     def test_object_types_produce_nothing(self):
         self.assertNotIn("Clock", render().replace("Example/wow-ui-source", ""))
@@ -192,6 +314,64 @@ HARNESS = textwrap.dedent(
 )
 
 
+#: Runs a file rendered from `with_moved_functions` against three hosts: one
+#: without `C_RestrictedActions` and `C_TableUtil` (the Retail 12.1 client),
+#: one with every table, and one without `C_StringUtil`.
+MOVED_HARNESS = textwrap.dedent(
+    """\
+    local installers = {}
+    local ApiKit = {
+        API = 1,
+        RegisterFlavor = function(_, flavour, install)
+            installers[flavour] = install
+        end,
+    }
+    MoltenCodes = { Registries = { [2] = { API = 2, Get = function() return ApiKit end } } }
+    assert(loadfile(arg[1]))()
+
+    local function inCombatLockdown() return false end
+    local function count() return 0 end
+    local function create() return {} end
+    local function declineName() end
+    local function breakpoints() end
+    local function check() end
+
+    local api = {}
+    installers.retail(api, {
+        InCombatLockdown = inCombatLockdown,
+        table = { count = count, create = create },
+        DeclineName = declineName,
+        C_StringUtil = { GetDefaultAbbreviationBreakpoints = breakpoints },
+    })
+    assert(api.restrictedActions.inCombatLockdown == inCombatLockdown, "global bound without its system's table")
+    assert(api.restrictedActions.count == count, "table library function bound")
+    assert(api.restrictedActions.checkAllowProtectedFunctions == nil, "own function absent with its table")
+    assert(api.tableUtil.create == create, "namespace of moved functions only")
+    assert(api.localization.getDefaultAbbreviationBreakpoints == breakpoints, "global system function in a namespace")
+    assert(api.localization.declineName == declineName, "global")
+
+    api = {}
+    installers.retail(api, {
+        C_RestrictedActions = { CheckAllowProtectedFunctions = check, InCombatLockdown = check },
+        C_TableUtil = {},
+        InCombatLockdown = inCombatLockdown,
+    })
+    assert(api.restrictedActions.checkAllowProtectedFunctions == check, "own function")
+    assert(api.restrictedActions.inCombatLockdown == inCombatLockdown, "the global, not the namespace member")
+    assert(api.restrictedActions.count == nil, "no table library")
+    assert(next(api.tableUtil) == nil, "the host's table is enough to publish the namespace")
+    assert(api.localization.getDefaultAbbreviationBreakpoints == nil, "no C_StringUtil")
+
+    api = {}
+    installers.retail(api, {})
+    assert(api.restrictedActions == nil, "nothing to bind, nothing published")
+    assert(api.tableUtil == nil, "nothing to bind, nothing published")
+    assert(type(api.localization) == "table", "a global system is always published")
+    print("ok")
+    """
+)
+
+
 class LuaExecutionTests(unittest.TestCase):
     """The generated file runs under Lua 5.1 against a stub host and binds as documented."""
 
@@ -229,6 +409,30 @@ class LuaExecutionTests(unittest.TestCase):
 
         self.assertEqual(0, completed.returncode, completed.stderr)
         self.assertEqual("ok", completed.stdout.strip())
+
+    def test_functions_with_their_own_namespace_bind_from_where_they_live(self):
+        with tempfile.TemporaryDirectory() as directory:
+            runtime = Path(directory) / "Retail.lua"
+            runtime.write_text(render(with_moved_functions(sample_metadata())), encoding="utf-8")
+            harness = Path(directory) / "harness.lua"
+            harness.write_text(MOVED_HARNESS, encoding="utf-8")
+
+            completed = subprocess.run(
+                [self.lua, str(harness), str(runtime)], capture_output=True, text=True, check=False
+            )
+
+        self.assertEqual(0, completed.returncode, completed.stderr)
+        self.assertEqual("ok", completed.stdout.strip())
+
+    def test_moved_functions_are_formatted_as_stylua_wants(self):
+        stylua = shutil.which("stylua")
+        if stylua is None:
+            self.skipTest("stylua is not on PATH")
+        with tempfile.TemporaryDirectory() as directory:
+            runtime = Path(directory) / "Retail.lua"
+            runtime.write_text(render(with_moved_functions(sample_metadata())), encoding="utf-8")
+            completed = self._stylua_check(stylua, runtime)
+        self.assertEqual(0, completed.returncode, completed.stdout + completed.stderr)
 
     def test_generated_file_is_formatted_as_stylua_wants(self):
         stylua = shutil.which("stylua")

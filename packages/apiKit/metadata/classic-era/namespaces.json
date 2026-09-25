@@ -42244,7 +42244,7 @@
           "attributes": {
             "Namespace": "C_StringUtil"
           },
-          "binding": "GetDefaultAbbreviationBreakpoints",
+          "binding": "C_StringUtil.GetDefaultAbbreviationBreakpoints",
           "name": "GetDefaultAbbreviationBreakpoints",
           "returns": [
             {
@@ -53764,7 +53764,7 @@
           "attributes": {
             "Namespace": ""
           },
-          "binding": "C_RestrictedActions.InCombatLockdown",
+          "binding": "InCombatLockdown",
           "name": "InCombatLockdown",
           "returns": [
             {
@@ -70489,7 +70489,7 @@
           "attributes": {
             "Namespace": "string"
           },
-          "binding": "C_StringUtil.trim",
+          "binding": "string.trim",
           "documentation": [
             "Returns a string with all bytes in the 'characters' set removed from the start and end."
           ],
@@ -70711,7 +70711,7 @@
           "attributes": {
             "Namespace": "table"
           },
-          "binding": "C_TableUtil.count",
+          "binding": "table.count",
           "mayReturnNothing": true,
           "name": "count",
           "returns": [
@@ -70760,7 +70760,7 @@
           "attributes": {
             "Namespace": "table"
           },
-          "binding": "C_TableUtil.create",
+          "binding": "table.create",
           "name": "create",
           "returns": [
             {
@@ -70783,7 +70783,7 @@
           "attributes": {
             "Namespace": "table"
           },
-          "binding": "C_TableUtil.freeze",
+          "binding": "table.freeze",
           "documentation": [
             "Marks a supplied table as frozen, preventing any modifications to its contents, or replacement of its metatable. If the table has a pre-existing metatable with a '__newindex' table or function, assignments will pass through without raising errors. For tainted code, only tables created by the same addon making this function call are permitted to be frozen."
           ],
@@ -70802,7 +70802,7 @@
           "attributes": {
             "Namespace": "table"
           },
-          "binding": "C_TableUtil.isfrozen",
+          "binding": "table.isfrozen",
           "documentation": [
             "Returns true if a table has been marked as frozen."
           ],

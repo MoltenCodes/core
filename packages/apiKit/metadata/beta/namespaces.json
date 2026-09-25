@@ -73183,7 +73183,7 @@
           "attributes": {
             "Namespace": ""
           },
-          "binding": "C_RestrictedActions.InCombatLockdown",
+          "binding": "InCombatLockdown",
           "name": "InCombatLockdown",
           "returns": [
             {
@@ -93987,7 +93987,7 @@
           "attributes": {
             "Namespace": "string"
           },
-          "binding": "C_StringUtil.trim",
+          "binding": "string.trim",
           "documentation": [
             "Returns a string with all bytes in the 'characters' set removed from the start and end."
           ],
@@ -94631,7 +94631,7 @@
           "attributes": {
             "Namespace": "table"
           },
-          "binding": "C_TableUtil.count",
+          "binding": "table.count",
           "mayReturnNothing": true,
           "name": "count",
           "returns": [
@@ -94681,7 +94681,7 @@
           "attributes": {
             "Namespace": "table"
           },
-          "binding": "C_TableUtil.create",
+          "binding": "table.create",
           "name": "create",
           "returns": [
             {

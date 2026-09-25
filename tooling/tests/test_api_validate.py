@@ -127,6 +127,60 @@ class UniquenessTests(unittest.TestCase):
         self.assertIn("enum PhaseReason: wrapper 'PhaseReason' is not lowerCamelCase", problems_for(metadata))
 
 
+class BindingTests(unittest.TestCase):
+    """A binding must be the one the function's own `Namespace` attribute names."""
+
+    def with_function(self, metadata: model.FlavourMetadata, **changes) -> model.FlavourMetadata:
+        namespace = metadata.namespaces[0]
+        function = dataclasses.replace(namespace.functions[0], **changes)
+        namespace = dataclasses.replace(namespace, functions=(function,))
+        return dataclasses.replace(metadata, namespaces=(namespace, *metadata.namespaces[1:]))
+
+    def test_a_binding_that_ignores_an_empty_namespace_attribute_is_refused(self):
+        metadata = self.with_function(
+            sample_metadata(),
+            attributes={"Namespace": ""},
+            binding="C_AddOnProfiler.MeasureCall",
+        )
+
+        self.assertIn(
+            "addOnProfiler.measureCall: binding 'C_AddOnProfiler.MeasureCall' should be 'MeasureCall': "
+            "its Namespace attribute is ''",
+            problems_for(metadata),
+        )
+
+    def test_a_binding_that_follows_the_attribute_is_accepted(self):
+        metadata = self.with_function(sample_metadata(), attributes={"Namespace": "table"}, binding="table.MeasureCall")
+
+        self.assertEqual([], problems_for(metadata))
+
+    def test_a_binding_through_another_table_without_the_attribute_is_refused(self):
+        metadata = self.with_function(sample_metadata(), binding="table.MeasureCall")
+
+        self.assertIn(
+            "addOnProfiler.measureCall: binding 'table.MeasureCall' should be 'C_AddOnProfiler.MeasureCall': "
+            "its namespace is namespace C_AddOnProfiler",
+            problems_for(metadata),
+        )
+
+    def test_a_namespace_attribute_that_is_not_a_string_is_refused(self):
+        metadata = self.with_function(sample_metadata(), attributes={"Namespace": 3})
+
+        self.assertTrue(any("Namespace must be a string" in problem for problem in problems_for(metadata)))
+
+    def test_an_object_method_with_a_namespace_attribute_is_refused(self):
+        metadata = sample_metadata()
+        clock = metadata.namespaces[1]
+        method = dataclasses.replace(clock.functions[0], attributes={"Namespace": ""})
+        metadata = dataclasses.replace(
+            metadata, namespaces=(metadata.namespaces[0], dataclasses.replace(clock, functions=(method,)))
+        )
+
+        self.assertIn(
+            "clock.now: a script object method cannot carry a Namespace attribute", problems_for(metadata)
+        )
+
+
 class EnumTests(unittest.TestCase):
     def test_counts_and_bounds_must_match_the_fields(self):
         metadata = sample_metadata()

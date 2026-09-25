@@ -72,6 +72,14 @@ HOST_TYPE_KINDS = ("primitive", "alias", "class", "opaque")
 #: group of global functions, or a script object whose functions are methods.
 NAMESPACE_KINDS = ("namespace", "global", "object")
 
+#: The function attribute with which the tables place one function of a system
+#: in another table than the system's own namespace: `Namespace = ""` for a
+#: function that is a global (`InCombatLockdown`, documented in the
+#: `C_RestrictedActions` system), `Namespace = "table"` for one that lives in
+#: another table (`table.count`, documented in `C_TableUtil`). The normaliser
+#: keeps it under `attributes`, and `function_binding` reads it.
+FUNCTION_NAMESPACE_ATTRIBUTE = "Namespace"
+
 #: The suffix the tables give an object system's name (`SimpleFrameAPI`); the
 #: class parameters refer to is the name without it.
 OBJECT_SYSTEM_SUFFIX = "API"
@@ -85,6 +93,52 @@ ISO_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 class MetadataError(ValueError):
     """Metadata on disk does not have the shape this module documents."""
+
+
+def function_binding(
+    kind: str, blizzard_namespace: str | None, function_name: str, attributes: dict[str, Any]
+) -> str | None:
+    """The raw expression a function of a namespace of `kind` is bound to.
+
+    The function's own `Namespace` attribute (`FUNCTION_NAMESPACE_ATTRIBUTE`)
+    overrides its system's: an empty string makes it a global, any other string
+    names the table that holds it. Without the attribute a function of a
+    `namespace` binds through `blizzard_namespace` and one of a `global` system
+    by its name. A script object's methods are never bound, so an `object`
+    yields `None`. The wrapper name never depends on this: the function stays
+    under its system's wrapper namespace (`packages/apiKit/docs/NAMING.md`).
+
+    Raises `MetadataError` when the attribute is not a string or is given to
+    an object method, which has nothing to bind.
+    """
+    has_own_namespace = FUNCTION_NAMESPACE_ATTRIBUTE in attributes
+    if kind == "object":
+        if has_own_namespace:
+            raise MetadataError(
+                f"{function_name}: a script object method cannot carry a {FUNCTION_NAMESPACE_ATTRIBUTE} attribute"
+            )
+        return None
+    if has_own_namespace:
+        own_namespace = attributes[FUNCTION_NAMESPACE_ATTRIBUTE]
+        if not isinstance(own_namespace, str):
+            raise MetadataError(
+                f"{function_name}: attribute {FUNCTION_NAMESPACE_ATTRIBUTE} must be a string, "
+                f"not {own_namespace!r}"
+            )
+        return f"{own_namespace}.{function_name}" if own_namespace else function_name
+    if kind == "namespace":
+        return f"{blizzard_namespace}.{function_name}"
+    return function_name
+
+
+def split_binding(binding: str) -> tuple[str | None, str]:
+    """Split a binding into the host table that holds the function and its name.
+
+    `C_Timer.After` is `("C_Timer", "After")`; a global such as `UnitName` is
+    `(None, "UnitName")`. The tables only ever place a function one table deep.
+    """
+    table, separator, name = binding.rpartition(".")
+    return (table if separator else None), name
 
 
 def json_object(**pairs: Any) -> dict[str, Any]:

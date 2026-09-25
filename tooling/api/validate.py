@@ -5,7 +5,8 @@
 `DIR` is a metadata directory `tooling.api.normalize` wrote (or the committed
 `packages/apiKit/metadata/<flavour>/`). The checks are the metadata-level
 part of the design document's list (section 15): every wrapper name is
-well-formed and unique where it must be, every binding is unique, every type
+well-formed and unique where it must be, every binding is unique and is the
+one its namespace and its own `Namespace` attribute name, every type
 a parameter names resolves to something this flavour defines or to the host
 type table, enumerations agree with their own counts, and the flavour named
 in the provenance is one the flavour table knows. The normaliser runs the
@@ -129,6 +130,48 @@ def _check_uniqueness(metadata: FlavourMetadata) -> list[str]:
     return problems
 
 
+def _check_bindings(metadata: FlavourMetadata) -> list[str]:
+    """Every binding is the one its namespace and its own `Namespace` attribute name.
+
+    A function whose tables give it `Namespace = ""` lives in the global table
+    and one with `Namespace = "table"` in `table`, whatever its system's
+    namespace (`model.function_binding`). A binding that disagrees with the
+    attribute would alias a host member that does not exist, which leaves the
+    wrapper silently absent on every client, so it is refused here. Object
+    methods are left to the kind check in `_check_uniqueness`.
+    """
+    problems: list[str] = []
+    for namespace in metadata.namespaces:
+        if namespace.kind not in ("namespace", "global"):
+            continue
+        for function in namespace.functions:
+            where = f"{namespace.wrapper}.{function.wrapper}"
+            try:
+                expected = model.function_binding(
+                    namespace.kind, namespace.blizzard_namespace, function.name, function.attributes
+                )
+            except model.MetadataError as failure:
+                problems.append(f"{where}: {failure}")
+                continue
+            if function.binding is not None and function.binding != expected:
+                reason = (
+                    f"its {model.FUNCTION_NAMESPACE_ATTRIBUTE} attribute is "
+                    f"{function.attributes[model.FUNCTION_NAMESPACE_ATTRIBUTE]!r}"
+                    if model.FUNCTION_NAMESPACE_ATTRIBUTE in function.attributes
+                    else f"its namespace is {namespace.kind} {namespace.blizzard_namespace or namespace.system}"
+                )
+                problems.append(f"{where}: binding {function.binding!r} should be {expected!r}: {reason}")
+    for namespace in metadata.namespaces:
+        if namespace.kind == "object":
+            for function in namespace.functions:
+                if model.FUNCTION_NAMESPACE_ATTRIBUTE in function.attributes:
+                    problems.append(
+                        f"{namespace.wrapper}.{function.wrapper}: a script object method cannot carry a "
+                        f"{model.FUNCTION_NAMESPACE_ATTRIBUTE} attribute"
+                    )
+    return problems
+
+
 def _check_parameter_lists(metadata: FlavourMetadata) -> list[str]:
     """No argument, return, payload or field list names one parameter twice.
 
@@ -236,6 +279,7 @@ def validate_metadata(
     problems.extend(_check_provenance(metadata, known_flavours))
     problems.extend(_check_wrapper_names(metadata))
     problems.extend(_check_uniqueness(metadata))
+    problems.extend(_check_bindings(metadata))
     problems.extend(_check_parameter_lists(metadata))
     problems.extend(_check_enums(metadata))
     problems.extend(_check_type_references(metadata, host_types))

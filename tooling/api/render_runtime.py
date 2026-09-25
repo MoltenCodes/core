@@ -35,6 +35,12 @@ installer:
   copied by name: a function the tables document but the running build lacks
   is simply absent from the wrapper, which is the truth about that client;
 - global functions are read from `host` by name for the same reason;
+- a function is read from where its binding says, not from where its system
+  is documented: the tables' per-function `Namespace` attribute can make a
+  function of a `C_*` system a global (`InCombatLockdown` of
+  `C_RestrictedActions`) or a member of another table (`table.count` of
+  `C_TableUtil`). Such a namespace is published when the host has its table
+  or any function bound from elsewhere; the wrapper name never moves;
 - `api.events` maps wrapper names to event strings, `api.enums` and
   `api.constants` alias the host's `Enum` and `Constants` tables entry by
   entry;
@@ -238,45 +244,126 @@ def _registration_close(metadata: model.FlavourMetadata) -> list[str]:
     return ["end, { " + ", ".join(fields) + " })"]
 
 
+def _split_by_home(namespace: model.Namespace) -> tuple[list[model.Function], dict[str | None, list[model.Function]]]:
+    """Separate the functions bound through the namespace's own table from the rest.
+
+    A function whose tables give it its own `Namespace` attribute is bound
+    elsewhere (`model.function_binding`): `InCombatLockdown` of
+    `C_RestrictedActions` is a global, `count` of `C_TableUtil` is
+    `table.count`. The rest are keyed by the table that holds them, `None`
+    for the global table, in the order of the table names with globals first.
+    """
+    home = namespace.blizzard_namespace if namespace.kind == "namespace" else None
+    own: list[model.Function] = []
+    elsewhere: dict[str | None, list[model.Function]] = {}
+    for function in namespace.functions:
+        assert function.binding is not None
+        table, _ = model.split_binding(function.binding)
+        if table == home:
+            own.append(function)
+        else:
+            elsewhere.setdefault(table, []).append(function)
+    ordered = dict(sorted(elsewhere.items(), key=lambda item: (item[0] is not None, item[0] or "")))
+    return own, ordered
+
+
+def _function_assignment(depth: int, table: str, function: model.Function) -> list[str]:
+    """`target.<wrapper> = <table>.<name>`, with the host name the binding gives."""
+    assert function.binding is not None
+    _, name = model.split_binding(function.binding)
+    return _assignment(depth, _field_access("target", function.wrapper), _field_access(table, name))
+
+
+def _elsewhere_lines(depth: int, elsewhere: dict[str | None, list[model.Function]]) -> list[str]:
+    """Bind the functions that live outside their system's table.
+
+    A global is read from `host` by name like any global function. A function
+    of another table is read from that table only when the host has it, in a
+    block of its own so each table gets its own guarded local.
+    """
+    lines: list[str] = []
+    for table, functions in elsewhere.items():
+        if table is None:
+            for function in functions:
+                lines.extend(_function_assignment(depth, "host", function))
+            continue
+        lines.extend(
+            [
+                f"{_indent(depth)}do",
+                f"{_indent(depth + 1)}local elsewhere = {_field_access('host', table)}",
+                f"{_indent(depth + 1)}if elsewhere then",
+            ]
+        )
+        for function in functions:
+            lines.extend(_function_assignment(depth + 2, "elsewhere", function))
+        lines.extend([f"{_indent(depth + 1)}end", f"{_indent(depth)}end"])
+    return lines
+
+
+def _publish_lines(depth: int, namespace: model.Namespace) -> list[str]:
+    """Publish `target` under the namespace's wrapper name and its alias."""
+    lines = [f"{_indent(depth)}{_field_access('api', namespace.wrapper)} = target"]
+    if namespace.alias is not None:
+        lines.append(f"{_indent(depth)}{_field_access('api', namespace.alias)} = target")
+    return lines
+
+
 def _namespace_block(namespace: model.Namespace) -> list[str]:
-    """Bind one `C_*`-style namespace: only when the host has it, function by function."""
+    """Bind one `C_*`-style namespace: only when the host has it, function by function.
+
+    When some of its functions live elsewhere (their own `Namespace`
+    attribute), those are bound from where they live, and the wrapper table is
+    published when the host has the namespace or any of those functions, so a
+    client without `C_RestrictedActions` still gets
+    `api.restrictedActions.inCombatLockdown`.
+    """
     assert namespace.blizzard_namespace is not None
+    own, elsewhere = _split_by_home(namespace)
+    if not elsewhere:
+        lines = [
+            f"{_indent(1)}do",
+            f"{_indent(2)}local source = {_field_access('host', namespace.blizzard_namespace)}",
+            f"{_indent(2)}if source then",
+            f"{_indent(3)}local target = {{}}",
+            *_publish_lines(3, namespace),
+        ]
+        for function in own:
+            lines.extend(_function_assignment(3, "source", function))
+        lines.extend([f"{_indent(2)}end", f"{_indent(1)}end"])
+        return lines
+
     lines = [
         f"{_indent(1)}do",
         f"{_indent(2)}local source = {_field_access('host', namespace.blizzard_namespace)}",
-        f"{_indent(2)}if source then",
-        f"{_indent(3)}local target = {{}}",
-        f"{_indent(3)}{_field_access('api', namespace.wrapper)} = target",
+        f"{_indent(2)}local target = {{}}",
     ]
-    if namespace.alias is not None:
-        lines.append(f"{_indent(3)}{_field_access('api', namespace.alias)} = target")
-    for function in namespace.functions:
-        lines.extend(
-            _assignment(
-                3,
-                _field_access("target", function.wrapper),
-                _field_access("source", function.name),
-            )
-        )
+    if own:
+        lines.append(f"{_indent(2)}if source then")
+        for function in own:
+            lines.extend(_function_assignment(3, "source", function))
+        lines.append(f"{_indent(2)}end")
+    lines.extend(_elsewhere_lines(2, elsewhere))
+    lines.append(f"{_indent(2)}if source or next(target) then")
+    lines.extend(_publish_lines(3, namespace))
     lines.extend([f"{_indent(2)}end", f"{_indent(1)}end"])
     return lines
 
 
 def _global_block(namespace: model.Namespace) -> list[str]:
-    """Bind a group of global functions: each read from the host by name."""
+    """Bind a group of global functions: each read from the host by name.
+
+    A function of the group that lives in a table (its own `Namespace`
+    attribute) is read from that table when the host has it.
+    """
+    own, elsewhere = _split_by_home(namespace)
     lines = [
         f"{_indent(1)}do",
         f"{_indent(2)}local target = {{}}",
-        f"{_indent(2)}{_field_access('api', namespace.wrapper)} = target",
+        *_publish_lines(2, namespace),
     ]
-    if namespace.alias is not None:
-        lines.append(f"{_indent(2)}{_field_access('api', namespace.alias)} = target")
-    for function in namespace.functions:
-        lines.extend(
-            _assignment(
-                2, _field_access("target", function.wrapper), _field_access("host", function.name)
-            )
-        )
+    for function in own:
+        lines.extend(_function_assignment(2, "host", function))
+    lines.extend(_elsewhere_lines(2, elsewhere))
     lines.append(f"{_indent(1)}end")
     return lines
 

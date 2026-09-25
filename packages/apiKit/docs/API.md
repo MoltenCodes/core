@@ -183,3 +183,10 @@ the upgrade is not run again. Revision 2 keeps the revision 1 state as it is
 and replaces the methods only; the flavour is probed again on the upgrade.
 Revision 3 keeps the revision 2 state the same way; the replaced methods refuse
 secret arguments as described under [Secret values](#secret-values).
+Revision 4 keeps the revision 3 state and methods as they are: what changed
+is the generated flavour files it ships, which bind the functions the tables
+place outside their system's namespace from where they live (see the
+changelog, 0.1.4). A flavour an older copy's file already installed keeps
+that surface for the session, because a flavour is installed once and the
+first file to register it wins (above); only a session in which a revision 4
+flavour file registers first gets the corrected bindings.

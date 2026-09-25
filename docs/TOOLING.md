@@ -320,7 +320,9 @@ mirror branches (`ptr`, `ptr2`) it takes the one whose head carries the newer
 build unless `--branch` names one. `normalize` parses every table, names every
 entry by the rules in `naming.py`, merges the files that describe one
 namespace, keeps every marker the tables carry (a `true` boolean as a flag,
-anything else as an attribute) and writes the files `SCHEMA.md` describes, but
+anything else as an attribute), binds a function through its own `Namespace`
+attribute when the tables give it one (`InCombatLockdown` of
+`C_RestrictedActions` is a global) and writes the files `SCHEMA.md` describes, but
 only after `validate` has accepted the result: a wrapper name two entries
 would share, a type nothing defines or an enumeration that disagrees with its
 own count is a refusal with the fix named, never a suffix or a guess. Against
@@ -332,7 +334,9 @@ predicates, about 6 MB of JSON.
 `generate` reads one flavour's metadata and writes everything derived from
 it into the package: the runtime bindings (`src/flavours/<Flavour>.lua`, one
 direct alias per function, bound only when the running client has the
-namespace), the LuaCATS definitions (`types/<flavour>/`) and, when
+namespace, and read from where each function's binding says: a function the
+tables give its own `Namespace` attribute is read from the global table or
+that other table, while its wrapper stays under its system's name), the LuaCATS definitions (`types/<flavour>/`) and, when
 `--previous` names the metadata of the build being replaced, the change
 report (`docs/changes/<flavour>/<old build>-<new build>.md`) and an entry in
 `metadata/<flavour>/history.json`. The Markdown reference and the search

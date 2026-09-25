@@ -239,6 +239,44 @@ VALID_HOST_TYPES = {
 }
 
 
+class FunctionBindingTests(unittest.TestCase):
+    """`function_binding`: the system's namespace, unless the function names its own."""
+
+    def test_a_namespace_function_binds_through_its_namespace(self):
+        self.assertEqual("C_Timer.After", module.function_binding("namespace", "C_Timer", "After", {}))
+
+    def test_a_global_function_binds_by_name(self):
+        self.assertEqual("UnitName", module.function_binding("global", None, "UnitName", {}))
+
+    def test_an_empty_namespace_attribute_makes_a_global(self):
+        self.assertEqual(
+            "InCombatLockdown",
+            module.function_binding("namespace", "C_RestrictedActions", "InCombatLockdown", {"Namespace": ""}),
+        )
+
+    def test_a_namespace_attribute_names_the_table(self):
+        self.assertEqual("table.count", module.function_binding("namespace", "C_TableUtil", "count", {"Namespace": "table"}))
+        self.assertEqual(
+            "C_StringUtil.GetDefaultAbbreviationBreakpoints",
+            module.function_binding(
+                "global", None, "GetDefaultAbbreviationBreakpoints", {"Namespace": "C_StringUtil"}
+            ),
+        )
+
+    def test_object_methods_are_never_bound(self):
+        self.assertIsNone(module.function_binding("object", None, "Now", {}))
+        with self.assertRaisesRegex(module.MetadataError, "script object method"):
+            module.function_binding("object", None, "Now", {"Namespace": ""})
+
+    def test_the_attribute_must_be_a_string(self):
+        with self.assertRaisesRegex(module.MetadataError, "must be a string"):
+            module.function_binding("namespace", "C_TableUtil", "count", {"Namespace": {"ref": "table"}})
+
+    def test_split_binding(self):
+        self.assertEqual(("C_Timer", "After"), module.split_binding("C_Timer.After"))
+        self.assertEqual((None, "InCombatLockdown"), module.split_binding("InCombatLockdown"))
+
+
 class HostTypesTests(unittest.TestCase):
     def test_valid_table_is_parsed(self):
         types = module.parse_host_types(copy.deepcopy(VALID_HOST_TYPES))

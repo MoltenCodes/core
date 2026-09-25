@@ -19,7 +19,11 @@ What the tables contain, and where it goes:
   the methods of an object type (`ObjectType = "Userdata"`), which are typed
   but never bound; a file with neither describes only `Tables`;
 - `Functions` become `Function` entries with a binding (`C_AddOns.DisableAddOn`
-  or `UnitName`), `Events` become flat `Event` entries, and the `Tables` array
+  or `UnitName`); a function's own `Namespace` attribute overrides its
+  system's for the binding only (`Namespace = ""` makes `InCombatLockdown` of
+  `C_RestrictedActions` a global, `Namespace = "table"` makes `count` of
+  `C_TableUtil` `table.count`), while its wrapper stays under the system's
+  wrapper namespace; `Events` become flat `Event` entries, and the `Tables` array
   holds enumerations, structures, callback types, constants tables and
   restriction predicates, each sorted into its own file;
 - two files that describe the same namespace (the client splits a few, and
@@ -271,9 +275,14 @@ def _parameters(entry: dict[str, Any], key: str, where: str) -> tuple[Parameter,
 
 
 def _function(
-    entry: dict[str, Any], *, wrapper: str, binding: str | None, source: str, where: str
+    entry: dict[str, Any], *, wrapper: str, builder: "_NamespaceBuilder", source: str, where: str
 ) -> Function:
+    """Build one function; its binding comes from its namespace and its own attributes."""
     flags, attributes = _extras(entry, FUNCTION_KEYS, where)
+    try:
+        binding = builder.binding_for(entry["Name"], attributes)
+    except model.MetadataError as failure:
+        raise NormalizeError(f"{where}: {failure}") from failure
     return Function(
         name=entry["Name"],
         wrapper=wrapper,
@@ -466,12 +475,13 @@ class _NamespaceBuilder:
         """What functions are bound through, or the system name for objects."""
         return self.blizzard_namespace if self.blizzard_namespace is not None else self.system
 
-    def binding_for(self, function_name: str) -> str | None:
-        if self.kind == "namespace":
-            return f"{self.blizzard_namespace}.{function_name}"
-        if self.kind == "global":
-            return function_name
-        return None
+    def binding_for(self, function_name: str, attributes: dict[str, Any]) -> str | None:
+        """The expression a function of this namespace binds to.
+
+        The function's own `Namespace` attribute wins over the system's
+        (`model.function_binding`); raises `MetadataError` when it cannot.
+        """
+        return model.function_binding(self.kind, self.blizzard_namespace, function_name, attributes)
 
 
 class Normalizer:
@@ -571,7 +581,7 @@ class Normalizer:
         wrapper = self._function_wrapper(builder, name)
         try:
             builder.functions[name] = _function(
-                entry, wrapper=wrapper, binding=builder.binding_for(name), source=source, where=where
+                entry, wrapper=wrapper, builder=builder, source=source, where=where
             )
         except NormalizeError as failure:
             self.problems.append(str(failure))

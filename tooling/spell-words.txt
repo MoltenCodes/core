@@ -18,6 +18,7 @@ debugprofilestop
 debugstack
 geterrorhandler
 hooksecurefunc
+isfrozen
 issecretvalue
 issecure
 issecurevariable

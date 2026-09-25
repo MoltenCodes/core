@@ -17,8 +17,11 @@
 --   * the direct-alias promise over the whole installed Retail surface: every
 --     bound function is the very host function the naming rules of
 --     packages/apiKit/docs/NAMING.md derive for it (`api.timer.newTicker` is
---     `C_Timer.NewTicker`, `api.unit.name` is `UnitName`), with the counts
---     logged, and the host functions of a few important namespaces the
+--     `C_Timer.NewTicker`, `api.unit.name` is `UnitName`), or, for a function
+--     the tables place outside its system's namespace, the host function
+--     they place it at (`api.restrictedActions.inCombatLockdown` is the global
+--     `InCombatLockdown`), each of whose host members must exist, with the
+--     counts logged, and the host functions of a few important namespaces the
 --     capture does not bind (client additions since the capture) logged;
 --   * that `api.events` holds the event strings the client knows, and that
 --     `api.enums` and `api.constants` are the client's own `Enum` and
@@ -93,6 +96,30 @@ local DATA_TABLE_NAMES = { events = true, enums = true, constants = true }
 --- The reviewed namespace aliases of tooling/api/naming.json: alias to the
 --- systematic name whose table it shares (packages/apiKit/docs/NAMING.md, rule 7).
 local NAMESPACE_ALIASES = { profiler = "addOnProfiler" }
+
+--- The Retail bindings the naming rules cannot derive: functions the client's
+--- documentation tables place outside their system's namespace with their own
+--- `Namespace` attribute (packages/apiKit/docs/NAMING.md, rule 3). Each is
+--- wrapper namespace, wrapper function, host table (nil for a global) and host
+--- function, exactly the `wrapper` and `binding` of
+--- packages/apiKit/metadata/retail/namespaces.json;
+--- tooling/tests/test_api_committed_flavours.py holds this list to that file.
+--- The identity walk resolves these from here, and reports every one whose
+--- host member is missing or whose wrapper is not bound.
+local RELOCATED_BINDINGS = {
+  {
+    "localization",
+    "getDefaultAbbreviationBreakpoints",
+    "C_StringUtil",
+    "GetDefaultAbbreviationBreakpoints",
+  },
+  { "restrictedActions", "inCombatLockdown", nil, "InCombatLockdown" },
+  { "stringUtil", "trim", "string", "trim" },
+  { "tableUtil", "count", "table", "count" },
+  { "tableUtil", "create", "table", "create" },
+  { "tableUtil", "freeze", "table", "freeze" },
+  { "tableUtil", "isfrozen", "table", "isfrozen" },
+}
 
 --- Host namespaces whose unbound functions the additions test logs: the ones
 --- addons reach for most, and the ones the framework's own Kits call.
@@ -297,7 +324,46 @@ end
 -- `unit` + `name` and `UnitName`. The walk derives each binding's host path
 -- from that, looks the path up in the live client and compares the two
 -- functions by identity. The committed rules have no exceptions
--- (tooling/api/naming.json), so every binding must resolve.
+-- (tooling/api/naming.json), so every binding must resolve. The one place the
+-- host path is not derived from the names is `RELOCATED_BINDINGS`: a function
+-- the tables place outside its system's namespace is looked up where they
+-- place it, and the walk reports each of those whose host member is missing.
+
+---The host path of a relocated binding, `table.count` or `InCombatLockdown`.
+---@param relocated table one entry of `RELOCATED_BINDINGS`
+---@return string
+local function relocatedHostPath(relocated)
+  if type(relocated[3]) == "nil" then
+    return relocated[4]
+  end
+  return relocated[3] .. "." .. relocated[4]
+end
+
+---The host function a relocated binding names, or `nil` when the client lacks it.
+---@param host table the client's global table
+---@param relocated table one entry of `RELOCATED_BINDINGS`
+---@return any
+local function relocatedHostValue(host, relocated)
+  if type(relocated[3]) == "nil" then
+    return host[relocated[4]]
+  end
+  local holder = host[relocated[3]]
+  if type(holder) ~= "table" then
+    return nil
+  end
+  return holder[relocated[4]]
+end
+
+---`RELOCATED_BINDINGS` keyed by wrapper path, `restrictedActions.inCombatLockdown`.
+---@return table<string, table>
+local function indexRelocatedBindings()
+  local index = {}
+  for position = 1, #RELOCATED_BINDINGS do
+    local relocated = RELOCATED_BINDINGS[position]
+    index[relocated[1] .. "." .. relocated[2]] = relocated
+  end
+  return index
+end
 
 ---A name lowercased with its underscores removed: the form in which a wrapper
 ---name and its Blizzard name are equal.
@@ -430,17 +496,21 @@ end
 ---@return table report counts, and the wrapper paths of every problem
 local function walkSurface(api, host)
   local index = indexHost(host)
+  local relocatedIndex = indexRelocatedBindings()
   local namespaceFunctionIndexes = {}
   local report = {
     namespaces = 0,
     functions = 0,
     fromNamespaces = 0,
     fromGlobals = 0,
+    relocated = 0,
     bound = {},
     mismatches = {},
     unresolved = {},
     notFunctions = {},
     notTables = {},
+    missingHostMembers = {},
+    unboundRelocated = {},
   }
   for namespaceName, target in pairs(api) do
     if not DATA_TABLE_NAMES[namespaceName] and type(NAMESPACE_ALIASES[namespaceName]) == "nil" then
@@ -455,14 +525,22 @@ local function walkSurface(api, host)
           else
             report.functions = report.functions + 1
             report.bound[bound] = wrapperPath
-            local outcome, hostPath = resolveBinding(
-              host,
-              index,
-              namespaceFunctionIndexes,
-              namespaceName,
-              functionName,
-              bound
-            )
+            local outcome, hostPath
+            local relocated = relocatedIndex[wrapperPath]
+            if type(relocated) ~= "nil" then
+              hostPath = relocatedHostPath(relocated)
+              outcome = rawequal(relocatedHostValue(host, relocated), bound) and "match"
+                or "mismatch"
+            else
+              outcome, hostPath = resolveBinding(
+                host,
+                index,
+                namespaceFunctionIndexes,
+                namespaceName,
+                functionName,
+                bound
+              )
+            end
             if outcome == "match" then
               if hostPath:find(".", 1, true) then
                 report.fromNamespaces = report.fromNamespaces + 1
@@ -477,6 +555,31 @@ local function walkSurface(api, host)
           end
         end
       end
+    end
+  end
+  -- A binding whose host member is missing leaves its wrapper unbound, which
+  -- the walk above cannot see; for the relocated bindings the host path is
+  -- known, so each is checked from the host's side too.
+  for position = 1, #RELOCATED_BINDINGS do
+    local relocated = RELOCATED_BINDINGS[position]
+    local wrapperPath = relocated[1] .. "." .. relocated[2]
+    local hostValue = relocatedHostValue(host, relocated)
+    local target = api[relocated[1]]
+    local bound = type(target) == "table" and target[relocated[2]] or nil
+    if type(hostValue) ~= "function" then
+      report.missingHostMembers[#report.missingHostMembers + 1] = wrapperPath
+        .. " ("
+        .. relocatedHostPath(relocated)
+        .. " is "
+        .. type(hostValue)
+        .. ")"
+    elseif type(bound) == "nil" then
+      report.unboundRelocated[#report.unboundRelocated + 1] = wrapperPath
+        .. " ("
+        .. relocatedHostPath(relocated)
+        .. " is a function)"
+    else
+      report.relocated = report.relocated + 1
     end
   end
   return report
@@ -818,7 +921,7 @@ namespaces:Test(
 local bindings = Harness:Suite(PACKAGE_ID, "bindings", addonName)
 
 bindings:Test(
-  "every function of the installed Retail surface is the very host function the naming rules name: C_ namespace members and global functions compared by identity, counts logged",
+  "every function of the installed Retail surface is the very host function the naming rules name: C_ namespace members and global functions compared by identity, every relocated binding's host member present, counts logged",
   function(ctx)
     local api = retailApi()
     if type(api) == "nil" then
@@ -842,8 +945,16 @@ bindings:Test(
         DOCUMENTED_BOUND_FUNCTION_COUNT - report.functions
       )
     )
+    ctx:Log(
+      ("relocated bindings (their own Namespace attribute): %d of %d bound"):format(
+        report.relocated,
+        #RELOCATED_BINDINGS
+      )
+    )
     logNames(ctx, "bindings that are not the named host function", report.mismatches)
     logNames(ctx, "bindings no host name resolves", report.unresolved)
+    logNames(ctx, "relocated bindings whose host member is missing", report.missingHostMembers)
+    logNames(ctx, "relocated bindings the surface lacks", report.unboundRelocated)
     logNames(ctx, "namespace entries that are not tables", report.notTables)
     logNames(ctx, "namespace members that are not functions", report.notFunctions)
     for position = 1, math.min(#report.unresolved, 5) do
@@ -857,6 +968,9 @@ bindings:Test(
     ctx:Expect(#report.unresolved):ToBe(0)
     ctx:Expect(#report.notTables):ToBe(0)
     ctx:Expect(#report.notFunctions):ToBe(0)
+    ctx:Expect(#report.missingHostMembers):ToBe(0)
+    ctx:Expect(#report.unboundRelocated):ToBe(0)
+    ctx:Expect(report.relocated):ToBe(#RELOCATED_BINDINGS)
     ctx:Expect(report.functions > 0):ToBe(true)
     ctx:Expect(report.functions <= DOCUMENTED_BOUND_FUNCTION_COUNT):ToBe(true)
     ctx:Expect(report.namespaces <= DOCUMENTED_NAMESPACE_COUNT):ToBe(true)
@@ -865,7 +979,7 @@ bindings:Test(
 )
 
 bindings:Test(
-  "named samples are the host's own functions: api.timer.newTicker is C_Timer.NewTicker, api.unit.name is UnitName, api.build.getBuildInfo is GetBuildInfo, and api.profiler is api.addOnProfiler",
+  "named samples are the host's own functions: api.timer.newTicker is C_Timer.NewTicker, api.unit.name is UnitName, api.build.getBuildInfo is GetBuildInfo, api.restrictedActions.inCombatLockdown is InCombatLockdown, and api.profiler is api.addOnProfiler",
   function(ctx)
     local api = retailApi()
     if type(api) == "nil" then
@@ -873,11 +987,11 @@ bindings:Test(
       return
     end
     -- Each pair is a `wrapper` and `binding` of the Retail metadata
-    -- (packages/apiKit/metadata/retail/namespaces.json). InCombatLockdown is
-    -- left out: its metadata binding is C_RestrictedActions.InCombatLockdown
-    -- with the attribute `Namespace = ""`, and Retail 12.1.0 b69933 has no such
-    -- member (the function is the global InCombatLockdown), so
-    -- api.restrictedActions.inCombatLockdown is nil there; it is logged below.
+    -- (packages/apiKit/metadata/retail/namespaces.json).
+    -- api.restrictedActions.inCombatLockdown is the global InCombatLockdown:
+    -- the tables document it in the C_RestrictedActions system with
+    -- `Namespace = ""`, and the metadata binds it by that attribute
+    -- (CHANGELOG 0.1.4; the run of 2026-09-25 found the wrapper nil).
     local samples = {
       { "timer", "newTicker", "C_Timer", "NewTicker" },
       { "timer", "after", "C_Timer", "After" },
@@ -885,6 +999,7 @@ bindings:Test(
       { "cvar", "getCVar", "C_CVar", "GetCVar" },
       { "eventUtils", "isEventValid", "C_EventUtils", "IsEventValid" },
       { "map", "getBestMapForUnit", "C_Map", "GetBestMapForUnit" },
+      { "restrictedActions", "inCombatLockdown", nil, "InCombatLockdown" },
       { "unit", "name", nil, "UnitName" },
       { "unit", "class", nil, "UnitClass" },
       { "build", "getBuildInfo", nil, "GetBuildInfo" },
@@ -918,17 +1033,6 @@ bindings:Test(
     end
     ctx:Expect(type(api.profiler)):ToBe("table")
     ctx:Expect(api.profiler):ToBe(api.addOnProfiler)
-    local restrictedActions = api.restrictedActions
-    local hostRestrictedActions = readHost("C_RestrictedActions")
-    ctx:Log(
-      ("not asserted: api.restrictedActions.inCombatLockdown %s, C_RestrictedActions.InCombatLockdown %s, global InCombatLockdown %s"):format(
-        type(type(restrictedActions) == "table" and restrictedActions.inCombatLockdown or nil),
-        type(
-          type(hostRestrictedActions) == "table" and hostRestrictedActions.InCombatLockdown or nil
-        ),
-        type(readHost("InCombatLockdown"))
-      )
-    )
   end
 )
 
@@ -1225,9 +1329,7 @@ calls:Test(
     -- wrapper namespace, wrapper function, host namespace (nil for a global),
     -- host function, arguments, whether the values may be logged (a player's
     -- name, realm and GUID are not). Each is a `wrapper` and `binding` of the
-    -- Retail metadata that Retail 12.1.0 b69933 binds. InCombatLockdown is not
-    -- here: the capture binds it as C_RestrictedActions.InCombatLockdown, which
-    -- that client lacks, so the wrapper is nil (see the named-samples test).
+    -- Retail metadata that Retail 12.1.0 b69933 binds.
     -- Both calls of a pair run in the same frame with the same arguments.
     local getters = {
       { "build", "getBuildInfo", nil, "GetBuildInfo", {}, true },
@@ -1240,6 +1342,7 @@ calls:Test(
       { "locale", "getCurrentRegion", nil, "GetCurrentRegion", {}, true },
       { "expansion", "getExpansionLevel", nil, "GetExpansionLevel", {}, true },
       { "playerScript", "isLoggedIn", nil, "IsLoggedIn", {}, true },
+      { "restrictedActions", "inCombatLockdown", nil, "InCombatLockdown", {}, true },
       { "unit", "name", nil, "UnitName", { "player" }, false },
       { "unit", "class", nil, "UnitClass", { "player" }, true },
       { "unit", "level", nil, "UnitLevel", { "player" }, true },

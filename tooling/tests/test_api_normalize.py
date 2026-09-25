@@ -10,7 +10,7 @@ import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 
-from tooling.api import lua_tables, model, naming
+from tooling.api import lua_tables, model, naming, validate
 from tooling.api import normalize as module
 
 
@@ -330,6 +330,107 @@ class NamespaceTests(unittest.TestCase):
     def test_the_same_function_twice_is_a_problem(self):
         with self.assertRaisesRegex(module.NormalizeError, "MeasureCall: documented twice"):
             normalise(("Profiler.lua", PROFILER_TABLE), ("Again.lua", PROFILER_TABLE.replace("ProfilerReset", "Other").replace("PROFILER_RESET", "OTHER").replace('Name = "MeasureCallback"', 'Name = "X"').replace('Name = "Metric"', 'Name = "Y"').replace('Name = "Sample"', 'Name = "Z"').replace('Name = "HasRestrictions"', 'Name = "W"')))
+
+
+#: A system shaped like the client's `RestrictedActions` and `LuaTableUtil`
+#: tables: most functions live in the system's namespace, one is a global
+#: (`Namespace = ""`) and one lives in the `table` library.
+MOVED_FUNCTIONS_TABLE = textwrap.dedent(
+    """
+    local RestrictedActions =
+    {
+    \tName = "RestrictedActions",
+    \tType = "System",
+    \tNamespace = "C_RestrictedActions",
+
+    \tFunctions =
+    \t{
+    \t\t{ Name = "CheckAllowProtectedFunctions", Type = "Function" },
+    \t\t{ Name = "InCombatLockdown", Type = "Function", Namespace = "" },
+    \t\t{ Name = "count", Type = "Function", Namespace = "table" },
+    \t},
+    };
+
+    APIDocumentation:AddDocumentationTable(RestrictedActions);
+    """
+)
+
+#: A global system with one function the tables place in a `C_` namespace,
+#: like `GetDefaultAbbreviationBreakpoints` of `Localization` (`C_StringUtil`).
+MOVED_GLOBAL_TABLE = textwrap.dedent(
+    """
+    local Localization =
+    {
+    \tName = "Localization",
+    \tType = "System",
+
+    \tFunctions =
+    \t{
+    \t\t{ Name = "DeclineName", Type = "Function" },
+    \t\t{ Name = "GetDefaultAbbreviationBreakpoints", Type = "Function", Namespace = "C_StringUtil" },
+    \t},
+    };
+
+    APIDocumentation:AddDocumentationTable(Localization);
+    """
+)
+
+
+class FunctionNamespaceTests(unittest.TestCase):
+    """A function's own `Namespace` attribute moves its binding, never its wrapper."""
+
+    def functions(self, metadata: model.FlavourMetadata) -> dict[str, model.Function]:
+        return {function.name: function for function in metadata.namespaces[0].functions}
+
+    def test_an_empty_namespace_attribute_binds_a_global(self):
+        functions = self.functions(normalise(("RestrictedActions.lua", MOVED_FUNCTIONS_TABLE)))
+
+        self.assertEqual("InCombatLockdown", functions["InCombatLockdown"].binding)
+        self.assertEqual("inCombatLockdown", functions["InCombatLockdown"].wrapper)
+        self.assertEqual({"Namespace": ""}, functions["InCombatLockdown"].attributes)
+
+    def test_a_named_namespace_attribute_binds_through_that_table(self):
+        functions = self.functions(normalise(("RestrictedActions.lua", MOVED_FUNCTIONS_TABLE)))
+
+        self.assertEqual("table.count", functions["count"].binding)
+        self.assertEqual("count", functions["count"].wrapper)
+
+    def test_functions_without_the_attribute_keep_their_system_namespace(self):
+        metadata = normalise(("RestrictedActions.lua", MOVED_FUNCTIONS_TABLE))
+        functions = self.functions(metadata)
+
+        self.assertEqual("restrictedActions", metadata.namespaces[0].wrapper)
+        self.assertEqual("C_RestrictedActions.CheckAllowProtectedFunctions", functions["CheckAllowProtectedFunctions"].binding)
+
+    def test_a_global_system_function_can_live_in_a_namespace(self):
+        metadata = normalise(("Localization.lua", MOVED_GLOBAL_TABLE))
+        functions = self.functions(metadata)
+
+        self.assertEqual("global", metadata.namespaces[0].kind)
+        self.assertEqual("DeclineName", functions["DeclineName"].binding)
+        self.assertEqual(
+            "C_StringUtil.GetDefaultAbbreviationBreakpoints",
+            functions["GetDefaultAbbreviationBreakpoints"].binding,
+        )
+        self.assertEqual("getDefaultAbbreviationBreakpoints", functions["GetDefaultAbbreviationBreakpoints"].wrapper)
+
+    def test_a_namespace_attribute_that_is_not_a_string_is_a_problem(self):
+        broken = MOVED_FUNCTIONS_TABLE.replace('Namespace = "table"', "Namespace = 3")
+
+        with self.assertRaisesRegex(module.NormalizeError, "count: .*Namespace must be a string"):
+            normalise(("RestrictedActions.lua", broken))
+
+    def test_a_namespace_attribute_on_an_object_method_is_a_problem(self):
+        broken = CLOCK_OBJECT.replace('Type = "Function"', 'Type = "Function", Namespace = ""', 1)
+
+        with self.assertRaisesRegex(module.NormalizeError, "script object method cannot carry a Namespace"):
+            normalise(("Clock.lua", broken))
+
+    def test_the_moved_bindings_pass_validation(self):
+        metadata = normalise(("RestrictedActions.lua", MOVED_FUNCTIONS_TABLE), ("Localization.lua", MOVED_GLOBAL_TABLE))
+
+        problems = [problem for problem in validate.validate_metadata(metadata, model.load_host_types()) if "binding" in problem]
+        self.assertEqual([], problems)
 
 
 class MemberTests(unittest.TestCase):

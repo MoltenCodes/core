@@ -253,6 +253,12 @@ host's semantics. A binding is made only when the host actually has the
 function: the generated file reads each Blizzard namespace once and copies
 what exists, so a function the metadata documents but the running build lacks
 is simply absent from the wrapper, which is the truth about that client.
+A function is read from where the client keeps it, which is not always its
+documentation system's namespace: the tables' per-function `Namespace`
+attribute makes `InCombatLockdown` of the `C_RestrictedActions` system a
+global and `count` of `C_TableUtil` a member of `table`. The binding follows
+that attribute; the wrapper name stays under the system's wrapper namespace
+(`api.restrictedActions.inCombatLockdown`).
 
 A wrapper function exists only where a direct alias cannot express the
 documented contract, and every such case is listed in the package docs.
@@ -457,7 +463,8 @@ Blizzard build.
 
 Generation fails rather than producing an incomplete or ambiguous package.
 The validator checks: duplicate wrapper names, duplicate bindings to one
-Blizzard function, missing required metadata, unresolved type, structure or
+Blizzard function, a binding that disagrees with the function's own
+`Namespace` attribute, missing required metadata, unresolved type, structure or
 enum references, flavour leakage (an entry generated for a flavour whose
 metadata lacks it), malformed Lua (`luac -p`),
 malformed JSON, documentation generation failures, and that every runtime

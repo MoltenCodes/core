@@ -3696,11 +3696,16 @@ ApiKit:RegisterFlavor("retail", function(api, host)
     target.caseAccentInsensitiveParse = host.CaseAccentInsensitiveParse
     target.createAbbreviateConfig = host.CreateAbbreviateConfig
     target.declineName = host.DeclineName
-    target.getDefaultAbbreviationBreakpoints = host.GetDefaultAbbreviationBreakpoints
     target.getNumDeclensionSets = host.GetNumDeclensionSets
     target.isEuropeanNumbers = host.IsEuropeanNumbers
     target.localizedClassList = host.LocalizedClassList
     target.setEuropeanNumbers = host.SetEuropeanNumbers
+    do
+      local elsewhere = host.C_StringUtil
+      if elsewhere then
+        target.getDefaultAbbreviationBreakpoints = elsewhere.GetDefaultAbbreviationBreakpoints
+      end
+    end
   end
   do
     local source = host.C_Log
@@ -5155,13 +5160,15 @@ ApiKit:RegisterFlavor("retail", function(api, host)
   end
   do
     local source = host.C_RestrictedActions
+    local target = {}
     if source then
-      local target = {}
-      api.restrictedActions = target
       target.checkAllowProtectedFunctions = source.CheckAllowProtectedFunctions
       target.getAddOnRestrictionState = source.GetAddOnRestrictionState
-      target.inCombatLockdown = source.InCombatLockdown
       target.isAddOnRestrictionActive = source.IsAddOnRestrictionActive
+    end
+    target.inCombatLockdown = host.InCombatLockdown
+    if source or next(target) then
+      api.restrictedActions = target
     end
   end
   do
@@ -5658,9 +5665,8 @@ ApiKit:RegisterFlavor("retail", function(api, host)
   end
   do
     local source = host.C_StringUtil
+    local target = {}
     if source then
-      local target = {}
-      api.stringUtil = target
       target.createAbbreviatedNumberFormatter = source.CreateAbbreviatedNumberFormatter
       target.createNumericRuleFormatter = source.CreateNumericRuleFormatter
       target.createSecondsFormatter = source.CreateSecondsFormatter
@@ -5675,7 +5681,15 @@ ApiKit:RegisterFlavor("retail", function(api, host)
       target.stripTextureMarkupForLooseFiles = source.StripTextureMarkupForLooseFiles
       target.truncateWhenZero = source.TruncateWhenZero
       target.wrapString = source.WrapString
-      target.trim = source.trim
+    end
+    do
+      local elsewhere = host.string
+      if elsewhere then
+        target.trim = elsewhere.trim
+      end
+    end
+    if source or next(target) then
+      api.stringUtil = target
     end
   end
   do
@@ -5748,14 +5762,21 @@ ApiKit:RegisterFlavor("retail", function(api, host)
   end
   do
     local source = host.C_TableUtil
+    local target = {}
     if source then
-      local target = {}
-      api.tableUtil = target
       target.findIndexedMismatch = source.FindIndexedMismatch
-      target.count = source.count
-      target.create = source.create
-      target.freeze = source.freeze
-      target.isfrozen = source.isfrozen
+    end
+    do
+      local elsewhere = host.table
+      if elsewhere then
+        target.count = elsewhere.count
+        target.create = elsewhere.create
+        target.freeze = elsewhere.freeze
+        target.isfrozen = elsewhere.isfrozen
+      end
+    end
+    if source or next(target) then
+      api.tableUtil = target
     end
   end
   do

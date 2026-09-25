@@ -3745,11 +3745,16 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
     target.caseAccentInsensitiveParse = host.CaseAccentInsensitiveParse
     target.createAbbreviateConfig = host.CreateAbbreviateConfig
     target.declineName = host.DeclineName
-    target.getDefaultAbbreviationBreakpoints = host.GetDefaultAbbreviationBreakpoints
     target.getNumDeclensionSets = host.GetNumDeclensionSets
     target.isEuropeanNumbers = host.IsEuropeanNumbers
     target.localizedClassList = host.LocalizedClassList
     target.setEuropeanNumbers = host.SetEuropeanNumbers
+    do
+      local elsewhere = host.C_StringUtil
+      if elsewhere then
+        target.getDefaultAbbreviationBreakpoints = elsewhere.GetDefaultAbbreviationBreakpoints
+      end
+    end
   end
   do
     local source = host.C_Log
@@ -4783,9 +4788,8 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
   end
   do
     local source = host.C_PvP
+    local target = {}
     if source then
-      local target = {}
-      api.pvp = target
       target.arePvpTalentsUnlocked = source.ArePvpTalentsUnlocked
       target.areTrainingGroundsEnabled = source.AreTrainingGroundsEnabled
       target.canDisplayDeaths = source.CanDisplayDeaths
@@ -4803,7 +4807,6 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
       target.getActiveMatchWinner = source.GetActiveMatchWinner
       target.getArenaCrowdControlDuration = source.GetArenaCrowdControlDuration
       target.getArenaCrowdControlInfo = source.GetArenaCrowdControlInfo
-      target.getArenaOpponentSpec = source.GetArenaOpponentSpec
       target.getArenaRewards = source.GetArenaRewards
       target.getArenaSkirmishRewards = source.GetArenaSkirmishRewards
       target.getAssignedSpecForBattlefieldQueue = source.GetAssignedSpecForBattlefieldQueue
@@ -4900,6 +4903,10 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
       target.startSpectatorSoloRBGWarGame = source.StartSpectatorSoloRBGWarGame
       target.togglePVP = source.TogglePVP
       target.toggleWarMode = source.ToggleWarMode
+    end
+    target.getArenaOpponentSpec = host.GetArenaOpponentSpec
+    if source or next(target) then
+      api.pvp = target
     end
   end
   do
@@ -5227,13 +5234,15 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
   end
   do
     local source = host.C_RestrictedActions
+    local target = {}
     if source then
-      local target = {}
-      api.restrictedActions = target
       target.checkAllowProtectedFunctions = source.CheckAllowProtectedFunctions
       target.getAddOnRestrictionState = source.GetAddOnRestrictionState
-      target.inCombatLockdown = source.InCombatLockdown
       target.isAddOnRestrictionActive = source.IsAddOnRestrictionActive
+    end
+    target.inCombatLockdown = host.InCombatLockdown
+    if source or next(target) then
+      api.restrictedActions = target
     end
   end
   do

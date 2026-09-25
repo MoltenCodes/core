@@ -58308,7 +58308,7 @@
           "attributes": {
             "Namespace": "C_StringUtil"
           },
-          "binding": "GetDefaultAbbreviationBreakpoints",
+          "binding": "C_StringUtil.GetDefaultAbbreviationBreakpoints",
           "name": "GetDefaultAbbreviationBreakpoints",
           "returns": [
             {
@@ -74716,7 +74716,7 @@
           "attributes": {
             "Namespace": ""
           },
-          "binding": "C_PvP.GetArenaOpponentSpec",
+          "binding": "GetArenaOpponentSpec",
           "flags": [
             "SecretReturns"
           ],
@@ -80959,7 +80959,7 @@
           "attributes": {
             "Namespace": ""
           },
-          "binding": "C_RestrictedActions.InCombatLockdown",
+          "binding": "InCombatLockdown",
           "name": "InCombatLockdown",
           "returns": [
             {

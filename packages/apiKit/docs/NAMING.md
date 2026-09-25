@@ -25,6 +25,14 @@ author needs to predict a name from the Blizzard one.
    names as they are. Functions documented without a
    namespace (globals) are grouped by their documentation system:
    `UnitName` is in `api.unit`.
+   A function keeps its system's wrapper namespace even when the tables
+   place it elsewhere with a per-function `Namespace` attribute; only its
+   binding moves. `InCombatLockdown`, documented in the `RestrictedActions`
+   system (`C_RestrictedActions`) with `Namespace = ""`, is the global
+   `InCombatLockdown` reached as `api.restrictedActions.inCombatLockdown`;
+   `count` of `LuaTableUtil` (`C_TableUtil`, `Namespace = "table"`) is
+   `table.count` reached as `api.tableUtil.count`. It is not renamed by the
+   rules of a global function (rule 4).
 4. **Global functions** drop their system's words when their name starts with
    them and more words follow: `UnitName` in `Unit` → `api.unit.name`,
    `UnitIsPVP` → `api.unit.isPVP`; `GetTime` in `SystemTime` keeps its whole
