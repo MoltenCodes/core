@@ -111,9 +111,57 @@ python3 -m tooling.client.install --wow-dir "/Applications/World of Warcraft" --
 That deletes `MoltenCodes`, `MoltenCodesTest` and every `MoltenCodesTest_*`
 folder from `AddOns`, and every `MoltenCodesTest.lua`, `MoltenCodesTest_*.lua`
 and their `.bak` copies under `WTF/Account/*/SavedVariables/` and
-`WTF/Account/*/*/*/SavedVariables/`. Add `--dry-run` to see the list first.
+`WTF/Account/*/*/*/SavedVariables/`, and drops the lines the client keeps for
+those addons in every `WTF/Account/*/AddOns.txt` and
+`WTF/Account/*/*/*/AddOns.txt` (every other line stays byte for byte). Close
+the game first: a running client writes its saved variables and addon list
+again at logout or `/reload`. Add `--dry-run` to see the list first.
 Both commands refuse when the `AddOns` folder does not exist, and neither
 follows a symbolic link out of the game folder.
+
+## Last full run
+
+Every package test addon ran on Retail 12.1.0 build 69933 (enUS, macOS)
+between 2026-09-24 and 2026-09-25; the table holds each package's latest run.
+No test failed or timed out. Each skip is one its `EXPECTED.md` announces: a
+capability that client does not have (the combat-log reader, for one) or a
+condition the session cannot create on its own. The defects earlier runs found
+were fixed in the packages, and their CHANGELOGs record each run and what it
+showed.
+
+| Package | Tests | Passed | Failed | Skipped |
+|---|---:|---:|---:|---:|
+| `apiKit` | 23 | 23 | 0 | 0 |
+| `brokerKit` | 32 | 32 | 0 | 0 |
+| `cacheKit` | 38 | 38 | 0 | 0 |
+| `clientKit` | 41 | 40 | 0 | 1 |
+| `codecKit` | 32 | 32 | 0 | 0 |
+| `commandKit` | 36 | 33 | 0 | 3 |
+| `commKit` | 30 | 26 | 0 | 4 |
+| `compatKit` | 24 | 24 | 0 | 0 |
+| `eventKit` | 19 | 18 | 0 | 1 |
+| `hookKit` | 38 | 36 | 0 | 2 |
+| `interopKit` | 22 | 19 | 0 | 3 |
+| `lifecycleKit` | 28 | 25 | 0 | 3 |
+| `localeKit` | 32 | 29 | 0 | 3 |
+| `logKit` | 38 | 38 | 0 | 0 |
+| `mediaKit` | 34 | 32 | 0 | 2 |
+| `moduleKit` | 39 | 36 | 0 | 3 |
+| `optionsKit` | 29 | 29 | 0 | 0 |
+| `poolKit` | 36 | 36 | 0 | 0 |
+| `profileKit` | 42 | 40 | 0 | 2 |
+| `readinessKit` | 32 | 29 | 0 | 3 |
+| `registry` | 17 | 17 | 0 | 0 |
+| `schedulerKit` | 37 | 35 | 0 | 2 |
+| `schemaKit` | 34 | 34 | 0 | 0 |
+| `settingsKit` | 36 | 35 | 0 | 1 |
+| `signalKit` | 35 | 35 | 0 | 0 |
+| `timerKit` | 29 | 27 | 0 | 2 |
+| `widgetKit` | 40 | 40 | 0 | 0 |
+| **total** | **873** | **838** | **0** | **35** |
+
+Run again after any change to a package's runtime code, and compare with its
+`EXPECTED.md` rather than with this table.
 
 ## The harness
 
