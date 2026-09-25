@@ -324,7 +324,23 @@ If a repeating callback fails, the logical job becomes `failed` and stops repeat
 
 If TimerKit cannot re-arm the next interval, that failure is captured on the job and does not escape the scheduler OnUpdate driver or starve unrelated work.
 
-Each iteration allocates one coroutine (with the closure that starts it) and one TimerKit timer; re-arming adds nothing of SchedulerKit's own. Resuming a job that is already running, slice after slice, allocates nothing: a priority queue that empties restarts at the front, so even a job that never leaves the ready queues keeps reusing the same slot.
+Each iteration allocates one TimerKit timer and nothing of SchedulerKit's own: since revision 18 an iteration runs on a coroutine a finished run handed back rather than on a new coroutine and closure (see [Cost of a job](#cost-of-a-job)). Resuming a job that is already running, slice after slice, allocates nothing: a priority queue that empties restarts at the front, so even a job that never leaves the ready queues keeps reusing the same slot.
+
+### Cost of a job
+
+A job's record and its Context are allocated when it is scheduled, about
+0.8 KB together on Lua 5.1; both stay the caller's for as long as it holds the
+Job. Its slices run on a coroutine a finished job handed back: a callback that
+returned hands its coroutine to the next job, and up to four idle ones are
+kept, so steady scheduling creates no coroutine and no closure (revision 17
+created both per job, about 2 KB more). A callback that raised, yielded without
+`Context:Yield()` or was cancelled while suspended does not hand its coroutine
+back. Consequently `coroutine.running()` inside a callback may return the same
+coroutine for successive jobs; nothing else about a job's execution changes.
+
+Validating a scheduling option table allocates nothing: a reused table such as
+`{ name = "..." }` is checked field by field, and the error text is built only
+when a value is refused.
 
 ## Cancellation
 
@@ -829,6 +845,15 @@ The facade, Job/Scope/Context prototypes, metatables, ready queues, scopes, acti
 The installed OnUpdate trampoline does not permanently close over one implementation revision. It resolves the current shared dispatch function on every scheduler frame. TimerKit delay callbacks use the same dispatch indirection.
 
 A future compatible SchedulerKit revision can therefore update execution behavior while preserving existing facade, Job, Scope, Context, queue, and addon-scope identity.
+
+Revision 18 adds worker coroutines: `workerFinished`, `idleWorkers` and
+`idleWorkerCount` in package state, seeded into older state in place. A job
+an older copy already started keeps its own coroutine and completes when that
+coroutine returns; the idle workers are dropped at every upgrade, so a copy
+never resumes a worker body another revision wrote. Jobs and `Coalesce`
+handles it creates carry fewer fields (the failure fields, the lane fields and
+the rare counters are written when first needed); every revision-18 read
+accepts both shapes, so older jobs and handles carry over as they are.
 
 Revision 17 changes behaviour only (a secret option field name is refused
 before it is looked up); package state is unchanged and a revision-16 copy's

@@ -31,7 +31,8 @@ SchedulerKit facade
     ├── familyTimerScope
     ├── familyMetatables / familyPrototypes (debounce, coalesce, watch, lane)
     ├── unbounded + limits
-    └── logoutConnection + logoutEventScope
+    ├── logoutConnection + logoutEventScope
+    └── workerFinished + idleWorkers + idleWorkerCount (revision 18)
 ```
 
 Existing Jobs, Scopes, Contexts, queues, and the installed Frame trampoline therefore survive a compatible revision upgrade.
@@ -124,7 +125,7 @@ The resume ceiling matters when callbacks are so cheap that the time source does
 
 ## Cooperative coroutine lifecycle
 
-A Job creates its coroutine only when first resumed.
+A Job takes its coroutine only when first resumed.
 
 ```text
 delayed ──wake──> pending ──resume──> running
@@ -137,15 +138,25 @@ running ──error───> failed
 any non-terminal ──Cancel──> cancelled
 ```
 
-Repeating jobs replace `completed` with a TimerKit-backed `delayed` interval and create a fresh coroutine for the next iteration.
+Repeating jobs replace `completed` with a TimerKit-backed `delayed` interval and take a coroutine again for the next iteration.
 
 Only SchedulerKit's private yield token is accepted. This makes accidental raw coroutine suspension fail fast instead of creating an undocumented protocol.
+
+### Worker coroutines
+
+Since revision 18 a job's first slice runs on a **worker**: a coroutine whose body (`runWorker`) reads the job's callback and context, calls the callback, then yields `state.workerFinished` and waits there to be resumed with the next job. `resumeJob` starts a job by resuming a worker with the job as the resume value (the body's argument for a new worker, the `yield`'s result for an idle one), and resumes later slices with no value, so `Context:Yield()` still returns nothing.
+
+A slice that ends with the finished token means the callback returned; a slice that ends with the coroutine dead means the same for a coroutine an older revision created for the job, which ends by returning. Both complete (or re-arm) the job. Only a worker that yielded the finished token is kept, on a stack of at most four (`MAX_IDLE_WORKERS`) idle workers; a coroutine whose callback raised, raw-yielded, or whose job was cancelled while it was suspended in `Context:Yield()` is dropped with its stack, exactly as before. The body clears its locals before the `yield`, so an idle worker keeps neither the finished job nor its callback alive.
+
+What this saves is the coroutine (about 1.2 KB on Lua 5.1, its stack and call-info arrays included) and the closure that started it, per job and per repeating iteration. Callbacks can observe the reuse only through `coroutine.running()`, which SchedulerKit never documented as unique per job.
+
+The finished token lives in shared state so a worker that is running an older revision's body when a newer copy loads ends in a way the newer copy recognises. The idle stack is dropped at every upgrade, so a copy never resumes a worker body another revision wrote.
 
 ### Yield intent
 
 `Context:Yield()` sets `_yieldRequested` on the job immediately before suspending, and `resumeJob` clears it at the start of every slice. If a slice ends with the coroutine dead while the flag is still set, the suspension never reached the driver: Lua 5.1 refused to yield across a C-call boundary and the callback swallowed the error. The driver reports that, and fails the job when the same slice also outran the runaway threshold.
 
-Checking the flag only on the dead-coroutine path avoids a false positive for a callback that catches the boundary error and then yields correctly further on.
+Checking the flag only on the callback-returned path (the finished token, or a dead coroutine an older revision created) avoids a false positive for a callback that catches the boundary error and then yields correctly further on.
 
 ### Runaway slices
 
@@ -234,7 +245,13 @@ only `nativeTraceback` and `refuseSecretValue` stay at the top level. Revision
 Revision 16 adds no local: its argument-error fix only moves receiver checks
 into the public methods and keeps their results in function locals.
 Revision 17 adds no local and no installer upvalue: the option-table checks
-call the existing `refuseSecretValue`. New top-level code belongs in the installer or in a
+call the existing `refuseSecretValue`. Revision 18 adds two top-level slots
+(193 of 200 active; 217 declared in 196 stack slots): `isSecretValue`, the bare
+probe the hot validators use to build an error label only on refusal, and the
+worker helpers, which share one slot pair because `runWorker` and
+`MAX_IDLE_WORKERS` live in the `do` block that defines `acquireWorker` and
+`retainWorker` and `createCoroutine` is gone. The installer gains one upvalue
+(`isSecretValue`, 42 of 60). New top-level code belongs in the installer or in a
 function of its own. The
 installer commits its own methods; only four hooks forward-declared above the
 job machinery (`laneJobFinished`, `retryLaneJob`, `cancelFamilyMembers`,
@@ -318,6 +335,23 @@ cancel during a tick marks the group dirty; the array is compacted after the
 tick, keeping creation order, and the group and its ticker are released when
 the live count reaches zero.
 
+## Plain indexing on the hot paths
+
+The ready queues, the frame pass, job creation and completion, scope links and
+the `Coalesce` record and delivery path read and write their tables by plain
+indexing (`job._state`) rather than `rawget`/`rawset`. On Lua 5.1 a plain index
+is one VM instruction and `rawget` a C function call, and those calls were a
+large share of every scheduled job. It is the same operation on these tables:
+package state and the queues have no metatable, and the Job, Scope, Context and
+family metatables have an `__index` whose prototype holds only methods and no
+`__newindex`. A field a record may lack (a lane field, a failure field) reads
+as `nil` either way, and a write to a present field is a raw write. Option
+tables and anything else a caller supplies are still read with `rawget`.
+
+Option validation builds its error labels (`methodName .. " name"`) only once a
+value is refused: the fast test in front of each validator accepts exactly
+what the validator accepts, so a reused option table costs no string work.
+
 ## Allocation policy
 
 The normal resume hot path avoids container copies and queue-table replacement.
@@ -326,7 +360,7 @@ Expected allocations include:
 
 - one Job table per logical job;
 - one Context table per logical job while the job is executable;
-- one coroutine per execution/iteration, with the closure that calls the callback with its Context (a Lua 5.1 coroutine body must be a Lua function, and a callback may be a C function);
+- no coroutine once a worker is idle: a finished one-shot run or iteration hands its worker back, and at most four idle workers are kept (see *Worker coroutines*); a new worker is created only when none is idle, for example while several jobs are suspended in `Context:Yield()` at once;
 - TimerKit's timer object and one TimerKit ownership scope when a SchedulerKit scope first uses delayed/next-frame eligibility;
 - SchedulerKit Scope objects when explicitly created.
 
@@ -335,12 +369,16 @@ Terminal jobs clear execution-only references such as their callback, Context, c
 Scope ownership is two-stage lazy. Loading SchedulerKit allocates neither its package-level convenience scope nor a TimerKit delay scope. Creating a SchedulerKit scope also does not allocate TimerKit ownership state; that happens only when the scope first arms a timer: `NextFrame`, `After` or `Every` work, a `Debounce` or `Coalesce` window, or a lane retry backoff. Immediate-only scheduling therefore stays independent of TimerKit scope allocation after dependency bootstrap.
 
 The coalescing family adds: one handle table (plus two set tables for
-`Coalesce`, one or two eight-slot argument tables for `Debounce`, and one
+`Coalesce`, whose handle is written with sixteen fields so its hash part has 16
+slots: the lane fields, the rare counters and the `GetStats` view are written
+when first needed and read as `false` or `0` while absent; one or two eight-slot argument tables for `Debounce`, and one
 delivery closure when a lane is given) per handle; one TimerKit timer per quiet
 window, interval or lane interval; one job per lane submission; one group table
 and ticker per distinct watch interval. Recording calls, recording known keys
 and steady ticks allocate nothing.
 
-SchedulerKit deliberately does not pool Job objects in API generation 1 because stable user-visible handles and accidental handle reuse are a more serious correctness risk than the potential allocation saving. It does not use PoolKit for private internals either: that would add a dependency (design constitution, principle 4b) for internals that are already allocated once per job or handle.
+A Job table is written with at most fifteen fields, so its hash part has 16 slots rather than 32: the failure fields (`_errorPresent`, `_error`, `_errorTraceback`) are written when a job fails and `_yieldRequested` at its first slice, and every read treats an absent one as "no". A one-shot job therefore allocates about 0.8 KB, its record and its Context, where revision 17 allocated about 2.8 KB.
+
+SchedulerKit deliberately does not pool Job objects in API generation 1 because stable user-visible handles and accidental handle reuse are a more serious correctness risk than the potential allocation saving. Contexts are not pooled for the same reason: a callback may keep its Context, and `Context:GetJob()` must keep answering its own job. It does not use PoolKit for private internals either: that would add a dependency (design constitution, principle 4b) for internals that are already allocated once per job or handle.
 
 Protected calls on the steady paths take a named function and its arguments (`pcall(armScopeTimer, scope, delay)`, `pcall(resultsDiffer, value, previous)`) rather than a fresh closure, so re-arming a repeating job and comparing watch results allocate nothing of their own.

@@ -31,7 +31,8 @@
 --   Driver ................ lazy OnUpdate frame installation
 --   Job terminal handling . failure, traceback capture, cancellation
 --   Job creation/delay .... scopes, jobs, TimerKit-backed delays
---   Execution ............. cooperative resume and the frame pass
+--   Execution ............. worker coroutines, cooperative resume and the
+--                           frame pass
 --   Coalescing family ..... Debounce, Coalesce, Watch and lanes (one design)
 --   Scope cleanup ......... bulk cancellation and terminal close
 --   Logout coverage ....... who closes an addon scope at logout, decided at
@@ -44,7 +45,7 @@
 
 local PACKAGE_NAME = "schedulerKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 17
+local IMPLEMENTATION_REVISION = 18
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_TIMER_API = 1
 local STATE_SCHEMA = 1
@@ -208,6 +209,26 @@ local SUBMIT_OPTION_KEYS = { priority = true, name = true, scope = true }
 ---@field GetError fun(self: SchedulerKit.Job): any
 ---@field GetErrorTraceback fun(self: SchedulerKit.Job): string?
 ---@field Cancel fun(self: SchedulerKit.Job): boolean
+---@field package _scope SchedulerKit.Scope owning scope
+---@field package _callback SchedulerKit.Callback|false `false` once terminal
+---@field package _priority integer current priority lane
+---@field package _name string? diagnostic name
+---@field package _interval number|false repeat interval, `false` for a one-shot job
+---@field package _state SchedulerKit.JobState
+---@field package _generation integer staleness token for delay wake-ups
+---@field package _queued boolean whether a live queue node points at the job
+---@field package _coroutine thread|false the coroutine its slices run in
+---@field package _context SchedulerKit.Context|false `false` once terminal
+---@field package _delayTimer TimerKit.Timer|false armed delay, if any
+---@field package _active boolean whether the job is linked into its scope
+---@field package _scopePrev SchedulerKit.Job|false
+---@field package _scopeNext SchedulerKit.Job|false
+---@field package _yieldRequested boolean? `Context:Yield()` was called this slice
+---@field package _errorPresent boolean? written when the job fails
+---@field package _error any written when the job fails
+---@field package _errorTraceback (string|false)? written when the job fails
+---@field package _lane table|false|nil the lane a submission belongs to
+---@field package _laneAdmitted boolean? whether its lane admitted it
 
 ---An ownership scope for jobs, closed by its owner or, for an addon scope,
 ---through `SchedulerKit:CloseAddonScopes`.
@@ -224,6 +245,14 @@ local SUBMIT_OPTION_KEYS = { priority = true, name = true, scope = true }
 ---@field Debounce fun(self: SchedulerKit.Scope, callback: function, delaySeconds: number, options: SchedulerKit.DebounceOptions?): SchedulerKit.DebounceHandle
 ---@field Coalesce fun(self: SchedulerKit.Scope, callback: SchedulerKit.CoalesceCallback, intervalSeconds: number, options: SchedulerKit.CoalesceOptions?): SchedulerKit.CoalesceHandle
 ---@field Watch fun(self: SchedulerKit.Scope, predicate: (fun(): any), intervalSeconds: number, callback: SchedulerKit.WatchCallback, options: SchedulerKit.WatchOptions?): SchedulerKit.WatchHandle
+---@field package _addonName string? owning addon, `nil` for a manual scope
+---@field package _closed boolean
+---@field package _activeCount integer
+---@field package _head SchedulerKit.Job|false first active job
+---@field package _tail SchedulerKit.Job|false last active job
+---@field package _timerScope TimerKit.Scope|false created on the first delay
+---@field package _familyHead table|false first Debounce, Coalesce or Watch member
+---@field package _familyTail table|false last member
 
 ---Options accepted by `Debounce`.
 ---@class SchedulerKit.DebounceOptions
@@ -296,6 +325,29 @@ local SUBMIT_OPTION_KEYS = { priority = true, name = true, scope = true }
 ---@field GetStats fun(self: SchedulerKit.CoalesceHandle): SchedulerKit.CoalesceStats
 ---@field Close fun(self: SchedulerKit.CoalesceHandle): boolean
 ---@field IsClosed fun(self: SchedulerKit.CoalesceHandle): boolean
+---@field package _kind "coalesce"
+---@field package _scope SchedulerKit.Scope owning scope
+---@field package _linked boolean whether the handle is on its scope's member list
+---@field package _familyPrev table|false
+---@field package _familyNext table|false
+---@field package _closed boolean
+---@field package _callback SchedulerKit.CoalesceCallback
+---@field package _interval number
+---@field package _maxKeys integer
+---@field package _lane SchedulerKit.Lane|false
+---@field package _set table the set collecting keys
+---@field package _spare table|false the other set, reused at the next delivery
+---@field package _keyCount integer
+---@field package _firing boolean whether the callback is running
+---@field package _timer TimerKit.Timer|false
+---@field package _delivered integer
+---@field package _refused integer? absent until a key is refused
+---@field package _deferred integer? absent until a delivery is deferred
+---@field package _dropped integer? absent until a set is dropped
+---@field package _statsView SchedulerKit.CoalesceStats|false|nil the reused `GetStats` table
+---@field package _deliverySet table|false|nil the set a lane job delivers
+---@field package _deliveryJob SchedulerKit.Job|false|nil the lane job delivering it
+---@field package _laneCallback function|false|nil the lane job's callback
 
 ---One predicate polled on a ticker shared by every watch of its interval.
 ---@class SchedulerKit.WatchHandle
@@ -469,6 +521,9 @@ end
 -- a check would compare is refused first, at the caller's line. The probe is
 -- read once at load; a host without `issecretvalue` has no secret values.
 local refuseSecretValue
+-- The bare probe, for hot paths that build their error label only on refusal.
+---@type fun(value: any): boolean
+local isSecretValue
 do
   -- issecretvalue is a World of Warcraft client API reachable only through the global table.
   -- selene: allow(global_usage)
@@ -485,6 +540,13 @@ do
     if nativeIsSecretValue ~= nil and nativeIsSecretValue(value) then
       error(label .. " must not be a secret value", level)
     end
+  end
+
+  ---Whether `value` is a secret value; always `false` on a host without them.
+  ---@param value any
+  ---@return boolean
+  function isSecretValue(value)
+    return nativeIsSecretValue ~= nil and nativeIsSecretValue(value) == true
   end
 end
 
@@ -683,6 +745,15 @@ local function validateCurrentState(implementation)
     return false
   end
 
+  -- Revision 18 worker coroutines, seeded into older state below.
+  if
+    type(rawget(currentState, "workerFinished")) ~= "table"
+    or type(rawget(currentState, "idleWorkers")) ~= "table"
+    or type(rawget(currentState, "idleWorkerCount")) ~= "number"
+  then
+    return false
+  end
+
   local defaultScope = rawget(currentState, "defaultScope")
   if defaultScope == false then
     return true
@@ -784,6 +855,11 @@ if type(previousRevision) == "nil" then
     -- `false` until an addon needs them.
     logoutConnection = false,
     logoutEventScope = false,
+    -- Worker coroutines (revision 18): the token a worker yields when its
+    -- job's callback returned, and the idle workers waiting for a job.
+    workerFinished = {},
+    idleWorkers = {},
+    idleWorkerCount = 0,
   }
   rawset(SchedulerKit, "Job", Job)
   rawset(SchedulerKit, "Scope", Scope)
@@ -931,6 +1007,22 @@ if rawget(state, "logoutEventScope") == nil then
   rawset(state, "logoutEventScope", false)
 end
 
+-- Revision 18 adds worker coroutines (see "Worker coroutines"). Older state
+-- has none; the jobs an older copy started keep their own coroutines, which
+-- still end by returning, and the driver recognises both endings. The idle
+-- workers are dropped at every upgrade, so a newer copy never resumes a
+-- worker body it did not write.
+if type(rawget(state, "workerFinished")) ~= "table" then
+  rawset(state, "workerFinished", {})
+end
+if type(previousRevision) ~= "nil" and previousRevision < IMPLEMENTATION_REVISION then
+  rawset(state, "idleWorkers", nil)
+end
+if type(rawget(state, "idleWorkers")) ~= "table" then
+  rawset(state, "idleWorkers", {})
+  rawset(state, "idleWorkerCount", 0)
+end
+
 local JOB_METATABLE = rawget(state, "jobMetatable")
 local SCOPE_METATABLE = rawget(state, "scopeMetatable")
 local CONTEXT_METATABLE = rawget(state, "contextMetatable")
@@ -1029,11 +1121,16 @@ local function validateOptions(options, methodName)
     error(methodName .. " options must be a table", 4)
   end
 
+  -- Every job creation passes through here, so the error labels are built
+  -- only once a check has failed: the checks themselves are the same, in the
+  -- same order, as the validators that raise.
   local unknown = nil
   for key in pairs(options) do
     -- A secret key would raise at the table read below with no useful line;
     -- it is refused first, at the caller's.
-    refuseSecretValue(key, methodName .. " options field name", 5)
+    if isSecretValue(key) then
+      refuseSecretValue(key, methodName .. " options field name", 5)
+    end
     if SCHEDULING_OPTION_KEYS[key] ~= true then
       local display = tostring(key)
       if unknown == nil or display < unknown then
@@ -1045,9 +1142,14 @@ local function validateOptions(options, methodName)
     error(methodName .. ' options contains unknown field "' .. unknown .. '"', 4)
   end
 
-  local priority = validatePriority(rawget(options, "priority"), methodName .. " priority", 5)
+  local priority = rawget(options, "priority")
+  if type(priority) == "nil" then
+    priority = PRIORITY_NORMAL
+  else
+    priority = validatePriority(priority, methodName .. " priority", 5)
+  end
   local name = rawget(options, "name")
-  if type(name) ~= "nil" then
+  if type(name) ~= "nil" and (type(name) ~= "string" or isSecretValue(name) or name == "") then
     validateNonEmptyString(name, methodName .. " name", 5)
   end
   return priority, name
@@ -1104,17 +1206,17 @@ local now = nativeDebugProfileStop ~= nil and nowFromProfilingClock or nowFromPr
 ---report whether the frame's CPU budget is spent.
 ---@return boolean exhausted `false` whenever no frame is being driven.
 local function frameBudgetExhausted()
-  local deadline = rawget(state, "frameDeadline")
+  local deadline = state.frameDeadline
   if type(deadline) ~= "number" then
     return false
   end
 
   local reading = now()
-  local previous = rawget(state, "frameReading")
+  local previous = state.frameReading
   if type(previous) ~= "number" then
     -- No reference point: state inherited from a revision that did not keep
     -- one. Adopt this reading and charge the frame from here.
-    rawset(state, "frameReading", reading)
+    state.frameReading = reading
     return false
   end
 
@@ -1122,10 +1224,10 @@ local function frameBudgetExhausted()
     -- `deadline - previous` is the budget left at the previous reading.
     -- Carry that remainder across the reset instead of the absolute value.
     deadline = reading + (deadline - previous)
-    rawset(state, "frameDeadline", deadline)
+    state.frameDeadline = deadline
   end
 
-  rawset(state, "frameReading", reading)
+  state.frameReading = reading
   return reading >= deadline
 end
 
@@ -1209,45 +1311,45 @@ end
 ---@param scope SchedulerKit.Scope
 ---@param job SchedulerKit.Job
 local function linkActive(scope, job)
-  local tail = rawget(scope, "_tail")
-  rawset(job, "_scopePrev", tail)
-  rawset(job, "_scopeNext", false)
+  local tail = scope._tail
+  job._scopePrev = tail
+  job._scopeNext = false
   if tail ~= false then
-    rawset(tail, "_scopeNext", job)
+    tail._scopeNext = job
   else
-    rawset(scope, "_head", job)
+    scope._head = job
   end
-  rawset(scope, "_tail", job)
-  rawset(scope, "_activeCount", rawget(scope, "_activeCount") + 1)
-  rawset(state, "activeCount", rawget(state, "activeCount") + 1)
+  scope._tail = job
+  scope._activeCount = scope._activeCount + 1
+  state.activeCount = state.activeCount + 1
 end
 
 ---Remove `job` from its scope's intrusive active list, once.
 ---@param scope SchedulerKit.Scope
 ---@param job SchedulerKit.Job
 local function unlinkActive(scope, job)
-  if rawget(job, "_active") ~= true then
+  if job._active ~= true then
     return
   end
 
-  local previous = rawget(job, "_scopePrev")
-  local following = rawget(job, "_scopeNext")
+  local previous = job._scopePrev
+  local following = job._scopeNext
   if previous ~= false then
-    rawset(previous, "_scopeNext", following)
+    previous._scopeNext = following
   else
-    rawset(scope, "_head", following)
+    scope._head = following
   end
   if following ~= false then
-    rawset(following, "_scopePrev", previous)
+    following._scopePrev = previous
   else
-    rawset(scope, "_tail", previous)
+    scope._tail = previous
   end
 
-  rawset(job, "_scopePrev", false)
-  rawset(job, "_scopeNext", false)
-  rawset(job, "_active", false)
-  rawset(scope, "_activeCount", rawget(scope, "_activeCount") - 1)
-  rawset(state, "activeCount", rawget(state, "activeCount") - 1)
+  job._scopePrev = false
+  job._scopeNext = false
+  job._active = false
+  scope._activeCount = scope._activeCount - 1
+  state.activeCount = state.activeCount - 1
 end
 
 -- Ready queues --------------------------------------------------------------
@@ -1259,34 +1361,34 @@ end
 -- ready selection skip a lane without paying for a queue probe.
 ---@param priority integer
 local function markLaneOccupied(priority)
-  local laneOccupied = rawget(state, "laneOccupied")
-  if rawget(laneOccupied, priority) ~= true then
-    rawset(laneOccupied, priority, true)
-    rawset(state, "occupiedLaneCount", rawget(state, "occupiedLaneCount") + 1)
+  local laneOccupied = state.laneOccupied --[[@as table<integer, boolean>]]
+  if laneOccupied[priority] ~= true then
+    laneOccupied[priority] = true
+    state.occupiedLaneCount = state.occupiedLaneCount + 1
   end
 end
 
 ---@param priority integer
 local function markLaneEmpty(priority)
-  local laneOccupied = rawget(state, "laneOccupied")
-  if rawget(laneOccupied, priority) == true then
-    rawset(laneOccupied, priority, false)
-    rawset(state, "occupiedLaneCount", rawget(state, "occupiedLaneCount") - 1)
+  local laneOccupied = state.laneOccupied --[[@as table<integer, boolean>]]
+  if laneOccupied[priority] == true then
+    laneOccupied[priority] = false
+    state.occupiedLaneCount = state.occupiedLaneCount - 1
   end
 end
 
 ---Enqueue `job` in its own priority lane, at most once.
 ---@param job SchedulerKit.Job
 local function queuePush(job)
-  if rawget(job, "_queued") == true then
+  if job._queued == true then
     return
   end
-  local priority = rawget(job, "_priority")
-  local queue = rawget(rawget(state, "queues"), priority)
-  local tail = rawget(queue, "tail") + 1
-  rawset(queue, "tail", tail)
-  rawget(queue, "items")[tail] = job
-  rawset(job, "_queued", true)
+  local priority = job._priority
+  local queue = state.queues[priority]
+  local tail = queue.tail + 1
+  queue.tail = tail
+  queue.items[tail] = job
+  job._queued = true
   markLaneOccupied(priority)
 end
 
@@ -1296,8 +1398,8 @@ end
 ---@param queue SchedulerKit.Queue
 ---@param priority integer
 local function resetDrainedQueue(queue, priority)
-  rawset(queue, "head", 1)
-  rawset(queue, "tail", 0)
+  queue.head = 1
+  queue.tail = 0
   markLaneEmpty(priority)
 end
 
@@ -1305,26 +1407,22 @@ end
 ---@param priority integer
 ---@return SchedulerKit.Job|nil
 local function queuePop(priority)
-  local queue = rawget(rawget(state, "queues"), priority)
-  local items = rawget(queue, "items")
-  local head = rawget(queue, "head")
-  local tail = rawget(queue, "tail")
+  local queue = state.queues[priority]
+  local items = queue.items
+  local head = queue.head
+  local tail = queue.tail
 
   while head <= tail do
     local job = items[head]
     items[head] = nil
     head = head + 1
 
-    if
-      type(job) == "table"
-      and rawget(job, "_queued") == true
-      and rawget(job, "_state") == "pending"
-    then
-      rawset(job, "_queued", false)
+    if type(job) == "table" and job._queued == true and job._state == "pending" then
+      job._queued = false
       if head > tail then
         resetDrainedQueue(queue, priority)
       else
-        rawset(queue, "head", head)
+        queue.head = head
       end
       return job
     end
@@ -1338,23 +1436,19 @@ end
 ---@param priority integer
 ---@return boolean
 local function queueHasLive(priority)
-  local queue = rawget(rawget(state, "queues"), priority)
-  local items = rawget(queue, "items")
-  local head = rawget(queue, "head")
-  local tail = rawget(queue, "tail")
+  local queue = state.queues[priority]
+  local items = queue.items
+  local head = queue.head
+  local tail = queue.tail
 
   while head <= tail do
     local job = items[head]
-    if
-      type(job) == "table"
-      and rawget(job, "_queued") == true
-      and rawget(job, "_state") == "pending"
-    then
+    if type(job) == "table" and job._queued == true and job._state == "pending" then
       return true
     end
     items[head] = nil
     head = head + 1
-    rawset(queue, "head", head)
+    queue.head = head
   end
 
   resetDrainedQueue(queue, priority)
@@ -1364,13 +1458,13 @@ end
 ---Whether any lane holds work, which is what decides if the driver runs.
 ---@return boolean
 local function hasReadyJobs()
-  if rawget(state, "occupiedLaneCount") == 0 then
+  if state.occupiedLaneCount == 0 then
     return false
   end
 
-  local laneOccupied = rawget(state, "laneOccupied")
+  local laneOccupied = state.laneOccupied --[[@as table<integer, boolean>]]
   for priority = 1, PRIORITY_COUNT do
-    if rawget(laneOccupied, priority) == true and queueHasLive(priority) then
+    if laneOccupied[priority] == true and queueHasLive(priority) then
       return true
     end
   end
@@ -1383,40 +1477,40 @@ end
 ---starvation guard promotes one `IDLE` job after enough contending resumes.
 ---@return SchedulerKit.Job|nil
 local function nextReadyJob()
-  if rawget(state, "occupiedLaneCount") == 0 then
+  if state.occupiedLaneCount == 0 then
     return nil
   end
 
-  local laneOccupied = rawget(state, "laneOccupied")
-  local idleWaiting = rawget(laneOccupied, PRIORITY_IDLE) == true
+  local laneOccupied = state.laneOccupied --[[@as table<integer, boolean>]]
+  local idleWaiting = laneOccupied[PRIORITY_IDLE] == true
   if not idleWaiting then
     -- Nothing is being starved, so the guard must not accumulate credit
     -- that a later IDLE job could spend immediately.
-    rawset(state, "idleGuard", 0)
-  elseif rawget(state, "idleGuard") >= IDLE_STARVATION_RESUMES then
+    state.idleGuard = 0
+  elseif state.idleGuard >= IDLE_STARVATION_RESUMES then
     local promoted = queuePop(PRIORITY_IDLE)
     if promoted ~= nil then
-      rawset(state, "idleGuard", 0)
+      state.idleGuard = 0
       return promoted
     end
     idleWaiting = false
   end
 
   local slotCount = #PRIORITY_SLOTS
-  local cursor = rawget(state, "priorityCursor")
+  local cursor = state.priorityCursor
   for _ = 1, slotCount do
     local priority = PRIORITY_SLOTS[cursor]
     cursor = cursor + 1
     if cursor > slotCount then
       cursor = 1
     end
-    rawset(state, "priorityCursor", cursor)
+    state.priorityCursor = cursor
 
-    if rawget(laneOccupied, priority) == true then
+    if laneOccupied[priority] == true then
       local job = queuePop(priority)
       if job ~= nil then
         if idleWaiting then
-          rawset(state, "idleGuard", rawget(state, "idleGuard") + 1)
+          state.idleGuard = state.idleGuard + 1
         end
         return job
       end
@@ -1426,7 +1520,7 @@ local function nextReadyJob()
   -- No contending lane is ready, so IDLE work is free to run.
   local job = queuePop(PRIORITY_IDLE)
   if job ~= nil then
-    rawset(state, "idleGuard", 0)
+    state.idleGuard = 0
   end
   return job
 end
@@ -1466,18 +1560,18 @@ end
 ---Install or remove the `OnUpdate` handler to match whether work is ready.
 local function updateDriver()
   local needed = hasReadyJobs()
-  local enabled = rawget(state, "driverEnabled") == true
+  local enabled = state.driverEnabled == true
   if needed == enabled then
     return
   end
 
   local frame = ensureDriver()
   if needed then
-    frame:SetScript("OnUpdate", rawget(state, "driverTrampoline"))
-    rawset(state, "driverEnabled", true)
+    frame:SetScript("OnUpdate", state.driverTrampoline)
+    state.driverEnabled = true
   else
     frame:SetScript("OnUpdate", nil)
-    rawset(state, "driverEnabled", false)
+    state.driverEnabled = false
   end
 end
 
@@ -1495,8 +1589,8 @@ local closeFamilyMembers
 ---@param job SchedulerKit.Job
 ---@return TimerKit.Timer|false delayTimer
 local function detachDelayTimer(job)
-  local delayTimer = rawget(job, "_delayTimer")
-  rawset(job, "_delayTimer", false)
+  local delayTimer = job._delayTimer
+  job._delayTimer = false
   if type(delayTimer) == "table" then
     -- Release the scheduler's reference through TimerKit's public user-data
     -- seam. SchedulerKit never writes private fields onto a timer handle.
@@ -1509,16 +1603,16 @@ end
 ---@param job SchedulerKit.Job
 ---@param terminalState "completed"|"cancelled"|"failed"
 local function finishJob(job, terminalState)
-  rawset(job, "_state", terminalState)
-  rawset(job, "_queued", false)
-  rawset(job, "_coroutine", false)
-  rawset(job, "_callback", false)
-  rawset(job, "_context", false)
-  rawset(job, "_delayTimer", false)
-  local scope = rawget(job, "_scope")
+  job._state = terminalState
+  job._queued = false
+  job._coroutine = false
+  job._callback = false
+  job._context = false
+  job._delayTimer = false
+  local scope = job._scope
   unlinkActive(scope, job)
   -- Only a lane submission carries a lane; ordinary jobs pay one read.
-  local lane = rawget(job, "_lane")
+  local lane = job._lane
   if lane ~= nil and lane ~= false then
     laneJobFinished(job, lane, terminalState)
   end
@@ -1607,13 +1701,13 @@ end
 ---@param job SchedulerKit.Job
 ---@return boolean cancelled `false` when the job was already terminal.
 local function cancelJob(job)
-  local jobState = rawget(job, "_state")
+  local jobState = job._state
   if isTerminalJobState(jobState) then
     return false
   end
 
-  rawset(job, "_generation", rawget(job, "_generation") + 1)
-  rawset(job, "_queued", false)
+  job._generation = job._generation + 1
+  job._queued = false
   local delayTimer = detachDelayTimer(job)
   finishJob(job, "cancelled")
 
@@ -1658,7 +1752,7 @@ end
 ---@param scope SchedulerKit.Scope
 ---@return TimerKit.Scope
 local function ensureTimerScope(scope)
-  local timerScope = rawget(scope, "_timerScope")
+  local timerScope = scope._timerScope
   if timerScope ~= false then
     return timerScope
   end
@@ -1668,7 +1762,7 @@ local function ensureTimerScope(scope)
     error("MoltenCodes SchedulerKit TimerKit returned an invalid scope", 0)
   end
 
-  rawset(scope, "_timerScope", timerScope)
+  scope._timerScope = timerScope
   return timerScope
 end
 
@@ -1680,6 +1774,10 @@ end
 ---@param interval number|false repeat interval, or `false` for a one-shot job
 ---@return SchedulerKit.Job
 local function newJob(scope, callback, priority, name, interval)
+  -- At most 15 fields, so the table's hash part is 16 slots rather than 32.
+  -- `_errorPresent`, `_error` and `_errorTraceback` are written only when the
+  -- job fails and `_yieldRequested` at every slice; an absent one reads as
+  -- "no" wherever it is read (`== true`, or `nil` returned as `nil`).
   local job = setmetatable({
     _scope = scope,
     _callback = callback,
@@ -1687,12 +1785,8 @@ local function newJob(scope, callback, priority, name, interval)
     _name = name,
     _interval = interval,
     _state = "pending",
-    _errorPresent = false,
-    _error = nil,
-    _errorTraceback = false,
     _generation = 1,
     _queued = false,
-    _yieldRequested = false,
     _coroutine = false,
     _context = false,
     _delayTimer = false,
@@ -1758,13 +1852,13 @@ end
 ---@param delay number
 ---@return boolean armed `false` when the owning scope had already closed.
 local function armDelay(job, delay)
-  local scope = rawget(job, "_scope")
-  if rawget(scope, "_closed") == true then
+  local scope = job._scope
+  if scope._closed == true then
     finishJob(job, "cancelled")
     return false
   end
 
-  rawset(job, "_state", "delayed")
+  job._state = "delayed"
   local ok, timerOrError = pcall(armScopeTimer, scope, delay)
 
   if not ok then
@@ -1780,7 +1874,7 @@ local function armDelay(job, delay)
 
   -- TimerKit never dispatches a timer callback synchronously from `After`, so
   -- the handle cannot fire before both halves of this link are in place.
-  rawset(job, "_delayTimer", timerOrError)
+  job._delayTimer = timerOrError
   timerOrError:SetUserData(job)
   return true
 end
@@ -1790,16 +1884,16 @@ end
 ---@param generation integer|false generation the expired handle was armed for
 ---@return boolean woken
 local function wakeDelayed(job, generation)
-  if rawget(job, "_generation") ~= generation or rawget(job, "_state") ~= "delayed" then
+  if job._generation ~= generation or job._state ~= "delayed" then
     return false
   end
 
-  rawset(job, "_delayTimer", false)
-  rawset(job, "_state", "pending")
+  job._delayTimer = false
+  job._state = "pending"
   -- An admitted lane job waking from its retry backoff starts again, so the
   -- lane's minimum interval is measured from here.
-  local lane = rawget(job, "_lane")
-  if lane ~= nil and lane ~= false and rawget(job, "_laneAdmitted") == true then
+  local lane = job._lane
+  if lane ~= nil and lane ~= false and job._laneAdmitted == true then
     rawset(lane, "_lastStart", nowFromPreciseClock() / 1000)
   end
   queuePush(job)
@@ -1834,7 +1928,7 @@ end
 ---@param methodName string public method name, used in the argument errors
 ---@return SchedulerKit.Job
 local function scheduleInScope(scope, callback, options, methodName)
-  if rawget(scope, "_closed") == true then
+  if scope._closed == true then
     error(methodName .. " cannot schedule work in a closed scope", 3)
   end
   if type(callback) ~= "function" then
@@ -1867,12 +1961,23 @@ local function scheduleAfterInScope(scope, delay, callback, options, repeating, 
   if rawget(scope, "_closed") == true then
     error(methodName .. " cannot schedule work in a closed scope", 3)
   end
-  validateFinitePositive(
-    delay,
-    methodName .. (repeating and " interval" or " delay"),
-    not repeating,
-    4
-  )
+  -- The label is built only for a value the validator will refuse; the
+  -- test below accepts exactly what it accepts.
+  if
+    type(delay) ~= "number"
+    or isSecretValue(delay)
+    or delay ~= delay
+    or delay == math.huge
+    or delay < 0
+    or (repeating and delay == 0)
+  then
+    validateFinitePositive(
+      delay,
+      methodName .. (repeating and " interval" or " delay"),
+      not repeating,
+      4
+    )
+  end
   if type(callback) ~= "function" then
     error(methodName .. " callback must be a function", 3)
   end
@@ -1887,25 +1992,75 @@ end
 ---Return SchedulerKit's internal manual scope, replacing it once it is closed.
 ---@return SchedulerKit.Scope
 local function getDefaultScope()
-  local scope = rawget(state, "defaultScope")
-  if scope == false or rawget(scope, "_closed") == true then
+  local scope = state.defaultScope
+  if scope == false or scope._closed == true then
     scope = newScope(nil)
-    rawset(state, "defaultScope", scope)
+    state.defaultScope = scope
   end
   return scope
 end
 
 -- Execution ----------------------------------------------------------------
 
----Wrap a job's callback in the coroutine its slices are resumed through.
----@param job SchedulerKit.Job
----@return thread
-local function createCoroutine(job)
-  local callback = rawget(job, "_callback")
-  local context = rawget(job, "_context")
-  return coroutine.create(function()
-    return callback(context)
-  end)
+-- Worker coroutines -----------------------------------------------------------
+--
+-- A job's slices run in a coroutine. Rather than one fresh coroutine and
+-- closure per job, a job starts on a worker: a coroutine whose body runs one
+-- job's callback, yields `state.workerFinished`, and waits there to be resumed
+-- with the next job. The driver keeps up to `MAX_IDLE_WORKERS` finished ones.
+-- A worker is reused only after its callback returned; one that raised, that
+-- yielded anything but the scheduler's tokens, or whose job was cancelled
+-- while it was suspended in `Context:Yield()` is simply dropped.
+
+-- Only `acquireWorker` and `retainWorker` escape this block: the main chunk is
+-- close to Lua 5.1's limit of 200 locals (see docs/INTERNALS.md).
+local acquireWorker, retainWorker
+do
+  -- Idle workers kept for the next job. A Lua 5.1 coroutine is about 1.2 KB,
+  -- so the bound caps what an idle scheduler holds.
+  local MAX_IDLE_WORKERS = 4
+
+  ---The body of every worker coroutine. The first resume passes the first job;
+  ---each later one resumes the `yield` below with the next job.
+  ---
+  ---The locals are cleared before the yield, so an idle worker keeps neither the
+  ---finished job nor its callback alive.
+  ---@param job any the first job; each later one arrives through the `yield`
+  local function runWorker(job)
+    while true do
+      local callback = job._callback
+      local context = job._context
+      job = nil
+      callback(context)
+      callback, context = nil, nil
+      job = coroutine.yield(state.workerFinished)
+    end
+  end
+
+  ---Take an idle worker, or create one.
+  ---@return thread worker
+  function acquireWorker()
+    local count = state.idleWorkerCount
+    if count > 0 then
+      local workers = state.idleWorkers
+      local worker = workers[count]
+      workers[count] = nil
+      state.idleWorkerCount = count - 1
+      return worker
+    end
+    return coroutine.create(runWorker)
+  end
+
+  ---Keep a worker whose job's callback returned, unless enough are idle.
+  ---@param worker thread suspended at its `yield` of `state.workerFinished`
+  function retainWorker(worker)
+    local count = state.idleWorkerCount
+    if count < MAX_IDLE_WORKERS then
+      count = count + 1
+      state.idleWorkers[count] = worker
+      state.idleWorkerCount = count
+    end
+  end
 end
 
 ---Render a job for a diagnostic message. Only reached on failure/overrun
@@ -1913,7 +2068,7 @@ end
 ---@param job SchedulerKit.Job
 ---@return string label
 local function describeJob(job)
-  local name = rawget(job, "_name")
+  local name = job._name
   if type(name) == "string" then
     return '"' .. name .. '"'
   end
@@ -1980,29 +2135,32 @@ end
 ---Run one slice of `job`, then requeue, re-arm, finish or fail it.
 ---@param job SchedulerKit.Job
 local function resumeJob(job)
-  if rawget(job, "_state") ~= "pending" then
+  if job._state ~= "pending" then
     return
   end
 
-  rawset(job, "_state", "running")
-  rawset(job, "_yieldRequested", false)
-  rawset(state, "currentJob", job)
+  job._state = "running"
+  job._yieldRequested = false
+  state.currentJob = job
 
-  local thread = rawget(job, "_coroutine")
+  local thread = job._coroutine
+  local startTime, ok, yielded
   if thread == false then
-    thread = createCoroutine(job)
-    rawset(job, "_coroutine", thread)
+    thread = acquireWorker()
+    job._coroutine = thread
+    startTime = now()
+    ok, yielded = coroutine.resume(thread, job)
+  else
+    startTime = now()
+    ok, yielded = coroutine.resume(thread)
   end
-
-  local startTime = now()
-  local ok, yielded = coroutine.resume(thread)
   local elapsed = elapsedSince(startTime)
-  rawset(state, "currentJob", false)
+  state.currentJob = false
 
   if not ok then
     -- A lane submission with attempts left is re-armed after its backoff
     -- instead of failing; see "Coalescing family".
-    local lane = rawget(job, "_lane")
+    local lane = job._lane
     if lane ~= nil and lane ~= false and retryLaneJob(job, lane) then
       return
     end
@@ -2013,26 +2171,37 @@ local function resumeJob(job)
     return
   end
 
-  if rawget(job, "_state") == "cancelled" then
+  -- The callback returned: a worker yields the finished token, and a
+  -- coroutine an older revision created for this job has died. The yielded
+  -- value comes from the callback only through a raw `coroutine.yield`, so the
+  -- type test comes first and a secret value is never compared.
+  local finished = type(yielded) == "table" and yielded == state.workerFinished
+  if finished then
+    retainWorker(thread)
+  elseif coroutine.status(thread) == "dead" then
+    finished = true
+  end
+
+  if job._state == "cancelled" then
     return
   end
 
-  if coroutine.status(thread) == "dead" then
-    rawset(job, "_coroutine", false)
-    if rawget(job, "_yieldRequested") == true and handleSwallowedYield(job, elapsed) then
+  if finished then
+    job._coroutine = false
+    if job._yieldRequested == true and handleSwallowedYield(job, elapsed) then
       return
     end
 
-    local interval = rawget(job, "_interval")
+    local interval = job._interval
     if interval ~= false then
-      rawset(job, "_generation", rawget(job, "_generation") + 1)
+      job._generation = job._generation + 1
       -- A repeating job is re-armed through TimerKit after its callback
       -- finishes. Host/timer creation failures must not escape the
       -- OnUpdate driver and starve unrelated scheduler work, so the raise
       -- `armDelay` owes its caller becomes a host error report here.
       local rearmOk, rearmError = pcall(armDelay, job, interval)
       if not rearmOk then
-        if rawget(job, "_state") ~= "failed" then
+        if job._state ~= "failed" then
           markJobFailed(job, "SchedulerKit failed to re-arm a repeating job", false)
         end
         reportError(rearmError)
@@ -2043,19 +2212,17 @@ local function resumeJob(job)
     return
   end
 
-  -- The yielded value comes from the callback. The token is a table, so the
-  -- type test comes first and a secret value is never compared.
-  if type(yielded) ~= "table" or yielded ~= rawget(state, "yieldToken") then
+  if type(yielded) ~= "table" or yielded ~= state.yieldToken then
     failJob(job, "SchedulerKit jobs may yield only through Context:Yield()", false)
     return
   end
 
-  local threshold = rawget(rawget(state, "config"), "runawayThresholdMs")
+  local threshold = state.config.runawayThresholdMs
   if elapsed > threshold then
     demoteOverrunningJob(job, elapsed, threshold)
   end
 
-  rawset(job, "_state", "pending")
+  job._state = "pending"
   queuePush(job)
 end
 
@@ -2063,13 +2230,13 @@ end
 ---The OnUpdate driver passes the frame's elapsed seconds; the pass measures its
 ---own CPU time instead, so the argument is ignored.
 local function runFrame()
-  local config = rawget(state, "config")
+  local config = state.config
   local startTime = now()
-  rawset(state, "frameReading", startTime)
-  rawset(state, "frameDeadline", startTime + rawget(config, "frameBudgetMs"))
+  state.frameReading = startTime
+  state.frameDeadline = startTime + config.frameBudgetMs
 
   local resumes = 0
-  local maxResumes = rawget(config, "maxResumesPerFrame")
+  local maxResumes = config.maxResumesPerFrame
   while resumes < maxResumes do
     if resumes > 0 and frameBudgetExhausted() then
       break
@@ -2083,9 +2250,9 @@ local function runFrame()
     resumeJob(job)
   end
 
-  rawset(state, "currentJob", false)
-  rawset(state, "frameDeadline", false)
-  rawset(state, "frameReading", false)
+  state.currentJob = false
+  state.frameDeadline = false
+  state.frameReading = false
   updateDriver()
 end
 
@@ -2140,7 +2307,7 @@ local function installCoalescingFamily()
   ---@param key string
   ---@return function
   local function dispatchEntry(key)
-    local entry = rawget(rawget(state, "dispatch"), key)
+    local entry = state.dispatch[key]
     if type(entry) ~= "function" then
       error("MoltenCodes SchedulerKit runtime dispatch is corrupted", 0)
     end
@@ -2239,40 +2406,40 @@ local function installCoalescingFamily()
   ---@param scope SchedulerKit.Scope
   ---@param member table
   local function linkMember(scope, member)
-    local tail = rawget(scope, "_familyTail") or false
-    rawset(member, "_familyPrev", tail)
-    rawset(member, "_familyNext", false)
+    local tail = scope._familyTail or false
+    member._familyPrev = tail
+    member._familyNext = false
     if tail ~= false then
-      rawset(tail, "_familyNext", member)
+      tail._familyNext = member
     else
-      rawset(scope, "_familyHead", member)
+      scope._familyHead = member
     end
-    rawset(scope, "_familyTail", member)
-    rawset(member, "_linked", true)
+    scope._familyTail = member
+    member._linked = true
   end
 
   ---Remove `member` from its scope's member list, once. Never raises.
   ---@param member table
   local function unlinkMember(member)
-    if rawget(member, "_linked") ~= true then
+    if member._linked ~= true then
       return
     end
-    local scope = rawget(member, "_scope")
-    local previous = rawget(member, "_familyPrev")
-    local following = rawget(member, "_familyNext")
+    local scope = member._scope
+    local previous = member._familyPrev
+    local following = member._familyNext
     if previous ~= false then
-      rawset(previous, "_familyNext", following)
+      previous._familyNext = following
     else
-      rawset(scope, "_familyHead", following)
+      scope._familyHead = following
     end
     if following ~= false then
-      rawset(following, "_familyPrev", previous)
+      following._familyPrev = previous
     else
-      rawset(scope, "_familyTail", previous)
+      scope._familyTail = previous
     end
-    rawset(member, "_familyPrev", false)
-    rawset(member, "_familyNext", false)
-    rawset(member, "_linked", false)
+    member._familyPrev = false
+    member._familyNext = false
+    member._linked = false
   end
 
   -- Timers ----------------------------------------------------------------------
@@ -2310,10 +2477,10 @@ local function installCoalescingFamily()
     end
     timerHandle:SetUserData(nil)
     -- A cancelled or re-armed owner no longer points at this handle.
-    if rawget(owner, "_timer") ~= timerHandle then
+    if owner._timer ~= timerHandle then
       return false
     end
-    rawset(owner, "_timer", false)
+    owner._timer = false
 
     -- A TimerKit callback has no caller to raise to, so a failure inside the
     -- wake is reported rather than escaping into the host timer.
@@ -2336,7 +2503,7 @@ local function installCoalescingFamily()
     end
     -- TimerKit never fires synchronously from `After`, so both halves of the
     -- link are in place before the handle can wake.
-    rawset(owner, "_timer", timerHandle)
+    owner._timer = timerHandle
     timerHandle:SetUserData(owner)
   end
 
@@ -2344,18 +2511,18 @@ local function installCoalescingFamily()
   ---@param member table
   ---@param seconds number
   local function armMemberTimer(member, seconds)
-    armOwnerTimer(member, ensureTimerScope(rawget(member, "_scope")), seconds)
+    armOwnerTimer(member, ensureTimerScope(member._scope), seconds)
   end
 
   ---Cancel `owner`'s timer if one is armed. May re-raise a host failure after
   ---the owner has already let go of the handle.
   ---@param owner table a member or a lane
   local function cancelOwnerTimer(owner)
-    local timerHandle = rawget(owner, "_timer")
+    local timerHandle = owner._timer --[[@as TimerKit.Timer|false|nil]]
     if timerHandle == false or timerHandle == nil then
       return
     end
-    rawset(owner, "_timer", false)
+    owner._timer = false
     timerHandle:SetUserData(nil)
     timerHandle:Cancel()
   end
@@ -3359,15 +3526,15 @@ local function installCoalescingFamily()
   ---Deliver the collected set synchronously, then wipe it for reuse.
   ---@param member SchedulerKit.CoalesceHandle
   local function fireCoalesceDirect(member)
-    local set = rawget(member, "_set")
-    rawset(member, "_set", rawget(member, "_spare"))
-    rawset(member, "_spare", set)
-    rawset(member, "_keyCount", 0)
-    rawset(member, "_delivered", rawget(member, "_delivered") + 1)
+    local set = member._set
+    member._set = member._spare
+    member._spare = set
+    member._keyCount = 0
+    member._delivered = member._delivered + 1
 
-    rawset(member, "_firing", true)
-    callProtected(rawget(member, "_callback"), 1, set)
-    rawset(member, "_firing", false)
+    member._firing = true
+    callProtected(member._callback, 1, set)
+    member._firing = false
     wipe(set)
   end
 
@@ -3375,59 +3542,54 @@ local function installCoalescingFamily()
   ---@param member SchedulerKit.CoalesceHandle
   ---@return "delivered"|"deferred"|"dropped" status
   local function deliverCoalesce(member)
-    local lane = rawget(member, "_lane")
+    local lane = member._lane
     if lane == false then
       fireCoalesceDirect(member)
       return "delivered"
     end
 
-    if rawget(member, "_deliveryJob") ~= false then
+    local pendingJob = member._deliveryJob
+    if pendingJob ~= nil and pendingJob ~= false then
       -- The previous set is still in the lane. Keep collecting into the
       -- current one and try again one interval later.
-      rawset(member, "_deferred", rawget(member, "_deferred") + 1)
-      if rawget(member, "_timer") == false then
-        armMemberTimer(member, rawget(member, "_interval"))
+      member._deferred = (member._deferred or 0) + 1
+      if member._timer == false then
+        armMemberTimer(member, member._interval)
       end
       return "deferred"
     end
 
-    local set = rawget(member, "_set")
-    local count = rawget(member, "_keyCount")
-    rawset(member, "_deliverySet", set)
-    rawset(member, "_set", rawget(member, "_spare"))
-    rawset(member, "_spare", false)
-    rawset(member, "_keyCount", 0)
+    local set = member._set
+    local count = member._keyCount
+    member._deliverySet = set
+    member._set = member._spare
+    member._spare = false
+    member._keyCount = 0
 
-    local job, reason = submitToLane(
-      lane,
-      rawget(member, "_scope"),
-      rawget(member, "_laneCallback"),
-      PRIORITY_NORMAL,
-      nil,
-      member
-    )
+    local job, reason =
+      submitToLane(lane, member._scope, member._laneCallback, PRIORITY_NORMAL, nil, member)
     if job ~= nil then
-      rawset(member, "_deliveryJob", job)
-      rawset(member, "_delivered", rawget(member, "_delivered") + 1)
+      member._deliveryJob = job
+      member._delivered = member._delivered + 1
       return "delivered"
     end
 
     -- Refused: the set goes back to collecting.
-    rawset(member, "_spare", rawget(member, "_set"))
-    rawset(member, "_set", set)
-    rawset(member, "_deliverySet", false)
-    rawset(member, "_keyCount", count)
+    member._spare = member._set
+    member._set = set
+    member._deliverySet = false
+    member._keyCount = count
     if reason == "full" then
-      rawset(member, "_deferred", rawget(member, "_deferred") + 1)
-      if rawget(member, "_timer") == false then
-        armMemberTimer(member, rawget(member, "_interval"))
+      member._deferred = (member._deferred or 0) + 1
+      if member._timer == false then
+        armMemberTimer(member, member._interval)
       end
       return "deferred"
     end
 
     wipe(set)
-    rawset(member, "_keyCount", 0)
-    rawset(member, "_dropped", rawget(member, "_dropped") + 1)
+    member._keyCount = 0
+    member._dropped = (member._dropped or 0) + 1
     reportError(
       'SchedulerKit coalesce delivery dropped: lane "' .. rawget(lane, "_name") .. '" is closed'
     )
@@ -3437,7 +3599,7 @@ local function installCoalescingFamily()
   ---The coalesce timer woke: deliver whatever the interval collected.
   ---@param member SchedulerKit.CoalesceHandle
   local function coalesceWake(member)
-    if rawget(member, "_closed") == true or rawget(member, "_keyCount") == 0 then
+    if member._closed == true or member._keyCount == 0 then
       return
     end
     deliverCoalesce(member)
@@ -3453,7 +3615,7 @@ local function installCoalescingFamily()
     if type(key) == "nil" or key ~= key then
       error("SchedulerKit coalesce handle key must not be nil or NaN", 2)
     end
-    if rawget(member, "_closed") == true then
+    if member._closed == true then
       return false
     end
     -- The value is stored, never compared, so a secret one is accepted.
@@ -3461,19 +3623,19 @@ local function installCoalescingFamily()
       value = true
     end
 
-    local set = rawget(member, "_set")
+    local set = member._set
     if set[key] == nil then
-      local count = rawget(member, "_keyCount")
-      if count >= rawget(member, "_maxKeys") then
-        rawset(member, "_refused", rawget(member, "_refused") + 1)
+      local count = member._keyCount
+      if count >= member._maxKeys then
+        member._refused = (member._refused or 0) + 1
         return false
       end
-      rawset(member, "_keyCount", count + 1)
+      member._keyCount = count + 1
     end
     set[key] = value
 
-    if rawget(member, "_timer") == false then
-      armMemberTimer(member, rawget(member, "_interval"))
+    if member._timer == false then
+      armMemberTimer(member, member._interval)
     end
     return true
   end
@@ -3489,9 +3651,9 @@ local function installCoalescingFamily()
   ---@param member SchedulerKit.CoalesceHandle
   ---@return boolean dropped whether any key was collected
   local function cancelCoalesce(member)
-    local had = rawget(member, "_keyCount") > 0
-    wipe(rawget(member, "_set"))
-    rawset(member, "_keyCount", 0)
+    local had = member._keyCount > 0
+    wipe(member._set)
+    member._keyCount = 0
     cancelOwnerTimer(member)
     return had
   end
@@ -3827,7 +3989,16 @@ local function installCoalescingFamily()
     if type(callback) ~= "function" then
       error(methodName .. " callback must be a function", 3)
     end
-    validateFinitePositive(interval, methodName .. " intervalSeconds", true, 4)
+    -- The label is built only for a value the validator will refuse.
+    if
+      type(interval) ~= "number"
+      or isSecretValue(interval)
+      or interval ~= interval
+      or interval == math.huge
+      or interval < 0
+    then
+      validateFinitePositive(interval, methodName .. " intervalSeconds", true, 4)
+    end
     validateOptionTable(options, COALESCE_OPTION_KEYS, methodName, 4)
 
     local maxKeys, lane = DEFAULT_COALESCE_MAX_KEYS, false
@@ -3840,6 +4011,11 @@ local function installCoalescingFamily()
       lane = rawget(options, "lane") or false
     end
 
+    -- Sixteen fields, so the handle's hash part is 16 slots rather than 32.
+    -- The lane-only fields (`_laneCallback`, `_deliveryJob`, `_deliverySet`),
+    -- the rare counters (`_refused`, `_deferred`, `_dropped`) and the reused
+    -- `GetStats` view are written when first needed; an absent one reads as
+    -- `false` or `0` wherever it is read.
     local member = setmetatable({
       _kind = "coalesce",
       _scope = scope,
@@ -3856,14 +4032,7 @@ local function installCoalescingFamily()
       _keyCount = 0,
       _firing = false,
       _timer = false,
-      _refused = 0,
       _delivered = 0,
-      _deferred = 0,
-      _dropped = 0,
-      _statsView = false,
-      _deliverySet = false,
-      _deliveryJob = false,
-      _laneCallback = false,
     }, COALESCE_METATABLE)
     if lane ~= false then
       rawset(member, "_laneCallback", newDeliveryCallback(member))
@@ -3927,21 +4096,25 @@ local function installCoalescingFamily()
   ---@param member table
   ---@return boolean closed `false` when it was already closed.
   local function closeTimedMember(member)
-    if rawget(member, "_closed") == true then
+    if member._closed == true then
       return false
     end
-    rawset(member, "_closed", true)
+    member._closed = true
     unlinkMember(member)
 
     local firstError = nil
-    local cancel = rawget(member, "_kind") == "debounce" and cancelDebounce or cancelCoalesce
+    local cancel = member._kind == "debounce" and cancelDebounce or cancelCoalesce
     local ok, value = pcall(cancel, member)
     if not ok then
       firstError = { value = value }
     end
 
-    local deliveryJob = rawget(member, "_deliveryJob")
-    if deliveryJob ~= false and rawget(deliveryJob, "_laneAdmitted") ~= true then
+    local deliveryJob = member._deliveryJob
+    if
+      deliveryJob ~= nil
+      and deliveryJob ~= false
+      and rawget(deliveryJob, "_laneAdmitted") ~= true
+    then
       local cancelOk, cancelError = pcall(cancelJob, deliveryJob)
       if not cancelOk and firstError == nil then
         firstError = { value = cancelError }
@@ -4006,7 +4179,7 @@ local function installCoalescingFamily()
   ---Route a TimerKit wake to the member or lane that armed the timer.
   ---@param owner table
   local function familyWake(owner)
-    local kind = rawget(owner, "_kind")
+    local kind = owner._kind
     if kind == "debounce" then
       debounceWake(owner)
     elseif kind == "coalesce" then
@@ -4123,7 +4296,8 @@ local function installCoalescingFamily()
     if rawget(self, "_keyCount") == 0 or rawget(self, "_firing") == true then
       return false, nil
     end
-    if rawget(self, "_deliveryJob") ~= false then
+    local pendingJob = rawget(self, "_deliveryJob")
+    if pendingJob ~= nil and pendingJob ~= false then
       -- The previous set is still in the lane; the interval timer keeps
       -- running and delivers once that set is done.
       return false, "deferred"
@@ -4161,15 +4335,15 @@ local function installCoalescingFamily()
       "coalesce handle"
     )
     local view = rawget(self, "_statsView")
-    if view == false then
+    if type(view) ~= "table" then
       view = {}
       rawset(self, "_statsView", view)
     end
     view.keys = rawget(self, "_keyCount")
-    view.refused = rawget(self, "_refused")
+    view.refused = rawget(self, "_refused") or 0
     view.delivered = rawget(self, "_delivered")
-    view.deferred = rawget(self, "_deferred")
-    view.dropped = rawget(self, "_dropped")
+    view.deferred = rawget(self, "_deferred") or 0
+    view.dropped = rawget(self, "_dropped") or 0
     return view
   end
 

@@ -43,11 +43,12 @@ Spec files:
 | `ErrorLevels_spec.lua` | `ShouldYield`, `Yield` and context receiver guards, and `CloseAddonScopes` argument and receiver errors, at the caller's line; every argument, closed-scope and wrong-receiver error of the package-level and scope `Schedule`, `NextFrame`, `After` and `Every`, and the wrong-receiver errors of `Scope:CancelAll`, `Scope:Close` and `Job:Cancel`, at the caller's line with no tail call into the Kit on the way (a line hook checks, since standard Lua 5.1 still counts the level of a tail-called frame); the same after a revision-15 upgrade |
 | `Property_spec.lua` | randomized scope and package active-count invariants |
 | `Debounce_spec.lua` | `Debounce`: restart, last arguments, `leading`, `maxWaitSeconds`, `Cancel`, `Flush`, scope release, allocation guard |
-| `Coalesce_spec.lua` | `Coalesce`: key sets, `maxKeys`, set reuse, `Flush`, raising callbacks, scope release |
+| `Coalesce_spec.lua` | `Coalesce`: key sets, `maxKeys`, set reuse, `Flush`, raising callbacks, scope release, the lazily written counters and lane fields |
+| `Workers_spec.lua` | worker coroutines: reuse between jobs and repeating iterations, no reuse after a raise, a raw yield or a cancel while suspended, the four-worker bound, no retention by an idle worker, a job on an older revision's coroutine; failure fields written on failure; option and delay refusals |
 | `Watch_spec.lua` | `Watch`: edge trigger, `everyTick`, shared tickers, both caps, raising predicates and callbacks, results that cannot be compared |
-| `Allocation_spec.lua` | the resume path allocates nothing; a never-drained priority queue keeps its indices at the front |
+| `Allocation_spec.lua` | the resume path allocates nothing; a never-drained priority queue keeps its indices at the front; a one-shot job under 1 KiB, a reused option table free, a `Coalesce` handle under 1 KiB |
 | `Lane_spec.lua` | lanes: sharing, `maxInFlight`, `minIntervalSeconds`, retries, `maxQueued`, `Close`, allocation-free refusals, family delivery |
-| `Bootstrap_spec.lua` | duplicate loading, live job identity, the revision-3, -6, -7, -9, -10 and -12 upgrades and the previous-revision upgrade, live family handles |
+| `Bootstrap_spec.lua` | duplicate loading, live job identity, the revision-3, -6, -7, -9, -10, -12 and -17 upgrades and the previous-revision upgrade (worker state seeded, idle workers dropped, a started job finished), live family handles |
 | `SecretValues_spec.lua` | secret arguments, options, option field names, limits and coalesce keys refused with `... must not be a secret value` at the caller's line, the scheduling methods' included; a secret coalesce value delivered |
 | `Manifest_spec.lua` | runtime API and revision against `package.manifest.json` |
 

@@ -256,3 +256,71 @@ describe("SchedulerKit Coalesce Flush with a lane", function()
     assert.are.equal(2, deliveries)
   end)
 end)
+
+describe("SchedulerKit Coalesce handle record", function()
+  after_each(TestEnv.Reset)
+
+  it("reports zero refused, deferred and dropped before any happened", function()
+    local SchedulerKit = TestEnv.NewPackage()
+    local coalesced = SchedulerKit:Coalesce(function() end, 1)
+
+    -- The rare counters are written only when first needed (revision 18).
+    assert.is_nil(rawget(coalesced, "_refused"))
+    assert.are.same(
+      { keys = 0, refused = 0, delivered = 0, deferred = 0, dropped = 0 },
+      coalesced:GetStats()
+    )
+  end)
+
+  it("counts deferred deliveries and cancels the pending lane job on Close", function()
+    local SchedulerKit = TestEnv.NewPackage()
+    local lane = SchedulerKit:Lane("record", { maxInFlight = 1 })
+    -- Occupy the lane's one slot, so the delivery waits unadmitted.
+    lane:Submit(function() end)
+    local coalesced = SchedulerKit:Coalesce(function() end, 1, { lane = lane })
+
+    coalesced("a")
+    assert.is_true(coalesced:Flush())
+    local deliveryJob = rawget(coalesced, "_deliveryJob")
+    assert.are.equal("table", type(deliveryJob))
+    coalesced("b")
+    local flushed, reason = coalesced:Flush()
+    assert.is_false(flushed)
+    assert.are.equal("deferred", reason)
+    fireLatest()
+    assert.are.equal(1, coalesced:GetStats().deferred)
+
+    assert.is_true(coalesced:Close())
+    assert.is_true(deliveryJob:IsCancelled())
+  end)
+
+  it("counts a set dropped by a closed lane", function()
+    local SchedulerKit = TestEnv.NewPackage()
+    local lane = SchedulerKit:Lane("closing")
+    local coalesced = SchedulerKit:Coalesce(function() end, 1, { lane = lane })
+    lane:Close()
+
+    coalesced("a")
+    local flushed, reason = coalesced:Flush()
+    TestEnv.TakeReportedErrors()
+    assert.is_false(flushed)
+    assert.are.equal("dropped", reason)
+    assert.are.equal(1, coalesced:GetStats().dropped)
+    assert.is_false(coalesced:IsPending())
+  end)
+
+  it("closes a handle without a lane job", function()
+    local SchedulerKit = TestEnv.NewPackage()
+    local deliveries = 0
+    local coalesced = SchedulerKit:Coalesce(function()
+      deliveries = deliveries + 1
+    end, 1)
+    coalesced("a")
+
+    assert.is_true(coalesced:Close())
+    assert.is_false(coalesced:IsPending())
+    fireLatest()
+    assert.are.equal(0, deliveries)
+    assert.is_false(coalesced:Close())
+  end)
+end)

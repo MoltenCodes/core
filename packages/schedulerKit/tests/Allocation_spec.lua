@@ -66,4 +66,66 @@ describe("SchedulerKit tick-path allocation #allocation", function()
     assert.are.equal(1, queue.head)
     assert.are.equal(1, queue.tail)
   end)
+
+  it(
+    "starts a one-shot job on a reused coroutine, allocating only the job and its context",
+    function()
+      local SchedulerKit = TestEnv.NewPackage()
+      local scope = SchedulerKit:CreateScope()
+      local function callback() end
+      scope:Schedule(callback)
+      TestEnv.Tick()
+
+      local jobs = 100
+      local allocated = TestEnv.AllocatedKilobytes(function()
+        for _ = 1, jobs do
+          scope:Schedule(callback)
+          TestEnv.Tick()
+        end
+      end)
+      -- A job record and its context stay under 1 KiB; a coroutine and its
+      -- starting closure alone were over 1.2 KiB before revision 18.
+      assert.is_true(allocated / jobs < 1, "one job allocated " .. allocated / jobs .. " KiB")
+    end
+  )
+
+  it("allocates nothing to validate a reused option table", function()
+    local SchedulerKit = TestEnv.NewPackage()
+    local scope = SchedulerKit:CreateScope()
+    local function callback() end
+    local options = { name = "reused options", priority = SchedulerKit.Priority.LOW }
+    scope:Schedule(callback):Cancel()
+    scope:Schedule(callback, options):Cancel()
+
+    local jobs = 100
+    local plain = TestEnv.AllocatedKilobytes(function()
+      for _ = 1, jobs do
+        scope:Schedule(callback):Cancel()
+      end
+    end)
+    local named = TestEnv.AllocatedKilobytes(function()
+      for _ = 1, jobs do
+        scope:Schedule(callback, options):Cancel()
+      end
+    end)
+    assert.are.equal(plain, named)
+  end)
+
+  it("creates and closes a coalesce handle in under 1 KiB", function()
+    local SchedulerKit = TestEnv.NewPackage()
+    local scope = SchedulerKit:CreateScope()
+    local function callback() end
+    scope:Coalesce(callback, 0.5):Close()
+
+    local handles = 100
+    local allocated = TestEnv.AllocatedKilobytes(function()
+      for _ = 1, handles do
+        scope:Coalesce(callback, 0.5):Close()
+      end
+    end)
+    assert.is_true(
+      allocated / handles < 1,
+      "one handle allocated " .. allocated / handles .. " KiB"
+    )
+  end)
 end)

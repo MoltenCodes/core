@@ -2,7 +2,7 @@ local TestEnv = require("SchedulerKitTestEnv")
 
 -- The implementation revision this suite was written against; Manifest_spec
 -- holds it to package.manifest.json.
-local CURRENT_REVISION = 17
+local CURRENT_REVISION = 18
 
 describe("SchedulerKit bootstrap", function()
   after_each(TestEnv.Reset)
@@ -428,6 +428,75 @@ describe("SchedulerKit bootstrap", function()
     TestEnv.Tick()
     assert.are.equal(2, slices)
     assert.are.equal("completed", yielding:GetState())
+  end)
+
+  it("seeds worker coroutines into state a revision-17 copy wrote", function()
+    TestEnv.Reset()
+    TestEnv.InstallWowApi()
+    require("Registry")
+    require("TimerKit")
+
+    local old = TestEnv.LoadRevision(17)
+    local state = old._state
+    -- Revision 17 had no worker coroutines: a job's coroutine was its own.
+    rawset(state, "workerFinished", nil)
+    rawset(state, "idleWorkers", nil)
+    rawset(state, "idleWorkerCount", nil)
+
+    package.loaded["SchedulerKit"] = nil
+    local upgraded = require("SchedulerKit")
+    assert.are.equal(old, upgraded)
+    assert.are.equal("table", type(state.workerFinished))
+    assert.are.same({}, state.idleWorkers)
+    assert.are.equal(0, state.idleWorkerCount)
+
+    local job = upgraded:Schedule(function() end)
+    TestEnv.Tick()
+    assert.are.equal("completed", job:GetState())
+    assert.are.equal(1, state.idleWorkerCount)
+  end)
+
+  it("drops the idle worker coroutines of an older copy at an upgrade", function()
+    TestEnv.Reset()
+    TestEnv.InstallWowApi()
+    require("Registry")
+    require("TimerKit")
+
+    local old = TestEnv.LoadRevision(CURRENT_REVISION - 1)
+    old:Schedule(function() end)
+    TestEnv.Tick()
+    local finished = old._state.workerFinished
+    assert.are.equal(1, old._state.idleWorkerCount)
+
+    package.loaded["SchedulerKit"] = nil
+    local upgraded = require("SchedulerKit")
+    -- A newer copy never resumes a worker body an older copy wrote; the
+    -- finished token is kept, so a worker still running an older job ends
+    -- in a way the newer copy recognises.
+    assert.are.equal(0, upgraded._state.idleWorkerCount)
+    assert.are.same({}, upgraded._state.idleWorkers)
+    assert.are.equal(finished, upgraded._state.workerFinished)
+  end)
+
+  it("finishes a job an older copy started on a worker after an upgrade", function()
+    TestEnv.Reset()
+    TestEnv.InstallWowApi()
+    require("Registry")
+    require("TimerKit")
+
+    local old = TestEnv.LoadRevision(CURRENT_REVISION - 1)
+    old:SetMaxResumesPerFrame(1)
+    local job = old:Schedule(function(context)
+      context:Yield()
+    end)
+    TestEnv.Tick()
+    assert.are.equal("pending", job:GetState())
+
+    package.loaded["SchedulerKit"] = nil
+    local upgraded = require("SchedulerKit")
+    TestEnv.Tick()
+    assert.are.equal("completed", job:GetState())
+    assert.are.equal(1, upgraded._state.idleWorkerCount)
   end)
 
   it("keeps live family handles working across a compatible reload", function()
