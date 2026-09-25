@@ -141,6 +141,16 @@ bundle tag (`v<SemVer>`) or a package tag (`<packageId>-v<SemVer>`) against
 for a package release, and `publish_mode` decides between dry run and upload
 and whether to draft a GitHub release. See [`../docs/RELEASES.md`](../docs/RELEASES.md).
 
+Benchmark the Kits against the Ace3 libraries that do the same work, on host
+Lua 5.1, and render a results file as Markdown (Ace3 is fetched at a pinned
+commit into a cache outside the repository; see `docs/BENCHMARKS.md`):
+
+```bash
+python3 -m tooling.bench.run --out tooling/bench/results/<date>-host.json
+python3 -m tooling.bench.run --workload timers --rounds 1 --repeat 1 --warmup 0
+python3 -m tooling.bench.report tooling/bench/results/<date>-host.json
+```
+
 Run tooling unit tests:
 
 ```bash

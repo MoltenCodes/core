@@ -25,12 +25,14 @@ class LuaLintDiscoveryTests(unittest.TestCase):
             module.EXAMPLES,
             module.SHARED_TEST_SUPPORT,
             module.CLIENT_TESTS,
+            module.BENCH_LUA,
         )
         module.ROOT = self.root
         module.PACKAGES = self.packages
         module.EXAMPLES = self.examples
         module.SHARED_TEST_SUPPORT = self.shared_support
         module.CLIENT_TESTS = self.root / "tests" / "client"
+        module.BENCH_LUA = self.root / "tooling" / "bench" / "lua"
 
     def tearDown(self):
         (
@@ -39,8 +41,19 @@ class LuaLintDiscoveryTests(unittest.TestCase):
             module.EXAMPLES,
             module.SHARED_TEST_SUPPORT,
             module.CLIENT_TESTS,
+            module.BENCH_LUA,
         ) = self.originals
         self.tempdir.cleanup()
+
+    def test_benchmark_lua_is_runtime_lua(self):
+        """The benchmark runs under plain Lua, not Busted, so it is judged as runtime code."""
+        workloads = self.root / "tooling" / "bench" / "lua" / "workloads"
+        workloads.mkdir(parents=True)
+        workload = workloads / "Timers.lua"
+        workload.write_text("", encoding="utf-8")
+
+        self.assertIn(workload, module.discover_runtime_lua_files())
+        self.assertNotIn(workload, module.discover_test_lua_files())
 
     def test_discovers_nested_runtime_lua_files(self):
         nested = self.packages / "eventKit" / "src" / "internal"
@@ -141,12 +154,14 @@ class LintScopeTests(unittest.TestCase):
             module.EXAMPLES,
             module.SHARED_TEST_SUPPORT,
             module.CLIENT_TESTS,
+            module.BENCH_LUA,
         )
         module.ROOT = self.root
         module.PACKAGES = self.packages
         module.EXAMPLES = self.examples
         module.SHARED_TEST_SUPPORT = self.shared_support
         module.CLIENT_TESTS = self.root / "tests" / "client"
+        module.BENCH_LUA = self.root / "tooling" / "bench" / "lua"
 
     def tearDown(self):
         (
@@ -155,6 +170,7 @@ class LintScopeTests(unittest.TestCase):
             module.EXAMPLES,
             module.SHARED_TEST_SUPPORT,
             module.CLIENT_TESTS,
+            module.BENCH_LUA,
         ) = self.originals
         self.tempdir.cleanup()
 

@@ -955,6 +955,54 @@ A new Kit needs a `kit: <packageId>` label in `labels.yml`, a matching rule in
 request forms under `.github/ISSUE_TEMPLATE/`; repository validation fails
 until all four exist.
 
+## Host benchmark
+
+`tooling/bench/` compares Kits with the Ace3 libraries that do the same work,
+on host Lua 5.1. [`BENCHMARKS.md`](BENCHMARKS.md) is the full account: the
+principles, the methodology, each workload, what was stubbed for Ace3 and why
+that is fair, the in-client plan and the measured results.
+
+```text
+tooling/bench/
+├── ace3.py          # fetches Ace3 at the pinned commit into a cache outside the repository
+├── host.py          # records the CPU, OS, memory, load and the commit a run measured
+├── workloads.py     # the workload catalogue: name, Lua module, what it compares
+├── run.py           # runs every case in its own Lua process and writes raw JSON
+├── report.py        # renders a results file as Markdown
+├── lua/             # the Lua side: main.lua, Bench.lua (measurement), BenchHost.lua and
+│   └── workloads/   #   SimulatedTimers.lua (the shared host), one module per workload
+└── results/         # committed raw results, one file per run: <date>-host.json
+```
+
+```bash
+python3 -m tooling.bench.run [--workload NAME ...] [--rounds N] [--repeat N] [--warmup N] [--out FILE]
+python3 -m tooling.bench.report tooling/bench/results/<date>-host.json [--out FILE]
+python3 -m tooling.bench.ace3 [--cache DIR]   # fetch only; run does this itself
+```
+
+- **Ace3 is never in the repository.** `run` fetches the source archive of the
+  pinned commit into `$MOLTENCODES_BENCH_CACHE`, `$XDG_CACHE_HOME/moltencodes-bench`
+  or `~/.cache/moltencodes-bench`, refuses a cache inside the repository, and
+  checks a SHA-256 over the files it loads against the digest pinned in
+  `ace3.py`, so a changed upstream archive fails the run instead of changing
+  what is measured.
+- **One process per case and side.** The Lua side runs under the interpreter
+  the toolchain installs (`~/.local/lua51/bin/lua`, or `--lua`,
+  `$MOLTENCODES_BENCH_LUA`), with every Kit's `src/`, the shared fake client
+  and `tooling/bench/lua/` on `LUA_PATH`. Each case runs in `--rounds` fresh
+  processes per side, the two sides interleaved, so load changes during a run
+  fall on both.
+- **Not a gate.** Timing depends on the machine and on what else runs on it,
+  so no CI job runs the benchmark and no threshold exists. CI runs only the
+  unit tests (`tooling/tests/test_bench.py`, no network, no Lua), with the
+  rest of the tooling tests. A smoke job was left out on purpose: it would
+  have to download Ace3 on every run or cache a copy in CI, and the unit tests
+  plus the correctness checks every local run prints cover what such a job
+  would catch.
+- **Lint.** The benchmark's Lua is plain Lua 5.1 run outside Busted, so
+  `python3 -m tooling.lint` holds it to the runtime scope (`selene.toml`)
+  alongside `tests/client/`.
+
 ## Future tooling
 
 Tooling is added only when implemented. Empty placeholder directories are intentionally avoided because they imply capabilities that do not yet exist.

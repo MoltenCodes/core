@@ -1,0 +1,2958 @@
+{
+  "schema": 1,
+  "kind": "host",
+  "date": "2026-09-25",
+  "command": "python3 -m tooling.bench.run --out tooling/bench/results/2026-09-25-host.json",
+  "host": {
+    "cpu": "Apple M5 Pro",
+    "logicalCpus": 18,
+    "memoryBytes": 25769803776,
+    "os": "macOS 27.0 (26A428)",
+    "architecture": "arm64",
+    "python": "3.14.7"
+  },
+  "lua": {
+    "version": "Lua 5.1.5  Copyright (C) 1994-2012 Lua.org, PUC-Rio",
+    "interpreter": "PUC Lua (host), not the game client"
+  },
+  "settings": {
+    "warmupBatches": 2,
+    "timedBatches": 5,
+    "rounds": 3,
+    "clock": "os.clock (process CPU time)",
+    "allocation": "collectgarbage('count') delta over one batch with the collector stopped",
+    "loopOverheadNanoseconds": 2.5693,
+    "loadAverageAtStart": [
+      4.35,
+      4.39,
+      3.83
+    ],
+    "loadAverageAtEnd": [
+      6.37,
+      5.29,
+      4.33
+    ]
+  },
+  "moltencodes": {
+    "commit": "6dbc76236d962e745990ad1c210e88172d2abed2",
+    "packagesModified": false,
+    "packageVersions": {
+      "codecKit": "0.1.4",
+      "commKit": "0.2.3",
+      "eventKit": "0.9.3",
+      "poolKit": "0.4.5",
+      "registry": "0.6.7",
+      "schedulerKit": "0.8.5",
+      "schemaKit": "0.1.4",
+      "settingsKit": "0.2.0",
+      "signalKit": "0.7.3",
+      "timerKit": "0.6.3"
+    }
+  },
+  "ace3": {
+    "repository": "WoWUIDev/Ace3",
+    "commit": "5e2e0d3b3fd125ef1518744c6a9dd21f68f6e773",
+    "archiveUrl": "https://codeload.github.com/WoWUIDev/Ace3/tar.gz/5e2e0d3b3fd125ef1518744c6a9dd21f68f6e773",
+    "archiveSha256": "da103345add97dbbcba8f0d66567f38af5b83fce4e79a106ac01cf9a7b937a69",
+    "contentDigest": "a967f70be11d2996ed841ad6fe9466364f91f9f431cb3c2587d65b17659e29c7",
+    "fetched": "2026-09-25"
+  },
+  "workloads": [
+    {
+      "name": "eventDispatch",
+      "title": "Game-event dispatch",
+      "compares": "EventKit (on SignalKit) against AceEvent-3.0 events (on CallbackHandler-1.0)",
+      "sides": {
+        "moltencodes": {
+          "libraries": [
+            {
+              "name": "EventKit",
+              "revision": 16
+            },
+            {
+              "name": "SignalKit",
+              "revision": 8
+            }
+          ],
+          "checks": [
+            {
+              "detail": "late listener calls: 0 in the dispatch that added it, 1 after the next",
+              "name": "connect-during-dispatch-waits",
+              "passed": true,
+              "promised": true
+            },
+            {
+              "detail": "listeners that ran after the first removed all: 1",
+              "name": "disconnect-during-dispatch-skips",
+              "passed": true,
+              "promised": true
+            },
+            {
+              "detail": "listener calls for one outer and one nested dispatch: 6 of 6",
+              "name": "nested-dispatch",
+              "passed": true,
+              "promised": true
+            },
+            {
+              "detail": "dispatch returned normally: true, other listener ran: 1, errors reported: 1",
+              "name": "error-isolated",
+              "passed": true,
+              "promised": true
+            },
+            {
+              "detail": "delivery order of 8 listeners: 1 2 3 4 5 6 7 8",
+              "name": "connection-order",
+              "passed": true,
+              "promised": true
+            }
+          ],
+          "cases": [
+            {
+              "allocatedBytesPerOperation": 0,
+              "equivalent": true,
+              "iterations": 200000,
+              "medianNanoseconds": 512.3450000000001,
+              "metrics": {
+                "listenerCallsPerDispatch": 1
+              },
+              "minimumNanoseconds": 487.05499999999984,
+              "name": "dispatch-1",
+              "nanosecondsPerOperation": [
+                1349.5199999999998,
+                1212.94,
+                1524.5049999999994,
+                1744.66,
+                1725.4950000000003,
+                487.05499999999984,
+                498.9199999999999,
+                529.4599999999996,
+                512.3450000000001,
+                510.5850000000001,
+                509.2200000000002,
+                512.425,
+                507.3,
+                490.1549999999999,
+                497.59
+              ],
+              "operation": "UNIT_POWER_UPDATE with 2 payload values to 1 listener(s)",
+              "repetitions": 5,
+              "warmup": 2,
+              "rounds": 3
+            },
+            {
+              "allocatedBytesPerOperation": 0,
+              "equivalent": true,
+              "iterations": 50000,
+              "medianNanoseconds": 1846.779999999999,
+              "metrics": {
+                "listenerCallsPerDispatch": 10
+              },
+              "minimumNanoseconds": 1750.2399999999998,
+              "name": "dispatch-10",
+              "nanosecondsPerOperation": [
+                5050.86,
+                5640.98,
+                5581.38,
+                5049.359999999998,
+                6091.220000000001,
+                1797.1600000000003,
+                1768.32,
+                1756.4599999999998,
+                1776.2,
+                1772.5999999999997,
+                1824.2199999999998,
+                1750.2399999999998,
+                1848.4600000000005,
+                1867.199999999999,
+                1846.779999999999
+              ],
+              "operation": "UNIT_POWER_UPDATE with 2 payload values to 10 listener(s)",
+              "repetitions": 5,
+              "warmup": 2,
+              "rounds": 3
+            },
+            {
+              "allocatedBytesPerOperation": 0,
+              "equivalent": true,
+              "iterations": 5000,
+              "medianNanoseconds": 14770.6,
+              "metrics": {
+                "listenerCallsPerDispatch": 100
+              },
+              "minimumNanoseconds": 14539.60000000001,
+              "name": "dispatch-100",
+              "nanosecondsPerOperation": [
+                49125.59999999999,
+                40322.59999999999,
+                50334.99999999998,
+                50714.60000000001,
+                51087.2,
+                14689.999999999996,
+                14743.2,
+                14688.200000000006,
+                14539.60000000001,
+                14596.00000000001,
+                14612.399999999998,
+                14877.999999999996,
+                14927.199999999997,
+                14726.2,
+                14770.6
+              ],
+              "operation": "UNIT_POWER_UPDATE with 2 payload values to 100 listener(s)",
+              "repetitions": 5,
+              "warmup": 2,
+              "rounds": 3
+            },
+            {
+              "allocatedBytesPerOperation": 921.60255,
+              "equivalent": true,
+              "iterations": 20000,
+              "medianNanoseconds": 1846.2,
+              "minimumNanoseconds": 1786.9000000000012,
+              "name": "churn-warm",
+              "nanosecondsPerOperation": [
+                6109.5999999999985,
+                6786.999999999998,
+                5852.700000000003,
+                6661.250000000002,
+                5649.199999999999,
+                1802.1999999999996,
+                1846.2,
+                1808.6500000000003,
+                1789.9,
+                1786.9000000000012,
+                1835.2,
+                1839.5999999999997,
+                1846.4999999999995,
+                1816.6,
+                1865.2500000000005
+              ],
+              "operation": "connect and disconnect one listener beside 10 others",
+              "repetitions": 5,
+              "warmup": 2,
+              "rounds": 3
+            },
+            {
+              "allocatedBytesPerOperation": 1880.00255,
+              "equivalent": true,
+              "iterations": 20000,
+              "medianNanoseconds": 2795.95,
+              "minimumNanoseconds": 2744.650000000001,
+              "name": "churn-cold",
+              "nanosecondsPerOperation": [
+                9323.800000000001,
+                9120.449999999997,
+                6968.3,
+                9169.499999999996,
+                8153.950000000011,
+                2768.8499999999995,
+                2752.7999999999997,
+                2747.6499999999987,
+                2744.650000000001,
+                2803,
+                2753.499999999999,
+                2801.2,
+                2764.299999999999,
+                2783.3000000000025,
+                2795.95
+              ],
+              "operation": "connect and disconnect the only listener",
+              "repetitions": 5,
+              "warmup": 2,
+              "rounds": 3
+            }
+          ]
+        },
+        "ace3": {
+          "libraries": [
+            {
+              "minor": 4,
+              "name": "AceEvent-3.0"
+            },
+            {
+              "minor": 8,
+              "name": "CallbackHandler-1.0"
+            }
+          ],
+          "checks": [
+            {
+              "detail": "late listener calls: 0 in the dispatch that added it, 1 after the next",
+              "name": "connect-during-dispatch-waits",
+              "passed": true,
+              "promised": true
+            },
+            {
+              "detail": "listeners that ran after the first removed all: 1",
+              "name": "disconnect-during-dispatch-skips",
+              "passed": true,
+              "promised": true
+            },
+            {
+              "detail": "listener calls for one outer and one nested dispatch: 6 of 6",
+              "name": "nested-dispatch",
+              "passed": true,
+              "promised": true
+            },
+            {
+              "detail": "dispatch returned normally: true, other listener ran: 1, errors reported: 1",
+              "name": "error-isolated",
+              "passed": true,
+              "promised": true
+            },
+            {
+              "detail": "delivery order of 8 listeners: 1 7 6 5 4 3 2 8",
+              "name": "connection-order",
+              "passed": false,
+              "promised": false
+            }
+          ],
+          "cases": [
+            {
+              "allocatedBytesPerOperation": 0,
+              "equivalent": true,
+              "iterations": 200000,
+              "medianNanoseconds": 214.17500000000007,
+              "metrics": {
+                "listenerCallsPerDispatch": 1
+              },
+              "minimumNanoseconds": 208.05500000000004,
+              "name": "dispatch-1",
+              "nanosecondsPerOperation": [
+                736.7399999999999,
+                707.09,
+                710.1050000000002,
+                760.23,
+                737.9100000000004,
+                213.66999999999996,
+                214.76499999999996,
+                214.17500000000007,
+                209.1449999999999,
+                210.32499999999982,
+                209.65499999999997,
+                218.02000000000004,
+                211.82500000000007,
+                208.46000000000018,
+                208.05500000000004
+              ],
+              "operation": "UNIT_POWER_UPDATE with 2 payload values to 1 listener(s)",
+              "repetitions": 5,
+              "warmup": 2,
+              "rounds": 3
+            },
+            {
+              "allocatedBytesPerOperation": 0,
+              "equivalent": true,
+              "iterations": 50000,
+              "medianNanoseconds": 1003.3000000000003,
+              "metrics": {
+                "listenerCallsPerDispatch": 10
+              },
+              "minimumNanoseconds": 974.7,
+              "name": "dispatch-10",
+              "nanosecondsPerOperation": [
+                2424.08,
+                2630.0199999999995,
+                2478.2800000000016,
+                2388.0400000000004,
+                2741.5199999999995,
+                1003.8400000000003,
+                1005.0000000000003,
+                996.0799999999997,
+                1003.3000000000003,
+                998.0800000000002,
+                977.2,
+                974.7,
+                976.9799999999996,
+                976.6200000000003,
+                975.2399999999994
+              ],
+              "operation": "UNIT_POWER_UPDATE with 2 payload values to 10 listener(s)",
+              "repetitions": 5,
+              "warmup": 2,
+              "rounds": 3
+            },
+            {
+              "allocatedBytesPerOperation": 0,
+              "equivalent": true,
+              "iterations": 5000,
+              "medianNanoseconds": 8085.799999999998,
+              "metrics": {
+                "listenerCallsPerDispatch": 100
+              },
+              "minimumNanoseconds": 7991.199999999999,
+              "name": "dispatch-100",
+              "nanosecondsPerOperation": [
+                22588.799999999996,
+                20572.800000000003,
+                22069.799999999985,
+                19403.199999999997,
+                20826.799999999992,
+                8085.799999999998,
+                8096.199999999999,
+                8072.200000000002,
+                8076.999999999995,
+                8108.5999999999985,
+                8031.000000000002,
+                8009,
+                8035.800000000005,
+                8004.399999999995,
+                7991.199999999999
+              ],
+              "operation": "UNIT_POWER_UPDATE with 2 payload values to 100 listener(s)",
+              "repetitions": 5,
+              "warmup": 2,
+              "rounds": 3
+            },
+            {
+              "allocatedBytesPerOperation": 0,
+              "equivalent": true,
+              "iterations": 20000,
+              "medianNanoseconds": 395.35000000000025,
+              "minimumNanoseconds": 373.4,
+              "name": "churn-warm",
+              "nanosecondsPerOperation": [
+                920.4499999999998,
+                964.5500000000002,
+                1019.7499999999998,
+                939.8999999999999,
+                961.4499999999998,
+                373.4,
+                383.89999999999986,
+                382.3,
+                385.64999999999986,
+                384.9999999999999,
+                387.79999999999995,
+                400.29999999999995,
+                408.69999999999965,
+                395.35000000000025,
+                374.0999999999998
+              ],
+              "operation": "connect and disconnect one listener beside 10 others",
+              "repetitions": 5,
+              "warmup": 2,
+              "rounds": 3
+            },
+            {
+              "allocatedBytesPerOperation": 104,
+              "equivalent": true,
+              "iterations": 20000,
+              "medianNanoseconds": 719.2999999999998,
+              "minimumNanoseconds": 667.7499999999999,
+              "name": "churn-cold",
+              "nanosecondsPerOperation": [
+                694.7499999999999,
+                766.35,
+                743.2,
+                741.4499999999997,
+                800.9000000000002,
+                667.7499999999999,
+                720.95,
+                715.45,
+                719.2999999999998,
+                766.7,
+                678.4499999999999,
+                713.8999999999999,
+                706.2499999999999,
+                695.9,
+                742.7499999999997
+              ],
+              "operation": "connect and disconnect the only listener",
+              "repetitions": 5,
+              "warmup": 2,
+              "rounds": 3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "messageDispatch",
+      "title": "Addon-message dispatch",
+      "compares": "a SignalKit bus against AceEvent-3.0 messages (on CallbackHandler-1.0)",
+      "sides": {
+        "moltencodes": {
+          "libraries": [
+            {
+              "name": "SignalKit",
+              "revision": 8
+            }
+          ],
+          "checks": [
+            {
+              "detail": "late listener calls: 0 in the dispatch that added it, 1 after the next",
+              "name": "connect-during-dispatch-waits",
+              "passed": true,
+              "promised": true
+            },
+            {
+              "detail": "listeners that ran after the first removed all: 1",
+              "name": "disconnect-during-dispatch-skips",
+              "passed": true,
+              "promised": true
+            },
+            {
+              "detail": "listener calls for one outer and one nested dispatch: 6 of 6",
+              "name": "nested-dispatch",
+              "passed": true,
+              "promised": true
+            },
+            {
+              "detail": "dispatch returned normally: true, other listener ran: 1, errors reported: 1",
+              "name": "error-isolated",
+              "passed": true,
+              "promised": true
+            },
+            {
+              "detail": "delivery order of 8 listeners: 1 2 3 4 5 6 7 8",
+              "name": "connection-order",
+              "passed": true,
+              "promised": true
+            }
+          ],
+          "cases": [
+            {
+              "allocatedBytesPerOperation": 0.00018,
+              "equivalent": true,
+              "iterations": 200000,
+              "medianNanoseconds": 1433.5699999999997,
+              "metrics": {
+                "listenerCallsPerDispatch": 1
+              },
+              "minimumNanoseconds": 593.9449999999999,
+              "name": "dispatch-1",
+              "nanosecondsPerOperation": [
+                598.0250000000001,
+                601.98,
+                593.9449999999999,
+                606.7649999999996,
+                598.1350000000002,
+                1674.48,
+                1662.6599999999996,
+                1433.5699999999997,
+                1451.96,
+                1523.4699999999991,
+                1823.4849999999997,
+                1970.245,
+                1422.555000000001,
+                1436.8800000000003,
+                1367.4750000000004
+              ],
+              "operation": "one message with 2 values to 1 listener(s)",
+              "repetitions": 5,
+              "warmup": 2,
+              "rounds": 3
+            },
+            {
+              "allocatedBytesPerOperation": 0.00072,
+              "equivalent": true,
+              "iterations": 50000,
+              "medianNanoseconds": 4616.880000000001,
+              "metrics": {
+                "listenerCallsPerDispatch": 10
+              },
+              "minimumNanoseconds": 1884.760000000001,
+              "name": "dispatch-10",
+              "nanosecondsPerOperation": [
+                1911.9799999999998,
+                1884.760000000001,
+                1904.9799999999993,
+                1901.5999999999988,
+                1891.7200000000012,
+                5775.080000000001,
+                5317.920000000003,
+                5066.099999999998,
+                5585.38,
+                6083.68,
+                4979.74,
+                4560.839999999999,
+                4616.880000000001,
+                4137.200000000001,
+                4704.439999999997
+              ],
+              "operation": "one message with 2 values to 10 listener(s)",
+              "repetitions": 5,
+              "warmup": 2,
+              "rounds": 3
+            },
+            {
+              "allocatedBytesPerOperation": 0.0072,
+              "equivalent": true,
+              "iterations": 5000,
+              "medianNanoseconds": 40228.2,
+              "metrics": {
+                "listenerCallsPerDispatch": 100
+              },
+              "minimumNanoseconds": 19350.2,
+              "name": "dispatch-100",
+              "nanosecondsPerOperation": [
+                19350.2,
+                36243.40000000001,
+                34514.39999999999,
+                46589.40000000001,
+                39147.000000000015,
+                42628.8,
+                50160.19999999999,
+                38998.59999999999,
+                40236.59999999998,
+                45257.40000000002,
+                39682.6,
+                40228.2,
+                38609.60000000002,
+                46019.80000000001,
+                41831.399999999965
+              ],
+              "operation": "one message with 2 values to 100 listener(s)",
+              "repetitions": 5,
+              "warmup": 2,
+              "rounds": 3
+            },
+            {
+              "allocatedBytesPerOperation": 537.6045,
+              "equivalent": true,
+              "iterations": 20000,
+              "medianNanoseconds": 3818.1999999999994,
+              "minimumNanoseconds": 3137.9000000000005,
+              "name": "churn-warm",
+              "nanosecondsPerOperation": [
+                4540.950000000001,
+                4784.199999999999,
+                3493.1999999999994,
+                3462.3999999999987,
+                4431.299999999999,
+                3550.8,
+                3616.6500000000005,
+                3818.1999999999994,
+                3645.05,
+                3866.100000000003,
+                3137.9000000000005,
+                3540.4499999999994,
+                4383.049999999999,
+                3937.750000000001,
+                4366.699999999999
+              ],
+              "operation": "connect and disconnect one listener beside 10 others",
+              "repetitions": 5,
+              "warmup": 2,
+              "rounds": 3
+            },
+            {
+              "allocatedBytesPerOperation": 560.0045,
+              "equivalent": true,
+              "iterations": 20000,
+              "medianNanoseconds": 3867.05,
+              "minimumNanoseconds": 3081.85,
+              "name": "churn-cold",
+              "nanosecondsPerOperation": [
+                4194.9000000000015,
+                4429.3,
+                5082.449999999999,
+                4870.750000000002,
+                4853.049999999997,
+                3565.1,
+                3081.85,
+                3406.000000000001,
+                3455.2,
+                3371.4499999999975,
+                3558.5999999999995,
+                4005.749999999999,
+                3867.05,
+                3946.9999999999977,
+                3768.4499999999985
+              ],
+              "operation": "connect and disconnect the only listener",
+              "repetitions": 5,
+              "warmup": 2,
+              "rounds": 3
+            }
+          ]
+        },
+        "ace3": {
+          "libraries": [
+            {
+              "minor": 4,
+              "name": "AceEvent-3.0"
+            },
+            {
+              "minor": 8,
+              "name": "CallbackHandler-1.0"
+            }
+          ],
+          "checks": [
+            {
+              "detail": "late listener calls: 0 in the dispatch that added it, 1 after the next",
+              "name": "connect-during-dispatch-waits",
+              "passed": true,
+              "promised": true
+            },
+            {
+              "detail": "listeners that ran after the first removed all: 1",
+              "name": "disconnect-during-dispatch-skips",
+              "passed": true,
+              "promised": true
+            },
+            {
+              "detail": "listener calls for one outer and one nested dispatch: 6 of 6",
+              "name": "nested-dispatch",
+              "passed": true,
+              "promised": true
+            },
+            {
+              "detail": "dispatch returned normally: true, other listener ran: 1, errors reported: 1",
+              "name": "error-isolated",
+              "passed": true,
+              "promised": true
+            },
+            {
+              "detail": "delivery order of 8 listeners: 7 6 5 4 3 2 1 8",
+              "name": "connection-order",
+              "passed": false,
+              "promised": false
+            }
+          ],
+          "cases": [
+            {
+              "allocatedBytesPerOperation": 0,
+              "equivalent": true,
+              "iterations": 200000,
+              "medianNanoseconds": 501.9650000000003,
+              "metrics": {
+                "listenerCallsPerDispatch": 1
+              },
+              "minimumNanoseconds": 197.79999999999993,
+              "name": "dispatch-1",
+              "nanosecondsPerOperation": [
+                201.03000000000011,
+                197.79999999999993,
+                199.11,
+                199.12499999999986,
+                198.66999999999996,
+                678.9299999999998,
+                656.4999999999999,
+                446.9450000000002,
+                471.96000000000015,
+                501.9650000000003,
+                522.55,
+                576.82,
+                555.7649999999996,
+                512.4599999999996,
+                504.17500000000007
+              ],
+              "operation": "one message with 2 values to 1 listener(s)",
+              "repetitions": 5,
+              "warmup": 2,
+              "rounds": 3
+            },
+            {
+              "allocatedBytesPerOperation": 0,
+              "equivalent": true,
+              "iterations": 50000,
+              "medianNanoseconds": 2494.74,
+              "metrics": {
+                "listenerCallsPerDispatch": 10
+              },
+              "minimumNanoseconds": 966.1400000000003,
+              "name": "dispatch-10",
+              "nanosecondsPerOperation": [
+                966.1400000000003,
+                967.1199999999997,
+                967.44,
+                973.64,
+                972.6000000000001,
+                3005.879999999999,
+                3409.8399999999992,
+                3087.7,
+                2606.9600000000005,
+                2519.1200000000017,
+                2494.74,
+                2516.919999999999,
+                2418.7399999999993,
+                2574.779999999999,
+                2264.02
+              ],
+              "operation": "one message with 2 values to 10 listener(s)",
+              "repetitions": 5,
+              "warmup": 2,
+              "rounds": 3
+            },
+            {
+              "allocatedBytesPerOperation": 0,
+              "equivalent": true,
+              "iterations": 5000,
+              "medianNanoseconds": 20537.20000000001,
+              "metrics": {
+                "listenerCallsPerDispatch": 100
+              },
+              "minimumNanoseconds": 18102.000000000007,
+              "name": "dispatch-100",
+              "nanosecondsPerOperation": [
+                24417.8,
+                19798.399999999994,
+                20537.20000000001,
+                22394.400000000016,
+                20850.999999999996,
+                23093.59999999999,
+                19945.4,
+                22763.599999999995,
+                21018.6,
+                21045.800000000003,
+                18102.000000000007,
+                19828.6,
+                20032.600000000013,
+                19402.600000000002,
+                18365.600000000002
+              ],
+              "operation": "one message with 2 values to 100 listener(s)",
+              "repetitions": 5,
+              "warmup": 2,
+              "rounds": 3
+            },
+            {
+              "allocatedBytesPerOperation": 0,
+              "equivalent": true,
+              "iterations": 20000,
+              "medianNanoseconds": 957.2000000000004,
+              "minimumNanoseconds": 816.1000000000001,
+              "name": "churn-warm",
+              "nanosecondsPerOperation": [
+                1295.6000000000001,
+                1216.5500000000002,
+                1198.9,
+                1296.1,
+                1310.2500000000005,
+                1001.3999999999994,
+                843.4500000000004,
+                945.1999999999995,
+                993.050000000001,
+                932.1499999999996,
+                881.6999999999998,
+                957.2000000000004,
+                879.15,
+                859.0499999999994,
+                816.1000000000001
+              ],
+              "operation": "connect and disconnect one listener beside 10 others",
+              "repetitions": 5,
+              "warmup": 2,
+              "rounds": 3
+            },
+            {
+              "allocatedBytesPerOperation": 0,
+              "equivalent": true,
+              "iterations": 20000,
+              "medianNanoseconds": 959.7000000000002,
+              "minimumNanoseconds": 856.5000000000003,
+              "name": "churn-cold",
+              "nanosecondsPerOperation": [
+                1351.4499999999998,
+                1054.4999999999993,
+                1272.7000000000003,
+                1278.7499999999993,
+                1277.4500000000007,
+                929.3999999999996,
+                919.6500000000003,
+                975.8000000000002,
+                964.6500000000002,
+                856.5000000000003,
+                930.2000000000006,
+                885.0000000000003,
+                891.65,
+                959.7000000000002,
+                876.2999999999993
+              ],
+              "operation": "connect and disconnect the only listener",
+              "repetitions": 5,
+              "warmup": 2,
+              "rounds": 3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "timers",
+      "title": "Timers on a simulated clock",
+      "compares": "TimerKit against AceTimer-3.0",
+      "sides": {
+        "moltencodes": {
+          "libraries": [
+            {
+              "name": "TimerKit",
+              "revision": 9
+            }
+          ],
+          "checks": [
+            {
+              "detail": "calls after cancel and 10 s: 0",
+              "name": "cancelled-oneshot-never-fires",
+              "passed": true,
+              "promised": true
+            },
+            {
+              "detail": "ticks of a repeating timer cancelled in its third tick, after 6 s: 3",
+              "name": "repeat-cancel-from-callback",
+              "passed": true,
+              "promised": true
+            },
+            {
+              "detail": "order: one, two",
+              "name": "fires-in-deadline-order",
+              "passed": true,
+              "promised": true
+            },
+            {
+              "detail": "host timers pending: 0, library active: 0",
+              "name": "nothing-pending-when-idle",
+              "passed": true,
+              "promised": true
+            }
+          ],
+          "cases": [
+            {
+              "allocatedBytesPerOperation": 1072.00435,
+              "equivalent": true,
+              "iterations": 20000,
+              "medianNanoseconds": 4374.699999999999,
+              "metrics": {
+                "cancelledTimers": 1000,
+                "libraryActiveAfterCancel": 0,
+                "pendingHostTimersAfterCancel": 0,
+                "retainedBytesPerCancelledTimer": 40.92
+              },
+              "minimumNanoseconds": 4164.399999999999,
+              "name": "oneshot-create-cancel",
+              "nanosecondsPerOperation": [
+                4557.999999999999,
+                4164.399999999999,
+                4916.950000000001,
+                4300.799999999999,
+                4752.649999999997,
+                4700.550000000002,
+                4208.049999999999,
+                4292.9,
+                4217.350000000003,
+                4238.049999999998,
+                4374.699999999999,
+                4647.750000000001,
+                4202.1,
+                4581.9,
+                4463.15
+              ],
+              "operation": "start a 10 s one-shot timer and cancel it",
+              "repetitions": 5,
+              "warmup": 2,
+              "rounds": 3
+            },
+            {
+              "allocatedBytesPerOperation": 1072.00435,
+              "equivalent": true,
+              "iterations": 20000,
+              "medianNanoseconds": 4431.950000000002,
+              "metrics": {
+                "firedPerStarted": 1,
+                "pendingHostTimers": 0
+              },
+              "minimumNanoseconds": 3973.0000000000014,
+              "name": "oneshot-create-fire",
+              "nanosecondsPerOperation": [
+                4339.700000000001,
+                5139.7,
+                3973.0000000000014,
+                4431.950000000002,
+                4101.749999999998,
+                4552.1,
+                4586.25,
+                4601.6,
+                4206.300000000001,
+                4615.949999999996,
+                5282.5999999999985,
+                4246.6,
+                4683.999999999999,
+                4420.000000000002,
+                4191.15
+              ],
+              "operation": "start a 1 s one-shot timer and let it fire",
+              "repetitions": 5,
+              "warmup": 2,
+              "rounds": 3
+            },
+            {
+              "allocatedBytesPerOperation": 0,
+              "equivalent": true,
+              "iterations": 50000,
+              "medianNanoseconds": 888.5399999999998,
+              "metrics": {
+                "ticksPerExpectedTick": 1
+              },
+              "minimumNanoseconds": 740.44,
+              "name": "repeat-tick",
+              "nanosecondsPerOperation": [
+                771.5199999999998,
+                764.2399999999999,
+                935.88,
+                926.7200000000003,
+                837.7000000000002,
+                942.1200000000001,
+                954.5000000000003,
+                888.5399999999998,
+                942.5400000000006,
+                740.44,
+                924.76,
+                935.22,
+                879.3200000000002,
+                846.2200000000009,
+                786.9999999999999
+              ],
+              "operation": "deliver one tick of a 1 s repeating timer (100 running)",
+              "repetitions": 5,
+              "warmup": 2,
+              "rounds": 3
+            },
+            {
+              "allocatedBytesPerOperation": 224,
+              "equivalent": false,
+              "iterations": 20000,
+              "medianNanoseconds": 575.4000000000002,
+              "minimumNanoseconds": 492.09999999999945,
+              "name": "host-stub-oneshot-create-cancel",
+              "nanosecondsPerOperation": [
+                707.8999999999995,
+                646.9999999999997,
+                591.4499999999996,
+                553.65,
+                540.8499999999997,
+                510.8000000000002,
+                520.2499999999999,
+                530.9500000000002,
+                560.65,
+                492.09999999999945,
+                673.4499999999997,
+                649.45,
+                710.9000000000004,
+                575.4000000000002,
+                596.0500000000008
+              ],
+              "note": "host stub cost, not a library cost: NewTimer and Cancel (TimerKit) or After (AceTimer)",
+              "operation": "the simulated C_Timer alone, one one-shot start and cancel in this library's style",
+              "repetitions": 5,
+              "warmup": 2,
+              "rounds": 3
+            },
+            {
+              "allocatedBytesPerOperation": 0,
+              "equivalent": false,
+              "iterations": 50000,
+              "medianNanoseconds": 218.2199999999998,
+              "minimumNanoseconds": 175.87999999999994,
+              "name": "host-stub-repeat-tick",
+              "nanosecondsPerOperation": [
+                210.7199999999999,
+                211.52000000000004,
+                244.66000000000014,
+                235.92,
+                217.9599999999998,
+                234.14000000000004,
+                175.87999999999994,
+                194.51999999999995,
+                218.2199999999998,
+                192.88,
+                246.96000000000012,
+                231.40000000000023,
+                240.27999999999992,
+                212.65999999999977,
+                219.9800000000002
+              ],
+              "note": "host stub cost, not a library cost: After re-armed per tick (AceTimer) or one ticker (TimerKit)",
+              "operation": "the simulated C_Timer alone, one tick in this library's style",
+              "repetitions": 5,
+              "warmup": 2,
+              "rounds": 3
+            }
+          ]
+        },
+        "ace3": {
+          "libraries": [
+            {
+              "minor": 17,
+              "name": "AceTimer-3.0"
+            }
+          ],
+          "checks": [
+            {
+              "detail": "calls after cancel and 10 s: 0",
+              "name": "cancelled-oneshot-never-fires",
+              "passed": true,
+              "promised": true
+            },
+            {
+              "detail": "ticks of a repeating timer cancelled in its third tick, after 6 s: 3",
+              "name": "repeat-cancel-from-callback",
+              "passed": true,
+              "promised": true
+            },
+            {
+              "detail": "order: one, two",
+              "name": "fires-in-deadline-order",
+              "passed": true,
+              "promised": true
+            },
+            {
+              "detail": "host timers pending: 0, library active: 0",
+              "name": "nothing-pending-when-idle",
+              "passed": true,
+              "promised": true
+            }
+          ],
+          "cases": [
+            {
+              "allocatedBytesPerOperation": 512,
+              "equivalent": true,
+              "iterations": 20000,
+              "medianNanoseconds": 858.7500000000011,
+              "metrics": {
+                "cancelledTimers": 1000,
+                "libraryActiveAfterCancel": 0,
+                "pendingHostTimersAfterCancel": 1000,
+                "retainedBytesPerCancelledTimer": 552.92
+              },
+              "minimumNanoseconds": 610.4000000000005,
+              "name": "oneshot-create-cancel",
+              "nanosecondsPerOperation": [
+                1052.3999999999999,
+                1055.7000000000003,
+                1153.5000000000005,
+                846.6000000000001,
+                858.7500000000011,
+                792.7500000000003,
+                879.3500000000001,
+                884.2499999999989,
+                868.2999999999996,
+                762.5999999999993,
+                833.6000000000003,
+                610.4000000000005,
+                898.7500000000009,
+                842.35,
+                844.5999999999995
+              ],
+              "operation": "start a 10 s one-shot timer and cancel it",
+              "repetitions": 5,
+              "warmup": 2,
+              "rounds": 3
+            },
+            {
+              "allocatedBytesPerOperation": 512,
+              "equivalent": true,
+              "iterations": 20000,
+              "medianNanoseconds": 1245.5499999999995,
+              "metrics": {
+                "firedPerStarted": 1,
+                "pendingHostTimers": 0
+              },
+              "minimumNanoseconds": 983.3999999999996,
+              "name": "oneshot-create-fire",
+              "nanosecondsPerOperation": [
+                1177.1500000000003,
+                1201.7000000000007,
+                1191.500000000001,
+                1282.9999999999995,
+                1290.7000000000003,
+                1148.6999999999998,
+                1254.4000000000008,
+                1245.5499999999995,
+                1269.1999999999994,
+                1739.7499999999995,
+                1270.65,
+                1210.05,
+                1185.399999999999,
+                1336.749999999999,
+                983.3999999999996
+              ],
+              "operation": "start a 1 s one-shot timer and let it fire",
+              "repetitions": 5,
+              "warmup": 2,
+              "rounds": 3
+            },
+            {
+              "allocatedBytesPerOperation": 0,
+              "equivalent": true,
+              "iterations": 50000,
+              "medianNanoseconds": 632.5199999999998,
+              "metrics": {
+                "ticksPerExpectedTick": 1
+              },
+              "minimumNanoseconds": 527.56,
+              "name": "repeat-tick",
+              "nanosecondsPerOperation": [
+                527.56,
+                628.08,
+                657.9800000000002,
+                681.06,
+                647.82,
+                652.8600000000001,
+                665.4000000000002,
+                563.8799999999999,
+                632.5199999999998,
+                583.3199999999999,
+                633.4400000000002,
+                548.38,
+                546.7,
+                609.46,
+                696.2200000000001
+              ],
+              "operation": "deliver one tick of a 1 s repeating timer (100 running)",
+              "repetitions": 5,
+              "warmup": 2,
+              "rounds": 3
+            },
+            {
+              "allocatedBytesPerOperation": 0,
+              "equivalent": false,
+              "iterations": 20000,
+              "medianNanoseconds": 269.84999999999997,
+              "minimumNanoseconds": 225.25000000000045,
+              "name": "host-stub-oneshot-create-cancel",
+              "nanosecondsPerOperation": [
+                268.20000000000005,
+                303.6500000000001,
+                269.84999999999997,
+                266.7499999999996,
+                276.15,
+                296.0500000000001,
+                228.74999999999977,
+                254.24999999999994,
+                225.25000000000045,
+                249.50000000000043,
+                369.8999999999997,
+                335.45000000000033,
+                321.25,
+                229.49999999999986,
+                355.1499999999999
+              ],
+              "note": "host stub cost, not a library cost: NewTimer and Cancel (TimerKit) or After (AceTimer)",
+              "operation": "the simulated C_Timer alone, one one-shot start and cancel in this library's style",
+              "repetitions": 5,
+              "warmup": 2,
+              "rounds": 3
+            },
+            {
+              "allocatedBytesPerOperation": 0,
+              "equivalent": false,
+              "iterations": 50000,
+              "medianNanoseconds": 330.82,
+              "minimumNanoseconds": 276.7799999999998,
+              "name": "host-stub-repeat-tick",
+              "nanosecondsPerOperation": [
+                338.6,
+                316.87999999999994,
+                279.08000000000015,
+                280.7400000000001,
+                350.4199999999999,
+                334,
+                330.82,
+                338.02,
+                333.5199999999999,
+                364.8600000000001,
+                283.1599999999999,
+                276.7799999999998,
+                300.49999999999994,
+                297.9000000000001,
+                336.51999999999987
+              ],
+              "note": "host stub cost, not a library cost: After re-armed per tick (AceTimer) or one ticker (TimerKit)",
+              "operation": "the simulated C_Timer alone, one tick in this library's style",
+              "repetitions": 5,
+              "warmup": 2,
+              "rounds": 3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "settings",
+      "title": "Saved settings and profiles",
+      "compares": "SettingsKit (with SchemaKit) against AceDB-3.0",
+      "sides": {
+        "moltencodes": {
+          "libraries": [
+            {
+              "name": "SettingsKit",
+              "revision": 5
+            },
+            {
+              "name": "SchemaKit",
+              "revision": 4
+            },
+            {
+              "name": "SignalKit",
+              "revision": 8
+            },
+            {
+              "name": "EventKit",
+              "revision": 16
+            }
+          ],
+          "checks": [
+            {
+              "detail": "fontSize: 12",
+              "name": "reads-default",
+              "passed": true,
+              "promised": true
+            },
+            {
+              "detail": "scale on Alpha: 1.5",
+              "name": "reads-saved",
+              "passed": true,
+              "promised": true
+            },
+            {
+              "detail": "auras[118].shown: true",
+              "name": "reads-entry-wildcard",
+              "passed": true,
+              "promised": true
+            },
+            {
+              "detail": "Beta scale 0.75, Beta frame.x 0, Alpha frame.x 42",
+              "name": "profiles-are-separate",
+              "passed": true,
+              "promised": true
+            },
+            {
+              "detail": "writing a string to a number field raised",
+              "name": "refuses-invalid-write",
+              "passed": true,
+              "promised": true
+            }
+          ],
+          "cases": [
+            {
+              "allocatedBytesPerOperation": 35433.8495,
+              "equivalent": true,
+              "iterations": 2000,
+              "medianNanoseconds": 139489.49999999983,
+              "minimumNanoseconds": 49088.99999999999,
+              "name": "open-empty",
+              "nanosecondsPerOperation": [
+                172463.00000000003,
+                130188.50000000004,
+                140575.5000000001,
+                139489.49999999983,
+                135078.49999999988,
+                158940.50000000003,
+                146135.5000000001,
+                148483.5000000001,
+                154764.49999999997,
+                147718.99999999994,
+                49352.49999999999,
+                49088.99999999999,
+                50587.50000000001,
+                52931.99999999998,
+                51981.499999999956
+              ],
+              "operation": "open a database over a new, empty saved variable",
+              "repetitions": 5,
+              "warmup": 2,
+              "rounds": 3
+            },
+            {
+              "allocatedBytesPerOperation": 34842.495,
+              "equivalent": true,
+              "iterations": 200,
+              "medianNanoseconds": 129214.99999999974,
+              "metrics": {
+                "databasesHeld": 1,
+                "retainedBytesPerOpenDatabase": 25538
+              },
+              "minimumNanoseconds": 45840.000000000044,
+              "name": "open-populated",
+              "nanosecondsPerOperation": [
+                134375.00000000017,
+                175589.9999999999,
+                173079.99999999962,
+                132734.99999999994,
+                129214.99999999974,
+                147765.00000000012,
+                158579.99999999983,
+                172990.0000000001,
+                114914.99999999987,
+                126799.99999999968,
+                47294.99999999997,
+                50725.00000000007,
+                53860.00000000002,
+                45840.000000000044,
+                48435.00000000001
+              ],
+              "operation": "open a database over a saved variable with 22 profiles and 50 characters",
+              "repetitions": 5,
+              "warmup": 2,
+              "rounds": 3
+            },
+            {
+              "allocatedBytesPerOperation": 0,
+              "equivalent": true,
+              "iterations": 5000,
+              "medianNanoseconds": 2620.4000000000005,
+              "minimumNanoseconds": 1197.6,
+              "name": "switch-profile",
+              "nanosecondsPerOperation": [
+                3244.4,
+                2990.599999999999,
+                3081.7999999999984,
+                2620.4000000000005,
+                2915.6000000000013,
+                2877.5999999999995,
+                2763.399999999999,
+                2596.7999999999993,
+                2263.2000000000016,
+                2843.1999999999957,
+                1206.4000000000005,
+                1218.799999999999,
+                1221.399999999999,
+                1211.1999999999998,
+                1197.6
+              ],
+              "note": "AceDB also strips default-equal values from the old profile on every switch",
+              "operation": "switch between two existing profiles and read one value",
+              "repetitions": 5,
+              "warmup": 2,
+              "rounds": 3
+            },
+            {
+              "allocatedBytesPerOperation": 0,
+              "equivalent": true,
+              "iterations": 200000,
+              "medianNanoseconds": 794.24,
+              "minimumNanoseconds": 351.31500000000005,
+              "name": "read-default",
+              "nanosecondsPerOperation": [
+                937.6849999999997,
+                828.1749999999998,
+                794.24,
+                857.4900000000001,
+                938.0100000000003,
+                785.4449999999998,
+                839.6100000000001,
+                768.275,
+                799.645,
+                829.1400000000004,
+                351.31500000000005,
+                351.8450000000001,
+                357.6599999999999,
+                354.9000000000002,
+                352.34999999999985
+              ],
+              "operation": "read a profile value nothing was saved for",
+              "repetitions": 5,
+              "warmup": 2,
+              "rounds": 3
+            },
+            {
+              "allocatedBytesPerOperation": 0,
+              "equivalent": true,
+              "iterations": 200000,
+              "medianNanoseconds": 700.6699999999998,
+              "minimumNanoseconds": 309.3749999999998,
+              "name": "read-saved",
+              "nanosecondsPerOperation": [
+                733.1199999999999,
+                718.8699999999999,
+                760.6749999999995,
+                677.1949999999998,
+                741.905,
+                742.1850000000002,
+                644.8900000000001,
+                718.01,
+                700.6699999999998,
+                722.8900000000004,
+                316.40500000000003,
+                316.55,
+                310.975,
+                309.3749999999998,
+                313.46999999999986
+              ],
+              "operation": "read a saved profile value",
+              "repetitions": 5,
+              "warmup": 2,
+              "rounds": 3
+            },
+            {
+              "allocatedBytesPerOperation": 0,
+              "equivalent": true,
+              "iterations": 200000,
+              "medianNanoseconds": 1939.995,
+              "minimumNanoseconds": 1798.0349999999987,
+              "name": "read-nested",
+              "nanosecondsPerOperation": [
+                1896.0499999999997,
+                1820.1500000000003,
+                2045.2350000000008,
+                1798.0349999999987,
+                1816.2650000000015,
+                1819.81,
+                1939.995,
+                1902.2549999999994,
+                1894.6649999999988,
+                1963.8849999999984,
+                2250.8849999999998,
+                2572.9799999999996,
+                2480.1099999999997,
+                2699.5200000000004,
+                2874.824999999999
+              ],
+              "operation": "read a nested record value (profile.frame.x)",
+              "repetitions": 5,
+              "warmup": 2,
+              "rounds": 3
+            },
+            {
+              "allocatedBytesPerOperation": 0.00797,
+              "equivalent": true,
+              "iterations": 200000,
+              "medianNanoseconds": 3013.225000000001,
+              "minimumNanoseconds": 1356.9949999999985,
+              "name": "read-entry-default",
+              "nanosecondsPerOperation": [
+                3273.5899999999992,
+                3610.8150000000005,
+                3134.7299999999987,
+                3199.754999999999,
+                2993.6950000000006,
+                3013.225000000001,
+                3007.319999999999,
+                3022.555,
+                3023.530000000001,
+                3021.3900000000017,
+                1390.65,
+                1370.5149999999987,
+                1356.9949999999985,
+                1368.4399999999996,
+                1360.8050000000005
+              ],
+              "operation": "read a field of an unsaved keyed entry (profile.auras[118].shown)",
+              "repetitions": 5,
+              "warmup": 2,
+              "rounds": 3
+            },
+            {
+              "allocatedBytesPerOperation": 0.0064,
+              "equivalent": false,
+              "iterations": 100000,
+              "medianNanoseconds": 1775.819999999999,
+              "minimumNanoseconds": 1721.1,
+              "name": "write-scalar",
+              "nanosecondsPerOperation": [
+                4617.02,
+                4441.169999999999,
+                4542.979999999999,
+                4703.4000000000015,
+                4350.869999999997,
+                4100.210000000001,
+                1902.3100000000004,
+                1764.77,
+                1761.029999999999,
+                1721.1,
+                1724.48,
+                1749.069999999999,
+                1773.2399999999993,
+                1775.819999999999,
+                1734.2199999999998
+              ],
+              "note": "SettingsKit validates the value and fires its change signal; AceDB stores it unchecked",
+              "operation": "write a profile number (profile.scale)",
+              "repetitions": 5,
+              "warmup": 2,
+              "rounds": 3
+            },
+            {
+              "allocatedBytesPerOperation": 0.0064,
+              "equivalent": false,
+              "iterations": 100000,
+              "medianNanoseconds": 2443.3300000000004,
+              "minimumNanoseconds": 2336.3199999999993,
+              "name": "write-nested",
+              "nanosecondsPerOperation": [
+                7865.9900000000025,
+                7130.619999999999,
+                6152.390000000004,
+                6652.329999999997,
+                6275.530000000007,
+                2443.3300000000004,
+                2471.12,
+                2484.6400000000003,
+                2441.1700000000014,
+                2378.1699999999996,
+                2431.120000000001,
+                2399.7900000000004,
+                2336.3199999999993,
+                2386.9700000000016,
+                2430.2
+              ],
+              "note": "SettingsKit validates the value and fires its change signal; AceDB stores it unchecked",
+              "operation": "write a nested record value (profile.frame.x)",
+              "repetitions": 5,
+              "warmup": 2,
+              "rounds": 3
+            },
+            {
+              "allocatedBytesPerOperation": 0.0064,
+              "equivalent": false,
+              "iterations": 100000,
+              "medianNanoseconds": 2803.86,
+              "minimumNanoseconds": 2708.679999999999,
+              "name": "validate",
+              "nanosecondsPerOperation": [
+                7452.050000000001,
+                7211.17,
+                7171.989999999999,
+                7169.0999999999985,
+                6976.450000000004,
+                2803.86,
+                2856.4499999999994,
+                2803.6900000000014,
+                2791.490000000001,
+                2825.8399999999992,
+                2745.6100000000006,
+                2708.679999999999,
+                2768.45,
+                2750.5200000000004,
+                2791.2399999999993
+              ],
+              "note": "SettingsKit only: AceDB has no validation",
+              "operation": "check a write without writing it (db:Validate)",
+              "repetitions": 5,
+              "warmup": 2,
+              "rounds": 3
+            }
+          ]
+        },
+        "ace3": {
+          "libraries": [
+            {
+              "minor": 37,
+              "name": "AceDB-3.0"
+            },
+            {
+              "minor": 8,
+              "name": "CallbackHandler-1.0"
+            }
+          ],
+          "checks": [
+            {
+              "detail": "fontSize: 12",
+              "name": "reads-default",
+              "passed": true,
+              "promised": true
+            },
+            {
+              "detail": "scale on Alpha: 1.5",
+              "name": "reads-saved",
+              "passed": true,
+              "promised": true
+            },
+            {
+              "detail": "auras[118].shown: true",
+              "name": "reads-entry-wildcard",
+              "passed": true,
+              "promised": true
+            },
+            {
+              "detail": "Beta scale 0.75, Beta frame.x 0, Alpha frame.x 42",
+              "name": "profiles-are-separate",
+              "passed": true,
+              "promised": true
+            },
+            {
+              "detail": "writing a string to a number field was stored",
+              "name": "refuses-invalid-write",
+              "passed": false,
+              "promised": false
+            }
+          ],
+          "cases": [
+            {
+              "allocatedBytesPerOperation": 3299,
+              "equivalent": true,
+              "iterations": 2000,
+              "medianNanoseconds": 6122.000000000003,
+              "minimumNanoseconds": 2154.5,
+              "name": "open-empty",
+              "nanosecondsPerOperation": [
+                5622.000000000002,
+                6372.000000000003,
+                4933.999999999994,
+                6122.000000000003,
+                6285.499999999999,
+                6759.000000000001,
+                6243.499999999999,
+                7182.000000000001,
+                6527.000000000005,
+                6465.499999999999,
+                2154.5,
+                2348.5,
+                2410.4999999999995,
+                2442.5000000000036,
+                2383.9999999999973
+              ],
+              "operation": "open a database over a new, empty saved variable",
+              "repetitions": 5,
+              "warmup": 2,
+              "rounds": 3
+            },
+            {
+              "allocatedBytesPerOperation": 3792,
+              "equivalent": true,
+              "iterations": 200,
+              "medianNanoseconds": 7505.00000000015,
+              "metrics": {
+                "databasesHeld": 1,
+                "retainedBytesPerOpenDatabase": 3872
+              },
+              "minimumNanoseconds": 4299.999999999998,
+              "name": "open-populated",
+              "nanosecondsPerOperation": [
+                9699.999999999985,
+                13529.99999999993,
+                10580.000000000035,
+                12215.000000000142,
+                7505.00000000015,
+                13434.999999999975,
+                10415.000000000007,
+                5809.999999999982,
+                7099.9999999998845,
+                13740.000000000418,
+                4450.000000000009,
+                4299.999999999998,
+                5690.000000000001,
+                4765.000000000047,
+                4649.999999999932
+              ],
+              "operation": "open a database over a saved variable with 22 profiles and 50 characters",
+              "repetitions": 5,
+              "warmup": 2,
+              "rounds": 3
+            },
+            {
+              "allocatedBytesPerOperation": 496.0072,
+              "equivalent": true,
+              "iterations": 5000,
+              "medianNanoseconds": 7116.799999999998,
+              "minimumNanoseconds": 3122.999999999999,
+              "name": "switch-profile",
+              "nanosecondsPerOperation": [
+                6594.599999999998,
+                6751.800000000003,
+                7398.400000000004,
+                7557.999999999998,
+                7495.399999999997,
+                7116.799999999998,
+                7180.199999999997,
+                7529.399999999997,
+                8165.2,
+                8216.000000000002,
+                3152.6,
+                3122.999999999999,
+                3158.8,
+                3181.800000000001,
+                3149.000000000002
+              ],
+              "note": "AceDB also strips default-equal values from the old profile on every switch",
+              "operation": "switch between two existing profiles and read one value",
+              "repetitions": 5,
+              "warmup": 2,
+              "rounds": 3
+            },
+            {
+              "allocatedBytesPerOperation": 0,
+              "equivalent": true,
+              "iterations": 200000,
+              "medianNanoseconds": 8.745000000000003,
+              "minimumNanoseconds": 3.8799999999999946,
+              "name": "read-default",
+              "nanosecondsPerOperation": [
+                8.584999999999999,
+                11.769999999999975,
+                11.090000000000023,
+                8.909999999999995,
+                8.92500000000001,
+                8.854999999999992,
+                8.800000000000006,
+                11.710000000000019,
+                8.669999999999998,
+                8.745000000000003,
+                3.8799999999999946,
+                4.044999999999995,
+                4.065000000000006,
+                4.019999999999996,
+                3.9299999999999926
+              ],
+              "operation": "read a profile value nothing was saved for",
+              "repetitions": 5,
+              "warmup": 2,
+              "rounds": 3
+            },
+            {
+              "allocatedBytesPerOperation": 0,
+              "equivalent": true,
+              "iterations": 200000,
+              "medianNanoseconds": 9.759999999999977,
+              "minimumNanoseconds": 3.5450000000000066,
+              "name": "read-saved",
+              "nanosecondsPerOperation": [
+                9.759999999999977,
+                9.770000000000023,
+                10.114999999999984,
+                10.90999999999998,
+                10.439999999999998,
+                8.079999999999997,
+                9.82499999999999,
+                10.13,
+                14.914999999999997,
+                8.920000000000005,
+                3.5650000000000004,
+                3.5450000000000066,
+                3.615000000000007,
+                3.580000000000007,
+                3.615000000000007
+              ],
+              "operation": "read a saved profile value",
+              "repetitions": 5,
+              "warmup": 2,
+              "rounds": 3
+            },
+            {
+              "allocatedBytesPerOperation": 0,
+              "equivalent": true,
+              "iterations": 200000,
+              "medianNanoseconds": 15.395000000000026,
+              "minimumNanoseconds": 6.884999999999999,
+              "name": "read-nested",
+              "nanosecondsPerOperation": [
+                14.955000000000002,
+                15.824999999999973,
+                17.014999999999983,
+                20.289999999999996,
+                16.025000000000034,
+                17.145000000000007,
+                16.515,
+                15.395000000000026,
+                14.57,
+                22.56000000000001,
+                6.965000000000001,
+                6.914999999999994,
+                6.999999999999992,
+                6.884999999999999,
+                6.954999999999999
+              ],
+              "operation": "read a nested record value (profile.frame.x)",
+              "repetitions": 5,
+              "warmup": 2,
+              "rounds": 3
+            },
+            {
+              "allocatedBytesPerOperation": 0,
+              "equivalent": true,
+              "iterations": 200000,
+              "medianNanoseconds": 28.590000000000003,
+              "minimumNanoseconds": 10.629999999999997,
+              "name": "read-entry-default",
+              "nanosecondsPerOperation": [
+                34.81499999999998,
+                30.805,
+                35.43500000000002,
+                32.71499999999997,
+                31.164999999999946,
+                24.030000000000022,
+                31.415000000000017,
+                28.590000000000003,
+                30.47000000000001,
+                26.31500000000002,
+                11.219999999999997,
+                10.799999999999994,
+                10.629999999999997,
+                11.215000000000009,
+                10.81499999999999
+              ],
+              "operation": "read a field of an unsaved keyed entry (profile.auras[118].shown)",
+              "repetitions": 5,
+              "warmup": 2,
+              "rounds": 3
+            },
+            {
+              "allocatedBytesPerOperation": 0,
+              "equivalent": false,
+              "iterations": 100000,
+              "medianNanoseconds": 9.469999999999999,
+              "minimumNanoseconds": 8.619999999999981,
+              "name": "write-scalar",
+              "nanosecondsPerOperation": [
+                21.42999999999999,
+                31.41999999999999,
+                21.800000000000015,
+                22.74999999999999,
+                25.84000000000003,
+                9.009999999999991,
+                8.619999999999981,
+                9.049999999999995,
+                9.569999999999995,
+                9.139999999999981,
+                9.139999999999999,
+                9.650000000000006,
+                9.320000000000006,
+                8.899999999999984,
+                9.469999999999999
+              ],
+              "note": "SettingsKit validates the value and fires its change signal; AceDB stores it unchecked",
+              "operation": "write a profile number (profile.scale)",
+              "repetitions": 5,
+              "warmup": 2,
+              "rounds": 3
+            },
+            {
+              "allocatedBytesPerOperation": 0,
+              "equivalent": false,
+              "iterations": 100000,
+              "medianNanoseconds": 5.319999999999995,
+              "minimumNanoseconds": 5.1500000000000155,
+              "name": "write-nested",
+              "nanosecondsPerOperation": [
+                23.819999999999954,
+                24.72000000000002,
+                18.820000000000018,
+                19.93999999999996,
+                24.80999999999997,
+                5.369999999999993,
+                5.400000000000006,
+                5.27999999999999,
+                5.29,
+                5.310000000000002,
+                5.319999999999995,
+                5.1500000000000155,
+                5.190000000000003,
+                5.2500000000000115,
+                5.180000000000011
+              ],
+              "note": "SettingsKit validates the value and fires its change signal; AceDB stores it unchecked",
+              "operation": "write a nested record value (profile.frame.x)",
+              "repetitions": 5,
+              "warmup": 2,
+              "rounds": 3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "codec",
+      "title": "Serialisation, compression off",
+      "compares": "CodecKit (addon channel) against AceSerializer-3.0",
+      "sides": {
+        "moltencodes": {
+          "libraries": [
+            {
+              "name": "CodecKit",
+              "revision": 4
+            },
+            {
+              "name": "PoolKit",
+              "revision": 8
+            }
+          ],
+          "checks": [
+            {
+              "detail": "decode succeeded: true",
+              "name": "round-trip-small",
+              "passed": true,
+              "promised": true
+            },
+            {
+              "detail": "no NUL, CR or LF in the output",
+              "name": "channel-safe-small",
+              "passed": true,
+              "promised": true
+            },
+            {
+              "detail": "decode succeeded: true",
+              "name": "round-trip-medium",
+              "passed": true,
+              "promised": true
+            },
+            {
+              "detail": "no NUL, CR or LF in the output",
+              "name": "channel-safe-medium",
+              "passed": true,
+              "promised": true
+            },
+            {
+              "detail": "decode succeeded: true",
+              "name": "round-trip-large",
+              "passed": true,
+              "promised": true
+            },
+            {
+              "detail": "no NUL, CR or LF in the output",
+              "name": "channel-safe-large",
+              "passed": true,
+              "promised": true
+            },
+            {
+              "detail": "decode returned false",
+              "name": "truncated-input-refused",
+              "passed": true,
+              "promised": true
+            }
+          ],
+          "cases": [
+            {
+              "allocatedBytesPerOperation": 458.95045,
+              "equivalent": true,
+              "iterations": 20000,
+              "medianNanoseconds": 22014.050000000007,
+              "metrics": {
+                "outputBytes": 104
+              },
+              "minimumNanoseconds": 20777.85,
+              "name": "encode-small",
+              "nanosecondsPerOperation": [
+                21932.799999999996,
+                21975.449999999997,
+                22014.050000000007,
+                36106.650000000016,
+                66432.55000000002,
+                20871.300000000003,
+                20866.550000000007,
+                20777.85,
+                20868.699999999986,
+                20876.69999999999,
+                22325,
+                55101.15000000001,
+                77934.4,
+                88521.99999999999,
+                87466.44999999998
+              ],
+              "operation": "serialise the small payload for the addon channel",
+              "repetitions": 5,
+              "warmup": 2,
+              "rounds": 3
+            },
+            {
+              "allocatedBytesPerOperation": 512.01415,
+              "equivalent": true,
+              "iterations": 20000,
+              "medianNanoseconds": 7342.8499999999985,
+              "metrics": {
+                "inputBytes": 104
+              },
+              "minimumNanoseconds": 7199.7,
+              "name": "decode-small",
+              "nanosecondsPerOperation": [
+                7660.3499999999985,
+                7650.699999999997,
+                7696.700000000002,
+                7672.449999999997,
+                7738.149999999994,
+                7199.7,
+                7298.7,
+                7244.899999999999,
+                7281.349999999997,
+                7211.549999999994,
+                7430.65,
+                7342.8499999999985,
+                7410.249999999995,
+                7241.350000000001,
+                7313.799999999993
+              ],
+              "operation": "deserialise the small payload",
+              "repetitions": 5,
+              "warmup": 2,
+              "rounds": 3
+            },
+            {
+              "allocatedBytesPerOperation": 11607.89,
+              "equivalent": true,
+              "iterations": 1000,
+              "medianNanoseconds": 348622,
+              "metrics": {
+                "outputBytes": 3152
+              },
+              "minimumNanoseconds": 315396,
+              "name": "encode-medium",
+              "nanosecondsPerOperation": [
+                315396,
+                348622,
+                1004948.9999999999,
+                947398.9999999999,
+                325854.00000000006,
+                1200932,
+                1207786,
+                1180199,
+                1189293.0000000002,
+                1191235.0000000007,
+                320041,
+                319483.00000000006,
+                322230,
+                321227.0000000002,
+                324515.9999999998
+              ],
+              "operation": "serialise the medium payload for the addon channel",
+              "repetitions": 5,
+              "warmup": 2,
+              "rounds": 3
+            },
+            {
+              "allocatedBytesPerOperation": 20301.629,
+              "equivalent": true,
+              "iterations": 1000,
+              "medianNanoseconds": 151838.99999999994,
+              "metrics": {
+                "inputBytes": 3152
+              },
+              "minimumNanoseconds": 146966,
+              "name": "decode-medium",
+              "nanosecondsPerOperation": [
+                148611.99999999997,
+                148431.00000000003,
+                148128.00000000003,
+                147212,
+                147008.99999999994,
+                148412.99999999997,
+                146966,
+                157771,
+                154718.00000000003,
+                151838.99999999994,
+                155218.00000000003,
+                155226.00000000003,
+                159398.00000000003,
+                155838.00000000003,
+                154555
+              ],
+              "operation": "deserialise the medium payload",
+              "repetitions": 5,
+              "warmup": 2,
+              "rounds": 3
+            },
+            {
+              "allocatedBytesPerOperation": 62488.34,
+              "equivalent": true,
+              "iterations": 100,
+              "medianNanoseconds": 1313739.9999999998,
+              "metrics": {
+                "outputBytes": 11736
+              },
+              "minimumNanoseconds": 1297829.9999999998,
+              "name": "encode-large",
+              "nanosecondsPerOperation": [
+                1314549.9999999998,
+                1316110.0000000002,
+                1321559.9999999993,
+                1312599.9999999993,
+                1313739.9999999998,
+                1300750,
+                1300600.0000000007,
+                1297829.9999999998,
+                1311310,
+                1300439.9999999993,
+                1309299.9999999998,
+                1845679.9999999993,
+                3998100,
+                5023419.999999999,
+                4221690
+              ],
+              "operation": "serialise the large payload for the addon channel",
+              "repetitions": 5,
+              "warmup": 2,
+              "rounds": 3
+            },
+            {
+              "allocatedBytesPerOperation": 71130.5,
+              "equivalent": true,
+              "iterations": 100,
+              "medianNanoseconds": 1905900.0000000002,
+              "metrics": {
+                "inputBytes": 11736
+              },
+              "minimumNanoseconds": 608180.0000000001,
+              "name": "decode-large",
+              "nanosecondsPerOperation": [
+                2373779.9999999995,
+                2154319.9999999995,
+                1891970.0000000007,
+                2261519.999999999,
+                2088670.0000000014,
+                608180.0000000001,
+                631489.9999999999,
+                631209.9999999999,
+                623260.0000000005,
+                625919.9999999998,
+                1855060.0000000007,
+                1905900.0000000002,
+                2210390,
+                2220130.0000000005,
+                2147240.0000000014
+              ],
+              "operation": "deserialise the large payload",
+              "repetitions": 5,
+              "warmup": 2,
+              "rounds": 3
+            }
+          ]
+        },
+        "ace3": {
+          "libraries": [
+            {
+              "minor": 5,
+              "name": "AceSerializer-3.0"
+            }
+          ],
+          "checks": [
+            {
+              "detail": "decode succeeded: true",
+              "name": "round-trip-small",
+              "passed": true,
+              "promised": true
+            },
+            {
+              "detail": "no NUL, CR or LF in the output",
+              "name": "channel-safe-small",
+              "passed": true,
+              "promised": true
+            },
+            {
+              "detail": "decode succeeded: true",
+              "name": "round-trip-medium",
+              "passed": true,
+              "promised": true
+            },
+            {
+              "detail": "no NUL, CR or LF in the output",
+              "name": "channel-safe-medium",
+              "passed": true,
+              "promised": true
+            },
+            {
+              "detail": "decode succeeded: true",
+              "name": "round-trip-large",
+              "passed": true,
+              "promised": true
+            },
+            {
+              "detail": "no NUL, CR or LF in the output",
+              "name": "channel-safe-large",
+              "passed": true,
+              "promised": true
+            },
+            {
+              "detail": "decode returned false",
+              "name": "truncated-input-refused",
+              "passed": true,
+              "promised": true
+            }
+          ],
+          "cases": [
+            {
+              "allocatedBytesPerOperation": 200.9429,
+              "equivalent": true,
+              "iterations": 20000,
+              "medianNanoseconds": 4021.1,
+              "metrics": {
+                "outputBytes": 118
+              },
+              "minimumNanoseconds": 3912.399999999999,
+              "name": "encode-small",
+              "nanosecondsPerOperation": [
+                3926.1999999999994,
+                3935.8499999999995,
+                3958.0499999999993,
+                3912.399999999999,
+                3956.1999999999985,
+                15148.100000000002,
+                7499.800000000001,
+                4021.1,
+                3975.000000000006,
+                3971.949999999991,
+                17145.700000000004,
+                16529.300000000003,
+                8420.850000000002,
+                4163.499999999998,
+                4139.750000000009
+              ],
+              "operation": "serialise the small payload for the addon channel",
+              "repetitions": 5,
+              "warmup": 2,
+              "rounds": 3
+            },
+            {
+              "allocatedBytesPerOperation": 600.0027,
+              "equivalent": true,
+              "iterations": 20000,
+              "medianNanoseconds": 4101.9,
+              "metrics": {
+                "inputBytes": 118
+              },
+              "minimumNanoseconds": 3982.55,
+              "name": "decode-small",
+              "nanosecondsPerOperation": [
+                4140.7,
+                4127.95,
+                4129.250000000001,
+                4147.249999999999,
+                4141.95,
+                3982.55,
+                4033.8999999999987,
+                4029.3000000000025,
+                4031.5000000000014,
+                4021.0500000000006,
+                4107.1,
+                4101.9,
+                4089.899999999999,
+                4004.5499999999984,
+                4146.499999999998
+              ],
+              "operation": "deserialise the small payload",
+              "repetitions": 5,
+              "warmup": 2,
+              "rounds": 3
+            },
+            {
+              "allocatedBytesPerOperation": 4785.534,
+              "equivalent": true,
+              "iterations": 1000,
+              "medianNanoseconds": 102593.00000000001,
+              "metrics": {
+                "outputBytes": 3675
+              },
+              "minimumNanoseconds": 98686.00000000004,
+              "name": "encode-medium",
+              "nanosecondsPerOperation": [
+                101552,
+                100688.99999999997,
+                99783.00000000001,
+                98686.00000000004,
+                98706.99999999999,
+                102593.00000000001,
+                169928.00000000003,
+                387964,
+                391180,
+                377709.00000000006,
+                102541.00000000001,
+                103760.00000000001,
+                103874.00000000001,
+                102466.99999999997,
+                102892.00000000009
+              ],
+              "operation": "serialise the medium payload for the addon channel",
+              "repetitions": 5,
+              "warmup": 2,
+              "rounds": 3
+            },
+            {
+              "allocatedBytesPerOperation": 20384.2,
+              "equivalent": true,
+              "iterations": 1000,
+              "medianNanoseconds": 118402.99999999999,
+              "metrics": {
+                "inputBytes": 3675
+              },
+              "minimumNanoseconds": 115404.99999999999,
+              "name": "decode-medium",
+              "nanosecondsPerOperation": [
+                115569.99999999999,
+                115502,
+                115404.99999999999,
+                116251,
+                115811,
+                118513.99999999999,
+                118402.99999999999,
+                120547.99999999999,
+                120315.00000000006,
+                117924.99999999994,
+                119141.00000000003,
+                119732,
+                118477.99999999997,
+                117611.00000000001,
+                119315.99999999997
+              ],
+              "operation": "deserialise the medium payload",
+              "repetitions": 5,
+              "warmup": 2,
+              "rounds": 3
+            },
+            {
+              "allocatedBytesPerOperation": 28080.14,
+              "equivalent": true,
+              "iterations": 100,
+              "medianNanoseconds": 578219.9999999999,
+              "metrics": {
+                "outputBytes": 16311
+              },
+              "minimumNanoseconds": 559350.0000000001,
+              "name": "encode-large",
+              "nanosecondsPerOperation": [
+                559930,
+                559350.0000000001,
+                563849.9999999999,
+                563179.9999999998,
+                560930.0000000001,
+                578250.0000000001,
+                598950.0000000001,
+                569630.0000000001,
+                578219.9999999999,
+                573049.9999999999,
+                2001269.9999999993,
+                2184419.999999999,
+                2234840.0000000005,
+                1921789.9999999988,
+                1453419.9999999986
+              ],
+              "operation": "serialise the large payload for the addon channel",
+              "repetitions": 5,
+              "warmup": 2,
+              "rounds": 3
+            },
+            {
+              "allocatedBytesPerOperation": 71049.69,
+              "equivalent": true,
+              "iterations": 100,
+              "medianNanoseconds": 609470.0000000003,
+              "metrics": {
+                "inputBytes": 16311
+              },
+              "minimumNanoseconds": 596760.0000000001,
+              "name": "decode-large",
+              "nanosecondsPerOperation": [
+                603610,
+                599089.9999999999,
+                596760.0000000001,
+                614659.9999999997,
+                659719.9999999998,
+                605350.0000000001,
+                609470.0000000003,
+                605680.0000000001,
+                604940.0000000005,
+                608199.9999999999,
+                1534359.9999999998,
+                1874940.0000000007,
+                1566730.0000000007,
+                1410470.0000000002,
+                1442040.0000000012
+              ],
+              "operation": "deserialise the large payload",
+              "repetitions": 5,
+              "warmup": 2,
+              "rounds": 3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "comm",
+      "title": "Multipart addon messages",
+      "compares": "CommKit against AceComm-3.0 (with ChatThrottleLib)",
+      "sides": {
+        "moltencodes": {
+          "libraries": [
+            {
+              "name": "CommKit",
+              "revision": 4
+            },
+            {
+              "name": "SchedulerKit",
+              "revision": 17
+            },
+            {
+              "name": "TimerKit",
+              "revision": 9
+            },
+            {
+              "name": "EventKit",
+              "revision": 16
+            },
+            {
+              "name": "SignalKit",
+              "revision": 8
+            },
+            {
+              "name": "PoolKit",
+              "revision": 8
+            }
+          ],
+          "checks": [
+            {
+              "detail": "1 chunk(s), delivered 1 time(s), text equal: true",
+              "name": "round-trip-200",
+              "passed": true,
+              "promised": true
+            },
+            {
+              "detail": "4 chunk(s), delivered 1 time(s), text equal: true",
+              "name": "round-trip-1000",
+              "passed": true,
+              "promised": true
+            },
+            {
+              "detail": "32 chunk(s), delivered 1 time(s), text equal: true",
+              "name": "round-trip-8000",
+              "passed": true,
+              "promised": true
+            },
+            {
+              "detail": "complete messages from two interleaved senders: 2",
+              "name": "interleaved-senders",
+              "passed": true,
+              "promised": true
+            }
+          ],
+          "cases": [
+            {
+              "allocatedBytesPerOperation": 6314.351333333333,
+              "equivalent": true,
+              "iterations": 3000,
+              "medianNanoseconds": 22192.333333333332,
+              "metrics": {
+                "chunks": 1,
+                "framesPerMessage": 1,
+                "wireBytesWithPrefix": 210
+              },
+              "minimumNanoseconds": 21512.66666666668,
+              "name": "send-200",
+              "nanosecondsPerOperation": [
+                90305.33333333336,
+                85810.66666666667,
+                58160.33333333329,
+                25238.66666666663,
+                23880.66666666666,
+                22189.33333333333,
+                22018.00000000001,
+                21787.999999999993,
+                21512.66666666668,
+                22192.333333333332,
+                22388,
+                22040.999999999996,
+                21852,
+                22453.666666666668,
+                21832.333333333343
+              ],
+              "operation": "send a 200-byte message until every chunk left",
+              "repetitions": 5,
+              "warmup": 2,
+              "rounds": 3
+            },
+            {
+              "allocatedBytesPerOperation": 225.0415,
+              "equivalent": true,
+              "iterations": 10000,
+              "medianNanoseconds": 1762.199999999997,
+              "metrics": {
+                "chunks": 1
+              },
+              "minimumNanoseconds": 1704.300000000003,
+              "name": "receive-200",
+              "nanosecondsPerOperation": [
+                1762.199999999997,
+                1706.3000000000052,
+                1719.1999999999985,
+                1705.9000000000044,
+                1704.300000000003,
+                1770.8,
+                1763.300000000001,
+                1780.9999999999993,
+                1761.0999999999988,
+                1820.3999999999996,
+                1749.4000000000012,
+                1782.2000000000003,
+                1734.5,
+                1778.3999999999967,
+                1791.5000000000016
+              ],
+              "operation": "receive and reassemble a 200-byte message",
+              "repetitions": 5,
+              "warmup": 2,
+              "rounds": 3
+            },
+            {
+              "allocatedBytesPerOperation": 7973.03,
+              "equivalent": true,
+              "iterations": 700,
+              "medianNanoseconds": 36801.42857142858,
+              "metrics": {
+                "chunks": 4,
+                "framesPerMessage": 1,
+                "wireBytesWithPrefix": 1052
+              },
+              "minimumNanoseconds": 35064.285714285696,
+              "name": "send-1000",
+              "nanosecondsPerOperation": [
+                35395.7142857143,
+                35298.57142857142,
+                36152.85714285716,
+                35064.285714285696,
+                43287.142857142855,
+                39302.85714285715,
+                38174.28571428571,
+                38755.71428571427,
+                38788.5714285714,
+                38737.142857142855,
+                36142.857142857145,
+                36482.857142857145,
+                36274.28571428571,
+                36801.42857142858,
+                36928.57142857144
+              ],
+              "operation": "send a 1000-byte message until every chunk left",
+              "repetitions": 5,
+              "warmup": 2,
+              "rounds": 3
+            },
+            {
+              "allocatedBytesPerOperation": 2863.751,
+              "equivalent": true,
+              "iterations": 2000,
+              "medianNanoseconds": 15193.499999999998,
+              "metrics": {
+                "chunks": 4,
+                "delivered": true,
+                "retainedBytesMidStream": 2105
+              },
+              "minimumNanoseconds": 14624.500000000013,
+              "name": "receive-1000",
+              "nanosecondsPerOperation": [
+                14828.000000000007,
+                14703.000000000007,
+                14624.500000000013,
+                14951.500000000005,
+                15019.000000000004,
+                15279.500000000002,
+                15193.499999999998,
+                15002.499999999989,
+                15173.500000000005,
+                15339.500000000005,
+                15436.000000000005,
+                15258.000000000007,
+                15432.000000000002,
+                15383.000000000007,
+                15330.499999999996
+              ],
+              "operation": "receive and reassemble a 1000-byte message",
+              "repetitions": 5,
+              "warmup": 2,
+              "rounds": 3
+            },
+            {
+              "allocatedBytesPerOperation": 24760.5125,
+              "equivalent": true,
+              "iterations": 80,
+              "medianNanoseconds": 149924.99999999997,
+              "metrics": {
+                "chunks": 32,
+                "framesPerMessage": 1,
+                "wireBytesWithPrefix": 8416
+              },
+              "minimumNanoseconds": 144787.49999999994,
+              "name": "send-8000",
+              "nanosecondsPerOperation": [
+                151012.50000000003,
+                147037.50000000003,
+                158612.50000000006,
+                148887.50000000006,
+                144787.49999999994,
+                154200.0000000001,
+                149924.99999999997,
+                149050.00000000006,
+                149262.4999999999,
+                161012.50000000006,
+                154712.5,
+                156974.9999999999,
+                147362.49999999994,
+                150474.9999999999,
+                149462.49999999994
+              ],
+              "operation": "send a 8000-byte message until every chunk left",
+              "repetitions": 5,
+              "warmup": 2,
+              "rounds": 3
+            },
+            {
+              "allocatedBytesPerOperation": 31049.8,
+              "equivalent": true,
+              "iterations": 250,
+              "medianNanoseconds": 68780.00000000006,
+              "metrics": {
+                "chunks": 32,
+                "delivered": true,
+                "retainedBytesMidStream": 9396
+              },
+              "minimumNanoseconds": 65616.00000000001,
+              "name": "receive-8000",
+              "nanosecondsPerOperation": [
+                67336,
+                68387.99999999996,
+                67023.99999999997,
+                68860.00000000003,
+                68824,
+                66735.99999999996,
+                65616.00000000001,
+                66384,
+                68543.99999999994,
+                69023.99999999997,
+                70208,
+                68780.00000000006,
+                69428.00000000004,
+                72368.0000000001,
+                72260.0000000001
+              ],
+              "operation": "receive and reassemble a 8000-byte message",
+              "repetitions": 5,
+              "warmup": 2,
+              "rounds": 3
+            }
+          ]
+        },
+        "ace3": {
+          "libraries": [
+            {
+              "minor": 14,
+              "name": "AceComm-3.0"
+            },
+            {
+              "minor": 32,
+              "name": "ChatThrottleLib"
+            },
+            {
+              "minor": 8,
+              "name": "CallbackHandler-1.0"
+            }
+          ],
+          "checks": [
+            {
+              "detail": "1 chunk(s), delivered 1 time(s), text equal: true",
+              "name": "round-trip-200",
+              "passed": true,
+              "promised": true
+            },
+            {
+              "detail": "4 chunk(s), delivered 1 time(s), text equal: true",
+              "name": "round-trip-1000",
+              "passed": true,
+              "promised": true
+            },
+            {
+              "detail": "32 chunk(s), delivered 1 time(s), text equal: true",
+              "name": "round-trip-8000",
+              "passed": true,
+              "promised": true
+            },
+            {
+              "detail": "complete messages from two interleaved senders: 2",
+              "name": "interleaved-senders",
+              "passed": true,
+              "promised": true
+            }
+          ],
+          "cases": [
+            {
+              "allocatedBytesPerOperation": 104.21333333333334,
+              "equivalent": true,
+              "iterations": 3000,
+              "medianNanoseconds": 739.6666666666662,
+              "metrics": {
+                "chunks": 1,
+                "framesPerMessage": 0,
+                "wireBytesWithPrefix": 209
+              },
+              "minimumNanoseconds": 715.0000000000003,
+              "name": "send-200",
+              "nanosecondsPerOperation": [
+                815.9999999999995,
+                721.6666666666669,
+                718.3333333333335,
+                831.3333333333344,
+                768.6666666666664,
+                734.666666666666,
+                766.333333333333,
+                728.0000000000006,
+                717,
+                715.0000000000003,
+                758.6666666666669,
+                752.0000000000003,
+                776.3333333333326,
+                739.6666666666662,
+                737.0000000000003
+              ],
+              "operation": "send a 200-byte message until every chunk left",
+              "repetitions": 5,
+              "warmup": 2,
+              "rounds": 3
+            },
+            {
+              "allocatedBytesPerOperation": 0,
+              "equivalent": true,
+              "iterations": 10000,
+              "medianNanoseconds": 323.89999999999986,
+              "metrics": {
+                "chunks": 1
+              },
+              "minimumNanoseconds": 308.39999999999964,
+              "name": "receive-200",
+              "nanosecondsPerOperation": [
+                321.19999999999993,
+                308.39999999999964,
+                327.99999999999983,
+                317.20000000000016,
+                338.1000000000009,
+                310.5000000000004,
+                321.40000000000015,
+                327.5,
+                331.4999999999999,
+                333.4999999999998,
+                323.89999999999986,
+                321.5999999999997,
+                326.8999999999994,
+                325.20000000000044,
+                320.49999999999994
+              ],
+              "operation": "receive and reassemble a 200-byte message",
+              "repetitions": 5,
+              "warmup": 2,
+              "rounds": 3
+            },
+            {
+              "allocatedBytesPerOperation": 2085.6857142857143,
+              "equivalent": true,
+              "iterations": 700,
+              "medianNanoseconds": 2932.8571428571418,
+              "metrics": {
+                "chunks": 4,
+                "framesPerMessage": 0,
+                "wireBytesWithPrefix": 1040
+              },
+              "minimumNanoseconds": 2810,
+              "name": "send-1000",
+              "nanosecondsPerOperation": [
+                3071.42857142857,
+                2975.714285714283,
+                2905.7142857142826,
+                2994.285714285715,
+                3087.142857142862,
+                2932.8571428571418,
+                2978.5714285714284,
+                2958.5714285714284,
+                2825.7142857142867,
+                2857.1428571428546,
+                2881.4285714285684,
+                2840.0000000000005,
+                2814.2857142857188,
+                2992.857142857147,
+                2810
+              ],
+              "operation": "send a 1000-byte message until every chunk left",
+              "repetitions": 5,
+              "warmup": 2,
+              "rounds": 3
+            },
+            {
+              "allocatedBytesPerOperation": 1637.7665,
+              "equivalent": true,
+              "iterations": 2000,
+              "medianNanoseconds": 1992.5000000000011,
+              "metrics": {
+                "chunks": 4,
+                "delivered": true,
+                "retainedBytesMidStream": 1023
+              },
+              "minimumNanoseconds": 1903.9999999999995,
+              "name": "receive-1000",
+              "nanosecondsPerOperation": [
+                1990.4999999999993,
+                1982.0000000000011,
+                2041.5000000000016,
+                1938.5000000000027,
+                2003.9999999999989,
+                2012,
+                2101.9999999999995,
+                2058.000000000001,
+                1977.000000000003,
+                1903.9999999999995,
+                2073.9999999999995,
+                1992.5000000000011,
+                1979.4999999999986,
+                2022.5,
+                1969.5000000000025
+              ],
+              "operation": "receive and reassemble a 1000-byte message",
+              "repetitions": 5,
+              "warmup": 2,
+              "rounds": 3
+            },
+            {
+              "allocatedBytesPerOperation": 21679.2,
+              "equivalent": true,
+              "iterations": 80,
+              "medianNanoseconds": 23937.5,
+              "metrics": {
+                "chunks": 32,
+                "framesPerMessage": 0,
+                "wireBytesWithPrefix": 8320
+              },
+              "minimumNanoseconds": 22825.000000000015,
+              "name": "send-8000",
+              "nanosecondsPerOperation": [
+                23612.500000000022,
+                24687.49999999997,
+                24312.50000000003,
+                23874.99999999998,
+                23412.499999999996,
+                24375.000000000004,
+                24250.000000000007,
+                24537.499999999993,
+                24299.999999999975,
+                23937.5,
+                22825.000000000015,
+                23337.500000000007,
+                23237.499999999993,
+                23062.499999999993,
+                24799.999999999996
+              ],
+              "operation": "send a 8000-byte message until every chunk left",
+              "repetitions": 5,
+              "warmup": 2,
+              "rounds": 3
+            },
+            {
+              "allocatedBytesPerOperation": 30372.284,
+              "equivalent": true,
+              "iterations": 250,
+              "medianNanoseconds": 15003.999999999989,
+              "metrics": {
+                "chunks": 32,
+                "delivered": true,
+                "retainedBytesMidStream": 8845
+              },
+              "minimumNanoseconds": 14716.000000000007,
+              "name": "receive-8000",
+              "nanosecondsPerOperation": [
+                15168,
+                14944.000000000013,
+                14800.000000000007,
+                15003.999999999989,
+                14964.000000000005,
+                15208,
+                15032.000000000016,
+                14912.00000000001,
+                14716.000000000007,
+                15111.999999999987,
+                14820,
+                15620.000000000022,
+                15231.999999999996,
+                14768.000000000004,
+                15476.000000000016
+              ],
+              "operation": "receive and reassemble a 8000-byte message",
+              "repetitions": 5,
+              "warmup": 2,
+              "rounds": 3
+            }
+          ]
+        }
+      }
+    }
+  ]
+}
