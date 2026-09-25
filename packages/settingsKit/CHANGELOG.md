@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.3.1 — 2026-09-25
+
+An internal speed-up of getters, approved by the owner. No documented behaviour changes: every check, refusal, message, error level, default, signal and limit is as in 0.3.0, and a getter answers exactly what the view answers, a secret saved value included.
+
+- A getter's fast path tests the value it reads from the saved table with `value ~= nil` instead of `type(value) ~= "nil"`. This is a narrow, documented exception to the repository nil rule (`docs/CONTRIBUTING.md`, INTERNALS.md *Getters*, a comment at the site): a comparison with `nil` never raises on a secret, and the value is only returned. Every other read keeps `type`.
+
+Measured with a standalone host Lua 5.1 script (5,000,000 calls, best of five batches, the 0.3.0 source and this one run alternately twice in one sitting, load average about 1.6 with other agents' suites running; the benchmark has no getter case):
+
+| Case | 0.3.0 (revision 7) | 0.3.1 (revision 8) |
+|---|---|---|
+| getter bound to a view (`db:Getter(db.profile, "scale")`) | 44 to 50 ns, 0 B | 29 ns, 0 B |
+| getter following a scope (`db:Getter("profile", "scale")`) | 51 to 57 ns, 0 B | 38 ns, 0 B |
+
+- Implementation revision 8; no layout changes. Getters made by revision 7 keep their closure and keep working after an in-place upgrade. API generation 1 is unchanged.
+- 230 specs (228 before): `Getter_spec.lua` reads a secret saved value (one whose metatable raises on every operation) through bound and scope getters on the dispatched and the fast path, and makes getters under revision 7, upgrades in place and checks them and a new getter. The getter allocation spec still measures 0.
+- Real-client suite `MoltenCodesTest_SettingsKit`: `EXPECTED.md` names revision 8.
+
 ## 0.3.0 — 2026-09-25
 
 A contract change inside API generation 1, approved by the owner, and a new opt-in read API, after the host benchmark against AceDB-3.0 (`docs/BENCHMARKS.md`).

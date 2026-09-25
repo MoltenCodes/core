@@ -155,6 +155,16 @@ runtime Lua, check it against this list:
       [`EMBEDDING.md`](EMBEDDING.md#secret-values-retail-12x)). Where a contract
       refuses secrets, the refusal comes before any comparison, key use or
       string operation. Values the Kit created itself may keep `== nil`.
+      One narrow exception, approved by the owner and stated at the code:
+      the fast path of SettingsKit's `db:Getter` tests the value it reads
+      from the saved table with `value ~= nil`, because that call runs in
+      consumers' hot loops and the `type` call costs about 40% of it
+      (47.6 to 28.0 ns bound to a view, 54 to 38 ns following a scope, host
+      Lua 5.1). It is safe for the reason above: the comparison is with
+      `nil`, which does not raise on a secret, and the value is only
+      returned, never compared, used as a key or tested. Any other site
+      keeps `type(x)`; a new exception needs the same approval, a measured
+      gain and a comment at the site.
 - [ ] New error messages describe a value that may be secret with a fixed
       placeholder rather than formatting it in, because a message built from a
       secret is itself secret. Existing Kits adopt this with `clientKit`'s

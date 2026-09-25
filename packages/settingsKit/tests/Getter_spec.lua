@@ -268,6 +268,83 @@ describe("SettingsKit getters", function()
     )
   end)
 
+  it("returns a secret saved value as it is stored, as the view does", function()
+    -- The fast path tests the saved value with `~= nil` (the documented
+    -- exception to the nil rule). A secret here raises on any operation a
+    -- client secret raises on, so the getter must only compare it with nil
+    -- and return it.
+    TestEnv.InstallSecretProbe()
+    local secret = TestEnv.NewSecret()
+    local function refuse()
+      error("a secret value was operated on", 2)
+    end
+    setmetatable(secret, {
+      __eq = refuse,
+      __lt = refuse,
+      __le = refuse,
+      __index = refuse,
+      __newindex = refuse,
+      __call = refuse,
+      __concat = refuse,
+      __len = refuse,
+      __unm = refuse,
+      __add = refuse,
+    })
+    local profile = saved().profiles.Default
+    profile.undeclared = secret
+    profile.scale = secret
+    db:Resync()
+    local getters = {
+      db:Getter("profile", "undeclared"),
+      db:Getter(db.profile, "undeclared"),
+      db:Getter("profile", "scale"),
+      db:Getter(db.profile, "scale"),
+    }
+    for index, getter in ipairs(getters) do
+      -- Twice: the first call may take the dispatched path, the second
+      -- reads the cached table on the fast path.
+      assert.is_true(rawequal(secret, getter()), "getter " .. index)
+      assert.is_true(rawequal(secret, getter()), "getter " .. index)
+    end
+    assert.is_true(rawequal(secret, db.profile.undeclared))
+    assert.is_true(rawequal(secret, db.profile.scale))
+    -- A secret removed again gives the default back on the fast path.
+    profile.scale = nil
+    assert.are.equal(1, getters[3]())
+    assert.are.equal(1, getters[4]())
+  end)
+
+  it("keeps getters made by revision 7 working after the upgrade to this revision", function()
+    TestEnv.Reset()
+    TestEnv.InstallWowApi()
+    require("Registry")
+    require("SignalKit")
+    require("EventKit")
+    local SchemaKit = require("SchemaKit")
+    local previous = TestEnv.LoadRevision(7)
+    TestEnv.SetPlayer()
+    assert.are.equal(7, previous.REVISION)
+    local old = previous:Open("MyAddonDB", schemaFor(SchemaKit))
+    local scale = old:Getter("profile", "scale")
+    local x = old:Getter(old.profile.frame, "x")
+    old.profile.scale = 1.5
+    assert.are.equal(1.5, scale())
+
+    local upgraded = TestEnv.ReloadPackage()
+    assert.are.equal(previous, upgraded)
+    assert.is_true(upgraded.REVISION > 7)
+    assert.are.equal(upgraded.REVISION, rawget(upgraded, "_state").runtimeRevision)
+    assert.are.equal(old, upgraded:Open("MyAddonDB"))
+    assert.are.equal(1.5, scale())
+    old.profile.frame = { x = 3 }
+    assert.are.equal(3, x())
+    local fresh = old:Getter("profile", "scale")
+    assert.are.equal(1.5, fresh())
+    old:SetProfile("Other")
+    assert.are.equal(1, scale())
+    assert.are.equal(1, fresh())
+  end)
+
   it("keeps working across an in-place upgrade", function()
     local scale = db:Getter("profile", "scale")
     local x = db:Getter(db.profile.frame, "x")
