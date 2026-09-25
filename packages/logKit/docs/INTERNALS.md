@@ -23,7 +23,7 @@ This document describes implementation invariants for maintainers. It is not an 
 | `record` | The one table every sink receives. |
 | `formatArguments` | Staging for format arguments, cleared after each call. |
 | `historyCursor` | The filter of the most recent `History` walk: `journal`, `iterator`, `addon`, `minimumLevel`. |
-| `dispatch` | `commandSetLevel` and `commandShow`, called through by the closures handed to CommandKit. |
+| `dispatch` | `commandSetLevel`, `commandShow` and (since revision 4) `commandClear`, called through by the closures handed to CommandKit. |
 | `command` | The CommandKit scope and whether `/log` is registered. |
 | `binding` | `{ db, view }` while `BindLevels` is active, else `false`. |
 
@@ -104,10 +104,29 @@ frame per line: the sink's own frame, else `DEFAULT_CHAT_FRAME`, else `print`.
 ## Slash command
 
 `RegisterCommand` creates one `CommandKit:CreateScope()` and registers `log`
-with a top-level handler and a `show` sub-command. CommandKit keeps handler
-functions by reference, so both handlers are closures that call
-`dispatch.commandSetLevel` and `dispatch.commandShow`; a newer revision writes
-new functions into `dispatch` and the registered closures run them.
+with a top-level handler and the `show` and `clear` sub-commands. CommandKit
+keeps handler functions by reference, so the handlers are closures that call
+`dispatch.commandSetLevel`, `dispatch.commandShow` and `dispatch.commandClear`;
+a newer revision writes new functions into `dispatch` and the registered
+closures run them. The sub-command table itself is registered once per session,
+so a `/log` registered by revision 3 or older has no `clear`: CommandKit hands
+`clear` to the top-level handler as the addon name, and `commandSetLevel`
+routes a first token of `clear` (any case) to `commandClear`.
+
+Before `commandSetLevel` sets a level for a name without a logger, it asks
+`isInstalledAddon`, which calls `C_AddOns.DoesAddOnExist` under `pcall` and
+answers `true`, `false`, or `nil` for "cannot tell" (no function, a raise, a
+secret or non-boolean answer); only a plain `false` refuses the name. The
+saved section is therefore fed by loggers (bounded by `maxLoggers`), installed
+addons and `"*"`, never by an unchecked typo. `forgetAddonLevel` removes a
+name from `addonLevels` and, when the bound view holds anything for it, writes
+`nil` through `persistLevel`, which also removes an entry `restoreLevels`
+ignored. `/log clear` without a name collects the session's names and the
+section's other string keys (through `db:Pairs`) first, then forgets each and
+recomputes the effective levels once. No automatic pruning runs at
+`BindLevels`: a saved name may be a logger that is created later in the
+session, or an addon that is only disabled, and deleting it unasked would lose
+a level the user set.
 
 ## SettingsKit binding
 
@@ -131,4 +150,7 @@ revision that changes the layout adds a migration step and raises
 `STATE_SCHEMA`. Revision 2 changed behaviour only (the secret checks in
 `SetLimits`), so it validates and adopts a revision 1 state unchanged; so did
 revision 3 (absence of outside values tested with `type`, secrets refused
-before comparison), which adopts a revision 1 or 2 state unchanged.
+before comparison), which adopts a revision 1 or 2 state unchanged, and
+revision 4 (`"*"` refused as an addon name, the `clear` command and the
+installed-addon check), which adopts any older state unchanged and adds
+`dispatch.commandClear` like every other dispatch function.

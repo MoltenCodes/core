@@ -65,12 +65,16 @@ See [`docs/API.md`](docs/API.md) for the complete contract and
 ## Optional integrations
 
 - **`/log` slash command.** `LogKit:RegisterCommand()` registers `/log <addon|*>
-  <level|default>` and `/log show [addon]` through CommandKit when an addon
-  embeds it; without CommandKit it returns `false, "absent"`.
+  <level|default>`, `/log show [addon|*]` and `/log clear [addon|*]` through
+  CommandKit when an addon embeds it; without CommandKit it returns `false,
+  "absent"`. A level for a name that is neither a logger nor, by the client's
+  `C_AddOns.DoesAddOnExist`, an installed addon is refused, so a typo is never
+  saved; `/log show` lists levels set for names without a logger and `/log
+  clear` removes them, saved entries included.
 - **Persisted levels.** `LogKit:BindLevels(db)` stores addon overrides and the
-  global level in a SettingsKit database whose `global` scope declares
-  `logLevels`, and restores them on bind. Without SettingsKit it refuses at the
-  caller's line.
+  global level (under `"*"`, which is therefore never an addon name) in a
+  SettingsKit database whose `global` scope declares `logLevels`, and restores
+  them on bind. Without SettingsKit it refuses at the caller's line.
 
 Both are found through `Registry:Find` when the method is called; neither is a
 load-order dependency.

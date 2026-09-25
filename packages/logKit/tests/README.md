@@ -47,6 +47,15 @@ The LogKit suite covers:
   tokens ignored, unknown levels, usage, `/log show`, a level set without
   creating a logger, CommandKit's `"taken"` passed through, and dispatch through
   the newest revision after an upgrade;
+- saved levels (`SavedLevels_spec.lua`): `"*"` refused as an addon name by
+  `ForAddon` and `History`, so the saved global level survives; a `/log` level
+  for a name that is neither a logger nor an installed addon refused and never
+  saved, and accepted when `C_AddOns.DoesAddOnExist` is missing, raises or
+  answers a secret or non-boolean; `/log show` listing levels of names without
+  a logger and `/log show *`; `/log clear <addon>`, `/log clear` and `/log
+  clear *` in the session and the saved section, entries with no level name
+  included; room kept in a full section; and `clear` routed through the
+  top-level handler of a `/log` registered without the sub-command;
 - `BindLevels`: refusals without SettingsKit, for a non-database and for a
   schema without `global.logLevels`, storing and clearing levels, restoring on
   bind (unknown level names ignored, a logger created later sees its level),

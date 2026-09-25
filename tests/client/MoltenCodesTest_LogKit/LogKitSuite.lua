@@ -19,7 +19,8 @@
 --     one `ChatSink()` line in the real chat frame (the one visible effect);
 --   * `/log` registered through `RegisterCommand` in the client's
 --     `SlashCmdList` and dispatched without typing, by calling the function the
---     client keeps there, as the CommandKit suite does;
+--     client keeps there, as the CommandKit suite does, with the client's
+--     `C_AddOns.DoesAddOnExist` deciding which typed names get a level;
 --   * `BindLevels` over an in-memory SettingsKit database;
 --   * `secretwrap` values as format arguments, replaced by the placeholder,
 --     with no client compare or concatenation error escaping;
@@ -39,7 +40,7 @@
 -- What a run leaves behind. Every test starts from the session's global
 -- level, limits and SettingsKit binding, and its After hook puts all three
 -- back, whatever the outcome: sinks the test added are removed, the levels of
--- this file's two loggers and of the typed-only addon name are put back, a
+-- this file's two loggers and of the harness's addon name are put back, a
 -- binding another addon held is unbound for the test and bound again
 -- afterwards, and the scratch globals of the BindLevels tests are removed. What
 -- LogKit keeps for the session, because it never removes them: this file's
@@ -75,9 +76,13 @@ local PACKAGE_ID = "logKit"
 --- The second logger's name. The first is this addon's own name.
 local OTHER_LOGGER_NAME = addonName .. ".Other"
 
---- An addon name the `/log` test sets a level for and no code ever passes to
---- `ForAddon`, so it never has a logger.
+--- A name the `/log` test types that no code passes to `ForAddon` and no
+--- installed addon has, as a typo would be: `/log` refuses a level for it.
 local TYPED_ADDON_NAME = addonName .. ".Typed"
+
+--- The harness addon this addon depends on: installed and loaded, and no code
+--- passes it to `ForAddon`, so `/log` accepts a level for it without a logger.
+local INSTALLED_ADDON_NAME = "MoltenCodesTest"
 
 --- An addon name the `maxLoggers` test is refused a logger for.
 local CAPPED_ADDON_NAME = addonName .. ".Capped"
@@ -270,7 +275,7 @@ local scratchGlobals = {}
 local scratchSerial = 0
 
 --- Per-test restores that must run before the session state is put back
---- (the typed-only addon's level, the command scope's sink), newest last.
+--- (the harness addon's level, the command scope's sink), newest last.
 ---@type fun()[]
 local pendingRestores = {}
 
@@ -1522,20 +1527,41 @@ command:Test(
 )
 
 command:Test(
-  "/log for an addon without a logger sets its level without creating the logger, /log show lists the global level then every logger sorted by name, and /log show <addon> names one",
+  "/log refuses a level for a name the client's C_AddOns.DoesAddOnExist does not know and that has no logger, sets one for an installed addon without creating its logger, /log show lists the global level, every logger sorted by name and then that addon as having no logger, /log show * the global level, and /log clear <addon> clears it",
   function(ctx)
     local logCommand = prepareLogCommand(ctx)
     pendingRestores[#pendingRestores + 1] = function()
-      runLog(logCommand, TYPED_ADDON_NAME .. " default")
+      runLog(logCommand, "clear " .. INSTALLED_ADDON_NAME)
     end
     LogKit:SetGlobalLevel("error")
     mainLogger:SetLevel("debug")
 
+    local addOns = readHost("C_AddOns")
+    local doesAddOnExist = type(addOns) == "table" and addOns.DoesAddOnExist or nil
+    ctx:Expect(type(doesAddOnExist)):ToBe("function")
+    if type(doesAddOnExist) == "function" then
+      ctx:Log(
+        ("C_AddOns.DoesAddOnExist: %s -> %s, %s -> %s"):format(
+          TYPED_ADDON_NAME,
+          tostring(doesAddOnExist(TYPED_ADDON_NAME)),
+          INSTALLED_ADDON_NAME,
+          tostring(doesAddOnExist(INSTALLED_ADDON_NAME))
+        )
+      )
+    end
+
     ctx:Expect(runLog(logCommand, TYPED_ADDON_NAME .. " trace")):ToEqual({
-      TYPED_ADDON_NAME .. ": trace (addon)",
+      '/log: no logger or installed addon is named "' .. TYPED_ADDON_NAME .. '"; nothing was set',
     })
     ctx:Expect(runLog(logCommand, "show " .. TYPED_ADDON_NAME)):ToEqual({
-      TYPED_ADDON_NAME .. ": trace (addon)",
+      TYPED_ADDON_NAME .. ": error (global)",
+    })
+
+    ctx:Expect(runLog(logCommand, INSTALLED_ADDON_NAME .. " trace")):ToEqual({
+      INSTALLED_ADDON_NAME .. ": trace (addon)",
+    })
+    ctx:Expect(runLog(logCommand, "show " .. INSTALLED_ADDON_NAME)):ToEqual({
+      INSTALLED_ADDON_NAME .. ": trace (addon)",
     })
 
     local lines = runLog(logCommand, "show")
@@ -1543,16 +1569,24 @@ command:Test(
     ctx:Expect(lines[1]):ToBe("global: error")
     ctx:Expect(holdsLine(lines, addonName .. ": debug (addon)")):ToBe(true)
     ctx:Expect(holdsLine(lines, OTHER_LOGGER_NAME .. ": error (global)")):ToBe(true)
-    ctx:Expect(holdsLine(lines, TYPED_ADDON_NAME .. ": trace (addon)")):ToBe(false)
-    -- Sorted by addon name, which is not the order of the whole lines: "A.B: ..."
-    -- sorts before "A: ..." as text, while the name "A" sorts before "A.B".
-    for index = 3, #lines do
+    ctx:Expect(lines[#lines]):ToBe(INSTALLED_ADDON_NAME .. ": trace (addon, no logger)")
+    ctx:Expect(holdsLine(lines, INSTALLED_ADDON_NAME .. ": trace (addon)")):ToBe(false)
+    -- The logger lines are sorted by addon name, which is not the order of
+    -- the whole lines: "A.B: ..." sorts before "A: ..." as text, while the
+    -- name "A" sorts before "A.B". The last line is the one without a logger.
+    for index = 3, #lines - 1 do
       ctx:Expect(loggerNameOfLine(lines[index - 1]) < loggerNameOfLine(lines[index])):ToBe(true)
     end
+    ctx:Expect(runLog(logCommand, "show *")):ToEqual({ "global: error" })
 
-    ctx:Expect(runLog(logCommand, TYPED_ADDON_NAME .. " default")):ToEqual({
-      TYPED_ADDON_NAME .. ": error (global)",
+    ctx:Expect(runLog(logCommand, "clear " .. INSTALLED_ADDON_NAME)):ToEqual({
+      INSTALLED_ADDON_NAME .. ": error (global)",
     })
+    ctx
+      :Expect(
+        holdsLine(runLog(logCommand, "show"), INSTALLED_ADDON_NAME .. ": trace (addon, no logger)")
+      )
+      :ToBe(false)
   end
 )
 

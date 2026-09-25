@@ -42,7 +42,7 @@
 
 local PACKAGE_NAME = "logKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 3
+local IMPLEMENTATION_REVISION = 4
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_SIGNALKIT_API = 1
 local OPTIONAL_COMMANDKIT_API = 1
@@ -126,11 +126,13 @@ local SOURCE_GLOBAL = "global"
 local SOURCE_DEFAULT = "default"
 
 -- The slash command `RegisterCommand` registers, and the key under which the
--- global level is persisted by `BindLevels`.
+-- global level is persisted by `BindLevels`. `"*"` is therefore never an
+-- addon name: an addon named `"*"` would overwrite the saved global level.
 local COMMAND_NAME = "log"
 local GLOBAL_LEVEL_KEY = "*"
 local PERSISTED_SECTION = "logLevels"
 local CLEAR_LEVEL_WORD = "default"
+local CLEAR_SUBCOMMAND = "clear"
 
 -- Chat colours per level, as `|cAARRGGBB` escapes the chat frame renders.
 local LEVEL_COLOURS = {
@@ -656,8 +658,9 @@ local function validateLogger(logger, methodName, level)
   end
 end
 
----An addon name: a non-empty, non-secret string. The secret check comes
----first, because comparing a secret string raises.
+---An addon name: a non-empty, non-secret string other than `"*"`, the key of
+---the global level. The secret check comes first, because comparing a secret
+---string raises.
 ---@param name any
 ---@param methodName string public method name, used in the argument error
 ---@param argumentName string
@@ -668,6 +671,12 @@ local function validateAddonName(name, methodName, argumentName, level)
   end
   if type(name) ~= "string" or name == "" then
     error(methodName .. " " .. argumentName .. " must be a non-empty string", level)
+  end
+  if name == GLOBAL_LEVEL_KEY then
+    error(
+      methodName .. " " .. argumentName .. ' must not be "*", which names the global level',
+      level
+    )
   end
 end
 
@@ -1278,8 +1287,44 @@ local function describeLevel(addonName)
   return addonName .. ": " .. LEVEL_NAMES[number] .. " (" .. source .. ")"
 end
 
----`/log show [addon]`: print the global level and every logger's level, or
----one addon's. Allocates by design; it runs from the chat box.
+---Whether the client knows an installed addon named `addonName`: `true` or
+---`false`, or `nil` when it cannot tell. `C_AddOns.DoesAddOnExist` is the
+---client's answer (Retail 12.1.0 b69933 documents it in `C_AddOns`); a client
+---without it, a call that raises and an answer that is not a plain boolean all
+---mean "cannot tell", so LogKit then behaves as it did before it asked.
+---@param addonName string
+---@return boolean?
+local function isInstalledAddon(addonName)
+  local addOns = readGlobal("C_AddOns")
+  if type(addOns) ~= "table" then
+    return nil
+  end
+  local doesAddOnExist = addOns.DoesAddOnExist
+  if type(doesAddOnExist) ~= "function" then
+    return nil
+  end
+  local ok, exists = pcall(doesAddOnExist, addonName)
+  if not ok or isSecret(exists) or type(exists) ~= "boolean" then
+    return nil
+  end
+  return exists
+end
+
+---Remove one addon's override from the session and, when a database is
+---bound, its saved entry, even one the session never restored (a level name a
+---later LogKit no longer knows). Does not recompute the effective levels.
+---@param addonName string
+local function forgetAddonLevel(addonName)
+  addonLevels[addonName] = nil
+  local binding = rawget(state, "binding")
+  if binding and type(binding.view[addonName]) ~= "nil" then
+    persistLevel(addonName, false)
+  end
+end
+
+---`/log show [addon|*]`: print the global level, every logger's level, and
+---every override set for a name that has no logger; or one addon's level, or
+---the global level for `*`. Allocates by design; it runs from the chat box.
 ---@param context table CommandKit context
 ---@param addonName string?
 function dispatch.commandShow(context, addonName)
@@ -1288,11 +1333,16 @@ function dispatch.commandShow(context, addonName)
     context:Usage()
     return
   end
+  local globalLine = "global: " .. (globalLevel and LEVEL_NAMES[globalLevel] or "not set")
+  if addonName == GLOBAL_LEVEL_KEY then
+    context:Print(globalLine)
+    return
+  end
   if type(addonName) ~= "nil" then
     context:Print(describeLevel(addonName))
     return
   end
-  context:Print("global: " .. (globalLevel and LEVEL_NAMES[globalLevel] or "not set"))
+  context:Print(globalLine)
   local names = {}
   for name in pairs(loggers) do
     names[#names + 1] = name
@@ -1301,6 +1351,63 @@ function dispatch.commandShow(context, addonName)
   for index = 1, #names do
     context:Print(describeLevel(names[index]))
   end
+
+  -- Overrides for names without a logger: an addon not loaded yet, a removed
+  -- one or a typo. When a database is bound these are its saved entries too,
+  -- and `/log clear` removes them.
+  local orphans = {}
+  for name, number in pairs(addonLevels) do
+    if loggers[name] == nil then
+      orphans[#orphans + 1] = name .. ": " .. LEVEL_NAMES[number] .. " (addon, no logger)"
+    end
+  end
+  table.sort(orphans)
+  for index = 1, #orphans do
+    context:Print(orphans[index])
+  end
+end
+
+---`/log clear [addon|*]`: remove one addon's override, the global level for
+---`*`, or, without an argument, every addon override, in the session and in
+---the bound database. Clearing needs no logger and no installed addon, so a
+---saved entry for a typo or a removed addon can always be removed.
+---@param context table CommandKit context
+---@param addonName string?
+function dispatch.commandClear(context, addonName)
+  if isSecret(addonName) or addonName == "" then
+    context:Usage()
+    return
+  end
+  if addonName == GLOBAL_LEVEL_KEY then
+    LogKit:SetGlobalLevel(nil)
+    context:Print("global: not set")
+    return
+  end
+  if type(addonName) ~= "nil" then
+    forgetAddonLevel(addonName)
+    refreshEffectiveLevels()
+    context:Print(describeLevel(addonName))
+    return
+  end
+
+  -- Collected first: the section is not written while `Pairs` walks it.
+  local names = {}
+  for name in pairs(addonLevels) do
+    names[#names + 1] = name
+  end
+  local binding = rawget(state, "binding")
+  if binding then
+    for key in binding.db:Pairs(binding.view) do
+      if type(key) == "string" and key ~= GLOBAL_LEVEL_KEY and addonLevels[key] == nil then
+        names[#names + 1] = key
+      end
+    end
+  end
+  for index = 1, #names do
+    forgetAddonLevel(names[index])
+  end
+  refreshEffectiveLevels()
+  context:Print("cleared " .. #names .. " addon " .. (#names == 1 and "level" or "levels"))
 end
 
 ---`/log <addon|*> <level|default>`: set an addon override or the global level.
@@ -1308,20 +1415,27 @@ end
 ---The level word is read without case, as CommandKit reads sub-commands; the
 ---addon name keeps its case, because addon names are case-sensitive keys.
 ---Tokens after the level are ignored. Setting an addon's level never creates
----its logger, so a typed name cannot consume `maxLoggers`.
+---its logger, so a typed name cannot consume `maxLoggers`. A level for a name
+---that has no logger and that the client says is no installed addon is
+---refused: it would be saved for good and fill the section's `max` with
+---typos. Clearing is always accepted.
 ---@param context table CommandKit context
 ---@param target string?
 ---@param levelWord string?
 function dispatch.commandSetLevel(context, target, levelWord)
   -- The tokens come from the chat box through CommandKit: absence is tested
   -- with `type`, and a secret is refused before it is compared.
-  if
-    type(target) == "nil"
-    or type(levelWord) == "nil"
-    or isSecret(target)
-    or isSecret(levelWord)
-    or target == ""
-  then
+  if type(target) == "nil" or isSecret(target) or isSecret(levelWord) or target == "" then
+    context:Usage()
+    return
+  end
+  -- A `/log` registered by revision 3 or older has no `clear` sub-command, and
+  -- a command is registered once per session: route it here after an upgrade.
+  if string.lower(target) == CLEAR_SUBCOMMAND then
+    dispatch.commandClear(context, levelWord)
+    return
+  end
+  if type(levelWord) == "nil" then
     context:Usage()
     return
   end
@@ -1348,6 +1462,10 @@ function dispatch.commandSetLevel(context, target, levelWord)
     return
   end
 
+  if number and loggers[target] == nil and isInstalledAddon(target) == false then
+    context:Fail('no logger or installed addon is named "' .. target .. '"; nothing was set')
+    return
+  end
   setAddonLevel(target, number)
   context:Print(describeLevel(target))
 end
@@ -1364,10 +1482,17 @@ local function newCommandSpec()
     end,
     subcommands = {
       show = {
-        description = "Show the global level and every addon's effective level.",
-        usage = "[addon]",
+        description = "Show the global level, every addon's effective level and the levels set for names without a logger.",
+        usage = "[addon|*]",
         handler = function(context, addonName)
           return dispatch.commandShow(context, addonName)
+        end,
+      },
+      [CLEAR_SUBCOMMAND] = {
+        description = "Clear one addon's level, the global level (*), or every addon's level, saved ones included.",
+        usage = "[addon|*]",
+        handler = function(context, addonName)
+          return dispatch.commandClear(context, addonName)
         end,
       },
     },

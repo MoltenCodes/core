@@ -8,7 +8,9 @@
 ---   `DEFAULT_CHAT_FRAME`   a frame whose `AddMessage` records lines, read
 ---                          back with `ChatLines`, installed by `InstallChatApi`;
 ---   `SlashCmdList`         a plain table, as in the client, so CommandKit can
----                          register `/log`; `RunSlash` runs a typed line.
+---                          register `/log`; `RunSlash` runs a typed line;
+---   `C_AddOns.DoesAddOnExist`  the client's installed-addon check, added to
+---                          the fixture's `C_AddOns` by `InstallAddOns`.
 ---
 --- These globals are installed on request and removed again by `Reset`,
 --- because they are not among the globals the shared fixture owns.
@@ -78,6 +80,20 @@ end
 ---@return string[]
 function LogKitTestEnv.ChatLines()
   return chatLines
+end
+
+---Give the fixture's `C_AddOns` table the client's `DoesAddOnExist`, answering
+---`true` for exactly the names listed. The shared fixture owns `C_AddOns` and
+---installs it again at the next `Reset`, so nothing needs removing.
+---@param names string[] the installed addons
+function LogKitTestEnv.InstallAddOns(names)
+  local installed = {}
+  for index = 1, #names do
+    installed[names[index]] = true
+  end
+  getGlobal("C_AddOns").DoesAddOnExist = function(name)
+    return installed[name] == true
+  end
 end
 
 ---Make the host's `issecretvalue` report `secret` (compared with `rawequal`)

@@ -4,7 +4,7 @@ LogKit API generation **1** provides levelled, structured logging: one logger
 per addon with lazily formatted, secret-safe messages, a tri-state level, a
 bounded journal readable after the fact, and sinks.
 
-Implementation revision: **3**.
+Implementation revision: **4**.
 
 ## Loading
 
@@ -35,6 +35,7 @@ raises `MoltenCodes LogKit requires Registry API 2 to be loaded first` (or
 | `geterrorhandler` | a failing sink, a bad format string, a refused journal firing, a refused persisted write | Falls back to `print`, also when the handler itself raises. |
 | `DEFAULT_CHAT_FRAME` | `ChatSink()` without a frame, read per line | Output goes to `print`. |
 | `SlashCmdList` | `RegisterCommand` | `false, "unavailable"`. |
+| `C_AddOns.DoesAddOnExist` | `/log <addon> <level>` for a name that has no logger | Any name is accepted, as before revision 4. A call that raises, or an answer that is not a plain boolean, counts the same. |
 | CommandKit API 1, through `Registry:Find` | `RegisterCommand` | `false, "absent"`. |
 | SettingsKit API 1, through `Registry:Find` | `BindLevels` | Raises at the caller. |
 | SignalKit's `maxJournalArguments` | every delivered message (one journal firing of four values) | Must stay at least 4 (SignalKit's default is 8); below it every firing is refused, reported through the error handler, and the message still reaches the sinks. |
@@ -115,8 +116,8 @@ the hot path never resolves precedence.
 local log = LogKit:ForAddon("MyAddon")
 ```
 
-`ForAddon(addonName)` accepts a non-empty, non-secret string and returns the
-same logger for the same name for the whole session, so create loggers once at
+`ForAddon(addonName)` accepts a non-empty, non-secret string other than `"*"`
+and returns the same logger for the same name for the whole session, so create loggers once at
 file scope. Creating a logger allocates one table. Beyond `maxLoggers` (256 by
 default) a new name gets `nil, "capped"`; existing names are still returned.
 
@@ -291,6 +292,10 @@ if LogKit:RegisterCommand() then
   -- /log * default          clear it
   -- /log show               global level and every logger's level
   -- /log show MyAddon       one addon's level
+  -- /log show *             the global level
+  -- /log clear MyAddon      clear MyAddon's level, saved or not
+  -- /log clear *            clear the global level
+  -- /log clear              clear every addon's level, saved ones included
 end
 ```
 
@@ -310,12 +315,40 @@ name keeps its case because addon names are case-sensitive. Tokens after the
 level are ignored. Setting an addon's level **never creates its logger**, so a
 typed name cannot consume `maxLoggers`; the level applies when `ForAddon` is
 called. An unknown level prints `/log: unknown level "x"; use one of trace,
-debug, info, warn, error, off, or default to clear`. `show` is a sub-command,
-so an addon literally named `show` cannot be set from the command. A secret
-addon name or level word prints the usage and changes nothing.
-`/log show` prints `global: <level or "not set">` then `<addon>: <level>
-(<source>)` for every logger, sorted by name; it allocates, as a chat command
-may.
+debug, info, warn, error, off, or default to clear`. `show` and `clear` are
+sub-commands, so an addon literally named `show` or `clear` cannot be set from
+the command. A secret addon name or level word prints the usage and changes
+nothing.
+
+**A level is set only for a name that exists.** Setting a level for a name that
+has no logger asks the client's `C_AddOns.DoesAddOnExist`; when the client says
+no addon of that name is installed, the command prints `/log: no logger or
+installed addon is named "Typo"; nothing was set` and changes nothing. Once
+`BindLevels` is in force every level set is saved for good, so without this a
+typo, or an addon removed later, would keep an entry in `global.logLevels`
+forever and, at the section's `max` (64 in the documented schema), leave later
+real levels unsaved. An addon that is installed but not loaded yet is still
+accepted, as is any name when the client cannot tell (no `DoesAddOnExist`, a
+call that raises, an answer that is not a plain boolean). Clearing
+(`default`, `clear`) is always accepted.
+
+`/log show` prints `global: <level or "not set">`, then `<addon>: <level>
+(<source>)` for every logger, sorted by name, then `<addon>: <level> (addon, no
+logger)` for every level set for a name that has no logger (an addon not
+loaded yet, a removed one, a typo accepted when the client could not tell);
+with a database bound, those are saved entries too. `/log show <addon>` prints
+one line for that name, and `/log show *` the global line. It allocates, as a
+chat command may.
+
+`/log clear <addon>` removes that name's level from the session and, with a
+database bound, its saved entry, including an entry whose value is no level
+name (`BindLevels` ignores such entries, so nothing else would remove them),
+and prints the name's level afterwards. `/log clear *` clears the global level
+(`global: not set`). `/log clear` removes every addon level, in the session
+and in the saved section, and prints `cleared <n> addon levels`; the global
+level stays. A `/log` registered by revision 3 or older (the command is
+registered once per session, so it survives an in-place upgrade) has no
+`clear` sub-command; its top-level handler hands `clear` to the same code.
 
 ## `BindLevels(db)`
 
@@ -337,7 +370,8 @@ LogKit:BindLevels(db)
 Persists the addon overrides and the global level in a SettingsKit API 1
 database and restores them on bind. LogKit owns the keyed section
 `global.logLevels`: each key is an addon name and the value its level name, and
-`"*"` holds the global level. The consumer declares the section exactly as
+`"*"` holds the global level, which is why no addon name may be `"*"`
+(`ForAddon` and `History` refuse it). The consumer declares the section exactly as
 above (an `optional` `map` with a default, so the section always has a view;
 `values` may also be an `enum` of the level names). Requirements are checked at
 the caller's line:
@@ -423,13 +457,13 @@ repository rule, which never compares anything (a secret compared with `nil`
 happens not to raise; one compared with a value of its own type, or used as a
 table key, does; measured on Retail 12.1.0 b69933):
 
-- `LogKit:ForAddon addonName must be a non-empty string` / `... must not be a secret value`
+- `LogKit:ForAddon addonName must be a non-empty string` / `... must not be a secret value` / `LogKit:ForAddon addonName must not be "*", which names the global level`
 - `LogKit.Logger:<Method> must be called on a LogKit logger` (every logger method)
 - `LogKit.Logger:<Method> message must be a string` / `... must not be a secret value` (enabled calls only)
 - `LogKit.Logger:<Method> accepts at most 16 format arguments; received <n>`
 - `LogKit.Logger:Log level must be a level name (trace, debug, info, warn, error, off) or a LogKit.LEVELS value` (and the same for `IsEnabled`, `SetLevel`, `LogKit:SetGlobalLevel`, `LogKit:History minimumLevel`)
 - `LogKit.Logger:Log level cannot be off` (and `IsEnabled`)
-- `LogKit:History addonName must be a non-empty string` / `... must not be a secret value`
+- `LogKit:History addonName must be a non-empty string` / `... must not be a secret value` / `... must not be "*", which names the global level`
 - `LogKit.Logger:SetLevel level must not be a secret value` (every `level` and `minimumLevel` argument)
 - `LogKit:AddSink sink must be a function or a table with a Write method` / `... must not be a secret value`
 - `LogKit:ChatSink chatFrame must be a table with an AddMessage method` / `... must not be a secret value`
@@ -511,7 +545,10 @@ binding live in the shared package state, so an in-place upgrade keeps all of
 them: a logger created by an older embedded copy resolves to the newer copy's
 methods, a chat sink built by it writes through the newer copy, and the `/log`
 handlers dispatch through package state so a newer revision replaces their
-behaviour without registering again. Revisions 2 and 3 kept the state layout
-of revision 1, so either takes an older state over as it is.
+behaviour without registering again. Revisions 2, 3 and 4 kept the state
+layout of revision 1, so each takes an older state over as it is. Revision 4
+adds `dispatch.commandClear`; a `/log` an older copy registered reaches it
+through the top-level handler (above). A logger an older copy created for the
+name `"*"` keeps working for the session, but `ForAddon("*")` now raises.
 
 Nothing survives `/reload` except what `BindLevels` persisted.
