@@ -133,6 +133,35 @@ describe("CodecKit bootstrap", function()
     assert.are.equal(0, pool:GetActiveCount())
   end)
 
+  it("upgrades a revision 3 copy in place and writes the canonical NaN afterwards", function()
+    TestEnv.Reset()
+    require("Registry")
+    require("PoolKit")
+    local older = TestEnv.LoadRevision(3)
+    assert.are.equal(3, older.REVISION)
+    older:SetLimits({ maxValues = 5000 })
+    local state = older._state
+    local pool = state.pool
+    local _, frame = older:Encode({ 1.5, "kept" }, { compress = "deflate" })
+
+    package.loaded["CodecKit"] = nil
+    local CodecKit = require("CodecKit")
+    assert.are.equal(older, CodecKit)
+    assert.are.equal(4, CodecKit.REVISION)
+    assert.are.equal(state, CodecKit._state)
+    assert.are.equal(CodecKit.REVISION, CodecKit._state.runtimeRevision)
+    assert.are.equal(pool, CodecKit._state.pool)
+    assert.are.equal(5000, CodecKit:GetLimits().maxValues)
+
+    local ok, decoded = CodecKit:Decode(frame, nil)
+    assert.is_true(ok)
+    assert.are.same({ 1.5, "kept" }, decoded)
+    local nan = math.huge - math.huge
+    local _, bytes = CodecKit:Serialize(-nan)
+    assert.are.equal("067ff8000000000000", TestEnv.Hex(bytes))
+    assert.are.equal(0, pool:GetActiveCount())
+  end)
+
   it("requires Registry", function()
     TestEnv.Reset()
     local ok, value = pcall(require, "CodecKit")

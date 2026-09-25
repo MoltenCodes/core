@@ -760,14 +760,33 @@ local function documentedSpellings()
     { label = "-0", value = negativeZero, bytes = "\6\128\0\0\0\0\0\0\0" },
     { label = "2^-1074", value = math.ldexp(1, -1074), bytes = "\6\0\0\0\0\0\0\0\1" },
     { label = "NaN", value = notANumber, bytes = "\6\127\248\0\0\0\0\0\0" },
+    { label = "-NaN", value = -notANumber, bytes = "\6\127\248\0\0\0\0\0\0" },
     { label = "{}", value = {}, bytes = "\8\0" },
     { label = "{ 1, x = 2 }", value = mixed, bytes = "\10\1\4\1\1\7\1\120\4\2" },
   }
 end
 
 values:Test(
-  "Serialize writes the bytes docs/API.md spells out for 300, 1.5, -0, 2^-1074, NaN, {} and { 1, x = 2 } on the client's math.frexp and string.char",
+  "Serialize writes the bytes docs/API.md spells out for 300, 1.5, -0, 2^-1074, NaN of either sign, {} and { 1, x = 2 } on the client's math.frexp and string.char",
   function(ctx)
+    -- How the client's Lua compares a NaN. IEEE-754 answers false to every
+    -- ordered comparison; the 2026-09-25 run wrote a sign bit for NaN because
+    -- CodecKit revision 3 tested the sign first, so these answers are logged.
+    local notANumber = math.huge - math.huge
+    local negatedNaN = -notANumber
+    ctx:Log(
+      ("NaN comparisons: NaN < 0 %s, NaN > 0 %s, NaN <= 0 %s, NaN == 0 %s, NaN ~= NaN %s, -NaN < 0 %s, -NaN > 0 %s, tostring %s and %s"):format(
+        tostring(notANumber < 0),
+        tostring(notANumber > 0),
+        tostring(notANumber <= 0),
+        tostring(notANumber == 0),
+        tostring(notANumber ~= notANumber),
+        tostring(negatedNaN < 0),
+        tostring(negatedNaN > 0),
+        tostring(notANumber),
+        tostring(negatedNaN)
+      )
+    )
     for _, case in ipairs(documentedSpellings()) do
       local ok, bytes = CodecKit:Serialize(case.value)
       ctx:Expect(ok):ToBe(true)

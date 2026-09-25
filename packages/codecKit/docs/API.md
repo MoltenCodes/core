@@ -2,7 +2,7 @@
 
 CodecKit API generation **1** turns Lua values into transport-safe strings and back in three composable stages — serialise, compress, channel-encode — behind a two-byte, self-describing header. Decoding never raises on malformed input.
 
-Implementation revision: **3**. Wire format version: **1** (`CodecKit.FORMAT_VERSION`).
+Implementation revision: **4**. Wire format version: **1** (`CodecKit.FORMAT_VERSION`).
 
 ## Loading
 
@@ -158,7 +158,7 @@ Every value is one type byte followed by its payload:
 
 **Varint.** Seven bits per byte, least significant group first; the high bit is set on every byte but the last. At most eight bytes, at most 2^53, and never overlong (a last byte of zero after the first byte is refused). `300` is `AC 02`.
 
-**Numbers.** An integral number from −2^53 to 2^53 other than −0 is written as `0x04`/`0x05` and a varint. Everything else — fractions, integers beyond 2^53, both infinities, NaN, −0 and subnormal numbers — is the exact binary64 bit pattern, computed with `math.frexp`, so it round-trips bit for bit (NaN is written as the quiet NaN `7F F8 00 00 00 00 00 00` whatever its payload). Examples: `1.5` is `06 3F F8 00 00 00 00 00 00`; `-0` is `06 80 00 00 00 00 00 00 00`; `2^-1074` is `06 00 00 00 00 00 00 00 01`. The writer uses one spelling for each value and for infinity; the reader also accepts the others (see below).
+**Numbers.** An integral number from −2^53 to 2^53 other than −0 is written as `0x04`/`0x05` and a varint. Everything else — fractions, integers beyond 2^53, both infinities, NaN, −0 and subnormal numbers — is the exact binary64 bit pattern, computed with `math.frexp`, so it round-trips bit for bit (NaN is written as the quiet NaN `7F F8 00 00 00 00 00 00` whatever its sign bit and payload, so `0 / 0` and `-(0 / 0)` give the same bytes on every client). Examples: `1.5` is `06 3F F8 00 00 00 00 00 00`; `-0` is `06 80 00 00 00 00 00 00 00`; `2^-1074` is `06 00 00 00 00 00 00 00 01`. The writer uses one spelling for each value and for infinity; the reader also accepts the others (see below).
 
 **Strings** are raw bytes: every byte value, including the escape byte and `|`, is carried as is, because escaping belongs to the channel stage.
 

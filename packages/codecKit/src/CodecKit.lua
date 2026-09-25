@@ -49,7 +49,7 @@
 
 local PACKAGE_NAME = "codecKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 3
+local IMPLEMENTATION_REVISION = 4
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_POOLKIT_API = 1
 local OPTIONAL_SCHEDULERKIT_API = 1
@@ -649,6 +649,21 @@ end
 ---@param value number
 local function putFloat(sink, value)
   putByte(sink, TYPE_FLOAT)
+  -- NaN is recognised before anything else looks at the value, and written as
+  -- the one canonical quiet NaN whatever its sign bit and payload. Neither is
+  -- observable portably from Lua, and an ordered comparison with a NaN is not
+  -- reliable on every host: on Retail 12.1.0 b69933 (measured 2026-09-25)
+  -- the sign test below answered "negative" for `0 / 0`, so a writer that
+  -- tested the sign first wrote `FF F8 ...` instead of `7F F8 ...`.
+  if value ~= value then
+    putByte(sink, 127)
+    putByte(sink, 248) -- low exponent bits and the quiet bit
+    for _ = 1, 6 do
+      putByte(sink, 0)
+    end
+    return
+  end
+
   local sign = 0
   if value < 0 or (value == 0 and 1 / value < 0) then
     sign = 128
@@ -656,9 +671,7 @@ local function putFloat(sink, value)
   end
 
   local exponent, fraction
-  if value ~= value then
-    exponent, fraction = 2047, 2251799813685248 -- 2^51: the quiet bit
-  elseif value == HUGE then
+  if value == HUGE then
     exponent, fraction = 2047, 0
   elseif value == 0 then
     exponent, fraction = 0, 0

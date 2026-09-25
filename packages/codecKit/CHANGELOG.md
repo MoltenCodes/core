@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.4 — 2026-09-25
+
+- The serialiser writes every NaN as the canonical quiet NaN `06 7F F8 00 00 00 00 00 00`, as `docs/API.md` promises. Revision 3 derived the sign bit with an ordered comparison before it recognised NaN, and on Retail 12.1.0 b69933 (measured 2026-09-25 by the real-client suite) that comparison answered "negative" for `0 / 0`, so the client wrote `06 FF F8 ...`. NaN is now recognised first with `value ~= value` and written without looking at its sign or payload. The value reaching the writer has already been refused if it is a secret. Decoding is unchanged, and a sign-bit NaN written by revision 3 still decodes to NaN.
+- Implementation revision 4. The state layout is unchanged: `Bootstrap_spec.lua` loads a revision 3 copy and upgrades it in place, keeping the state table, the limits and the pool, and the upgraded copy writes the canonical NaN.
+- `CodecKitTestEnv.LoadPatched` loads the source with one piece of text replaced; `Serialize_spec.lua` uses it to model the client's sign test, which stock Lua cannot reproduce.
+- 110 specs.
+
 ## 0.1.3 — 2026-09-24
 
 - Secret values: the source comments on `arrayPartLength`, the facade check and the secret refusal of option and limit values no longer claim that comparing a secret with anything, `nil` included, raises, or that a raw identity test is safe whatever the other side. They state what was measured on Retail 12.1.0 b69933 (2026-09-24): a secret compared with a value of its own type raises (`==`, `~=`, `<`, `<=` and `rawequal` alike) and a secret used as a table key raises, while a comparison with `nil` or with a value of another type answers without raising. The `type(value) == "nil"` rule stays, as the repository's uniform rule that never compares anything. Comments and documentation only: `luac -s -l` gives the same instruction listing before and after, so the implementation revision is unchanged.

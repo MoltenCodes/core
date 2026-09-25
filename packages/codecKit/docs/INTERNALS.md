@@ -93,4 +93,4 @@ A group of four bytes is at most 2^32 − 1 and five base-85 digits at most 85^5
 
 ## Upgrades
 
-A newer revision keeps `_state` (limits, the `UNBOUNDED` sentinel and pool) and rewrites the facade's functions and constants. Work records and sinks exist only during a call, so no object outlives the revision that built it. No revision so far has changed the state layout: revisions 2 and 3 inherit the state revision 1 built unchanged, and so will a later revision that keeps schema 1.
+A newer revision keeps `_state` (limits, the `UNBOUNDED` sentinel and pool) and rewrites the facade's functions and constants. Work records and sinks exist only during a call, so no object outlives the revision that built it. No revision so far has changed the state layout: revisions 2, 3 and 4 inherit the state revision 1 built unchanged, and so will a later revision that keeps schema 1.

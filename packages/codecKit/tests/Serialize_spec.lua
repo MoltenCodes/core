@@ -115,6 +115,63 @@ describe("CodecKit serialisation", function()
     assert.are.equal(-math.huge, 1 / back)
   end)
 
+  it("writes every NaN as the canonical quiet NaN whatever its sign bit", function()
+    -- Lua 5.1 cannot read a NaN's sign bit or payload, so the cases are built
+    -- the ways a NaN can arise: arithmetic at run time, negation (which flips
+    -- the sign bit on IEEE hardware) and the reader, given the sign-bit NaN a
+    -- client wrote and a NaN with a non-quiet payload.
+    local zeroAtRunTime = tonumber("0")
+    local _, fromNegativeBytes = CodecKit:Deserialize(TestEnv.Unhex("06fff8000000000000"))
+    local _, fromPayloadBytes = CodecKit:Deserialize(TestEnv.Unhex("067ff0000000000001"))
+    local nans = {
+      nan,
+      -nan,
+      zeroAtRunTime / zeroAtRunTime,
+      -(zeroAtRunTime / zeroAtRunTime),
+      math.huge * zeroAtRunTime,
+      fromNegativeBytes,
+      -fromNegativeBytes,
+      fromPayloadBytes,
+    }
+    for index = 1, #nans do
+      local value = nans[index]
+      assert.is_true(value ~= value, "case " .. index .. " is not NaN")
+      local ok, bytes = CodecKit:Serialize(value)
+      assert.is_true(ok)
+      assert.are.equal("067ff8000000000000", TestEnv.Hex(bytes), "case " .. index)
+    end
+    -- Built in two steps: the mixed layout is the point of this case.
+    local mixed = { -nan }
+    mixed.key = -nan
+    local _, nested = CodecKit:Serialize(mixed)
+    assert.are.equal("0a01067ff8000000000000", TestEnv.Hex(nested):sub(1, 22))
+    assert.are.equal(2, select(2, TestEnv.Hex(nested):gsub("067ff8000000000000", "")))
+  end)
+
+  it("writes the canonical NaN on a host whose ordered comparison calls a NaN negative", function()
+    -- Retail 12.1.0 b69933 (2026-09-25) answered the writer's sign test as
+    -- "negative" for `0 / 0`. Stock Lua follows IEEE-754 and answers false, so
+    -- the sign test is patched to answer as the client did: a writer that
+    -- tested the sign before recognising NaN writes FF F8 here.
+    TestEnv.Reset()
+    require("Registry")
+    require("PoolKit")
+    local ClientLike = TestEnv.LoadPatched(
+      "if value < 0 or (value == 0 and 1 / value < 0) then",
+      "if value < 0 or value ~= value or (value == 0 and 1 / value < 0) then"
+    )
+    local ok, bytes = ClientLike:Serialize(nan)
+    assert.is_true(ok)
+    assert.are.equal("067ff8000000000000", TestEnv.Hex(bytes))
+    ok, bytes = ClientLike:Serialize(-nan)
+    assert.is_true(ok)
+    assert.are.equal("067ff8000000000000", TestEnv.Hex(bytes))
+    local _, negative = ClientLike:Serialize(-2.5)
+    assert.are.equal("06c004000000000000", TestEnv.Hex(negative))
+    local _, negativeZeroBytes = ClientLike:Serialize(negativeZero)
+    assert.are.equal("068000000000000000", TestEnv.Hex(negativeZeroBytes))
+  end)
+
   it("round-trips strings with every byte, the escape byte and pipes", function()
     local all = {}
     for value = 0, 255 do

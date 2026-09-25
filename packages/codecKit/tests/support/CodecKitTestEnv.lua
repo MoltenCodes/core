@@ -5,8 +5,8 @@
 --- `tests/support/`. What stays here is this package's two module chains and
 --- the helpers only its specs describe: a local `issecretvalue` stub, a value
 --- that refuses every operation a secret refuses, allocation measurement, a
---- seeded byte generator, deep equality that understands NaN and -0, and an
---- in-place upgrade.
+--- seeded byte generator, deep equality that understands NaN and -0, an
+--- in-place upgrade and a patched load that models a host.
 ---
 --- The default environment loads Registry, PoolKit and CodecKit without the
 --- WoW stubs: CodecKit is pure Lua. `CodecKitTestEnv.Async` is a second
@@ -260,11 +260,10 @@ function CodecKitTestEnv.Unhex(text)
   )
 end
 
----Load the CodecKit source again as a copy carrying `revision`, the way a
----newer embedded copy loads over an older one in the client.
----@param revision integer
----@return table CodecKit
-function CodecKitTestEnv.LoadRevision(revision)
+---Read the CodecKit source text from `package.path`.
+---@return string text
+---@return string path
+local function readSource()
   -- Lua 5.1 has no `package.searchpath`, so walk the path templates the way
   -- `require` does.
   local path = nil
@@ -278,13 +277,36 @@ function CodecKitTestEnv.LoadRevision(revision)
     end
   end
   if path == nil then
-    error("CodecKitTestEnv.LoadRevision could not find CodecKit.lua on package.path", 2)
+    error("CodecKitTestEnv could not find CodecKit.lua on package.path", 3)
   end
 
   local file = assert(io.open(path, "r"))
   local text = file:read("*a")
   file:close()
+  return text, path
+end
 
+---Replace the one occurrence of the plain text `find` in `text`, raising when
+---it occurs any other number of times, so a spec never runs against a patch
+---that silently did nothing.
+---@param text string
+---@param find string plain text, not a pattern
+---@param replacement string
+---@return string
+local function replaceOnce(text, find, replacement)
+  local first = text:find(find, 1, true)
+  if first == nil or text:find(find, first + 1, true) ~= nil then
+    error("CodecKitTestEnv expected exactly one occurrence of: " .. find, 3)
+  end
+  return text:sub(1, first - 1) .. replacement .. text:sub(first + #find)
+end
+
+---Load the CodecKit source again as a copy carrying `revision`, the way a
+---newer embedded copy loads over an older one in the client.
+---@param revision integer
+---@return table CodecKit
+function CodecKitTestEnv.LoadRevision(revision)
+  local text, path = readSource()
   local patched, replacements =
     text:gsub("local IMPLEMENTATION_REVISION = %d+", "local IMPLEMENTATION_REVISION = " .. revision)
   if replacements ~= 1 then
@@ -292,6 +314,20 @@ function CodecKitTestEnv.LoadRevision(revision)
   end
 
   local chunk = assert(loadstring(patched, "@" .. path))
+  return chunk()
+end
+
+---Load the CodecKit source with one piece of source text replaced, to model a
+---host whose behaviour stock Lua cannot reproduce. The copy carries the
+---shipped revision, and a duplicate load of the same revision keeps the
+---installed functions, so call it after `Reset` and requiring Registry and
+---PoolKit: the patched copy is then the one that installs.
+---@param find string plain source text that must occur exactly once
+---@param replacement string
+---@return table CodecKit
+function CodecKitTestEnv.LoadPatched(find, replacement)
+  local text, path = readSource()
+  local chunk = assert(loadstring(replaceOnce(text, find, replacement), "@" .. path))
   return chunk()
 end
 
