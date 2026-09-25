@@ -5,11 +5,8 @@
 -- generation, one stable implementation table per (package, API) pair, and
 -- highest-revision-wins selection without replacing shared table identity.
 --
--- Registry generations publish side by side. Every generation owns a private
--- bootstrap state keyed by its own generation number and publishes itself at
--- `MoltenCodes.Registries[<generation>]`. `MoltenCodes.Registry` is an alias for
--- the newest generation present, so loading a second generation never aborts the
--- load of an addon that embedded the other one.
+-- Every API generation owns a private bootstrap state and publishes itself at
+-- `MoltenCodes.Registries[<generation>]`; `MoltenCodes.Registry` aliases the newest.
 --
 -- Line budget: 1000 lines, comments included. Registry sits at the bottom of
 -- every dependency chain and is loaded by every addon that embeds a Kit, so it
@@ -21,7 +18,8 @@
 --
 --   Validation ............... Identifier and revision checks.
 --   Bootstrap state .......... Finding or creating the generation-private state.
---   Package-state access ..... Reading entries without trusting their shape.
+--   Package-state access ..... Reading entries without trusting their shape, and
+--                              the lookup fast path.
 --   Public types ............. LuaCATS declarations for the facade.
 --   Lookup ................... Register, Get, GetInfo, Find, Packages.
 --   Retirement and migration . OnRetire, the outgoing hand-over, the migration
@@ -30,6 +28,15 @@
 --   Commit ................... Installing the methods and the facade self-check.
 --   Public namespace ......... `MoltenCodes.Registries[n]` and the alias.
 
+-- Read once: a global read is a hash lookup in `_G` on every call, a local is not.
+local type = type
+local rawget = rawget
+local rawset = rawset
+local select = select
+-- The global table is where `issecretvalue`, `geterrorhandler` and the shared state live.
+-- selene: allow(global_usage)
+local globals = _G
+
 local GLOBAL_STATE_KEY = "__MOLTENCODES_REGISTRY_STATE_V2"
 local PUBLIC_NAMESPACE_KEY = "MoltenCodes"
 local PUBLIC_GENERATIONS_KEY = "Registries"
@@ -37,14 +44,15 @@ local PUBLIC_ALIAS_KEY = "Registry"
 
 local STATE_SCHEMA = 1
 local API_GENERATION = 2
-local IMPLEMENTATION_REVISION = 13
+local IMPLEMENTATION_REVISION = 14
 
--- Lua 5.1 numbers are doubles, which represent consecutive integers exactly only
--- up to 2^53. Past that boundary distinct values start comparing equal, so a
--- revision such as `1e300` would silently become an unbeatable revision that no
--- future embedded copy could ever replace. Identifiers are therefore bounded.
+-- Lua 5.1 doubles represent consecutive integers exactly only up to 2^53; past it
+-- distinct values compare equal, and a revision such as `1e300` would become one
+-- no future embedded copy could replace. Identifiers are therefore bounded.
 local MAXIMUM_INTEGER = 2 ^ 53
 local MAXIMUM_INTEGER_TEXT = "2^53"
+
+local PACKAGE_NAME_PATTERN = "^[a-z][A-Za-z0-9]*$"
 
 -- The fixed vocabulary `Registry:Find` explains a miss with.
 local FIND_ABSENT = "absent"
@@ -65,8 +73,7 @@ local STATUS_RETIRED = "retired"
 ---@return boolean
 local function isSecret(value)
   -- issecretvalue is a World of Warcraft client API reachable only through the global table.
-  -- selene: allow(global_usage)
-  local isSecretValue = rawget(_G, "issecretvalue")
+  local isSecretValue = rawget(globals, "issecretvalue")
   return type(isSecretValue) == "function" and isSecretValue(value) == true
 end
 
@@ -79,32 +86,27 @@ local function passes(hook, value)
   return not isSecret(verdict) and verdict and true or false
 end
 
----Whether `value` is a number that represents an exact integer in range.
----
----`nan` fails the `% 1` comparison and both infinities fail the bound, so no
----explicit special-casing is required.
----@param value any
----@return boolean
-local function isBoundedInteger(value)
-  return type(value) == "number"
-    and not isSecret(value)
-    and value % 1 == 0
-    and value <= MAXIMUM_INTEGER
-    and value >= -MAXIMUM_INTEGER
-end
-
----Whether `value` is an exact integer greater than zero and within range.
+---Whether `value` is an exact integer greater than zero and within range. `nan`
+---fails the `% 1` comparison and infinity fails the bound, with no special case.
 ---@param value any
 ---@return boolean
 local function isPositiveInteger(value)
-  return isBoundedInteger(value) and value > 0
+  return type(value) == "number"
+    and not isSecret(value)
+    and value % 1 == 0
+    and value > 0
+    and value <= MAXIMUM_INTEGER
 end
 
 ---Whether `value` is an exact integer of zero or more and within range.
 ---@param value any
 ---@return boolean
 local function isNonNegativeInteger(value)
-  return isBoundedInteger(value) and value >= 0
+  return type(value) == "number"
+    and not isSecret(value)
+    and value % 1 == 0
+    and value >= 0
+    and value <= MAXIMUM_INTEGER
 end
 
 ---@param packageName any
@@ -113,8 +115,7 @@ local function validatePackageName(packageName, methodName)
   if type(packageName) ~= "string" or isSecret(packageName) or packageName == "" then
     error("Registry:" .. methodName .. " packageName must be a non-empty string", 3)
   end
-
-  if not string.match(packageName, "^[a-z][A-Za-z0-9]*$") then
+  if not string.match(packageName, PACKAGE_NAME_PATTERN) then
     error("Registry:" .. methodName .. " packageName must match ^[a-z][A-Za-z0-9]*$", 3)
   end
 end
@@ -127,15 +128,8 @@ end
 ---@param fieldName "api"|"revision"
 local function validatePositiveInteger(value, methodName, fieldName)
   if not isPositiveInteger(value) then
-    error(
-      "Registry:"
-        .. methodName
-        .. " "
-        .. fieldName
-        .. " must be a positive integer up to "
-        .. MAXIMUM_INTEGER_TEXT,
-      3
-    )
+    local problem = " must be a positive integer up to " .. MAXIMUM_INTEGER_TEXT
+    error("Registry:" .. methodName .. " " .. fieldName .. problem, 3)
   end
 end
 
@@ -146,8 +140,7 @@ end
 -- `Registry:` prefix instead.
 
 -- Independently embedded Registry copies find each other only through this global key.
--- selene: allow(global_usage)
-local state = rawget(_G, GLOBAL_STATE_KEY)
+local state = rawget(globals, GLOBAL_STATE_KEY)
 
 if state == nil then
   state = {
@@ -158,8 +151,7 @@ if state == nil then
     facade = {},
   }
   -- The first copy to load publishes the shared state under that same global key.
-  -- selene: allow(global_usage)
-  rawset(_G, GLOBAL_STATE_KEY, state)
+  rawset(globals, GLOBAL_STATE_KEY, state)
 elseif type(state) ~= "table" then
   error("Registry: bootstrap state is incompatible", 0)
 end
@@ -169,15 +161,12 @@ local stateApi = rawget(state, "registryApi")
 local stateRevision = rawget(state, "registryRevision")
 local entries = rawget(state, "entries")
 local facade = rawget(state, "facade")
-
 if stateSchema ~= STATE_SCHEMA then
   error("Registry: bootstrap state is incompatible", 0)
 end
-
 if stateApi ~= API_GENERATION then
   error("Registry: API generation is incompatible", 0)
 end
-
 if
   not isNonNegativeInteger(stateRevision)
   or type(entries) ~= "table"
@@ -206,7 +195,6 @@ local function getPackageEntries(packageName, level)
   if packageEntries ~= nil and type(packageEntries) ~= "table" then
     error("Registry: package state is corrupted", level)
   end
-
   return packageEntries
 end
 
@@ -219,7 +207,6 @@ local function getEntry(packageEntries, api, level)
   if entry == nil then
     return nil
   end
-
   if
     type(entry) ~= "table"
     or not isPositiveInteger(rawget(entry, "revision"))
@@ -227,16 +214,14 @@ local function getEntry(packageEntries, api, level)
   then
     error("Registry: package state is corrupted", level)
   end
-
   return entry
 end
 
----The entry for `(packageName, api)`, or `nil`.
----
----`level` counts from the accessors: the accessor, this function, every Registry
----frame up to the public method, then its caller. A public method calling this
----directly passes 4 and `adopt`, one frame deeper in `Bootstrap`, passes 5, so
----corruption is always raised at the line that called Registry.
+---The entry for `(packageName, api)`, or `nil`. `level` counts from the
+---accessors: the accessor, this function, every Registry frame up to the public
+---method, then its caller. A public method calling this directly passes 4 and
+---`adopt`, one frame deeper in `Bootstrap`, passes 5, so corruption is always
+---raised at the line that called Registry.
 ---@param packageName string
 ---@param api integer
 ---@param level integer error level, counted from the accessors
@@ -247,6 +232,52 @@ local function findEntry(packageName, api, level)
     return nil
   end
   return getEntry(packageEntries, api, level)
+end
+
+---The fast path of `Register`, `Get` and `Find`: look up before validating.
+---
+---Every Registry revision validated a name and an API before either became a
+---key, so a hit needs no pattern match; the secret probe still runs before
+---either is used as a key. A hit returns the well-formed entry and its fields;
+---anything else returns `nil` and whether the arguments are valid, so the full
+---path raises, or explains the miss, without probing again.
+---@param packageName any
+---@param api any
+---@return table|nil entry
+---@return boolean validArguments
+---@return table|nil implementation
+---@return integer|nil revision
+local function lookUp(packageName, api)
+  local isSecretValue = rawget(globals, "issecretvalue")
+  local probing = type(isSecretValue) == "function"
+  if probing and (isSecretValue(packageName) == true or isSecretValue(api) == true) then
+    return nil, false
+  end
+  local packageEntries = rawget(entries, packageName)
+  local entry = nil
+  if type(packageEntries) == "table" then
+    entry = rawget(packageEntries, api)
+  end
+  if type(entry) == "table" then
+    local implementation = rawget(entry, "implementation")
+    -- `isPositiveInteger`, inlined with the probe already read.
+    local revision = rawget(entry, "revision")
+    if
+      type(implementation) == "table"
+      and type(revision) == "number"
+      and not (probing and isSecretValue(revision) == true)
+      and revision % 1 == 0
+      and revision > 0
+      and revision <= MAXIMUM_INTEGER
+    then
+      return entry, true, implementation, revision
+    end
+  end
+  if type(packageName) ~= "string" or type(api) ~= "number" or packageName == "" then
+    return nil, false
+  end
+  local validName = string.match(packageName, PACKAGE_NAME_PATTERN) ~= nil
+  return nil, validName and api % 1 == 0 and api > 0 and api <= MAXIMUM_INTEGER
 end
 
 -- Public types ------------------------------------------------------------
@@ -301,6 +332,27 @@ local Registry = facade
 
 -- Lookup ------------------------------------------------------------------
 
+---Select `revision` over an existing entry's `currentRevision`, or refuse it.
+---@param entry table
+---@param implementation table the entry's shared package table
+---@param currentRevision integer
+---@param revision integer
+---@return table|nil sharedPackageTable
+---@return integer|nil previousRevision
+local function selectRevision(entry, implementation, currentRevision, revision)
+  if revision <= currentRevision then
+    return nil
+  end
+  rawset(entry, "revision", revision)
+  -- A retire hook belongs to the revision that registered it. Once another
+  -- revision is selected the hook describes state that no longer exists, so
+  -- it must never be handed the newer copy's table.
+  rawset(entry, "retire", nil)
+  -- The implementation table is never replaced: packages upgrade it in place,
+  -- so consumers holding older references observe the newer revision at once.
+  return implementation, currentRevision
+end
+
 ---Select `revision` for `(packageName, api)` once the arguments are known to
 ---be valid: the work behind both `Register` and `Bootstrap`.
 ---
@@ -318,7 +370,6 @@ local function registerEntry(packageName, api, revision, level)
     packageEntries = {}
     rawset(entries, packageName, packageEntries)
   end
-
   local entry = getEntry(packageEntries, api, level)
   if entry == nil then
     local implementation = {}
@@ -328,22 +379,7 @@ local function registerEntry(packageName, api, revision, level)
     })
     return implementation, nil
   end
-
-  local currentRevision = rawget(entry, "revision")
-  if revision <= currentRevision then
-    return nil
-  end
-
-  rawset(entry, "revision", revision)
-
-  -- A retire hook belongs to the revision that registered it. Once another
-  -- revision is selected the hook describes state that no longer exists, so
-  -- it must never be handed the newer copy's table.
-  rawset(entry, "retire", nil)
-
-  -- The implementation table is never replaced: packages upgrade it in place,
-  -- so consumers holding older references observe the newer revision at once.
-  return rawget(entry, "implementation"), currentRevision
+  return selectRevision(entry, rawget(entry, "implementation"), rawget(entry, "revision"), revision)
 end
 
 ---Requests initialization rights for one package revision.
@@ -360,15 +396,21 @@ local function register(_, packageName, api, revision, ...)
       2
     )
   end
-
-  validatePackageName(packageName, "Register")
-  validatePositiveInteger(api, "Register", "api")
+  local entry, validArguments, implementation, currentRevision = lookUp(packageName, api)
+  if entry ~= nil and isPositiveInteger(revision) then
+    -- A hit returns both fields; the casts say so to the type checker.
+    local current = currentRevision --[[@as integer]]
+    return selectRevision(entry, implementation --[[@as table]], current, revision)
+  end
+  if not validArguments then
+    validatePackageName(packageName, "Register")
+    validatePositiveInteger(api, "Register", "api")
+  end
   validatePositiveInteger(revision, "Register", "revision")
-
   -- Not a tail call: a tail call would drop this frame, and the level
   -- `registerEntry` raises at counts it.
-  local implementation, previousRevision = registerEntry(packageName, api, revision, 4)
-  return implementation, previousRevision
+  local selected, previousRevision = registerEntry(packageName, api, revision, 4)
+  return selected, previousRevision
 end
 
 ---Returns the selected shared package table and its revision.
@@ -377,14 +419,18 @@ end
 ---@return table|nil implementation
 ---@return integer|nil revision
 local function get(_, packageName, api)
-  validatePackageName(packageName, "Get")
-  validatePositiveInteger(api, "Get", "api")
-
-  local entry = findEntry(packageName, api, 4)
+  local entry, validArguments, implementation, revision = lookUp(packageName, api)
+  if entry ~= nil then
+    return implementation, revision
+  end
+  if not validArguments then
+    validatePackageName(packageName, "Get")
+    validatePositiveInteger(api, "Get", "api")
+  end
+  entry = findEntry(packageName, api, 4)
   if entry == nil then
     return nil
   end
-
   return rawget(entry, "implementation"), rawget(entry, "revision")
 end
 
@@ -395,12 +441,10 @@ end
 local function getInfo(_, packageName, api)
   validatePackageName(packageName, "GetInfo")
   validatePositiveInteger(api, "GetInfo", "api")
-
   local entry = findEntry(packageName, api, 4)
   if entry == nil then
     return nil
   end
-
   return {
     package = packageName,
     api = api,
@@ -409,33 +453,34 @@ local function getInfo(_, packageName, api)
   }
 end
 
----Silent lookup for an optional dependency.
----
----Never raises for a package that is not there; raises at the caller only for
----malformed arguments. Allocation-free, so it is safe on any path.
+---Silent lookup for an optional dependency. Never raises for a package that is
+---not there; raises at the caller only for malformed arguments. Allocation-free,
+---so it is safe on any path.
 ---@param packageName string
 ---@param api integer
 ---@return table|nil implementation
 ---@return integer|Registry.FindReason revisionOrReason the revision, or why nothing was found
 local function find(_, packageName, api)
-  validatePackageName(packageName, "Find")
-  validatePositiveInteger(api, "Find", "api")
-
-  local packageEntries = getPackageEntries(packageName, 3)
-  if packageEntries == nil or next(packageEntries) == nil then
-    return nil, FIND_ABSENT
-  end
-
-  local entry = getEntry(packageEntries, api, 3)
+  local entry, validArguments, implementation, revision = lookUp(packageName, api)
   if entry == nil then
-    return nil, FIND_GENERATION_MISMATCH
+    if not validArguments then
+      validatePackageName(packageName, "Find")
+      validatePositiveInteger(api, "Find", "api")
+    end
+    local packageEntries = getPackageEntries(packageName, 3)
+    if packageEntries == nil or next(packageEntries) == nil then
+      return nil, FIND_ABSENT
+    end
+    entry = getEntry(packageEntries, api, 3) --[[@as table|nil]]
+    if entry == nil then
+      return nil, FIND_GENERATION_MISMATCH
+    end
+    implementation, revision = rawget(entry, "implementation"), rawget(entry, "revision")
   end
-
   if rawget(entry, "status") == STATUS_RETIRED then
     return nil, FIND_RETIRED
   end
-
-  return rawget(entry, "implementation"), rawget(entry, "revision")
+  return implementation, revision
 end
 
 ---Order two `Packages` rows by package name, then API generation.
@@ -476,7 +521,6 @@ local function packages()
       }
     end
   end
-
   table.sort(rows, packageRowBefore)
   return rows
 end
@@ -502,12 +546,10 @@ local function onRetire(_, packageName, api, retire)
   if type(retire) ~= "function" then
     error("Registry:OnRetire retire must be a function", 2)
   end
-
   local entry = findEntry(packageName, api, 4)
   if entry == nil then
     error('Registry:OnRetire package "' .. packageName .. '" is not registered', 2)
   end
-
   rawset(entry, "retire", retire)
 end
 
@@ -515,8 +557,7 @@ end
 ---@param message string
 local function reportFailure(message)
   -- geterrorhandler is a World of Warcraft client API reachable only through the global table.
-  -- selene: allow(global_usage)
-  local getErrorHandler = rawget(_G, "geterrorhandler")
+  local getErrorHandler = rawget(globals, "geterrorhandler")
   if type(getErrorHandler) == "function" then
     local handler = getErrorHandler()
     if type(handler) == "function" then
@@ -527,10 +568,8 @@ local function reportFailure(message)
   print(message)
 end
 
----Mark the entry retired and ask the outgoing copy for its state, once.
----
----A failing hook is reported and the upgrade continues from no hand-over
----rather than from a half-drained one.
+---Mark the entry retired and ask the outgoing copy for its state, once. A failing
+---hook is reported and the upgrade continues from no hand-over, not a half-drained one.
 ---@param entry table
 ---@param implementation table
 ---@param incomingRevision integer
@@ -542,15 +581,12 @@ local function retireOutgoing(entry, implementation, incomingRevision, label)
     -- `pendingState` for the migration run to be resumed.
     return nil
   end
-
   local retire = rawget(entry, "retire")
   rawset(entry, "retire", nil)
   rawset(entry, "status", STATUS_RETIRED)
-
   if type(retire) ~= "function" then
     return nil
   end
-
   local ok, handover = pcall(retire, implementation, incomingRevision)
   if ok then
     return handover
@@ -620,13 +656,11 @@ local function runMigrations(
     rawset(entry, "migratedThrough", fromRevision)
     rawset(entry, "pendingState", migratedState)
   end
-
   if type(migrations) ~= "nil" then
     local steps, problem = selectMigrationSteps(migrations, fromRevision, revision)
     if steps == nil then
       return false, problem
     end
-
     for index = 1, #steps do
       local step = steps[index]
       local ok, result = pcall(rawget(migrations, step), migratedState, implementation)
@@ -640,7 +674,6 @@ local function runMigrations(
       rawset(entry, "pendingState", migratedState)
     end
   end
-
   if fromRevision < revision then
     rawset(entry, "migratedThrough", revision)
   end
@@ -664,29 +697,22 @@ end
 local function applySeal(entry, implementation, wanted, label)
   local seal = rawget(entry, "seal")
   local current = getmetatable(implementation)
-
   if not wanted then
     if seal ~= nil and current == seal then
       setmetatable(implementation, nil)
     end
     return true
   end
-
   if current ~= nil and current ~= seal then
     return false
   end
 
   -- A fresh metatable per sealing revision, so the refusal carries the label
   -- of the revision that currently owns the facade.
+  local refusal = '" cannot be added from outside the package'
   seal = {
     __newindex = function(_, key)
-      error(
-        label
-          .. ' facade is sealed; field "'
-          .. tostring(key)
-          .. '" cannot be added from outside the package',
-        2
-      )
+      error(label .. ' facade is sealed; field "' .. tostring(key) .. refusal, 2)
     end,
   }
   rawset(entry, "seal", seal)
@@ -711,10 +737,9 @@ end
 ---copy finish? Asked out of order, an older copy reinterprets private state it
 ---does not own, so the order lives here once rather than in every package.
 ---
----`validateState`, `resume`, `retire`, `migrations` and `sealFacade` are
----optional; `docs/API.md` documents each and the decision table.
----
----Registry never calls this itself: its own bootstrap runs before the facade exists.
+---`validateState`, `resume`, `retire`, `migrations` and `sealFacade` are optional;
+---`docs/API.md` documents each and the decision table. Registry never calls this
+---itself: its own bootstrap runs before the facade exists.
 ---@param request Registry.BootstrapRequest
 ---@return table|nil implementation the table to initialize; `nil`: return `selected` unchanged
 ---@return integer|nil previousRevision the inherited revision, as `Register` reports it
@@ -724,7 +749,6 @@ local function bootstrap(_, request)
   if type(request) ~= "table" then
     error("Registry:Bootstrap request must be a table", 2)
   end
-
   local packageName = rawget(request, "package")
   local api = rawget(request, "api")
   local revision = rawget(request, "revision")
@@ -735,7 +759,6 @@ local function bootstrap(_, request)
   local retire = rawget(request, "retire")
   local migrations = rawget(request, "migrations")
   local sealFacade = rawget(request, "sealFacade")
-
   validatePackageName(packageName, "Bootstrap")
   validatePositiveInteger(api, "Bootstrap", "api")
   validatePositiveInteger(revision, "Bootstrap", "revision")
@@ -751,9 +774,8 @@ local function bootstrap(_, request)
   validateOptionalField(migrations, "migrations", "table")
   validateOptionalField(sealFacade, "sealFacade", "boolean")
 
-  -- Level 3 points at the package file that called `Registry:Bootstrap`,
-  -- which is the caller of this helper: level 1 is `refuse` itself and
-  -- level 2 is `bootstrap`.
+  -- Level 3 points at the package file that called `Registry:Bootstrap`: level 1
+  -- is `refuse` itself and level 2 is `bootstrap`.
   local function refuse(reason)
     error(label .. " " .. reason, 3)
   end
@@ -770,9 +792,8 @@ local function bootstrap(_, request)
     local entry = findEntry(packageName, api, 5) --[[@as table]]
     local migratedState = nil
     if inheritedRevision == nil then
-      -- Nothing was inherited, so no step runs; the table is still
-      -- validated, so a malformed one fails on every load, not only
-      -- on the first upgrade.
+      -- Nothing was inherited, so no step runs; the table is still validated,
+      -- so a malformed one fails on every load, not only on the first upgrade.
       if
         type(migrations) ~= "nil"
         and selectMigrationSteps(migrations, revision, revision) == nil
@@ -789,7 +810,6 @@ local function bootstrap(_, request)
       end
       migratedState = result
     end
-
     if type(retire) ~= "nil" then
       rawset(entry, "retire", retire)
     end
@@ -817,7 +837,6 @@ local function bootstrap(_, request)
     if type(facadeRevision) ~= "number" or facadeRevision > existingRevision then
       refuse("package state is corrupted or incomplete")
     end
-
     if existingRevision > revision then
       -- A newer compatible embedded revision owns its own private
       -- state schema. Older copies validate the stable API surface
@@ -842,7 +861,6 @@ local function bootstrap(_, request)
         local verdict = validateState(existing)
         complete = not isSecret(verdict) and verdict == true
       end
-
       if type(resume) ~= "nil" then
         local inherited = resume(existing, complete)
         if type(inherited) ~= "nil" then
@@ -853,7 +871,6 @@ local function bootstrap(_, request)
         end
         return nil, nil, existing
       end
-
       if not complete then
         refuse("package state is corrupted or incomplete")
       end
@@ -867,17 +884,14 @@ local function bootstrap(_, request)
   if existingEntry ~= nil then
     handover = retireOutgoing(existingEntry, existing, revision, label)
   end
-
   local implementation, previousRevision = registerEntry(packageName, api, revision, 4)
   if implementation == nil then
     -- An equal or newer compatible revision owns the shared table.
     return nil, nil, existing
   end
-
   if previousRevision ~= existingRevision then
     refuse("Registry state changed unexpectedly during bootstrap")
   end
-
   return implementation,
     previousRevision,
     existing,
@@ -922,13 +936,11 @@ end
 -- Public namespace --------------------------------------------------------
 
 -- The public MoltenCodes namespace is the documented global entry point for consumers.
--- selene: allow(global_usage)
-local namespace = rawget(_G, PUBLIC_NAMESPACE_KEY)
+local namespace = rawget(globals, PUBLIC_NAMESPACE_KEY)
 if type(namespace) == "nil" then
   namespace = {}
   -- The first copy to load creates that documented public namespace.
-  -- selene: allow(global_usage)
-  rawset(_G, PUBLIC_NAMESPACE_KEY, namespace)
+  rawset(globals, PUBLIC_NAMESPACE_KEY, namespace)
 elseif type(namespace) ~= "table" then
   error("Registry: MoltenCodes global namespace is owned by an incompatible value", 0)
 end
@@ -961,22 +973,15 @@ else
   if type(aliased) == "table" then
     aliasedApi = rawget(aliased, "API")
   end
-
   if not isPositiveInteger(aliasedApi) then
     error("Registry: MoltenCodes.Registry is owned by an incompatible value", 0)
   end
-
   if aliasedApi == API_GENERATION then
     -- Same generation, different table: the bootstrap state above proved
     -- this facade is the shared one, so the alias cannot also be correct.
-    error(
-      "Registry: MoltenCodes.Registry claims API "
-        .. API_GENERATION
-        .. " but is not the shared facade",
-      0
-    )
+    local claim = "Registry: MoltenCodes.Registry claims API " .. API_GENERATION
+    error(claim .. " but is not the shared facade", 0)
   end
-
   if aliasedApi < API_GENERATION then
     -- Park the displaced generation under its own key. Generations older
     -- than this one predate `MoltenCodes.Registries` and would otherwise

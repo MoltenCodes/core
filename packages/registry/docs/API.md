@@ -1,7 +1,7 @@
 # Registry API
 
 Registry API generation: **2**  
-Implementation revision: **13**
+Implementation revision: **14**
 
 Registry is a zero-dependency runtime resolver for independently embedded framework packages.
 
@@ -99,6 +99,13 @@ sharedPackageTable, previousRevision
 
 When an equal or newer revision is already active, Registry returns `nil`. The caller must stop initialization and must not modify an independently created package table.
 
+A `Register` for a `(package, API)` pair that already has an entry takes the
+lookup fast path (see [Lookup cost](#lookup-cost)) and allocates nothing. A
+first registration allocates the entry: a bucket for a new package name, the
+`{ revision, implementation }` record and the empty shared table, 288 bytes on
+64-bit Lua 5.1. That layout is shared with every embedded Registry copy of
+this API generation, so it cannot shrink without a new bootstrap-state schema.
+
 ### Selection rules
 
 1. The first revision for a `(package, API)` pair is accepted.
@@ -155,6 +162,28 @@ The call performs no allocation.
 ```lua
 local EventKit, revision = Registry:Get("eventKit", 1)
 ```
+
+### Lookup cost
+
+`Register`, `Get` and `Find` look the `(packageName, api)` pair up before they
+run the full argument checks (revision 14 and later). Every Registry revision
+validated a name and an API generation before either became a key of its
+private state, so a lookup that finds a well-formed entry skips the name
+pattern; the private state must not be written by consumers (see
+[Embedded Registry copies](#embedded-registry-copies)). What a hit still does:
+
+- asks `issecretvalue`, on a client that has it, about the name and the API
+  before either is used as a key, and about the stored revision before it is
+  compared;
+- reads the state with raw access and checks the entry's shape, so a malformed
+  entry is never returned.
+
+A miss, a secret, a malformed argument or a malformed entry takes the full path:
+the same messages at the same caller line, the same corruption error, and the
+same `Find` reasons. On the host benchmark (`docs/BENCHMARKS.md`, workload
+`libraryRegistry`) a `Get` hit costs about a third of what revision 13 spent;
+the rest is the probe, the raw reads and the shape check, which the contract
+keeps.
 
 ## `Registry:GetInfo(packageName, api)`
 
@@ -465,7 +494,7 @@ A newer Registry implementation revision replaces methods on the existing facade
 
 The private bootstrap key is implementation detail and must not be read or written by consumers.
 
-Registry validates package buckets and entries lazily when they are accessed. If private package state is malformed, `Register()`, `Get()`, `GetInfo()`, `Find()`, `OnRetire()`, `Packages()` and `Bootstrap()` fail consistently with a Registry corruption error at the calling line rather than returning partial or invalid data. `Packages()` validates every entry it lists, so a malformed one is never reported as a row.
+Registry validates package buckets and entries lazily when they are accessed, on the fast path as on the full one. If private package state is malformed, `Register()`, `Get()`, `GetInfo()`, `Find()`, `OnRetire()`, `Packages()` and `Bootstrap()` fail consistently with a Registry corruption error at the calling line rather than returning partial or invalid data. `Packages()` validates every entry it lists, so a malformed one is never reported as a row.
 
 Bootstrap-state and facade integrity checks use raw table access. Metatable hooks on corrupted or foreign tables cannot synthesize Registry-owned fields or intercept an in-place facade upgrade.
 

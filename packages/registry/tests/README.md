@@ -18,7 +18,8 @@ The Registry suite covers:
 - the stack level of load-time versus argument errors;
 - silent lookup (`Find`) and the diagnostic listing (`Packages`);
 - retirement hand-over, per-revision migrations and their exactly-once record;
-- sealed facades.
+- sealed facades;
+- the lookup fast path and its upgrades.
 
 Spec files:
 
@@ -35,6 +36,7 @@ Spec files:
 | `Find_spec.lua` | `Find` (absent, different generation, retired-unfinished, argument errors, no allocation, `Get` included) and `Packages` snapshots |
 | `Retirement_spec.lua` | retire hooks and `OnRetire`, per-revision migrations run exactly once, failed steps, the in-place upgrade from the previous Registry revision |
 | `Seal_spec.lua` | sealed facades: refused writes at the writer's line, `rawset` upgrades, removal, foreign metatables |
+| `FastPath_spec.lua` | the lookup fast path of `Register`, `Get` and `Find`: hits equal to the full path, argument, secret and corruption refusals at the caller, no allocation, in-place upgrades from revisions 1, 2 and the previous one, an older copy loading afterwards |
 | `SecretValues_spec.lua` | secret arguments, request fields and hook results refused or handed over without a comparison |
 | `RegistryTestEnv_spec.lua` | the test environment's own reset and isolation |
 | `Manifest_spec.lua` | runtime API and revision against `package.manifest.json` |
