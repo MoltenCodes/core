@@ -103,6 +103,57 @@ describe("LifecycleKit combat state", function()
     assert.are.equal(1, starts)
   end)
 
+  it("re-reads the host before any OnReady callback runs at PLAYER_LOGIN", function()
+    -- Regression: the ready callbacks (and the module OnEnable hooks
+    -- ModuleKit runs from them) ran before the flag was reconciled, so they
+    -- were told the state from load time.
+    local life = LifecycleKit:ForAddon("MyAddon")
+    TestEnv.LoadAddon("MyAddon")
+    local seen
+    life:OnReady(function()
+      seen = LifecycleKit:IsInCombat()
+    end)
+
+    TestEnv.SetCombatLockdown(true)
+    TestEnv.Login()
+
+    assert.is_true(seen)
+  end)
+
+  it("queues a WhenOutOfCombat call made from OnReady when login finds combat", function()
+    local life = LifecycleKit:ForAddon("MyAddon")
+    TestEnv.LoadAddon("MyAddon")
+    local ran = false
+    life:OnReady(function(instance)
+      instance:WhenOutOfCombat(function()
+        ran = true
+      end)
+    end)
+
+    TestEnv.SetCombatLockdown(true)
+    TestEnv.Login()
+    assert.is_false(ran)
+
+    TestEnv.LeaveCombat()
+    assert.is_true(ran)
+  end)
+
+  it("tells OnReady that a combat seen at load ended before login", function()
+    local InCombat = loadPackageInCombat()
+    local life = InCombat:ForAddon("MyAddon")
+    TestEnv.LoadAddon("MyAddon")
+    local seen
+    life:OnReady(function()
+      seen = InCombat:IsInCombat()
+    end)
+
+    -- The combat ended while nothing was watching the events.
+    TestEnv.SetCombatLockdown(false)
+    TestEnv.Login()
+
+    assert.is_false(seen)
+  end)
+
   it("treats a missing InCombatLockdown as out of combat", function()
     -- Other package suites run without the combat stub.
     -- selene: allow(global_usage)
@@ -572,6 +623,64 @@ describe("LifecycleKit combat notices", function()
     assert.is_false(startSubscription:IsConnected())
     assert.is_false(endSubscription:IsConnected())
     assert.is_false(life:OnCombatStart(function() end):IsConnected())
+  end)
+
+  it("creates a notice's signal only for its first subscriber", function()
+    local life = loadedAddon("MyAddon")
+    local signals = rawget(life, "_signals")
+    assert.is_nil(rawget(signals, "combatStart"))
+    assert.is_nil(rawget(signals, "combatEnd"))
+    assert.is_nil(rawget(signals, "dependencyHalted"))
+
+    local starts = 0
+    life:OnCombatStart(function()
+      starts = starts + 1
+    end)
+    local signal = rawget(signals, "combatStart")
+    assert.is_table(signal)
+    life:OnCombatStart(function()
+      starts = starts + 1
+    end)
+    assert.are.equal(signal, rawget(signals, "combatStart"))
+    assert.is_nil(rawget(signals, "combatEnd"))
+
+    TestEnv.EnterCombat()
+    TestEnv.LeaveCombat()
+    assert.are.equal(2, starts)
+  end)
+
+  it("goes through combat, halts and shutdown without subscribers", function()
+    local life = loadedAddon("MyAddon")
+    local dependent = loadedAddon("Dependent")
+    dependent:DependsOn("MyAddon")
+
+    TestEnv.EnterCombat()
+    TestEnv.LeaveCombat()
+    assert.is_true(life:Halt("broken"))
+    TestEnv.Logout()
+
+    local signals = rawget(dependent, "_signals")
+    assert.is_nil(rawget(signals, "combatStart"))
+    assert.is_nil(rawget(signals, "dependencyHalted"))
+    assert.is_true(dependent:IsShutdown())
+  end)
+
+  it("allocates nothing per combat for an addon without subscribers #allocation", function()
+    loadedAddon("MyAddon")
+    TestEnv.EnterCombat()
+    TestEnv.LeaveCombat()
+
+    collectgarbage("collect")
+    collectgarbage("stop")
+    local before = collectgarbage("count")
+    for _ = 1, 500 do
+      TestEnv.EnterCombat()
+      TestEnv.LeaveCombat()
+    end
+    local allocated = collectgarbage("count") - before
+    collectgarbage("restart")
+
+    assert.is_true(allocated < 1, "combat cycles allocated " .. allocated .. " KiB")
   end)
 
   it("allocates nothing per combat once subscribed #allocation", function()

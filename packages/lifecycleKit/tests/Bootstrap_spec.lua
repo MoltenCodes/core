@@ -4,7 +4,7 @@ local expectErrorContaining = TestEnv.expectErrorContaining
 
 ---The implementation revision `src/LifecycleKit.lua` carries; `Manifest_spec.lua`
 ---pins the same number against `package.manifest.json`.
-local CURRENT_REVISION = 14
+local CURRENT_REVISION = 15
 
 -- Lua 5.1 leaves a sentinel in `package.loaded` when a `require` raises, so a
 -- second `require` of the same module reports "loop or previous error loading
@@ -281,6 +281,45 @@ describe("LifecycleKit package bootstrap", function()
     assert.are.equal(5, upgraded:GetLimits().maxDependencies)
     TestEnv.Logout()
     assert.are.equal(1, shutdowns)
+  end)
+
+  it("keeps the notice subscribers of an instance whose signals were created eagerly", function()
+    TestEnv.Reset()
+    TestEnv.InstallWowApi()
+    require("Registry")
+    local SignalKit = require("SignalKit")
+    require("EventKit")
+
+    -- Revisions 7 to 14 created every notice signal with the instance;
+    -- revision 15 creates them for their first subscriber.
+    local legacy = TestEnv.LoadSourceAtRevision(CURRENT_REVISION - 1)
+    local instance = legacy:ForAddon("MyAddon")
+    local signals = rawget(instance, "_signals")
+    for _, key in ipairs({ "dependencyHalted", "combatStart", "combatEnd" }) do
+      if rawget(signals, key) == nil then
+        rawset(signals, key, SignalKit:New())
+      end
+    end
+    TestEnv.LoadAddon("MyAddon")
+    local seen = {}
+    local startSubscription = instance:OnCombatStart(function()
+      seen[#seen + 1] = "start"
+    end)
+    local startSignal = rawget(signals, "combatStart")
+
+    local upgraded = require("LifecycleKit")
+    local endSubscription = instance:OnCombatEnd(function()
+      seen[#seen + 1] = "end"
+    end)
+    TestEnv.EnterCombat()
+    TestEnv.LeaveCombat()
+
+    assert.are.equal(legacy, upgraded)
+    assert.are.equal(startSignal, rawget(signals, "combatStart"))
+    assert.are.same({ "start", "end" }, seen)
+    TestEnv.Logout()
+    assert.is_false(startSubscription:IsConnected())
+    assert.is_false(endSubscription:IsConnected())
   end)
 
   it("releases the retired revision-3 capture slot during an in-place upgrade", function()

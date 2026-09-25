@@ -1,7 +1,7 @@
 local TestEnv = require("LifecycleKitTestEnv")
 
 ---The implementation revision `src/LifecycleKit.lua` carries.
-local CURRENT_REVISION = 14
+local CURRENT_REVISION = 15
 
 -- Shutdown closes what the addon owns through the other Kits' addon scopes:
 -- its TimerKit scope, its SchedulerKit scope, its EventKit scope, its HookKit

@@ -35,7 +35,7 @@
 
 local PACKAGE_NAME = "lifecycleKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 14
+local IMPLEMENTATION_REVISION = 15
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_SIGNAL_API = 1
 local REQUIRED_EVENT_KIT_API = 1
@@ -586,6 +586,10 @@ local INSTANCE_METATABLE = { __index = Instance }
 local SUBSCRIPTION_METATABLE = { __index = Subscription }
 local DEFERRED_CALL_METATABLE = { __index = DeferredCall }
 
+-- The repeating notices. Unlike the phases, an instance has a signal for one
+-- of them only once something subscribed to it (see `installGateFields`).
+local REPEATING_SIGNALS = { "dependencyHalted", "combatStart", "combatEnd" }
+
 -- Host-state probes ---------------------------------------------------------
 
 ---Report whether `ADDON_LOADED` has already completed for `addonName`.
@@ -641,9 +645,10 @@ local function installGateFields(instance)
   end
 
   rawset(signals, "halted", SignalKit:New())
-  rawset(signals, "dependencyHalted", SignalKit:New())
-  rawset(signals, "combatStart", SignalKit:New())
-  rawset(signals, "combatEnd", SignalKit:New())
+  -- The repeating notices (`dependencyHalted`, `combatStart`, `combatEnd`)
+  -- get their signal from their first subscriber (`subscribeRepeating`):
+  -- most addons subscribe to none of them, and firing a signal that was
+  -- never created delivers to nobody, exactly as an empty one would.
 
   rawset(instance, "_halted", false)
   rawset(instance, "_dependencies", {})
@@ -850,6 +855,10 @@ end
 ---@return LifecycleKit.ErrorRecord|nil errorRecord first captured error, wrapped so that `nil` and `false` stay representable
 local function fireSignal(instance, signalKey, capture, first, second)
   local signal = rawget(rawget(instance, "_signals"), signalKey)
+  if signal == nil then
+    -- A repeating notice nobody ever subscribed to (see `installGateFields`).
+    return nil
+  end
   local captures = getPhaseCaptures(instance)
   local enclosing = rawget(captures, signalKey)
 
@@ -1317,9 +1326,13 @@ local function disconnectUnreachableSignals(instance, keepKey)
   if keepKey ~= "halted" then
     disconnectAll(rawget(signals, "halted"))
   end
-  disconnectAll(rawget(signals, "dependencyHalted"))
-  disconnectAll(rawget(signals, "combatStart"))
-  disconnectAll(rawget(signals, "combatEnd"))
+  -- The repeating notices exist only once something subscribed to them.
+  for index = 1, #REPEATING_SIGNALS do
+    local signal = rawget(signals, REPEATING_SIGNALS[index])
+    if signal ~= nil then
+      disconnectAll(signal)
+    end
+  end
 end
 
 ---Enter the terminal `shutdown` phase and release unreachable subscriptions.
@@ -1554,20 +1567,23 @@ end
 ---`PLAYER_LOGIN` handler: promote every loaded instance to `ready`.
 ---
 ---The host may have entered combat before login (a `/reload` in combat), so
----the combat flag is re-read from the host here too.
+---the combat flag is re-read from the host first, before any `OnReady`
+---callback (and the module `OnEnable` hooks ModuleKit runs from it) can ask
+---`IsInCombat()` and be told the state from load time.
 local function onPlayerLogin()
   rawset(state, "loginSeen", true)
   clearGlobalWatcher("playerLogin")
 
-  local firstError = runForAllAddons(function(instance)
+  local combatError = reconcileCombatState()
+
+  local readyError = runForAllAddons(function(instance)
     if rawget(instance, "_loaded") == true then
       return markReady(instance)
     end
     return nil
   end)
 
-  local combatError = reconcileCombatState()
-  raisePhaseError(firstError or combatError)
+  raisePhaseError(combatError or readyError)
 end
 
 ---`PLAYER_LOGOUT` handler: drive every instance into `shutdown`.
@@ -1848,7 +1864,13 @@ local function subscribeRepeating(self, signalKey, callback)
     _inner = nil,
   }, SUBSCRIPTION_METATABLE)
 
-  local signal = rawget(rawget(self, "_signals"), signalKey)
+  -- The first subscriber creates the signal; see `installGateFields`.
+  local signals = rawget(self, "_signals")
+  local signal = rawget(signals, signalKey)
+  if signal == nil then
+    signal = SignalKit:New()
+    rawset(signals, signalKey, signal)
+  end
   local inner = signal:Connect(newListener(subscription, signalKey, callback, false))
   rawset(subscription, "_inner", inner)
   return subscription

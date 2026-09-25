@@ -13,7 +13,7 @@ WoW APIs are simulated by the shared fixture and `support/LifecycleKitTestEnv.lu
 | `Errors_spec.lua` | argument validation, pinned `file:line` error positions, error-object propagation |
 | `Bootstrap_spec.lua` | registration, duplicate embedding, newer-revision refusal (including one without `CLOSES_ADDON_SCOPES`), watcher repair, upgrades from revisions 3 and 6 and from the previous revision |
 | `SecretValues_spec.lua` | secret addon names, halt reasons and limits refused at the caller before a comparison; dot calls with a secret receiver |
-| `CombatGate_spec.lua` | `IsInCombat`, `WhenOutOfCombat`, `OnCombatStart` / `OnCombatEnd` |
+| `CombatGate_spec.lua` | `IsInCombat` (including its value inside `OnReady` at `PLAYER_LOGIN`), `WhenOutOfCombat`, `OnCombatStart` / `OnCombatEnd`, notice signals created on first subscription |
 | `Halt_spec.lua` | `Halt`, `OnHalted`, `DependsOn`, `OnDependencyHalted` |
 | `EventScopes_spec.lua` | closing the addon's EventKit scope at shutdown, its combat-log listeners included |
 | `OwnedScopes_spec.lua` | closing the TimerKit, SchedulerKit, HookKit, CommandKit and CommKit scopes and the SignalKit bus at shutdown, their order and first-error precedence, older TimerKit and SchedulerKit revisions without `CloseAddonScopes`, and the upgrades from revisions 7 to 12 |
