@@ -277,6 +277,51 @@ describe("OptionsKit bootstrap", function()
     )
   end)
 
+  it("upgrades a revision 7 state: old groups keep working, new calls are cached", function()
+    TestEnv.Reset()
+    TestEnv.InstallWowApi()
+    require("Registry")
+    require("SignalKit")
+    require("SchemaKit")
+    local OptionsKit = TestEnv.LoadRevision(7)
+    local SettingsKit = require("SettingsKit")
+    local S = require("SchemaKit")
+    local db = SettingsKit:Open(PROFILE_SAVED_VARIABLE, {
+      profile = S.table({ fields = { scale = S.optional(S.number(), 1) } }),
+    })
+    local oldGroup = OptionsKit:ProfileOptions(db)
+    local tree = OptionsKit:Define("Addon", { type = "group", args = { profiles = oldGroup } })
+    local state = rawget(OptionsKit, "_state")
+    -- Revision 7 had no group cache.
+    rawset(state, "profileLinksByDatabase", nil)
+
+    -- The shipped file, at its own revision, loads over revision 7.
+    local upgraded = require("OptionsKit")
+    assert.are.equal(OptionsKit, upgraded)
+    assert.is_true(upgraded.REVISION > 7)
+    assert.are.equal(state, rawget(upgraded, "_state"))
+    local cache = rawget(state, "profileLinksByDatabase")
+    assert.are.equal("table", type(cache))
+    assert.are.equal("k", getmetatable(cache).__mode)
+
+    -- The group revision 7 built still reaches its tree.
+    local changes = {}
+    tree:OnChange(function(_, path, value)
+      changes[#changes + 1] = { path, value }
+    end)
+    db:SetProfile("Raid")
+    assert.are.same({ { "profiles.current", "Raid" } }, changes)
+
+    -- It is not in the cache: the first call after the upgrade builds the
+    -- group every later call returns.
+    local cached = upgraded:ProfileOptions(db)
+    assert.are_not.equal(oldGroup, cached)
+    assert.are.equal(cached, upgraded:ProfileOptions(db))
+    assert.is_true(upgraded:Undefine("Addon"))
+    local again = upgraded:Define("Again", { type = "group", args = { profiles = cached } })
+    assert.are.equal("Raid", again:Get("profiles.current"))
+  end)
+
   it("requires Registry", function()
     TestEnv.Reset()
     TestEnv.InstallWowApi()

@@ -618,7 +618,9 @@ describe("OptionsKit ProfileOptions", function()
     assert.is_nil(OptionsKit:Get("B"))
 
     assert.is_true(OptionsKit:Undefine("A"))
+    -- The same database and options give the same, cached group.
     local other = OptionsKit:ProfileOptions(db)
+    assert.are.equal(group, other)
     local ok, message = pcall(
       OptionsKit.Define,
       OptionsKit,
@@ -884,6 +886,207 @@ describe("OptionsKit ProfileOptions", function()
       return rawequal(value, answer)
     end)
     assert.is_false(OptionsKit:ProfileOptions(secretive).args.reset.disabled())
+  end)
+
+  describe("one cached group per database and options", function()
+    it("returns the same group for the same database and options", function()
+      local OptionsKit, db = openDatabase()
+      local function localize(_, default)
+        return default
+      end
+      local group = OptionsKit:ProfileOptions(db)
+      assert.are.equal(group, OptionsKit:ProfileOptions(db))
+      assert.are.equal(group, OptionsKit:ProfileOptions(db, {}))
+      -- Options compared by value, `localize` by identity: two option tables
+      -- with the same values share a group.
+      local named = OptionsKit:ProfileOptions(db, { name = "P", order = 5, localize = localize })
+      assert.are_not.equal(group, named)
+      assert.are.equal(
+        named,
+        OptionsKit:ProfileOptions(db, { localize = localize, order = 5, name = "P" })
+      )
+      -- Each option that differs gives a group of its own.
+      local variants = {
+        OptionsKit:ProfileOptions(db, { name = "Q", order = 5, localize = localize }),
+        OptionsKit:ProfileOptions(db, { name = "P", order = 6, localize = localize }),
+        OptionsKit:ProfileOptions(db, {
+          name = "P",
+          order = 5,
+          localize = localize,
+          description = "Text",
+        }),
+        OptionsKit:ProfileOptions(db, {
+          name = "P",
+          order = 5,
+          localize = function(_, default)
+            return default
+          end,
+        }),
+      }
+      local seen = { [group] = true, [named] = true }
+      for index = 1, #variants do
+        assert.is_nil(seen[variants[index]], "variant " .. index)
+        seen[variants[index]] = true
+      end
+
+      local S = require("SchemaKit")
+      local SettingsKit = require("SettingsKit")
+      local other = SettingsKit:Open("OptionsKitProfileOtherDB", {
+        profile = S.table({ fields = { scale = S.optional(S.number(), 1) } }),
+      })
+      local otherGroup = OptionsKit:ProfileOptions(other)
+      assert.are_not.equal(group, otherGroup)
+      assert.are.equal(otherGroup, OptionsKit:ProfileOptions(other))
+      setGlobal("OptionsKitProfileOtherDB", nil)
+    end)
+
+    it("calls localize once per database and options, when the group is built", function()
+      local OptionsKit, db = openDatabase()
+      local calls = 0
+      local function localize(_, default)
+        calls = calls + 1
+        return default
+      end
+      local group = OptionsKit:ProfileOptions(db, { localize = localize })
+      local built = calls
+      assert.is_true(built > 0)
+      assert.are.equal(group, OptionsKit:ProfileOptions(db, { localize = localize }))
+      assert.are.equal(built, calls)
+    end)
+
+    it("shares the copy and delete selections among callers, until Undefine", function()
+      local OptionsKit, db = openDatabase()
+      db:SetProfile("Alt")
+      db:SetProfile("Default")
+      local tree = OptionsKit:Define(
+        "A",
+        { type = "group", args = { profiles = OptionsKit:ProfileOptions(db) } }
+      )
+      assert.is_true(tree:Set("profiles.copySource", "Alt"))
+      assert.is_true(tree:Set("profiles.deleteTarget", "Alt"))
+
+      -- A later call returns the same group, with the choices made through it.
+      local again = OptionsKit:ProfileOptions(db)
+      assert.are.equal("Alt", again.args.copySource.get())
+      assert.are.equal("Alt", again.args.deleteTarget.get())
+
+      -- Undefine forgets them: the next tree starts with no choice, as with
+      -- a freshly built group.
+      assert.is_true(OptionsKit:Undefine("A"))
+      local second = OptionsKit:Define(
+        "B",
+        { type = "group", args = { profiles = OptionsKit:ProfileOptions(db) } }
+      )
+      assert.is_nil(second:Get("profiles.copySource"))
+      assert.is_nil(second:Get("profiles.deleteTarget"))
+      assert.is_true(second:IsDisabled("profiles.copy"))
+      assert.is_true(second:IsDisabled("profiles.delete"))
+    end)
+
+    it("refuses the cached group in a second tree until the first is undefined", function()
+      local OptionsKit, db = openDatabase()
+      local first = OptionsKit:Define(
+        "A",
+        { type = "group", args = { profiles = OptionsKit:ProfileOptions(db) } }
+      )
+      assertReportedAtCaller(
+        'OptionsKit:Define tree.args.profiles is a profile group already defined in the tree of "A"; Undefine it first',
+        function(mark)
+          mark()
+          OptionsKit:Define(
+            "B",
+            { type = "group", args = { profiles = OptionsKit:ProfileOptions(db) } }
+          )
+        end
+      )
+      assert.is_nil(OptionsKit:Get("B"))
+
+      -- Once A is undefined, the group notifies B only.
+      local firstChanges = recordChanges(first)
+      assert.is_true(OptionsKit:Undefine("A"))
+      local second = OptionsKit:Define(
+        "B",
+        { type = "group", args = { profiles = OptionsKit:ProfileOptions(db) } }
+      )
+      local secondChanges = recordChanges(second)
+      db:SetProfile("Raid")
+      assert.are.same({}, firstChanges)
+      assert.are.same({ { "profiles.current", "Raid" } }, secondChanges)
+    end)
+
+    it("runs every check on every call, cached or not", function()
+      local OptionsKit, db = openDatabase()
+      OptionsKit:ProfileOptions(db)
+      assertReportedAtCaller(
+        'OptionsKit:ProfileOptions options contains unknown field "colour"',
+        function(mark)
+          mark()
+          OptionsKit:ProfileOptions(db, { colour = 1 })
+        end
+      )
+      assertReportedAtCaller(
+        "OptionsKit:ProfileOptions options.name must be a string",
+        function(mark)
+          mark()
+          OptionsKit:ProfileOptions(db, { name = 1 })
+        end
+      )
+      local secret = "Profiles"
+      OptionsKit:ProfileOptions(db, { name = "Profiles" })
+      setGlobal("issecretvalue", function(value)
+        return rawequal(value, secret)
+      end)
+      assertReportedAtCaller(
+        "OptionsKit:ProfileOptions options.name must not be a secret value",
+        function(mark)
+          mark()
+          OptionsKit:ProfileOptions(db, { name = secret })
+        end
+      )
+      setGlobal("issecretvalue", nil)
+      -- SettingsKit gone from the Registry: refused even though a group
+      -- for this database was built.
+      local Registry = require("Registry")
+      local find = rawget(Registry, "Find")
+      rawset(Registry, "Find", function()
+        return nil
+      end)
+      assertReportedAtCaller(
+        "OptionsKit:ProfileOptions needs SettingsKit API 1 to be loaded",
+        function(mark)
+          mark()
+          OptionsKit:ProfileOptions(db)
+        end
+      )
+      rawset(Registry, "Find", find)
+    end)
+
+    it("learns this character's profile on a later call once the client knows it", function()
+      local OptionsKit, db = openDatabase()
+      setGlobal("GetRealmName", nil)
+      local group = OptionsKit:ProfileOptions(db)
+      installIdentity()
+      assert.are.equal(group, OptionsKit:ProfileOptions(db))
+      local tree = OptionsKit:Define("Addon", { type = "group", args = { profiles = group } })
+      assert.are.same({
+        Default = "Default",
+        [CHARACTER_PROFILE] = CHARACTER_PROFILE,
+      }, describeChild(tree, "current").values)
+    end)
+
+    it("allocates nothing on a call answered from the cache #allocation", function()
+      local OptionsKit, db = openDatabase()
+      local options = { name = "Profiles", order = 90 }
+      OptionsKit:ProfileOptions(db)
+      OptionsKit:ProfileOptions(db, options)
+      local allocated = TestEnv.AllocatedKilobytes(function()
+        for _ = 1, 2000 do
+          OptionsKit:ProfileOptions(db)
+          OptionsKit:ProfileOptions(db, options)
+        end
+      end)
+      assert.is_true(allocated < 1, "ProfileOptions allocated " .. allocated .. " KiB")
+    end)
   end)
 
   it("refuses to build without SettingsKit, at the caller", function()

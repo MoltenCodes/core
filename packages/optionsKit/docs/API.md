@@ -2,7 +2,7 @@
 
 OptionsKit API generation **1** provides a typed, validated, introspectable options tree with no renderer: what an addon exposes as configurable, how each option is read and written, and what a dialog or a command line needs to present it.
 
-Implementation revision: **7**.
+Implementation revision: **8**.
 
 ## Loading
 
@@ -28,7 +28,7 @@ OptionsKit does not rely on `require()` at runtime.
 | Facility | Used by | Without it |
 |---|---|---|
 | SettingsKit API 1, through `Registry:Find` | `Define` with `options.db`, which every `bind` needs; `ProfileOptions` | `Define` with `options.db` and `ProfileOptions` raise; options with `get`/`set` work as usual. |
-| `UnitName("player")`, `GetRealmName()` | `ProfileOptions`, for the per-character profile choice `"<name> - <realm>"` | The choice is left out; the group works otherwise. Read once per `ProfileOptions` call. |
+| `UnitName("player")`, `GetRealmName()` | `ProfileOptions`, for the per-character profile choice `"<name> - <realm>"` | The choice is left out; the group works otherwise. Read when the group is built, and again by each later call returning it until the client answers both. |
 | `issecretvalue` | `Set`, `Validate`, `Describe`'s copy of a value, every path and addon-name argument, the `Define` limit options, and the results of `validate` and `db:Validate` | Nothing is treated as secret, which is correct on clients without secret values. |
 
 `issecretvalue` is read from the global table at every call, as SchemaKit reads it, so a probe that appears later is used at once.
@@ -42,7 +42,7 @@ Package facade:
 | `Define(addonName, tree, options?)` | Check and copy an options tree; return its handle. |
 | `Get(addonName)` | The tree defined for `addonName`, or `nil`. |
 | `Undefine(addonName)` | Forget the tree and disconnect its listeners. `true` when there was one. |
-| `ProfileOptions(db, options?)` | A ready-made `group` over a SettingsKit database's profiles, to place in a tree (see [Profile options](#profile-options-optionskitprofileoptionsdb-options)). |
+| `ProfileOptions(db, options?)` | A ready-made `group` over a SettingsKit database's profiles, to place in a tree; one group per database and options, built on the first call (see [Profile options](#profile-options-optionskitprofileoptionsdb-options)). |
 | `MAX_OPTIONS` | `1024`: the default `maxOptions`, the most options one tree holds. |
 | `MAX_DEPTH` | `8`: the default `maxDepth`, the most keys one option path has. |
 | `UNBOUNDED` | Sentinel `maxOptions` and `maxDynamicEntries` accept to lift the bound (see [Limits](#limits)). |
@@ -434,6 +434,16 @@ local options = OptionsKit:Define("MyAddon", {
 
 The returned table is a `group` to place in a tree's `args` (or to pass as the root) **as it is**: `Define` recognises the table itself, so a copy of it would be an ordinary group whose callbacks still work but whose database connections (below) are never made. A group belongs to one tree at a time; `Define` refuses it while another defined tree holds it (`OptionsKit:Define tree.args.profiles is a profile group already defined in the tree of "MyAddon"; Undefine it first`) and refuses it twice in one tree. `Undefine` frees it.
 
+**One group per database and options** (revision 8, as AceDBOptions keeps one per database). The first call for a database builds the group; every later call with the same database and the same options returns **that same table**. Options are compared by value (`name`, `order`, `description`) and `localize` by identity, an absent option and an absent options table counting alike: `ProfileOptions(db)` and `ProfileOptions(db, {})` share a group, while a different `name`, `order`, `description` or `localize` function builds a group of its own, cached in turn. So:
+
+- **`localize` runs once per database and options** for the fixed strings, when the group is built; a later call with the same function does not call it again, and a call with another function gets its own group translated by that function. The live descriptions and the messages of `new` still call it each time, as below.
+- **The copy and delete choices are shared** by every caller the group is returned to: they belong to the one group. `Undefine` forgets them, so the next tree that receives the group starts with no choice, as a freshly built group did.
+- **Two trees**: the group is still one table, so the rule above holds: while one defined tree holds it, placing it in a second tree is refused at `Define` with the message above; after `Undefine`, the second tree receives it, and only that tree is notified. Two groups in two trees at once need two different option sets (for example two `name`s), or two databases.
+- **Treat the group as read-only.** A change you make to the returned table (its `order`, an added option) is seen by every later caller. Pass `options.order` or `options.name` instead.
+- Every check runs on every call, before the cache is asked: SettingsKit must be loaded, `db` must offer the profile methods and the options are checked (secret refusals included), so a call answered from the cache refuses exactly what a first call refuses. A call answered from the cache allocates nothing.
+
+The cache holds the group for the session: SettingsKit keeps every database it opened for the session too. A group an older revision built before an in-place upgrade is not in the cache; it keeps working, and the first call afterwards builds the group later calls return.
+
 ### The group
 
 | Key | Kind | What it does |
@@ -466,7 +476,7 @@ The connections are made at the end of `Define`, after the whole tree was checke
 | `name` | The group's label; default the `group.name` string, "Profiles". |
 | `order` | The group's `order` among its siblings; default `100`. |
 | `description` | The text of the `intro` option; default the `intro` string. |
-| `localize` | `fun(key, default): string?`, called for every user-visible string with its key and English text. A string result is used; anything else keeps the default. Called at `ProfileOptions` for fixed strings, at every `Describe` for the live descriptions, and at every `Validate` and `Set` of `new` for its messages. |
+| `localize` | `fun(key, default): string?`, called for every user-visible string with its key and English text. A string result is used; anything else keeps the default. Called when the group is built (the first `ProfileOptions` call for the database and these options) for fixed strings, at every `Describe` for the live descriptions, and at every `Validate` and `Set` of `new` for its messages. |
 
 Unknown fields and wrong types are refused at your line: `OptionsKit:ProfileOptions options contains unknown field "colour"`, `OptionsKit:ProfileOptions options.localize must be a function`.
 
@@ -545,6 +555,7 @@ Every argument failure, schema refusal and bind-path failure reports the line th
 | `IsDisabled`, `IsHidden` | One check per ancestor; no allocation. |
 | `Describe` | Allocates the whole description; a `desc` function runs per node that has one. |
 | `DescribeOption` | As `Describe`, for that option or group only. |
+| `ProfileOptions` | The first call for a database and options builds the group (about 4.5 µs and 6 KB on host Lua 5.1, revision 7's cost of every call). A later call runs the checks, then one cache lookup: no allocation, about 1.6 µs on host Lua 5.1 (2026-09-25; AceDBOptions about 0.25 µs), most of it the structural check of the database (ten method lookups through SettingsKit's database metatable) and `Registry:Find`. |
 | The profile group's callbacks | Allocate: they call `db:GetProfiles()`. An options screen, not a hot path. |
 
 ## Deviations from the planned contract
@@ -560,6 +571,6 @@ The nine-point plan in `docs/ROADMAP.md` is followed except where recorded here:
 
 ## Embedded copies and upgrades
 
-Several addons may embed OptionsKit; Registry selects the newest compatible revision and every copy shares one facade. An upgrade happens in place: trees defined under an older copy stay registered, keep their records, `info` tables, schemas and `OnChange` listeners, and gain the newer copy's methods through the shared `OptionsKit.Tree` prototype. Revision 2 added the profile group map to the package state and a link list to every tree; a tree built by revision 1 gets an empty one when a later revision loads over it. Revisions 3 to 6 changed no layout; a predicate recorded by an older revision is answered secret-aware as soon as revision 5 loads. Revision 7 builds lighter records (no prebuilt `Set` label, absent fields left out, `info` built on first use, shared schemas and hints) and reads an older record's layout as it is: its `info` table and schema stay the ones it was built with. A profile group defined before an upgrade keeps its database connections and the callbacks of the revision that built it: `ProfileOptions` builds them as closures, so a newer copy's fixes reach the groups built after it loads.
+Several addons may embed OptionsKit; Registry selects the newest compatible revision and every copy shares one facade. An upgrade happens in place: trees defined under an older copy stay registered, keep their records, `info` tables, schemas and `OnChange` listeners, and gain the newer copy's methods through the shared `OptionsKit.Tree` prototype. Revision 2 added the profile group map to the package state and a link list to every tree; a tree built by revision 1 gets an empty one when a later revision loads over it. Revisions 3 to 6 changed no layout; a predicate recorded by an older revision is answered secret-aware as soon as revision 5 loads. Revision 7 builds lighter records (no prebuilt `Set` label, absent fields left out, `info` built on first use, shared schemas and hints) and reads an older record's layout as it is: its `info` table and schema stay the ones it was built with. A profile group defined before an upgrade keeps its database connections and the callbacks of the revision that built it: `ProfileOptions` builds them as closures, so a newer copy's fixes reach the groups built after it loads. Revision 8 adds the per-database group cache to the package state; groups built earlier are not in it, and the first call after the upgrade builds the one later calls return.
 
 Nothing survives `/reload`: trees are defined again when the addon loads.

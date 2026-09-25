@@ -90,7 +90,10 @@ Running it again in the same session prints the same lines.
   compaction only touches this in-memory table.
 - Nothing else. Every tree a test defines is undefined by the After hook,
   which disconnects its `OnChange` listeners and its profile group's
-  database connections. OptionsKit keeps no package-wide limits, and the
+  database connections and forgets the group's copy and delete choices.
+  OptionsKit keeps the one profile group it built for the test database
+  (revision 8 caches one per database and options; every test receives it
+  again), free of any tree. OptionsKit keeps no package-wide limits, and the
   SettingsKit limits are only read. Nothing is written to a saved variable
   other than the harness's own results.
 
@@ -176,7 +179,7 @@ MoltenCodes Test: SKIP optionsKit.secrets: a colour holding a secret red is refu
 | Test | Proves in the real client |
 |---|---|
 | `Registry:Get('optionsKit', 1) is the OptionsKit facade ...` | The facade the client loaded is API 1 with `Define`, `Get`, `Undefine`, `ProfileOptions`, `MAX_OPTIONS` 1024, `MAX_DEPTH` 8, the `UNBOUNDED` sentinel and a `Tree` prototype carrying `Get`, `Set`, `Validate`, `Reset`, `Execute`, `IsDisabled`, `IsHidden`, `Walk`, `Describe`, `DescribeOption` (revision 7) and `OnChange`. |
-| `the installed OptionsKit carries the revision ...` | Registry's selected revision and the facade's `REVISION` are both the committed manifest's (7), not an older or newer embedded copy. |
+| `the installed OptionsKit carries the revision ...` | Registry's selected revision and the facade's `REVISION` are both the committed manifest's (8), not an older or newer embedded copy. |
 | `the host facilities OptionsKit finds at call time ...` | `Registry:Find("settingsKit", 1)` finds the SettingsKit the bundle ships (the same table the suite uses), and the client answers `UnitName("player")` and `GetRealmName()` with plain non-empty strings. The log gives SettingsKit's revision, the character profile `"<name> - <realm>"` and whether `issecretvalue` and `secretwrap` exist. |
 | `a toggle whose get and set call C_CVar on chatBubbles ...` | A getter and a setter that call the client work through the tree: `Get` answers the CVar, each `Set` (to the other value, then back) returns `true` with the CVar already changed, and `OnChange` fires once per `Set`, with the path and value, while `C_CVar.GetCVar` already answers the new value. |
 | `a validate refusal returns false with its message ...` | A `validate` refusal comes back as `false` and its message; the string `"1"` raises `OptionsKit.Tree:Set bubbles: expected boolean, found string` at this file's calling line and `Validate` answers the same phrase; `C_CVar.SetCVar` is never called and `OnChange` never fires. |

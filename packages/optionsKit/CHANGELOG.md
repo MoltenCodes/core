@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.4.0 — 2026-09-25
+
+A contract change inside API generation 1, approved by the owner after the host benchmark against AceDBOptions-3.0 (`docs/BENCHMARKS.md`).
+
+- Changed: **`ProfileOptions` returns one cached group per database and options**, as AceDBOptions keeps one per database. The first call for a database builds the group; every later call with the same database and the same options (`name`, `order` and `description` compared by value, `localize` by identity; no options and `{}` alike) returns that same table. Three documented behaviours change:
+  - A call no longer returns a fresh group with its own copy and delete choices: the choices belong to the one group and are shared by every caller it is returned to. `Undefine` now forgets them, so the next tree that receives the group starts with no choice, as a fresh group did.
+  - `localize` runs for the fixed strings once per database and options, when the group is built. A call with another `localize` function (or another `name`, `order` or `description`) gets a group of its own, cached in turn, so no call ever receives a group labelled or translated for other options. The live descriptions and `new`'s messages still call it each time.
+  - The same group object can now reach two trees. That stays refused, by the existing rule: `Define` refuses a profile group another defined tree holds (`... is a profile group already defined in the tree of "A"; Undefine it first`); after `Undefine` the next tree receives it and only that tree is notified. Two trees holding profile groups at once need two option sets or two databases.
+- Every check still runs on every call, before the cache is asked: SettingsKit must be loaded, `db` must offer the ten profile methods, and the options are checked, secret refusals included. A cached call allocates nothing. The per-character profile is read when the group is built and, while the client did not know the player then, again on later calls until it does.
+- Host benchmark (`python3 -m tooling.bench.run --workload options --rounds 3`, sides interleaved; load average about 2 before and 2.5 to 3 after, with other agents' work running):
+
+  | Case | 0.3.0 (revision 7): ratio, bytes | 0.4.0 (revision 8): ratio, bytes |
+  |---|---|---|
+  | `profile-options-build` | 4,513 ns, 17.49× AceDBOptions, 6,020 B | 1,597 ns, 6.31× AceDBOptions, 0 B |
+  | `profile-choose-cmd` | 2.62×, 2,297 B | 2.61×, 2,297 B (unchanged) |
+
+  What remains of a cached call (about 1.6 µs against AceDBOptions' 0.25 µs) is the checks: the structural check of the database (ten method lookups through SettingsKit's database metatable, about 1 µs) and `Registry:Find` (about 0.23 µs). The benchmark's note for this case still says OptionsKit builds a new group; `tooling/bench` is not part of this package.
+- Implementation revision 8: `state.profileLinksByDatabase` (weak-keyed by database), a `group` field on each link, `readProfileOptions` returning values. An in-place upgrade over revision 7 adds the cache; groups built before it keep working and are not returned by later calls, the first call after the upgrade builds the group later calls return.
+- `docs/API.md` (*One group per database and options*, the `localize` option, the identity row, the performance table, upgrades), `docs/INTERNALS.md` (*The group cache*, the link fields, state and upgrades), README.
+- 186 specs (178 before): the same group for the same database and options and a new one for each option that differs or another database, `localize` called once, choices shared and forgotten at `Undefine`, the cached group refused in a second tree until `Undefine`, every refusal on a cached call (options, secret option, SettingsKit missing), the character profile learned on a later call, an allocation guard on the cached call, the upgrade over revision 7; the existing spec that called `ProfileOptions` twice now expects the same group. Real-client suite `MoltenCodesTest_OptionsKit`: no test assumed a fresh group (each test's tree is undefined by the After hook, which now also forgets the choices); `EXPECTED.md` names revision 8 and the cached group left in the session.
+
 ## 0.3.0 — 2026-09-25
 
 - **New: `tree:DescribeOption(path)`**, the node `Describe` would build for one option, or for a group and everything below it (`""` is the root, as `Describe`). Only that part's callbacks run (getter, `desc`, values function, predicates). `nil` for a path the tree does not have; a non-string or secret path raises at the caller. Additive: API generation 1 is kept, hence the minor version. CommandKit 0.2.6's `BindOptions` uses it to describe the one option a typed command names instead of the whole tree.

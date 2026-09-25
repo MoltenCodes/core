@@ -12,8 +12,9 @@
 -- An option's value is read and written either through the addon's own
 -- `get(info)` / `set(info, value)` functions or through `bind =
 -- "profile.path.to.value"`, which walks a SettingsKit database passed to
--- `Define` as `options.db`. `ProfileOptions(db)` builds a ready-made group
--- over a SettingsKit database's profiles from these same kinds.
+-- `Define` as `options.db`. `ProfileOptions(db)` returns a ready-made group
+-- over a SettingsKit database's profiles, built from these same kinds once per
+-- database and options.
 --
 -- OptionsKit requires Registry API 2, SchemaKit API 1 and SignalKit API 1.
 -- SettingsKit API 1 is optional and found through `Registry:Find` only when
@@ -45,7 +46,7 @@
 
 local PACKAGE_NAME = "optionsKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 7
+local IMPLEMENTATION_REVISION = 8
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_SCHEMAKIT_API = 1
 local REQUIRED_SIGNALKIT_API = 1
@@ -426,6 +427,7 @@ local function validateCurrentState(implementation)
   return validateStateBase(currentState)
     and rawget(implementation, "UNBOUNDED") == rawget(currentState, "unbounded")
     and type(rawget(currentState, "profileGroups")) == "table"
+    and type(rawget(currentState, "profileLinksByDatabase")) == "table"
 end
 
 -- Bootstrap ------------------------------------------------------------------
@@ -470,6 +472,10 @@ if type(previousRevision) == "nil" then
     -- it, so `Define` recognises the group when it meets it in a tree.
     -- Weak keys: a group the consumer dropped is forgotten with it.
     profileGroups = setmetatable({}, { __mode = "k" }),
+    -- Revision 8: a database to the links of the groups `ProfileOptions`
+    -- built for it, one per distinct set of options, so a later call with
+    -- the same database and options returns the same group.
+    profileLinksByDatabase = setmetatable({}, { __mode = "k" }),
   }
   rawset(OptionsKit, "Tree", Tree)
   rawset(OptionsKit, "_state", state)
@@ -483,6 +489,12 @@ end
 -- to 6 changed no layout, so a revision 2 or later state needs nothing here.
 if rawget(state, "profileGroups") == nil then
   rawset(state, "profileGroups", setmetatable({}, { __mode = "k" }))
+end
+-- Revision 8 caches the groups per database. Groups an older revision built
+-- are not in the cache: they keep working, and the first call after the
+-- upgrade builds the group later calls return.
+if rawget(state, "profileLinksByDatabase") == nil then
+  rawset(state, "profileLinksByDatabase", setmetatable({}, { __mode = "k" }))
 end
 for _, existingTree in next, rawget(state, "trees") do
   if rawget(existingTree, "_schema") == 1 then
@@ -498,6 +510,7 @@ local TREE_METATABLE = rawget(state, "treeMetatable")
 local trees = rawget(state, "trees")
 local UNBOUNDED = rawget(state, "unbounded")
 local profileGroups = rawget(state, "profileGroups")
+local profileLinksByDatabase = rawget(state, "profileLinksByDatabase")
 rawset(TREE_METATABLE, "__index", Tree)
 
 -- Argument checks ------------------------------------------------------------
@@ -1955,7 +1968,9 @@ end
 -- connected to the database's four profile signals and fires the tree's
 -- `OnChange` on each, so a renderer redraws after a switch made elsewhere;
 -- `Undefine` disconnects them. The group table is the key of
--- `state.profileGroups`, which is how `Define` finds the link.
+-- `state.profileGroups`, which is how `Define` finds the link. Revision 8
+-- caches the link, and so the group, per database and options in
+-- `state.profileLinksByDatabase`, as AceDBOptions keeps one group per database.
 
 -- The methods the group calls on the database. Checked structurally, as
 -- `options.db` is: SettingsKit API 1 publishes no predicate for its databases.
@@ -2048,13 +2063,18 @@ local function validateProfileDatabase(db, label, level)
   end
 end
 
----Read the `ProfileOptions` options into `link`.
+---Check the `ProfileOptions` options and return their four values, `false`
+---for each one absent. Returns values rather than filling a record, so a call
+---answered from the cache allocates nothing.
 ---@param options any
----@param link table
 ---@param level integer
-local function readProfileOptions(options, link, level)
+---@return string|false name
+---@return number|false order
+---@return string|false description
+---@return function|false localize
+local function readProfileOptions(options, level)
   if type(options) == "nil" then
-    return
+    return false, false, false, false
   end
   if type(options) ~= "table" then
     error("OptionsKit:ProfileOptions options must be a table", level)
@@ -2097,10 +2117,10 @@ local function readProfileOptions(options, link, level)
     "OptionsKit:ProfileOptions options.localize",
     level + 1
   )
-  link.name = rawget(options, "name") or false
-  link.order = order or false
-  link.description = rawget(options, "description") or false
-  link.localize = rawget(options, "localize") or false
+  return rawget(options, "name") or false,
+    order or false,
+    rawget(options, "description") or false,
+    rawget(options, "localize") or false
 end
 
 ---The text for `key`: the hook's answer when it is a string, else the English
@@ -2489,38 +2509,38 @@ local function detachProfileLink(link)
   link.tree = false
 end
 
----Build a ready-made options group over the profiles of a SettingsKit
----database, to place in a tree's `args`. See `docs/API.md`, *Profile options*.
----@param _ OptionsKit
----@param db table a SettingsKit API 1 database
----@param options OptionsKit.ProfileOptionsOptions?
----@return OptionsKit.Option group
-local function profileOptions(_, db, options)
-  local SettingsKit = findSettingsKit()
-  if SettingsKit == nil then
-    error("OptionsKit:ProfileOptions needs SettingsKit API 1 to be loaded", 2)
+---The link of the group already built for `db` with exactly these options,
+---or `nil`. The option values were checked by `readProfileOptions` (none is a
+---secret), so comparing them is safe; `localize` is compared by identity.
+---@param db table
+---@param name string|false
+---@param order number|false
+---@param description string|false
+---@param localize function|false
+---@return table|nil link
+local function findCachedProfileLink(db, name, order, description, localize)
+  local links = rawget(profileLinksByDatabase, db)
+  if links == nil then
+    return nil
   end
-  validateProfileDatabase(db, "OptionsKit:ProfileOptions db", 3)
-  local link = {
-    db = db,
-    SettingsKit = SettingsKit,
-    characterProfile = readCharacterProfile(),
-    -- The `ProfileOptions` options, `false` when absent.
-    name = false,
-    order = false,
-    description = false,
-    localize = false,
-    -- The profiles chosen in the copy and delete selects, `false` for none.
-    copySource = false,
-    deleteTarget = false,
-    -- `true` while the group's own `Set` switches the profile.
-    suppress = false,
-    -- Set by `attachProfileLink`, cleared by `detachProfileLink`.
-    tree = false,
-    connections = false,
-  }
-  readProfileOptions(options, link, 3)
+  for index = 1, #links do
+    local link = links[index]
+    if
+      link.name == name
+      and link.order == order
+      and link.description == description
+      and link.localize == localize
+    then
+      return link
+    end
+  end
+  return nil
+end
 
+---Build the group for a new link and remember it for `db`.
+---@param link table
+---@return OptionsKit.Option group
+local function buildProfileGroup(link)
   local group = {
     type = KIND_GROUP,
     name = link.name or translate(link, "group.name"),
@@ -2532,8 +2552,73 @@ local function profileOptions(_, db, options)
   if link.order then
     group.order = link.order
   end
+  link.group = group
   rawset(profileGroups, group, link)
+  local db = link.db
+  local links = rawget(profileLinksByDatabase, db)
+  if links == nil then
+    links = {}
+    rawset(profileLinksByDatabase, db, links)
+  end
+  links[#links + 1] = link
   return group
+end
+
+---Return the ready-made options group over the profiles of a SettingsKit
+---database, to place in a tree's `args`: one group per database and set of
+---options, built on the first call and returned by every later one. See
+---`docs/API.md`, *Profile options*.
+---
+---Every call runs every check (SettingsKit loaded, the database's methods,
+---the options) before the cache is asked, so a cached answer never skips a
+---refusal. A call answered from the cache allocates nothing.
+---@param _ OptionsKit
+---@param db table a SettingsKit API 1 database
+---@param options OptionsKit.ProfileOptionsOptions?
+---@return OptionsKit.Option group
+local function profileOptions(_, db, options)
+  local SettingsKit = findSettingsKit()
+  if SettingsKit == nil then
+    error("OptionsKit:ProfileOptions needs SettingsKit API 1 to be loaded", 2)
+  end
+  validateProfileDatabase(db, "OptionsKit:ProfileOptions db", 3)
+  local name, order, description, localize = readProfileOptions(options, 3)
+
+  local cached = findCachedProfileLink(db, name, order, description, localize)
+  if cached ~= nil then
+    -- A group built before the client knew the player learns this
+    -- character's profile now, as a fresh group would have. Once known, the
+    -- name and realm do not change within a session, so it is not read again.
+    if not cached.characterProfile then
+      cached.characterProfile = readCharacterProfile()
+    end
+    return cached.group
+  end
+
+  local link = {
+    db = db,
+    SettingsKit = SettingsKit,
+    characterProfile = readCharacterProfile(),
+    -- The `ProfileOptions` options, `false` when absent; with `db`, the
+    -- key the group is cached under.
+    name = name,
+    order = order,
+    description = description,
+    localize = localize,
+    -- The group built for this link (revision 8).
+    group = false,
+    -- The profiles chosen in the copy and delete selects, `false` for none.
+    -- Shared by every caller the cached group is returned to; `Undefine`
+    -- forgets them.
+    copySource = false,
+    deleteTarget = false,
+    -- `true` while the group's own `Set` switches the profile.
+    suppress = false,
+    -- Set by `attachProfileLink`, cleared by `detachProfileLink`.
+    tree = false,
+    connections = false,
+  }
+  return buildProfileGroup(link)
 end
 
 -- Package public API ---------------------------------------------------------
@@ -2759,7 +2844,13 @@ local function undefine(_, addonName)
   rawget(tree, "_changed"):DisconnectAll()
   local links = rawget(tree, "_profileLinks")
   for index = 1, #links do
-    detachProfileLink(links[index])
+    local link = links[index]
+    detachProfileLink(link)
+    -- The group is cached per database (revision 8), so the next tree may
+    -- receive it again: it starts there with no copy or delete choice, as a
+    -- freshly built group did.
+    link.copySource = false
+    link.deleteTarget = false
   end
   return true
 end
