@@ -91,13 +91,37 @@ The four `SKIP` lines are expected on every client:
 
 Running it again in the same session prints the same lines.
 
+## Measured on Retail 12.1.0 b69933 (2026-09-25)
+
+The first run gave 25 passed, 1 failed, 4 skipped. The one failure was the
+2048-byte test's assumption about listener order, corrected since (see its
+row below); every CommKit behaviour it checks held. Facts from that run:
+
+- Whispers to your own character work: the server hands each one back as
+  `CHAT_MSG_ADDON` with `WHISPER` and the sender as `Name-Realm` (the realm
+  always included). Round trips took about 266 to 281 ms: 280.8 ms for the
+  30-byte message, about 266 ms for the empty message, the 252-byte chunk and
+  the 2048-byte message.
+- The nine chunks of the 2048-byte message all left within 0.3 ms of `Send`
+  (the budget had 3905 of 4000 bytes, and 1339 after the last chunk; no
+  throttle) and all arrived back between +265.7 and +265.8 ms, in index
+  order. CommKit's listener ran before the test's observer on the last chunk's
+  event, and the message was delivered in that event.
+- The abort test put two messages on the wire (the first chunk and the
+  four-byte `05`); the raw `C_ChatInfo.SendAddonMessage` answered the number
+  0 (`Success`), and with HookKit loaded was charged as 69 outside bytes.
+- The prefix test counted 0 registered prefixes before its `Register` and 1
+  after; a second registration answered 1 (`DuplicatePrefix`). LifecycleKit was loaded and lists `commKit` in
+  `CLOSES_ADDON_SCOPES`. The SyncSet exchange took four wire messages.
+
 ### When the whisper to your own character does not come back
 
 The round-trip tests (`commKit.roundTrip`, except the one that cancels before
 anything leaves) and the SyncSet test need the server to hand a whisper to
 your own character back as `CHAT_MSG_ADDON`. If the client refuses that
 whisper, or never delivers it, those tests end as `SKIP` with the reason
-instead of passing or failing, for example:
+instead of passing or failing. Retail 12.1.0 b69933 delivered them (see
+above), so on that client these skips are unexpected. For example:
 
 ```text
 MoltenCodes Test: SKIP commKit.roundTrip: a short message whispered to the player's own character arrives once through CHAT_MSG_ADDON with its prefix, its text, WHISPER and the player as sender, and completes as sent (round trip logged) -- the client refused the whisper to self: SendAddonMessage answered InvalidChatType
@@ -169,7 +193,7 @@ results.
 | `a short message whispered to the player's own character ...` | A 30-byte message leaves as one addon message and comes back exactly once as `CHAT_MSG_ADDON`, and CommKit delivers it whole with the prefix, the text, `WHISPER` and your own name as sender; the handle reads `sent` with all 30 bytes. The log gives the time until it was sent and until it came back, and the sender as the server wrote it. |
 | `an empty message travels as the lone control byte 01 ...` | The one-byte addon message `01` survives the server, and CommKit delivers `""`. |
 | `a 252-byte single chunk holding every byte value ...` | Every byte value `Send` accepts, 01 to FF except 0A, 0D and 7C, crosses the server unchanged in one addon message (`01` plus the 252 bytes, 253 on the wire), including the bytes 80 to FF that CommKit's chunk headers rely on. On a difference the log names the first differing byte. |
-| `a 2048-byte message leaves as nine chunks ...` | The message leaves as nine addon messages; `onProgress` runs after each with 251, 502, ... 2008, 2048 of 2048 bytes; the wire shows `02`, seven `03` and `04`, every chunk 255 bytes but the last (44), header digits in 80-FF, one stream id, and the chunk count 9; CommKit delivers the message once, byte-identical, only after the last chunk arrived. The log gives the moment each chunk left and each wire message arrived, the budget before and after, and the counters, `throttled` included (0 expected; a throttle is retried and still passes). |
+| `a 2048-byte message leaves as nine chunks ...` | The message leaves as nine addon messages; `onProgress` runs after each with 251, 502, ... 2008, 2048 of 2048 bytes; the wire shows `02`, seven `03` and `04`, every chunk 255 bytes but the last (44), header digits in 80-FF, one stream id, and the chunk count 9; CommKit delivers the message once, byte-identical, only after the last chunk arrived. CommKit's listener and the test's wire observer run on the same `CHAT_MSG_ADDON` event, so the test places the delivery by counting, not by the clock: when each of the first eight chunks was recorded nothing had been delivered, and the delivery sits next to the record of the ninth, just before it when CommKit's listener runs first (as on Retail 12.1.0 b69933) or just after it otherwise. The log says which. The run of 2026-09-25 failed here only because the test compared clock readings and expected the delivery after the observer's last record. The log gives the moment each chunk left and each wire message arrived, the budget before and after, and the counters, `throttled` included (0 expected; a throttle is retried and still passes). |
 | `a message cancelled from onProgress after its first chunk ...` | A 600-byte (three-chunk) message cancelled inside its first `onProgress` sends exactly two addon messages: the first chunk and the four-byte abort `05` with the same stream id and count (`80 83`). The receiver opens the stream and drops it silently (`streamsAborted` +1), nothing is delivered and no stream stays open; the handle is `cancelled` with 251 bytes sent. |
 | `a raw C_ChatInfo.SendAddonMessage of a CommKit single chunk ...` | After one CommKit send (which installs CommKit's outside-traffic hooks when HookKit is loaded), the test calls `C_ChatInfo.SendAddonMessage` itself with `01` plus text. The client answers `Enum.SendAddonMessageResult.Success` (the type, value and name are logged), CommKit charges it as outside traffic (`outsideMessages` +1, `outsideBytes` + prefix + text + 40) when HookKit is loaded, and CommKit's registration receives both messages. |
 | `a send cancelled before CommKit's driver ran ...` | A send cancelled in the same frame it was queued completes once as `cancelled`, and in the following second nothing reaches the wire and no chunk is counted. |

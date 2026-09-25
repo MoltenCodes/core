@@ -302,6 +302,20 @@ describe("CommKit error levels", function()
         scope:Send({ prefix = "P", text = secret, distribution = "PARTY" })
       end
     )
+    assertReportedAtCaller(
+      "CommKit.Scope:Send request.distribution must not be a secret value",
+      function(mark)
+        mark()
+        scope:Send({ prefix = "P", text = "t", distribution = secret })
+      end
+    )
+    assertReportedAtCaller(
+      "CommKit.Scope:Send request.target must not be a secret value",
+      function(mark)
+        mark()
+        scope:Send({ prefix = "P", text = "t", distribution = "WHISPER", target = secret })
+      end
+    )
     assertReportedAtCaller("CommKit.SyncSet:Set value must not be a secret value", function(mark)
       mark()
       sync:Set("a", secret)

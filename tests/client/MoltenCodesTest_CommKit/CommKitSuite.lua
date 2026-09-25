@@ -549,14 +549,16 @@ end
 ---@field distribution string
 ---@field sender string
 ---@field at number clock reading when the callback ran
+---@field wireSeen integer|nil how many wire messages the observer had recorded when the callback ran, when `countWire` was given
 
 ---Register `prefix` in `scope` and collect every whole message delivered on
 ---it, or fail the test with the refusal.
 ---@param ctx TestKit.Context
 ---@param scope any
 ---@param prefix string
+---@param countWire (fun(): integer)|nil answers how many wire messages the test's observer has recorded so far, so a delivery can be placed among the chunk events
 ---@return CommKitSuite.Delivery[] deliveries
-local function collectDeliveries(ctx, scope, prefix)
+local function collectDeliveries(ctx, scope, prefix, countWire)
   local deliveries = {}
   local connection, reason = scope:Register(
     prefix,
@@ -567,6 +569,7 @@ local function collectDeliveries(ctx, scope, prefix)
         distribution = distribution,
         sender = sender,
         at = now(),
+        wireSeen = countWire and countWire() or nil,
       }
     end
   )
@@ -582,17 +585,25 @@ end
 ---@field channel string
 ---@field sender string
 ---@field at number clock reading when the event arrived
+---@field deliveredBefore integer|nil how many whole messages the test's collector had received when the observer saw this one, when `deliveries` was given
 
 ---Watch `CHAT_MSG_ADDON` for `prefix` from the player's own character with an
 ---EventKit connection of the test's own, next to CommKit's, so a test can
 ---read the chunks exactly as the client delivered them. The client delivers
 ---the event only for registered prefixes, so the test registers the prefix
 ---with CommKit first.
+---
+---Both CommKit's listener and this one run on the same `CHAT_MSG_ADDON` event,
+---in an order EventKit does not promise, so a delivery made while the last
+---chunk's event is dispatched may be recorded before or after that chunk.
+---`deliveries`, when given, is snapshotted per message to place deliveries
+---among the chunk events without comparing clock readings.
 ---@param prefix string
 ---@param fullName string
 ---@param shortName string
+---@param deliveries CommKitSuite.Delivery[]|nil
 ---@return CommKitSuite.WireMessage[] messages
-local function observeWire(prefix, fullName, shortName)
+local function observeWire(prefix, fullName, shortName, deliveries)
   local messages = {}
   local scope = track(EventKit:CreateScope())
   scope:Connect("CHAT_MSG_ADDON", function(_, eventPrefix, text, channel, sender)
@@ -608,7 +619,13 @@ local function observeWire(prefix, fullName, shortName)
       return
     end
     if eventPrefix == prefix and isPlayer(sender, fullName, shortName) then
-      messages[#messages + 1] = { text = text, channel = channel, sender = sender, at = now() }
+      messages[#messages + 1] = {
+        text = text,
+        channel = channel,
+        sender = sender,
+        at = now(),
+        deliveredBefore = deliveries and #deliveries or nil,
+      }
     end
   end)
   return messages
@@ -1124,8 +1141,11 @@ roundTrip:Test(
   function(ctx)
     local fullName, shortName = requirePlayerNames(ctx)
     local scope = newCommScope()
-    local deliveries = collectDeliveries(ctx, scope, PREFIX.long)
-    local wire = observeWire(PREFIX.long, fullName, shortName)
+    local wire = nil
+    local deliveries = collectDeliveries(ctx, scope, PREFIX.long, function()
+      return wire and #wire or 0
+    end)
+    wire = observeWire(PREFIX.long, fullName, shortName, deliveries)
     local payload = cyclingPayload(LONG_MESSAGE_BYTES)
     local counters = {
       "chunksSent",
@@ -1190,13 +1210,33 @@ roundTrip:Test(
     ctx:Expect(deliveries[1].distribution):ToBe("WHISPER")
     ctx:Expect(firstDifference(payload, deliveries[1].text)):ToBeNil()
     ctx:Expect(deliveries[1].text == payload):ToBe(true)
-    -- The message is whole only once the last chunk arrived.
+    -- The message is whole only once the last chunk arrived. CommKit's
+    -- listener and the observer share each CHAT_MSG_ADDON event, in either
+    -- order (on Retail 12.1.0 b69933, 2026-09-25, CommKit's ran first), so
+    -- the delivery is placed by the two listeners' counts, not by the clock:
+    -- no chunk before the last saw a delivery, and the delivery came right
+    -- next to the observer's record of the last chunk, just before it (CommKit
+    -- first) or just after it (observer first). The clock readings are
+    -- logged, not compared.
     ctx:Expect(#wire):ToBe(LONG_MESSAGE_CHUNKS)
-    local lastArrival = 0
-    for _, message in ipairs(wire) do
-      lastArrival = math.max(lastArrival, message.at)
+    for index = 1, LONG_MESSAGE_CHUNKS - 1 do
+      ctx:Expect(wire[index].deliveredBefore):ToBe(0)
     end
-    ctx:Expect(deliveries[1].at >= lastArrival):ToBe(true)
+    local lastChunk = wire[LONG_MESSAGE_CHUNKS]
+    local deliveredFirst = lastChunk.deliveredBefore == 1
+    ctx:Log(
+      ("the delivery ran %s the observer's record of the last chunk (observer had %s chunks at delivery; %s deliveries at the last chunk)"):format(
+        deliveredFirst and "before" or "after",
+        tostring(deliveries[1].wireSeen),
+        tostring(lastChunk.deliveredBefore)
+      )
+    )
+    if deliveredFirst then
+      ctx:Expect(deliveries[1].wireSeen):ToBe(LONG_MESSAGE_CHUNKS - 1)
+    else
+      ctx:Expect(lastChunk.deliveredBefore):ToBe(0)
+      ctx:Expect(deliveries[1].wireSeen):ToBe(LONG_MESSAGE_CHUNKS)
+    end
     ctx:Expect(checkChunks(ctx, wire, LONG_MESSAGE_CHUNKS) == payload):ToBe(true)
     ctx:Expect(delta.chunksSent):ToBe(LONG_MESSAGE_CHUNKS)
     ctx:Expect(delta.streamsOpened):ToBe(1)
