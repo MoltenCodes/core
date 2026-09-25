@@ -37,7 +37,7 @@
 --   Output ................ sinks, the capture sink, line writing
 --   Argument schemas ...... sealing, coercion and usage text from schemas
 --   Command records ....... compiling a spec into an immutable record tree
---   Slash registration .... keys, the taken check, the permanent dispatchers
+--   Slash registration .... keys, the taken check and its caches, dispatchers
 --   Dispatch .............. frames, sub-command walk, validation, the handler
 --   Context methods ....... what a handler receives
 --   Options binding ....... get, set, reset, list and exec over OptionsKit
@@ -53,7 +53,7 @@
 
 local PACKAGE_NAME = "commandKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 6
+local IMPLEMENTATION_REVISION = 7
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_SCHEMAKIT_API = 1
 local OPTIONAL_OPTIONSKIT_API = 1
@@ -245,10 +245,6 @@ local CONTEXT_METHODS = {
 
 -- Byte values the parser compares against, so it never builds a
 -- one-character string to compare.
-local BYTE_SPACE = 32
-local BYTE_TAB = 9
-local BYTE_NEWLINE = 10
-local BYTE_RETURN = 13
 local BYTE_DOUBLE_QUOTE = 34
 local BYTE_SINGLE_QUOTE = 39
 local BYTE_BACKSLASH = 92
@@ -256,6 +252,26 @@ local BYTE_PIPE = 124
 local BYTE_LINK = 72 -- "H": starts a hyperlink
 local BYTE_COLOUR = 99 -- "c": starts a colour code
 local BYTE_TEXTURE = 84 -- "T": starts a texture
+
+-- What the parser needs to know of a byte: whitespace between tokens (space,
+-- tab, newline, return) or a quote character.
+local BYTE_CLASS = { [32] = "space", [9] = "space", [10] = "space", [13] = "space" }
+BYTE_CLASS[BYTE_DOUBLE_QUOTE] = "quote"
+BYTE_CLASS[BYTE_SINGLE_QUOTE] = "quote"
+
+-- The patterns the parser finds its next stop with, so a run of ordinary bytes
+-- is skipped by one `string.find` in C rather than byte by byte in Lua. The
+-- character classes are exactly the bytes `BYTE_CLASS` and the escape handling
+-- name: whitespace, the pipe that starts an escape sequence, the backslash
+-- and the closing quote.
+local PARSER_PATTERNS = {
+  -- The first byte of the next token.
+  tokenStart = "[^ \t\n\r]",
+  -- The end of a bare run, or a pipe inside it.
+  bareStop = "[ \t\n\r|]",
+  -- What ends or interrupts a quoted segment, by quote byte.
+  quotedStop = { [BYTE_DOUBLE_QUOTE] = '[\\"|]', [BYTE_SINGLE_QUOTE] = "[\\'|]" },
+}
 
 -- Public types ---------------------------------------------------------------
 --
@@ -777,7 +793,9 @@ end
 
 -- Parser ---------------------------------------------------------------------
 --
--- One pass over the text, byte by byte, with no state outside the call. A
+-- One pass over the text, with no state outside the call: `string.find` jumps
+-- to the next byte that matters (whitespace, a quote, a backslash or a pipe),
+-- so ordinary bytes are never visited one by one in Lua. A
 -- token is one or more adjacent segments, joined: a quoted segment
 -- (`"double"`, or `'single'` when it closes before a boundary) or a bare run of
 -- non-whitespace bytes. Inside a bare run, escape sequences the client
@@ -789,20 +807,6 @@ end
 --   `||`                   an escaped pipe
 --
 -- The state machine is drawn in `docs/INTERNALS.md`.
-
----Whether `byte` is whitespace between tokens.
----@param byte integer|nil
----@return boolean
-local function isSpace(byte)
-  return byte == BYTE_SPACE or byte == BYTE_TAB or byte == BYTE_NEWLINE or byte == BYTE_RETURN
-end
-
----Whether `byte` is a quote character.
----@param byte integer|nil
----@return boolean
-local function isQuote(byte)
-  return byte == BYTE_DOUBLE_QUOTE or byte == BYTE_SINGLE_QUOTE
-end
 
 ---Skip one escape sequence that starts with the pipe at `position`, and return
 ---the position after it. A hyperlink without both of its `|h` markers is
@@ -860,7 +864,7 @@ end
 
 ---Find the closing quote of a quoted segment opened at `position`. A
 ---backslash before the quote character or before another backslash escapes
----it.
+---it. Jumps from one backslash, pipe or quote to the next with `string.find`.
 ---@param text string
 ---@param position integer the position of the opening quote
 ---@param length integer
@@ -868,31 +872,33 @@ end
 ---@return integer|nil close the position of the closing quote
 ---@return boolean|string escapedOrReason whether an escape was seen, or why there is no close
 local function findClosingQuote(text, position, length, quote)
+  local pattern = PARSER_PATTERNS.quotedStop[quote]
   local cursor = position + 1
   local escaped = false
-  while cursor <= length do
-    local byte = text:byte(cursor)
+  while true do
+    local found = text:find(pattern, cursor)
+    if found == nil then
+      return nil, "unterminated quote"
+    end
+    local byte = text:byte(found)
     if byte == BYTE_BACKSLASH then
-      local nextByte = text:byte(cursor + 1)
+      local nextByte = text:byte(found + 1)
       if nextByte == quote or nextByte == BYTE_BACKSLASH then
         escaped = true
-        cursor = cursor + 2
+        cursor = found + 2
       else
-        cursor = cursor + 1
+        cursor = found + 1
       end
     elseif byte == quote then
-      return cursor, escaped
-    elseif byte == BYTE_PIPE then
-      local nextPosition, reason = skipEscape(text, cursor, length, true)
+      return found, escaped
+    else
+      local nextPosition, reason = skipEscape(text, found, length, true)
       if nextPosition == nil then
         return nil, reason --[[@as string]]
       end
       cursor = nextPosition
-    else
-      cursor = cursor + 1
     end
   end
-  return nil, "unterminated quote"
 end
 
 ---Remove the escapes from a quoted segment's text.
@@ -906,28 +912,34 @@ local function unescape(segment, quote)
   return (segment:gsub("\\([\\'])", "%1"))
 end
 
----Read a bare run starting at `position`, up to whitespace or the end.
+---Read a bare run starting at `position`, up to whitespace or the end. Jumps
+---from one pipe to the next with `string.find`; an escape sequence it starts
+---is skipped whole.
 ---@param text string
 ---@param position integer
 ---@param length integer
 ---@return string|nil segment
 ---@return integer|string nextPositionOrReason
 local function readBare(text, position, length)
+  local pattern = PARSER_PATTERNS.bareStop
   local cursor = position
-  while cursor <= length do
-    local byte = text:byte(cursor)
-    if isSpace(byte) then
+  while true do
+    local stop = text:find(pattern, cursor)
+    if stop == nil then
+      -- Every step below lands at most one past the end, so this is where
+      -- a byte-by-byte walk would have stopped too.
+      cursor = length + 1
       break
     end
-    if byte == BYTE_PIPE then
-      local nextPosition, reason = skipEscape(text, cursor, length, false)
-      if nextPosition == nil then
-        return nil, reason --[[@as string]]
-      end
-      cursor = nextPosition
-    else
-      cursor = cursor + 1
+    if text:byte(stop) ~= BYTE_PIPE then
+      cursor = stop
+      break
     end
+    local nextPosition, reason = skipEscape(text, stop, length, false)
+    if nextPosition == nil then
+      return nil, reason --[[@as string]]
+    end
+    cursor = nextPosition
   end
   return text:sub(position, cursor - 1), cursor
 end
@@ -945,12 +957,18 @@ end
 ---@return string|nil token
 ---@return integer|string nextPositionOrReason
 local function readToken(text, position, length)
+  -- A bare run stops only at whitespace or the end, so a token that starts
+  -- with anything but a quote is exactly one bare run.
+  if BYTE_CLASS[text:byte(position)] ~= "quote" then
+    return readBare(text, position, length)
+  end
   local token = nil
   local cursor = position
   local quoteMayOpen = true
   while cursor <= length do
     local byte = text:byte(cursor)
-    if isSpace(byte) then
+    local class = BYTE_CLASS[byte]
+    if class == "space" then
       break
     end
     local segment
@@ -958,14 +976,14 @@ local function readToken(text, position, length)
     local close = nil
     ---@type boolean|string
     local escapedOrReason = false
-    if quoteMayOpen and isQuote(byte) then
+    if quoteMayOpen and class == "quote" then
       close, escapedOrReason = findClosingQuote(text, cursor, length, byte)
       if close == nil and byte == BYTE_DOUBLE_QUOTE then
         return nil, escapedOrReason --[[@as string]]
       end
       if close ~= nil and byte == BYTE_SINGLE_QUOTE then
         local after = text:byte(close + 1)
-        if after ~= nil and not isSpace(after) and not isQuote(after) then
+        if after ~= nil and BYTE_CLASS[after] == nil then
           close = nil
         end
       end
@@ -1008,21 +1026,18 @@ end
 local function tokenize(text, array)
   local length = #text
   local count = 0
-  local position = 1
   local failure = nil
-  while position <= length do
-    if isSpace(text:byte(position)) then
-      position = position + 1
-    else
-      local token, nextPosition = readToken(text, position, length)
-      if token == nil then
-        failure = nextPosition
-        break
-      end
-      count = count + 1
-      array[count] = token
-      position = nextPosition --[[@as integer]]
+  local pattern = PARSER_PATTERNS.tokenStart
+  local position = text:find(pattern)
+  while position ~= nil do
+    local token, nextPosition = readToken(text, position, length)
+    if token == nil then
+      failure = nextPosition
+      break
     end
+    count = count + 1
+    array[count] = token
+    position = text:find(pattern, nextPosition --[[@as integer]])
   end
 
   local first = count + 1
@@ -1244,6 +1259,16 @@ local function usageWord(description)
   return "<" .. word .. ">"
 end
 
+-- A record's parts are never modified once compiled, so every record without
+-- arguments shares one compiled form, and every record without sub-commands
+-- one empty table for its sub-command map and name list: a Register of a plain
+-- command allocates its record, not five empty tables beside it. Nothing
+-- writes to either: `compileSubcommands` gives a record with sub-commands
+-- tables of its own first.
+local EMPTY = {}
+local NO_ARGUMENTS =
+  { mode = "none", schemas = EMPTY, coercions = EMPTY, defaulted = EMPTY, count = 0, usage = "" }
+
 ---Compile a spec's `arguments` field.
 ---@param arguments any
 ---@param label string argument description, used in the argument errors
@@ -1251,11 +1276,11 @@ end
 ---@param maxPositions number the scope's `maxPositions`, `math.huge` when unbounded
 ---@return table compiled `{ mode, schemas, coercions, defaulted, count, usage }`
 local function compileArguments(arguments, label, level, maxPositions)
+  if type(arguments) == "nil" then
+    return NO_ARGUMENTS
+  end
   local compiled =
     { mode = "none", schemas = {}, coercions = {}, defaulted = {}, count = 0, usage = "" }
-  if type(arguments) == "nil" then
-    return compiled
-  end
   if isSchema(arguments) then
     local schema = sealSchema(arguments, label, level + 1)
     local description = schema:Describe()
@@ -1324,7 +1349,9 @@ end
 -- Command records ------------------------------------------------------------
 --
 -- `Register` compiles a spec into a record tree once. Records are never
--- modified afterwards; dispatch only reads them.
+-- modified afterwards; dispatch only reads them. Records and frames are plain
+-- tables without a metatable, so the dispatch path reads their fields with
+-- plain indexing rather than `rawget`, which is a C call per field.
 
 ---The text after the command path in a usage line.
 ---@param record table
@@ -1393,8 +1420,10 @@ local function compileSubcommands(record, subcommands, label, depth, level, scop
     end
   end
   table.sort(keys)
-  local children = rawget(record, "_subcommands")
-  local names = rawget(record, "_subcommandNames")
+  local children = {}
+  local names = {}
+  rawset(record, "_subcommands", children)
+  rawset(record, "_subcommandNames", names)
   for index = 1, #keys do
     local key = keys[index]
     local childLabel = label .. "." .. key
@@ -1460,8 +1489,8 @@ compileSpec = function(spec, path, label, depth, level, scope)
     _defaulted = arguments.defaulted,
     _usage = usage or arguments.usage,
     _description = description or false,
-    _subcommands = {},
-    _subcommandNames = {},
+    _subcommands = EMPTY,
+    _subcommandNames = EMPTY,
     _usageLines = false,
     -- Set on every record of the tree when the command is registered.
     _scope = false,
@@ -1540,6 +1569,71 @@ local function deriveKey(scope, name)
   return key
 end
 
+-- The global names the taken check reads, built once per key and index:
+-- `slashGlobalNames[key][index]` is `"SLASH_" .. key .. index`. A Register
+-- reads the aliases of every foreign key, and building each name by
+-- concatenation on every call was most of its cost. The table grows with the
+-- keys the host tables hold, which the client keeps for the session anyway.
+-- A file-level cache, not package state: a newer revision starts empty.
+local Taken = {
+  slashGlobalNames = {},
+  emoteIndex = {
+    -- The set of upper-case emote slash texts, or `false` before the first scan.
+    slashes = false,
+    -- The effective count and the probe the set was built with.
+    count = -1,
+    probe = false,
+  },
+}
+
+---Whether any key of `list` (every string key; with `skipOwned`, every one
+---CommandKit does not own) has a `SLASH_<key>1..n` global, read up to the
+---first gap, that names `upperSlash`. A secret value is skipped before
+---anything else touches it; the length test spares the upper-case copy of
+---every value that cannot match. One function with the loops inline: it runs
+---over every foreign key on every Register.
+---@param list table
+---@param skipOwned boolean
+---@param upperSlash string
+---@param maxAliases number the scope's `maxSlashAliases`, `math.huge` when unbounded
+---@return boolean
+function Taken.anyAliasNames(list, skipOwned, upperSlash, maxAliases)
+  local probe = readGlobal("issecretvalue")
+  local probing = type(probe) == "function"
+  local length = #upperSlash
+  local namesByKey = Taken.slashGlobalNames
+  -- The slash globals are World of Warcraft client globals.
+  -- selene: allow(global_usage)
+  local globals = _G
+  -- Locals, not globals: each global name read in the loop is a table lookup.
+  local rawRead, typeOf = rawget, type
+  for key in next, list do
+    if typeOf(key) == "string" and not (skipOwned and ownedKeys[key] ~= nil) then
+      local names = namesByKey[key]
+      if names == nil then
+        names = {}
+        namesByKey[key] = names
+      end
+      for index = 1, maxAliases do
+        local name = names[index]
+        if name == nil then
+          name = "SLASH_" .. key .. index
+          names[index] = name
+        end
+        local value = rawRead(globals, name)
+        if typeOf(value) ~= "string" then
+          break
+        end
+        local secret = probing and probe(value) == true
+        if not secret and #value == length and value:upper() == upperSlash then
+          return true
+        end
+      end
+    end
+  end
+  return false
+end
+
 ---Whether a slash table other than CommandKit's entries already maps
 ---`upperSlash` (`"/NAME"`) through its `SLASH_<key><n>` globals.
 ---
@@ -1555,22 +1649,7 @@ local function hasForeignSlash(tableName, upperSlash, maxAliases)
   if type(list) ~= "table" then
     return false
   end
-  local probe = readGlobal("issecretvalue")
-  for key in next, list do
-    if type(key) == "string" and ownedKeys[key] == nil then
-      for index = 1, maxAliases do
-        local value = readGlobal("SLASH_" .. key .. index)
-        if type(value) ~= "string" then
-          break
-        end
-        local secret = type(probe) == "function" and probe(value) == true
-        if not secret and value:upper() == upperSlash then
-          return true
-        end
-      end
-    end
-  end
-  return false
+  return Taken.anyAliasNames(list, true, upperSlash, maxAliases)
 end
 
 ---Whether a chat type claims `upperSlash`. The client resolves chat types
@@ -1585,22 +1664,7 @@ local function isChatTypeSlash(upperSlash, maxAliases)
   if type(chatTypes) ~= "table" then
     return false
   end
-  local probe = readGlobal("issecretvalue")
-  for chatType in next, chatTypes do
-    if type(chatType) == "string" then
-      for index = 1, maxAliases do
-        local value = readGlobal("SLASH_" .. chatType .. index)
-        if type(value) ~= "string" then
-          break
-        end
-        local secret = type(probe) == "function" and probe(value) == true
-        if not secret and value:upper() == upperSlash then
-          return true
-        end
-      end
-    end
-  end
-  return false
+  return Taken.anyAliasNames(chatTypes, false, upperSlash, maxAliases)
 end
 
 ---Whether `value` is secret on this host. `probe` is the host's
@@ -1670,11 +1734,58 @@ local function isHostHashedSlash(upperSlash)
   return false
 end
 
+-- The emote index: every non-secret `EMOTE<n>_CMD<m>` value, upper case, as a
+-- set. The emote commands are client constants (GlobalStrings, loaded before
+-- any addon, never changed at run time), so reading up to 1,024 x 8 globals by
+-- constructed name on every Register rebuilt the same answer each time. The
+-- index is built at the first emote check and read from then on. It is built
+-- again when what bounds or filters the scan changes: the effective emote
+-- count (`maxEmotes`, `MAXEMOTEINDEX`) or the host's `issecretvalue` probe.
+-- A scan that meets a secret value keeps no index, so the next check scans
+-- again and asks the probe afresh, as before. A file-level cache, not package
+-- state: a newer revision starts empty. See docs/INTERNALS.md.
+
+---The emote indexes the check reads: `maxEmotes`, or the host's
+---`MAXEMOTEINDEX` when it is a smaller non-negative number.
+---@return integer
+function Taken.emoteScanCount()
+  local count = rawget(sharedLimits, "maxEmotes")
+  local hostCount = readGlobal("MAXEMOTEINDEX")
+  if type(hostCount) == "number" and hostCount >= 0 and hostCount < count then
+    count = hostCount
+  end
+  return count
+end
+
+---Read `EMOTE<index>_CMD<n>` for index `1..count` by constructed name, never
+---by scanning the global table, into a set of upper-case slash texts.
+---@param count integer
+---@param probe any the host's `issecretvalue`, or not a function
+---@return table<string, true> slashes
+---@return boolean complete `false` when a secret value was skipped
+function Taken.scanEmotes(count, probe)
+  local slashes = {}
+  local complete = true
+  for index = 1, count do
+    for command = 1, MAX_EMOTE_COMMANDS do
+      local value = readGlobal("EMOTE" .. index .. "_CMD" .. command)
+      if type(value) ~= "string" then
+        break
+      end
+      if isSecretOnHost(probe, value) then
+        complete = false
+      else
+        slashes[value:upper()] = true
+      end
+    end
+  end
+  return slashes, complete
+end
+
 ---Whether an emote claims `upperSlash`. The client resolves slash commands
 ---before emotes, so a command with an emote's name would silently shadow it.
 ---Asks the client's `hash_EmoteTokenList` (upper-case slash text to emote
----token) first, then reads `EMOTE<index>_CMD<n>` by constructed name, never
----by scanning the global table.
+---token) first, then the emote index (above).
 ---@param upperSlash string
 ---@return boolean
 local function isEmoteSlash(upperSlash)
@@ -1686,24 +1797,21 @@ local function isEmoteSlash(upperSlash)
       return true
     end
   end
-  local count = rawget(sharedLimits, "maxEmotes")
-  local hostCount = readGlobal("MAXEMOTEINDEX")
-  if type(hostCount) == "number" and hostCount >= 0 and hostCount < count then
-    count = hostCount
-  end
-  for index = 1, count do
-    for command = 1, MAX_EMOTE_COMMANDS do
-      local value = readGlobal("EMOTE" .. index .. "_CMD" .. command)
-      if type(value) ~= "string" then
-        break
-      end
-      local secret = type(probe) == "function" and probe(value) == true
-      if not secret and value:upper() == upperSlash then
-        return true
-      end
+  local count = Taken.emoteScanCount()
+  local emoteIndex = Taken.emoteIndex
+  local slashes = emoteIndex.slashes
+  if slashes == false or emoteIndex.count ~= count or emoteIndex.probe ~= (probe or false) then
+    local complete
+    slashes, complete = Taken.scanEmotes(count, probe)
+    if complete then
+      emoteIndex.slashes = slashes
+      emoteIndex.count = count
+      emoteIndex.probe = probe or false
+    else
+      emoteIndex.slashes = false
     end
   end
-  return false
+  return slashes[upperSlash] == true
 end
 
 ---The permanent dispatcher written under `key`.
@@ -1838,11 +1946,13 @@ end
 ---Return a frame and retire its context.
 ---@param frame table
 local function releaseFrame(frame)
+  -- Plain writes: every context field exists from the start (never `nil`),
+  -- so no metamethod can run, and the dispatch path avoids a C call per field.
   local context = frame.context
-  rawset(context, "_live", false)
-  rawset(context, "_scope", false)
-  rawset(context, "_record", false)
-  rawset(context, "_raw", "")
+  context._live = false
+  context._scope = false
+  context._record = false
+  context._raw = ""
   rawset(state, "frameDepth", rawget(state, "frameDepth") - 1)
 end
 
@@ -1853,10 +1963,10 @@ end
 ---@return CommandKit.Context
 local function openContext(frame, record, text)
   local context = frame.context
-  rawset(context, "_scope", rawget(record, "_scope"))
-  rawset(context, "_record", record)
-  rawset(context, "_raw", text)
-  rawset(context, "_live", true)
+  context._scope = record._scope
+  context._record = record
+  context._raw = text
+  context._live = true
   return context
 end
 
@@ -1872,8 +1982,8 @@ end
 local function walkSubcommands(record, tokens, count)
   local node = record
   local index = 1
-  while index <= count and #rawget(node, "_subcommandNames") > 0 do
-    local child = rawget(rawget(node, "_subcommands"), tokens[index]:lower())
+  while index <= count and #node._subcommandNames > 0 do
+    local child = node._subcommands[tokens[index]:lower()]
     if child == nil then
       break
     end
@@ -1899,12 +2009,12 @@ end
 ---@param count integer tokens after the command path
 ---@return integer|nil passCount how many arguments the handler receives
 local function checkArguments(scope, record, arguments, count)
-  local mode = rawget(record, "_mode")
+  local mode = record._mode
   if mode == "none" then
     return count
   end
-  local schemas = rawget(record, "_schemas")
-  local coercions = rawget(record, "_coercions")
+  local schemas = record._schemas
+  local coercions = record._coercions
   if mode == "array" then
     local coercion = coercions[1]
     for index = 1, count do
@@ -1917,13 +2027,13 @@ local function checkArguments(scope, record, arguments, count)
     end
     return count
   end
-  local positions = rawget(record, "_positionCount")
+  local positions = record._positionCount
   if count > positions then
     local noun = positions == 1 and " argument" or " arguments"
     failWithUsage(scope, record, "expected at most " .. positions .. noun)
     return nil
   end
-  local defaulted = rawget(record, "_defaulted")
+  local defaulted = record._defaulted
   for position = 1, positions do
     local schema = schemas[position]
     local value = coerce(arguments[position], coercions[position])
@@ -1963,7 +2073,7 @@ end
 ---@param record table the top-level record
 ---@param text string what the user typed after the slash name
 local function runCommand(frame, record, text)
-  local scope = rawget(record, "_scope")
+  local scope = record._scope
   local context = openContext(frame, record, text)
   local tokens = frame.tokens
   local count, reason = tokenize(text, tokens)
@@ -1974,12 +2084,12 @@ local function runCommand(frame, record, text)
 
   local node, index = walkSubcommands(record, tokens, count)
   rawset(context, "_record", node)
-  local handler = rawget(node, "_handler")
+  local handler = node._handler
   if handler == false then
     if index <= count then
       failWithUsage(scope, node, 'unknown sub-command "' .. tokens[index] .. '"')
     else
-      writeLines(scope, rawget(node, "_usageLines"))
+      writeLines(scope, node._usageLines)
     end
     return
   end
@@ -1992,10 +2102,10 @@ local function runCommand(frame, record, text)
   -- Clear every slot an earlier dispatch at this depth wrote. A filled
   -- default can sit above a missing position, so a scan that stopped at the
   -- first `nil` would leave it for the next command to receive.
-  for position = argumentCount + 1, rawget(frame, "argumentMark") or 0 do
+  for position = argumentCount + 1, frame.argumentMark or 0 do
     arguments[position] = nil
   end
-  local writtenCount = rawget(node, "_positionCount")
+  local writtenCount = node._positionCount
   if writtenCount < argumentCount then
     writtenCount = argumentCount
   end
@@ -2147,10 +2257,12 @@ end
 -- Options binding ------------------------------------------------------------
 --
 -- `BindOptions` registers a command whose sub-commands read and write an
--- OptionsKit tree. Every bound sub-command calls `tree:Describe()` once to
--- see the tree as it is now (values, labels, hidden and disabled flags):
--- allocating by design, because a typed command is not a hot path and a
--- values function may answer differently each time.
+-- OptionsKit tree. Every bound sub-command describes the one option (or
+-- group) its path names, once, to see it as it is now (value, labels, hidden
+-- and disabled flags): `tree:DescribeOption(path)` on OptionsKit revision 7
+-- and later, so only that option's callbacks run; the whole `tree:Describe()`
+-- on an older revision. Allocating by design, because a values function may
+-- answer differently each time.
 
 -- Option kinds that carry a value.
 local VALUE_KINDS = {
@@ -2191,9 +2303,16 @@ local function findOption(context, tree, path, allowRoot)
     end
     path = ""
   end
-  local index = {}
-  indexDescription(tree:Describe(), index)
-  local node = index[path]
+  local node
+  -- OptionsKit revision 7 describes one option; an older revision only the
+  -- whole tree, which is then indexed by path.
+  if type(tree.DescribeOption) == "function" then
+    node = tree:DescribeOption(path)
+  else
+    local index = {}
+    indexDescription(tree:Describe(), index)
+    node = index[path]
+  end
   if node == nil or node.hidden == true then
     contextFail(context, 'unknown option "' .. path .. '"')
     return nil

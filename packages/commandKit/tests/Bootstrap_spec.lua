@@ -240,6 +240,19 @@ describe("CommandKit bootstrap", function()
     end
   )
 
+  it("upgrades a revision 6 package in place and keeps the taken and emote checks", function()
+    local current = upgradeFrom(6)
+    local scope = current:CreateScope()
+    -- The revision 6 copy scanned before; the new copy's caches start empty.
+    assert.are.same({ nil, "emote" }, { scope:Register("wave", { handler = function() end }) })
+    TestEnv.GetGlobal("SlashCmdList").OTHERADDON = function() end
+    TestEnv.SetGlobal("SLASH_OTHERADDON1", "/other")
+    assert.are.same({ nil, "taken" }, { scope:Register("other", { handler = function() end }) })
+    assert.are.same({ nil, "taken" }, { scope:Register("kept", { handler = function() end }) })
+    assert.is_true(current:CloseAddonScopes("MyAddon"))
+    assert.is_true(scope:Register("kept", { handler = function() end }))
+  end)
+
   it("requires Registry", function()
     TestEnv.Reset()
     TestEnv.InstallWowApi()

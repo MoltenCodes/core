@@ -1,5 +1,49 @@
 local TestEnv = require("CommandKitTestEnv")
 
+-- Lines and what revision 6's byte-by-byte parser answered for them: tokens,
+-- or `nil` and the reason. Revision 7 jumps between the bytes that matter with
+-- `string.find` and must answer the same; the lines cover quoted segments,
+-- escapes, apostrophes, adjacent segments, colour codes, links and textures,
+-- every kind of whitespace and both refusals. A further 200,000 generated
+-- lines agreed when the change was made.
+local AGREED_WITH_REVISION_6 = {
+  { 'say "hello world" end', { { "say", "hello world", "end" } } },
+  { "it's fine", { { "it's", "fine" } } },
+  { "'single quoted' x", { { "single quoted", "x" } } },
+  { '"a\\"b" c', { { 'a"b', "c" } } },
+  { '"a\\\\" b', { { "a\\", "b" } } },
+  { '"x"y"z"', { { 'xy"z"' } } },
+  { "'a''b'", { { "ab" } } },
+  {
+    "cast |cffa335ee|Hitem:19019::::::::70:::::|h[Thunderfury, Blessed Blade]|h|r now",
+    {
+      { "cast", "|cffa335ee|Hitem:19019::::::::70:::::|h[Thunderfury, Blessed Blade]|h|r", "now" },
+    },
+  },
+  { '"|Hitem:1|h[a "b"]|h" tail', { { '|Hitem:1|h[a "b"]|h', "tail" } } },
+  { "|TInterface\\Icons\\X:0|t icon", { { "|TInterface\\Icons\\X:0|t", "icon" } } },
+  { "|cff00ff00green text|r |cffff0000red", { { "|cff00ff00green text|r", "|cffff0000red" } } },
+  { "a\tb\nc\rd", { { "a", "b", "c", "d" } } },
+  { "  leading and trailing  ", { { "leading", "and", "trailing" } } },
+  { "", { {} } },
+  { "||pipe", { { "||pipe" } } },
+  { "x|", { { "x|" } } },
+  { '"unterminated', { nil, "unterminated quote" } },
+  { "|Hitem:1|h[unfinished", { nil, "unterminated link" } },
+  { "'apostrophe's end'", { { "'apostrophe's", "end'" } } },
+  { "'open", { { "'open" } } },
+  { "|cffffffff|cff000000x|r y|r", { { "|cffffffff|cff000000x|r", "y|r" } } },
+  { "\"a\"'b' c", { { "ab", "c" } } },
+  { " |\\", { { "|\\" } } },
+  { "item:1']\t[|", { { "item:1']", "[|" } } },
+  { '|t\r|h|hx|x a" \\|c', { { "|t", "|h|hx|x", 'a"', "\\|c" } } },
+  { "b|T\"\\1.5]   ['b|", { { 'b|T"\\1.5]', "['b|" } } },
+  { '  item:1|" 1.5|ra|c|t|c"', { { 'item:1|"', '1.5|ra|c|t|c"' } } },
+  { "'|H '\r]aitem:1  ffa335ee  ]\t|r", { nil, "unterminated link" } },
+  { 'item:1|t1.5\r"x|T||[|c]|r|ffa335ee', { nil, "unterminated quote" } },
+  { "|c\r|c|H'", { nil, "unterminated link" } },
+}
+
 -- An epic item link as the client inserts it on shift-click: a colour code
 -- around a hyperlink whose text contains spaces.
 local ITEM_LINK =
@@ -143,5 +187,22 @@ describe("CommandKit parsing", function()
     TestEnv.expectErrorContaining("CommandKit:ParseInto array must be a table", function()
       CommandKit:ParseInto("a", nil)
     end)
+  end)
+
+  it("answers every line as the byte-by-byte parser of revision 6 did", function()
+    for _, case in ipairs(AGREED_WITH_REVISION_6) do
+      local text, expected = case[1], case[2]
+      local tokens, reason = CommandKit:Parse(text)
+      assert.are.same(expected, { tokens, reason }, string.format("%q", text))
+      local into = { "stale", "slots", "left", "over", "from", "an", "earlier", "call", "x", "y" }
+      local count, intoReason = CommandKit:ParseInto(text, into)
+      if expected[1] == nil then
+        assert.are.same({ nil, expected[2] }, { count, intoReason })
+        assert.are.same({}, into)
+      else
+        assert.are.equal(#expected[1], count)
+        assert.are.same(expected[1], into)
+      end
+    end
   end)
 end)

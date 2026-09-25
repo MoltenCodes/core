@@ -51,13 +51,20 @@ This document describes implementation invariants for maintainers. It is not an 
 | `_handler`, `_complete` | The spec's functions, or `false`. |
 | `_mode` | `"none"`, `"positions"` or `"array"`. |
 | `_schemas`, `_coercions`, `_positionCount` | Sealed schemas and their token conversions (`"number"`, `"boolean"`, `"string"`); for `"array"` one of each for the element. |
-| `_defaulted` | Per position, whether the schema is an `optional` with a default; a missing argument there is filled with `schema:Apply(nil)`. Empty for `"none"` and `"array"`. |
+| `_defaulted` | Per position, whether the schema is an `optional` with a default; a missing argument there is filled with `schema:Apply(nil)`. Empty for `"none"` and `"array"`; a record without arguments (`"none"`) holds `EMPTY` here and in `_schemas` and `_coercions`, from the one compiled form `NO_ARGUMENTS`. |
 | `_usage`, `_description` | The usage tail and the description (`false` when absent). |
-| `_subcommands`, `_subcommandNames` | Lower-case name to child record, and the names sorted. |
+| `_subcommands`, `_subcommandNames` | Lower-case name to child record, and the names sorted. A record without sub-commands holds the one shared empty table `EMPTY` in both. |
 | `_usageLines` | The lines `Usage()` writes, built once. |
 | `_scope` | The owning scope, on every record of the tree. |
 
-A record never changes owner: unregistering drops it, and a later registration compiles a new one.
+A record never changes owner: unregistering drops it, and a later registration compiles a new one. Records and frames have no metatable, so the dispatch path reads their fields with plain indexing; `rawget` would be a C call per field. The shared `EMPTY` parts are safe because nothing writes a record's parts after compiling: `compileSubcommands` gives a record with sub-commands tables of its own before it fills them.
+
+## Taken check caches
+
+The check itself is described in `docs/API.md`; two file-level caches keep it cheap. Both live in the `Taken` table (the main chunk is close to Lua 5.1's limit of 200 locals) and are not package state: a newer revision starts with empty ones.
+
+- `Taken.slashGlobalNames[key][index]` is the string `"SLASH_" .. key .. index`, built the first time the scan needs it. The values are read with `rawget` on every check; only the names are kept, so an alias added, changed or removed is seen at once. `Taken.anyAliasNames` walks one host table (`SlashCmdList`, `SecureCmdList` or `ChatTypeInfo`) with both loops inline, skips a secret value before touching it and compares lengths before it upper-cases a value.
+- `Taken.emoteIndex` is `{ slashes, count, probe }`: the set of upper-case `EMOTE<n>_CMD<m>` texts, and the effective emote count and `issecretvalue` it was read with. `isEmoteSlash` asks `hash_EmoteTokenList` first, then reads the globals again only when there is no set yet or the count or the probe differ. A reading that skipped a secret value keeps no set (`slashes = false`), so each check reads again, as revision 6 did on every check.
 
 ## Slash dispatchers
 
@@ -77,7 +84,7 @@ A frame is `{ tokens = {}, arguments = {}, argumentMark = 0, context = <context>
 
 ## Parser state machine
 
-`tokenize(text, array)` is one loop over byte positions with no state outside the call. Bytes are compared as numbers (`string.byte`), and the terminators of an escape sequence are found with plain `string.find`, so nothing but the token strings is allocated.
+`tokenize(text, array)` is one loop over the text with no state outside the call. It never walks ordinary bytes one by one in Lua: `string.find` with the character classes in `PARSER_PATTERNS` jumps to the next byte that matters (the next token's first byte; the whitespace or pipe that ends or interrupts a bare run; the backslash, pipe or closing quote inside a quoted segment), the byte found is compared as a number (`string.byte`, classified through `BYTE_CLASS`), and the terminators of an escape sequence are found with plain `string.find`, so nothing but the token strings is allocated. A token that does not start with a quote is exactly one bare run, since a bare run stops only at whitespace or the end, so `readToken` hands it to `readBare` at once. The states below are the byte-by-byte machine these jumps implement; revision 7 answers every line as revision 6's byte loop did (the Parse spec pins a list of lines, and 200,000 generated ones agreed when the change was made).
 
 ```text
 BETWEEN     whitespace: advance; anything else: start a token in SEGMENT
@@ -139,5 +146,7 @@ Revision 2 does this for scope layout 2: it walks `addonScopes`, gives every lay
 Revision 3 changes no layout and inherits revision 2's state unchanged. Its fixes reach every existing command through `dispatch` and the shared prototypes, except the sub-command handlers `BindOptions` compiled into a bound command's records, which stay those of the revision that bound it.
 
 Revision 4 changes no layout either and inherits revision 3's state unchanged; its nil checks on outside values reach existing commands the same way.
+
+Revision 7 changes no state layout and inherits revision 6's state unchanged. Records it compiles may share the `EMPTY` parts and `NO_ARGUMENTS` (above); records an older copy compiled keep their own tables, which dispatch reads the same way. Its taken check caches are file-level and start empty.
 
 Revision 6 changes no layout and inherits revision 5's state unchanged. Its taken check also asks the client's `hash_*` lookup tables and `IsSecureCmd`, and tells CommandKit's own entries there apart by `ownedKeys` and by the closures in `slashHandlers`, so a name an older copy registered is still CommandKit's after the upgrade.

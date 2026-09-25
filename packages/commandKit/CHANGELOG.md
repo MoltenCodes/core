@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.2.6 — 2026-09-25
+
+- `Register` no longer reads up to 1,024 × 8 `EMOTE<n>_CMD<m>` globals on every call. The client defines its emote commands in GlobalStrings, before any addon loads, and never changes them, so the first emote check reads them into an index of their upper-case texts and every later check asks the index. It reads them again when the effective emote count (`maxEmotes`, `MAXEMOTEINDEX`) or the host's `issecretvalue` changes, and keeps no index from a reading that met a secret value. `hash_EmoteTokenList`, the slash tables and every `SLASH_` global are still read on every check, so a name another addon or the client holds is refused as before; only an emote global an addon wrote after the first check goes unseen until one of those changes (`docs/API.md`, "The taken check").
+- The foreign slash scan builds each `SLASH_<key><n>` global name once per session instead of on every `Register`, reads the values live, and compares lengths before it upper-cases a value. A command without arguments or sub-commands shares one compiled empty form instead of five empty tables.
+- The parser jumps with `string.find` to the next byte that matters (whitespace, a quote, a backslash, a pipe) instead of walking every byte in Lua, and a token that does not start with a quote is read as one bare run at once. It answers every line exactly as before: a list of lines from revision 6 is pinned in `Parse_spec.lua`, and 200,000 generated lines agreed when the change was made. Dispatch reads records, frames and contexts with plain indexing instead of `rawget`.
+- `BindOptions` describes only the option (or group) a typed command names, through OptionsKit 0.3.0's `tree:DescribeOption(path)`, so the other options' getters, `desc` and values functions no longer run; with an older OptionsKit it describes the whole tree as before.
+- Host benchmark (`python3 -m tooling.bench.run --workload slashCommands --workload options --rounds 3`; ratios from one run each, sides interleaved; the after-run under a load average of about 4.4 from other agents' work, the before-run about 2.2):
+
+  | Case | Before: ratio, bytes | After: ratio, bytes |
+  |---|---|---|
+  | `register-unregister` | 665.69×, 1,751 B | 32.05×, 977 B |
+  | `dispatch-words` | 4.04×, 66 B | 2.08×, 66 B |
+  | `dispatch-subcommand` | 4.69×, 32 B | 2.78×, 32 B |
+  | `parse-plain` | 3.51×, 97 B | 1.66×, 97 B |
+  | `parse-quoted` | 3.25×, 82 B | 2.01×, 81 B |
+  | `parse-link` | 2.20×, 89 B | 1.57×, 89 B |
+  | `cmd-set-range` (options workload) | 21.05×, 53,305 B | 1.64×, 1,033 B |
+  | `cmd-refused` (options workload) | 15.49×, 53,641 B | 1.32×, 1,641 B |
+
+  What `register-unregister` still spends is mostly the foreign scan itself (about 7 of 12 µs with the 50 foreign commands of the workload), which the documented best-effort check needs.
+- Implementation revision 7. No state layout changed: revision 7 takes over revision 6's state as it is. The two caches are file-level and start empty after an upgrade; records an older copy compiled keep their own tables.
+- 171 specs (157 before): the emote index against a full reading of 600 client-like emote indexes and each reason it is read again, foreign aliases read live, an allocation guard on `Register`, the list of lines parsed as revision 6 did, `BindOptions` describing only the named option and falling back to `Describe`, and the upgrade from revision 6.
+
 ## 0.2.5 — 2026-09-25
 
 - The taken check finds the client's own commands on Retail 12.1. Its chat frame (Blizzard_ChatFrameBase, build 69933) moves every entry of `SlashCmdList`, `ChatTypeInfo` and its private secure-command list into lookup tables keyed by the upper-case slash text when it loads, and again before each typed line, then wipes the lists; `SecureCmdList` is no longer a global. Revision 5 scanned only the lists' keys, so on that client it refused none of Blizzard's commands (`/reload`), chat types (`/s`) or secure commands (`/cast`), nor another addon's command once a line had been typed. The real-client run of 2026-09-25 showed it: `SecureCmdList` was `nil` and no `SlashCmdList` key had a `SLASH_<key>1`, while `hash_SlashCmdList` was a table.

@@ -2,7 +2,7 @@
 
 CommandKit API generation **1** provides slash commands for World of Warcraft addons: collision-safe registration owned by a scope, a hyperlink-aware argument parser, sub-commands with generated usage, schema-checked arguments, output sinks, optional tab completion, and a command line over an OptionsKit tree.
 
-Implementation revision: **6**.
+Implementation revision: **7**.
 
 ## Loading
 
@@ -219,6 +219,8 @@ The spec is checked in full first; every problem with it raises at your line (be
 - the client's lookup tables, one read each: `hash_ChatTypeInfoList["/NAME"]` unless it names a key CommandKit wrote, `hash_SlashCmdList["/NAME"]` unless it is a dispatcher CommandKit wrote, and `IsSecureCmd("/NAME")` answering `true` (`nil, "taken"`);
 - `hash_EmoteTokenList["/NAME"]`, then `EMOTE<n>_CMD<m>` for `n` from 1 to `MAXEMOTEINDEX` when the host has it and it is smaller, else the `maxEmotes` limit (1024), and `m` up to the first gap, at most 8 (`nil, "emote"`).
 
+**The emote globals are read once.** The client defines its `EMOTE<n>_CMD<m>` globals in GlobalStrings, before any addon loads, and never adds or changes one while it runs. The first emote check reads them into an index of their upper-case texts, and every later check asks that index: revision 6 read up to 1,024 × 8 globals by constructed name on every `Register`. The globals are read again when what bounds or filters the reading changes: the effective emote count (`maxEmotes`, or a smaller `MAXEMOTEINDEX`) or the host's `issecretvalue` function. A reading that met a secret value keeps no index, so the next check reads the globals again and asks about each value afresh. An emote global an addon writes after the first check is therefore not seen until one of those changes; `hash_EmoteTokenList` and every slash table and `SLASH_` global are read on every check, as before.
+
 The lookup tables are where Retail 12.1 keeps its own commands. Its chat frame (Blizzard_ChatFrameBase, build 69933) moves every entry of `SlashCmdList`, `ChatTypeInfo` and its private secure-command list into them when it loads, and again before each typed line is parsed, then wipes the lists themselves, whose entries stay reachable only through an `__index` proxy; `SecureCmdList` is no longer a global. A scan of the lists' keys therefore finds none of the client's commands (`/reload`, `/s`, `/cast`), nor another addon's once a line has been typed; the lookup tables find them all. Revisions before 6 read only the lists and missed them.
 
 Every global is read by its constructed name with `rawget`; nothing scans the whole global table. A registration made some other way, such as a command table another library keeps, is not seen, and a command another addon registers *after* yours is outside CommandKit's reach: that addon's registration is what overwrites.
@@ -368,7 +370,7 @@ Values typed after `set <path>`:
 
 Every refusal is printed as `/cmd set: <message>`: CommandKit's own (`expected on, off or toggle`, `expected a number`, `expected one of: TOP, CENTER`), the schema's (`expected number <= 2, found larger number`), or the one your `validate` returned (`that label is taken`).
 
-Each bound sub-command calls `tree:Describe()` once per run to see the tree as it is now (values, labels from a `values` function, hidden and disabled flags, and the text of a `desc` function, which OptionsKit calls there). That allocates by design: a typed command is not a hot path. An error raised while a bound sub-command runs — a `desc` function that raises or returns something other than a string (`Describe` refuses it), another callback of the tree, or a tree that was undefined — is reported like any handler failure: `/cmd get failed: <message>` on the sink, and the error to the host error handler.
+Each bound sub-command describes the option (or group) its path names once per run, to see it as it is now (value, labels from a `values` function, hidden and disabled flags, and the text of a `desc` function, which OptionsKit calls there): `tree:DescribeOption(path)` with OptionsKit revision 7 or later, so only that option's callbacks run, and `list` without a path describes the root group; with an older OptionsKit, `tree:Describe()` of the whole tree. That allocates by design, about 1 KB per command. An error raised while a bound sub-command runs — a `desc` function that raises or returns something other than a string (OptionsKit refuses it), another callback of the tree, or a tree that was undefined — is reported like any handler failure: `/cmd get failed: <message>` on the sink, and the error to the host error handler.
 
 A refusal from `validate` is printed as it comes, converted with `tostring`; one that is empty or secret is printed as `refused by validate`, OptionsKit's own wording for a refusal without a message.
 
@@ -440,10 +442,10 @@ What the user types is never an error: it is printed to the sink. Errors raised 
 
 | Operation | Cost |
 |---|---|
-| `Register` | Compiles the spec once; seals and describes each argument schema; scans the slash tables once. |
+| `Register` | Compiles the spec once; seals and describes each argument schema; reads the slash tables' keys and their `SLASH_<key><n>` globals once (each global name is built once per session); asks the emote index (built at the first check). Allocates the command's record; a command without arguments or sub-commands shares their empty parts. |
 | Dispatch | One read of the key's name, one of the active command, one per sub-command level; a schema `Check` per argument; the handler under `pcall`. No allocation for text seen before, except the copy `Apply` makes when a table default is filled. |
 | An unregistered dispatcher | Two table reads; no allocation. |
-| `ParseInto` | One pass over the text; only token strings, none for text seen before. |
+| `ParseInto` | One pass over the text, jumping with `string.find` from one byte that matters (whitespace, quote, backslash, pipe) to the next; only token strings, none for text seen before. |
 | `Parse` | As `ParseInto`, plus the array. |
 | Usage, bound sub-commands, completion | Allocate; not hot paths. |
 
@@ -497,7 +499,7 @@ The nine-point plan in `docs/ROADMAP.md` is followed except where recorded here:
 - **`complete(context, text, position)`** instead of `complete(text)`: a completion function needs the sink and the command path for output, and the argument position to know what to offer.
 - **Registration keys are kept per slash name for the session.** The plan derives the key from the addon and command names; the first registration does, and a re-registration of the same name by another owner reuses that key so the client's cached function keeps working.
 - **The taken check reads `SlashCmdList`, `SecureCmdList` and `ChatTypeInfo`** and their `SLASH_<key><n>` globals, the client's `hash_*` lookup tables and `IsSecureCmd`, and the `EMOTE<n>_CMD<m>` globals, best effort as documented, rather than every `SLASH_*` global: scanning the global table would be unbounded. An emote's name is refused with `nil, "emote"`, an addition to the planned results.
-- **`BindOptions` adds `exec`** beside `get`, `set`, `reset` and `list`, honours `confirm` with an explicit word, and parses values per option kind before OptionsKit's schema and `validate` check them; it calls `Describe` once per run.
+- **`BindOptions` adds `exec`** beside `get`, `set`, `reset` and `list`, honours `confirm` with an explicit word, and parses values per option kind before OptionsKit's schema and `validate` check them; it describes the option it names once per run (`DescribeOption`, or `Describe` with an OptionsKit older than revision 7).
 - **Completion is opt-in per scope** (`EnableCompletion`), because it replaces a client global; the plan made it optional without naming the switch.
 - **Additions:** `scope:IsRegistered`, `scope:DisableCompletion`, `scope:GetAddonName`, `CommandKit.MAX_COMMANDS`, `CommandKit.MAX_DEPTH`, the `CommandKit.Context` prototype, and the limits (scope options, `SetLimits`, `GetLimits` and `CommandKit.UNBOUNDED`); argument tokens are converted for number and boolean schemas; textures are single tokens; `Print` writes no prefix.
 - **Closing at logout** through LifecycleKit API 1 or EventKit API 1, both optional dependencies found through `Registry:Find` (see [At logout](#at-logout)); the plan named neither.

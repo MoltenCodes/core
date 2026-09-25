@@ -342,6 +342,62 @@ describe("CommandKit BindOptions", function()
     assert.are.equal(1, #TestEnv.ReportedErrors())
   end)
 
+  ---Bind a tree of two options whose getters and `desc` functions count
+  ---their calls in `calls`, by option key.
+  ---@param calls table<string, integer>
+  ---@return fun(line: string): string[] runExtra
+  local function bindCounting(calls)
+    local store = { first = "one", second = "two" }
+    local function counted(key)
+      return {
+        type = "input",
+        name = key,
+        desc = function()
+          calls[key .. "Desc"] = (calls[key .. "Desc"] or 0) + 1
+          return key
+        end,
+        get = function()
+          calls[key] = (calls[key] or 0) + 1
+          return store[key]
+        end,
+        set = function(_, value)
+          store[key] = value
+        end,
+      }
+    end
+    return bindExtra({ first = counted("first"), second = counted("second") })
+  end
+
+  it("describes only the option a sub-command names", function()
+    local calls = {}
+    local runExtra = bindCounting(calls)
+    assert.are.same({ "first = one" }, runExtra("/extra get first"))
+    assert.are.same({ first = 1, firstDesc = 1 }, calls)
+    assert.are.same({ "first = uno" }, runExtra("/extra set first uno"))
+    assert.is_nil(calls.second)
+    assert.is_nil(calls.secondDesc)
+    -- `list` of the root describes the whole group, as before.
+    runExtra("/extra list")
+    assert.are.equal(1, calls.second)
+  end)
+
+  it("describes the whole tree through an OptionsKit without DescribeOption", function()
+    local calls = {}
+    local runExtra = bindCounting(calls)
+    -- An OptionsKit older than revision 7 has no DescribeOption.
+    local prototype = rawget(OptionsKit, "Tree")
+    local describeOption = rawget(prototype, "DescribeOption")
+    rawset(prototype, "DescribeOption", nil)
+    local ok, lines = pcall(runExtra, "/extra set first uno")
+    local secondReads = calls.second
+    local unknown = ok and runExtra("/extra get nosuch")
+    rawset(prototype, "DescribeOption", describeOption)
+    assert.is_true(ok, tostring(lines))
+    assert.are.same({ "first = uno" }, lines)
+    assert.are.equal(1, secondReads)
+    assert.are.same({ '/extra get: unknown option "nosuch"' }, unknown)
+  end)
+
   it("replaces an empty validate message with a fixed one", function()
     local runExtra = bindExtra({
       word = {
