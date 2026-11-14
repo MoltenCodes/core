@@ -27,6 +27,9 @@ tooling/
 │   └── heads.py                   # compares committed metadata builds with the mirror heads
 ├── ci/
 │   └── check_commits.py           # checks commit subjects and pull request titles
+├── fixtures/                      # third-party output recorded for the specs; see "Recorded fixtures"
+│   ├── ace_serializer.py          # records bridgeKit's AceSerializer-3.0 fixtures from the pinned Ace3
+│   └── lua/RecordAceSerializer.lua # the host Lua script that calls AceSerializer-3.0 over our inputs
 ├── client/
 │   ├── flavours.py                # the client flavours the real-client tests cover: folder, project ID
 │   ├── install.py                 # installs the bundle and the real-client test addons into a game folder, or removes them
@@ -1081,6 +1084,37 @@ python3 -m tooling.bench.client_report --render FILE [--markdown FILE]
   `lua-language-server --check tooling/bench/client --checklevel=Warning` reads
   its `.luarc.json`. Repository validation holds the harness `.toc` to the
   supported-client line.
+
+## Recorded fixtures
+
+Some specs hold a Kit to a third-party library's real behaviour, without that
+library's source entering the repository: bridgeKit must write and read
+AceSerializer-3.0 text exactly as Ace3 does, and Ace3's licence forbids
+redistributing it (`docs/BRIDGE_KIT_DESIGN.md`, section 3.2). The library is
+therefore run, outside the repository, over the project's own inputs, and only
+its output is committed:
+
+```bash
+python3 -m tooling.fixtures.ace_serializer           # record packages/bridgeKit/tests/fixtures/AceSerializerFixtures.lua
+python3 -m tooling.fixtures.ace_serializer --check   # compare a fresh recording with the committed module
+```
+
+The command fetches Ace3 at the commit the benchmark pins through
+`tooling.bench.ace3` (same cache, same SHA-256 check), runs
+`tooling/fixtures/lua/RecordAceSerializer.lua` under host Lua 5.1 against it,
+and writes a generated Lua module with a provenance header: the Ace3 commit,
+the library's `MINOR`, the date and the interpreter. Every encoding case keeps
+the Lua source of the values it passed, every decoding case the text; error
+messages lose the `file:line:` position, which names the local checkout. Every
+byte outside printable ASCII is written as a decimal escape, so the module is
+plain ASCII, and StyLua formats it with `stylua.toml` before it is written, so
+it passes the formatting gate. `--check` keeps the committed date, so it reports only a changed
+recorder or a changed Ace3 pin.
+
+The recording is a deliberate step, like a benchmark run, not part of CI: it
+needs the network the first time, and a changed Ace3 pin is a reviewed change.
+Adding a case is an edit of the recorder's input lists followed by a new
+recording.
 
 ## Future tooling
 

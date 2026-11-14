@@ -165,6 +165,14 @@ python3 -m tooling.bench.client_report --render tooling/bench/results/<date>-cli
 python3 -m tooling.bench.client_install --wow-dir "/Applications/World of Warcraft" --remove
 ```
 
+Record bridgeKit's AceSerializer-3.0 fixtures from the pinned Ace3, or check
+the committed ones (see `docs/TOOLING.md`, "Recorded fixtures"):
+
+```bash
+python3 -m tooling.fixtures.ace_serializer
+python3 -m tooling.fixtures.ace_serializer --check
+```
+
 Run tooling unit tests:
 
 ```bash
