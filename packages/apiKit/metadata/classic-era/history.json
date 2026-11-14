@@ -6,6 +6,21 @@
       "commit": "33e177d9bf38d76d5c6c6e05d5da78db1899659a",
       "committedAt": "2026-09-12T19:01:13Z",
       "version": "1.15.9"
+    },
+    {
+      "build": 70576,
+      "capturedOn": "2026-11-14",
+      "commit": "4192ac60067fc55566182291bc67c85dd9b6794d",
+      "committedAt": "2026-10-26T23:16:08Z",
+      "counts": {
+        "function": {
+          "added": 1,
+          "changed": 0,
+          "removed": 0
+        }
+      },
+      "report": "docs/changes/classic-era/69722-70576.md",
+      "version": "1.15.9"
     }
   ],
   "schema": 1

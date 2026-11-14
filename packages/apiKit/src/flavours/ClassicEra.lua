@@ -1,8 +1,8 @@
 -- MoltenCodes ApiKit: Classic Era bindings (wow.classic.era.api)
 --
 -- GENERATED FILE. Do not edit. Regenerate with `python3 -m tooling.api.generate`.
--- Source: Gethe/wow-ui-source@33e177d9bf38d76d5c6c6e05d5da78db1899659a (classic_era),
--- client 1.15.9, build 69722, captured 2026-09-24.
+-- Source: Gethe/wow-ui-source@4192ac60067fc55566182291bc67c85dd9b6794d (classic_era),
+-- client 1.15.9, build 70576, captured 2026-11-14.
 --
 -- Every entry is a direct alias of the host function, bound only when the
 -- running client has it. See docs/API_KIT_DESIGN.md, section 7.2.
@@ -491,6 +491,7 @@ ApiKit:RegisterFlavor("classic-era", function(api, host)
       local target = {}
       api.battleNet = target
       target.areHighResTexturesInstalled = source.AreHighResTexturesInstalled
+      target.areRealIDFriendsEnabled = source.AreRealIDFriendsEnabled
       target.bnCheckBattleTagInviteToRecentAlly = source.BNCheckBattleTagInviteToRecentAlly
       target.getAccountInfoByGUID = source.GetAccountInfoByGUID
       target.getAccountInfoByID = source.GetAccountInfoByID
@@ -7321,4 +7322,4 @@ ApiKit:RegisterFlavor("classic-era", function(api, host)
     target.unitEventConstants = source.UnitEventConstants
     target.unitPowerSpellIDs = source.UnitPowerSpellIDs
   end
-end, { version = "1.15.9", build = 69722 })
+end, { version = "1.15.9", build = 70576 })

@@ -47,7 +47,7 @@ All five flavours are committed. The counts are documented functions, of
 which the bound ones are wrapper entries and the rest are methods of script
 object types described in the types only: Retail (client 12.1.5, build 70783:
 6,440 functions, 4,970 bound in 316 namespaces; 1,784 events, 856
-enumerations), Classic Era (1.15.9, build 69722: 4,589 functions, 3,229 bound
+enumerations), Classic Era (1.15.9, build 70576: 4,590 functions, 3,230 bound
 in 261 namespaces), Mists of Pandaria Classic (5.5.4, build 69934: 4,590
 functions, 3,230 bound in 261), the Public Test Realm (12.1.5, build 69952:
 6,437 functions, 4,967 bound in 316) and Beta (12.0.1, build 66220, the

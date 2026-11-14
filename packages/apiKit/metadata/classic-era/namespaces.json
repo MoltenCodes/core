@@ -6305,6 +6305,19 @@
           "wrapper": "areHighResTexturesInstalled"
         },
         {
+          "binding": "C_BattleNet.AreRealIDFriendsEnabled",
+          "name": "AreRealIDFriendsEnabled",
+          "returns": [
+            {
+              "name": "areRealIDFriendsEnabled",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "source": "BattleNetDocumentation.lua",
+          "wrapper": "areRealIDFriendsEnabled"
+        },
+        {
           "arguments": [
             {
               "name": "recentAllyGUID",
