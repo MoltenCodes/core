@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.2 — 2026-11-15
+
+Documentation only: no runtime change, implementation revision 8 is unchanged.
+
+- The saved-table layout is now part of the public contract of API generation 1 (`docs/API.md`, *The saved table*): every section, its type, what it is keyed by and what it holds, with the rule that a later revision may add a section or field but never rename, remove or reinterpret one. Code other than SettingsKit may read the table and write it before `Open`; bridgeKit's AceDB importer is the first such writer (`docs/BRIDGE_KIT_DESIGN.md`, prerequisite P2, decided 2026-11-15). `docs/INTERNALS.md` says the layout is the one public part and links to the section; *What `Open` does* step 5 links to it too.
+
 ## 0.3.1 — 2026-09-25
 
 An internal speed-up of getters, approved by the owner. No documented behaviour changes: every check, refusal, message, error level, default, signal and limit is as in 0.3.0, and a getter answers exactly what the view answers, a secret saved value included.

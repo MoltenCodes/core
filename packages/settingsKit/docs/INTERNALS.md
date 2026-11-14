@@ -1,6 +1,6 @@
 # SettingsKit Internals
 
-This document describes the private layout behind SettingsKit API generation 1: the saved table SettingsKit writes, the view design behind `db.<scope>`, and the package state. Only the saved-table layout is visible to players (it is what lands in `WTF/.../SavedVariables/MyAddon.lua`); none of it is a public contract for code.
+This document describes the private layout behind SettingsKit API generation 1: the saved table SettingsKit writes, the view design behind `db.<scope>`, and the package state. Only the saved-table layout is visible to players (it is what lands in `WTF/.../SavedVariables/MyAddon.lua`), and since 0.3.2 that layout is the one part that is a public contract for code: [`API.md`](API.md#the-saved-table) states it. Everything else here is private.
 
 ## The saved table
 

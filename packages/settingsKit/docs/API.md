@@ -202,9 +202,60 @@ Opening a name that is already open returns the same database. `schema` may then
 2. Reads the scope keys.
 3. Creates the global when it is missing.
 4. Runs migrations (below). A stored version newer than `options.version` makes the database read-only unless `allowNewerData` is set.
-5. Checks the layout (see [`INTERNALS.md`](INTERNALS.md#the-saved-table)): a section that is present but not a table is refused with `SettingsKit:Open MyAddonDB.global must be a table`. The check runs before anything else is written — before the version is stamped when no migration is pending, and on the last migration's result before that result is committed — so a refused table is never half-changed. A writable database then gets every missing section; a read-only one gets none.
+5. Checks the layout (see [The saved table](#the-saved-table)): a section that is present but not a table is refused with `SettingsKit:Open MyAddonDB.global must be a table`. The check runs before anything else is written — before the version is stamped when no migration is pending, and on the last migration's result before that result is committed — so a refused table is never half-changed. A writable database then gets every missing section; a read-only one gets none.
 6. Picks the profile: the character's recorded choice when it names a usable profile, otherwise the default profile. In a writable database the profile gets an empty table when it has none.
 7. Builds the views and, when EventKit is registered, joins the logout compaction.
+
+## The saved table
+
+The layout of the saved variable is part of the contract of API generation 1
+(since 0.3.2): code other than SettingsKit may read it, and may write it
+before `Open`, for example an importer that fills an empty saved variable
+from another library's data. A later revision of generation 1 may add a
+section or a field; it never renames, removes or reinterprets one below.
+Changing them needs a new API generation.
+
+```lua
+MyAddonDB = {
+  version = 2,
+  global = { ... },
+  profiles = { Default = { ... }, ["Tester - Silvermoon"] = { ... } },
+  profileKeys = { ["Tester - Silvermoon"] = "Default" },
+  char = { ["Tester - Silvermoon"] = { ... } },
+  realm = { Silvermoon = { ... } },
+  class = { MAGE = { ... } },
+  faction = { Alliance = { ... } },
+  namespaces = {},
+}
+```
+
+| Section | Type | Keyed by | Holds |
+|---|---|---|---|
+| `version` | positive integer, optional | — | The saved table's version (`options.version`). Absent means a table no migration has run on: `Open` stamps it, or runs every migration from 1. |
+| `global` | table | — | The `global` scope's record. |
+| `profiles` | table | profile name | One record per profile, the `profile` scope. |
+| `profileKeys` | table | `"<name> - <realm>"` | The profile name each character chose. A character without an entry starts on `options.defaultProfile`; an entry naming a profile `profiles` lacks is ignored. |
+| `char` | table | `"<name> - <realm>"`, from `UnitName("player")` and `GetRealmName()` | One record per character. |
+| `realm` | table | `GetRealmName()` | One record per realm. |
+| `class` | table | the class file name, the second return of `UnitClass("player")` (`"MAGE"`) | One record per class. |
+| `faction` | table | `UnitFactionGroup("player")` (`"Alliance"`, `"Horde"`, `"Neutral"`) | One record per faction. |
+| `namespaces` | table | module name | Reserved: SettingsKit writes nothing here in generation 1. Leave it empty. |
+
+Every section is optional in what you write: `Open` creates the missing ones
+in a writable database. A present section that is not a table is refused, as
+step 5 above says. Inside a record, a value is stored under the field name the
+schema declares. SettingsKit never validates stored data: `Open` does not
+check it, and a read returns a stored scalar as it is (a non-table where the
+schema declares a record or keyed section reads as if nothing were saved, see
+[Reads](#reads)). Code that writes the table from outside must therefore write
+only values the schema accepts; `SchemaKit` or, once the database is open,
+[`db:Validate`](#dbvalidatescope-path-value) checks a value before it is
+stored. A value equal to its default may be left out, and `db:Compact()`
+removes one that is stored. Other top-level keys are never read;
+`ResetDatabase` removes them with everything else.
+
+[`INTERNALS.md`](INTERNALS.md#the-saved-table) describes when SettingsKit
+itself writes each section.
 
 ## Migrations
 
