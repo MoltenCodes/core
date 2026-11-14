@@ -2,9 +2,10 @@
 
 > **Status:** design baseline, written 2026-09-25 for review; **not
 > implemented**. Package N in
-> [`ROADMAP.md`](ROADMAP.md#package-n--bridgekit-migrating-from-ace3). Code
-> starts only after the owner has answered the
-> [open questions](#16-open-questions-for-the-owner) and said go.
+> [`ROADMAP.md`](ROADMAP.md#package-n--bridgekit-migrating-from-ace3). The
+> owner answered the [open questions](#16-open-questions-for-the-owner) on
+> 2026-11-15, accepting every recommendation (decisions 9 to 13 below); code
+> starts with step N0 when the owner says go.
 >
 > This document is the canonical design of `bridgeKit`, the MoltenCodes
 > package that makes migrating an addon from Ace3 a product feature: an
@@ -1043,7 +1044,7 @@ shares the Ace3 fetch step.
 
 Each step ends with the gates green and a read-only review.
 
-- [ ] **N0 — prerequisites**, after the owner's answers: CommKit raw addon
+- [ ] **N0 — prerequisites** (the owner's answers are in, 2026-11-15): CommKit raw addon
       messages (P1, a CommKit minor version with specs and a client suite
       update) and SettingsKit's layout section (P2, documentation).
 - [ ] **N1 — serializer**: `AceSerialize`, `AceDeserialize`, limits, fixtures.
@@ -1056,6 +1057,11 @@ Each step ends with the gates green and a read-only review.
       acceptance review; package N closes.
 
 ## 16. Open questions for the owner
+
+Answered by the owner on 2026-11-15: every recommendation below was
+accepted. Each answer is recorded as a decision in
+[section 17](#17-decisions-summary) (9 to 13); the questions stay as they
+were asked.
 
 1. **CommKit raw addon messages (P1).** Approve adding `RegisterRaw` and
    `SendRaw` to CommKit (API 1, additive) so AceComm traffic shares CommKit's
@@ -1090,3 +1096,8 @@ Each step ends with the gates green and a read-only review.
 | 6 | The importer copies, validates with probe checks, materialises AceDB defaults that differ from SettingsKit's, and backs up before replacing. | 7 |
 | 7 | Wire bytes equal Ace's; bounds Ace lacks are added; one priority per prefix. | 8.3 |
 | 8 | Wire version 1 is frozen within API generation 1. | 8.5 |
+| 9 | CommKit gains `RegisterRaw` and `SendRaw` (API 1, additive), so AceComm traffic shares CommKit's queue and session budget (P1); the owner accepted it (2026-11-15). | 16.1, N0 |
+| 10 | SettingsKit's saved-table layout moves from `INTERNALS.md` to `API.md` as a public contract the importer writes; no SettingsKit code change (P2; 2026-11-15). | 16.2, N0 |
+| 11 | AceDB scopes SettingsKit lacks (`race`, `factionrealm`, `factionrealmregion`, `locale`) map into a map field the addon declares; SettingsKit gains those scopes only if addons ask (2026-11-15). | 16.3, 7 |
+| 12 | Function-valued `name`, `order`, `sorting`, `hasAlpha` and `fontSize` are evaluated once at conversion and reported as `evaluatedOnce` (2026-11-15). | 16.4, 6 |
+| 13 | Licence reading confirmed: recorded Ace3 output as fixtures with provenance, no Ace3 source or tests in the repository, Ace3 fetched at run time and never redistributed for the benchmark and the client tests (2026-11-15). | 16.5, 3.2 |

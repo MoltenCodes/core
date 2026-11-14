@@ -1474,9 +1474,10 @@ starts only after the owner has answered the design's open questions (section
    planned to current API; EMBEDDING footprint and host-requirements rows;
    ARCHITECTURE, `docs/README.md` and `README.md` list the package; the design
    document kept current.
-9. Status: planned (2026-09-25). Design and migration guide written; open
-   questions with the owner. Delivery sequence N0 (prerequisites P1, P2) to
-   N5 in the design, section 15.
+9. Status: planned (2026-09-25). Design and migration guide written. The
+   owner answered the design's five open questions on 2026-11-15, accepting
+   every recommendation (design decisions 9 to 13). Delivery sequence N0
+   (prerequisites P1, P2) to N5 in the design, section 15.
 
 ### Standing obligations
 
