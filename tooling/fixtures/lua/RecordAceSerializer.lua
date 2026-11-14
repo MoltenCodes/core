@@ -135,6 +135,16 @@ local DECODE_CASES = {
   { label = "start code where a value is expected", text = "^1^1^^" },
 }
 
+--- Every byte that can follow a tilde in a string token once the reader has
+--- removed control bytes and spaces: everything from `!` to 255 but the caret,
+--- which ends the token. Each is decoded as `^1^S~<byte>^^`.
+local ESCAPE_BYTES = {}
+for byte = 33, 255 do
+  if byte ~= 94 and byte ~= 127 then
+    ESCAPE_BYTES[#ESCAPE_BYTES + 1] = byte
+  end
+end
+
 -- Writing the module -----------------------------------------------------------
 
 local lines = {}
@@ -289,6 +299,15 @@ for _, case in ipairs(DECODE_CASES) do
     emit("      message = " .. literal(withoutPosition(tostring(results[2]))) .. ",")
   end
   emit("    },")
+end
+emit("  },")
+
+-- One row per byte after a tilde: `{ byte, ok, value or message }`.
+emit("  escapes = {")
+for _, byte in ipairs(ESCAPE_BYTES) do
+  local ok, value = AceSerializer:Deserialize("^1^S~" .. string.char(byte) .. "^^")
+  local result = ok and literal(value) or literal(withoutPosition(tostring(value)))
+  emit("    { " .. byte .. ", " .. tostring(ok) .. ", " .. result .. " },")
 end
 emit("  },")
 emit("}")

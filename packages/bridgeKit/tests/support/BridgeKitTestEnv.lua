@@ -35,10 +35,13 @@ function BridgeKitTestEnv.MarkSecret(...)
 end
 
 ---Load the BridgeKit source again as a copy carrying `revision`, the way a
----newer embedded copy loads over an older one in the client.
+---newer embedded copy loads over an older one in the client. `edits` maps
+---plain source fragments to their replacements, for a copy that differs in
+---more than its revision.
 ---@param revision integer
+---@param edits table<string, string>?
 ---@return table BridgeKit
-function BridgeKitTestEnv.LoadRevision(revision)
+function BridgeKitTestEnv.LoadRevision(revision, edits)
   local path = "packages/bridgeKit/src/BridgeKit.lua"
   local file = assert(io.open(path, "r"))
   local text = file:read("*a")
@@ -46,6 +49,11 @@ function BridgeKitTestEnv.LoadRevision(revision)
   local patched, replacements =
     text:gsub("local IMPLEMENTATION_REVISION = %d+", "local IMPLEMENTATION_REVISION = " .. revision)
   assert(replacements == 1, "BridgeKitTestEnv.LoadRevision could not find IMPLEMENTATION_REVISION")
+  for fragment, replacement in pairs(edits or {}) do
+    local first, last = patched:find(fragment, 1, true)
+    assert(first ~= nil, "BridgeKitTestEnv.LoadRevision could not find " .. fragment)
+    patched = patched:sub(1, first - 1) .. replacement .. patched:sub(last + 1)
+  end
   return assert(loadstring(patched, "@" .. path))()
 end
 

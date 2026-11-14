@@ -781,9 +781,10 @@ undefined.
   reads (hexadecimal included, as `tonumber` is what Ace calls), and repeated
   keys (last wins). It never raises on any string. Deviations: a NaN key is
   refused (`"invalidKey"`; Ace raises inside its `pcall` and returns `false`
-  too), so is `~~` or a tilde before a character below `@` (`"invalidEscape"`;
-  Ace fails inside `string.char`), a `^F` number is scaled with `ldexp`
-  rather than `mantissa * 2^exponent` (decision 15), and the limits apply.
+  too), so is a tilde before any character but `@` to `}` (`"invalidEscape"`;
+  Ace fails inside its escape helper or `string.char`), a `^F` number whose
+  `2^exponent` alone underflows is scaled with `ldexp` (decision 15), and the
+  limits apply.
   Recording Ace3 (step N1) settled what the description above left open:
   bytes before the first caret are ignored, the end code inside a table is a
   table format error, and `^t`, `^f` or `^1` where a value is expected is an
@@ -933,7 +934,9 @@ the repository rule.
 | The text given to `AceDeserialize` | Raises at the caller. |
 | A received prefix, message, distribution or sender | Dropped by CommKit before the raw callback (P1), counted in CommKit's `secretsDropped`; BridgeKit never sees it. |
 
-Error messages never format a value BridgeKit did not create.
+Error messages never format a value BridgeKit did not create, except a
+caller's option or limit name, which is named only once it was checked to be a
+string and not secret.
 
 ## 11. Errors
 
@@ -1113,4 +1116,4 @@ were asked.
 | 12 | Function-valued `name`, `order`, `sorting`, `hasAlpha` and `fontSize` are evaluated once at conversion and reported as `evaluatedOnce` (2026-11-15). | 16.4, 6 |
 | 13 | Licence reading confirmed: recorded Ace3 output as fixtures with provenance, no Ace3 source or tests in the repository, Ace3 fetched at run time and never redistributed for the benchmark and the client tests (2026-11-15). | 16.5, 3.2 |
 | 14 | Fixtures are recorded by `python3 -m tooling.fixtures.ace_serializer`, which runs the pinned Ace3 (fetched and checksummed by `tooling.bench.ace3`, outside the repository) under host Lua 5.1 over our own inputs and commits only its output, with provenance, as `packages/bridgeKit/tests/fixtures/AceSerializerFixtures.lua` (2026-11-15). | 3.2, 13.1 |
-| 15 | The reader scales a `^F` number with `ldexp`, so a subnormal number Ace's writer produces and Ace's own reader reads as `0` reads back exactly; for every other integer exponent the two give the same number. An escape Ace cannot read is the reason `"invalidEscape"`, added to the vocabulary of section 5.6 (2026-11-15). | 5.6, 8.2 |
+| 15 | The reader computes `mantissa * 2^exponent` as Ace does, except where `2^exponent` alone underflows (an exponent below -1074): there it scales a finite mantissa with `ldexp`, so a subnormal number Ace's writer produces and Ace's own reader reads as `0` reads back exactly. An escape Ace cannot read (anything after a tilde but `@` to `}`, pinned by the fixtures) is the reason `"invalidEscape"`, added to the vocabulary of section 5.6 (2026-11-15; narrowed after the step's read-only review). | 5.6, 8.2 |

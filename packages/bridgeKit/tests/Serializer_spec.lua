@@ -279,6 +279,15 @@ describe("BridgeKit AceSerializer", function()
       assert.are.equal(subnormal, select(2, BridgeKit:AceDeserialize(text)))
     end)
 
+    it("agrees with Ace's arithmetic where the power overflows", function()
+      local ok, value = BridgeKit:AceDeserialize("^1^F0^f2000^^")
+      assert.is_true(ok)
+      assert.is_true(value ~= value, "0 * 2^2000 is NaN, as in Ace")
+      assert.are.same({ true, math.huge }, { BridgeKit:AceDeserialize("^1^F0.5^f1024^^") })
+      -- So a key that reads as NaN that way is refused, as Ace refuses it.
+      assert.are.same({ false, "invalidKey" }, { BridgeKit:AceDeserialize("^1^T^F0^f2000^B^t^^") })
+    end)
+
     it("computes a non-integer exponent, which no writer produces, as Ace does", function()
       assert.are.same({ true, 2 ^ 0.5 }, { BridgeKit:AceDeserialize("^1^F1^f0.5^^") })
     end)

@@ -121,8 +121,11 @@ ESCAPE_FOR["~"] = "~|"
 ESCAPE_FOR["\127"] = "~{"
 
 -- The four characters after a tilde that do not follow the "byte plus 64"
--- rule. `~~` is no escape at all: Ace refuses it, and so does BridgeKit.
+-- rule. Ace reads a tilde before any character from `@` (64) to `}` (125)
+-- and refuses every other, `~~` and the high bytes included; the recorded
+-- fixtures pin this byte by byte.
 local UNESCAPE_SPECIAL = { z = "\030", ["{"] = "\127", ["|"] = "~", ["}"] = "^" }
+local UNESCAPE_LOWEST, UNESCAPE_HIGHEST = 64, 125
 
 -- The infinity spellings a reader accepts in a `^N` token: Ace's own, which a
 -- client whose `tostring` writes `1.#INF` produces, and the C library's.
@@ -134,9 +137,11 @@ local INFINITY_TEXT =
 local MANTISSA_SCALE = 2 ^ 53
 local MANTISSA_BITS = 53
 
--- A `^F` exponent beyond this bound gives zero or infinity for every finite
--- mantissa (2^1024 times 2^-2200 underflows, 2^-1074 times 2^2200 overflows),
--- so the reader clamps to it before `ldexp`, whose C argument is an `int`.
+-- The smallest exponent for which `2^exponent` is still a double: below it
+-- the power alone underflows to zero. A `^F` exponent below that is scaled
+-- with `ldexp`, clamped first to `-EXPONENT_BOUND`, where every finite
+-- mantissa (at most 2^1024) underflows anyway; `ldexp` takes a C `int`.
+local SMALLEST_POWER_EXPONENT = -1074
 local EXPONENT_BOUND = 2200
 
 -- Public types ---------------------------------------------------------------
@@ -265,6 +270,7 @@ local function validateStateBase(currentState)
     or type(rawget(currentState, "unbounded")) ~= "table"
     or type(rawget(currentState, "limits")) ~= "table"
     or type(rawget(currentState, "baseline")) ~= "table"
+    or type(rawget(currentState, "baselineData")) ~= "table"
   then
     return false
   end
@@ -284,8 +290,9 @@ end
 
 -- Bootstrap ------------------------------------------------------------------
 
----A read-only view of `contents`: reads go through, every write raises, and
----the metatable is locked so nobody can replace it.
+---A read-only view of `contents`: field reads go through, every write raises,
+---and the metatable is locked so nobody can replace it. It is a proxy, so
+---`pairs` sees no fields and `rawset` writes to the proxy, not the contents.
 ---@param contents table
 ---@return table
 local function readOnly(contents)
@@ -324,15 +331,23 @@ if type(previousRevision) == "nil" then
     -- They live here, not in file locals, so every embedded copy and every
     -- revision hands out the same tables.
     unbounded = {},
-    baseline = readOnly(ACE_BASELINE),
+    baselineData = {},
     limits = {},
   }
+  state.baseline = readOnly(state.baselineData)
   rawset(BridgeKit, "_state", state)
 elseif not validateStateBase(state) then
   error("MoltenCodes BridgeKit package state is corrupted or incomplete", 2)
 end
 
 local UNBOUNDED = rawget(state, "unbounded")
+-- The published baseline keeps its identity, and the newest revision writes
+-- what it reproduces into it, so a revision that moves the Ace3 pin publishes
+-- the new values through the same table.
+local baselineData = rawget(state, "baselineData")
+for field, value in next, ACE_BASELINE do
+  rawset(baselineData, field, value)
+end
 local limits = rawget(state, "limits")
 -- A limit this revision knows and the inherited state lacks gets its default;
 -- the ones a consumer set are kept.
@@ -622,12 +637,12 @@ local function unescape(data)
     if special ~= nil then
       return special
     end
-    local byte = string.byte(character) - 64
-    if character == "~" or byte < 0 then
+    local byte = string.byte(character)
+    if byte < UNESCAPE_LOWEST or byte > UNESCAPE_HIGHEST then
       invalid = true
       return ""
     end
-    return string.char(byte)
+    return string.char(byte - 64)
   end)
   if invalid then
     return nil
@@ -635,25 +650,29 @@ local function unescape(data)
   return text
 end
 
----The value of a `^F` token. Ace computes `mantissa * 2^exponent`, which reads
----0 for a number whose `2^exponent` alone underflows although the product is
----representable: some subnormal numbers, which Ace's own writer produces.
----BridgeKit scales with `ldexp` instead, so it reads back every number it and
----Ace write; for every other integer exponent the two agree exactly. A
----non-integer exponent, which no writer produces, is computed as Ace does.
+---The value of a `^F` token: `mantissa * 2^exponent`, as Ace computes it,
+---with one exception. When `2^exponent` alone underflows to zero, which
+---happens for some subnormal numbers Ace's own writer produces, Ace reads 0
+---although the product is representable; BridgeKit scales a finite mantissa
+---with `ldexp` there and reads the number back exactly. Everywhere else,
+---overflow to infinity and NaN included, the two agree.
 ---@param mantissa number
 ---@param exponent number
 ---@return number
 local function scaleMantissa(mantissa, exponent)
-  if exponent ~= exponent or exponent % 1 ~= 0 then
-    return mantissa * 2 ^ exponent
+  if
+    exponent < SMALLEST_POWER_EXPONENT
+    and exponent % 1 == 0
+    and mantissa == mantissa
+    and mantissa ~= math.huge
+    and mantissa ~= -math.huge
+  then
+    if exponent < -EXPONENT_BOUND then
+      exponent = -EXPONENT_BOUND
+    end
+    return ldexp(mantissa, exponent)
   end
-  if exponent > EXPONENT_BOUND then
-    exponent = EXPONENT_BOUND
-  elseif exponent < -EXPONENT_BOUND then
-    exponent = -EXPONENT_BOUND
-  end
-  return ldexp(mantissa, exponent)
+  return mantissa * 2 ^ exponent
 end
 
 local readValue

@@ -109,4 +109,19 @@ describe("BridgeKit and the recorded AceSerializer fixtures", function()
       end)
     end
   end
+
+  it("reads a tilde before every byte exactly as Ace does", function()
+    assert.is_true(#fixtures.escapes > 200)
+    for _, row in ipairs(fixtures.escapes) do
+      local byte, aceAccepted, aceResult = row[1], row[2], row[3]
+      local ok, result = BridgeKit:AceDeserialize("^1^S~" .. string.char(byte) .. "^^")
+      assert.are.equal(aceAccepted, ok, "byte " .. byte)
+      if aceAccepted then
+        assert.are.equal(aceResult, result, "byte " .. byte)
+      else
+        assert.are.equal("invalidEscape", result, "byte " .. byte)
+        assert.are.equal("invalidEscape", reasonForAceMessage(aceResult), "byte " .. byte)
+      end
+    end
+  end)
 end)

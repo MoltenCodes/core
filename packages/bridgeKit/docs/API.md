@@ -39,7 +39,7 @@ local BridgeKit = MoltenCodes.Registries[2]:Get("bridgeKit", 1)
 | `GetLimits()` | a fresh table | The limits. |
 | `UNBOUNDED` | table | Sentinel for the limits that accept it. |
 | `ACE_WIRE_VERSION` | `1` | The newest AceComm wire version this revision speaks (design section 8.5); no channel ships yet. |
-| `ACE_BASELINE` | read-only table | `{ commit = "5e2e0d3b…", AceComm = 14, AceSerializer = 5, AceDB = 37, AceConfigRegistry = 22 }`: what BridgeKit reproduces. A write raises. |
+| `ACE_BASELINE` | read-only table | `{ commit = "5e2e0d3b…", AceComm = 14, AceSerializer = 5, AceDB = 37, AceConfigRegistry = 22 }`: what BridgeKit reproduces. Read its fields by name: it is a proxy, so a write raises and `pairs` sees no fields. The newest revision loaded writes its values into it. |
 | `API`, `REVISION` | integers | API generation `1`, implementation revision. |
 
 Every method is called with a colon on the facade. A dot call, a wrong type or
@@ -111,7 +111,7 @@ reason. It never raises on any string; it raises at the caller only for a
 | `"missingTerminator"` | the text ends before the end code `^^` | "Supplied data misses AceSerializer terminator ('^^')" (`179`) |
 | `"invalidNumber"` | a `^N` token `tonumber` cannot read | "Invalid serialized number" (`194`) |
 | `"invalidFloat"` | a `^F` token not followed by `^f`, or either part not a number | "Invalid serialized floating-point number" (`199`, `204`) |
-| `"invalidEscape"` | `~~`, or a tilde before a character below `@` | `string.char` fails inside Ace's reader |
+| `"invalidEscape"` | a tilde before any character but `@` (64) to `}` (125): `~~`, `~0` and every high byte included | Ace's reader fails inside its escape helper or `string.char` |
 | `"unknownControl"` | an unknown code, or `^t`, `^f` or `^1` where a value is expected | "Invalid AceSerializer control code" (`232`) |
 | `"tableFormat"` | a table key or value that reads as `nil`, or the end code inside a table | "Invalid AceSerializer table format (no table end marker)" (`222`, `227`) |
 | `"invalidKey"` | a NaN table key | Lua's "table index is NaN" |
@@ -124,13 +124,15 @@ reason. It never raises on any string; it raises at the caller only for a
 ### Deviations from Ace3
 
 - **NaN key, invalid escape:** Ace raises inside its own `pcall` and returns
-  `false` with Lua's message; BridgeKit returns the named reason.
-- **`^F` numbers are scaled with `ldexp`.** Ace computes
-  `mantissa * 2^exponent`, which reads some subnormal numbers its own writer
-  produces as `0`, because `2^exponent` alone underflows. BridgeKit reads them
-  back exactly; for every other integer exponent the two give the same
-  number. A non-integer exponent, which no writer produces, is computed as Ace
-  computes it.
+  `false` with Lua's message; BridgeKit returns the named reason. Which
+  escapes Ace accepts is pinned byte by byte by the recorded fixtures.
+- **One `^F` case reads back where Ace reads `0`.** Both compute
+  `mantissa * 2^exponent`, except where `2^exponent` alone underflows to zero
+  (an exponent below -1074): there Ace reads `0`, although the product is
+  representable, and BridgeKit scales a finite mantissa with `ldexp` instead.
+  Some subnormal numbers Ace's own writer produces are written that way, so
+  BridgeKit reads them back exactly. Overflow to infinity and NaN come out as
+  in Ace.
 - **The limits** below, which Ace does not have.
 
 ## Limits
@@ -161,8 +163,9 @@ the parts that use them.
 
 `issecretvalue` is read at every call. A secret argument, a secret value or
 key inside the values given to `AceSerialize`, a secret `text`, and a secret
-`SetLimits` key or value raise at the caller; error messages never format a
-value BridgeKit did not create.
+`SetLimits` key or value raise at the caller. Error messages never format a
+secret: the one caller value a message names, an unknown limit name, is
+checked first, and only a string is named.
 
 ## Cost
 

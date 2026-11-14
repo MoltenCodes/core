@@ -12,12 +12,15 @@ AceSerializer-3.0 wire format. API generation 1, implementation revision 1.
 - `BridgeKit:AceDeserialize(text)` reads what Ace3 reads, within the limits,
   and never raises on malformed text: `notAceSerializer`, `missingTerminator`,
   `invalidNumber`, `invalidFloat`, `invalidEscape`, `unknownControl`,
-  `tableFormat`, `invalidKey` and the limits. A `^F` number is scaled with
-  `ldexp`, so a subnormal number Ace3's own reader reads as `0` reads back
-  exactly.
+  `tableFormat`, `invalidKey` and the limits. Where `2^exponent` alone
+  underflows, a `^F` number is scaled with `ldexp`, so a subnormal number
+  Ace3's own reader reads as `0` reads back exactly; everywhere else the
+  arithmetic is Ace3's. A tilde is read before `@` to `}` only, as Ace3 reads
+  it.
 - `SetLimits` and `GetLimits` for `maxDepth`, `maxValues`, `maxStringLength`,
   `maxTextBytes` and `maxListValues`; `UNBOUNDED`; `ACE_WIRE_VERSION`; the
   read-only `ACE_BASELINE`.
-- 139 specs, 90 of them generated from output recorded from Ace3 by
+- 142 specs, 91 of them generated from output recorded from Ace3 (one of them
+  over every byte that can follow a tilde) by
   `python3 -m tooling.fixtures.ace_serializer`
   (`tests/fixtures/AceSerializerFixtures.lua`).

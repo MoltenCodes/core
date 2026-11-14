@@ -47,6 +47,16 @@ describe("BridgeKit bootstrap", function()
     )
   end)
 
+  it("lets a newer revision publish a new baseline through the same table", function()
+    local BridgeKit = Env.NewPackage()
+    local baseline = BridgeKit.ACE_BASELINE
+    local upgraded = Env.LoadRevision(BridgeKit.REVISION + 1, {
+      ['commit = "5e2e0d3b3fd125ef1518744c6a9dd21f68f6e773"'] = 'commit = "a newer pin"',
+    })
+    assert.are.equal(baseline, upgraded.ACE_BASELINE)
+    assert.are.equal("a newer pin", baseline.commit)
+  end)
+
   it("refuses an inherited state it cannot read", function()
     local BridgeKit = Env.NewPackage()
     rawset(rawget(BridgeKit, "_state"), "limits", "corrupted")
