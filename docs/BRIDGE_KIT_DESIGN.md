@@ -175,7 +175,8 @@ lives inside the CommKit scope the caller passes and dies with it.
 ### 4.3 Prerequisites in other Kits
 
 Two changes to existing Kits are needed before the parts that use them can
-ship. Neither is made in this phase.
+ship. Both were made in step N0 (2026-11-15): P1 is CommKit 0.5.0
+(revision 8), P2 is SettingsKit 0.3.2.
 
 **P1 — CommKit: raw addon messages.** CommKit frames every message with its
 own control byte and header ([`commKit/docs/API.md`](../packages/commKit/docs/API.md#wire-protocol)),
@@ -1044,7 +1045,7 @@ shares the Ace3 fetch step.
 
 Each step ends with the gates green and a read-only review.
 
-- [ ] **N0 — prerequisites** (the owner's answers are in, 2026-11-15): CommKit raw addon
+- [x] **N0 — prerequisites** (done 2026-11-15: CommKit 0.5.0, revision 8, and SettingsKit 0.3.2; gates green and a read-only review, whose two findings were fixed): CommKit raw addon
       messages (P1, a CommKit minor version with specs and a client suite
       update) and SettingsKit's layout section (P2, documentation).
 - [ ] **N1 — serializer**: `AceSerialize`, `AceDeserialize`, limits, fixtures.

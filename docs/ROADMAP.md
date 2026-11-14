@@ -1477,7 +1477,9 @@ starts only after the owner has answered the design's open questions (section
 9. Status: planned (2026-09-25). Design and migration guide written. The
    owner answered the design's five open questions on 2026-11-15, accepting
    every recommendation (design decisions 9 to 13). Delivery sequence N0
-   (prerequisites P1, P2) to N5 in the design, section 15.
+   (prerequisites P1, P2) to N5 in the design, section 15. N0 is done
+   (2026-11-15): CommKit 0.5.0 carries raw addon messages and SettingsKit
+   0.3.2 publishes its saved-table layout.
 
 ### Standing obligations
 
