@@ -54,6 +54,7 @@ MoltenCodes Test: PASS commKit.roundTrip: a 2048-byte message leaves as nine chu
 MoltenCodes Test: PASS commKit.roundTrip: a message cancelled from onProgress after its first chunk sends one abort chunk (05, its stream id, its count) and the receiver drops the stream silently
 MoltenCodes Test: PASS commKit.roundTrip: a raw C_ChatInfo.SendAddonMessage of a CommKit single chunk answers Success (result logged), reaches CommKit's registration, and is charged as outside traffic when HookKit is loaded
 MoltenCodes Test: PASS commKit.roundTrip: a send queued while CommKit's driver runs and cancelled before it was sent never reaches the client, and completes once as cancelled
+MoltenCodes Test: PASS commKit.roundTrip: SendRaw whispers three caller-written parts to the player's own character, and RegisterRaw delivers each unparsed, in order, with AceComm's control bytes 01-03 untouched; a framed Register on that prefix answers framingConflict
 MoltenCodes Test: PASS commKit.syncSet: a SyncSet that whispers a request to the player's own character answers itself with a delivery of all three fields, and a second request a second later with an ack (hashes checked against the documented vectors)
 MoltenCodes Test: PASS commKit.scopes: ForAddon with this test addon's name returns one open scope naming the addon, with the default 32 registrations (logout route logged)
 MoltenCodes Test: PASS commKit.scopes: CloseAddonScopes on a probe addon cancels its queued send with reason shutdown before any chunk leaves, answers true then false, and the closed scope refuses Send and Register with closed
@@ -247,10 +248,11 @@ Every CommKit scope, SyncSet and EventKit connection a test creates is closed
 by its suite's After hook, pass or fail, which also cancels any send still
 queued. What stays in the session until `/reload`:
 
-- six addon message prefixes registered with the client by the first run:
+- seven addon message prefixes registered with the client by the first run:
   `MCTCommKitReg`, `MCTCommKitShort`, `MCTCommKitLong`, `MCTCommKitAbort`,
-  `MCTCommKitRaw` and `MCTCommKitSync`. The client has no way to unregister a
-  prefix; later runs reuse the same six, so the count never grows past them;
+  `MCTCommKitRaw`, `MCTCommKitRawRT` and `MCTCommKitSync`. The client has no
+  way to unregister a prefix; later runs reuse the same seven, so the count
+  never grows past them;
 - this addon's own CommKit scope, `CommKit:ForAddon("MoltenCodesTest_CommKit")`,
   empty, closed at logout;
 - one closed scope per run for a probe addon name,
@@ -270,7 +272,7 @@ results.
 
 | Test | Proves in the real client |
 |---|---|
-| `Registry:Get('commKit', 1) is the CommKit facade ...` | The facade the client loaded is API 1 with the eight facade methods, `MAX_MESSAGE_BYTES` 255, `MAX_REGISTRATIONS` 32, `Priority.ALERT`, `NORMAL`, `BULK` and the `UNBOUNDED` table; a scope carries its eleven methods and a send handle its four. The handle belongs to a send queued while CommKit's driver runs and cancelled before anything of it left (see [Waiting in the queue](#waiting-in-the-queue)). |
+| `Registry:Get('commKit', 1) is the CommKit facade ...` | The facade the client loaded is API 1 with the eight facade methods, `MAX_MESSAGE_BYTES` 255, `MAX_REGISTRATIONS` 32, `Priority.ALERT`, `NORMAL`, `BULK` and the `UNBOUNDED` table; a scope carries its thirteen methods (`RegisterRaw` and `SendRaw` since revision 8) and a send handle its four. The handle belongs to a send queued while CommKit's driver runs and cancelled before anything of it left (see [Waiting in the queue](#waiting-in-the-queue)). |
 | `the installed CommKit carries the revision ...` | Registry's selected revision and the facade's `REVISION` are both the committed manifest's. |
 | `C_ChatInfo has every function CommKit calls ...` | `C_ChatInfo.IsAddonMessagePrefixRegistered`, `RegisterAddonMessagePrefix`, `SendAddonMessage` and `SendAddonMessageLogged` are functions, and the client's `Enum.SendAddonMessageResult` has `Success` 0, `AddonMessageThrottle` 3 and `ChannelThrottle` 8, and `Enum.RegisterAddonMessagePrefixResult` has `Success` 0, `DuplicatePrefix` 1, `InvalidPrefix` 2 and `MaxPrefixes` 3: the values docs/API.md says CommKit falls back to. Both enums are logged in full. |
 | `Register has the real client register the prefix ...` | After `Register("MCTCommKitReg", ...)`, the client's `IsAddonMessagePrefixRegistered` answers `true`, and a second `RegisterAddonMessagePrefix` of the same prefix answers `DuplicatePrefix`. The log gives the answer before (`false` on the first run of a session), the count of registered prefixes before and after (`GetRegisteredAddonMessagePrefixes`) and the second answer. |
@@ -281,6 +283,7 @@ results.
 | `a message cancelled from onProgress after its first chunk ...` | A 600-byte (three-chunk) message, queued while CommKit's driver runs so the driver calls its first `onProgress` before the second chunk, and cancelled there, sends exactly two addon messages: the first chunk and the four-byte abort `05` with the same stream id and count (`80 83`). The receiver opens the stream and drops it silently (`streamsAborted` +1), nothing is delivered and no stream stays open; the handle is `cancelled` with 251 bytes sent. |
 | `a raw C_ChatInfo.SendAddonMessage of a CommKit single chunk ...` | After one CommKit send (which installs CommKit's outside-traffic hooks when HookKit is loaded), the test calls `C_ChatInfo.SendAddonMessage` itself with `01` plus text. The client answers `Enum.SendAddonMessageResult.Success` (the type, value and name are logged), CommKit charges it as outside traffic (`outsideMessages` +1, `outsideBytes` + prefix + text + 40) when HookKit is loaded, and CommKit's registration receives both messages. |
 | `a send queued while CommKit's driver runs ...` | A send made while the driver runs waits in the queue (`queued`, one more pending send and one more queued message); cancelled before the run reaches it, it completes once as `cancelled` inside `Cancel`, and in the following second nothing reaches the wire and no chunk is counted. |
+| `SendRaw whispers three caller-written parts ...` | Revision 8's raw messages over the real client: `RegisterRaw` registers the prefix, a framed `Register` on it answers `nil, "framingConflict"`, and three parts starting with AceComm's control bytes `01`, `02` and `03` whispered to the player's own character arrive as three `CHAT_MSG_ADDON` messages, each exactly as written and in order, with `WHISPER` and the player as sender; one progress call per part and one `sent` completion. |
 | `a SyncSet that whispers a request to the player's own character ...` | Setting `name` `"a"`, `level` 1 and `talents` `{ b = 2, a = 1 }` gives the documented FNV-1a hashes 3539962124, 2020387990 and 1171038798 on the client's own arithmetic. The request whispered to yourself is answered by the same SyncSet with a delivery: `OnChanged` runs three times with your name as sender and `GetRemote` returns the three values (`level` checked by its SchemaKit schema). 1.3 s later the same request is answered with an ack. Four addon messages in all; `syncRequests` +2, `syncDeliveries` +1, `syncAcknowledgements` +1, `syncRejected` +0. |
 | `ForAddon with this test addon's name ...` | `ForAddon("MoltenCodesTest_CommKit")` returns the same open scope every time, naming the addon, with 32 registrations. The log says whether LifecycleKit is loaded and lists `commKit` in `CLOSES_ADDON_SCOPES` (it should). |
 | `CloseAddonScopes on a probe addon ...` | `CloseAddonScopes` answers `false` for a name with no scope, `true` for the probe whose send, made while the driver runs, is still queued, then `false`; the send completes `cancelled` with reason `shutdown` before any chunk left; the closed scope answers `nil, "closed"` to `Send` and `Register`, and `ForAddon` still returns it. |

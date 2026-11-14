@@ -91,6 +91,7 @@ local PREFIX = {
   long = "MCTCommKitLong",
   abort = "MCTCommKitAbort",
   raw = "MCTCommKitRaw",
+  rawMessages = "MCTCommKitRawRT",
   sync = "MCTCommKitSync",
 }
 
@@ -167,7 +168,9 @@ local FACADE_METHODS = {
 --- Every method docs/API.md of commKit lists on a scope.
 local SCOPE_METHODS = {
   "Register",
+  "RegisterRaw",
   "Send",
+  "SendRaw",
   "SyncSet",
   "UnregisterAll",
   "CancelAll",
@@ -1509,6 +1512,73 @@ roundTrip:Test(
     ctx:Expect(delta.chunksSent):ToBe(0)
     ctx:Expect(#record.progress):ToBe(0)
     ctx:Expect(#record.completions):ToBe(1)
+  end
+)
+
+roundTrip:Test(
+  "SendRaw whispers three caller-written parts to the player's own character, and RegisterRaw delivers each unparsed, in order, with AceComm's control bytes 01-03 untouched; a framed Register on that prefix answers framingConflict",
+  function(ctx)
+    local fullName, shortName = requirePlayerNames(ctx)
+    local scope = newCommScope()
+    local deliveries = {}
+    local connection, registerReason = scope:RegisterRaw(
+      PREFIX.rawMessages,
+      function(prefix, text, distribution, sender)
+        deliveries[#deliveries + 1] =
+          { prefix = prefix, text = text, distribution = distribution, sender = sender }
+      end
+    )
+    if type(connection) == "nil" then
+      ctx:Fail("RegisterRaw was refused: " .. tostring(registerReason))
+      return
+    end
+    local framed, conflict = scope:Register(PREFIX.rawMessages, function() end)
+    ctx:Expect(framed):ToBeNil()
+    ctx:Expect(conflict):ToBe("framingConflict")
+
+    local parts = { "\001first part", "\002middle part", "\003last part" }
+    ---@type CommKitSuite.SendRecord
+    local record = { handle = nil, startedAt = now(), progress = {}, completions = {} }
+    local handle, reason = scope:SendRaw({
+      prefix = PREFIX.rawMessages,
+      parts = parts,
+      distribution = "WHISPER",
+      target = fullName,
+      onProgress = function(_, bytesSent, bytesTotal)
+        record.progress[#record.progress + 1] =
+          { bytesSent = bytesSent, bytesTotal = bytesTotal, at = now() }
+      end,
+      onComplete = function(_, state, completeReason)
+        record.completions[#record.completions + 1] =
+          { state = state, reason = completeReason, at = now() }
+      end,
+    })
+    if type(handle) == "nil" then
+      ctx:Fail("SendRaw was refused: " .. tostring(reason))
+      return
+    end
+    record.handle = handle
+    awaitSent(ctx, record)
+    awaitDeliveries(ctx, deliveries, #parts)
+    pause(ctx, 0.3)
+
+    ctx:Log(
+      ("%d part(s) delivered; onComplete after %s"):format(
+        #deliveries,
+        milliseconds(record.completions[1].at - record.startedAt)
+      )
+    )
+    ctx:Expect(#deliveries):ToBe(#parts)
+    for index = 1, #parts do
+      local delivery = deliveries[index] or {}
+      ctx:Expect(delivery.text):ToBe(parts[index])
+      ctx:Expect(delivery.prefix):ToBe(PREFIX.rawMessages)
+      ctx:Expect(delivery.distribution):ToBe("WHISPER")
+      ctx:Expect(isPlayer(delivery.sender, fullName, shortName)):ToBe(true)
+    end
+    ctx:Expect(#record.progress):ToBe(#parts)
+    ctx:Expect(record.completions[1].state):ToBe("sent")
+    ctx:Expect(handle:GetBytesSent()):ToBe(#parts[1] + #parts[2] + #parts[3])
   end
 )
 
