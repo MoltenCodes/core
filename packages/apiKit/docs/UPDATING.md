@@ -65,7 +65,9 @@ Work on a branch, one flavour at a time; each flavour is its own commit.
    ```
 
    Read the report under `docs/changes/retail/`: removed functions are the
-   breaking part of the refresh and belong in the changelog.
+   breaking part of the refresh and belong in the changelog. A `--previous`
+   directory that holds the capture being generated is refused: it means
+   step 3 did not write the new capture, so fix that refusal first.
 
 5. **Verify.** The suites prove the committed file binds exactly the new
    metadata and that every output matches it:

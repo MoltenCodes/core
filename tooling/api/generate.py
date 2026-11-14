@@ -288,13 +288,24 @@ def _plan_history(
 def _compare_with_previous(
     metadata: model.FlavourMetadata, previous_dir: Path, flavour: flavours.Flavour
 ) -> diff.Diff:
-    """Read the metadata of the build being replaced and diff it against `metadata`."""
+    """Read the metadata of the build being replaced and diff it against `metadata`.
+
+    A previous directory holding the very capture being generated is refused:
+    it means the new capture never reached the metadata directory (most often
+    because `normalize` refused it), and comparing the capture with itself
+    would write an empty change report and a history entry for no change.
+    """
     try:
         previous = model.read_metadata(previous_dir)
     except model.MetadataError as failure:
         raise GenerateError(str(failure)) from None
     if previous.provenance.flavour != flavour.id:
         raise GenerateError(f"{previous_dir}: previous metadata is for {previous.provenance.flavour!r}")
+    if previous.provenance.commit == metadata.provenance.commit:
+        raise GenerateError(
+            f"{previous_dir}: previous metadata is the capture being generated "
+            f"({metadata.provenance.commit[:12]}); normalise the new capture first"
+        )
     return diff.diff_metadata(previous, metadata)
 
 

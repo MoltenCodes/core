@@ -171,6 +171,20 @@ class WriteTests(GeneratorFixture):
         status, output, errors = self.run_main("--flavour", "retail", "--previous", str(previous_dir), "--check")
         self.assertEqual(0, status, errors)
 
+    def test_previous_metadata_of_the_same_capture_is_refused(self):
+        """A refused normalise leaves the old capture in place; diffing it with itself writes nothing."""
+        self.run_main("--flavour", "retail")
+        previous_dir = Path(self.tempdir.name) / "previous"
+        model.write_metadata(sample_metadata(), previous_dir)
+        history_before = (self.metadata_dir / "history.json").read_text(encoding="utf-8")
+
+        status, output, errors = self.run_main("--flavour", "retail", "--previous", str(previous_dir))
+
+        self.assertEqual(1, status)
+        self.assertIn("the capture being generated", errors)
+        self.assertFalse((self.package_dir / "docs" / "changes").exists())
+        self.assertEqual(history_before, (self.metadata_dir / "history.json").read_text(encoding="utf-8"))
+
     def test_a_flavour_file_nobody_owns_is_removed(self):
         self.run_main("--flavour", "retail")
         stale = self.package_dir / "src" / "flavours" / "Wrath.lua"
