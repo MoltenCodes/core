@@ -218,6 +218,11 @@ a registration of one kind, `Register` or `SyncSet` (framed) and
 scope. Once the prefix's last registration ends it may be registered either
 way again.
 
+Send raw messages only on a raw prefix. The client echoes a group message to
+its sender, so a raw message sent to `PARTY`, `RAID` or `GUILD` on a prefix this
+client has registered framed comes back through the framed parser: a part that
+starts with `01` reaches the framed callbacks as a CommKit message.
+
 ### Sending: `scope:SendRaw(request)`
 
 ```lua

@@ -365,6 +365,16 @@ describe("CommKit raw messages", function()
           "CommKit.Scope:SendRaw request.parts[2] must be a string",
           sendRaw(with({ "x", 5 }))
         )
+        local holed = { "a" }
+        holed[3] = "c"
+        assert.are.equal(
+          "CommKit.Scope:SendRaw request.parts must be an array of strings",
+          sendRaw(with(holed))
+        )
+        assert.are.equal(
+          "CommKit.Scope:SendRaw request.parts must be an array of strings",
+          sendRaw(with({ "a", label = "b" }))
+        )
         assert.are.equal(
           "CommKit.Scope:SendRaw request.parts[1] must be 1 to 255 bytes",
           sendRaw(with({ "" }))

@@ -4186,6 +4186,13 @@ function SendPath.readRawRequest(request, level)
   if partCount < 1 or partCount > WIRE.maxRawParts then
     error(label .. ".parts must hold 1 to " .. WIRE.maxRawParts .. " strings", level)
   end
+  -- `#` of a table with holes may stop at any border, which would drop parts
+  -- without a word, so every key must be one of 1 to `partCount`.
+  for key in next, source do
+    if type(key) ~= "number" or key < 1 or key > partCount or key % 1 ~= 0 then
+      error(label .. ".parts must be an array of strings", level)
+    end
+  end
   local parts = {}
   local totalBytes = 0
   for index = 1, partCount do
