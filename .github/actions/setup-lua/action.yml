@@ -12,6 +12,11 @@ inputs:
   lua-version:
     description: The Lua release to build; 5.1 is the game client's runtime.
     default: "5.1.5"
+  lua-sha256:
+    description: >-
+      SHA-256 of `lua-<lua-version>.tar.gz`, the same file on lua.org and on
+      every mirror. Change it together with lua-version.
+    default: "2640fc56a795f29d28ef15e13c34a47e223960b0240e8cb0a82d9b0738695333"
   luarocks-version:
     description: The LuaRocks release hererocks installs.
     default: "3.13.0"
@@ -65,6 +70,43 @@ runs:
         sudo apt-get update -qq
         sudo apt-get install -y -qq --no-install-recommends libreadline-dev
 
+    # hererocks downloads the Lua source itself, from lua.org and then one
+    # mirror, with a single attempt each; a slow lua.org handshake on
+    # 2026-11-11 failed the whole run that way. The archive is therefore
+    # fetched here first, with retries over every known source and a pinned
+    # checksum, and handed to hererocks through its `--downloads` directory,
+    # where it finds the file under its own name and downloads nothing.
+    - name: Fetch the Lua source
+      if: steps.cache.outputs.cache-hit != 'true'
+      shell: bash
+      env:
+        LUA_VERSION: ${{ inputs.lua-version }}
+        LUA_SHA256: ${{ inputs.lua-sha256 }}
+      run: |
+        set -euo pipefail
+        downloads="${RUNNER_TEMP}/hererocks-downloads"
+        archive="${downloads}/lua-${LUA_VERSION}.tar.gz"
+        mkdir -p "${downloads}"
+        sources=(
+          "https://www.lua.org/ftp/lua-${LUA_VERSION}.tar.gz"
+          "https://www.tecgraf.puc-rio.br/lua/mirror/ftp/lua-${LUA_VERSION}.tar.gz"
+          "https://webserver2.tecgraf.puc-rio.br/lua/mirror/ftp/lua-${LUA_VERSION}.tar.gz"
+        )
+        for source in "${sources[@]}"; do
+          echo "Fetching ${source}"
+          if curl --fail --silent --show-error --location \
+            --connect-timeout 20 --max-time 120 \
+            --retry 4 --retry-delay 5 --retry-all-errors \
+            --output "${archive}" "${source}" \
+            && echo "${LUA_SHA256}  ${archive}" | sha256sum --check --strict -; then
+            echo "HEREROCKS_DOWNLOADS=${downloads}" >> "${GITHUB_ENV}"
+            exit 0
+          fi
+          rm -f "${archive}"
+        done
+        echo "::error::No source served lua-${LUA_VERSION}.tar.gz with the pinned checksum."
+        exit 1
+
     - name: Build the toolchain
       if: steps.cache.outputs.cache-hit != 'true'
       shell: bash
@@ -77,7 +119,7 @@ runs:
       run: |
         set -euo pipefail
         pipx run --spec "git+https://github.com/luarocks/hererocks@${HEREROCKS_VERSION}" hererocks "${HOME}/.local/lua51" \
-          --lua "${LUA_VERSION}" --luarocks "${LUAROCKS_VERSION}"
+          --lua "${LUA_VERSION}" --luarocks "${LUAROCKS_VERSION}" --downloads "${HEREROCKS_DOWNLOADS}"
         "${HOME}/.local/lua51/bin/luarocks" install busted "${BUSTED_VERSION}"
         "${HOME}/.local/lua51/bin/luarocks" install luacov "${LUACOV_VERSION}"
 

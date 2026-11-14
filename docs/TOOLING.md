@@ -906,6 +906,14 @@ new image rebuilds the tree and anything else restores it in seconds instead of
 compiling Lua and installing the rocks on every run. The versions are the
 action's input defaults, in one place.
 
+On a cache miss the action fetches `lua-5.1.5.tar.gz` itself before hererocks
+runs: from lua.org and then two PUC-Rio mirrors, each with retries, accepted
+only when it matches the `lua-sha256` input. The verified archive is handed to
+hererocks through `--downloads`, so hererocks downloads no Lua source of its
+own. hererocks alone tries each source once, and a slow lua.org handshake on
+2026-11-11 failed the `test` job that way. A Lua version bump changes
+`lua-version` and `lua-sha256` together.
+
 ### Pins
 
 Every `uses:` is pinned to a full commit SHA with the release it came from in a
