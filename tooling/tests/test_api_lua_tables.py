@@ -281,11 +281,33 @@ class NameReferenceTests(unittest.TestCase):
         with self.assertRaisesRegex(module.LuaTableError, "only numbers and names can be added"):
             module.parse_lua_value("Flags.A + false")
 
+    def test_product_of_names_becomes_an_expression(self):
+        value = module.parse_lua_value("Bar.SLOTS_PER_GROUP * Bar.GROUPS")
+
+        self.assertEqual(
+            module.LuaExpression(
+                operands=(module.LuaName("Bar.SLOTS_PER_GROUP"), module.LuaName("Bar.GROUPS")),
+                operators=("*",),
+            ),
+            value,
+        )
+        self.assertEqual("Bar.SLOTS_PER_GROUP * Bar.GROUPS", value.text)
+
+    def test_mixed_operators_keep_source_order(self):
+        value = module.parse_lua_value("{ Value = Page.BARS * Bar.SLOTS + 2 }")
+
+        self.assertEqual(("*", "+"), value["Value"].operators)
+        self.assertEqual("Page.BARS * Bar.SLOTS + 2", value["Value"].text)
+
+    def test_only_numbers_and_names_may_be_multiplied(self):
+        with self.assertRaisesRegex(module.LuaTableError, "only numbers and names can be added"):
+            module.parse_lua_value("2 * true")
+
     def test_other_operators_are_rejected(self):
-        with self.assertRaisesRegex(module.LuaTableError, r"unexpected character '\*'"):
-            module.parse_lua_value("2 * 3")
         with self.assertRaisesRegex(module.LuaTableError, r"unexpected character '/'"):
             module.parse_lua_value("Flags.A / 2")
+        with self.assertRaisesRegex(module.LuaTableError, r"unexpected character '%'"):
+            module.parse_lua_value("Flags.A % 2")
 
     def test_function_calls_are_rejected_naming_the_callee(self):
         with self.assertRaisesRegex(module.LuaTableError, "found a call on 'GetValue'"):

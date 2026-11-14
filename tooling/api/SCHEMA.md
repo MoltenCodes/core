@@ -187,8 +187,9 @@ An argument, a return value, an event payload field or a structure field.
 
 A constant value is `{name, type, value, documentation?, flags?, attributes?}`
 when the tables give a literal, or `{name, type, expression, ...}` when they
-give a reference or arithmetic (`Enum.CalendarGetEventType.Get`,
-`Constants.X.LAST - Constants.X.FIRST + 1`), carried unevaluated.
+give a reference or arithmetic with `+`, `-` or `*`
+(`Enum.CalendarGetEventType.Get`, `Constants.X.LAST - Constants.X.FIRST + 1`,
+`Constants.X.PER_GROUP * Constants.X.GROUPS`), carried unevaluated.
 
 ## Restriction
 

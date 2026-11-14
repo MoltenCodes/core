@@ -49,12 +49,17 @@ Conversion rules, the contract the normaliser depends on:
   a global constant or an enum member instead of writing the number, so the
   reference is preserved as a value the normaliser must resolve or record;
   it is never guessed at here.
-- A sum or difference of such names and numbers (`Constants.Pets.MAX_SLOTS +
-  Constants.Pets.EXTRA_SLOTS`, `Last - First + 1`) becomes a `LuaExpression`
-  holding the operands and operators in source order. Three of the client's
-  constants files write a value this way; `+` and `-` are the only operators
-  they use, so they are the only ones accepted. Any other non-literal (a call,
-  another operator, a reserved word) is a `LuaTableError` naming the token.
+- A sum, difference or product of such names and numbers
+  (`Constants.Pets.MAX_SLOTS + Constants.Pets.EXTRA_SLOTS`, `Last - First +
+  1`, `Constants.Bar.SLOTS_PER_GROUP * Constants.Bar.GROUPS`) becomes a
+  `LuaExpression` holding the operands and operators in source order. A few
+  of the client's constants files write a value this way; `+`, `-` and `*`
+  are the only operators they use (`*` since the Public Test Realm build
+  70892, in `GamepadUIDocumentation.lua`), so they are the only ones
+  accepted. The expression is never evaluated, so operator precedence is not
+  this module's concern: its `text` is the source, valid Lua with Lua's own
+  precedence. Any other non-literal (a call, another operator, a reserved
+  word) is a `LuaTableError` naming the token.
 - Quoted strings (`"..."` or `'...'`) have Lua's escape sequences decoded:
   `\\n`, `\\t`, `\\r`, `\\a`, `\\b`, `\\f`, `\\v`, `\\\\`, `\\"`, `\\'`, up
   to three decimal digits (`\\065`), `\\xhh`, `\\z` (which skips the
@@ -111,10 +116,10 @@ LUA_KEYWORDS = frozenset(
 )
 
 #: The one-character symbols a data table can contain.
-_SYMBOLS = frozenset("{}[]()=,;:-+.")
+_SYMBOLS = frozenset("{}[]()=,;:-+*.")
 
 #: The binary operators a constants file may combine names and numbers with.
-_ADDITIVE_OPERATORS = frozenset("+-")
+_ARITHMETIC_OPERATORS = frozenset("+-*")
 
 #: Whitespace as Lua's lexer defines it.
 _WHITESPACE_RE = re.compile(r"[ \t\r\n\f\v]+")
@@ -209,7 +214,7 @@ class LuaName:
 
 @dataclass(frozen=True)
 class LuaExpression:
-    """A sum or difference of numbers and name references, kept unevaluated.
+    """A sum, difference or product of numbers and name references, kept unevaluated.
 
     `operands` has one more entry than `operators`; `operators[i]` sits between
     `operands[i]` and `operands[i + 1]`, all in source order. The parser could
@@ -556,7 +561,7 @@ class _Parser:
         if self.at_symbol("{"):
             return self.parse_table()
         operand = self._parse_operand()
-        if self._at_additive_operator():
+        if self._at_arithmetic_operator():
             return self._parse_expression_tail(operand)
         return operand
 
@@ -571,15 +576,15 @@ class _Parser:
             return self._parse_negated_number()
         raise self.error(token, f"expected a value, found {_describe(token)}")
 
-    def _at_additive_operator(self) -> bool:
+    def _at_arithmetic_operator(self) -> bool:
         token = self.peek()
-        return token.kind == TOKEN_SYMBOL and token.value in _ADDITIVE_OPERATORS
+        return token.kind == TOKEN_SYMBOL and token.value in _ARITHMETIC_OPERATORS
 
     def _parse_expression_tail(self, first: Any) -> LuaExpression:
-        """Continue `first + ... - ...` after the first operand has been read."""
+        """Continue `first + ... - ... * ...` after the first operand has been read."""
         operands = [self._require_arithmetic_operand(first, self.peek())]
         operators: list[str] = []
-        while self._at_additive_operator():
+        while self._at_arithmetic_operator():
             operators.append(self.advance().value)
             operand_token = self.peek()
             operands.append(self._require_arithmetic_operand(self._parse_operand(), operand_token))
@@ -588,7 +593,7 @@ class _Parser:
     def _require_arithmetic_operand(self, operand: Any, token: _Token) -> int | float | LuaName:
         if isinstance(operand, bool) or not isinstance(operand, (int, float, LuaName)):
             raise self.error(
-                token, f"only numbers and names can be added or subtracted, found {operand!r}"
+                token, f"only numbers and names can be added, subtracted or multiplied, found {operand!r}"
             )
         return operand
 
