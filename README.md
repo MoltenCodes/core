@@ -4,7 +4,7 @@
 [![Release](https://img.shields.io/github/v/release/MoltenCodes/core?include_prereleases&sort=semver)](https://github.com/MoltenCodes/core/releases)
 
 A modular Lua 5.1 framework for professional World of Warcraft addon
-development: 28 small packages, called Kits, each independently versioned,
+development: 29 small packages, called Kits, each independently versioned,
 tested and publishable, that an addon embeds one by one or loads together as the
 standalone addon `MoltenCodes`.
 
@@ -16,7 +16,7 @@ bounded by default and safe around the Retail secret-value and taint rules.
 
 ## Packages
 
-Twenty-seven release packages and one development package. Each links to its
+Twenty-eight release packages and one development package. Each links to its
 README; its full contract is the package's `docs/API.md`.
 
 | Package | Purpose |
@@ -42,6 +42,7 @@ README; its full contract is the package's `docs/API.md`.
 | [`codecKit`](packages/codecKit/) | Serialise, compress and channel-encode values behind a self-describing header; decoding never raises. |
 | [`interopKit`](packages/interopKit/) | The LibStub bridge: expose Kits to LibStub consumers and adopt LibStub libraries read-only. |
 | [`mediaKit`](packages/mediaKit/) | A typed media registry with font scripts, sorted cached lists, per-consumer defaults and LibSharedMedia adoption and mirroring. |
+| [`bridgeKit`](packages/bridgeKit/) | Migration from Ace3: AceSerializer-3.0 text written and read byte for byte; the AceConfig adapter, AceDB importer and AceComm channel follow. |
 | [`brokerKit`](packages/brokerKit/) | LibDataBroker-compatible data objects: typed attributes as plain fields, per-attribute change signals and a two-way LibDataBroker-1.1 bridge. |
 | [`logKit`](packages/logKit/) | Levelled, structured logging with lazy secret-safe formatting, a bounded journal and chat, callback and table sinks. |
 | [`compatKit`](packages/compatKit/) | Versioned shims with a host opt-out, provider registries with a fallback cascade, and the catalogue of taint-hostile subsystems as data. |
@@ -136,7 +137,7 @@ answers `--help`.
 ├── examples/                # a complete example addon, loaded by its own spec
 ├── lychee.toml              # Markdown link-check configuration
 ├── meta/                    # editor-only LuaCATS definitions, including the game API
-├── packages/                # the 28 Kits, one directory each (see packages/README.md)
+├── packages/                # the 29 Kits, one directory each (see packages/README.md)
 ├── pyproject.toml           # the supported Python floor for the tooling
 ├── selene.toml              # Selene configuration for runtime Lua
 ├── selene-tests.toml        # Selene configuration for test Lua

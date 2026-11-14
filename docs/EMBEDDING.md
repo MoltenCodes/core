@@ -150,6 +150,7 @@ registry
 ├──→ localeKit
 ├──→ hookKit
 ├──→ interopKit
+├──→ bridgeKit
 ├──→ poolKit
 │       ├──→ codecKit
 │       └──→ widgetKit   (also needs signalKit)
@@ -180,6 +181,7 @@ apiKit/flavours/ClassicEra.lua
 apiKit/flavours/ClassicMop.lua
 apiKit/flavours/Ptr.lua
 apiKit/flavours/Retail.lua
+bridgeKit/BridgeKit.lua
 signalKit/SignalKit.lua
 brokerKit/BrokerKit.lua
 cacheKit/CacheKit.lua
@@ -242,7 +244,7 @@ optional and found at call time, so embedding one Kit costs this many files:
 
 | Files | Kit | Alongside `registry/Registry.lua` |
 |---|---|---|
-| 2 | `clientKit`, `cacheKit`, `compatKit`, `profileKit`, `schemaKit`, `localeKit`, `hookKit`, `interopKit`, `poolKit`, `signalKit`, `timerKit` | nothing |
+| 2 | `clientKit`, `cacheKit`, `compatKit`, `profileKit`, `schemaKit`, `localeKit`, `hookKit`, `interopKit`, `bridgeKit`, `poolKit`, `signalKit`, `timerKit` | nothing |
 | 3 | `apiKit` | nothing; the third file is the flavour file of the client you support (one more per further flavour) |
 | 3 | `codecKit` | `poolKit` |
 | 3 | `commandKit` | `schemaKit` |
@@ -641,6 +643,7 @@ actually touch, which is deliberately small:
 | `commandKit` | SchemaKit's surface; `SlashCmdList` (`Register` and `BindOptions` raise at the caller) | `SLASH_<key><n>`, `SecureCmdList`, `ChatTypeInfo`, `EMOTE<n>_CMD<m>` and `MAXEMOTEINDEX` (the taken check finds nothing), `DEFAULT_CHAT_FRAME` (`print`), `ChatEdit_CustomTabPressed` (`EnableCompletion` returns `false`), `ChatEdit_GetActiveWindow`, `geterrorhandler` (`print`), ClientKit API 1 / `issecretvalue`, OptionsKit API 1 (`BindOptions` raises), LocaleKit API 1 (`Printf` uses `string.format`); LifecycleKit and EventKit API 1 through `Registry:Find` decide who closes an addon scope at logout (with neither, call `CommandKit:CloseAddonScopes` on `PLAYER_LOGOUT`) |
 | `codecKit` | PoolKit's surface | SchedulerKit API 1 through `Registry:Find` (`EncodeAsync` and `DecodeAsync` raise at the caller), `issecretvalue` (looked up at every call; absent: nothing is treated as secret) |
 | `interopKit` | nothing but Lua 5.1 | `LibStub` (every call returns `"absent"`), `issecretvalue` (nothing treated as secret) |
+| `bridgeKit` | nothing but Lua 5.1 | `issecretvalue` (looked up at every call; absent: nothing is treated as secret) |
 | `brokerKit` | SignalKit's surface | `issecretvalue` (nothing is secret), `LibStub` and LibDataBroker-1.1 (`ExposeToLibDataBroker` and `AdoptFromLibDataBroker` return `false, "absent"`) |
 | `logKit` | SignalKit's surface (`NewJournal`, `GetLimits`; `maxJournalArguments` at least 4) | `GetTimePreciseSec` (record `time` is `false`), `issecretvalue` (nothing secret), `geterrorhandler` (failing sinks, format errors and refused journal firings fall back to `print`, also when the handler raises), `DEFAULT_CHAT_FRAME` (`ChatSink` prints), `SlashCmdList` (`RegisterCommand` returns `false, "unavailable"`), CommandKit API 1 through `Registry:Find` (`RegisterCommand` returns `false, "absent"`), SettingsKit API 1 through `Registry:Find` (`BindLevels` raises at the caller) |
 | `mediaKit` | SignalKit's surface | `GetLocale` (the client writes Latin), `issecretvalue` (nothing is secret), `LibStub` and LibSharedMedia-3.0 (`AdoptLibSharedMedia` and `MirrorToLibSharedMedia` return `false, "absent"`) |

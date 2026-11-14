@@ -23,6 +23,7 @@ body:
       options:
         - registry
         - apiKit
+        - bridgeKit
         - brokerKit
         - cacheKit
         - clientKit

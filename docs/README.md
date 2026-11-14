@@ -60,6 +60,7 @@ Current package entry points:
 - [`CodecKit`](../packages/codecKit/README.md) — serialise, compress and channel-encode values into addon-channel or printable strings; decoding never raises.
 - [`InteropKit`](../packages/interopKit/README.md) — the LibStub bridge.
 - [`MediaKit`](../packages/mediaKit/README.md) — typed media registry with font scripts, per-consumer defaults and LibSharedMedia mirroring.
+- [`BridgeKit`](../packages/bridgeKit/README.md) — migration from Ace3: AceSerializer-3.0 text written and read byte for byte (the AceConfig, AceDB and AceComm parts follow).
 - [`BrokerKit`](../packages/brokerKit/README.md) — LibDataBroker-compatible data objects with per-attribute change signals and a two-way LibDataBroker-1.1 bridge.
 - [`LogKit`](../packages/logKit/README.md) — levelled, structured logging with lazy secret-safe formatting, a bounded journal and pluggable sinks.
 - [`CompatKit`](../packages/compatKit/README.md) — versioned shims with a host opt-out, provider registries with a fallback cascade, the taint catalogue as data.

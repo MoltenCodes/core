@@ -75,6 +75,7 @@ frexp
 getmetatable
 gsub
 ipairs
+ldexp
 luac
 metamethod
 metatable

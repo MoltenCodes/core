@@ -149,3 +149,5 @@ move-folders:
   MoltenCodes/packages/widgetKit/docs: MoltenCodes/widgetKit/docs
   MoltenCodes/packages/apiKit/src: MoltenCodes/apiKit
   MoltenCodes/packages/apiKit/docs: MoltenCodes/apiKit/docs
+  MoltenCodes/packages/bridgeKit/src: MoltenCodes/bridgeKit
+  MoltenCodes/packages/bridgeKit/docs: MoltenCodes/bridgeKit/docs

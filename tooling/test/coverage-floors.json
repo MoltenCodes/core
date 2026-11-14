@@ -1,5 +1,6 @@
 {
   "apiKit": 96,
+  "bridgeKit": 96,
   "brokerKit": 96,
   "cacheKit": 98,
   "clientKit": 97,

@@ -29,6 +29,7 @@ Current packages:
 - [`codecKit`](codecKit/) — serialise, compress and channel-encode values; decoding never raises.
 - [`interopKit`](interopKit/) — the LibStub bridge.
 - [`mediaKit`](mediaKit/) — typed media registry, font scripts, sorted lists, per-consumer defaults, LibSharedMedia bridge.
+- [`bridgeKit`](bridgeKit/) — migration from Ace3: AceSerializer-3.0 text written and read byte for byte, with limits; the AceConfig, AceDB and AceComm parts follow.
 - [`brokerKit`](brokerKit/) — LibDataBroker-compatible data objects for display addons: typed attributes as plain fields, per-attribute change signals, sorted enumeration, two-way LibDataBroker-1.1 bridge.
 - [`logKit`](logKit/) — levelled, structured logging: per-addon loggers with lazy secret-safe formatting, a tri-state level, a bounded journal, chat, callback and table sinks.
 - [`compatKit`](compatKit/) — versioned shims applied once per session with a host opt-out, provider registries with liveness probes and a deterministic fallback cascade, the catalogue of taint-hostile subsystems as data.

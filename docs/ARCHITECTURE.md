@@ -32,6 +32,7 @@ packages/
 ├── commKit/
 ├── widgetKit/
 ├── apiKit/
+├── bridgeKit/
 ├── <future-package>/
 └── ...
 ```
@@ -99,6 +100,7 @@ registry
 ├──→ localeKit
 ├──→ hookKit
 ├──→ interopKit
+├──→ bridgeKit
 ├──→ poolKit
 │       ├──→ codecKit
 │       └──→ widgetKit   (also needs signalKit)
@@ -253,6 +255,8 @@ The dependency layer directly above Registry holds the Kits that need nothing el
 `codecKit` depends on Registry API 2 and PoolKit API 1. It serialises values (varint integers, exact binary64 doubles, raw strings, array, map and mixed tables; cycles refused), compresses with pure-Lua raw DEFLATE, and escapes for the addon channel or base-85 encodes for print, behind a version byte and a stage-flags byte; decoding returns `false, reason` for any string, bounded by shared limits. SchedulerKit is found at call time through `Registry:Find` for the asynchronous variants, so it adds no edge to the load order.
 
 `interopKit` depends only on Registry API 2. It exposes Kit facades to LibStub under `MoltenCodes-<Facade>-<api>` with the revision as minor, refuses majors other libraries hold, and records LibStub libraries it adopts in its own state (`InteropKit:Find`), because Registry's line budget leaves no room for foreign entries. LibStub is found at call time through `rawget(_G, "LibStub")` and adds no edge to the load order.
+
+`bridgeKit` depends only on Registry API 2. It is the Ace3 migration package (`docs/BRIDGE_KIT_DESIGN.md`): its first revision writes and reads AceSerializer-3.0 text byte for byte with Ace3, from the format description and never from Ace3's source, and is held to output recorded from Ace3 itself (`tests/fixtures/`, recorded by `python3 -m tooling.fixtures.ace_serializer`). Later steps add the AceConfig adapter (OptionsKit found through `Registry:Find`), the AceDB importer (SchemaKit) and the AceComm channel (CommKit's raw addon messages), each optional, so an addon embeds only what the part it uses needs.
 
 `mediaKit` depends on Registry API 2 and SignalKit API 1. It keeps one registry of seven fixed media types; entries are a path or a FileDataID, fonts carry a script mask checked against `GetLocale`, `List` returns a cached sorted array rebuilt only after a registration of its type (for fonts, also when the client's script changes), defaults are per consumer over the client's built-in media, and LibSharedMedia-3.0 is reached through `rawget(_G, "LibStub")` at call time for read-only adoption and explicit mirroring without echo.
 
