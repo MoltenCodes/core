@@ -32,7 +32,7 @@ Registry has no dependencies and must be listed before every framework package
 that uses it:
 
 ```toc
-## Interface: 120100, 50504, 20506, 11509
+## Interface: 120105, 50504, 20506, 11509
 ## Title: My Addon
 ## Notes: Example of embedding MoltenCodes packages
 
@@ -43,7 +43,7 @@ Libs\MoltenCodes\eventKit\EventKit.lua
 MyAddon.lua
 ```
 
-Those Interface numbers are current as of 2026-09; see
+Those Interface numbers are current as of 2026-11; see
 [`../../../docs/EMBEDDING.md`](../../../docs/EMBEDDING.md) for the supported
 flavours, the full load-order rules, and a complete example addon.
 

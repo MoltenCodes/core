@@ -19,7 +19,7 @@
 ---
 --- | Profile       | Project | Interface | Surface beyond the shared host |
 --- |---------------|---------|-----------|--------------------------------|
---- | `mainline`    | 1       | 120100    | `issecretvalue`; `C_EventUtils`; `C_Spell`, `C_Item`, `C_SpellBook`; `C_AddOns.GetAddOnMetadata`; `UIParent` with `IsForbidden` and `CanBeAccessedInContext` |
+--- | `mainline`    | 1       | 120105    | `issecretvalue`; `C_EventUtils`; `C_Spell`, `C_Item`, `C_SpellBook`; `C_AddOns.GetAddOnMetadata`; `UIParent` with `IsForbidden` and `CanBeAccessedInContext` |
 --- | `mists`       | 19      | 50504     | as `mainline`, without `issecretvalue` and `CanBeAccessedInContext` |
 --- | `tbc`         | 5       | 20506     | `C_EventUtils`; `C_Item`; `C_AddOns.GetAddOnMetadata`; legacy `GetSpellInfo`; `UIParent` with `IsForbidden` |
 --- | `classic`     | 2       | 11509     | no `C_AddOns` (legacy `IsAddOnLoaded`, `GetAddOnMetadata`); legacy `GetSpellInfo`, `GetItemInfo`; no `C_EventUtils`; `UIParent` with `IsForbidden` |
@@ -50,7 +50,7 @@ local PROJECT_CONSTANTS = {
 local PROFILES = {
   mainline = {
     projectId = 1,
-    buildInfo = { "12.1.0", "64123", "Sep 23 2026", 120100 },
+    buildInfo = { "12.1.5", "64123", "Sep 23 2026", 120105 },
     secretValues = true,
     eventUtils = true,
     modernSpell = true,

@@ -270,7 +270,7 @@ into `Interface/AddOns/ExampleAddon/`, drop the framework files into
 ### `ExampleAddon.toc`
 
 ```toc
-## Interface: 120100, 50504, 20506, 11509
+## Interface: 120105, 50504, 20506, 11509
 ## Title: Example Addon
 ## Notes: A small addon showing how to embed and use the MoltenCodes framework.
 ## Author: MoltenCodes
@@ -584,7 +584,7 @@ The full rules are in
 
 ## Supported client versions
 
-Interface numbers verified on **2026-09-23** against
+Interface numbers verified on **2026-11-15** against
 `Template:LatestPatchInfo` on warcraft.wiki.gg. The wiki can lag a hotfix, so the
 ground truth on any machine is `/dump (select(4, GetBuildInfo()))` typed into
 that client.
@@ -597,12 +597,12 @@ any `## Interface` line quoted in the documentation disagrees with it, and
 your own `.toc`:
 
 ```toc
-## Interface: 120100, 50504, 20506, 11509
+## Interface: 120105, 50504, 20506, 11509
 ```
 
 | Flavour | `## Interface` | Patch | Packager TOC suffix |
 |---|---|---|---|
-| Retail (Midnight) | `120100` | 12.1.0 | `_Mainline` |
+| Retail (Midnight) | `120105` | 12.1.5 | `_Mainline` |
 | Mists of Pandaria Classic | `50504` | 5.5.4 | `_Mists` |
 | Burning Crusade Classic (Anniversary) | `20506` | 2.5.6 | `_TBC` |
 | Classic Era (also Hardcore, Season of Discovery) | `11509` | 1.15.9 | `_Vanilla` |

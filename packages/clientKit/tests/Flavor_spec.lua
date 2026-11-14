@@ -38,7 +38,7 @@ local function supportedInterfaceNumbers()
 end
 
 local EXPECTED = {
-  mainline = { suffix = "_Mainline", version = "12.1.0" },
+  mainline = { suffix = "_Mainline", version = "12.1.5" },
   mists = { suffix = "_Mists", version = "5.5.4" },
   tbc = { suffix = "_TBC", version = "2.5.6" },
   classic = { suffix = "_Vanilla", version = "1.15.9" },
@@ -142,10 +142,10 @@ describe("ClientKit:IsAtLeast", function()
 
   it("includes the running interface number itself", function()
     local ClientKit = Env.NewPackageFor("mainline")
-    assert.is_true(ClientKit:IsAtLeast(120100))
-    assert.is_true(ClientKit:IsAtLeast(120099))
+    assert.is_true(ClientKit:IsAtLeast(120105))
+    assert.is_true(ClientKit:IsAtLeast(120104))
     assert.is_true(ClientKit:IsAtLeast(120000))
-    assert.is_false(ClientKit:IsAtLeast(120101))
+    assert.is_false(ClientKit:IsAtLeast(120106))
     assert.is_false(ClientKit:IsAtLeast(math.huge))
     assert.is_true(ClientKit:IsAtLeast(-math.huge))
   end)
