@@ -72,7 +72,7 @@
 
 local PACKAGE_NAME = "commKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 7
+local IMPLEMENTATION_REVISION = 8
 
 -- The API generation of every package CommKit uses: required (Registry,
 -- SignalKit, EventKit, TimerKit, SchedulerKit, PoolKit) and optional
@@ -142,6 +142,10 @@ local WIRE = {
   abort = 0x05,
   chunkHeaderBytes = 4,
   forbiddenBytePattern = "[%z\n\r|]",
+  -- Raw messages (revision 8) are sent as written; only NUL is refused,
+  -- because the client cannot carry it. At most `maxRawParts` parts.
+  nulBytePattern = "%z",
+  maxRawParts = 4096,
   maxPrefixBytes = 16,
   plain = { offset = 0x80, radix = 128 },
   logged = { offset = 0x30, radix = 75 },
@@ -221,6 +225,8 @@ local REASON = {
   forbiddenByte = "forbiddenByte",
   badDistribution = "badDistribution",
   unavailable = "unavailable",
+  nulByte = "nulByte",
+  framingConflict = "framingConflict",
   full = "full",
   cancelled = "cancelled",
   shutdown = "shutdown",
@@ -450,6 +456,7 @@ local STATISTIC_NAMES = {
   "refusedForbiddenByte",
   "refusedBadDistribution",
   "refusedUnavailable",
+  "refusedNulByte",
   "chunksSent",
   "bytesSent",
   "throttled",
@@ -486,6 +493,7 @@ local STATISTIC_FOR = {
     [REASON.forbiddenByte] = "refusedForbiddenByte",
     [REASON.badDistribution] = "refusedBadDistribution",
     [REASON.unavailable] = "refusedUnavailable",
+    [REASON.nulByte] = "refusedNulByte",
   },
   terminal = {
     [SEND_STATE.sent] = "messagesSent",
@@ -513,6 +521,15 @@ local OPTION_KEYS = {
     target = true,
     priority = true,
     constraints = true,
+    onProgress = true,
+    onComplete = true,
+  },
+  sendRawRequest = {
+    prefix = true,
+    parts = true,
+    distribution = true,
+    target = true,
+    priority = true,
     onProgress = true,
     onComplete = true,
   },
@@ -546,7 +563,9 @@ local SURFACE = {
   },
   scope = {
     "Register",
+    "RegisterRaw",
     "Send",
+    "SendRaw",
     "SyncSet",
     "UnregisterAll",
     "CancelAll",
@@ -607,6 +626,16 @@ local SURFACE = {
 ---@field onProgress CommKit.ProgressCallback?
 ---@field onComplete CommKit.CompleteCallback?
 
+---The table `scope:SendRaw` accepts (revision 8).
+---@class CommKit.SendRawRequest
+---@field prefix string The addon message prefix, 1 to 16 bytes.
+---@field parts string[] 1 to 4096 addon messages, each 1 to 255 bytes, sent as written in this order; NUL is refused.
+---@field distribution CommKit.Distribution
+---@field target string|number|nil The player for `WHISPER`, the channel for `CHANNEL`; ignored otherwise.
+---@field priority CommKit.PriorityName? Defaults to `"NORMAL"`.
+---@field onProgress CommKit.ProgressCallback?
+---@field onComplete CommKit.CompleteCallback?
+
 ---The table `scope:SyncSet` accepts.
 ---@class CommKit.SyncSetOptions
 ---@field fields string[] The field names, 1 to 32 of them, each 1 to 64 bytes.
@@ -659,7 +688,9 @@ local SURFACE = {
 ---The owner of registrations, sends and SyncSets, released together by `Close`.
 ---@class CommKit.Scope
 ---@field Register fun(self: CommKit.Scope, prefix: string, callback: CommKit.ReceiveCallback): CommKit.Connection|nil, string?
+---@field RegisterRaw fun(self: CommKit.Scope, prefix: string, callback: CommKit.ReceiveCallback): CommKit.Connection|nil, string?
 ---@field Send fun(self: CommKit.Scope, request: CommKit.SendRequest): CommKit.SendHandle|nil, string?
+---@field SendRaw fun(self: CommKit.Scope, request: CommKit.SendRawRequest): CommKit.SendHandle|nil, string?
 ---@field SyncSet fun(self: CommKit.Scope, prefix: string, options: CommKit.SyncSetOptions): CommKit.SyncSet|nil, string?
 ---@field UnregisterAll fun(self: CommKit.Scope): integer
 ---@field CancelAll fun(self: CommKit.Scope): integer
@@ -1038,6 +1069,10 @@ local function newState()
     dropReports = { bySender = {}, count = 0, timer = false, due = false },
     prefixSignals = {},
     prefixCounts = {},
+    -- Prefix to `"framed"` or `"raw"` while it has registrations
+    -- (revision 8): the two readings of a message's first byte contradict
+    -- each other, so a prefix holds registrations of one kind only.
+    prefixFraming = {},
     -- Prefixes this session registered with the client.
     clientPrefixes = {},
     registrationTotal = 0,
@@ -1120,6 +1155,14 @@ for index = 1, #LIMIT_NAMES do
   end
 end
 local statistics = rawget(state, "statistics")
+-- A counter a later revision added (`refusedNulByte`, revision 8) starts at
+-- zero over an older state; the others keep counting.
+for index = 1, #STATISTIC_NAMES do
+  local name = STATISTIC_NAMES[index]
+  if rawget(statistics, name) == nil then
+    rawset(statistics, name, 0)
+  end
+end
 local queues = rawget(state, "queues")
 local blockedPipes = rawget(state, "blockedPipes")
 local budget = rawget(state, "budget")
@@ -1175,6 +1218,17 @@ end
 -- under this rule, so the next wake does.
 if rawget(state, "outsideLookupAt") == nil then
   rawset(state, "outsideLookupAt", false)
+end
+-- Revision 8 adds raw registrations. Every registration an older state holds
+-- is framed, so each prefix with one is marked framed.
+if rawget(state, "prefixFraming") == nil then
+  local prefixFraming = {}
+  for prefix, registrations in next, rawget(state, "prefixCounts") do
+    if registrations > 0 then
+      prefixFraming[prefix] = "framed"
+    end
+  end
+  rawset(state, "prefixFraming", prefixFraming)
 end
 local deferred = rawget(state, "deferred")
 for _, addonScope in next, addonScopes do
@@ -1781,6 +1835,7 @@ local function releaseRecord(record)
     return
   end
   record.text = false
+  record.parts = false
   record.handle = false
   record.scope = false
   record.onProgress = false
@@ -2211,6 +2266,11 @@ end
 ---@return string chunk
 ---@return integer payloadBytes
 local function buildChunk(record)
+  if record.kind == "raw" then
+    -- A raw message's parts leave exactly as the caller wrote them.
+    local part = record.parts[record.nextIndex]
+    return part, #part
+  end
   local text = record.text
   local totalChunks = record.totalChunks
   local isAbort = record.kind == "abort"
@@ -2248,14 +2308,15 @@ end
 ---Whether the head of `pipe` may be served now. A multi-chunk message that
 ---has not started waits while starting it would pass what one receiver
 ---accepts from one sender: `maxInFlightPerSender` streams and
----`maxReassemblyBytesPerSender` declared bytes. Everything else may go.
+---`maxReassemblyBytesPerSender` declared bytes. Everything else may go,
+---a raw message too: its receivers are not CommKit's reassembly.
 ---@param pipe table
 ---@return boolean
 local function headMayStart(pipe)
   local record = pipe.fifo[1]
   local totalChunks = record.totalChunks
   -- A started message or an abort already holds its allowance.
-  if totalChunks == 1 or record.inFlight then
+  if totalChunks == 1 or record.inFlight or record.kind == "raw" then
     return true
   end
   return state.inFlightStreams < limits.maxInFlightPerSender
@@ -2358,7 +2419,9 @@ local function acceptChunk(record, pipe, cost, chunkBytes, payloadBytes)
   local finished = nextIndex > totalChunks
   if not finished then
     rawset(handle, "_state", SEND_STATE.sending)
-    if nextIndex == 2 then
+    -- Only a framed message opens a stream receivers hold; a raw message has
+    -- no stream id, no allowance and no abort.
+    if nextIndex == 2 and record.kind == "message" then
       local logged = record.logged
       rawset(
         state,
@@ -3136,6 +3199,11 @@ local function onAddonMessage(prefix, text, channel, sender, logged)
   end
 
   statistics.chunksReceived = statistics.chunksReceived + 1
+  -- A raw prefix (revision 8) gets every addon message as it arrived.
+  if state.prefixFraming[prefix] == "raw" then
+    deliverMessage(prefix, text, channel, sender)
+    return
+  end
   local control = string.byte(text, 1)
   if control == WIRE.single then
     deliverMessage(prefix, string.sub(text, 2), channel, sender)
@@ -3313,19 +3381,26 @@ do
   end
 end
 
----Register `callback` for whole messages on `prefix` in `scope`.
+---Register `callback` on `prefix` in `scope`: for whole messages when
+---`framing` is `"framed"`, for every addon message as it arrived when it is
+---`"raw"` (revision 8). A prefix holds registrations of one framing only.
 ---@param scope CommKit.Scope
 ---@param prefix string
 ---@param callback function
+---@param framing "framed"|"raw"
 ---@return CommKit.Connection|nil connection
 ---@return string|nil reason
-local function registerInScope(scope, prefix, callback)
+local function registerInScope(scope, prefix, callback, framing)
   if rawget(scope, "_closed") then
     return nil, REASON.closed
   end
   local registrations = rawget(scope, "_registrations")
   if reachedLimit(#registrations, rawget(scope, "_maxRegistrations")) then
     return nil, REASON.full
+  end
+  local held = state.prefixFraming[prefix]
+  if held ~= nil and held ~= framing then
+    return nil, REASON.framingConflict
   end
   local registered, reason = registerClientPrefix(prefix)
   if not registered then
@@ -3353,6 +3428,7 @@ local function registerInScope(scope, prefix, callback)
   }, CONNECTION_METATABLE)
   registrations[#registrations + 1] = connection
   rawset(prefixCounts, prefix, (rawget(prefixCounts, prefix) or 0) + 1)
+  state.prefixFraming[prefix] = framing
   rawset(state, "registrationTotal", rawget(state, "registrationTotal") + 1)
   return connection, nil
 end
@@ -3378,6 +3454,7 @@ local function disconnectConnection(connection)
   local remaining = rawget(prefixCounts, prefix) - 1
   rawset(prefixCounts, prefix, remaining)
   if remaining == 0 then
+    state.prefixFraming[prefix] = nil
     discardStreamsOf(prefix)
   end
   local total = rawget(state, "registrationTotal") - 1
@@ -3850,11 +3927,16 @@ end
 
 -- Send path ------------------------------------------------------------------
 
+-- The send path's helpers that both `scope:Send` and `scope:SendRaw` use, and
+-- the raw ones (revision 8), share one table: the main chunk has no local to
+-- spare (INTERNALS.md, "The local-variable budget").
+local SendPath = {}
+
 ---Count a refusal and return it.
 ---@param reason string
 ---@return nil
 ---@return string reason
-local function refuseSend(reason)
+function SendPath.refuse(reason)
   count(STATISTIC_FOR.refusal[reason])
   return nil, reason
 end
@@ -3863,7 +3945,7 @@ end
 ---@param distribution string
 ---@param target any
 ---@return boolean
-local function targetFits(distribution, target)
+function SendPath.targetFits(distribution, target)
   if distribution == "WHISPER" then
     return type(target) == "string" and target ~= ""
   end
@@ -3901,16 +3983,16 @@ enqueueSend = function(
   onComplete
 )
   if rawget(scope, "_closed") then
-    return refuseSend(REASON.closed)
+    return SendPath.refuse(REASON.closed)
   end
-  if not DISTRIBUTIONS[distribution] or not targetFits(distribution, target) then
-    return refuseSend(REASON.badDistribution)
+  if not DISTRIBUTIONS[distribution] or not SendPath.targetFits(distribution, target) then
+    return SendPath.refuse(REASON.badDistribution)
   end
   if not TARGETED_DISTRIBUTIONS[distribution] then
     target = nil
   end
   if string.find(text, WIRE.forbiddenBytePattern) ~= nil then
-    return refuseSend(REASON.forbiddenByte)
+    return SendPath.refuse(REASON.forbiddenByte)
   end
 
   local length = #text
@@ -3925,17 +4007,17 @@ enqueueSend = function(
     length > maxQueuedBytes
     or (totalChunks > 1 and declaredBytes(totalChunks) > limits.maxReassemblyBytesPerSender)
   then
-    return refuseSend(REASON.tooLarge)
+    return SendPath.refuse(REASON.tooLarge)
   end
   if
     state.queuedMessages >= limits.maxQueuedMessages
     or state.queuedBytes + length > maxQueuedBytes
   then
-    return refuseSend(REASON.queueFull)
+    return SendPath.refuse(REASON.queueFull)
   end
   local functionName = logged and "SendAddonMessageLogged" or "SendAddonMessage"
   if readChatFunction(functionName) == nil then
-    return refuseSend(REASON.unavailable)
+    return SendPath.refuse(REASON.unavailable)
   end
 
   local handle = setmetatable({
@@ -4071,6 +4153,188 @@ local function readSendRequest(request, level)
     logged,
     onProgress or false,
     onComplete or false
+end
+
+-- Raw messages (revision 8): `scope:SendRaw` queues addon messages written by
+-- the caller, for a protocol that is not CommKit's (AceComm's, for bridgeKit),
+-- through the same queue, bucket, throttle backoff and send states as `Send`.
+
+---Validate a `scope:SendRaw` request, raising at the caller for a programming
+---error: what `scope:Send` raises for, and a `parts` that is not an array of
+---1 to 4096 strings of 1 to 255 bytes. Returns the fields
+---`SendPath.enqueueRaw` takes; `parts` is a copy, so the caller may reuse the
+---array.
+---@param request any
+---@param level integer
+---@return string prefix, string[] parts, integer totalBytes, any distribution, any target, string priority, function|false onProgress, function|false onComplete
+function SendPath.readRawRequest(request, level)
+  local label = "CommKit.Scope:SendRaw request"
+  if type(request) ~= "table" then
+    error(label .. " must be a table", level)
+  end
+  validateKeys(request, OPTION_KEYS.sendRawRequest, label, level + 1)
+  local probe = readHostFunction("issecretvalue")
+
+  local prefix = rawget(request, "prefix")
+  validateBoundedString(prefix, label .. ".prefix", WIRE.maxPrefixBytes, level + 1)
+
+  local source = rawget(request, "parts")
+  if type(source) ~= "table" or (probe ~= nil and probe(source) == true) then
+    error(label .. ".parts must be an array of strings", level)
+  end
+  local partCount = #source
+  if partCount < 1 or partCount > WIRE.maxRawParts then
+    error(label .. ".parts must hold 1 to " .. WIRE.maxRawParts .. " strings", level)
+  end
+  local parts = {}
+  local totalBytes = 0
+  for index = 1, partCount do
+    local part = rawget(source, index)
+    if type(part) ~= "string" then
+      error(label .. ".parts[" .. index .. "] must be a string", level)
+    end
+    if probe ~= nil and probe(part) == true then
+      error(label .. ".parts[" .. index .. "] must not be a secret value", level)
+    end
+    local length = #part
+    if length < 1 or length > WIRE.maxMessageBytes then
+      error(
+        label .. ".parts[" .. index .. "] must be 1 to " .. WIRE.maxMessageBytes .. " bytes",
+        level
+      )
+    end
+    parts[index] = part
+    totalBytes = totalBytes + length
+  end
+
+  local distribution = rawget(request, "distribution")
+  if type(distribution) ~= "string" then
+    error(label .. ".distribution must be a string", level)
+  end
+  if probe ~= nil and probe(distribution) == true then
+    error(label .. ".distribution must not be a secret value", level)
+  end
+  local target = rawget(request, "target")
+  local targetType = type(target)
+  if targetType ~= "nil" and targetType ~= "string" and targetType ~= "number" then
+    error(label .. ".target must be a string, a number or nil", level)
+  end
+  if targetType ~= "nil" and probe ~= nil and probe(target) == true then
+    error(label .. ".target must not be a secret value", level)
+  end
+  local priority = rawget(request, "priority")
+  if type(priority) == "nil" then
+    priority = PRIORITY.NORMAL
+  elseif type(priority) ~= "string" or isSecret(priority) or PRIORITY[priority] ~= priority then
+    error(label .. ".priority must be CommKit.Priority.ALERT, NORMAL or BULK", level)
+  end
+  local onProgress = rawget(request, "onProgress")
+  local onComplete = rawget(request, "onComplete")
+  validateOptionalCallback(onProgress, label .. ".onProgress", level + 1)
+  validateOptionalCallback(onComplete, label .. ".onComplete", level + 1)
+
+  return prefix,
+    parts,
+    totalBytes,
+    distribution,
+    target,
+    priority,
+    onProgress or false,
+    onComplete or false
+end
+
+---Queue a raw message after its request was validated, and send it at once
+---when the driver is idle, as `enqueueSend` does. Its parts leave in order,
+---one addon message each, and nothing else in its pipe goes between them.
+---Returns the handle, or `nil` and `"closed"`, `"badDistribution"`,
+---`"nulByte"`, `"tooLarge"`, `"queueFull"` or `"unavailable"`.
+---@param scope CommKit.Scope
+---@param prefix string
+---@param parts string[]
+---@param totalBytes integer
+---@param distribution string
+---@param target string|number|nil
+---@param priority string
+---@param onProgress function|false
+---@param onComplete function|false
+---@return CommKit.SendHandle|nil handle
+---@return string|nil reason
+function SendPath.enqueueRaw(
+  scope,
+  prefix,
+  parts,
+  totalBytes,
+  distribution,
+  target,
+  priority,
+  onProgress,
+  onComplete
+)
+  if rawget(scope, "_closed") then
+    return SendPath.refuse(REASON.closed)
+  end
+  if not DISTRIBUTIONS[distribution] or not SendPath.targetFits(distribution, target) then
+    return SendPath.refuse(REASON.badDistribution)
+  end
+  if not TARGETED_DISTRIBUTIONS[distribution] then
+    target = nil
+  end
+  for index = 1, #parts do
+    if string.find(parts[index], WIRE.nulBytePattern) ~= nil then
+      return SendPath.refuse(REASON.nulByte)
+    end
+  end
+  local maxQueuedBytes = limits.maxQueuedBytes
+  if totalBytes > maxQueuedBytes then
+    return SendPath.refuse(REASON.tooLarge)
+  end
+  if
+    state.queuedMessages >= limits.maxQueuedMessages
+    or state.queuedBytes + totalBytes > maxQueuedBytes
+  then
+    return SendPath.refuse(REASON.queueFull)
+  end
+  if readChatFunction("SendAddonMessage") == nil then
+    return SendPath.refuse(REASON.unavailable)
+  end
+
+  local handle = setmetatable({
+    _schema = LAYOUT.handle,
+    _state = SEND_STATE.queued,
+    _bytesSent = 0,
+    _bytesTotal = totalBytes,
+    _record = false,
+  }, HANDLE_METATABLE)
+  local record = acquireRecord()
+  record.kind = "raw"
+  record.inFlight = false
+  record.handle = handle
+  record.scope = scope
+  record.prefix = prefix
+  record.text = false
+  record.parts = parts
+  record.textLength = totalBytes
+  record.distribution = distribution
+  record.target = target
+  record.priority = priority
+  record.logged = false
+  record.pipeKey = pipeKey(distribution, target, false)
+  record.totalChunks = #parts
+  record.nextIndex = 1
+  record.bytesSent = 0
+  record.streamId = false
+  record.onProgress = onProgress
+  record.onComplete = onComplete
+  rawset(handle, "_record", record)
+
+  enqueueRecord(record)
+  local pending = rawget(scope, "_pending")
+  pending[#pending + 1] = handle
+  count("messagesQueued")
+  if not runInline() then
+    wakeDriver()
+  end
+  return handle, nil
 end
 
 ---Cancel every send pending when the call began, oldest first. A completion
@@ -4574,7 +4838,7 @@ function ScopeMethods.Register(self, prefix, callback)
   validateScope(self, "CommKit.Scope:Register", 3)
   validateBoundedString(prefix, "CommKit.Scope:Register prefix", WIRE.maxPrefixBytes, 3)
   validateCallback(callback, "CommKit.Scope:Register callback", 3)
-  local connection, reason = registerInScope(self, prefix, callback)
+  local connection, reason = registerInScope(self, prefix, callback, "framed")
   return connection, reason
 end
 
@@ -4593,6 +4857,52 @@ function ScopeMethods.Send(self, request)
     readSendRequest(request, 3)
   local handle, reason =
     enqueueSend(self, prefix, text, distribution, target, priority, logged, onProgress, onComplete)
+  return handle, reason
+end
+
+---Register `callback` for every addon message on `prefix`, unparsed
+---(revision 8): `callback(prefix, text, distribution, sender)` with the text
+---exactly as the client delivered it, isolated, secrets dropped and counted
+---as for `Register`. A prefix holds raw or framed registrations, never both:
+---`nil, "framingConflict"` otherwise. Other refusals as `Register`.
+---@param self CommKit.Scope
+---@param prefix string
+---@param callback CommKit.ReceiveCallback
+---@return CommKit.Connection|nil connection
+---@return string|nil reason
+function ScopeMethods.RegisterRaw(self, prefix, callback)
+  validateScope(self, "CommKit.Scope:RegisterRaw", 3)
+  validateBoundedString(prefix, "CommKit.Scope:RegisterRaw prefix", WIRE.maxPrefixBytes, 3)
+  validateCallback(callback, "CommKit.Scope:RegisterRaw callback", 3)
+  local connection, reason = registerInScope(self, prefix, callback, "raw")
+  return connection, reason
+end
+
+---Queue addon messages written by the caller as one message (revision 8):
+---`request.parts` leave in order through the same queue, bucket, throttle
+---backoff and send states as `Send`, one addon message each, without
+---CommKit's framing. Cancelling stops the parts not yet sent; nothing tells
+---receivers. Returns a send handle, or `nil` and a refusal as `Send`, with
+---`"nulByte"` in place of `"forbiddenByte"`.
+---@param self CommKit.Scope
+---@param request CommKit.SendRawRequest
+---@return CommKit.SendHandle|nil handle
+---@return string|nil reason
+function ScopeMethods.SendRaw(self, request)
+  validateScope(self, "CommKit.Scope:SendRaw", 3)
+  local prefix, parts, totalBytes, distribution, target, priority, onProgress, onComplete =
+    SendPath.readRawRequest(request, 3)
+  local handle, reason = SendPath.enqueueRaw(
+    self,
+    prefix,
+    parts,
+    totalBytes,
+    distribution,
+    target,
+    priority,
+    onProgress,
+    onComplete
+  )
   return handle, reason
 end
 
@@ -4698,7 +5008,7 @@ function ScopeMethods.SyncSet(self, prefix, options)
 
   local registration, reason = registerInScope(self, prefix, function(_, text, distribution, sender)
     rawget(dispatch, "receiveSync")(syncSet, text, sender, distribution)
-  end)
+  end, "framed")
   if registration == nil then
     return nil, reason
   end

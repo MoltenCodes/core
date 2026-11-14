@@ -360,6 +360,35 @@ describe("CommKit bootstrap", function()
     assert.are_not.equal(false, olderState.outsideHooks)
   end)
 
+  it("upgrades a revision 7 state in place and marks its registrations framed", function()
+    local older = TestEnv.Load({ commKitRevision = 7 })
+    assert.are.equal(7, older.REVISION)
+    local olderState = rawget(older, "_state")
+    local scope = older:CreateScope()
+    local received = {}
+    assert(scope:Register(PREFIX, function(_, text)
+      received[#received + 1] = text
+    end))
+    -- Revision 7 had no framing table and no NUL refusal counter.
+    olderState.prefixFraming = nil
+    olderState.statistics.refusedNulByte = nil
+
+    package.loaded["CommKit"] = nil
+    local CommKit = require("CommKit")
+    assert.are.equal(older, CommKit)
+    assert.is_true(CommKit.REVISION > 7)
+    assert.are.equal(olderState, rawget(CommKit, "_state"))
+    assert.are.same({ [PREFIX] = "framed" }, olderState.prefixFraming)
+    assert.are.equal(0, CommKit:GetStatistics().refusedNulByte)
+
+    -- The inherited registration keeps receiving framed messages, and the
+    -- prefix refuses a raw registration while it holds one.
+    TestEnv.Deliver(PREFIX, "\001whole", "PARTY", "Peer-Realm")
+    assert.are.same({ "whole" }, received)
+    assert.are.same({ nil, "framingConflict" }, { scope:RegisterRaw(PREFIX, function() end) })
+    assert(scope:SendRaw({ prefix = "CKRaw", parts = { "raw" }, distribution = "PARTY" }))
+  end)
+
   it("requires Registry", function()
     TestEnv.Reset()
     TestEnv.InstallWowApi()

@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.5.0 — 2026-11-15
+
+Additive within API generation 1, approved by the owner on 2026-11-15 as bridgeKit's prerequisite P1 (`docs/BRIDGE_KIT_DESIGN.md`, section 4.3, decision 9): **raw addon messages**, so a foreign wire format such as AceComm's shares CommKit's queue and session budget instead of sending beside it. CommKit's own wire protocol is unchanged; peers on every earlier revision interoperate.
+
+- **`scope:RegisterRaw(prefix, callback)`** calls `callback(prefix, text, distribution, sender)` for every addon message on `prefix`, unparsed, with the isolation, secret dropping and counters of `Register`. A prefix holds raw or framed registrations, never both: `Register`, `SyncSet` and `RegisterRaw` return `nil, "framingConflict"` for the other kind, in any scope, until the prefix's last registration ends.
+- **`scope:SendRaw({ prefix, parts, distribution, target?, priority?, onProgress?, onComplete? })`** queues 1 to 4096 caller-written addon messages of 1 to 255 bytes as one message in one pipe, through the same queue, bucket, throttle backoff, send states and held callbacks as `Send`; nothing else to that destination leaves between its parts. It holds no stream id and none of the in-flight allowance. Cancelling, or a part the client refuses, stops the remaining parts and sends no abort. Refusals are `Send`'s with `"nulByte"` (NUL is the only byte refused) in place of `"forbiddenByte"`; a malformed `parts` raises at the caller. The parts are copied.
+- New statistics counter `refusedNulByte`.
+- `docs/API.md`: a *Raw messages* section, the two scope rows, the `framingConflict` refusal, the counter and *Upgrades*. `docs/INTERNALS.md`: `prefixFraming`, the raw record and the local-variable budget.
+- Implementation revision 8. The state gains `prefixFraming`; an upgrade over revision 7 builds it with every registered prefix framed, and starts any counter the inherited statistics lack at zero. The main chunk's local peak falls from 199 to 198: one new local, `SendPath`, holds the two send helpers that were locals and the raw send path.
+- 260 specs (was 233): new `RawMessages_spec.lua` (26 specs: unparsed delivery, isolation, framing conflicts both ways and with SyncSet, framing freed by the last disconnect and kept across scopes, secrets, argument errors, parts as written and in order, whisper targets, the copy, progress and completion after `SendRaw` returns, no interleaving with a framed message in the same pipe, cancel without an abort, no in-flight allowance, every refusal) and an in-place upgrade from revision 7 in `Bootstrap_spec.lua`.
+
 ## 0.4.0 — 2026-09-25
 
 Documented-behaviour change, approved by the owner: **until HookKit is found, CommKit looks it up at most once a second**, not on every wake of the driver from idle. The wire protocol, API generation 1 and every bound are unchanged.

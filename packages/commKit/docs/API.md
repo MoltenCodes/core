@@ -80,7 +80,9 @@ Events, through a Kit-owned EventKit scope: `CHAT_MSG_ADDON` and `CHAT_MSG_ADDON
 | Method | Returns | Purpose |
 |---|---|---|
 | `Register(prefix, callback)` | connection, or `nil, reason` | Receive whole messages on `prefix`. |
+| `RegisterRaw(prefix, callback)` | connection, or `nil, reason` | Receive every addon message on `prefix` as it arrived, unparsed ([raw messages](#raw-messages), revision 8). |
 | `Send(request)` | send handle, or `nil, reason` | Queue a message, and send it at once as far as the budget pays when the [driver](#queues-and-priorities) is idle. |
+| `SendRaw(request)` | send handle, or `nil, reason` | Queue addon messages written by the caller as one message, without CommKit's framing ([raw messages](#raw-messages), revision 8). |
 | `SyncSet(prefix, options)` | SyncSet, or `nil, reason` | Named fields synchronised over `prefix`. |
 | `UnregisterAll()` | integer | Close every SyncSet and disconnect every registration; the scope stays usable. |
 | `CancelAll()` | integer | Cancel every pending send; the scope stays usable. |
@@ -91,7 +93,7 @@ Events, through a Kit-owned EventKit scope: `CHAT_MSG_ADDON` and `CHAT_MSG_ADDON
 | `GetPendingCount()` | integer | Sends not yet terminal. |
 | `GetMaxRegistrations()` | integer or `CommKit.UNBOUNDED` | The scope's `maxRegistrations`. |
 
-A closed scope refuses `Register`, `Send` and `SyncSet` with `nil, "closed"`.
+A closed scope refuses `Register`, `RegisterRaw`, `Send`, `SendRaw` and `SyncSet` with `nil, "closed"`.
 
 ### Connections, send handles, SyncSets
 
@@ -119,7 +121,7 @@ end)
 ```
 
 - `prefix` is 1 to 16 bytes. The first registration of a prefix in the session asks the client to register it; `DuplicatePrefix` counts as registered, and a prefix the client already reports as registered is not registered again.
-- A refused registration returns `nil` and the client's reason: the key of `Enum.RegisterAddonMessagePrefixResult` with its first letter lowered (`"invalidPrefix"`, `"maxPrefixes"`), `"refused"` for a legacy `false`, `"unknownResult"` for a value the enum does not name. `nil, "full"` means the scope holds its `maxRegistrations` (32 by default); `nil, "closed"` that it is closed.
+- A refused registration returns `nil` and the client's reason: the key of `Enum.RegisterAddonMessagePrefixResult` with its first letter lowered (`"invalidPrefix"`, `"maxPrefixes"`), `"refused"` for a legacy `false`, `"unknownResult"` for a value the enum does not name. `nil, "full"` means the scope holds its `maxRegistrations` (32 by default); `nil, "closed"` that it is closed; `nil, "framingConflict"` that the prefix holds [raw](#raw-messages) registrations.
 - The callback receives `prefix, text, distribution, sender`, where `distribution` is the channel the client reported (`"PARTY"`, `"RAID"`, `"GUILD"`, `"WHISPER"`, ...). Messages on the logged channel arrive through `CHAT_MSG_ADDON_LOGGED` and are delivered the same way.
 - Every registration of a prefix receives every message on it, in registration order. A callback runs through `securecallfunction` where the client has it, otherwise under `pcall`; an error is reported through the host error handler and the next callback still runs.
 - The client echoes a group message to its sender, so a message this client sent to `PARTY` arrives here too, with `sender` set to the player. Filter on `sender` if that matters.
@@ -190,6 +192,72 @@ A result the enum does not name — one a client newer than this file added — 
 Cancelling a message mid-send stops its remaining chunks and queues an [abort](#abort) at the head of its pipe, so receivers drop the incomplete stream at once and silently. A message that fails mid-send, because the client refused a later chunk, queues the same abort. Until the abort leaves, it counts as a stream in flight, as the message did. The abort is sent once: a throttled one waits for its pipe, and one the client refuses is dropped, leaving receivers to expire the stream. Callbacks run isolated, like receive callbacks, after CommKit's own state is settled, so a callback may send, cancel or close.
 
 **No callback runs before `Send` returns.** The `onProgress` and `onComplete` calls of chunks sent inside `Send` are held and made by the next driver run, a SchedulerKit job scheduled with `Schedule` (so it runs in SchedulerKit's next pass: on a later frame, or later in the current pass when `Send` was called from a SchedulerKit job), which makes them before it sends anything; a message a held callback sends is queued and leaves in that same run. Each handle's calls keep their order, progress in chunk order and completion last: a `Cancel`, `CancelAll`, `Close` or `CloseAddonScopes` that completes a message while calls are held makes the held calls first, inside that call, then its own. Held calls cost no table each: they wait in one array CommKit keeps, at most one progress call per chunk and one completion per message sent inside `Send` since the last driver run, and none remains once that run began.
+
+## Raw messages
+
+Revision 8 lets another protocol travel through CommKit's queue and budget:
+bridgeKit's AceComm channel (`docs/BRIDGE_KIT_DESIGN.md`, section 8.3) is the
+reason, and any addon that speaks a foreign wire format may use it. A raw
+message is never framed, chunked or reassembled by CommKit: the caller writes
+the addon messages and reads them back.
+
+### Receiving: `scope:RegisterRaw(prefix, callback)`
+
+`callback(prefix, text, distribution, sender)` is called for **every** addon
+message on `prefix`, with `text` exactly as the client delivered it, whatever
+its first byte. Everything else is as for `Register`: the prefix is
+registered with the client on first use, callbacks run isolated in
+registration order, a message with a secret argument is dropped and counted
+in `secretsDropped`, and each message counts in `chunksReceived`,
+`messagesReceived` and `bytesReceived`. The refusals are `Register`'s.
+
+A prefix holds raw or framed registrations, never both, because the two
+readings of a message's first byte contradict each other. While a prefix has
+a registration of one kind, `Register` or `SyncSet` (framed) and
+`RegisterRaw` (raw) of the other kind return `nil, "framingConflict"`, in any
+scope. Once the prefix's last registration ends it may be registered either
+way again.
+
+### Sending: `scope:SendRaw(request)`
+
+```lua
+local handle, reason = scope:SendRaw({
+  prefix = "MyAceAddon",
+  parts = { "\001first 254 bytes...", "\003the rest" },
+  distribution = "WHISPER",
+  target = "Friend-Realm",
+  priority = CommKit.Priority.NORMAL,
+  onProgress = function(handle, bytesSent, bytesTotal) end,
+  onComplete = function(handle, state, reason) end,
+})
+```
+
+| Field | Required | Meaning |
+|---|---|---|
+| `prefix` | yes | 1 to 16 bytes. |
+| `parts` | yes | An array of 1 to 4096 strings of 1 to 255 bytes: the addon messages, sent as written, in order. CommKit copies the array. |
+| `distribution`, `target`, `priority`, `onProgress`, `onComplete` | as for `Send` | |
+
+There is no `constraints` field: a raw message goes through
+`SendAddonMessage`, on the ordinary channel.
+
+The parts are queued **as one message** in one [pipe](#queues-and-priorities)
+and leave part after part, through the same queue, bucket, throttle backoff,
+send states, held callbacks and statistics as `Send`; nothing else queued to
+the same destination and channel leaves between them. `onProgress` is called
+after every part with the bytes sent so far; the handle's byte counts are the
+parts' bytes. A raw message opens no stream, so it uses none of the in-flight
+allowance (`maxInFlightPerSender`, `maxReassemblyBytesPerSender`) and never
+waits for it. Cancelling one, or a part the client refuses, stops the parts
+not yet sent; **nothing tells the receivers**, because CommKit does not know
+the protocol: they must time the stream out themselves.
+
+A wrong request raises at the caller as for `Send`, and so does a `parts` that
+is not an array of 1 to 4096 strings of 1 to 255 bytes, or that holds a secret
+part. The refusals are `Send`'s, with one difference: only NUL (`0x00`) is
+refused, as `"nulByte"`, because the client cannot carry it; line breaks and
+`|` are the caller's business. `"tooLarge"` means the parts' bytes exceed
+`maxQueuedBytes`.
 
 ## Wire protocol
 
@@ -441,7 +509,7 @@ local limits = CommKit:GetLimits() -- a fresh table
 | Counter | Counts |
 |---|---|
 | `messagesQueued`, `messagesSent`, `messagesCancelled`, `messagesFailed` | sends by outcome |
-| `refusedQueueFull`, `refusedTooLarge`, `refusedClosed`, `refusedForbiddenByte`, `refusedBadDistribution`, `refusedUnavailable` | refused sends by reason |
+| `refusedQueueFull`, `refusedTooLarge`, `refusedClosed`, `refusedForbiddenByte`, `refusedBadDistribution`, `refusedUnavailable`, `refusedNulByte` | refused sends by reason (`refusedNulByte`: raw messages, revision 8) |
 | `chunksSent`, `bytesSent` | chunks that left, and their bytes on the wire |
 | `throttled` | throttle results |
 | `outsideMessages`, `outsideBytes` | traffic charged from the HookKit hooks |
@@ -526,4 +594,4 @@ The nine-point plan in `docs/ROADMAP.md` is followed except where recorded here:
 
 The package state (`_state`) holds the queues, the bucket, the limits, the statistics, the reassembly streams, the prefix signals, the Kit-owned scopes and the pools, and all of it is kept across an in-place upgrade: a newer compatible revision replaces the functions on the shared prototypes and in the dispatch table, and every callback CommKit handed to EventKit, TimerKit, SchedulerKit and HookKit calls through that table, so queued sends, open streams, registrations and SyncSets keep working under the new code.
 
-Revisions 3 and 4 inherit revision 2's state unchanged. Revision 5 adds the free lists (`spares`) and the reusable expiry timer to an inherited state; streams a revision 4 copy opened keep their separate chunk list until they close. Revision 6 adds the record free list (`spares.records`), the held-callback array (`deferred`), the driver's `inline` flag and the time of the last frame-rate sample to an inherited state; revision 7 adds the time of the last HookKit lookup (none yet, so the next wake looks it up); a queue record an older copy leased from its PoolKit pool goes back to that pool when its message ends, and a driver job an older copy scheduled runs the new code. Revision 2 and later upgrade the addon scopes revision 1 built in place and arrange their [logout close](#at-logout) while it loads, for every open one. A later revision keeps the `OnShutdown` subscriptions and the `PLAYER_LOGOUT` watcher it inherits: the subscription calls the facade and the watcher calls through the `logout` trampoline, so both run the newest code, and nothing is subscribed twice. The wire protocol belongs to API generation 1, not to the revision.
+Revisions 3 and 4 inherit revision 2's state unchanged. Revision 5 adds the free lists (`spares`) and the reusable expiry timer to an inherited state; streams a revision 4 copy opened keep their separate chunk list until they close. Revision 6 adds the record free list (`spares.records`), the held-callback array (`deferred`), the driver's `inline` flag and the time of the last frame-rate sample to an inherited state; revision 7 adds the time of the last HookKit lookup (none yet, so the next wake looks it up); revision 8 adds the framing of each prefix (`prefixFraming`; every prefix an older copy registered is framed) and starts the `refusedNulByte` counter at zero; a queue record an older copy leased from its PoolKit pool goes back to that pool when its message ends, and a driver job an older copy scheduled runs the new code. Revision 2 and later upgrade the addon scopes revision 1 built in place and arrange their [logout close](#at-logout) while it loads, for every open one. A later revision keeps the `OnShutdown` subscriptions and the `PLAYER_LOGOUT` watcher it inherits: the subscription calls the facade and the watcher calls through the `logout` trampoline, so both run the newest code, and nothing is subscribed twice. The wire protocol belongs to API generation 1, not to the revision.
