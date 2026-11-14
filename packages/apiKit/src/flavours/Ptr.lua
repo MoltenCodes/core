@@ -1,8 +1,8 @@
 -- MoltenCodes ApiKit: Public Test Realm bindings (wow.ptr.api)
 --
 -- GENERATED FILE. Do not edit. Regenerate with `python3 -m tooling.api.generate`.
--- Source: Gethe/wow-ui-source@5c9363cc1b4e80b98963e3fcc87ab460fa911a94 (ptr2),
--- client 12.1.5, build 69952, captured 2026-09-24.
+-- Source: Gethe/wow-ui-source@a750208e2382f24eb3d3a83939082a182420c44b (ptr),
+-- client 12.1.7, build 70892, captured 2026-11-14.
 --
 -- Every entry is a direct alias of the host function, bound only when the
 -- running client has it. See docs/API_KIT_DESIGN.md, section 7.2.
@@ -101,7 +101,9 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
     if source then
       local target = {}
       api.actionBar = target
+      target.enableActionCombatActionRangeCheck = source.EnableActionCombatActionRangeCheck
       target.enableActionRangeCheck = source.EnableActionRangeCheck
+      target.enterActionButton = source.EnterActionButton
       target.findAssistedCombatActionButtons = source.FindAssistedCombatActionButtons
       target.findFlyoutActionButtons = source.FindFlyoutActionButtons
       target.findPetActionButtons = source.FindPetActionButtons
@@ -131,8 +133,10 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
       target.getProfessionQuality = source.GetProfessionQuality
       target.getProfessionQualityInfo = source.GetProfessionQualityInfo
       target.getSpell = source.GetSpell
+      target.getSpellTypeRestrictionForAction = source.GetSpellTypeRestrictionForAction
       target.getTempShapeshiftBarIndex = source.GetTempShapeshiftBarIndex
       target.getVehicleBarIndex = source.GetVehicleBarIndex
+      target.getWoWHackUltimateProgressPercent = source.GetWoWHackUltimateProgressPercent
       target.hasAction = source.HasAction
       target.hasAssistedCombatActionButtons = source.HasAssistedCombatActionButtons
       target.hasBonusActionBar = source.HasBonusActionBar
@@ -157,6 +161,7 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
       target.isEquippedGearOutfitAction = source.IsEquippedGearOutfitAction
       target.isHarmfulAction = source.IsHarmfulAction
       target.isHelpfulAction = source.IsHelpfulAction
+      target.isHighestSpellRank = source.IsHighestSpellRank
       target.isInterruptAction = source.IsInterruptAction
       target.isItemAction = source.IsItemAction
       target.isMacroActionWithShowTooltip = source.IsMacroActionWithShowTooltip
@@ -164,11 +169,14 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
       target.isPossessBarVisible = source.IsPossessBarVisible
       target.isStackableAction = source.IsStackableAction
       target.isUsableAction = source.IsUsableAction
+      target.leaveActionButton = source.LeaveActionButton
       target.putActionInSlot = source.PutActionInSlot
       target.registerActionUIButton = source.RegisterActionUIButton
       target.setActionBarPage = source.SetActionBarPage
       target.shouldOverrideBarShowHealthBar = source.ShouldOverrideBarShowHealthBar
       target.shouldOverrideBarShowManaBar = source.ShouldOverrideBarShowManaBar
+      target.shouldShowKeyring = source.ShouldShowKeyring
+      target.spellMatchesActionSpellTypeRestriction = source.SpellMatchesActionSpellTypeRestriction
       target.toggleAutoCastPetAction = source.ToggleAutoCastPetAction
       target.unregisterActionUIButton = source.UnregisterActionUIButton
       target.usesActionText = source.UsesActionText
@@ -292,6 +300,7 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
       target.getEventsForMap = source.GetEventsForMap
       target.getQuestHubsForMap = source.GetQuestHubsForMap
       target.isAreaPOITimed = source.IsAreaPOITimed
+      target.markAreaPOISeen = source.MarkAreaPOISeen
     end
   end
   do
@@ -408,6 +417,7 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
       target.getItemKeyFromItem = source.GetItemKeyFromItem
       target.getItemKeyInfo = source.GetItemKeyInfo
       target.getItemKeyRequiredLevel = source.GetItemKeyRequiredLevel
+      target.getItemKeySampleLink = source.GetItemKeySampleLink
       target.getItemSearchResultInfo = source.GetItemSearchResultInfo
       target.getItemSearchResultsQuantity = source.GetItemSearchResultsQuantity
       target.getMaxBidItemBid = source.GetMaxBidItemBid
@@ -504,6 +514,14 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
     end
   end
   do
+    local source = host.C_AutoLoot
+    if source then
+      local target = {}
+      api.autoLoot = target
+      target.setUseAutoLootToggle = source.SetUseAutoLootToggle
+    end
+  end
+  do
     local source = host.C_AzeriteEmpoweredItem
     if source then
       local target = {}
@@ -584,6 +602,7 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
       api.bank = target
       target.areAnyBankTypesViewable = source.AreAnyBankTypesViewable
       target.autoDepositItemsIntoBank = source.AutoDepositItemsIntoBank
+      target.bankBagTypeAndIDToInvSlot = source.BankBagTypeAndIDToInvSlot
       target.canDepositMoney = source.CanDepositMoney
       target.canPurchaseBankTab = source.CanPurchaseBankTab
       target.canUseBank = source.CanUseBank
@@ -595,6 +614,7 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
       target.doesBankTypeSupportMoneyTransfer = source.DoesBankTypeSupportMoneyTransfer
       target.fetchBankLockedReason = source.FetchBankLockedReason
       target.fetchDepositedMoney = source.FetchDepositedMoney
+      target.fetchMaxNumBankTabs = source.FetchMaxNumBankTabs
       target.fetchNextPurchasableBankTabData = source.FetchNextPurchasableBankTabData
       target.fetchNumPurchasedBankTabs = source.FetchNumPurchasedBankTabs
       target.fetchPurchasedBankTabData = source.FetchPurchasedBankTabData
@@ -603,6 +623,7 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
       target.hasMaxBankTabs = source.HasMaxBankTabs
       target.isItemAllowedInBankType = source.IsItemAllowedInBankType
       target.purchaseBankTab = source.PurchaseBankTab
+      target.shouldUsePlayerBagsInBank = source.ShouldUsePlayerBagsInBank
       target.updateBankTabSettings = source.UpdateBankTabSettings
       target.withdrawMoney = source.WithdrawMoney
     end
@@ -657,6 +678,8 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
       local target = {}
       api.battleNet = target
       target.areFriendTagsEnabled = source.AreFriendTagsEnabled
+      target.areHighResTexturesInstalled = source.AreHighResTexturesInstalled
+      target.areRealIDFriendsEnabled = source.AreRealIDFriendsEnabled
       target.areTitleFriendCustomNamesEnabled = source.AreTitleFriendCustomNamesEnabled
       target.areTitleFriendsEnabled = source.AreTitleFriendsEnabled
       target.bnCheckBattleTagInviteToRecentAlly = source.BNCheckBattleTagInviteToRecentAlly
@@ -666,9 +689,11 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
       target.getAccountInfoByGUID = source.GetAccountInfoByGUID
       target.getAccountInfoByID = source.GetAccountInfoByID
       target.getCustomTitleFriendName = source.GetCustomTitleFriendName
+      target.getDefaultTitleWhisperTarget = source.GetDefaultTitleWhisperTarget
       target.getFriendAccountInfo = source.GetFriendAccountInfo
       target.getFriendGameAccountInfo = source.GetFriendGameAccountInfo
       target.getFriendInviteInfo = source.GetFriendInviteInfo
+      target.getFriendLevelFromInviteText = source.GetFriendLevelFromInviteText
       target.getFriendNumGameAccounts = source.GetFriendNumGameAccounts
       target.getGameAccountInfoByGUID = source.GetGameAccountInfoByGUID
       target.getGameAccountInfoByID = source.GetGameAccountInfoByID
@@ -676,6 +701,7 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
       target.inviteFriend = source.InviteFriend
       target.isBattleNetFriendsListEnabled = source.IsBattleNetFriendsListEnabled
       target.isBattleNetFriendsListSupported = source.IsBattleNetFriendsListSupported
+      target.isFriendTagSupportedForCurrentGameType = source.IsFriendTagSupportedForCurrentGameType
       target.searchFriends = source.SearchFriends
       target.sendGameData = source.SendGameData
       target.sendTitleFriendInviteByName = source.SendTitleFriendInviteByName
@@ -683,6 +709,7 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
       target.sendWhisper = source.SendWhisper
       target.setAFK = source.SetAFK
       target.setAppearOffline = source.SetAppearOffline
+      target.setBlocked = source.SetBlocked
       target.setCustomMessage = source.SetCustomMessage
       target.setCustomTitleFriendName = source.SetCustomTitleFriendName
       target.setDND = source.SetDND
@@ -712,6 +739,17 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
     end
   end
   do
+    local source = host.C_BlizzCon2026
+    if source then
+      local target = {}
+      api.blizzCon2026 = target
+      target.getExperience = source.GetExperience
+      target.isActive = source.IsActive
+      target.isColdSwapFeatureEnabled = source.IsColdSwapFeatureEnabled
+      target.setExperience = source.SetExperience
+    end
+  end
+  do
     local target = {}
     api.bnetOutage = target
     target.clearOutage = host.ClearOutage
@@ -730,6 +768,8 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
     api.build = target
     target.getBuildInfo = host.GetBuildInfo
     target.getBuildOption = host.GetBuildOption
+    target.getGameFamily = host.GetGameFamily
+    target.getGameType = host.GetGameType
     target.is64BitClient = host.Is64BitClient
     target.isBetaBuild = host.IsBetaBuild
     target.isDebugBuild = host.IsDebugBuild
@@ -843,6 +883,7 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
     api.camera = target
     target.getCameraFOVDefaults = host.GetCameraFOVDefaults
     target.getUICameraInfo = host.GetUICameraInfo
+    target.turnOrActionToggle = host.TurnOrActionToggle
   end
   do
     local source = host.C_CampaignInfo
@@ -868,8 +909,9 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
       api.catalogShop = target
       target.bulkPurchaseProducts = source.BulkPurchaseProducts
       target.bulkRefundDecors = source.BulkRefundDecors
+      target.bypassAchievementRequirement = source.BypassAchievementRequirement
       target.closeCatalogShopInteraction = source.CloseCatalogShopInteraction
-      target.confirmHousingPurchase = source.ConfirmHousingPurchase
+      target.confirmVCProductPurchase = source.ConfirmVCProductPurchase
       target.findBestCurrencyProductForNeededAmount = source.FindBestCurrencyProductForNeededAmount
       target.getAvailableCategoryIDs = source.GetAvailableCategoryIDs
       target.getAvailableTransmogRaceInfos = source.GetAvailableTransmogRaceInfos
@@ -888,23 +930,30 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
       target.getProductSortOrder = source.GetProductSortOrder
       target.getRefundableDecors = source.GetRefundableDecors
       target.getSectionIDsForCategory = source.GetSectionIDsForCategory
+      target.getSelectionGroupInfo = source.GetSelectionGroupInfo
       target.getSpellVisualInfoForMount = source.GetSpellVisualInfoForMount
       target.getVCProductInfos = source.GetVCProductInfos
       target.getVirtualCurrencyBalance = source.GetVirtualCurrencyBalance
       target.hasNewProducts = source.HasNewProducts
+      target.isFinishedLoadingVirtualCurrencies = source.IsFinishedLoadingVirtualCurrencies
       target.isProductIncludedInAnyBundle = source.IsProductIncludedInAnyBundle
       target.isShop2Enabled = source.IsShop2Enabled
       target.onLegalDisclaimerClicked = source.OnLegalDisclaimerClicked
       target.onLegalPersonalizedOptOutClicked = source.OnLegalPersonalizedOptOutClicked
       target.openCatalogShopInteractionFromHouse = source.OpenCatalogShopInteractionFromHouse
+      target.openCatalogShopInteractionFromRewards = source.OpenCatalogShopInteractionFromRewards
       target.openCatalogShopInteractionFromShop = source.OpenCatalogShopInteractionFromShop
       target.productDisplayedTelemetry = source.ProductDisplayedTelemetry
       target.productSelectedTelemetry = source.ProductSelectedTelemetry
       target.purchaseProduct = source.PurchaseProduct
+      target.purchaseProductWithSelectedProducts = source.PurchaseProductWithSelectedProducts
       target.refreshRefundableDecors = source.RefreshRefundableDecors
       target.refreshVirtualCurrencyBalance = source.RefreshVirtualCurrencyBalance
+      target.shouldDisplayUsesTemporaryCharactersWarningText =
+        source.ShouldDisplayUsesTemporaryCharactersWarningText
       target.shouldShowHousingWarning = source.ShouldShowHousingWarning
       target.startHousingVCPurchaseConfirmation = source.StartHousingVCPurchaseConfirmation
+      target.validateOverrideShopInteraction = source.ValidateOverrideShopInteraction
     end
   end
   do
@@ -1111,10 +1160,12 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
     target.getFileIDFromPath = host.GetFileIDFromPath
     target.getFramerate = host.GetFramerate
     target.isCpuBound = host.IsCpuBound
+    target.platformIsHandheld = host.PlatformIsHandheld
     target.reportBug = host.ReportBug
     target.reportSuggestion = host.ReportSuggestion
     target.restartGx = host.RestartGx
     target.screenshot = host.Screenshot
+    target.uiReload = host.UIReload
     target.updateWindow = host.UpdateWindow
   end
   do
@@ -1859,6 +1910,7 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
       target.getFactionGrantedByCurrency = source.GetFactionGrantedByCurrency
       target.getMaxTransferableAmountFromQuantity = source.GetMaxTransferableAmountFromQuantity
       target.getPlayerCurrencyCategoryInfo = source.GetPlayerCurrencyCategoryInfo
+      target.getVcBalanceForTalebound = source.GetVcBalanceForTalebound
       target.getWarResourcesCurrencyID = source.GetWarResourcesCurrencyID
       target.isAccountCharacterCurrencyDataReady = source.IsAccountCharacterCurrencyDataReady
       target.isAccountTransferableCurrency = source.IsAccountTransferableCurrency
@@ -1917,9 +1969,11 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
       target.getCVarDefault = source.GetCVarDefault
       target.getCVarInfo = source.GetCVarInfo
       target.registerCVar = source.RegisterCVar
+      target.removeTempCVar = source.RemoveTempCVar
       target.resetTestCVars = source.ResetTestCVars
       target.setCVar = source.SetCVar
       target.setCVarBitfield = source.SetCVarBitfield
+      target.setTempCVar = source.SetTempCVar
     end
   end
   do
@@ -1952,6 +2006,7 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
       target.getSecondsUntilWeeklyReset = source.GetSecondsUntilWeeklyReset
       target.getServerTimeLocal = source.GetServerTimeLocal
       target.getWeeklyResetStartTime = source.GetWeeklyResetStartTime
+      target.isDayTime = source.IsDayTime
     end
   end
   do
@@ -2003,6 +2058,7 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
       local target = {}
       api.delvesUI = target
       target.getActiveDelveTier = source.GetActiveDelveTier
+      target.getActiveTieredEntranceProgress = source.GetActiveTieredEntranceProgress
       target.getCompanionInfoForActivePlayer = source.GetCompanionInfoForActivePlayer
       target.getCreatureDisplayInfoForCompanion = source.GetCreatureDisplayInfoForCompanion
       target.getCurioLink = source.GetCurioLink
@@ -2037,10 +2093,13 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
       target.hasActiveDelve = source.HasActiveDelve
       target.hasActiveLFGLair = source.HasActiveLFGLair
       target.hasActiveLair = source.HasActiveLair
+      target.hasActiveTale = source.HasActiveTale
       target.isDelveEntranceTierEnabled = source.IsDelveEntranceTierEnabled
       target.isEligibleForActiveDelveRewards = source.IsEligibleForActiveDelveRewards
       target.isInLair = source.IsInLair
+      target.isPartyLeaderInTaleInstance = source.IsPartyLeaderInTaleInstance
       target.isTraitTreeForCompanion = source.IsTraitTreeForCompanion
+      target.requestClearActiveTale = source.RequestClearActiveTale
       target.requestPartyEligibilityForDelveTiers = source.RequestPartyEligibilityForDelveTiers
       target.saveSeenCuriosBySlotType = source.SaveSeenCuriosBySlotType
       target.selectDelveEntranceTier = source.SelectDelveEntranceTier
@@ -2067,6 +2126,7 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
       target.isGuildChannelLinked = source.IsGuildChannelLinked
       target.isGuildSettingSet = source.IsGuildSettingSet
       target.isUserOAuthed = source.IsUserOAuthed
+      target.isVoiceEnabled = source.IsVoiceEnabled
       target.refreshAuth = source.RefreshAuth
       target.setGuildSetting = source.SetGuildSetting
       target.updateDiscordServers = source.UpdateDiscordServers
@@ -2078,6 +2138,7 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
     if source then
       local target = {}
       api.duelInfo = target
+      target.getDuelerInfo = source.GetDuelerInfo
     end
   end
   do
@@ -2113,6 +2174,7 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
       target.convertLayoutInfoToString = source.ConvertLayoutInfoToString
       target.convertStringToLayoutInfo = source.ConvertStringToLayoutInfo
       target.getAccountSettings = source.GetAccountSettings
+      target.getEditModeDefaultLayout = source.GetEditModeDefaultLayout
       target.getLayouts = source.GetLayouts
       target.isValidLayoutName = source.IsValidLayoutName
       target.onEditModeExit = source.OnEditModeExit
@@ -2331,6 +2393,7 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
     target.doesCurrentLocaleSellExpansionLevels = host.DoesCurrentLocaleSellExpansionLevels
     target.getAccountExpansionLevel = host.GetAccountExpansionLevel
     target.getClientDisplayExpansionLevel = host.GetClientDisplayExpansionLevel
+    target.getCreditsDisplayInfo = host.GetCreditsDisplayInfo
     target.getCurrentRegionName = host.GetCurrentRegionName
     target.getExpansionDisplayInfo = host.GetExpansionDisplayInfo
     target.getExpansionForLevel = host.GetExpansionForLevel
@@ -2372,9 +2435,23 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
     if source then
       local target = {}
       api.externalEventURL = target
+      target.canShow = source.CanShow
       target.hasURL = source.HasURL
       target.isNew = source.IsNew
       target.launchURL = source.LaunchURL
+    end
+  end
+  do
+    local source = host.C_Flyout
+    if source then
+      local target = {}
+      api.flyout = target
+      target.flyoutHasSpell = source.FlyoutHasSpell
+      target.getFlyoutID = source.GetFlyoutID
+      target.getFlyoutInfo = source.GetFlyoutInfo
+      target.getFlyoutSlotInfo = source.GetFlyoutSlotInfo
+      target.getFlyoutTexture = source.GetFlyoutTexture
+      target.getNumFlyouts = source.GetNumFlyouts
     end
   end
   do
@@ -2464,6 +2541,7 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
       target.getSelectedFriend = source.GetSelectedFriend
       target.getSelectedIgnore = source.GetSelectedIgnore
       target.getWhoInfo = source.GetWhoInfo
+      target.getWhoRaceFilters = source.GetWhoRaceFilters
       target.isFriend = source.IsFriend
       target.isIgnored = source.IsIgnored
       target.isIgnoredByGuid = source.IsIgnoredByGuid
@@ -2511,6 +2589,16 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
     target.notWhileDeadError = host.NotWhileDeadError
   end
   do
+    local source = host.C_GameModeExpBar
+    if source then
+      local target = {}
+      api.gameModeExpBar = target
+      target.getCurrentLevel = source.GetCurrentLevel
+      target.getCurrentXP = source.GetCurrentXP
+      target.getMaxXPForLevel = source.GetMaxXPForLevel
+    end
+  end
+  do
     local source = host.C_GamePad
     if source then
       local target = {}
@@ -2526,6 +2614,7 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
       target.getActiveDeviceID = source.GetActiveDeviceID
       target.getAllConfigIDs = source.GetAllConfigIDs
       target.getAllDeviceIDs = source.GetAllDeviceIDs
+      target.getAllowHoverEventsWithFreeLook = source.GetAllowHoverEventsWithFreeLook
       target.getCombinedDeviceID = source.GetCombinedDeviceID
       target.getConfig = source.GetConfig
       target.getDeviceMappedState = source.GetDeviceMappedState
@@ -2533,6 +2622,7 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
       target.getLedColor = source.GetLedColor
       target.getPowerLevel = source.GetPowerLevel
       target.isEnabled = source.IsEnabled
+      target.setAllowHoverEventsWithFreeLook = source.SetAllowHoverEventsWithFreeLook
       target.setConfig = source.SetConfig
       target.setLedColor = source.SetLedColor
       target.setVibration = source.SetVibration
@@ -2545,28 +2635,43 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
     if source then
       local target = {}
       api.gameRules = target
+      target.accountHasSDEnabled = source.AccountHasSDEnabled
+      target.alreadyShownOnce = source.AlreadyShownOnce
       target.autoConnectToGameModeRealm = source.AutoConnectToGameModeRealm
       target.doesGameModeHavePromo = source.DoesGameModeHavePromo
       target.getActiveGameMode = source.GetActiveGameMode
+      target.getActiveGameModeForSplashScreen = source.GetActiveGameModeForSplashScreen
+      target.getActiveGameModeRecIdForSplashScreen = source.GetActiveGameModeRecIdForSplashScreen
       target.getCurrentEventRealmQueues = source.GetCurrentEventRealmQueues
       target.getCurrentGameModeDisplayInfo = source.GetCurrentGameModeDisplayInfo
       target.getCurrentGameModeRecordID = source.GetCurrentGameModeRecordID
       target.getDisplayedGameModeRecordIDAtIndex = source.GetDisplayedGameModeRecordIDAtIndex
+      target.getForeverExperiencePreset = source.GetForeverExperiencePreset
       target.getGameModeDisplayInfoByRecordID = source.GetGameModeDisplayInfoByRecordID
       target.getGameModeGlueScreenName = source.GetGameModeGlueScreenName
       target.getGameModePromoGlobalString = source.GetGameModePromoGlobalString
       target.getGameRuleAsFloat = source.GetGameRuleAsFloat
       target.getGameRuleAsFrameStrata = source.GetGameRuleAsFrameStrata
       target.getNumDisplayedGameModes = source.GetNumDisplayedGameModes
+      target.isAccountKeyBindingsEnabled = source.IsAccountKeyBindingsEnabled
       target.isCharacterlessLoginActive = source.IsCharacterlessLoginActive
       target.isClassAllowedForGameMode = source.IsClassAllowedForGameMode
       target.isGameModeEnabled = source.IsGameModeEnabled
       target.isGameRuleActive = source.IsGameRuleActive
+      target.isHardcoreActive = source.IsHardcoreActive
       target.isMultiActionBarVisibilityForced = source.IsMultiActionBarVisibilityForced
       target.isPersonalResourceDisplayEnabled = source.IsPersonalResourceDisplayEnabled
       target.isPlunderstorm = source.IsPlunderstorm
+      target.isRewardsShopEnabled = source.IsRewardsShopEnabled
+      target.isSDHDToggleEnabled = source.IsSDHDToggleEnabled
+      target.isSelfFoundAllowed = source.IsSelfFoundAllowed
       target.isStandard = source.IsStandard
       target.isWoWHack = source.IsWoWHack
+      target.setAlreadyShownOnce = source.SetAlreadyShownOnce
+      target.setForeverExperiencePresetPostLogin = source.SetForeverExperiencePresetPostLogin
+      target.setForeverExperiencePresetPreLogin = source.SetForeverExperiencePresetPreLogin
+      target.setSDHDToggleValue = source.SetSDHDToggleValue
+      target.shouldShowGameModeSplashScreen = source.ShouldShowGameModeSplashScreen
     end
   end
   do
@@ -2574,6 +2679,31 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
     api.gameUI = target
     target.setInWorldUIVisibility = host.SetInWorldUIVisibility
     target.setUIVisibility = host.SetUIVisibility
+  end
+  do
+    local source = host.C_GamepadTargeting
+    if source then
+      local target = {}
+      api.gamepadTargeting = target
+      target.disable = source.Disable
+      target.enable = source.Enable
+      target.setFilter = source.SetFilter
+    end
+  end
+  do
+    local source = host.C_GamepadUI
+    if source then
+      local target = {}
+      api.gamepadUI = target
+      target.getFirstGamepadActionBarStorageSlotIndexForActiveStance =
+        source.GetFirstGamepadActionBarStorageSlotIndexForActiveStance
+      target.getFirstGamepadActionStorageSlotIndex = source.GetFirstGamepadActionStorageSlotIndex
+      target.getFirstGamepadPetActionStorageSlotIndex =
+        source.GetFirstGamepadPetActionStorageSlotIndex
+      target.isValidGamepadActionStorageSlotIndex = source.IsValidGamepadActionStorageSlotIndex
+      target.isValidGamepadPossessBarStorageSlotIndex =
+        source.IsValidGamepadPossessBarStorageSlotIndex
+    end
   end
   do
     local source = host.C_Garrison
@@ -2707,6 +2837,8 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
       target.getGuildTabardInfo = source.GetGuildTabardInfo
       target.getInfoText = source.GetInfoText
       target.getMOTD = source.GetMOTD
+      target.getPreferredPlaySettings = source.GetPreferredPlaySettings
+      target.getPreferredPlaySettingsFeatures = source.GetPreferredPlaySettingsFeatures
       target.guildControlGetRankFlags = source.GuildControlGetRankFlags
       target.guildRoster = source.GuildRoster
       target.invite = source.Invite
@@ -2723,6 +2855,7 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
       target.removeFromGuild = source.RemoveFromGuild
       target.requestGuildRename = source.RequestGuildRename
       target.requestGuildRenameRefund = source.RequestGuildRenameRefund
+      target.requestPreferredPlaySettings = source.RequestPreferredPlaySettings
       target.requestRenameNameCheck = source.RequestRenameNameCheck
       target.requestRenameStatus = source.RequestRenameStatus
       target.setGuildRankOrder = source.SetGuildRankOrder
@@ -2730,6 +2863,7 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
       target.setLeader = source.SetLeader
       target.setMOTD = source.SetMOTD
       target.setNote = source.SetNote
+      target.setPreferredPlaySettings = source.SetPreferredPlaySettings
       target.uninvite = source.Uninvite
     end
   end
@@ -2740,6 +2874,7 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
       api.heirloomInfo = target
       target.areAllCollectionFiltersChecked = source.AreAllCollectionFiltersChecked
       target.areAllSourceFiltersChecked = source.AreAllSourceFiltersChecked
+      target.heirloomsAvailable = source.HeirloomsAvailable
       target.isHeirloomSourceValid = source.IsHeirloomSourceValid
       target.isUsingDefaultFilters = source.IsUsingDefaultFilters
       target.setAllCollectionFilters = source.SetAllCollectionFilters
@@ -3192,6 +3327,7 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
   do
     local target = {}
     api.input = target
+    target.getCursorCenterPosition = host.GetCursorCenterPosition
     target.getCursorDelta = host.GetCursorDelta
     target.getCursorPosition = host.GetCursorPosition
     target.getMouseButtonClicked = host.GetMouseButtonClicked
@@ -3200,6 +3336,7 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
     target.getStringFromModifiers = host.GetStringFromModifiers
     target.isAltKeyDown = host.IsAltKeyDown
     target.isControlKeyDown = host.IsControlKeyDown
+    target.isCursorVisible = host.IsCursorVisible
     target.isKeyDown = host.IsKeyDown
     target.isLeftAltKeyDown = host.IsLeftAltKeyDown
     target.isLeftControlKeyDown = host.IsLeftControlKeyDown
@@ -3221,6 +3358,14 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
     target.simulateMouseDown = host.SimulateMouseDown
     target.simulateMouseUp = host.SimulateMouseUp
     target.simulateMouseWheel = host.SimulateMouseWheel
+  end
+  do
+    local source = host.C_InputInterfaceStyle
+    if source then
+      local target = {}
+      api.inputInterfaceStyle = target
+      target.getCurrentStyle = source.GetCurrentStyle
+    end
   end
   do
     local target = {}
@@ -3348,8 +3493,10 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
       target.canScrapItem = source.CanScrapItem
       target.canViewItemPowers = source.CanViewItemPowers
       target.confirmBindOnUse = source.ConfirmBindOnUse
+      target.confirmDeleteItem = source.ConfirmDeleteItem
       target.confirmNoRefundOnUse = source.ConfirmNoRefundOnUse
       target.confirmOnUse = source.ConfirmOnUse
+      target.deleteItem = source.DeleteItem
       target.doesItemContainSpec = source.DoesItemContainSpec
       target.doesItemExist = source.DoesItemExist
       target.doesItemExistByID = source.DoesItemExistByID
@@ -3415,6 +3562,7 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
       target.getLimitedCurrencyItemInfo = source.GetLimitedCurrencyItemInfo
       target.getSetBonusesForSpecializationByItemID = source.GetSetBonusesForSpecializationByItemID
       target.getStackCount = source.GetStackCount
+      target.getWeaponEnchantInfo = source.GetWeaponEnchantInfo
       target.isAnimaItemByID = source.IsAnimaItemByID
       target.isArtifactPowerItem = source.IsArtifactPowerItem
       target.isBound = source.IsBound
@@ -3626,6 +3774,7 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
       target.isLFDEnabled = source.IsLFDEnabled
       target.isLFGFollowerDungeon = source.IsLFGFollowerDungeon
       target.isLFREnabled = source.IsLFREnabled
+      target.leaveInstanceBySpell = source.LeaveInstanceBySpell
     end
   end
   do
@@ -3686,6 +3835,16 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
       target.updateListing = source.UpdateListing
       target.validateRequiredDungeonScore = source.ValidateRequiredDungeonScore
       target.validateRequiredPvpRatingForActivity = source.ValidateRequiredPvpRatingForActivity
+    end
+  end
+  do
+    local source = host.C_LFGListRoles
+    if source then
+      local target = {}
+      api.lfgListRoles = target
+      target.getRoles = source.GetRoles
+      target.getSavedRoles = source.GetSavedRoles
+      target.setRoles = source.SetRoles
     end
   end
   do
@@ -3777,6 +3936,14 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
     end
   end
   do
+    local source = host.C_LootFrame
+    if source then
+      local target = {}
+      api.lootFrame = target
+      target.tryAutoLoot = source.TryAutoLoot
+    end
+  end
+  do
     local source = host.C_LootHistory
     if source then
       local target = {}
@@ -3865,10 +4032,12 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
       target.getCurrentRenownLevel = source.GetCurrentRenownLevel
       target.getMajorFactionData = source.GetMajorFactionData
       target.getMajorFactionIDs = source.GetMajorFactionIDs
+      target.getMajorFactionProgressionInfo = source.GetMajorFactionProgressionInfo
       target.getMajorFactionRenownInfo = source.GetMajorFactionRenownInfo
       target.getRenownLevels = source.GetRenownLevels
       target.getRenownNPCFactionID = source.GetRenownNPCFactionID
       target.getRenownRewardsForLevel = source.GetRenownRewardsForLevel
+      target.getTotalReputationForRenownLevel = source.GetTotalReputationForRenownLevel
       target.hasMaximumRenown = source.HasMaximumRenown
       target.isMajorFactionHiddenFromExpansionPage = source.IsMajorFactionHiddenFromExpansionPage
       target.isWeeklyRenownCapped = source.IsWeeklyRenownCapped
@@ -4056,6 +4225,7 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
       target.getNumDisplayedMounts = source.GetNumDisplayedMounts
       target.getNumMounts = source.GetNumMounts
       target.getNumMountsNeedingFanfare = source.GetNumMountsNeedingFanfare
+      target.hasDisplayableMount = source.HasDisplayableMount
       target.isDragonridingUnlocked = source.IsDragonridingUnlocked
       target.isItemMountEquipment = source.IsItemMountEquipment
       target.isMountEquipmentApplied = source.IsMountEquipmentApplied
@@ -4064,6 +4234,7 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
       target.isUsingDefaultFilters = source.IsUsingDefaultFilters
       target.isValidSourceFilter = source.IsValidSourceFilter
       target.isValidTypeFilter = source.IsValidTypeFilter
+      target.mountEquipmentAvailable = source.MountEquipmentAvailable
       target.needsFanfare = source.NeedsFanfare
       target.pickup = source.Pickup
       target.pickupDynamicFlightMode = source.PickupDynamicFlightMode
@@ -4141,6 +4312,15 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
     end
   end
   do
+    local source = host.C_NameUtil
+    if source then
+      local target = {}
+      api.nameUtil = target
+      target.replaceSurnameSeparatorWithLinkSeparator =
+        source.ReplaceSurnameSeparatorWithLinkSeparator
+    end
+  end
+  do
     local source = host.C_Navigation
     if source then
       local target = {}
@@ -4202,9 +4382,10 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
     if source then
       local target = {}
       api.paperDollInfo = target
+      target.ammoNeeded = source.AmmoNeeded
       target.canAutoEquipCursorItem = source.CanAutoEquipCursorItem
-      target.canCursorCanGoInSlot = source.CanCursorCanGoInSlot
       target.cancelTemporaryEnchantment = source.CancelTemporaryEnchantment
+      target.cursorCanGoInSlot = source.CursorCanGoInSlot
       target.getArmorEffectiveness = source.GetArmorEffectiveness
       target.getArmorEffectivenessAgainstTarget = source.GetArmorEffectivenessAgainstTarget
       target.getInspectAzeriteItemEmpoweredChoices = source.GetInspectAzeriteItemEmpoweredChoices
@@ -4237,6 +4418,7 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
       target.allowedToDoPartyConversion = source.AllowedToDoPartyConversion
       target.canFormCrossFactionParties = source.CanFormCrossFactionParties
       target.canInvite = source.CanInvite
+      target.canPromoteToLeader = source.CanPromoteToLeader
       target.canStartInstanceAbandonVote = source.CanStartInstanceAbandonVote
       target.challengeModeRestrictionsActive = source.ChallengeModeRestrictionsActive
       target.confirmConvertToRaid = source.ConfirmConvertToRaid
@@ -4278,6 +4460,8 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
       target.isPartyFull = source.IsPartyFull
       target.isPartyInJailersTower = source.IsPartyInJailersTower
       target.isPartyWalkIn = source.IsPartyWalkIn
+      target.isRaidListEnabled = source.IsRaidListEnabled
+      target.isRaidListSupported = source.IsRaidListSupported
       target.leaveParty = source.LeaveParty
       target.promoteToAssistant = source.PromoteToAssistant
       target.promoteToLeader = source.PromoteToLeader
@@ -4379,10 +4563,17 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
     if source then
       local target = {}
       api.petInfo = target
+      target.canPetEatItem = source.CanPetEatItem
+      target.getPetFoodTypes = source.GetPetFoodTypes
+      target.getPetHappiness = source.GetPetHappiness
+      target.getPetLoyalty = source.GetPetLoyalty
       target.getPetTalentTree = source.GetPetTalentTree
       target.getPetTamersForMap = source.GetPetTamersForMap
+      target.getPetTrainingPoints = source.GetPetTrainingPoints
+      target.getPetUIModelSceneID = source.GetPetUIModelSceneID
       target.getSpellForPetAction = source.GetSpellForPetAction
       target.isPetActionPassive = source.IsPetActionPassive
+      target.isPetOrderMoveToPending = source.IsPetOrderMoveToPending
       target.petAbandon = source.PetAbandon
       target.petAssistMode = source.PetAssistMode
       target.petRename = source.PetRename
@@ -4543,6 +4734,7 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
       target.isTradingPostAvailable = source.IsTradingPostAvailable
       target.isTravelersLogAvailable = source.IsTravelersLogAvailable
       target.isTutorialsTabAvailable = source.IsTutorialsTabAvailable
+      target.shouldDisplaySurname = source.ShouldDisplaySurname
       target.unitIsSameServer = source.UnitIsSameServer
     end
   end
@@ -4558,6 +4750,7 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
       target.isReplacingUnit = source.IsReplacingUnit
       target.isValidNPCInteraction = source.IsValidNPCInteraction
       target.reopenInteraction = source.ReopenInteraction
+      target.shardTransferConfirm = source.ShardTransferConfirm
     end
   end
   do
@@ -4584,6 +4777,7 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
     target.canDualWield = host.CanDualWield
     target.canInspect = host.CanInspect
     target.canLootUnit = host.CanLootUnit
+    target.canPortGraveyard = host.CanPortGraveyard
     target.cancelAreaSpiritHeal = host.CancelAreaSpiritHeal
     target.cancelPendingEquip = host.CancelPendingEquip
     target.cancelTrade = host.CancelTrade
@@ -4600,6 +4794,7 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
     target.getAllowLowLevelRaid = host.GetAllowLowLevelRaid
     target.getAllowRecentAlliesSeeLocation = host.GetAllowRecentAlliesSeeLocation
     target.getAreaSpiritHealerTime = host.GetAreaSpiritHealerTime
+    target.getArmorPenetration = host.GetArmorPenetration
     target.getAttackPowerForStat = host.GetAttackPowerForStat
     target.getAutoDeclineGuildInvites = host.GetAutoDeclineGuildInvites
     target.getAutoDeclineNeighborhoodInvites = host.GetAutoDeclineNeighborhoodInvites
@@ -4615,24 +4810,33 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
     target.getCorruption = host.GetCorruption
     target.getCorruptionResistance = host.GetCorruptionResistance
     target.getCritChance = host.GetCritChance
+    target.getCritChanceFromStat = host.GetCritChanceFromStat
     target.getCritChanceProvidesParryEffect = host.GetCritChanceProvidesParryEffect
     target.getDodgeChance = host.GetDodgeChance
     target.getDodgeChanceFromAttribute = host.GetDodgeChanceFromAttribute
+    target.getEvictionTimeRemaining = host.GetEvictionTimeRemaining
     target.getExpertise = host.GetExpertise
     target.getExpertisePercent = host.GetExpertisePercent
+    target.getGlancingBlowChance = host.GetGlancingBlowChance
+    target.getGlancingBlowPenalty = host.GetGlancingBlowPenalty
     target.getHaste = host.GetHaste
+    target.getHealthRegen = host.GetHealthRegen
+    target.getHealthRegenFromSpirit = host.GetHealthRegenFromSpirit
     target.getHitModifier = host.GetHitModifier
     target.getJailersTowerLevel = host.GetJailersTowerLevel
     target.getLifesteal = host.GetLifesteal
     target.getLootSpecialization = host.GetLootSpecialization
     target.getManaRegen = host.GetManaRegen
+    target.getManaRegenFromSpirit = host.GetManaRegenFromSpirit
     target.getMastery = host.GetMastery
     target.getMasteryEffect = host.GetMasteryEffect
     target.getMaxPlayerLevel = host.GetMaxPlayerLevel
     target.getMeleeHaste = host.GetMeleeHaste
+    target.getMeleeHitChanceTakenModifier = host.GetMeleeHitChanceTakenModifier
     target.getModResilienceDamageReduction = host.GetModResilienceDamageReduction
     target.getMoney = host.GetMoney
     target.getNormalizedRealmName = host.GetNormalizedRealmName
+    target.getOffhandHitModifier = host.GetOffhandHitModifier
     target.getOverrideAPBySpellPower = host.GetOverrideAPBySpellPower
     target.getOverrideSpellPowerByAP = host.GetOverrideSpellPowerByAP
     target.getPVPDesired = host.GetPVPDesired
@@ -4643,16 +4847,22 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
     target.getPVPYesterdayStats = host.GetPVPYesterdayStats
     target.getParryChance = host.GetParryChance
     target.getParryChanceFromAttribute = host.GetParryChanceFromAttribute
+    target.getPetCritChance = host.GetPetCritChance
+    target.getPetDodgeChance = host.GetPetDodgeChance
+    target.getPetHitChanceModifier = host.GetPetHitChanceModifier
     target.getPetMeleeHaste = host.GetPetMeleeHaste
     target.getPetSpellBonusDamage = host.GetPetSpellBonusDamage
+    target.getPetSpellHitChanceModifier = host.GetPetSpellHitChanceModifier
     target.getPlayerFacing = host.GetPlayerFacing
     target.getPlayerInfoByGUID = host.GetPlayerInfoByGUID
     target.getPowerRegen = host.GetPowerRegen
     target.getPowerRegenForPowerType = host.GetPowerRegenForPowerType
     target.getPvpPowerDamage = host.GetPvpPowerDamage
     target.getPvpPowerHealing = host.GetPvpPowerHealing
+    target.getRangedAttackPowerForStat = host.GetRangedAttackPowerForStat
     target.getRangedCritChance = host.GetRangedCritChance
     target.getRangedHaste = host.GetRangedHaste
+    target.getRangedHitModifier = host.GetRangedHitModifier
     target.getReleaseTimeRemaining = host.GetReleaseTimeRemaining
     target.getResSicknessDuration = host.GetResSicknessDuration
     target.getRestState = host.GetRestState
@@ -4665,6 +4875,7 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
     target.getSpellBonusDamage = host.GetSpellBonusDamage
     target.getSpellBonusHealing = host.GetSpellBonusHealing
     target.getSpellCritChance = host.GetSpellCritChance
+    target.getSpellCritChanceFromStat = host.GetSpellCritChanceFromStat
     target.getSpellHitModifier = host.GetSpellHitModifier
     target.getSpellPenetration = host.GetSpellPenetration
     target.getSturdiness = host.GetSturdiness
@@ -4716,6 +4927,7 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
     target.playerIsTimerunning = host.PlayerIsTimerunning
     target.portGraveyard = host.PortGraveyard
     target.randomRoll = host.RandomRoll
+    target.reagentsFromBankAllowed = host.ReagentsFromBankAllowed
     target.repopMe = host.RepopMe
     target.requestTimePlayed = host.RequestTimePlayed
     target.respondInstanceLock = host.RespondInstanceLock
@@ -4730,6 +4942,9 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
     target.setCemeteryPreference = host.SetCemeteryPreference
     target.setLootSpecialization = host.SetLootSpecialization
     target.setTaxiBenchmarkMode = host.SetTaxiBenchmarkMode
+    target.shouldDisplayRaidRolesInSocialFrame = host.ShouldDisplayRaidRolesInSocialFrame
+    target.shouldDisplayStoryModeTooltipInSocialFrame =
+      host.ShouldDisplayStoryModeTooltipInSocialFrame
     target.shouldShowIslandsWeeklyPOI = host.ShouldShowIslandsWeeklyPOI
     target.shouldShowSpecialSplashScreen = host.ShouldShowSpecialSplashScreen
     target.showCloak = host.ShowCloak
@@ -4744,6 +4959,7 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
     target.timeoutResurrect = host.TimeoutResurrect
     target.toggleSelfHighlight = host.ToggleSelfHighlight
     target.toggleSheath = host.ToggleSheath
+    target.toggleSit = host.ToggleSit
   end
   do
     local source = host.C_Pony
@@ -5001,6 +5217,7 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
       target.getQuestRewardCurrencies = source.GetQuestRewardCurrencies
       target.getQuestRewardCurrencyInfo = source.GetQuestRewardCurrencyInfo
       target.getQuestTagInfo = source.GetQuestTagInfo
+      target.getQuestTimers = source.GetQuestTimers
       target.getQuestType = source.GetQuestType
       target.getQuestWatchType = source.GetQuestWatchType
       target.getQuestsOnMap = source.GetQuestsOnMap
@@ -5010,10 +5227,12 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
       target.getTimeAllowed = source.GetTimeAllowed
       target.getTitleForLogIndex = source.GetTitleForLogIndex
       target.getTitleForQuestID = source.GetTitleForQuestID
+      target.getTrivialRange = source.GetTrivialRange
       target.getZoneStoryInfo = source.GetZoneStoryInfo
       target.hasActiveThreats = source.HasActiveThreats
       target.isAccountQuest = source.IsAccountQuest
       target.isComplete = source.IsComplete
+      target.isEliteQuest = source.IsEliteQuest
       target.isFailed = source.IsFailed
       target.isImportantQuest = source.IsImportantQuest
       target.isMetaQuest = source.IsMetaQuest
@@ -5097,6 +5316,7 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
       target.getRedirectedDifficultyID = source.GetRedirectedDifficultyID
       target.isEncounterComplete = source.IsEncounterComplete
       target.isRaidLockExtendFeatureEnabled = source.IsRaidLockExtendFeatureEnabled
+      target.isRaidLockExtendFeatureSupported = source.IsRaidLockExtendFeatureSupported
     end
   end
   do
@@ -5104,6 +5324,7 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
     api.raidMarkers = target
     target.canBeRaidTarget = host.CanBeRaidTarget
     target.clearRaidMarker = host.ClearRaidMarker
+    target.getNextAvailableRaidTargetMarkerIndex = host.GetNextAvailableRaidTargetMarkerIndex
     target.getRaidTargetIndex = host.GetRaidTargetIndex
     target.isRaidMarkerActive = host.IsRaidMarkerActive
     target.isRaidMarkerSystemEnabled = host.IsRaidMarkerSystemEnabled
@@ -5120,6 +5341,8 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
       target.getRecentAllies = source.GetRecentAllies
       target.getRecentAllyByFullName = source.GetRecentAllyByFullName
       target.getRecentAllyByGUID = source.GetRecentAllyByGUID
+      target.isInteractionCategoryFilterSupportedForCurrentGameType =
+        source.IsInteractionCategoryFilterSupportedForCurrentGameType
       target.isRecentAllyByFullName = source.IsRecentAllyByFullName
       target.isRecentAllyByGUID = source.IsRecentAllyByGUID
       target.isRecentAllyDataReady = source.IsRecentAllyDataReady
@@ -5301,6 +5524,16 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
     target.getScreenWidth = host.GetScreenWidth
   end
   do
+    local source = host.C_ScribeUI
+    if source then
+      local target = {}
+      api.scribeUI = target
+      target.getClassInfoFromClassID = source.GetClassInfoFromClassID
+      target.getCurrClassID = source.GetCurrClassID
+      target.setCurrClassID = source.SetCurrClassID
+    end
+  end
+  do
     local source = host.C_ScriptWarnings
     if source then
       local target = {}
@@ -5322,6 +5555,7 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
       api.seasonInfo = target
       target.getCurrentDisplaySeasonExpansion = source.GetCurrentDisplaySeasonExpansion
       target.getCurrentDisplaySeasonID = source.GetCurrentDisplaySeasonID
+      target.getTimeUntilCurrentPVPSeasonEnd = source.GetTimeUntilCurrentPVPSeasonEnd
     end
   end
   do
@@ -5370,10 +5604,14 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
       target.getHousingPurchaseCost = source.GetHousingPurchaseCost
       target.getHousingPurchaseQuantity = source.GetHousingPurchaseQuantity
       target.getHousingVCPurchaseProductID = source.GetHousingVCPurchaseProductID
-      target.getMailInfo = source.GetMailInfo
+      target.getMailReceiveInfo = source.GetMailReceiveInfo
+      target.getMailSendInfo = source.GetMailSendInfo
       target.getTradePartner = source.GetTradePartner
+      target.getVCPurchaseProductID = source.GetVCPurchaseProductID
       target.sendMail = source.SendMail
       target.shouldShowTradeOfferWarning = source.ShouldShowTradeOfferWarning
+      target.shouldShowTradeRMTWarning = source.ShouldShowTradeRMTWarning
+      target.takeMailMoney = source.TakeMailMoney
     end
   end
   do
@@ -5390,6 +5628,14 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
     if source then
       local target = {}
       api.skillInfo = target
+      target.abandonSkill = source.AbandonSkill
+      target.collapseSkillHeader = source.CollapseSkillHeader
+      target.expandSkillHeader = source.ExpandSkillHeader
+      target.getNumSkillLines = source.GetNumSkillLines
+      target.getSelectedSkill = source.GetSelectedSkill
+      target.getSkillLineInfo = source.GetSkillLineInfo
+      target.getSkillLineInfoByID = source.GetSkillLineInfoByID
+      target.setSelectedSkill = source.SetSelectedSkill
     end
   end
   do
@@ -5420,9 +5666,12 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
     if source then
       local target = {}
       api.socialRestrictions = target
+      target.acknowledgeAgeVerificationRestriction = source.AcknowledgeAgeVerificationRestriction
       target.acknowledgeRegionalChatDisabled = source.AcknowledgeRegionalChatDisabled
       target.canReceiveChat = source.CanReceiveChat
       target.canSendChat = source.CanSendChat
+      target.isAgeVerificationRestricted = source.IsAgeVerificationRestricted
+      target.isAgeVerificationRestrictedMinor = source.IsAgeVerificationRestrictedMinor
       target.isChatDisabled = source.IsChatDisabled
       target.isFriendsDisabled = source.IsFriendsDisabled
       target.isMuted = source.IsMuted
@@ -5507,8 +5756,10 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
       target.canPlayerUseTalentSpecUI = source.CanPlayerUseTalentSpecUI
       target.canPlayerUseTalentUI = source.CanPlayerUseTalentUI
       target.getActiveSpecGroup = source.GetActiveSpecGroup
+      target.getAllClassIDs = source.GetAllClassIDs
       target.getAllSelectedPvpTalentIDs = source.GetAllSelectedPvpTalentIDs
       target.getClassIDFromSpecID = source.GetClassIDFromSpecID
+      target.getCombatConfigIDForSpecGroup = source.GetCombatConfigIDForSpecGroup
       target.getInspectSelectedPvpTalent = source.GetInspectSelectedPvpTalent
       target.getInspectSpecialization = source.GetInspectSpecialization
       target.getNumSpecializationsForClassID = source.GetNumSpecializationsForClassID
@@ -5523,9 +5774,12 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
       target.getSpecializationMasterySpells = source.GetSpecializationMasterySpells
       target.getSpellsDisplay = source.GetSpellsDisplay
       target.getTalentInfo = source.GetTalentInfo
+      target.hasPlayerEarnedATalentPoint = source.HasPlayerEarnedATalentPoint
       target.isInitialized = source.IsInitialized
       target.isPvpTalentLocked = source.IsPvpTalentLocked
+      target.isSpecSelectionEnabled = source.IsSpecSelectionEnabled
       target.matchesCurrentSpecSet = source.MatchesCurrentSpecSet
+      target.setActiveSpecGroup = source.SetActiveSpecGroup
       target.setPetSpecialization = source.SetPetSpecialization
       target.setPvpTalentLocked = source.SetPvpTalentLocked
       target.setSpecialization = source.SetSpecialization
@@ -5545,12 +5799,16 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
     if source then
       local target = {}
       api.spell = target
+      target.cancelAutoRepeatSpell = source.CancelAutoRepeatSpell
+      target.cancelItemTempEnchantment = source.CancelItemTempEnchantment
       target.cancelSpellByID = source.CancelSpellByID
       target.doesSpellExist = source.DoesSpellExist
       target.enableSpellRangeCheck = source.EnableSpellRangeCheck
       target.getAuraStatChanges = source.GetAuraStatChanges
       target.getBaseSpell = source.GetBaseSpell
+      target.getConfirmationPromptHideOnEscape = source.GetConfirmationPromptHideOnEscape
       target.getDeadlyDebuffInfo = source.GetDeadlyDebuffInfo
+      target.getItemCooldown = source.GetItemCooldown
       target.getItemModifiedAppearancesApplied = source.GetItemModifiedAppearancesApplied
       target.getLastCategoryCooldownSource = source.GetLastCategoryCooldownSource
       target.getMawPowerLinkBySpellID = source.GetMawPowerLinkBySpellID
@@ -5580,7 +5838,9 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
       target.getSpellSubtext = source.GetSpellSubtext
       target.getSpellTexture = source.GetSpellTexture
       target.getSpellTradeSkillLink = source.GetSpellTradeSkillLink
+      target.getTargetSpellID = source.GetTargetSpellID
       target.getVisibilityInfo = source.GetVisibilityInfo
+      target.isActiveSpell = source.IsActiveSpell
       target.isAutoAttackSpell = source.IsAutoAttackSpell
       target.isAutoRepeatSpell = source.IsAutoRepeatSpell
       target.isClassTalentSpell = source.IsClassTalentSpell
@@ -5602,6 +5862,7 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
       target.isSpellPassive = source.IsSpellPassive
       target.isSpellUsable = source.IsSpellUsable
       target.pickupSpell = source.PickupSpell
+      target.placeTargetingSpellAtCursor = source.PlaceTargetingSpellAtCursor
       target.requestLoadSpellData = source.RequestLoadSpellData
       target.setSpellAutoCastEnabled = source.SetSpellAutoCastEnabled
       target.spellHasRange = source.SpellHasRange
@@ -5625,12 +5886,14 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
     if source then
       local target = {}
       api.spellBook = target
+      target.abortSpellIntro = source.AbortSpellIntro
       target.castSpellBookItem = source.CastSpellBookItem
       target.containsAnyDisenchantSpell = source.ContainsAnyDisenchantSpell
       target.findBaseSpellByID = source.FindBaseSpellByID
       target.findFlyoutSlotBySpellID = source.FindFlyoutSlotBySpellID
       target.findSpellBookSlotForSpell = source.FindSpellBookSlotForSpell
       target.findSpellOverrideByID = source.FindSpellOverrideByID
+      target.getClassSkillLineInfo = source.GetClassSkillLineInfo
       target.getCurrentLevelSpells = source.GetCurrentLevelSpells
       target.getNumSpellBookSkillLines = source.GetNumSpellBookSkillLines
       target.getSkillLineIndexByID = source.GetSkillLineIndexByID
@@ -5663,6 +5926,8 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
       target.isSpellBookItemHarmful = source.IsSpellBookItemHarmful
       target.isSpellBookItemHelpful = source.IsSpellBookItemHelpful
       target.isSpellBookItemInRange = source.IsSpellBookItemInRange
+      target.isSpellBookItemLooseFlyoutMember = source.IsSpellBookItemLooseFlyoutMember
+      target.isSpellBookItemLowRank = source.IsSpellBookItemLowRank
       target.isSpellBookItemOffSpec = source.IsSpellBookItemOffSpec
       target.isSpellBookItemPassive = source.IsSpellBookItemPassive
       target.isSpellBookItemUsable = source.IsSpellBookItemUsable
@@ -5670,6 +5935,7 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
       target.isSpellKnown = source.IsSpellKnown
       target.isSpellKnownOrInSpellBook = source.IsSpellKnownOrInSpellBook
       target.pickupSpellBookItem = source.PickupSpellBookItem
+      target.setBarSlotFromIntro = source.SetBarSlotFromIntro
       target.setSpellBookItemAutoCastEnabled = source.SetSpellBookItemAutoCastEnabled
       target.spellBookItemHasRange = source.SpellBookItemHasRange
       target.toggleSpellBookItemAutoCast = source.ToggleSpellBookItemAutoCast
@@ -5703,11 +5969,14 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
     if source then
       local target = {}
       api.stableInfo = target
+      target.buyStableSlot = source.BuyStableSlot
       target.closePetStables = source.ClosePetStables
       target.getActivePetList = source.GetActivePetList
       target.getAvailablePetSpecInfos = source.GetAvailablePetSpecInfos
+      target.getNextStableSlotCost = source.GetNextStableSlotCost
       target.getNumActivePets = source.GetNumActivePets
       target.getNumStablePets = source.GetNumStablePets
+      target.getNumStableSlots = source.GetNumStableSlots
       target.getStablePetFoodTypes = source.GetStablePetFoodTypes
       target.getStablePetInfo = source.GetStablePetInfo
       target.getStabledPetList = source.GetStabledPetList
@@ -5727,6 +5996,8 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
       target.doesGroupHavePurchaseableProducts = source.DoesGroupHavePurchaseableProducts
       target.eventStoreUISetShown = source.EventStoreUISetShown
       target.isEnabled = source.IsEnabled
+      target.isRewardsShopEnabled = source.IsRewardsShopEnabled
+      target.isRewardsShopOverrideEnabled = source.IsRewardsShopOverrideEnabled
     end
   end
   do
@@ -5874,6 +6145,7 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
     target.clearTarget = host.ClearTarget
     target.focusUnit = host.FocusUnit
     target.isTargetLoose = host.IsTargetLoose
+    target.setPreferredGamepadInteractTarget = host.SetPreferredGamepadInteractTarget
     target.targetDirectionEnemy = host.TargetDirectionEnemy
     target.targetDirectionFinished = host.TargetDirectionFinished
     target.targetDirectionFriend = host.TargetDirectionFriend
@@ -5932,6 +6204,7 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
       target.getAtlasExists = source.GetAtlasExists
       target.getAtlasID = source.GetAtlasID
       target.getAtlasInfo = source.GetAtlasInfo
+      target.getBestTitleIconVersion = source.GetBestTitleIconVersion
       target.getFilenameFromFileDataID = source.GetFilenameFromFileDataID
       target.getTitleIconTexture = source.GetTitleIconTexture
       target.isTitleIconTextureReady = source.IsTitleIconTextureReady
@@ -6089,6 +6362,7 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
       local target = {}
       api.toyBoxInfo = target
       target.clearFanfare = source.ClearFanfare
+      target.hasAnyToy = source.HasAnyToy
       target.isToySourceValid = source.IsToySourceValid
       target.isUsingDefaultFilters = source.IsUsingDefaultFilters
       target.needsFanfare = source.NeedsFanfare
@@ -6112,6 +6386,7 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
       local target = {}
       api.tradeSkillUI = target
       target.canStoreEnchantInItem = source.CanStoreEnchantInItem
+      target.canTradeSkillShowCraftingUI = source.CanTradeSkillShowCraftingUI
       target.cancelProfessionRespec = source.CancelProfessionRespec
       target.checkRespecNPC = source.CheckRespecNPC
       target.closeTradeSkill = source.CloseTradeSkill
@@ -6206,6 +6481,9 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
     if source then
       local target = {}
       api.trainer = target
+      target.getCategorizeTrainerUI = source.GetCategorizeTrainerUI
+      target.getTrainerType = source.GetTrainerType
+      target.setCategorizeTrainerUI = source.SetCategorizeTrainerUI
     end
   end
   do
@@ -6238,14 +6516,18 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
       target.getConfigsByType = source.GetConfigsByType
       target.getDefinitionInfo = source.GetDefinitionInfo
       target.getEntryInfo = source.GetEntryInfo
+      target.getGroupCurrencyInfo = source.GetGroupCurrencyInfo
+      target.getGroupDisplayInfoByTreeID = source.GetGroupDisplayInfoByTreeID
       target.getIncreasedTraitData = source.GetIncreasedTraitData
       target.getLoadoutSerializationVersion = source.GetLoadoutSerializationVersion
+      target.getMaxAvailableTraitCurrency = source.GetMaxAvailableTraitCurrency
       target.getNodeCost = source.GetNodeCost
       target.getNodeInfo = source.GetNodeInfo
       target.getStagedChanges = source.GetStagedChanges
       target.getStagedChangesCost = source.GetStagedChangesCost
       target.getSubTreeInfo = source.GetSubTreeInfo
       target.getSystemIDByTreeID = source.GetSystemIDByTreeID
+      target.getTraitCurrencyForAchievement = source.GetTraitCurrencyForAchievement
       target.getTraitCurrencyInfo = source.GetTraitCurrencyInfo
       target.getTraitDescription = source.GetTraitDescription
       target.getTraitSystemFlags = source.GetTraitSystemFlags
@@ -6341,6 +6623,7 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
       target.getSourceRequiredHoliday = source.GetSourceRequiredHoliday
       target.getUncollectedShown = source.GetUncollectedShown
       target.getValidAppearanceSourcesForClass = source.GetValidAppearanceSourcesForClass
+      target.hasAnyAppearance = source.HasAnyAppearance
       target.hasFavorites = source.HasFavorites
       target.isAppearanceHiddenVisual = source.IsAppearanceHiddenVisual
       target.isCategoryValidForItem = source.IsCategoryValidForItem
@@ -6411,6 +6694,7 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
       target.getMaxNumberOfUsableOutfits = source.GetMaxNumberOfUsableOutfits
       target.getNextOutfitCost = source.GetNextOutfitCost
       target.getNumberOfOutfitsUnlockedForSource = source.GetNumberOfOutfitsUnlockedForSource
+      target.getOptionsForSlot = source.GetOptionsForSlot
       target.getOutfitInfo = source.GetOutfitInfo
       target.getOutfitInfoByName = source.GetOutfitInfoByName
       target.getOutfitInfoByPlayerFacingIndex = source.GetOutfitInfoByPlayerFacingIndex
@@ -6428,7 +6712,6 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
       target.getUnassignedAtlasForSlot = source.GetUnassignedAtlasForSlot
       target.getUnassignedDisplayAtlasForSlot = source.GetUnassignedDisplayAtlasForSlot
       target.getViewedOutfitSlotInfo = source.GetViewedOutfitSlotInfo
-      target.getWeaponOptionsForSlot = source.GetWeaponOptionsForSlot
       target.hasPendingOutfitSituations = source.HasPendingOutfitSituations
       target.hasPendingOutfitTransmogs = source.HasPendingOutfitTransmogs
       target.inTransmogEvent = source.InTransmogEvent
@@ -6449,7 +6732,7 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
       target.setPendingTransmog = source.SetPendingTransmog
       target.setPendingTransmogSheatheCategory = source.SetPendingTransmogSheatheCategory
       target.setSecondarySlotState = source.SetSecondarySlotState
-      target.setViewedWeaponOptionForSlot = source.SetViewedWeaponOptionForSlot
+      target.setViewedOptionForSlot = source.SetViewedOptionForSlot
       target.slotHasSecondary = source.SlotHasSecondary
       target.transmogEventActive = source.TransmogEventActive
       target.updatePendingSituation = source.UpdatePendingSituation
@@ -6486,6 +6769,7 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
       target.getValidBaseSetsCountsForCharacter = source.GetValidBaseSetsCountsForCharacter
       target.getValidClassForSet = source.GetValidClassForSet
       target.getVariantSets = source.GetVariantSets
+      target.hasAnyValidSets = source.HasAnyValidSets
       target.hasAvailableSets = source.HasAvailableSets
       target.hasUsableSets = source.HasUsableSets
       target.isBaseSetCollected = source.IsBaseSetCollected
@@ -6537,6 +6821,7 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
       target.abandonTutorialArea = source.AbandonTutorialArea
       target.getCombatEventInfo = source.GetCombatEventInfo
       target.returnToTutorialArea = source.ReturnToTutorialArea
+      target.sendTutorialStartButtonTelem = source.SendTutorialStartButtonTelem
     end
   end
   do
@@ -6680,6 +6965,7 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
     target.playerIsPVPInactive = host.PlayerIsPVPInactive
     target.playerIsSpellTarget = host.PlayerIsSpellTarget
     target.playerVehicleHasComboPoints = host.PlayerVehicleHasComboPoints
+    target.regionalUniqueNamesEnabled = host.RegionalUniqueNamesEnabled
     target.reportPlayerIsPVPAFK = host.ReportPlayerIsPVPAFK
     target.resistancePercent = host.ResistancePercent
     target.setPortraitTexture = host.SetPortraitTexture
@@ -6711,6 +6997,7 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
     target.creatureID = host.UnitCreatureID
     target.creatureType = host.UnitCreatureType
     target.damage = host.UnitDamage
+    target.defenseSkill = host.UnitDefenseSkill
     target.detailedThreatSituation = host.UnitDetailedThreatSituation
     target.distanceSquared = host.UnitDistanceSquared
     target.effectiveLevel = host.UnitEffectiveLevel
@@ -6728,6 +7015,9 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
     target.groupRolesAssigned = host.UnitGroupRolesAssigned
     target.groupRolesAssignedEnum = host.UnitGroupRolesAssignedEnum
     target.hpPerStamina = host.UnitHPPerStamina
+    target.hasEffectivelyTankAura = host.UnitHasEffectivelyTankAura
+    target.hasLootInteraction = host.UnitHasLootInteraction
+    target.hasMouseoverHighlight = host.UnitHasMouseoverHighlight
     target.hasPowerType = host.UnitHasPowerType
     target.hasRelicSlot = host.UnitHasRelicSlot
     target.hasVehiclePlayerFrameUI = host.UnitHasVehiclePlayerFrameUI
@@ -6770,6 +7060,7 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
     target.isGroupAssistant = host.UnitIsGroupAssistant
     target.isGroupLeader = host.UnitIsGroupLeader
     target.isHumanPlayer = host.UnitIsHumanPlayer
+    target.isInInteractRange = host.UnitIsInInteractRange
     target.isInMyGuild = host.UnitIsInMyGuild
     target.isInteractable = host.UnitIsInteractable
     target.isLieutenant = host.UnitIsLieutenant
@@ -6827,6 +7118,7 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
     target.rangedDamage = host.UnitRangedDamage
     target.reaction = host.UnitReaction
     target.realmRelationship = host.UnitRealmRelationship
+    target.resistance = host.UnitResistance
     target.selectionColor = host.UnitSelectionColor
     target.selectionType = host.UnitSelectionType
     target.sex = host.UnitSex
@@ -6847,6 +7139,7 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
     target.treatAsPlayerForDisplay = host.UnitTreatAsPlayerForDisplay
     target.trialBankedLevels = host.UnitTrialBankedLevels
     target.trialXP = host.UnitTrialXP
+    target.usesAmmo = host.UnitUsesAmmo
     target.usingVehicle = host.UnitUsingVehicle
     target.vehicleSeatCount = host.UnitVehicleSeatCount
     target.vehicleSeatInfo = host.UnitVehicleSeatInfo
@@ -6939,10 +7232,15 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
     if source then
       local target = {}
       api.videoOptions = target
+      target.areHighResTexturesAvailable = source.AreHighResTexturesAvailable
       target.getCurrentGameWindowSize = source.GetCurrentGameWindowSize
       target.getDefaultGameWindowSize = source.GetDefaultGameWindowSize
       target.getGameWindowSizes = source.GetGameWindowSizes
       target.getGxAdapterInfo = source.GetGxAdapterInfo
+      target.isLinearEnabledOnStart = source.IsLinearEnabledOnStart
+      target.isOutlineModeSupported = source.IsOutlineModeSupported
+      target.isPBRWaterSupported = source.IsPBRWaterSupported
+      target.isSecondaryLightingSupported = source.IsSecondaryLightingSupported
       target.isSpellVisualDensitySystemSupported = source.IsSpellVisualDensitySystemSupported
       target.setGameWindowSize = source.SetGameWindowSize
     end
@@ -6976,6 +7274,7 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
       target.endLocalCapture = source.EndLocalCapture
       target.getActiveChannelID = source.GetActiveChannelID
       target.getActiveChannelType = source.GetActiveChannelType
+      target.getActiveVoiceProviderID = source.GetActiveVoiceProviderID
       target.getAvailableInputDevices = source.GetAvailableInputDevices
       target.getAvailableOutputDevices = source.GetAvailableOutputDevices
       target.getChannel = source.GetChannel
@@ -7026,6 +7325,8 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
       target.requestJoinAndActivateCommunityStreamChannel =
         source.RequestJoinAndActivateCommunityStreamChannel
       target.requestJoinChannelByChannelType = source.RequestJoinChannelByChannelType
+      target.restoreActiveVoiceProvider = source.RestoreActiveVoiceProvider
+      target.setActiveVoiceProvider = source.SetActiveVoiceProvider
       target.setCommunicationMode = source.SetCommunicationMode
       target.setDeafened = source.SetDeafened
       target.setInputDevice = source.SetInputDevice
@@ -7059,6 +7360,7 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
       target.isFavorite = source.IsFavorite
       target.searchWarbandSceneEntries = source.SearchWarbandSceneEntries
       target.setFavorite = source.SetFavorite
+      target.warbandScenesAvailable = source.WarbandScenesAvailable
     end
   end
   do
@@ -7135,6 +7437,23 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
     end
   end
   do
+    local source = host.C_WoWHackAppearance
+    if source then
+      local target = {}
+      api.wowHackAppearance = target
+      target.getPlayerAuraSpellVisualKitIDs = source.GetPlayerAuraSpellVisualKitIDs
+    end
+  end
+  do
+    local source = host.C_WoWHackCharacterStats
+    if source then
+      local target = {}
+      api.wowHackCharacterStats = target
+      target.getStatPointsBySpellID = source.GetStatPointsBySpellID
+      target.getStatPointsChangeBySpellID = source.GetStatPointsChangeBySpellID
+    end
+  end
+  do
     local source = host.C_WowSurvey
     if source then
       local target = {}
@@ -7148,6 +7467,7 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
     if source then
       local target = {}
       api.wowTokenUI = target
+      target.shouldDisplayInAuctionHouse = source.ShouldDisplayInAuctionHouse
       target.startTokenSell = source.StartTokenSell
     end
   end
@@ -7189,6 +7509,7 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
     achievementEarned = "ACHIEVEMENT_EARNED",
     achievementPlayerName = "ACHIEVEMENT_PLAYER_NAME",
     achievementSearchUpdated = "ACHIEVEMENT_SEARCH_UPDATED",
+    actionCombatActionRangeCheckUpdate = "ACTION_COMBAT_ACTION_RANGE_CHECK_UPDATE",
     actionRangeCheckUpdate = "ACTION_RANGE_CHECK_UPDATE",
     actionUsableChanged = "ACTION_USABLE_CHANGED",
     actionWillBindItem = "ACTION_WILL_BIND_ITEM",
@@ -7232,6 +7553,7 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
     ajRaidAction = "AJ_RAID_ACTION",
     ajRefreshDisplay = "AJ_REFRESH_DISPLAY",
     ajRewardDataReceived = "AJ_REWARD_DATA_RECEIVED",
+    alertAgeVerificationRestricted = "ALERT_AGE_VERIFICATION_RESTRICTED",
     alertRegionalChatDisabled = "ALERT_REGIONAL_CHAT_DISABLED",
     alliedRaceClose = "ALLIED_RACE_CLOSE",
     alliedRaceOpen = "ALLIED_RACE_OPEN",
@@ -7343,6 +7665,8 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
     battlegroundObjectivesUpdate = "BATTLEGROUND_OBJECTIVES_UPDATE",
     battlegroundPointsUpdate = "BATTLEGROUND_POINTS_UPDATE",
     battlepetForceNameDeclension = "BATTLEPET_FORCE_NAME_DECLENSION",
+    bc26ColdSwapFeatureEnabledChanged = "BC_26_COLD_SWAP_FEATURE_ENABLED_CHANGED",
+    bc26ExperienceChanged = "BC_26_EXPERIENCE_CHANGED",
     behavioralNotification = "BEHAVIORAL_NOTIFICATION",
     bidAdded = "BID_ADDED",
     bidsUpdated = "BIDS_UPDATED",
@@ -7472,6 +7796,7 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
     chatMsgChannelList = "CHAT_MSG_CHANNEL_LIST",
     chatMsgChannelNotice = "CHAT_MSG_CHANNEL_NOTICE",
     chatMsgChannelNoticeUser = "CHAT_MSG_CHANNEL_NOTICE_USER",
+    chatMsgCollectedAppearance = "CHAT_MSG_COLLECTED_APPEARANCE",
     chatMsgCombatFactionChange = "CHAT_MSG_COMBAT_FACTION_CHANGE",
     chatMsgCombatHonorGain = "CHAT_MSG_COMBAT_HONOR_GAIN",
     chatMsgCombatMiscInfo = "CHAT_MSG_COMBAT_MISC_INFO",
@@ -7702,6 +8027,7 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
     deleteItemConfirm = "DELETE_ITEM_CONFIRM",
     delveAssistAction = "DELVE_ASSIST_ACTION",
     delvesAccountDataElementChanged = "DELVES_ACCOUNT_DATA_ELEMENT_CHANGED",
+    dielCycleChanged = "DIEL_CYCLE_CHANGED",
     disableDeclineGuildInvite = "DISABLE_DECLINE_GUILD_INVITE",
     disableLowLevelRaid = "DISABLE_LOW_LEVEL_RAID",
     disableTaxiBenchmark = "DISABLE_TAXI_BENCHMARK",
@@ -7761,7 +8087,8 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
     eventRealmQueuesUpdated = "EVENT_REALM_QUEUES_UPDATED",
     eventSchedulerUpdate = "EVENT_SCHEDULER_UPDATE",
     expandBagBarChanged = "EXPAND_BAG_BAR_CHANGED",
-    externalEventLaunchUrlFailed = "EXTERNAL_EVENT_LAUNCH_URL_FAILED",
+    externalEventLaunchUrlResult = "EXTERNAL_EVENT_LAUNCH_URL_RESULT",
+    externalEventUrlChanged = "EXTERNAL_EVENT_URL_CHANGED",
     extraBrowseInfoReceived = "EXTRA_BROWSE_INFO_RECEIVED",
     factionStandingChanged = "FACTION_STANDING_CHANGED",
     firstFrameRendered = "FIRST_FRAME_RENDERED",
@@ -7777,11 +8104,16 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
     fullscreenBrowserSpinnerShow = "FULLSCREEN_BROWSER_SPINNER_SHOW",
     gameModeDisplayInfoUpdated = "GAME_MODE_DISPLAY_INFO_UPDATED",
     gameModeDisplayModeToggleDisabled = "GAME_MODE_DISPLAY_MODE_TOGGLE_DISABLED",
+    gameModeExpBarDataUpdated = "GAME_MODE_EXP_BAR_DATA_UPDATED",
     gamePadActiveChanged = "GAME_PAD_ACTIVE_CHANGED",
+    gamePadAllowHoverEventsWithFreeLookChanged = "GAME_PAD_ALLOW_HOVER_EVENTS_WITH_FREE_LOOK_CHANGED",
     gamePadConfigsChanged = "GAME_PAD_CONFIGS_CHANGED",
     gamePadConnected = "GAME_PAD_CONNECTED",
     gamePadDisconnected = "GAME_PAD_DISCONNECTED",
     gamePadPowerChanged = "GAME_PAD_POWER_CHANGED",
+    gameRulesChanged = "GAME_RULES_CHANGED",
+    gamepadPossessBarOverrideChanged = "GAMEPAD_POSSESS_BAR_OVERRIDE_CHANGED",
+    gamepadStanceBarOverrideChanged = "GAMEPAD_STANCE_BAR_OVERRIDE_CHANGED",
     garrisonArchitectClosed = "GARRISON_ARCHITECT_CLOSED",
     garrisonArchitectOpened = "GARRISON_ARCHITECT_OPENED",
     garrisonBuildingActivatable = "GARRISON_BUILDING_ACTIVATABLE",
@@ -7849,6 +8181,8 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
     getItemInfoReceived = "GET_ITEM_INFO_RECEIVED",
     globalMouseDown = "GLOBAL_MOUSE_DOWN",
     globalMouseUp = "GLOBAL_MOUSE_UP",
+    globalRegionMouseDown = "GLOBAL_REGION_MOUSE_DOWN",
+    globalRegionMouseUp = "GLOBAL_REGION_MOUSE_UP",
     glueScreenshotFailed = "GLUE_SCREENSHOT_FAILED",
     glueScreenshotStarted = "GLUE_SCREENSHOT_STARTED",
     glueScreenshotSucceeded = "GLUE_SCREENSHOT_SUCCEEDED",
@@ -7873,6 +8207,7 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
     guildMotd = "GUILD_MOTD",
     guildNewsUpdate = "GUILD_NEWS_UPDATE",
     guildPartyStateUpdated = "GUILD_PARTY_STATE_UPDATED",
+    guildPreferredPlaySettingsUpdated = "GUILD_PREFERRED_PLAY_SETTINGS_UPDATED",
     guildRanksUpdate = "GUILD_RANKS_UPDATE",
     guildRanksUpdateActivePlayer = "GUILD_RANKS_UPDATE_ACTIVE_PLAYER",
     guildRecipeKnownByMembers = "GUILD_RECIPE_KNOWN_BY_MEMBERS",
@@ -8019,6 +8354,7 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
     initiativeTaskCompleted = "INITIATIVE_TASK_COMPLETED",
     initiativeTasksTrackedListChanged = "INITIATIVE_TASKS_TRACKED_LIST_CHANGED",
     initiativeTasksTrackedUpdated = "INITIATIVE_TASKS_TRACKED_UPDATED",
+    inputDeviceInterfaceTransition = "INPUT_DEVICE_INTERFACE_TRANSITION",
     inspectAchievementReady = "INSPECT_ACHIEVEMENT_READY",
     inspectHonorUpdate = "INSPECT_HONOR_UPDATE",
     inspectReady = "INSPECT_READY",
@@ -8093,9 +8429,11 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
     lfgListEntryExpiredTooManyPlayers = "LFG_LIST_ENTRY_EXPIRED_TOO_MANY_PLAYERS",
     lfgListJoinedGroup = "LFG_LIST_JOINED_GROUP",
     lfgListRevealedCensoredActiveEntry = "LFG_LIST_REVEALED_CENSORED_ACTIVE_ENTRY",
+    lfgListRoleUpdate = "LFG_LIST_ROLE_UPDATE",
     lfgListSearchFailed = "LFG_LIST_SEARCH_FAILED",
     lfgListSearchResultUpdated = "LFG_LIST_SEARCH_RESULT_UPDATED",
     lfgListSearchResultsReceived = "LFG_LIST_SEARCH_RESULTS_RECEIVED",
+    lfgListShowSearch = "LFG_LIST_SHOW_SEARCH",
     lfgListUpdateSearchResults = "LFG_LIST_UPDATE_SEARCH_RESULTS",
     lfgLockInfoReceived = "LFG_LOCK_INFO_RECEIVED",
     lfgOfferContinue = "LFG_OFFER_CONTINUE",
@@ -8157,6 +8495,7 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
     mailFailed = "MAIL_FAILED",
     mailInboxUpdate = "MAIL_INBOX_UPDATE",
     mailLockSendItems = "MAIL_LOCK_SEND_ITEMS",
+    mailOpenAllCanceled = "MAIL_OPEN_ALL_CANCELED",
     mailSendInfoUpdate = "MAIL_SEND_INFO_UPDATE",
     mailSendSuccess = "MAIL_SEND_SUCCESS",
     mailShow = "MAIL_SHOW",
@@ -8314,12 +8653,13 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
     petJournalPetRevoked = "PET_JOURNAL_PET_REVOKED",
     petJournalPetsHealed = "PET_JOURNAL_PETS_HEALED",
     petJournalTrapLevelSet = "PET_JOURNAL_TRAP_LEVEL_SET",
+    petOrderMoveToPendingChanged = "PET_ORDER_MOVE_TO_PENDING_CHANGED",
     petSpecializationChanged = "PET_SPECIALIZATION_CHANGED",
-    petSpellPowerUpdate = "PET_SPELL_POWER_UPDATE",
     petStableClosed = "PET_STABLE_CLOSED",
     petStableFavoritesUpdated = "PET_STABLE_FAVORITES_UPDATED",
     petStableShow = "PET_STABLE_SHOW",
     petStableUpdate = "PET_STABLE_UPDATE",
+    petStatsUpdate = "PET_STATS_UPDATE",
     petUiClose = "PET_UI_CLOSE",
     petUiUpdate = "PET_UI_UPDATE",
     petitionClosed = "PETITION_CLOSED",
@@ -8375,6 +8715,7 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
     playerMaxLevelUpdate = "PLAYER_MAX_LEVEL_UPDATE",
     playerMoney = "PLAYER_MONEY",
     playerMountDisplayChanged = "PLAYER_MOUNT_DISPLAY_CHANGED",
+    playerPvpFlagChanged = "PLAYER_PVP_FLAG_CHANGED",
     playerPvpKillsChanged = "PLAYER_PVP_KILLS_CHANGED",
     playerPvpRankChanged = "PLAYER_PVP_RANK_CHANGED",
     playerPvpTalentUpdate = "PLAYER_PVP_TALENT_UPDATE",
@@ -8525,20 +8866,26 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
     screenshotFailed = "SCREENSHOT_FAILED",
     screenshotStarted = "SCREENSHOT_STARTED",
     screenshotSucceeded = "SCREENSHOT_SUCCEEDED",
+    scribeClassChanged = "SCRIBE_CLASS_CHANGED",
     scriptedAnimationsUpdate = "SCRIPTED_ANIMATIONS_UPDATE",
     searchDbLoaded = "SEARCH_DB_LOADED",
     secureTransferCancel = "SECURE_TRANSFER_CANCEL",
-    secureTransferConfirmHousingPurchase = "SECURE_TRANSFER_CONFIRM_HOUSING_PURCHASE",
     secureTransferConfirmSendMail = "SECURE_TRANSFER_CONFIRM_SEND_MAIL",
+    secureTransferConfirmTakeMailMoney = "SECURE_TRANSFER_CONFIRM_TAKE_MAIL_MONEY",
     secureTransferConfirmTradeAccept = "SECURE_TRANSFER_CONFIRM_TRADE_ACCEPT",
+    secureTransferConfirmVcProductPurchase = "SECURE_TRANSFER_CONFIRM_VC_PRODUCT_PURCHASE",
     secureTransferHousingCurrencyPurchaseConfirmation = "SECURE_TRANSFER_HOUSING_CURRENCY_PURCHASE_CONFIRMATION",
     selectedLoadoutChanged = "SELECTED_LOADOUT_CHANGED",
     selfResSpellChanged = "SELF_RES_SPELL_CHANGED",
     sendMailCodChanged = "SEND_MAIL_COD_CHANGED",
     sendMailMoneyChanged = "SEND_MAIL_MONEY_CHANGED",
     setSeenProducts = "SET_SEEN_PRODUCTS",
+    settingsHeaderTextUpdate = "SETTINGS_HEADER_TEXT_UPDATE",
     settingsLoaded = "SETTINGS_LOADED",
     settingsPanelOpen = "SETTINGS_PANEL_OPEN",
+    shardTransfer = "SHARD_TRANSFER",
+    shardTransferCancelled = "SHARD_TRANSFER_CANCELLED",
+    shardTransferImminent = "SHARD_TRANSFER_IMMINENT",
     shipmentCrafterClosed = "SHIPMENT_CRAFTER_CLOSED",
     shipmentCrafterInfo = "SHIPMENT_CRAFTER_INFO",
     shipmentCrafterOpened = "SHIPMENT_CRAFTER_OPENED",
@@ -8573,6 +8920,7 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
     socialQueueConfigUpdated = "SOCIAL_QUEUE_CONFIG_UPDATED",
     socialQueueUpdate = "SOCIAL_QUEUE_UPDATE",
     socialUIFriendsListSystemStatusUpdated = "SOCIAL_UI_FRIENDS_LIST_SYSTEM_STATUS_UPDATED",
+    socialUIRaidListSystemStatusUpdated = "SOCIAL_UI_RAID_LIST_SYSTEM_STATUS_UPDATED",
     socialUISocialQueueSystemStatusUpdated = "SOCIAL_UI_SOCIAL_QUEUE_SYSTEM_STATUS_UPDATED",
     socialUISystemStatusUpdated = "SOCIAL_UI_SYSTEM_STATUS_UPDATED",
     socketInfoAccept = "SOCKET_INFO_ACCEPT",
@@ -8639,6 +8987,7 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
     systemVisibilityChanged = "SYSTEM_VISIBILITY_CHANGED",
     tabardCansaveChanged = "TABARD_CANSAVE_CHANGED",
     tabardSavePending = "TABARD_SAVE_PENDING",
+    taleRunClearResult = "TALE_RUN_CLEAR_RESULT",
     talentsInvoluntarilyReset = "TALENTS_INVOLUNTARILY_RESET",
     talkingheadClose = "TALKINGHEAD_CLOSE",
     talkingheadRequested = "TALKINGHEAD_REQUESTED",
@@ -8748,6 +9097,7 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
     uiInfoMessage = "UI_INFO_MESSAGE",
     uiModelSceneInfoUpdated = "UI_MODEL_SCENE_INFO_UPDATED",
     uiScaleChanged = "UI_SCALE_CHANGED",
+    ultimateProgressChanged = "ULTIMATE_PROGRESS_CHANGED",
     unitAbsorbAmountChanged = "UNIT_ABSORB_AMOUNT_CHANGED",
     unitAreaChanged = "UNIT_AREA_CHANGED",
     unitArenaCooldownsUpdate = "UNIT_ARENA_COOLDOWNS_UPDATE",
@@ -8775,6 +9125,7 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
     unitFlags = "UNIT_FLAGS",
     unitFormChanged = "UNIT_FORM_CHANGED",
     unitGuildLevel = "UNIT_GUILD_LEVEL",
+    unitHappiness = "UNIT_HAPPINESS",
     unitHealAbsorbAmountChanged = "UNIT_HEAL_ABSORB_AMOUNT_CHANGED",
     unitHealPrediction = "UNIT_HEAL_PREDICTION",
     unitHealth = "UNIT_HEALTH",
@@ -8791,6 +9142,7 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
     unitOtherPartyChanged = "UNIT_OTHER_PARTY_CHANGED",
     unitPet = "UNIT_PET",
     unitPetExperience = "UNIT_PET_EXPERIENCE",
+    unitPetTrainingPoints = "UNIT_PET_TRAINING_POINTS",
     unitPhase = "UNIT_PHASE",
     unitPingPinAdded = "UNIT_PING_PIN_ADDED",
     unitPingPinRemoved = "UNIT_PING_PIN_REMOVED",
@@ -8884,13 +9236,14 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
     viewedTransmogOutfitChanged = "VIEWED_TRANSMOG_OUTFIT_CHANGED",
     viewedTransmogOutfitSecondarySlotsChanged = "VIEWED_TRANSMOG_OUTFIT_SECONDARY_SLOTS_CHANGED",
     viewedTransmogOutfitSituationsChanged = "VIEWED_TRANSMOG_OUTFIT_SITUATIONS_CHANGED",
+    viewedTransmogOutfitSlotOptionChanged = "VIEWED_TRANSMOG_OUTFIT_SLOT_OPTION_CHANGED",
     viewedTransmogOutfitSlotRefresh = "VIEWED_TRANSMOG_OUTFIT_SLOT_REFRESH",
     viewedTransmogOutfitSlotSaveSuccess = "VIEWED_TRANSMOG_OUTFIT_SLOT_SAVE_SUCCESS",
-    viewedTransmogOutfitSlotWeaponOptionChanged = "VIEWED_TRANSMOG_OUTFIT_SLOT_WEAPON_OPTION_CHANGED",
     vignetteMinimapUpdated = "VIGNETTE_MINIMAP_UPDATED",
     vignettesUpdated = "VIGNETTES_UPDATED",
     voiceChatActiveInputDeviceUpdated = "VOICE_CHAT_ACTIVE_INPUT_DEVICE_UPDATED",
     voiceChatActiveOutputDeviceUpdated = "VOICE_CHAT_ACTIVE_OUTPUT_DEVICE_UPDATED",
+    voiceChatActiveVoiceProviderChanged = "VOICE_CHAT_ACTIVE_VOICE_PROVIDER_CHANGED",
     voiceChatAudioCaptureEnergy = "VOICE_CHAT_AUDIO_CAPTURE_ENERGY",
     voiceChatAudioCaptureStarted = "VOICE_CHAT_AUDIO_CAPTURE_STARTED",
     voiceChatAudioCaptureStopped = "VOICE_CHAT_AUDIO_CAPTURE_STOPPED",
@@ -8918,6 +9271,7 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
     voiceChatCommunicationModeChanged = "VOICE_CHAT_COMMUNICATION_MODE_CHANGED",
     voiceChatConnectionSuccess = "VOICE_CHAT_CONNECTION_SUCCESS",
     voiceChatDeafenedChanged = "VOICE_CHAT_DEAFENED_CHANGED",
+    voiceChatDiscordSettingsUpdated = "VOICE_CHAT_DISCORD_SETTINGS_UPDATED",
     voiceChatError = "VOICE_CHAT_ERROR",
     voiceChatInputDevicesUpdated = "VOICE_CHAT_INPUT_DEVICES_UPDATED",
     voiceChatLogin = "VOICE_CHAT_LOGIN",
@@ -8936,6 +9290,8 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
     voiceChatTtsSpeakTextUpdate = "VOICE_CHAT_TTS_SPEAK_TEXT_UPDATE",
     voiceChatTtsVoicesUpdate = "VOICE_CHAT_TTS_VOICES_UPDATE",
     voiceChatVadSettingsUpdated = "VOICE_CHAT_VAD_SETTINGS_UPDATED",
+    voiceChatVoiceProviderChanged = "VOICE_CHAT_VOICE_PROVIDER_CHANGED",
+    voiceChatVoiceProvidersAvailableChanged = "VOICE_CHAT_VOICE_PROVIDERS_AVAILABLE_CHANGED",
     voteKickReasonNeeded = "VOTE_KICK_REASON_NEEDED",
     walkInDataUpdate = "WALK_IN_DATA_UPDATE",
     warModeStatusUpdate = "WAR_MODE_STATUS_UPDATE",
@@ -8976,6 +9332,8 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
     target.accountSequenceCacheType = source.AccountSequenceCacheType
     target.accountTransType = source.AccountTransType
     target.actionBarOrientation = source.ActionBarOrientation
+    target.actionBarSet = source.ActionBarSet
+    target.actionBarSpellTypeRestriction = source.ActionBarSpellTypeRestriction
     target.actionBarVisibleSetting = source.ActionBarVisibleSetting
     target.addOnEnableState = source.AddOnEnableState
     target.addOnPerformanceMessageType = source.AddOnPerformanceMessageType
@@ -9014,6 +9372,7 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
     target.bagsOrientation = source.BagsOrientation
     target.balanceType = source.BalanceType
     target.bankLockedReason = source.BankLockedReason
+    target.bankTabFlags = source.BankTabFlags
     target.bankType = source.BankType
     target.base64Variant = source.Base64Variant
     target.battleNetFriendLevel = source.BattleNetFriendLevel
@@ -9022,10 +9381,12 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
     target.battlePetBreedQuality = source.BattlePetBreedQuality
     target.battlePetOwner = source.BattlePetOwner
     target.battlePetSources = source.BattlePetSources
+    target.bc26Experience = source.Bc26Experience
     target.bindingContext = source.BindingContext
     target.bindingSet = source.BindingSet
     target.bnetAccountFlag = source.BnetAccountFlag
     target.bonusStatIndex = source.BonusStatIndex
+    target.bossFrameGrowDirection = source.BossFrameGrowDirection
     target.brawlType = source.BrawlType
     target.breakType = source.BreakType
     target.bulkPurchaseResult = source.BulkPurchaseResult
@@ -9052,6 +9413,7 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
     target.campaignState = source.CampaignState
     target.canRedeemTokenForBalanceResult = source.CanRedeemTokenForBalanceResult
     target.captureBarWidgetFillDirectionType = source.CaptureBarWidgetFillDirectionType
+    target.catalogShopPurchaseEligibility = source.CatalogShopPurchaseEligibility
     target.causeofdeath = source.Causeofdeath
     target.causeofdeathFlags = source.CauseofdeathFlags
     target.challengeModeHistoryFlags = source.ChallengeModeHistoryFlags
@@ -9069,6 +9431,7 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
     target.chrCustomizationCategoryFlag = source.ChrCustomizationCategoryFlag
     target.chrCustomizationOptionType = source.ChrCustomizationOptionType
     target.chrModelFeatureFlags = source.ChrModelFeatureFlags
+    target.chrSpecializationFlags = source.ChrSpecializationFlags
     target.cinematicType = source.CinematicType
     target.clickBindingInteraction = source.ClickBindingInteraction
     target.clickBindingType = source.ClickBindingType
@@ -9180,6 +9543,7 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
     target.currencyNameStyle = source.CurrencyNameStyle
     target.currencyTokenCategoryFlags = source.CurrencyTokenCategoryFlags
     target.currencyType = source.CurrencyType
+    target.currencyWeeksFromStartOption = source.CurrencyWeeksFromStartOption
     target.cursorStyle = source.CursorStyle
     target.cursormode = source.Cursormode
     target.customAuraButtonDispelTypeStealableFilter =
@@ -9202,8 +9566,14 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
     target.dateTimeStyle = source.DateTimeStyle
     target.disableAccountProfilesFlags = source.DisableAccountProfilesFlags
     target.discordAccountType = source.DiscordAccountType
+    target.discordChannelID = source.DiscordChannelID
     target.discordDisplayNameType = source.DiscordDisplayNameType
+    target.discordGuildID = source.DiscordGuildID
     target.discordGuildSettings = source.DiscordGuildSettings
+    target.discordID = source.DiscordID
+    target.discordLobbyID = source.DiscordLobbyID
+    target.discordMemberID = source.DiscordMemberID
+    target.discordMessageID = source.DiscordMessageID
     target.durationTextBindingProperty = source.DurationTextBindingProperty
     target.durationTimeModifier = source.DurationTimeModifier
     target.editModeAccountSetting = source.EditModeAccountSetting
@@ -9221,8 +9591,13 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
     target.editModeDurabilityFrameSetting = source.EditModeDurabilityFrameSetting
     target.editModeEncounterEventsSetting = source.EditModeEncounterEventsSetting
     target.editModeEncounterEventsSystemIndices = source.EditModeEncounterEventsSystemIndices
+    target.editModeGamepadMainActionBarSetting = source.EditModeGamepadMainActionBarSetting
+    target.editModeGroupFinderSetting = source.EditModeGroupFinderSetting
     target.editModeLayoutType = source.EditModeLayoutType
     target.editModeLossOfControlSetting = source.EditModeLossOfControlSetting
+    target.editModeMainActionBarEndCapSetting = source.EditModeMainActionBarEndCapSetting
+    target.editModeMainActionBarEndCapSystemIndices =
+      source.EditModeMainActionBarEndCapSystemIndices
     target.editModeMicroMenuSetting = source.EditModeMicroMenuSetting
     target.editModeMinimapSetting = source.EditModeMinimapSetting
     target.editModeObjectiveTrackerSetting = source.EditModeObjectiveTrackerSetting
@@ -9232,6 +9607,9 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
     target.editModeSettingDisplayType = source.EditModeSettingDisplayType
     target.editModeStatusTrackingBarSetting = source.EditModeStatusTrackingBarSetting
     target.editModeStatusTrackingBarSystemIndices = source.EditModeStatusTrackingBarSystemIndices
+    target.editModeSwingTimerSetting = source.EditModeSwingTimerSetting
+    target.editModeSwingTimerSystemIndices = source.EditModeSwingTimerSystemIndices
+    target.editModeSwingTimerVisibility = source.EditModeSwingTimerVisibility
     target.editModeSystem = source.EditModeSystem
     target.editModeTimerBarsSetting = source.EditModeTimerBarsSetting
     target.editModeUnitFrameSetting = source.EditModeUnitFrameSetting
@@ -9262,6 +9640,7 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
     target.eventToastDisplayType = source.EventToastDisplayType
     target.eventToastEventType = source.EventToastEventType
     target.eventToastFlags = source.EventToastFlags
+    target.evictionType = source.EvictionType
     target.excludedCensorSources = source.ExcludedCensorSources
     target.expansionLandingPageType = source.ExpansionLandingPageType
     target.expansionLevel = source.ExpansionLevel
@@ -9270,11 +9649,15 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
     target.followerAbilityCastResult = source.FollowerAbilityCastResult
     target.fontStringScaleAnimationMode = source.FontStringScaleAnimationMode
     target.forbiddenAspect = source.ForbiddenAspect
+    target.foreverExperiencePreset = source.ForeverExperiencePreset
     target.fragmentID = source.FragmentID
     target.frameTutorialAccount = source.FrameTutorialAccount
     target.gamePadPowerLevel = source.GamePadPowerLevel
     target.gameRuleFlags = source.GameRuleFlags
     target.gameRuleType = source.GameRuleType
+    target.gamepadPossessBarOverride = source.GamepadPossessBarOverride
+    target.gamepadStanceBarOverride = source.GamepadStanceBarOverride
+    target.gamepadTargetingFilters = source.GamepadTargetingFilters
     target.garrAutoBoardIndex = source.GarrAutoBoardIndex
     target.garrAutoCombatSpellTutorialFlag = source.GarrAutoCombatSpellTutorialFlag
     target.garrAutoCombatTutorial = source.GarrAutoCombatTutorial
@@ -9362,9 +9745,11 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
     target.iconAndTextWidgetState = source.IconAndTextWidgetState
     target.iconState = source.IconState
     target.imageSharingResult = source.ImageSharingResult
+    target.inclusionMode = source.InclusionMode
     target.initiativeMilestoneFlags = source.InitiativeMilestoneFlags
     target.initiativeRewardFlags = source.InitiativeRewardFlags
     target.inputContext = source.InputContext
+    target.inputDeviceInterfaceType = source.InputDeviceInterfaceType
     target.inventoryType = source.InventoryType
     target.itemArmorSubclass = source.ItemArmorSubclass
     target.itemBind = source.ItemBind
@@ -9372,15 +9757,19 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
     target.itemCollectionType = source.ItemCollectionType
     target.itemCommodityStatus = source.ItemCommodityStatus
     target.itemConsumableSubclass = source.ItemConsumableSubclass
+    target.itemContainerSubclass = source.ItemContainerSubclass
     target.itemConversionFlags = source.ItemConversionFlags
+    target.itemDiscoverySource = source.ItemDiscoverySource
     target.itemDisplayTextDisplayStyle = source.ItemDisplayTextDisplayStyle
     target.itemDisplayTooltipEnabledType = source.ItemDisplayTooltipEnabledType
+    target.itemEnchantType = source.ItemEnchantType
     target.itemGemColor = source.ItemGemColor
     target.itemGemSubclass = source.ItemGemSubclass
     target.itemHousingSubclass = source.ItemHousingSubclass
     target.itemMiscellaneousSubclass = source.ItemMiscellaneousSubclass
     target.itemProfessionSubclass = source.ItemProfessionSubclass
     target.itemQuality = source.ItemQuality
+    target.itemQuiverSubclass = source.ItemQuiverSubclass
     target.itemReagentSubclass = source.ItemReagentSubclass
     target.itemRecipeSubclass = source.ItemRecipeSubclass
     target.itemRecraftFlags = source.ItemRecraftFlags
@@ -9407,6 +9796,7 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
     target.leavePartyConfirmReason = source.LeavePartyConfirmReason
     target.lfgEntryGeneralPlaystyle = source.LFGEntryGeneralPlaystyle
     target.lfgEntryPlaystyle = source.LFGEntryPlaystyle
+    target.lfgEntryVoiceMode = source.LFGEntryVoiceMode
     target.lfgListDisplayType = source.LFGListDisplayType
     target.lfgListFilter = source.LFGListFilter
     target.lfgRole = source.LFGRole
@@ -9423,6 +9813,8 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
     target.loginTicketLicenses = source.LoginTicketLicenses
     target.lootMethod = source.LootMethod
     target.lootMethodStyles = source.LootMethodStyles
+    target.lootRollDisabledReason = source.LootRollDisabledReason
+    target.lootRollType = source.LootRollType
     target.lootSlotType = source.LootSlotType
     target.luaCurveType = source.LuaCurveType
     target.majorFactionFeatureAbility = source.MajorFactionFeatureAbility
@@ -9442,6 +9834,7 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
     target.modelSceneType = source.ModelSceneType
     target.mountType = source.MountType
     target.mountTypeFlag = source.MountTypeFlag
+    target.namePartType = source.NamePartType
     target.namePlateCastBarDisplay = source.NamePlateCastBarDisplay
     target.namePlateEnemyNpcAuraDisplay = source.NamePlateEnemyNpcAuraDisplay
     target.namePlateEnemyPlayerAuraDisplay = source.NamePlateEnemyPlayerAuraDisplay
@@ -9453,6 +9846,7 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
     target.namePlateStyle = source.NamePlateStyle
     target.namePlateThreatDisplay = source.NamePlateThreatDisplay
     target.namePlateType = source.NamePlateType
+    target.namegenType = source.NamegenType
     target.navigationState = source.NavigationState
     target.neighborhoodFlags = source.NeighborhoodFlags
     target.neighborhoodInitiativeChestResult = source.NeighborhoodInitiativeChestResult
@@ -9511,6 +9905,7 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
     target.playerInteractionType = source.PlayerInteractionType
     target.playerMentorshipApplicationResult = source.PlayerMentorshipApplicationResult
     target.playerMentorshipStatus = source.PlayerMentorshipStatus
+    target.playerSwingType = source.PlayerSwingType
     target.plunderstormQueueState = source.PlunderstormQueueState
     target.pluralType = source.PluralType
     target.powerType = source.PowerType
@@ -9555,8 +9950,9 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
     target.raidDispelDisplayType = source.RaidDispelDisplayType
     target.raidDispelOverlayType = source.RaidDispelOverlayType
     target.raidGroupDisplayType = source.RaidGroupDisplayType
+    target.raidMarkerSpellids = source.RaidMarkerSpellids
     target.rcoCloseReason = source.RcoCloseReason
-    target.recentAlliesFriendTag = source.RecentAlliesFriendTag
+    target.recentAlliesInteractionCategoryFilter = source.RecentAlliesInteractionCategoryFilter
     target.recentAllyPinResult = source.RecentAllyPinResult
     target.recipeRequirementType = source.RecipeRequirementType
     target.recruitAFriendFailure = source.RecruitAFriendFailure
@@ -9573,9 +9969,11 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
     target.reportThrottleType = source.ReportThrottleType
     target.reportType = source.ReportType
     target.reputationSortType = source.ReputationSortType
+    target.respecType = source.RespecType
     target.restrictPingsTo = source.RestrictPingsTo
     target.restrictionType = source.RestrictionType
     target.retroactiveDecorRewardFlags = source.RetroactiveDecorRewardFlags
+    target.rewardsShopFlags = source.RewardsShopFlags
     target.rolodexContactMigrationResult = source.RolodexContactMigrationResult
     target.rolodexContextLevelType = source.RolodexContextLevelType
     target.rolodexDbFlags = source.RolodexDbFlags
@@ -9586,6 +9984,7 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
     target.runeforgePowerState = source.RuneforgePowerState
     target.screenLocationType = source.ScreenLocationType
     target.screenshotSource = source.ScreenshotSource
+    target.scribeClassID = source.ScribeClassID
     target.scriptBindingType = source.ScriptBindingType
     target.scriptObjectAccessRestriction = source.ScriptObjectAccessRestriction
     target.scriptObjectMetatable = source.ScriptObjectMetatable
@@ -9595,6 +9994,8 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
     target.scriptedAnimationFlags = source.ScriptedAnimationFlags
     target.scriptedAnimationTrajectory = source.ScriptedAnimationTrajectory
     target.scrubStringFlags = source.ScrubStringFlags
+    target.sdToggleUsageLocation = source.SdToggleUsageLocation
+    target.sdToggleUsageLocationUI = source.SdToggleUsageLocationUI
     target.seasonID = source.SeasonID
     target.secondsFormatterAbbreviation = source.SecondsFormatterAbbreviation
     target.secondsFormatterInterval = source.SecondsFormatterInterval
@@ -9602,6 +10003,7 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
     target.secondsFormatterRounding = source.SecondsFormatterRounding
     target.secrecyLevel = source.SecrecyLevel
     target.secretAspect = source.SecretAspect
+    target.selectionConstraint = source.SelectionConstraint
     target.selfResurrectOptionType = source.SelfResurrectOptionType
     target.sendAddonMessageResult = source.SendAddonMessageResult
     target.sendReportResult = source.SendReportResult
@@ -9622,6 +10024,8 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
     target.soulbindConduitTransactionType = source.SoulbindConduitTransactionType
     target.soulbindConduitType = source.SoulbindConduitType
     target.soulbindNodeState = source.SoulbindNodeState
+    target.specGroup = source.SpecGroup
+    target.specializationSpellsFlag = source.SpecializationSpellsFlag
     target.specializationSystem = source.SpecializationSystem
     target.spellAuraVisibilityType = source.SpellAuraVisibilityType
     target.spellBookItemType = source.SpellBookItemType
@@ -9674,6 +10078,7 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
     target.tradeskillRecipeType = source.TradeskillRecipeType
     target.tradeskillRelativeDifficulty = source.TradeskillRelativeDifficulty
     target.tradeskillSlotDataType = source.TradeskillSlotDataType
+    target.trainerType = source.TrainerType
     target.traitCombatConfigFlags = source.TraitCombatConfigFlags
     target.traitCondFlag = source.TraitCondFlag
     target.traitConditionType = source.TraitConditionType
@@ -9692,6 +10097,7 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
     target.traitSystemFlag = source.TraitSystemFlag
     target.traitSystemVariationType = source.TraitSystemVariationType
     target.traitTreeFlag = source.TraitTreeFlag
+    target.traitVendorResetFailureReason = source.TraitVendorResetFailureReason
     target.transformManipulatorAxis = source.TransformManipulatorAxis
     target.transformManipulatorControlState = source.TransformManipulatorControlState
     target.transformManipulatorDirection = source.TransformManipulatorDirection
@@ -9721,6 +10127,7 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
     target.transmogOutfitTransactionType = source.TransmogOutfitTransactionType
     target.transmogPendingType = source.TransmogPendingType
     target.transmogSearchType = source.TransmogSearchType
+    target.transmogSettingsUpdateType = source.TransmogSettingsUpdateType
     target.transmogSituation = source.TransmogSituation
     target.transmogSituationFlags = source.TransmogSituationFlags
     target.transmogSituationGroupFlags = source.TransmogSituationGroupFlags
@@ -9786,6 +10193,7 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
     target.urlTextureResult = source.UrlTextureResult
     target.validateNameResult = source.ValidateNameResult
     target.vasTransactionPurchaseResult = source.VasTransactionPurchaseResult
+    target.vcInitState = source.VcInitState
     target.viewArenaSize = source.ViewArenaSize
     target.viewRaidSize = source.ViewRaidSize
     target.vignetteObjectiveType = source.VignetteObjectiveType
@@ -9793,6 +10201,7 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
     target.visualAlertType = source.VisualAlertType
     target.voiceChannelErrorReason = source.VoiceChannelErrorReason
     target.voiceChatStatusCode = source.VoiceChatStatusCode
+    target.voiceProviderID = source.VoiceProviderID
     target.voiceTtsStatusCode = source.VoiceTtsStatusCode
     target.warbandEventState = source.WarbandEventState
     target.warbandGroupFlags = source.WarbandGroupFlags
@@ -9837,6 +10246,9 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
     target.caaConstants = source.CAAConstants
     target.calendarGetEventTypeConstants = source.CalendarGetEventTypeConstants
     target.callings = source.Callings
+    target.catalogShopAchievementServerValidationConstants =
+      source.CatalogShopAchievementServerValidationConstants
+    target.catalogShopConsts = source.CatalogShopConsts
     target.catalogShopVirtualCurrencyConstants = source.CatalogShopVirtualCurrencyConstants
     target.charCustomizationConstants = source.CharCustomizationConstants
     target.chatFrameConstants = source.ChatFrameConstants
@@ -9848,13 +10260,15 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
     target.cooldownViewerUIConstants = source.CooldownViewerUIConstants
     target.craftingOrderConsts = source.CraftingOrderConsts
     target.currencyConsts = source.CurrencyConsts
+    target.deathRecapConsts = source.DeathRecapConsts
     target.delvesConsts = source.DelvesConsts
     target.editModeConsts = source.EditModeConsts
-    target.editModeLayoutConsts = source.EditModeLayoutConsts
+    target.editModeLayoutConstsMainline = source.EditModeLayoutConsts_Mainline
     target.encodingLimits = source.EncodingLimits
     target.encounterTimelineEventConstants = source.EncounterTimelineEventConstants
     target.encounterTimelineIconMasks = source.EncounterTimelineIconMasks
     target.eventScheduler = source.EventScheduler
+    target.gamepadActionBarConstants = source.GamepadActionBarConstants
     target.groupBuffUIConstants = source.GroupBuffUIConstants
     target.housingCatalogConsts = source.HousingCatalogConsts
     target.housingConsts = source.HousingConsts
@@ -9863,24 +10277,29 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
     target.itemConstsMainline = source.ItemConsts_Mainline
     target.itemWeaponSubclassConstants = source.ITEM_WEAPON_SUBCLASSConstants
     target.itemWeaponSubclassConstantsPostMists = source.ITEM_WEAPON_SUBCLASSConstants_PostMists
-    target.levelConstsExposed = source.LevelConstsExposed
+    target.legacyConsts = source.LegacyConsts
+    target.levelConstsExposedRetailAndClassic = source.LevelConstsExposed_RetailAndClassic
     target.lfgConstsExposed = source.LFGConstsExposed
     target.lfgRoleConstants = source.LFG_ROLEConstants
-    target.lootConsts = source.LootConsts
+    target.lootConstsRetail = source.LootConsts_Retail
     target.lossOfControlConsts = source.LossOfControlConsts
     target.macroConsts = source.MacroConsts
     target.majorFactionsConsts = source.MajorFactionsConsts
     target.moneyFormattingConstants = source.MoneyFormattingConstants
     target.mountDynamicFlightConsts = source.MountDynamicFlightConsts
     target.partyCountdownConstants = source.PartyCountdownConstants
-    target.petConsts = source.PetConsts
-    target.petConstsPostCata = source.PetConsts_PostCata
+    target.petBattleConsts = source.PetBattleConsts
+    target.petConstsRetail = source.PetConsts_Retail
     target.professionConsts = source.ProfessionConsts
     target.pvpInfoConsts = source.PvpInfoConsts
+    target.questLogConstsMainlineRetail = source.QuestLogConstsMainlineRetail
     target.questWatchConsts = source.QuestWatchConsts
+    target.raidMarkerConsts = source.RaidMarkerConsts
     target.recentAlliesConsts = source.RecentAlliesConsts
+    target.rewardsVcConstants = source.RewardsVcConstants
     target.spellBookSpellIDs = source.SpellBookSpellIDs
     target.spellCooldownConsts = source.SpellCooldownConsts
+    target.spellUIConsts = source.SpellUIConsts
     target.talentConsts = source.TalentConsts
     target.talentTierConstants = source.TalentTierConstants
     target.tieredEntranceConsts = source.TieredEntranceConsts
@@ -9894,4 +10313,4 @@ ApiKit:RegisterFlavor("ptr", function(api, host)
     target.unitEventConstants = source.UnitEventConstants
     target.unitPowerSpellIDs = source.UnitPowerSpellIDs
   end
-end, { version = "12.1.5", build = 69952 })
+end, { version = "12.1.7", build = 70892 })

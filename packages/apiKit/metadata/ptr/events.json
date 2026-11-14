@@ -129,6 +129,40 @@
     },
     {
       "documentation": [
+        "Used in conjunction with EnableActionCombatActionRangeCheck to inform the UI when an action goes in or out of action combat range with its current target."
+      ],
+      "literalName": "ACTION_COMBAT_ACTION_RANGE_CHECK_UPDATE",
+      "name": "ActionCombatActionRangeCheckUpdate",
+      "payload": [
+        {
+          "name": "slot",
+          "nilable": false,
+          "type": "luaIndex"
+        },
+        {
+          "documentation": [
+            "Whether or not the current target is in range of the action. Should not be used if the 'checksRange' parameter is false."
+          ],
+          "name": "isInRange",
+          "nilable": false,
+          "type": "bool"
+        },
+        {
+          "documentation": [
+            "Can be false if a range check was not made for any reason, for example there is not a current target."
+          ],
+          "name": "checksRange",
+          "nilable": false,
+          "type": "bool"
+        }
+      ],
+      "source": "ActionBarFrameDocumentation.lua",
+      "synchronous": true,
+      "system": "ActionBar",
+      "wrapper": "actionCombatActionRangeCheckUpdate"
+    },
+    {
+      "documentation": [
         "Used in conjunction with EnableActionRangeCheck to inform the UI when an action goes in or out of range with its current target."
       ],
       "literalName": "ACTION_RANGE_CHECK_UPDATE",
@@ -666,6 +700,14 @@
       "system": "AdventureJournal",
       "unique": true,
       "wrapper": "ajRewardDataReceived"
+    },
+    {
+      "literalName": "ALERT_AGE_VERIFICATION_RESTRICTED",
+      "name": "AlertAgeVerificationRestricted",
+      "source": "SocialRestrictionsDocumentation.lua",
+      "synchronous": true,
+      "system": "SocialRestrictions",
+      "wrapper": "alertAgeVerificationRestricted"
     },
     {
       "literalName": "ALERT_REGIONAL_CHAT_DISABLED",
@@ -2058,6 +2100,46 @@
       "synchronous": true,
       "system": "PetJournalInfo",
       "wrapper": "battlepetForceNameDeclension"
+    },
+    {
+      "literalName": "BC_26_COLD_SWAP_FEATURE_ENABLED_CHANGED",
+      "name": "Bc26ColdSwapFeatureEnabledChanged",
+      "payload": [
+        {
+          "name": "newEnabled",
+          "nilable": false,
+          "type": "bool"
+        },
+        {
+          "name": "oldEnabled",
+          "nilable": false,
+          "type": "bool"
+        }
+      ],
+      "source": "BlizzCon2026Documentation.lua",
+      "system": "BlizzCon2026Scripts",
+      "unique": true,
+      "wrapper": "bc26ColdSwapFeatureEnabledChanged"
+    },
+    {
+      "literalName": "BC_26_EXPERIENCE_CHANGED",
+      "name": "Bc26ExperienceChanged",
+      "payload": [
+        {
+          "name": "newExperience",
+          "nilable": false,
+          "type": "Bc26Experience"
+        },
+        {
+          "name": "oldExperience",
+          "nilable": false,
+          "type": "Bc26Experience"
+        }
+      ],
+      "source": "BlizzCon2026Documentation.lua",
+      "system": "BlizzCon2026Scripts",
+      "unique": true,
+      "wrapper": "bc26ExperienceChanged"
     },
     {
       "literalName": "BEHAVIORAL_NOTIFICATION",
@@ -6509,6 +6591,142 @@
       "synchronous": true,
       "system": "ChatInfo",
       "wrapper": "chatMsgChannelNoticeUser"
+    },
+    {
+      "literalName": "CHAT_MSG_COLLECTED_APPEARANCE",
+      "name": "ChatMsgCollectedAppearance",
+      "payload": [
+        {
+          "name": "text",
+          "nilable": false,
+          "type": "cstring"
+        },
+        {
+          "name": "playerName",
+          "nilable": false,
+          "type": "cstring"
+        },
+        {
+          "flags": [
+            "NeverSecret"
+          ],
+          "name": "languageName",
+          "nilable": false,
+          "type": "cstring"
+        },
+        {
+          "flags": [
+            "NeverSecret"
+          ],
+          "name": "channelName",
+          "nilable": false,
+          "type": "cstring"
+        },
+        {
+          "name": "playerName2",
+          "nilable": false,
+          "type": "cstring"
+        },
+        {
+          "flags": [
+            "NeverSecret"
+          ],
+          "name": "specialFlags",
+          "nilable": false,
+          "type": "cstring"
+        },
+        {
+          "flags": [
+            "NeverSecret"
+          ],
+          "name": "zoneChannelID",
+          "nilable": false,
+          "type": "number"
+        },
+        {
+          "flags": [
+            "NeverSecret"
+          ],
+          "name": "channelIndex",
+          "nilable": false,
+          "type": "number"
+        },
+        {
+          "flags": [
+            "NeverSecret"
+          ],
+          "name": "channelBaseName",
+          "nilable": false,
+          "type": "cstring"
+        },
+        {
+          "flags": [
+            "NeverSecret"
+          ],
+          "name": "languageID",
+          "nilable": false,
+          "type": "number"
+        },
+        {
+          "flags": [
+            "NeverSecret"
+          ],
+          "name": "lineID",
+          "nilable": false,
+          "type": "number"
+        },
+        {
+          "name": "guid",
+          "nilable": false,
+          "type": "WOWGUID"
+        },
+        {
+          "name": "bnSenderID",
+          "nilable": false,
+          "type": "number"
+        },
+        {
+          "flags": [
+            "NeverSecret"
+          ],
+          "name": "isMobile",
+          "nilable": false,
+          "type": "bool"
+        },
+        {
+          "flags": [
+            "NeverSecret"
+          ],
+          "name": "isSubtitle",
+          "nilable": false,
+          "type": "bool"
+        },
+        {
+          "flags": [
+            "NeverSecret"
+          ],
+          "name": "hideSenderInLetterbox",
+          "nilable": false,
+          "type": "bool"
+        },
+        {
+          "flags": [
+            "NeverSecret"
+          ],
+          "name": "suppressRaidIcons",
+          "nilable": false,
+          "type": "bool"
+        },
+        {
+          "name": "discordInfo",
+          "nilable": false,
+          "type": "DiscordChatInfo"
+        }
+      ],
+      "source": "ChatInfoDocumentation.lua",
+      "synchronous": true,
+      "system": "ChatInfo",
+      "wrapper": "chatMsgCollectedAppearance"
     },
     {
       "literalName": "CHAT_MSG_COMBAT_FACTION_CHANGE",
@@ -15653,6 +15871,11 @@
           "name": "questWarn",
           "nilable": false,
           "type": "number"
+        },
+        {
+          "name": "itemGUID",
+          "nilable": true,
+          "type": "WOWGUID"
         }
       ],
       "source": "ItemDocumentation.lua",
@@ -15688,6 +15911,24 @@
       "synchronous": true,
       "system": "DelvesUI",
       "wrapper": "delvesAccountDataElementChanged"
+    },
+    {
+      "documentation": [
+        "Signaled when the game time transitions between day and night."
+      ],
+      "literalName": "DIEL_CYCLE_CHANGED",
+      "name": "DielCycleChanged",
+      "payload": [
+        {
+          "name": "isDayTime",
+          "nilable": false,
+          "type": "bool"
+        }
+      ],
+      "source": "DateAndTimeDocumentation.lua",
+      "synchronous": true,
+      "system": "DateAndTime",
+      "wrapper": "dielCycleChanged"
     },
     {
       "literalName": "DISABLE_DECLINE_GUILD_INVITE",
@@ -16557,12 +16798,27 @@
       "wrapper": "expandBagBarChanged"
     },
     {
-      "literalName": "EXTERNAL_EVENT_LAUNCH_URL_FAILED",
-      "name": "ExternalEventLaunchUrlFailed",
+      "literalName": "EXTERNAL_EVENT_LAUNCH_URL_RESULT",
+      "name": "ExternalEventLaunchUrlResult",
+      "payload": [
+        {
+          "name": "result",
+          "nilable": false,
+          "type": "bool"
+        }
+      ],
       "source": "ExternalEventURLDocumentation.lua",
       "synchronous": true,
       "system": "ExternalEventURL",
-      "wrapper": "externalEventLaunchUrlFailed"
+      "wrapper": "externalEventLaunchUrlResult"
+    },
+    {
+      "literalName": "EXTERNAL_EVENT_URL_CHANGED",
+      "name": "ExternalEventUrlChanged",
+      "source": "ExternalEventURLDocumentation.lua",
+      "synchronous": true,
+      "system": "ExternalEventURL",
+      "wrapper": "externalEventUrlChanged"
     },
     {
       "literalName": "EXTRA_BROWSE_INFO_RECEIVED",
@@ -16749,6 +17005,14 @@
       "wrapper": "gameModeDisplayModeToggleDisabled"
     },
     {
+      "literalName": "GAME_MODE_EXP_BAR_DATA_UPDATED",
+      "name": "GameModeExpBarDataUpdated",
+      "source": "GameModeExpBarUIDocumentation.lua",
+      "synchronous": true,
+      "system": "GameModeExpBarUI",
+      "wrapper": "gameModeExpBarDataUpdated"
+    },
+    {
       "literalName": "GAME_PAD_ACTIVE_CHANGED",
       "name": "GamePadActiveChanged",
       "payload": [
@@ -16762,6 +17026,21 @@
       "synchronous": true,
       "system": "GamePad",
       "wrapper": "gamePadActiveChanged"
+    },
+    {
+      "literalName": "GAME_PAD_ALLOW_HOVER_EVENTS_WITH_FREE_LOOK_CHANGED",
+      "name": "GamePadAllowHoverEventsWithFreeLookChanged",
+      "payload": [
+        {
+          "name": "enabled",
+          "nilable": false,
+          "type": "bool"
+        }
+      ],
+      "source": "GamePadDocumentation.lua",
+      "synchronous": true,
+      "system": "GamePad",
+      "wrapper": "gamePadAllowHoverEventsWithFreeLookChanged"
     },
     {
       "literalName": "GAME_PAD_CONFIGS_CHANGED",
@@ -16801,6 +17080,54 @@
       "synchronous": true,
       "system": "GamePad",
       "wrapper": "gamePadPowerChanged"
+    },
+    {
+      "literalName": "GAME_RULES_CHANGED",
+      "name": "GameRulesChanged",
+      "source": "GameRulesDocumentation.lua",
+      "synchronous": true,
+      "system": "GameRules",
+      "wrapper": "gameRulesChanged"
+    },
+    {
+      "literalName": "GAMEPAD_POSSESS_BAR_OVERRIDE_CHANGED",
+      "name": "GamepadPossessBarOverrideChanged",
+      "payload": [
+        {
+          "name": "oldOverride",
+          "nilable": false,
+          "type": "GamepadPossessBarOverride"
+        },
+        {
+          "name": "newOverride",
+          "nilable": false,
+          "type": "GamepadPossessBarOverride"
+        }
+      ],
+      "source": "GamepadUIDocumentation.lua",
+      "system": "GamepadUI",
+      "unique": true,
+      "wrapper": "gamepadPossessBarOverrideChanged"
+    },
+    {
+      "literalName": "GAMEPAD_STANCE_BAR_OVERRIDE_CHANGED",
+      "name": "GamepadStanceBarOverrideChanged",
+      "payload": [
+        {
+          "name": "oldOverride",
+          "nilable": false,
+          "type": "GamepadStanceBarOverride"
+        },
+        {
+          "name": "newOverride",
+          "nilable": false,
+          "type": "GamepadStanceBarOverride"
+        }
+      ],
+      "source": "GamepadUIDocumentation.lua",
+      "system": "GamepadUI",
+      "unique": true,
+      "wrapper": "gamepadStanceBarOverrideChanged"
     },
     {
       "literalName": "GARRISON_ARCHITECT_CLOSED",
@@ -17839,6 +18166,46 @@
       "wrapper": "globalMouseUp"
     },
     {
+      "literalName": "GLOBAL_REGION_MOUSE_DOWN",
+      "name": "GlobalRegionMouseDown",
+      "payload": [
+        {
+          "name": "region",
+          "nilable": false,
+          "type": "ScriptRegion"
+        },
+        {
+          "name": "button",
+          "nilable": false,
+          "type": "cstring"
+        }
+      ],
+      "source": "SystemDocumentation.lua",
+      "synchronous": true,
+      "system": "SystemInfo",
+      "wrapper": "globalRegionMouseDown"
+    },
+    {
+      "literalName": "GLOBAL_REGION_MOUSE_UP",
+      "name": "GlobalRegionMouseUp",
+      "payload": [
+        {
+          "name": "region",
+          "nilable": false,
+          "type": "ScriptRegion"
+        },
+        {
+          "name": "button",
+          "nilable": false,
+          "type": "cstring"
+        }
+      ],
+      "source": "SystemDocumentation.lua",
+      "synchronous": true,
+      "system": "SystemInfo",
+      "wrapper": "globalRegionMouseUp"
+    },
+    {
       "literalName": "GLUE_SCREENSHOT_FAILED",
       "name": "GlueScreenshotFailed",
       "source": "VideoDocumentation.lua",
@@ -17969,6 +18336,9 @@
       "wrapper": "gossipShow"
     },
     {
+      "documentation": [
+        "The payload matches GetGroupBuffVisualAlerts, including linked rank spells."
+      ],
       "literalName": "GROUP_BUFF_VISUAL_ALERTS_CHANGED",
       "name": "GroupBuffVisualAlertsChanged",
       "payload": [
@@ -18194,6 +18564,41 @@
       "synchronous": true,
       "system": "GuildInfo",
       "wrapper": "guildPartyStateUpdated"
+    },
+    {
+      "literalName": "GUILD_PREFERRED_PLAY_SETTINGS_UPDATED",
+      "name": "GuildPreferredPlaySettingsUpdated",
+      "payload": [
+        {
+          "name": "status",
+          "nilable": false,
+          "type": "PreferredPlaySettingsStatus"
+        },
+        {
+          "name": "preferredLocaleID",
+          "nilable": false,
+          "type": "number"
+        },
+        {
+          "name": "preferredDatacenterLocalityID",
+          "nilable": false,
+          "type": "number"
+        },
+        {
+          "name": "lastPreferredLocaleChangeDate",
+          "nilable": false,
+          "type": "time_t"
+        },
+        {
+          "name": "lastPreferredDatacenterLocalityChangeDate",
+          "nilable": false,
+          "type": "time_t"
+        }
+      ],
+      "source": "GuildInfoDocumentation.lua",
+      "synchronous": true,
+      "system": "GuildInfo",
+      "wrapper": "guildPreferredPlaySettingsUpdated"
     },
     {
       "literalName": "GUILD_RANKS_UPDATE",
@@ -18539,6 +18944,9 @@
       "wrapper": "heirloomsUpdated"
     },
     {
+      "documentation": [
+        "The payload matches GetHiddenGroupBuffs, including linked rank spells."
+      ],
       "literalName": "HIDDEN_GROUP_BUFFS_CHANGED",
       "name": "HiddenGroupBuffsChanged",
       "payload": [
@@ -20224,6 +20632,26 @@
       "wrapper": "initiativeTasksTrackedUpdated"
     },
     {
+      "literalName": "INPUT_DEVICE_INTERFACE_TRANSITION",
+      "name": "InputDeviceInterfaceTransition",
+      "payload": [
+        {
+          "name": "newMode",
+          "nilable": false,
+          "type": "InputDeviceInterfaceType"
+        },
+        {
+          "name": "oldMode",
+          "nilable": false,
+          "type": "InputDeviceInterfaceType"
+        }
+      ],
+      "source": "InputDocumentation.lua",
+      "synchronous": true,
+      "system": "Input",
+      "wrapper": "inputDeviceInterfaceTransition"
+    },
+    {
       "literalName": "INSPECT_ACHIEVEMENT_READY",
       "name": "InspectAchievementReady",
       "payload": [
@@ -21252,6 +21680,14 @@
       "wrapper": "lfgListRevealedCensoredActiveEntry"
     },
     {
+      "literalName": "LFG_LIST_ROLE_UPDATE",
+      "name": "LfgListRoleUpdate",
+      "source": "LFGListRolesDocumentation.lua",
+      "synchronous": true,
+      "system": "LFGListRoles",
+      "wrapper": "lfgListRoleUpdate"
+    },
+    {
       "literalName": "LFG_LIST_SEARCH_FAILED",
       "name": "LfgListSearchFailed",
       "payload": [
@@ -21288,6 +21724,27 @@
       "synchronous": true,
       "system": "LFGList",
       "wrapper": "lfgListSearchResultsReceived"
+    },
+    {
+      "literalName": "LFG_LIST_SHOW_SEARCH",
+      "name": "LfgListShowSearch",
+      "payload": [
+        {
+          "innerType": "number",
+          "name": "activityIDsFilter",
+          "nilable": true,
+          "type": "table"
+        },
+        {
+          "name": "showAllLevelRanges",
+          "nilable": false,
+          "type": "bool"
+        }
+      ],
+      "source": "LFGListInfoDocumentation.lua",
+      "synchronous": true,
+      "system": "LFGList",
+      "wrapper": "lfgListShowSearch"
     },
     {
       "literalName": "LFG_LIST_UPDATE_SEARCH_RESULTS",
@@ -21698,7 +22155,7 @@
           "type": "number"
         },
         {
-          "name": "lootListID",
+          "name": "lootListKey",
           "nilable": false,
           "type": "number"
         }
@@ -21718,7 +22175,7 @@
           "type": "number"
         },
         {
-          "name": "lootListID",
+          "name": "lootListKey",
           "nilable": false,
           "type": "number"
         }
@@ -22075,6 +22532,14 @@
       "synchronous": true,
       "system": "MailInfo",
       "wrapper": "mailLockSendItems"
+    },
+    {
+      "literalName": "MAIL_OPEN_ALL_CANCELED",
+      "name": "MailOpenAllCanceled",
+      "source": "MailInfoDocumentation.lua",
+      "synchronous": true,
+      "system": "MailInfo",
+      "wrapper": "mailOpenAllCanceled"
     },
     {
       "literalName": "MAIL_SEND_INFO_UPDATE",
@@ -23265,6 +23730,11 @@
           "type": "bool"
         },
         {
+          "name": "isCrossShard",
+          "nilable": false,
+          "type": "bool"
+        },
+        {
           "name": "allowMultipleRoles",
           "nilable": false,
           "type": "bool"
@@ -24308,20 +24778,27 @@
       "wrapper": "petJournalTrapLevelSet"
     },
     {
+      "literalName": "PET_ORDER_MOVE_TO_PENDING_CHANGED",
+      "name": "PetOrderMoveToPendingChanged",
+      "payload": [
+        {
+          "name": "isPetOrderMoveToPending",
+          "nilable": false,
+          "type": "bool"
+        }
+      ],
+      "source": "PetInfoDocumentation.lua",
+      "synchronous": true,
+      "system": "PetInfo",
+      "wrapper": "petOrderMoveToPendingChanged"
+    },
+    {
       "literalName": "PET_SPECIALIZATION_CHANGED",
       "name": "PetSpecializationChanged",
       "source": "SpecializationInfoDocumentation.lua",
       "synchronous": true,
       "system": "SpecializationInfo",
       "wrapper": "petSpecializationChanged"
-    },
-    {
-      "literalName": "PET_SPELL_POWER_UPDATE",
-      "name": "PetSpellPowerUpdate",
-      "source": "PaperDollInfoDocumentation.lua",
-      "synchronous": true,
-      "system": "PaperDollInfo",
-      "wrapper": "petSpellPowerUpdate"
     },
     {
       "literalName": "PET_STABLE_CLOSED",
@@ -24354,6 +24831,14 @@
       "synchronous": true,
       "system": "StableInfo",
       "wrapper": "petStableUpdate"
+    },
+    {
+      "literalName": "PET_STATS_UPDATE",
+      "name": "PetStatsUpdate",
+      "source": "PaperDollInfoDocumentation.lua",
+      "synchronous": true,
+      "system": "PaperDollInfo",
+      "wrapper": "petStatsUpdate"
     },
     {
       "literalName": "PET_UI_CLOSE",
@@ -24955,6 +25440,11 @@
           "name": "intellectDelta",
           "nilable": false,
           "type": "number"
+        },
+        {
+          "name": "spiritDelta",
+          "nilable": false,
+          "type": "number"
         }
       ],
       "source": "UnitDocumentation.lua",
@@ -25051,6 +25541,21 @@
       "synchronous": true,
       "system": "Unit",
       "wrapper": "playerMountDisplayChanged"
+    },
+    {
+      "literalName": "PLAYER_PVP_FLAG_CHANGED",
+      "name": "PlayerPvpFlagChanged",
+      "payload": [
+        {
+          "name": "isPvpFlagged",
+          "nilable": false,
+          "type": "bool"
+        }
+      ],
+      "source": "PvpInfoDocumentation.lua",
+      "synchronous": true,
+      "system": "PvpInfo",
+      "wrapper": "playerPvpFlagChanged"
     },
     {
       "literalName": "PLAYER_PVP_KILLS_CHANGED",
@@ -27102,6 +27607,21 @@
       "wrapper": "screenshotSucceeded"
     },
     {
+      "literalName": "SCRIBE_CLASS_CHANGED",
+      "name": "ScribeClassChanged",
+      "payload": [
+        {
+          "name": "classID",
+          "nilable": false,
+          "type": "ScribeClassID"
+        }
+      ],
+      "source": "ScribeUIDocumentation.lua",
+      "synchronous": true,
+      "system": "ScribeUI",
+      "wrapper": "scribeClassChanged"
+    },
+    {
       "literalName": "SCRIPTED_ANIMATIONS_UPDATE",
       "name": "ScriptedAnimationsUpdate",
       "source": "ScriptedAnimationsDocumentation.lua",
@@ -27126,14 +27646,6 @@
       "wrapper": "secureTransferCancel"
     },
     {
-      "literalName": "SECURE_TRANSFER_CONFIRM_HOUSING_PURCHASE",
-      "name": "SecureTransferConfirmHousingPurchase",
-      "source": "SecureTransferDocumentation.lua",
-      "synchronous": true,
-      "system": "SecureTransfer",
-      "wrapper": "secureTransferConfirmHousingPurchase"
-    },
-    {
       "literalName": "SECURE_TRANSFER_CONFIRM_SEND_MAIL",
       "name": "SecureTransferConfirmSendMail",
       "source": "SecureTransferDocumentation.lua",
@@ -27142,12 +27654,28 @@
       "wrapper": "secureTransferConfirmSendMail"
     },
     {
+      "literalName": "SECURE_TRANSFER_CONFIRM_TAKE_MAIL_MONEY",
+      "name": "SecureTransferConfirmTakeMailMoney",
+      "source": "SecureTransferDocumentation.lua",
+      "synchronous": true,
+      "system": "SecureTransfer",
+      "wrapper": "secureTransferConfirmTakeMailMoney"
+    },
+    {
       "literalName": "SECURE_TRANSFER_CONFIRM_TRADE_ACCEPT",
       "name": "SecureTransferConfirmTradeAccept",
       "source": "SecureTransferDocumentation.lua",
       "synchronous": true,
       "system": "SecureTransfer",
       "wrapper": "secureTransferConfirmTradeAccept"
+    },
+    {
+      "literalName": "SECURE_TRANSFER_CONFIRM_VC_PRODUCT_PURCHASE",
+      "name": "SecureTransferConfirmVcProductPurchase",
+      "source": "SecureTransferDocumentation.lua",
+      "synchronous": true,
+      "system": "SecureTransfer",
+      "wrapper": "secureTransferConfirmVcProductPurchase"
     },
     {
       "literalName": "SECURE_TRANSFER_HOUSING_CURRENCY_PURCHASE_CONFIRMATION",
@@ -27206,6 +27734,14 @@
       "wrapper": "setSeenProducts"
     },
     {
+      "literalName": "SETTINGS_HEADER_TEXT_UPDATE",
+      "name": "SettingsHeaderTextUpdate",
+      "source": "GameRulesDocumentation.lua",
+      "synchronous": true,
+      "system": "GameRules",
+      "wrapper": "settingsHeaderTextUpdate"
+    },
+    {
       "literalName": "SETTINGS_LOADED",
       "name": "SettingsLoaded",
       "source": "SettingsUtilDocumentation.lua",
@@ -27232,6 +27768,30 @@
       "synchronous": true,
       "system": "SettingsUtil",
       "wrapper": "settingsPanelOpen"
+    },
+    {
+      "literalName": "SHARD_TRANSFER",
+      "name": "ShardTransfer",
+      "source": "SystemDocumentation.lua",
+      "synchronous": true,
+      "system": "SystemInfo",
+      "wrapper": "shardTransfer"
+    },
+    {
+      "literalName": "SHARD_TRANSFER_CANCELLED",
+      "name": "ShardTransferCancelled",
+      "source": "SystemDocumentation.lua",
+      "synchronous": true,
+      "system": "SystemInfo",
+      "wrapper": "shardTransferCancelled"
+    },
+    {
+      "literalName": "SHARD_TRANSFER_IMMINENT",
+      "name": "ShardTransferImminent",
+      "source": "SystemDocumentation.lua",
+      "synchronous": true,
+      "system": "SystemInfo",
+      "wrapper": "shardTransferImminent"
     },
     {
       "literalName": "SHIPMENT_CRAFTER_CLOSED",
@@ -27830,6 +28390,14 @@
       "wrapper": "socialUIFriendsListSystemStatusUpdated"
     },
     {
+      "literalName": "SOCIAL_UI_RAID_LIST_SYSTEM_STATUS_UPDATED",
+      "name": "SocialUIRaidListSystemStatusUpdated",
+      "source": "PartyInfoSystemStatusDocumentation.lua",
+      "synchronous": true,
+      "system": "PartyInfo",
+      "wrapper": "socialUIRaidListSystemStatusUpdated"
+    },
+    {
       "literalName": "SOCIAL_UI_SOCIAL_QUEUE_SYSTEM_STATUS_UPDATED",
       "name": "SocialUISocialQueueSystemStatusUpdated",
       "source": "SocialQueueSystemStatusDocumentation.lua",
@@ -28388,12 +28956,12 @@
         {
           "name": "slot",
           "nilable": false,
-          "type": "number"
+          "type": "luaIndex"
         },
         {
           "name": "page",
           "nilable": false,
-          "type": "number"
+          "type": "luaIndex"
         }
       ],
       "source": "SpellBookDocumentation.lua",
@@ -28873,6 +29441,24 @@
       "synchronous": true,
       "system": "GuildInfo",
       "wrapper": "tabardSavePending"
+    },
+    {
+      "documentation": [
+        "Signaled when a request to clear (abandon) the player's active Tale run completes."
+      ],
+      "literalName": "TALE_RUN_CLEAR_RESULT",
+      "name": "TaleRunClearResult",
+      "payload": [
+        {
+          "name": "success",
+          "nilable": false,
+          "type": "bool"
+        }
+      ],
+      "source": "DelvesUIDocumentation.lua",
+      "synchronous": true,
+      "system": "DelvesUI",
+      "wrapper": "taleRunClearResult"
     },
     {
       "literalName": "TALENTS_INVOLUNTARILY_RESET",
@@ -30327,6 +30913,17 @@
       "wrapper": "uiScaleChanged"
     },
     {
+      "documentation": [
+        "Fires when the WoWHack ultimate progress value changes."
+      ],
+      "literalName": "ULTIMATE_PROGRESS_CHANGED",
+      "name": "UltimateProgressChanged",
+      "source": "ActionBarFrameDocumentation.lua",
+      "synchronous": true,
+      "system": "ActionBar",
+      "wrapper": "ultimateProgressChanged"
+    },
+    {
       "literalName": "UNIT_ABSORB_AMOUNT_CHANGED",
       "name": "UnitAbsorbAmountChanged",
       "payload": [
@@ -30524,6 +31121,9 @@
           "type": "cstring"
         },
         {
+          "flags": [
+            "SecretValue"
+          ],
           "name": "amount",
           "nilable": false,
           "type": "number"
@@ -30842,6 +31442,21 @@
       "wrapper": "unitGuildLevel"
     },
     {
+      "literalName": "UNIT_HAPPINESS",
+      "name": "UnitHappiness",
+      "payload": [
+        {
+          "name": "unitTarget",
+          "nilable": false,
+          "type": "UnitTokenVariant"
+        }
+      ],
+      "source": "UnitDocumentation.lua",
+      "synchronous": true,
+      "system": "Unit",
+      "wrapper": "unitHappiness"
+    },
+    {
       "literalName": "UNIT_HEAL_ABSORB_AMOUNT_CHANGED",
       "name": "UnitHealAbsorbAmountChanged",
       "payload": [
@@ -31111,6 +31726,21 @@
       "synchronous": true,
       "system": "Unit",
       "wrapper": "unitPetExperience"
+    },
+    {
+      "literalName": "UNIT_PET_TRAINING_POINTS",
+      "name": "UnitPetTrainingPoints",
+      "payload": [
+        {
+          "name": "unitTarget",
+          "nilable": false,
+          "type": "UnitTokenVariant"
+        }
+      ],
+      "source": "UnitDocumentation.lua",
+      "synchronous": true,
+      "system": "Unit",
+      "wrapper": "unitPetTrainingPoints"
     },
     {
       "literalName": "UNIT_PHASE",
@@ -32692,6 +33322,26 @@
       "wrapper": "viewedTransmogOutfitSituationsChanged"
     },
     {
+      "literalName": "VIEWED_TRANSMOG_OUTFIT_SLOT_OPTION_CHANGED",
+      "name": "ViewedTransmogOutfitSlotOptionChanged",
+      "payload": [
+        {
+          "name": "slot",
+          "nilable": false,
+          "type": "TransmogOutfitSlot"
+        },
+        {
+          "name": "option",
+          "nilable": false,
+          "type": "TransmogOutfitSlotOption"
+        }
+      ],
+      "source": "TransmogOutfitInfoDocumentation.lua",
+      "synchronous": true,
+      "system": "TransmogOutfitInfo",
+      "wrapper": "viewedTransmogOutfitSlotOptionChanged"
+    },
+    {
       "literalName": "VIEWED_TRANSMOG_OUTFIT_SLOT_REFRESH",
       "name": "ViewedTransmogOutfitSlotRefresh",
       "source": "TransmogOutfitInfoDocumentation.lua",
@@ -32723,26 +33373,6 @@
       "synchronous": true,
       "system": "TransmogOutfitInfo",
       "wrapper": "viewedTransmogOutfitSlotSaveSuccess"
-    },
-    {
-      "literalName": "VIEWED_TRANSMOG_OUTFIT_SLOT_WEAPON_OPTION_CHANGED",
-      "name": "ViewedTransmogOutfitSlotWeaponOptionChanged",
-      "payload": [
-        {
-          "name": "slot",
-          "nilable": false,
-          "type": "TransmogOutfitSlot"
-        },
-        {
-          "name": "weaponOption",
-          "nilable": false,
-          "type": "TransmogOutfitSlotOption"
-        }
-      ],
-      "source": "TransmogOutfitInfoDocumentation.lua",
-      "synchronous": true,
-      "system": "TransmogOutfitInfo",
-      "wrapper": "viewedTransmogOutfitSlotWeaponOptionChanged"
     },
     {
       "literalName": "VIGNETTE_MINIMAP_UPDATED",
@@ -32789,6 +33419,21 @@
       "wrapper": "voiceChatActiveOutputDeviceUpdated"
     },
     {
+      "literalName": "VOICE_CHAT_ACTIVE_VOICE_PROVIDER_CHANGED",
+      "name": "VoiceChatActiveVoiceProviderChanged",
+      "payload": [
+        {
+          "name": "voiceProviderID",
+          "nilable": false,
+          "type": "VoiceProviderID"
+        }
+      ],
+      "source": "VoiceChatDocumentation.lua",
+      "synchronous": true,
+      "system": "VoiceChat",
+      "wrapper": "voiceChatActiveVoiceProviderChanged"
+    },
+    {
       "literalName": "VOICE_CHAT_AUDIO_CAPTURE_ENERGY",
       "name": "VoiceChatAudioCaptureEnergy",
       "payload": [
@@ -32831,7 +33476,7 @@
         {
           "name": "channelID",
           "nilable": false,
-          "type": "number"
+          "type": "VoiceChatID"
         }
       ],
       "source": "VoiceChatDocumentation.lua",
@@ -32846,7 +33491,7 @@
         {
           "name": "channelID",
           "nilable": false,
-          "type": "number"
+          "type": "VoiceChatID"
         }
       ],
       "source": "VoiceChatDocumentation.lua",
@@ -32864,7 +33509,7 @@
         {
           "name": "channelID",
           "nilable": false,
-          "type": "number"
+          "type": "VoiceChatID"
         },
         {
           "name": "channelDisplayName",
@@ -32889,7 +33534,7 @@
         {
           "name": "channelID",
           "nilable": false,
-          "type": "number"
+          "type": "VoiceChatID"
         },
         {
           "name": "channelType",
@@ -32922,12 +33567,12 @@
         {
           "name": "memberID",
           "nilable": false,
-          "type": "number"
+          "type": "VoiceChatID"
         },
         {
           "name": "channelID",
           "nilable": false,
-          "type": "number"
+          "type": "VoiceChatID"
         },
         {
           "name": "isActive",
@@ -32950,12 +33595,12 @@
         {
           "name": "memberID",
           "nilable": false,
-          "type": "number"
+          "type": "VoiceChatID"
         },
         {
           "name": "channelID",
           "nilable": false,
-          "type": "number"
+          "type": "VoiceChatID"
         }
       ],
       "source": "VoiceChatDocumentation.lua",
@@ -32973,12 +33618,12 @@
         {
           "name": "memberID",
           "nilable": false,
-          "type": "number"
+          "type": "VoiceChatID"
         },
         {
           "name": "channelID",
           "nilable": false,
-          "type": "number"
+          "type": "VoiceChatID"
         },
         {
           "name": "speakingEnergy",
@@ -33001,12 +33646,12 @@
         {
           "name": "memberID",
           "nilable": false,
-          "type": "number"
+          "type": "VoiceChatID"
         },
         {
           "name": "channelID",
           "nilable": false,
-          "type": "number"
+          "type": "VoiceChatID"
         }
       ],
       "source": "VoiceChatDocumentation.lua",
@@ -33024,12 +33669,12 @@
         {
           "name": "memberID",
           "nilable": false,
-          "type": "number"
+          "type": "VoiceChatID"
         },
         {
           "name": "channelID",
           "nilable": false,
-          "type": "number"
+          "type": "VoiceChatID"
         },
         {
           "name": "isMutedForAll",
@@ -33049,12 +33694,12 @@
         {
           "name": "memberID",
           "nilable": false,
-          "type": "number"
+          "type": "VoiceChatID"
         },
         {
           "name": "channelID",
           "nilable": false,
-          "type": "number"
+          "type": "VoiceChatID"
         },
         {
           "name": "isMutedForMe",
@@ -33077,12 +33722,12 @@
         {
           "name": "memberID",
           "nilable": false,
-          "type": "number"
+          "type": "VoiceChatID"
         },
         {
           "name": "channelID",
           "nilable": false,
-          "type": "number"
+          "type": "VoiceChatID"
         }
       ],
       "source": "VoiceChatDocumentation.lua",
@@ -33100,12 +33745,12 @@
         {
           "name": "memberID",
           "nilable": false,
-          "type": "number"
+          "type": "VoiceChatID"
         },
         {
           "name": "channelID",
           "nilable": false,
-          "type": "number"
+          "type": "VoiceChatID"
         },
         {
           "name": "isSilenced",
@@ -33128,12 +33773,12 @@
         {
           "name": "memberID",
           "nilable": false,
-          "type": "number"
+          "type": "VoiceChatID"
         },
         {
           "name": "channelID",
           "nilable": false,
-          "type": "number"
+          "type": "VoiceChatID"
         },
         {
           "name": "isSpeaking",
@@ -33156,12 +33801,12 @@
         {
           "name": "memberID",
           "nilable": false,
-          "type": "number"
+          "type": "VoiceChatID"
         },
         {
           "name": "channelID",
           "nilable": false,
-          "type": "number"
+          "type": "VoiceChatID"
         },
         {
           "name": "message",
@@ -33189,12 +33834,12 @@
         {
           "name": "memberID",
           "nilable": false,
-          "type": "number"
+          "type": "VoiceChatID"
         },
         {
           "name": "channelID",
           "nilable": false,
-          "type": "number"
+          "type": "VoiceChatID"
         },
         {
           "name": "volume",
@@ -33214,7 +33859,7 @@
         {
           "name": "channelID",
           "nilable": false,
-          "type": "number"
+          "type": "VoiceChatID"
         },
         {
           "name": "isMuted",
@@ -33234,7 +33879,7 @@
         {
           "name": "channelID",
           "nilable": false,
-          "type": "number"
+          "type": "VoiceChatID"
         },
         {
           "name": "pushToTalkSetting",
@@ -33254,7 +33899,7 @@
         {
           "name": "channelID",
           "nilable": false,
-          "type": "number"
+          "type": "VoiceChatID"
         }
       ],
       "source": "VoiceChatDocumentation.lua",
@@ -33269,7 +33914,7 @@
         {
           "name": "channelID",
           "nilable": false,
-          "type": "number"
+          "type": "VoiceChatID"
         },
         {
           "name": "isTranscribing",
@@ -33289,7 +33934,7 @@
         {
           "name": "channelID",
           "nilable": false,
-          "type": "number"
+          "type": "VoiceChatID"
         },
         {
           "name": "isTransmitting",
@@ -33309,7 +33954,7 @@
         {
           "name": "channelID",
           "nilable": false,
-          "type": "number"
+          "type": "VoiceChatID"
         },
         {
           "name": "volume",
@@ -33359,6 +34004,14 @@
       "synchronous": true,
       "system": "VoiceChat",
       "wrapper": "voiceChatDeafenedChanged"
+    },
+    {
+      "literalName": "VOICE_CHAT_DISCORD_SETTINGS_UPDATED",
+      "name": "VoiceChatDiscordSettingsUpdated",
+      "source": "VoiceChatDocumentation.lua",
+      "synchronous": true,
+      "system": "VoiceChat",
+      "wrapper": "voiceChatDiscordSettingsUpdated"
     },
     {
       "literalName": "VOICE_CHAT_ERROR",
@@ -33625,6 +34278,29 @@
       "synchronous": true,
       "system": "VoiceChat",
       "wrapper": "voiceChatVadSettingsUpdated"
+    },
+    {
+      "literalName": "VOICE_CHAT_VOICE_PROVIDER_CHANGED",
+      "name": "VoiceChatVoiceProviderChanged",
+      "payload": [
+        {
+          "name": "voiceProviderID",
+          "nilable": false,
+          "type": "VoiceProviderID"
+        }
+      ],
+      "source": "VoiceChatDocumentation.lua",
+      "synchronous": true,
+      "system": "VoiceChat",
+      "wrapper": "voiceChatVoiceProviderChanged"
+    },
+    {
+      "literalName": "VOICE_CHAT_VOICE_PROVIDERS_AVAILABLE_CHANGED",
+      "name": "VoiceChatVoiceProvidersAvailableChanged",
+      "source": "VoiceChatDocumentation.lua",
+      "synchronous": true,
+      "system": "VoiceChat",
+      "wrapper": "voiceChatVoiceProvidersAvailableChanged"
     },
     {
       "literalName": "VOTE_KICK_REASON_NEEDED",

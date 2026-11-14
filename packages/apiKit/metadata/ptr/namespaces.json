@@ -652,6 +652,31 @@
             },
             {
               "documentation": [
+                "True if changes in range for the action should dispatch ActionCombatActionRangeCheckUpdate. False if the action no longer needs the event."
+              ],
+              "name": "enable",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "binding": "C_ActionBar.EnableActionCombatActionRangeCheck",
+          "documentation": [
+            "Used in conjunction with ActionCombatActionRangeCheckUpdate to inform the UI when an action goes in or out of range with its current target."
+          ],
+          "name": "EnableActionCombatActionRangeCheck",
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "ActionBarFrameDocumentation.lua",
+          "wrapper": "enableActionCombatActionRangeCheck"
+        },
+        {
+          "arguments": [
+            {
+              "name": "actionID",
+              "nilable": false,
+              "type": "luaIndex"
+            },
+            {
+              "documentation": [
                 "True if changes in range for the action should dispatch ActionRangeCheckUpdate. False if the action no longer needs the event."
               ],
               "name": "enable",
@@ -669,6 +694,31 @@
           "wrapper": "enableActionRangeCheck"
         },
         {
+          "arguments": [
+            {
+              "name": "actionID",
+              "nilable": false,
+              "type": "luaIndex"
+            }
+          ],
+          "binding": "C_ActionBar.EnterActionButton",
+          "flags": [
+            "RequiresValidActionSlot"
+          ],
+          "name": "EnterActionButton",
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "ActionBarFrameDocumentation.lua",
+          "wrapper": "enterActionButton"
+        },
+        {
+          "arguments": [
+            {
+              "default": "All",
+              "name": "setToSearch",
+              "nilable": false,
+              "type": "ActionBarSet"
+            }
+          ],
           "binding": "C_ActionBar.FindAssistedCombatActionButtons",
           "documentation": [
             "Returns the list of action bar slots that contain the Assisted Combat action spell."
@@ -683,6 +733,7 @@
               "type": "table"
             }
           ],
+          "secretArguments": "AllowedWhenUntainted",
           "source": "ActionBarFrameDocumentation.lua",
           "wrapper": "findAssistedCombatActionButtons"
         },
@@ -692,6 +743,12 @@
               "name": "flyoutID",
               "nilable": false,
               "type": "number"
+            },
+            {
+              "default": "All",
+              "name": "setToSearch",
+              "nilable": false,
+              "type": "ActionBarSet"
             }
           ],
           "binding": "C_ActionBar.FindFlyoutActionButtons",
@@ -715,6 +772,12 @@
               "name": "petActionID",
               "nilable": false,
               "type": "number"
+            },
+            {
+              "default": "All",
+              "name": "setToSearch",
+              "nilable": false,
+              "type": "ActionBarSet"
             }
           ],
           "binding": "C_ActionBar.FindPetActionButtons",
@@ -741,6 +804,15 @@
               "name": "spellID",
               "nilable": false,
               "type": "SpellIdentifier"
+            },
+            {
+              "default": "All",
+              "flags": [
+                "NeverSecret"
+              ],
+              "name": "setToSearch",
+              "nilable": false,
+              "type": "ActionBarSet"
             }
           ],
           "binding": "C_ActionBar.FindSpellActionButtons",
@@ -1228,6 +1300,12 @@
               "name": "petActionID",
               "nilable": false,
               "type": "number"
+            },
+            {
+              "default": "All",
+              "name": "setToSearch",
+              "nilable": false,
+              "type": "ActionBarSet"
             }
           ],
           "binding": "C_ActionBar.GetPetActionPetBarIndices",
@@ -1309,6 +1387,30 @@
           "wrapper": "getSpell"
         },
         {
+          "arguments": [
+            {
+              "name": "actionID",
+              "nilable": false,
+              "type": "luaIndex"
+            }
+          ],
+          "binding": "C_ActionBar.GetSpellTypeRestrictionForAction",
+          "flags": [
+            "RequiresValidActionSlot"
+          ],
+          "name": "GetSpellTypeRestrictionForAction",
+          "returns": [
+            {
+              "name": "restrictionType",
+              "nilable": false,
+              "type": "ActionBarSpellTypeRestriction"
+            }
+          ],
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "ActionBarFrameDocumentation.lua",
+          "wrapper": "getSpellTypeRestrictionForAction"
+        },
+        {
           "binding": "C_ActionBar.GetTempShapeshiftBarIndex",
           "name": "GetTempShapeshiftBarIndex",
           "returns": [
@@ -1333,6 +1435,22 @@
           ],
           "source": "ActionBarFrameDocumentation.lua",
           "wrapper": "getVehicleBarIndex"
+        },
+        {
+          "binding": "C_ActionBar.GetWoWHackUltimateProgressPercent",
+          "documentation": [
+            "Returns the WoWHack ultimate progress as a percentage from 0 to 100. Returns 0 outside of WoWHack."
+          ],
+          "name": "GetWoWHackUltimateProgressPercent",
+          "returns": [
+            {
+              "name": "percent",
+              "nilable": false,
+              "type": "number"
+            }
+          ],
+          "source": "ActionBarFrameDocumentation.lua",
+          "wrapper": "getWoWHackUltimateProgressPercent"
         },
         {
           "arguments": [
@@ -1362,6 +1480,14 @@
           "wrapper": "hasAction"
         },
         {
+          "arguments": [
+            {
+              "default": "All",
+              "name": "setToSearch",
+              "nilable": false,
+              "type": "ActionBarSet"
+            }
+          ],
           "binding": "C_ActionBar.HasAssistedCombatActionButtons",
           "name": "HasAssistedCombatActionButtons",
           "returns": [
@@ -1371,6 +1497,7 @@
               "type": "bool"
             }
           ],
+          "secretArguments": "AllowedWhenUntainted",
           "source": "ActionBarFrameDocumentation.lua",
           "wrapper": "hasAssistedCombatActionButtons"
         },
@@ -1406,6 +1533,12 @@
               "name": "flyoutID",
               "nilable": false,
               "type": "number"
+            },
+            {
+              "default": "All",
+              "name": "setToSearch",
+              "nilable": false,
+              "type": "ActionBarSet"
             }
           ],
           "binding": "C_ActionBar.HasFlyoutActionButtons",
@@ -1440,6 +1573,12 @@
               "name": "petActionID",
               "nilable": false,
               "type": "number"
+            },
+            {
+              "default": "All",
+              "name": "setToSearch",
+              "nilable": false,
+              "type": "ActionBarSet"
             }
           ],
           "binding": "C_ActionBar.HasPetActionButtons",
@@ -1461,6 +1600,12 @@
               "name": "petActionID",
               "nilable": false,
               "type": "number"
+            },
+            {
+              "default": "All",
+              "name": "setToSearch",
+              "nilable": false,
+              "type": "ActionBarSet"
             }
           ],
           "binding": "C_ActionBar.HasPetActionPetBarIndices",
@@ -1506,6 +1651,15 @@
               "name": "spellID",
               "nilable": false,
               "type": "SpellIdentifier"
+            },
+            {
+              "default": "All",
+              "flags": [
+                "NeverSecret"
+              ],
+              "name": "setToSearch",
+              "nilable": false,
+              "type": "ActionBarSet"
             }
           ],
           "binding": "C_ActionBar.HasSpellActionButtons",
@@ -1841,6 +1995,27 @@
         {
           "arguments": [
             {
+              "name": "spellID",
+              "nilable": false,
+              "type": "SpellIdentifier"
+            }
+          ],
+          "binding": "C_ActionBar.IsHighestSpellRank",
+          "name": "IsHighestSpellRank",
+          "returns": [
+            {
+              "name": "isHighestRank",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "ActionBarFrameDocumentation.lua",
+          "wrapper": "isHighestSpellRank"
+        },
+        {
+          "arguments": [
+            {
               "name": "slotID",
               "nilable": false,
               "type": "luaIndex"
@@ -1919,6 +2094,15 @@
               "name": "spellID",
               "nilable": false,
               "type": "SpellIdentifier"
+            },
+            {
+              "default": "All",
+              "flags": [
+                "NeverSecret"
+              ],
+              "name": "setToSearch",
+              "nilable": false,
+              "type": "ActionBarSet"
             }
           ],
           "binding": "C_ActionBar.IsOnBarOrSpecialBar",
@@ -2003,6 +2187,23 @@
         {
           "arguments": [
             {
+              "name": "actionID",
+              "nilable": false,
+              "type": "luaIndex"
+            }
+          ],
+          "binding": "C_ActionBar.LeaveActionButton",
+          "flags": [
+            "RequiresValidActionSlot"
+          ],
+          "name": "LeaveActionButton",
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "ActionBarFrameDocumentation.lua",
+          "wrapper": "leaveActionButton"
+        },
+        {
+          "arguments": [
+            {
               "name": "slotID",
               "nilable": false,
               "type": "luaIndex"
@@ -2080,6 +2281,48 @@
           ],
           "source": "ActionBarFrameDocumentation.lua",
           "wrapper": "shouldOverrideBarShowManaBar"
+        },
+        {
+          "binding": "C_ActionBar.ShouldShowKeyring",
+          "name": "ShouldShowKeyring",
+          "returns": [
+            {
+              "name": "isKeyringEnabled",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "source": "ActionBarFrameDocumentation.lua",
+          "wrapper": "shouldShowKeyring"
+        },
+        {
+          "arguments": [
+            {
+              "name": "spellID",
+              "nilable": false,
+              "type": "number"
+            },
+            {
+              "name": "actionID",
+              "nilable": false,
+              "type": "luaIndex"
+            }
+          ],
+          "binding": "C_ActionBar.SpellMatchesActionSpellTypeRestriction",
+          "flags": [
+            "RequiresValidActionSlot"
+          ],
+          "name": "SpellMatchesActionSpellTypeRestriction",
+          "returns": [
+            {
+              "name": "actionMatchesSpellTypeRestriction",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "ActionBarFrameDocumentation.lua",
+          "wrapper": "spellMatchesActionSpellTypeRestriction"
         },
         {
           "arguments": [
@@ -3483,6 +3726,23 @@
           "secretArguments": "AllowedWhenUntainted",
           "source": "AreaPoiInfoDocumentation.lua",
           "wrapper": "isAreaPOITimed"
+        },
+        {
+          "arguments": [
+            {
+              "name": "areaPoiID",
+              "nilable": false,
+              "type": "number"
+            }
+          ],
+          "binding": "C_AreaPoiInfo.MarkAreaPOISeen",
+          "documentation": [
+            "Marks the POI's current state as seen, so its unseen icon is no longer shown."
+          ],
+          "name": "MarkAreaPOISeen",
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "AreaPoiInfoDocumentation.lua",
+          "wrapper": "markAreaPOISeen"
         }
       ],
       "kind": "namespace",
@@ -5623,6 +5883,30 @@
               "name": "itemKey",
               "nilable": false,
               "type": "ItemKey"
+            }
+          ],
+          "binding": "C_AuctionHouse.GetItemKeySampleLink",
+          "documentation": [
+            "Returns a link for an item in this key's results with player-applied enchants, gems and reforges stripped"
+          ],
+          "name": "GetItemKeySampleLink",
+          "returns": [
+            {
+              "name": "sampleItemLink",
+              "nilable": true,
+              "type": "string"
+            }
+          ],
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "AuctionHouseDocumentation.lua",
+          "wrapper": "getItemKeySampleLink"
+        },
+        {
+          "arguments": [
+            {
+              "name": "itemKey",
+              "nilable": false,
+              "type": "ItemKey"
             },
             {
               "name": "itemSearchResultIndex",
@@ -7177,6 +7461,32 @@
       "wrapper": "autoComplete"
     },
     {
+      "blizzardNamespace": "C_AutoLoot",
+      "environment": "All",
+      "functions": [
+        {
+          "arguments": [
+            {
+              "name": "useAutoLootToggle",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "binding": "C_AutoLoot.SetUseAutoLootToggle",
+          "name": "SetUseAutoLootToggle",
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "AutoLootDocumentation.lua",
+          "wrapper": "setUseAutoLootToggle"
+        }
+      ],
+      "kind": "namespace",
+      "sources": [
+        "AutoLootDocumentation.lua"
+      ],
+      "system": "AutoLoot",
+      "wrapper": "autoLoot"
+    },
+    {
       "blizzardNamespace": "C_AzeriteEmpoweredItem",
       "environment": "All",
       "functions": [
@@ -8202,6 +8512,32 @@
               "name": "bankType",
               "nilable": false,
               "type": "BankType"
+            },
+            {
+              "name": "slotIndex",
+              "nilable": false,
+              "type": "luaIndex"
+            }
+          ],
+          "binding": "C_Bank.BankBagTypeAndIDToInvSlot",
+          "name": "BankBagTypeAndIDToInvSlot",
+          "returns": [
+            {
+              "name": "slot",
+              "nilable": true,
+              "type": "number"
+            }
+          ],
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "BankDocumentation.lua",
+          "wrapper": "bankBagTypeAndIDToInvSlot"
+        },
+        {
+          "arguments": [
+            {
+              "name": "bankType",
+              "nilable": false,
+              "type": "BankType"
             }
           ],
           "binding": "C_Bank.CanDepositMoney",
@@ -8418,6 +8754,27 @@
               "type": "BankType"
             }
           ],
+          "binding": "C_Bank.FetchMaxNumBankTabs",
+          "name": "FetchMaxNumBankTabs",
+          "returns": [
+            {
+              "name": "numPurchasedBankTabs",
+              "nilable": false,
+              "type": "number"
+            }
+          ],
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "BankDocumentation.lua",
+          "wrapper": "fetchMaxNumBankTabs"
+        },
+        {
+          "arguments": [
+            {
+              "name": "bankType",
+              "nilable": false,
+              "type": "BankType"
+            }
+          ],
           "binding": "C_Bank.FetchNextPurchasableBankTabData",
           "name": "FetchNextPurchasableBankTabData",
           "returns": [
@@ -8572,6 +8929,19 @@
           "secretArguments": "AllowedWhenUntainted",
           "source": "BankDocumentation.lua",
           "wrapper": "purchaseBankTab"
+        },
+        {
+          "binding": "C_Bank.ShouldUsePlayerBagsInBank",
+          "name": "ShouldUsePlayerBagsInBank",
+          "returns": [
+            {
+              "name": "shouldUsePlayerBagsInBank",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "source": "BankDocumentation.lua",
+          "wrapper": "shouldUsePlayerBagsInBank"
         },
         {
           "arguments": [
@@ -9078,6 +9448,32 @@
           "wrapper": "areFriendTagsEnabled"
         },
         {
+          "binding": "C_BattleNet.AreHighResTexturesInstalled",
+          "name": "AreHighResTexturesInstalled",
+          "returns": [
+            {
+              "name": "installed",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "source": "BattleNetDocumentation.lua",
+          "wrapper": "areHighResTexturesInstalled"
+        },
+        {
+          "binding": "C_BattleNet.AreRealIDFriendsEnabled",
+          "name": "AreRealIDFriendsEnabled",
+          "returns": [
+            {
+              "name": "areRealIDFriendsEnabled",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "source": "BattleNetDocumentation.lua",
+          "wrapper": "areRealIDFriendsEnabled"
+        },
+        {
           "binding": "C_BattleNet.AreTitleFriendCustomNamesEnabled",
           "name": "AreTitleFriendCustomNamesEnabled",
           "returns": [
@@ -9216,6 +9612,28 @@
         {
           "arguments": [
             {
+              "name": "id",
+              "nilable": false,
+              "type": "number"
+            }
+          ],
+          "binding": "C_BattleNet.GetDefaultTitleWhisperTarget",
+          "mayReturnNothing": true,
+          "name": "GetDefaultTitleWhisperTarget",
+          "returns": [
+            {
+              "name": "whisperTarget",
+              "nilable": false,
+              "type": "string"
+            }
+          ],
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "BattleNetDocumentation.lua",
+          "wrapper": "getDefaultTitleWhisperTarget"
+        },
+        {
+          "arguments": [
+            {
               "name": "friendIndex",
               "nilable": false,
               "type": "luaIndex"
@@ -9285,6 +9703,27 @@
           "secretArguments": "AllowedWhenUntainted",
           "source": "BattleNetDocumentation.lua",
           "wrapper": "getFriendInviteInfo"
+        },
+        {
+          "arguments": [
+            {
+              "name": "inviteText",
+              "nilable": false,
+              "type": "cstring"
+            }
+          ],
+          "binding": "C_BattleNet.GetFriendLevelFromInviteText",
+          "name": "GetFriendLevelFromInviteText",
+          "returns": [
+            {
+              "name": "friendLevel",
+              "nilable": false,
+              "type": "BattleNetFriendLevel"
+            }
+          ],
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "BattleNetDocumentation.lua",
+          "wrapper": "getFriendLevelFromInviteText"
         },
         {
           "arguments": [
@@ -9395,6 +9834,27 @@
           ],
           "source": "BattleNetDocumentation.lua",
           "wrapper": "isBattleNetFriendsListSupported"
+        },
+        {
+          "arguments": [
+            {
+              "name": "friendTag",
+              "nilable": false,
+              "type": "BattleNetFriendTag"
+            }
+          ],
+          "binding": "C_BattleNet.IsFriendTagSupportedForCurrentGameType",
+          "name": "IsFriendTagSupportedForCurrentGameType",
+          "returns": [
+            {
+              "name": "isFriendTagSupportedForCurrentGameType",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "BattleNetDocumentation.lua",
+          "wrapper": "isFriendTagSupportedForCurrentGameType"
         },
         {
           "arguments": [
@@ -9532,6 +9992,26 @@
           "secretArguments": "AllowedWhenUntainted",
           "source": "BattleNetDocumentation.lua",
           "wrapper": "setAppearOffline"
+        },
+        {
+          "arguments": [
+            {
+              "name": "bnetAccountID",
+              "nilable": false,
+              "type": "number"
+            },
+            {
+              "name": "block",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "binding": "C_BattleNet.SetBlocked",
+          "hasRestrictions": true,
+          "name": "SetBlocked",
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "BattleNetDocumentation.lua",
+          "wrapper": "setBlocked"
         },
         {
           "arguments": [
@@ -9675,6 +10155,71 @@
       "wrapper": "blackMarketInfo"
     },
     {
+      "blizzardNamespace": "C_BlizzCon2026",
+      "environment": "All",
+      "functions": [
+        {
+          "binding": "C_BlizzCon2026.GetExperience",
+          "name": "GetExperience",
+          "returns": [
+            {
+              "name": "experience",
+              "nilable": false,
+              "type": "Bc26Experience"
+            }
+          ],
+          "source": "BlizzCon2026Documentation.lua",
+          "wrapper": "getExperience"
+        },
+        {
+          "binding": "C_BlizzCon2026.IsActive",
+          "name": "IsActive",
+          "returns": [
+            {
+              "name": "isActive",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "source": "BlizzCon2026Documentation.lua",
+          "wrapper": "isActive"
+        },
+        {
+          "binding": "C_BlizzCon2026.IsColdSwapFeatureEnabled",
+          "name": "IsColdSwapFeatureEnabled",
+          "returns": [
+            {
+              "name": "isEnabled",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "source": "BlizzCon2026Documentation.lua",
+          "wrapper": "isColdSwapFeatureEnabled"
+        },
+        {
+          "arguments": [
+            {
+              "name": "experience",
+              "nilable": false,
+              "type": "Bc26Experience"
+            }
+          ],
+          "binding": "C_BlizzCon2026.SetExperience",
+          "name": "SetExperience",
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "BlizzCon2026Documentation.lua",
+          "wrapper": "setExperience"
+        }
+      ],
+      "kind": "namespace",
+      "sources": [
+        "BlizzCon2026Documentation.lua"
+      ],
+      "system": "BlizzCon2026Scripts",
+      "wrapper": "blizzCon2026"
+    },
+    {
       "environment": "All",
       "functions": [
         {
@@ -9778,6 +10323,38 @@
           "secretArguments": "AllowedWhenUntainted",
           "source": "BuildDocumentation.lua",
           "wrapper": "getBuildOption"
+        },
+        {
+          "binding": "GetGameFamily",
+          "documentation": [
+            "Returns the game family as used by the AllowLoadGameType/ExcludeLoadGameType TOC directives, e.g. mainline or classic"
+          ],
+          "name": "GetGameFamily",
+          "returns": [
+            {
+              "name": "gameFamily",
+              "nilable": false,
+              "type": "cstring"
+            }
+          ],
+          "source": "BuildDocumentation.lua",
+          "wrapper": "getGameFamily"
+        },
+        {
+          "binding": "GetGameType",
+          "documentation": [
+            "Returns the game type as used by the AllowLoadGameType/ExcludeLoadGameType TOC directives"
+          ],
+          "name": "GetGameType",
+          "returns": [
+            {
+              "name": "gameType",
+              "nilable": false,
+              "type": "cstring"
+            }
+          ],
+          "source": "BuildDocumentation.lua",
+          "wrapper": "getGameType"
         },
         {
           "binding": "Is64BitClient",
@@ -11396,6 +11973,13 @@
           "secretArguments": "AllowedWhenUntainted",
           "source": "CameraDocumentation.lua",
           "wrapper": "getUICameraInfo"
+        },
+        {
+          "binding": "TurnOrActionToggle",
+          "hasRestrictions": true,
+          "name": "TurnOrActionToggle",
+          "source": "CameraDocumentation.lua",
+          "wrapper": "turnOrActionToggle"
         }
       ],
       "kind": "global",
@@ -11664,6 +12248,19 @@
           "wrapper": "bulkRefundDecors"
         },
         {
+          "binding": "C_CatalogShop.BypassAchievementRequirement",
+          "name": "BypassAchievementRequirement",
+          "returns": [
+            {
+              "name": "force",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "source": "CatalogShopDocumentation.lua",
+          "wrapper": "bypassAchievementRequirement"
+        },
+        {
           "binding": "C_CatalogShop.CloseCatalogShopInteraction",
           "name": "CloseCatalogShopInteraction",
           "source": "CatalogShopDocumentation.lua",
@@ -11678,11 +12275,11 @@
               "type": "table"
             }
           ],
-          "binding": "C_CatalogShop.ConfirmHousingPurchase",
-          "name": "ConfirmHousingPurchase",
+          "binding": "C_CatalogShop.ConfirmVCProductPurchase",
+          "name": "ConfirmVCProductPurchase",
           "secretArguments": "AllowedWhenUntainted",
           "source": "CatalogShopDocumentation.lua",
-          "wrapper": "confirmHousingPurchase"
+          "wrapper": "confirmVCProductPurchase"
         },
         {
           "arguments": [
@@ -12056,6 +12653,28 @@
         {
           "arguments": [
             {
+              "name": "bundleProductID",
+              "nilable": false,
+              "type": "number"
+            }
+          ],
+          "binding": "C_CatalogShop.GetSelectionGroupInfo",
+          "name": "GetSelectionGroupInfo",
+          "returns": [
+            {
+              "innerType": "CatalogShopSelectionGroupInfo",
+              "name": "selectionGroups",
+              "nilable": false,
+              "type": "table"
+            }
+          ],
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "CatalogShopDocumentation.lua",
+          "wrapper": "getSelectionGroupInfo"
+        },
+        {
+          "arguments": [
+            {
               "name": "spellVisualID",
               "nilable": false,
               "type": "number"
@@ -12123,6 +12742,19 @@
           "wrapper": "hasNewProducts"
         },
         {
+          "binding": "C_CatalogShop.IsFinishedLoadingVirtualCurrencies",
+          "name": "IsFinishedLoadingVirtualCurrencies",
+          "returns": [
+            {
+              "name": "isDone",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "source": "CatalogShopDocumentation.lua",
+          "wrapper": "isFinishedLoadingVirtualCurrencies"
+        },
+        {
           "arguments": [
             {
               "name": "productID",
@@ -12188,6 +12820,19 @@
           ],
           "source": "CatalogShopDocumentation.lua",
           "wrapper": "openCatalogShopInteractionFromHouse"
+        },
+        {
+          "binding": "C_CatalogShop.OpenCatalogShopInteractionFromRewards",
+          "name": "OpenCatalogShopInteractionFromRewards",
+          "returns": [
+            {
+              "name": "shoppingSessionUUIDStr",
+              "nilable": false,
+              "type": "string"
+            }
+          ],
+          "source": "CatalogShopDocumentation.lua",
+          "wrapper": "openCatalogShopInteractionFromRewards"
         },
         {
           "binding": "C_CatalogShop.OpenCatalogShopInteractionFromShop",
@@ -12280,6 +12925,34 @@
           "wrapper": "purchaseProduct"
         },
         {
+          "arguments": [
+            {
+              "name": "productID",
+              "nilable": false,
+              "type": "number"
+            },
+            {
+              "innerType": "number",
+              "name": "selectedProductIDs",
+              "nilable": true,
+              "type": "table"
+            }
+          ],
+          "binding": "C_CatalogShop.PurchaseProductWithSelectedProducts",
+          "hasRestrictions": true,
+          "name": "PurchaseProductWithSelectedProducts",
+          "returns": [
+            {
+              "name": "canPurchase",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "CatalogShopDocumentation.lua",
+          "wrapper": "purchaseProductWithSelectedProducts"
+        },
+        {
           "binding": "C_CatalogShop.RefreshRefundableDecors",
           "name": "RefreshRefundableDecors",
           "source": "CatalogShopDocumentation.lua",
@@ -12298,6 +12971,27 @@
           "secretArguments": "AllowedWhenUntainted",
           "source": "CatalogShopDocumentation.lua",
           "wrapper": "refreshVirtualCurrencyBalance"
+        },
+        {
+          "arguments": [
+            {
+              "name": "catalogShopProductId",
+              "nilable": false,
+              "type": "number"
+            }
+          ],
+          "binding": "C_CatalogShop.ShouldDisplayUsesTemporaryCharactersWarningText",
+          "name": "ShouldDisplayUsesTemporaryCharactersWarningText",
+          "returns": [
+            {
+              "name": "shouldShow",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "CatalogShopDocumentation.lua",
+          "wrapper": "shouldDisplayUsesTemporaryCharactersWarningText"
         },
         {
           "binding": "C_CatalogShop.ShouldShowHousingWarning",
@@ -12325,6 +13019,27 @@
           "secretArguments": "AllowedWhenUntainted",
           "source": "CatalogShopDocumentation.lua",
           "wrapper": "startHousingVCPurchaseConfirmation"
+        },
+        {
+          "arguments": [
+            {
+              "name": "shoppingSessionUUIDStr",
+              "nilable": true,
+              "type": "string"
+            }
+          ],
+          "binding": "C_CatalogShop.ValidateOverrideShopInteraction",
+          "name": "ValidateOverrideShopInteraction",
+          "returns": [
+            {
+              "name": "isValid",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "CatalogShopDocumentation.lua",
+          "wrapper": "validateOverrideShopInteraction"
         }
       ],
       "kind": "namespace",
@@ -15054,6 +15769,19 @@
           "wrapper": "isCpuBound"
         },
         {
+          "binding": "PlatformIsHandheld",
+          "name": "PlatformIsHandheld",
+          "returns": [
+            {
+              "name": "isHandheld",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "source": "ClientDocumentation.lua",
+          "wrapper": "platformIsHandheld"
+        },
+        {
           "arguments": [
             {
               "name": "description",
@@ -15092,6 +15820,12 @@
           "name": "Screenshot",
           "source": "ClientDocumentation.lua",
           "wrapper": "screenshot"
+        },
+        {
+          "binding": "UIReload",
+          "name": "UIReload",
+          "source": "ClientDocumentation.lua",
+          "wrapper": "uiReload"
         },
         {
           "binding": "UpdateWindow",
@@ -26740,6 +27474,20 @@
           "wrapper": "getPlayerCurrencyCategoryInfo"
         },
         {
+          "binding": "C_CurrencyInfo.GetVcBalanceForTalebound",
+          "hasRestrictions": true,
+          "name": "GetVcBalanceForTalebound",
+          "returns": [
+            {
+              "name": "balance",
+              "nilable": false,
+              "type": "number"
+            }
+          ],
+          "source": "CurrencyInfoDocumentation.lua",
+          "wrapper": "getVcBalanceForTalebound"
+        },
+        {
           "binding": "C_CurrencyInfo.GetWarResourcesCurrencyID",
           "name": "GetWarResourcesCurrencyID",
           "returns": [
@@ -27384,6 +28132,25 @@
           "wrapper": "registerCVar"
         },
         {
+          "arguments": [
+            {
+              "name": "name",
+              "nilable": false,
+              "type": "cstring"
+            }
+          ],
+          "binding": "C_CVar.RemoveTempCVar",
+          "flags": [
+            "RequiresNonReadOnlyCVar",
+            "RequiresNonSecureCVar",
+            "RequiresValidAndPublicCVar"
+          ],
+          "name": "RemoveTempCVar",
+          "secretArguments": "NotAllowed",
+          "source": "CVarDocumentation.lua",
+          "wrapper": "removeTempCVar"
+        },
+        {
           "binding": "C_CVar.ResetTestCVars",
           "name": "ResetTestCVars",
           "source": "CVarDocumentation.lua",
@@ -27456,6 +28223,30 @@
           "secretArguments": "NotAllowed",
           "source": "CVarDocumentation.lua",
           "wrapper": "setCVarBitfield"
+        },
+        {
+          "arguments": [
+            {
+              "name": "name",
+              "nilable": false,
+              "type": "cstring"
+            },
+            {
+              "name": "value",
+              "nilable": true,
+              "type": "cstring"
+            }
+          ],
+          "binding": "C_CVar.SetTempCVar",
+          "flags": [
+            "RequiresNonReadOnlyCVar",
+            "RequiresNonSecureCVar",
+            "RequiresValidAndPublicCVar"
+          ],
+          "name": "SetTempCVar",
+          "secretArguments": "NotAllowed",
+          "source": "CVarDocumentation.lua",
+          "wrapper": "setTempCVar"
         }
       ],
       "kind": "namespace",
@@ -27892,6 +28683,19 @@
           ],
           "source": "DateAndTimeDocumentation.lua",
           "wrapper": "getWeeklyResetStartTime"
+        },
+        {
+          "binding": "C_DateAndTime.IsDayTime",
+          "name": "IsDayTime",
+          "returns": [
+            {
+              "name": "isDayTime",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "source": "DateAndTimeDocumentation.lua",
+          "wrapper": "isDayTime"
         }
       ],
       "kind": "namespace",
@@ -28214,6 +29018,23 @@
           ],
           "source": "DelvesUIDocumentation.lua",
           "wrapper": "getActiveDelveTier"
+        },
+        {
+          "binding": "C_DelvesUI.GetActiveTieredEntranceProgress",
+          "documentation": [
+            "Returns the configured tracking quest progress for the active tiered entrance."
+          ],
+          "name": "GetActiveTieredEntranceProgress",
+          "returns": [
+            {
+              "innerType": "TieredEntranceProgressInfo",
+              "name": "progress",
+              "nilable": false,
+              "type": "table"
+            }
+          ],
+          "source": "DelvesUIDocumentation.lua",
+          "wrapper": "getActiveTieredEntranceProgress"
         },
         {
           "binding": "C_DelvesUI.GetCompanionInfoForActivePlayer",
@@ -28778,6 +29599,19 @@
           "wrapper": "hasActiveLair"
         },
         {
+          "binding": "C_DelvesUI.HasActiveTale",
+          "name": "HasActiveTale",
+          "returns": [
+            {
+              "name": "result",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "source": "DelvesUIDocumentation.lua",
+          "wrapper": "hasActiveTale"
+        },
+        {
           "arguments": [
             {
               "name": "tier",
@@ -28838,6 +29672,22 @@
           "wrapper": "isInLair"
         },
         {
+          "binding": "C_DelvesUI.IsPartyLeaderInTaleInstance",
+          "documentation": [
+            "Gets whether or not the party leader is currently in a tale instance/map."
+          ],
+          "name": "IsPartyLeaderInTaleInstance",
+          "returns": [
+            {
+              "name": "result",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "source": "DelvesUIDocumentation.lua",
+          "wrapper": "isPartyLeaderInTaleInstance"
+        },
+        {
           "arguments": [
             {
               "name": "traitTreeID",
@@ -28857,6 +29707,12 @@
           "secretArguments": "AllowedWhenUntainted",
           "source": "DelvesUIDocumentation.lua",
           "wrapper": "isTraitTreeForCompanion"
+        },
+        {
+          "binding": "C_DelvesUI.RequestClearActiveTale",
+          "name": "RequestClearActiveTale",
+          "source": "DelvesUIDocumentation.lua",
+          "wrapper": "requestClearActiveTale"
         },
         {
           "arguments": [
@@ -28963,7 +29819,7 @@
             {
               "name": "userID",
               "nilable": false,
-              "type": "DiscordID"
+              "type": "DiscordMemberOpaqueID"
             }
           ],
           "source": "DiscordDocumentation.lua",
@@ -28974,7 +29830,7 @@
             {
               "name": "userID",
               "nilable": false,
-              "type": "DiscordID"
+              "type": "DiscordMemberOpaqueID"
             }
           ],
           "binding": "C_Discord.GetDiscordUserName",
@@ -29198,6 +30054,19 @@
           "wrapper": "isUserOAuthed"
         },
         {
+          "binding": "C_Discord.IsVoiceEnabled",
+          "name": "IsVoiceEnabled",
+          "returns": [
+            {
+              "name": "enabled",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "source": "DiscordDocumentation.lua",
+          "wrapper": "isVoiceEnabled"
+        },
+        {
           "binding": "C_Discord.RefreshAuth",
           "hasRestrictions": true,
           "name": "RefreshAuth",
@@ -29249,6 +30118,26 @@
     {
       "blizzardNamespace": "C_DuelInfo",
       "environment": "All",
+      "functions": [
+        {
+          "binding": "C_DuelInfo.GetDuelerInfo",
+          "name": "GetDuelerInfo",
+          "returns": [
+            {
+              "name": "duelerGuid",
+              "nilable": false,
+              "type": "WOWGUID"
+            },
+            {
+              "name": "realLevel",
+              "nilable": false,
+              "type": "number"
+            }
+          ],
+          "source": "DuelInfoDocumentation.lua",
+          "wrapper": "getDuelerInfo"
+        }
+      ],
       "kind": "namespace",
       "sources": [
         "DuelInfoDocumentation.lua"
@@ -30033,6 +30922,19 @@
           ],
           "source": "EditModeManagerDocumentation.lua",
           "wrapper": "getAccountSettings"
+        },
+        {
+          "binding": "C_EditMode.GetEditModeDefaultLayout",
+          "name": "GetEditModeDefaultLayout",
+          "returns": [
+            {
+              "name": "defaultLayout",
+              "nilable": false,
+              "type": "number"
+            }
+          ],
+          "source": "EditModeManagerDocumentation.lua",
+          "wrapper": "getEditModeDefaultLayout"
         },
         {
           "binding": "C_EditMode.GetLayouts",
@@ -32890,6 +33792,20 @@
           "wrapper": "getClientDisplayExpansionLevel"
         },
         {
+          "binding": "GetCreditsDisplayInfo",
+          "name": "GetCreditsDisplayInfo",
+          "returns": [
+            {
+              "innerType": "CreditsDisplayInfo",
+              "name": "info",
+              "nilable": false,
+              "type": "table"
+            }
+          ],
+          "source": "ExpansionDocumentation.lua",
+          "wrapper": "getCreditsDisplayInfo"
+        },
+        {
           "binding": "GetCurrentRegionName",
           "name": "GetCurrentRegionName",
           "returns": [
@@ -33281,6 +34197,19 @@
       "environment": "All",
       "functions": [
         {
+          "binding": "C_ExternalEventURL.CanShow",
+          "name": "CanShow",
+          "returns": [
+            {
+              "name": "canShow",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "source": "ExternalEventURLDocumentation.lua",
+          "wrapper": "canShow"
+        },
+        {
           "binding": "C_ExternalEventURL.HasURL",
           "name": "HasURL",
           "returns": [
@@ -33320,6 +34249,151 @@
       ],
       "system": "ExternalEventURL",
       "wrapper": "externalEventURL"
+    },
+    {
+      "blizzardNamespace": "C_Flyout",
+      "environment": "All",
+      "functions": [
+        {
+          "arguments": [
+            {
+              "name": "flyoutID",
+              "nilable": false,
+              "type": "number"
+            },
+            {
+              "name": "spellID",
+              "nilable": false,
+              "type": "number"
+            }
+          ],
+          "binding": "C_Flyout.FlyoutHasSpell",
+          "mayReturnNothing": true,
+          "name": "FlyoutHasSpell",
+          "returns": [
+            {
+              "name": "hasSpell",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "secretArguments": "AllowedWhenTainted",
+          "source": "FlyoutDocumentation.lua",
+          "wrapper": "flyoutHasSpell"
+        },
+        {
+          "arguments": [
+            {
+              "name": "index",
+              "nilable": false,
+              "type": "luaIndex"
+            }
+          ],
+          "binding": "C_Flyout.GetFlyoutID",
+          "mayReturnNothing": true,
+          "name": "GetFlyoutID",
+          "returns": [
+            {
+              "name": "flyoutID",
+              "nilable": false,
+              "type": "number"
+            }
+          ],
+          "secretArguments": "AllowedWhenTainted",
+          "source": "FlyoutDocumentation.lua",
+          "wrapper": "getFlyoutID"
+        },
+        {
+          "arguments": [
+            {
+              "name": "flyoutID",
+              "nilable": false,
+              "type": "number"
+            }
+          ],
+          "binding": "C_Flyout.GetFlyoutInfo",
+          "mayReturnNothing": true,
+          "name": "GetFlyoutInfo",
+          "returns": [
+            {
+              "name": "info",
+              "nilable": false,
+              "type": "FlyoutInfo"
+            }
+          ],
+          "secretArguments": "AllowedWhenTainted",
+          "source": "FlyoutDocumentation.lua",
+          "wrapper": "getFlyoutInfo"
+        },
+        {
+          "arguments": [
+            {
+              "name": "flyoutID",
+              "nilable": false,
+              "type": "number"
+            },
+            {
+              "name": "slotIndex",
+              "nilable": false,
+              "type": "luaIndex"
+            }
+          ],
+          "binding": "C_Flyout.GetFlyoutSlotInfo",
+          "mayReturnNothing": true,
+          "name": "GetFlyoutSlotInfo",
+          "returns": [
+            {
+              "name": "slotInfo",
+              "nilable": false,
+              "type": "FlyoutSlotInfo"
+            }
+          ],
+          "secretArguments": "AllowedWhenTainted",
+          "source": "FlyoutDocumentation.lua",
+          "wrapper": "getFlyoutSlotInfo"
+        },
+        {
+          "arguments": [
+            {
+              "name": "flyoutID",
+              "nilable": false,
+              "type": "number"
+            }
+          ],
+          "binding": "C_Flyout.GetFlyoutTexture",
+          "mayReturnNothing": true,
+          "name": "GetFlyoutTexture",
+          "returns": [
+            {
+              "name": "textureID",
+              "nilable": false,
+              "type": "fileID"
+            }
+          ],
+          "secretArguments": "AllowedWhenTainted",
+          "source": "FlyoutDocumentation.lua",
+          "wrapper": "getFlyoutTexture"
+        },
+        {
+          "binding": "C_Flyout.GetNumFlyouts",
+          "name": "GetNumFlyouts",
+          "returns": [
+            {
+              "name": "numFlyouts",
+              "nilable": false,
+              "type": "number"
+            }
+          ],
+          "source": "FlyoutDocumentation.lua",
+          "wrapper": "getNumFlyouts"
+        }
+      ],
+      "kind": "namespace",
+      "sources": [
+        "FlyoutDocumentation.lua"
+      ],
+      "system": "Flyout",
+      "wrapper": "flyout"
     },
     {
       "blizzardNamespace": "C_FogOfWar",
@@ -35072,7 +36146,7 @@
           "arguments": [
             {
               "name": "texture",
-              "nilable": false,
+              "nilable": true,
               "type": "FileAsset"
             },
             {
@@ -37269,6 +38343,18 @@
           "wrapper": "isPreferringModelCollisionBounds"
         },
         {
+          "name": "IsShowingFloatingProjectedTextures",
+          "returns": [
+            {
+              "name": "isShowing",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "source": "FrameAPIModelSceneFrameActorBaseDocumentation.lua",
+          "wrapper": "isShowingFloatingProjectedTextures"
+        },
+        {
           "name": "IsShown",
           "returns": [
             {
@@ -37599,6 +38685,26 @@
         {
           "arguments": [
             {
+              "name": "unit",
+              "nilable": false,
+              "type": "UnitToken"
+            }
+          ],
+          "name": "SetModelByUnitCreatureDisplayID",
+          "returns": [
+            {
+              "name": "success",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "FrameAPIModelSceneFrameActorBaseDocumentation.lua",
+          "wrapper": "setModelByUnitCreatureDisplayID"
+        },
+        {
+          "arguments": [
+            {
               "name": "scale",
               "nilable": true,
               "type": "number"
@@ -37735,6 +38841,19 @@
           "secretArguments": "AllowedWhenUntainted",
           "source": "FrameAPIModelSceneFrameActorBaseDocumentation.lua",
           "wrapper": "setScale"
+        },
+        {
+          "arguments": [
+            {
+              "name": "show",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "name": "SetShowFloatingProjectedTextures",
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "FrameAPIModelSceneFrameActorBaseDocumentation.lua",
+          "wrapper": "setShowFloatingProjectedTextures"
         },
         {
           "arguments": [
@@ -40069,6 +41188,23 @@
           "wrapper": "getWhoInfo"
         },
         {
+          "binding": "C_FriendList.GetWhoRaceFilters",
+          "flags": [
+            "RequiresFriendList"
+          ],
+          "name": "GetWhoRaceFilters",
+          "returns": [
+            {
+              "innerType": "WhoFilter",
+              "name": "filters",
+              "nilable": false,
+              "type": "table"
+            }
+          ],
+          "source": "FriendListDocumentation.lua",
+          "wrapper": "getWhoRaceFilters"
+        },
+        {
           "arguments": [
             {
               "name": "guid",
@@ -40232,6 +41368,11 @@
               "name": "origin",
               "nilable": true,
               "type": "number"
+            },
+            {
+              "name": "filters",
+              "nilable": true,
+              "type": "SendWhoFilters"
             }
           ],
           "binding": "C_FriendList.SendWho",
@@ -40361,6 +41502,11 @@
               "name": "sorting",
               "nilable": false,
               "type": "cstring"
+            },
+            {
+              "name": "ascending",
+              "nilable": true,
+              "type": "bool"
             }
           ],
           "binding": "C_FriendList.SortWho",
@@ -40669,6 +41815,57 @@
       "wrapper": "gameError"
     },
     {
+      "blizzardNamespace": "C_GameModeExpBar",
+      "environment": "All",
+      "functions": [
+        {
+          "binding": "C_GameModeExpBar.GetCurrentLevel",
+          "name": "GetCurrentLevel",
+          "returns": [
+            {
+              "name": "level",
+              "nilable": false,
+              "type": "number"
+            }
+          ],
+          "source": "GameModeExpBarUIDocumentation.lua",
+          "wrapper": "getCurrentLevel"
+        },
+        {
+          "binding": "C_GameModeExpBar.GetCurrentXP",
+          "name": "GetCurrentXP",
+          "returns": [
+            {
+              "name": "xp",
+              "nilable": false,
+              "type": "number"
+            }
+          ],
+          "source": "GameModeExpBarUIDocumentation.lua",
+          "wrapper": "getCurrentXP"
+        },
+        {
+          "binding": "C_GameModeExpBar.GetMaxXPForLevel",
+          "name": "GetMaxXPForLevel",
+          "returns": [
+            {
+              "name": "maxXP",
+              "nilable": false,
+              "type": "number"
+            }
+          ],
+          "source": "GameModeExpBarUIDocumentation.lua",
+          "wrapper": "getMaxXPForLevel"
+        }
+      ],
+      "kind": "namespace",
+      "sources": [
+        "GameModeExpBarUIDocumentation.lua"
+      ],
+      "system": "GameModeExpBarUI",
+      "wrapper": "gameModeExpBar"
+    },
+    {
       "blizzardNamespace": "C_GamePad",
       "environment": "All",
       "functions": [
@@ -40853,6 +42050,19 @@
           "wrapper": "getAllDeviceIDs"
         },
         {
+          "binding": "C_GamePad.GetAllowHoverEventsWithFreeLook",
+          "name": "GetAllowHoverEventsWithFreeLook",
+          "returns": [
+            {
+              "name": "enabled",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "source": "GamePadDocumentation.lua",
+          "wrapper": "getAllowHoverEventsWithFreeLook"
+        },
+        {
           "binding": "C_GamePad.GetCombinedDeviceID",
           "name": "GetCombinedDeviceID",
           "returns": [
@@ -40979,6 +42189,20 @@
         {
           "arguments": [
             {
+              "name": "enable",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "binding": "C_GamePad.SetAllowHoverEventsWithFreeLook",
+          "name": "SetAllowHoverEventsWithFreeLook",
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "GamePadDocumentation.lua",
+          "wrapper": "setAllowHoverEventsWithFreeLook"
+        },
+        {
+          "arguments": [
+            {
               "name": "config",
               "nilable": false,
               "type": "GamePadConfig"
@@ -41065,6 +42289,32 @@
       "environment": "All",
       "functions": [
         {
+          "binding": "C_GameRules.AccountHasSDEnabled",
+          "name": "AccountHasSDEnabled",
+          "returns": [
+            {
+              "name": "isSDEnabled",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "source": "GameRulesDocumentation.lua",
+          "wrapper": "accountHasSDEnabled"
+        },
+        {
+          "binding": "C_GameRules.AlreadyShownOnce",
+          "name": "AlreadyShownOnce",
+          "returns": [
+            {
+              "name": "alreadyShownOnce",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "source": "GameRulesDocumentation.lua",
+          "wrapper": "alreadyShownOnce"
+        },
+        {
           "arguments": [
             {
               "name": "gameModeRecordID",
@@ -41111,6 +42361,32 @@
           ],
           "source": "GameRulesDocumentation.lua",
           "wrapper": "getActiveGameMode"
+        },
+        {
+          "binding": "C_GameRules.GetActiveGameModeForSplashScreen",
+          "name": "GetActiveGameModeForSplashScreen",
+          "returns": [
+            {
+              "name": "activeGameModeForSplashScreen",
+              "nilable": true,
+              "type": "GameMode"
+            }
+          ],
+          "source": "GameRulesDocumentation.lua",
+          "wrapper": "getActiveGameModeForSplashScreen"
+        },
+        {
+          "binding": "C_GameRules.GetActiveGameModeRecIdForSplashScreen",
+          "name": "GetActiveGameModeRecIdForSplashScreen",
+          "returns": [
+            {
+              "name": "activeGameModeRecIdForSplashScreen",
+              "nilable": true,
+              "type": "number"
+            }
+          ],
+          "source": "GameRulesDocumentation.lua",
+          "wrapper": "getActiveGameModeRecIdForSplashScreen"
         },
         {
           "binding": "C_GameRules.GetCurrentEventRealmQueues",
@@ -41171,6 +42447,19 @@
           "secretArguments": "AllowedWhenUntainted",
           "source": "GameRulesDocumentation.lua",
           "wrapper": "getDisplayedGameModeRecordIDAtIndex"
+        },
+        {
+          "binding": "C_GameRules.GetForeverExperiencePreset",
+          "name": "GetForeverExperiencePreset",
+          "returns": [
+            {
+              "name": "preset",
+              "nilable": true,
+              "type": "ForeverExperiencePreset"
+            }
+          ],
+          "source": "GameRulesDocumentation.lua",
+          "wrapper": "getForeverExperiencePreset"
         },
         {
           "arguments": [
@@ -41295,6 +42584,19 @@
           "wrapper": "getNumDisplayedGameModes"
         },
         {
+          "binding": "C_GameRules.IsAccountKeyBindingsEnabled",
+          "name": "IsAccountKeyBindingsEnabled",
+          "returns": [
+            {
+              "name": "active",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "source": "GameRulesDocumentation.lua",
+          "wrapper": "isAccountKeyBindingsEnabled"
+        },
+        {
           "binding": "C_GameRules.IsCharacterlessLoginActive",
           "name": "IsCharacterlessLoginActive",
           "returns": [
@@ -41371,6 +42673,19 @@
           "wrapper": "isGameRuleActive"
         },
         {
+          "binding": "C_GameRules.IsHardcoreActive",
+          "name": "IsHardcoreActive",
+          "returns": [
+            {
+              "name": "active",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "source": "GameRulesDocumentation.lua",
+          "wrapper": "isHardcoreActive"
+        },
+        {
           "binding": "C_GameRules.IsMultiActionBarVisibilityForced",
           "name": "IsMultiActionBarVisibilityForced",
           "returns": [
@@ -41413,6 +42728,45 @@
           "wrapper": "isPlunderstorm"
         },
         {
+          "binding": "C_GameRules.IsRewardsShopEnabled",
+          "name": "IsRewardsShopEnabled",
+          "returns": [
+            {
+              "name": "enabled",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "source": "GameRulesDocumentation.lua",
+          "wrapper": "isRewardsShopEnabled"
+        },
+        {
+          "binding": "C_GameRules.IsSDHDToggleEnabled",
+          "name": "IsSDHDToggleEnabled",
+          "returns": [
+            {
+              "name": "isEnabled",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "source": "GameRulesDocumentation.lua",
+          "wrapper": "isSDHDToggleEnabled"
+        },
+        {
+          "binding": "C_GameRules.IsSelfFoundAllowed",
+          "name": "IsSelfFoundAllowed",
+          "returns": [
+            {
+              "name": "active",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "source": "GameRulesDocumentation.lua",
+          "wrapper": "isSelfFoundAllowed"
+        },
+        {
           "binding": "C_GameRules.IsStandard",
           "name": "IsStandard",
           "returns": [
@@ -41437,6 +42791,80 @@
           ],
           "source": "GameRulesDocumentation.lua",
           "wrapper": "isWoWHack"
+        },
+        {
+          "arguments": [
+            {
+              "name": "alreadyShownOnce",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "binding": "C_GameRules.SetAlreadyShownOnce",
+          "name": "SetAlreadyShownOnce",
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "GameRulesDocumentation.lua",
+          "wrapper": "setAlreadyShownOnce"
+        },
+        {
+          "arguments": [
+            {
+              "name": "preset",
+              "nilable": false,
+              "type": "ForeverExperiencePreset"
+            }
+          ],
+          "binding": "C_GameRules.SetForeverExperiencePresetPostLogin",
+          "name": "SetForeverExperiencePresetPostLogin",
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "GameRulesDocumentation.lua",
+          "wrapper": "setForeverExperiencePresetPostLogin"
+        },
+        {
+          "arguments": [
+            {
+              "name": "preset",
+              "nilable": false,
+              "type": "ForeverExperiencePreset"
+            }
+          ],
+          "binding": "C_GameRules.SetForeverExperiencePresetPreLogin",
+          "name": "SetForeverExperiencePresetPreLogin",
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "GameRulesDocumentation.lua",
+          "wrapper": "setForeverExperiencePresetPreLogin"
+        },
+        {
+          "arguments": [
+            {
+              "name": "setToSD",
+              "nilable": false,
+              "type": "bool"
+            },
+            {
+              "name": "usageLocation",
+              "nilable": false,
+              "type": "SdToggleUsageLocationUI"
+            }
+          ],
+          "binding": "C_GameRules.SetSDHDToggleValue",
+          "name": "SetSDHDToggleValue",
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "GameRulesDocumentation.lua",
+          "wrapper": "setSDHDToggleValue"
+        },
+        {
+          "binding": "C_GameRules.ShouldShowGameModeSplashScreen",
+          "name": "ShouldShowGameModeSplashScreen",
+          "returns": [
+            {
+              "name": "shouldShowGameModeSplashScreen",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "source": "GameRulesDocumentation.lua",
+          "wrapper": "shouldShowGameModeSplashScreen"
         }
       ],
       "kind": "namespace",
@@ -41484,6 +42912,144 @@
       ],
       "system": "GameUI",
       "wrapper": "gameUI"
+    },
+    {
+      "blizzardNamespace": "C_GamepadTargeting",
+      "environment": "All",
+      "functions": [
+        {
+          "binding": "C_GamepadTargeting.Disable",
+          "name": "Disable",
+          "returns": [
+            {
+              "name": "targetAlreadySelected",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "source": "GamepadTargetingDocumentation.lua",
+          "wrapper": "disable"
+        },
+        {
+          "binding": "C_GamepadTargeting.Enable",
+          "name": "Enable",
+          "source": "GamepadTargetingDocumentation.lua",
+          "wrapper": "enable"
+        },
+        {
+          "arguments": [
+            {
+              "name": "filter",
+              "nilable": false,
+              "type": "GamepadTargetingFilters"
+            }
+          ],
+          "binding": "C_GamepadTargeting.SetFilter",
+          "name": "SetFilter",
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "GamepadTargetingDocumentation.lua",
+          "wrapper": "setFilter"
+        }
+      ],
+      "kind": "namespace",
+      "sources": [
+        "GamepadTargetingDocumentation.lua"
+      ],
+      "system": "GamepadTargetingManager",
+      "wrapper": "gamepadTargeting"
+    },
+    {
+      "blizzardNamespace": "C_GamepadUI",
+      "environment": "All",
+      "functions": [
+        {
+          "binding": "C_GamepadUI.GetFirstGamepadActionBarStorageSlotIndexForActiveStance",
+          "name": "GetFirstGamepadActionBarStorageSlotIndexForActiveStance",
+          "returns": [
+            {
+              "name": "activeStanceFirstGamepadStorageSlotIndex",
+              "nilable": true,
+              "type": "luaIndex"
+            }
+          ],
+          "source": "GamepadUIDocumentation.lua",
+          "wrapper": "getFirstGamepadActionBarStorageSlotIndexForActiveStance"
+        },
+        {
+          "binding": "C_GamepadUI.GetFirstGamepadActionStorageSlotIndex",
+          "name": "GetFirstGamepadActionStorageSlotIndex",
+          "returns": [
+            {
+              "name": "firstGamepadActionStorageSlotIndex",
+              "nilable": false,
+              "type": "luaIndex"
+            }
+          ],
+          "source": "GamepadUIDocumentation.lua",
+          "wrapper": "getFirstGamepadActionStorageSlotIndex"
+        },
+        {
+          "binding": "C_GamepadUI.GetFirstGamepadPetActionStorageSlotIndex",
+          "name": "GetFirstGamepadPetActionStorageSlotIndex",
+          "returns": [
+            {
+              "name": "firstGamepadPetActionStorageSlotID",
+              "nilable": false,
+              "type": "luaIndex"
+            }
+          ],
+          "source": "GamepadUIDocumentation.lua",
+          "wrapper": "getFirstGamepadPetActionStorageSlotIndex"
+        },
+        {
+          "arguments": [
+            {
+              "name": "gamepadActionStorageSlotIndex",
+              "nilable": false,
+              "type": "luaIndex"
+            }
+          ],
+          "binding": "C_GamepadUI.IsValidGamepadActionStorageSlotIndex",
+          "name": "IsValidGamepadActionStorageSlotIndex",
+          "returns": [
+            {
+              "name": "isValid",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "GamepadUIDocumentation.lua",
+          "wrapper": "isValidGamepadActionStorageSlotIndex"
+        },
+        {
+          "arguments": [
+            {
+              "name": "gamepadPossessBarStorageSlotIndex",
+              "nilable": false,
+              "type": "luaIndex"
+            }
+          ],
+          "binding": "C_GamepadUI.IsValidGamepadPossessBarStorageSlotIndex",
+          "name": "IsValidGamepadPossessBarStorageSlotIndex",
+          "returns": [
+            {
+              "name": "isValid",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "GamepadUIDocumentation.lua",
+          "wrapper": "isValidGamepadPossessBarStorageSlotIndex"
+        }
+      ],
+      "kind": "namespace",
+      "sources": [
+        "GamepadUIDocumentation.lua"
+      ],
+      "system": "GamepadUI",
+      "wrapper": "gamepadUI"
     },
     {
       "blizzardNamespace": "C_Garrison",
@@ -42962,6 +44528,62 @@
           "wrapper": "getMOTD"
         },
         {
+          "binding": "C_GuildInfo.GetPreferredPlaySettings",
+          "name": "GetPreferredPlaySettings",
+          "returns": [
+            {
+              "name": "loaded",
+              "nilable": false,
+              "type": "bool"
+            },
+            {
+              "name": "preferredLocaleID",
+              "nilable": false,
+              "type": "number"
+            },
+            {
+              "name": "preferredDatacenterLocalityID",
+              "nilable": false,
+              "type": "number"
+            },
+            {
+              "name": "lastPreferredLocaleChangeDate",
+              "nilable": false,
+              "type": "time_t"
+            },
+            {
+              "name": "lastPreferredDatacenterLocalityChangeDate",
+              "nilable": false,
+              "type": "time_t"
+            },
+            {
+              "name": "changeCooldownDays",
+              "nilable": false,
+              "type": "number"
+            }
+          ],
+          "source": "GuildInfoDocumentation.lua",
+          "wrapper": "getPreferredPlaySettings"
+        },
+        {
+          "binding": "C_GuildInfo.GetPreferredPlaySettingsFeatures",
+          "name": "GetPreferredPlaySettingsFeatures",
+          "returns": [
+            {
+              "name": "canChangeLocale",
+              "nilable": false,
+              "type": "bool"
+            },
+            {
+              "name": "canChangeDatacenterLocality",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "source": "GuildInfoDocumentation.lua",
+          "wrapper": "getPreferredPlaySettingsFeatures"
+        },
+        {
           "arguments": [
             {
               "name": "rankOrder",
@@ -43211,6 +44833,19 @@
           "wrapper": "requestGuildRenameRefund"
         },
         {
+          "binding": "C_GuildInfo.RequestPreferredPlaySettings",
+          "name": "RequestPreferredPlaySettings",
+          "returns": [
+            {
+              "name": "startedSuccessfully",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "source": "GuildInfoDocumentation.lua",
+          "wrapper": "requestPreferredPlaySettings"
+        },
+        {
           "arguments": [
             {
               "name": "desiredName",
@@ -43329,6 +44964,34 @@
         {
           "arguments": [
             {
+              "default": 0,
+              "name": "preferredLocaleID",
+              "nilable": false,
+              "type": "number"
+            },
+            {
+              "default": 0,
+              "name": "preferredDatacenterLocalityID",
+              "nilable": false,
+              "type": "number"
+            }
+          ],
+          "binding": "C_GuildInfo.SetPreferredPlaySettings",
+          "name": "SetPreferredPlaySettings",
+          "returns": [
+            {
+              "name": "startedSuccessfully",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "GuildInfoDocumentation.lua",
+          "wrapper": "setPreferredPlaySettings"
+        },
+        {
+          "arguments": [
+            {
               "name": "name",
               "nilable": false,
               "type": "cstring"
@@ -43377,6 +45040,19 @@
           ],
           "source": "HeirloomInfoDocumentation.lua",
           "wrapper": "areAllSourceFiltersChecked"
+        },
+        {
+          "binding": "C_HeirloomInfo.HeirloomsAvailable",
+          "name": "HeirloomsAvailable",
+          "returns": [
+            {
+              "name": "areHeirloomsAvailable",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "source": "HeirloomInfoDocumentation.lua",
+          "wrapper": "heirloomsAvailable"
         },
         {
           "arguments": [
@@ -49899,6 +51575,24 @@
       "environment": "All",
       "functions": [
         {
+          "binding": "GetCursorCenterPosition",
+          "name": "GetCursorCenterPosition",
+          "returns": [
+            {
+              "name": "posX",
+              "nilable": false,
+              "type": "number"
+            },
+            {
+              "name": "posY",
+              "nilable": false,
+              "type": "number"
+            }
+          ],
+          "source": "InputDocumentation.lua",
+          "wrapper": "getCursorCenterPosition"
+        },
+        {
           "binding": "GetCursorDelta",
           "name": "GetCursorDelta",
           "returns": [
@@ -50028,6 +51722,19 @@
           ],
           "source": "InputDocumentation.lua",
           "wrapper": "isControlKeyDown"
+        },
+        {
+          "binding": "IsCursorVisible",
+          "name": "IsCursorVisible",
+          "returns": [
+            {
+              "name": "visible",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "source": "InputDocumentation.lua",
+          "wrapper": "isCursorVisible"
         },
         {
           "arguments": [
@@ -50377,6 +52084,31 @@
       "wrapper": "input"
     },
     {
+      "blizzardNamespace": "C_InputInterfaceStyle",
+      "environment": "All",
+      "functions": [
+        {
+          "binding": "C_InputInterfaceStyle.GetCurrentStyle",
+          "name": "GetCurrentStyle",
+          "returns": [
+            {
+              "name": "style",
+              "nilable": false,
+              "type": "InputDeviceInterfaceType"
+            }
+          ],
+          "source": "InputInterfaceStyleDocumentation.lua",
+          "wrapper": "getCurrentStyle"
+        }
+      ],
+      "kind": "namespace",
+      "sources": [
+        "InputInterfaceStyleDocumentation.lua"
+      ],
+      "system": "InputInterfaceStyle",
+      "wrapper": "inputInterfaceStyle"
+    },
+    {
       "environment": "All",
       "functions": [
         {
@@ -50609,6 +52341,11 @@
               "name": "hasWorldTier",
               "nilable": false,
               "type": "bool"
+            },
+            {
+              "name": "instanceServerID",
+              "nilable": true,
+              "type": "number"
             }
           ],
           "source": "InstanceDocumentation.lua",
@@ -52242,6 +53979,21 @@
           "wrapper": "confirmBindOnUse"
         },
         {
+          "arguments": [
+            {
+              "name": "itemGUID",
+              "nilable": false,
+              "type": "WOWGUID"
+            }
+          ],
+          "binding": "C_Item.ConfirmDeleteItem",
+          "hasRestrictions": true,
+          "name": "ConfirmDeleteItem",
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "ItemDocumentation.lua",
+          "wrapper": "confirmDeleteItem"
+        },
+        {
           "binding": "C_Item.ConfirmNoRefundOnUse",
           "name": "ConfirmNoRefundOnUse",
           "source": "ItemDocumentation.lua",
@@ -52252,6 +54004,21 @@
           "name": "ConfirmOnUse",
           "source": "ItemDocumentation.lua",
           "wrapper": "confirmOnUse"
+        },
+        {
+          "arguments": [
+            {
+              "name": "itemGUID",
+              "nilable": false,
+              "type": "WOWGUID"
+            }
+          ],
+          "binding": "C_Item.DeleteItem",
+          "hasRestrictions": true,
+          "name": "DeleteItem",
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "ItemDocumentation.lua",
+          "wrapper": "deleteItem"
         },
         {
           "arguments": [
@@ -53924,6 +55691,28 @@
           "secretArguments": "AllowedWhenUntainted",
           "source": "ItemDocumentation.lua",
           "wrapper": "getStackCount"
+        },
+        {
+          "arguments": [
+            {
+              "name": "weaponSlot",
+              "nilable": false,
+              "type": "WeaponSlot"
+            }
+          ],
+          "binding": "C_Item.GetWeaponEnchantInfo",
+          "name": "GetWeaponEnchantInfo",
+          "returns": [
+            {
+              "innerType": "WeaponEnchantInfo",
+              "name": "enchants",
+              "nilable": false,
+              "type": "table"
+            }
+          ],
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "ItemDocumentation.lua",
+          "wrapper": "getWeaponEnchantInfo"
         },
         {
           "arguments": [
@@ -56726,6 +58515,12 @@
           ],
           "source": "LFGInfoDocumentation.lua",
           "wrapper": "isLFREnabled"
+        },
+        {
+          "binding": "C_LFGInfo.LeaveInstanceBySpell",
+          "name": "LeaveInstanceBySpell",
+          "source": "LFGInfoDocumentation.lua",
+          "wrapper": "leaveInstanceBySpell"
         }
       ],
       "kind": "namespace",
@@ -57843,6 +59638,73 @@
       "wrapper": "lfgList"
     },
     {
+      "blizzardNamespace": "C_LFGListRoles",
+      "environment": "All",
+      "functions": [
+        {
+          "binding": "C_LFGListRoles.GetRoles",
+          "mayReturnNothing": true,
+          "name": "GetRoles",
+          "returns": [
+            {
+              "name": "roles",
+              "nilable": false,
+              "type": "LFGRoles"
+            }
+          ],
+          "source": "LFGListRolesDocumentation.lua",
+          "wrapper": "getRoles"
+        },
+        {
+          "binding": "C_LFGListRoles.GetSavedRoles",
+          "mayReturnNothing": true,
+          "name": "GetSavedRoles",
+          "returns": [
+            {
+              "name": "roles",
+              "nilable": false,
+              "type": "LFGRoles"
+            }
+          ],
+          "source": "LFGListRolesDocumentation.lua",
+          "wrapper": "getSavedRoles"
+        },
+        {
+          "arguments": [
+            {
+              "name": "roles",
+              "nilable": false,
+              "type": "LFGRoles"
+            },
+            {
+              "default": false,
+              "name": "limitToClassRoles",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "binding": "C_LFGListRoles.SetRoles",
+          "name": "SetRoles",
+          "returns": [
+            {
+              "name": "success",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "LFGListRolesDocumentation.lua",
+          "wrapper": "setRoles"
+        }
+      ],
+      "kind": "namespace",
+      "sources": [
+        "LFGListRolesDocumentation.lua"
+      ],
+      "system": "LFGListRoles",
+      "wrapper": "lfgListRoles"
+    },
+    {
       "blizzardNamespace": "C_LimitedInput",
       "environment": "All",
       "functions": [
@@ -58025,6 +59887,7 @@
             }
           ],
           "binding": "C_LobbyMatchmakerInfo.RespondToQueuePop",
+          "hasRestrictions": true,
           "name": "RespondToQueuePop",
           "secretArguments": "AllowedWhenUntainted",
           "source": "LobbyMatchmakerInfoDocumentation.lua",
@@ -58281,6 +60144,11 @@
               "name": "declensionSet",
               "nilable": false,
               "type": "luaIndex"
+            },
+            {
+              "name": "namePartType",
+              "nilable": true,
+              "type": "NamePartType"
             }
           ],
           "binding": "DeclineName",
@@ -58333,6 +60201,11 @@
               "name": "gender",
               "nilable": true,
               "type": "UnitSex"
+            },
+            {
+              "name": "namePartType",
+              "nilable": true,
+              "type": "NamePartType"
             }
           ],
           "binding": "GetNumDeclensionSets",
@@ -58525,6 +60398,24 @@
       "wrapper": "loot"
     },
     {
+      "blizzardNamespace": "C_LootFrame",
+      "environment": "All",
+      "functions": [
+        {
+          "binding": "C_LootFrame.TryAutoLoot",
+          "name": "TryAutoLoot",
+          "source": "LootFrameDocumentation.lua",
+          "wrapper": "tryAutoLoot"
+        }
+      ],
+      "kind": "namespace",
+      "sources": [
+        "LootFrameDocumentation.lua"
+      ],
+      "system": "LootFrame",
+      "wrapper": "lootFrame"
+    },
+    {
       "blizzardNamespace": "C_LootHistory",
       "environment": "All",
       "functions": [
@@ -58606,7 +60497,7 @@
               "type": "number"
             },
             {
-              "name": "lootListID",
+              "name": "lootListKey",
               "nilable": false,
               "type": "number"
             }
@@ -58734,6 +60625,9 @@
             }
           ],
           "binding": "C_LossOfControl.GetActiveLossOfControlData",
+          "flags": [
+            "SecretWhenLossOfControlRestricted"
+          ],
           "name": "GetActiveLossOfControlData",
           "returns": [
             {
@@ -58761,7 +60655,7 @@
           ],
           "binding": "C_LossOfControl.GetActiveLossOfControlDataByUnit",
           "flags": [
-            "SecretWhenLossOfControlInfoRestricted"
+            "SecretWhenLossOfControlRestricted"
           ],
           "name": "GetActiveLossOfControlDataByUnit",
           "returns": [
@@ -61344,6 +63238,27 @@
               "type": "number"
             }
           ],
+          "binding": "C_MajorFactions.GetMajorFactionProgressionInfo",
+          "name": "GetMajorFactionProgressionInfo",
+          "returns": [
+            {
+              "name": "data",
+              "nilable": true,
+              "type": "MajorFactionProgressionInfo"
+            }
+          ],
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "MajorFactionsDocumentation.lua",
+          "wrapper": "getMajorFactionProgressionInfo"
+        },
+        {
+          "arguments": [
+            {
+              "name": "majorFactionID",
+              "nilable": false,
+              "type": "number"
+            }
+          ],
           "binding": "C_MajorFactions.GetMajorFactionRenownInfo",
           "name": "GetMajorFactionRenownInfo",
           "returns": [
@@ -61418,6 +63333,32 @@
           "secretArguments": "AllowedWhenUntainted",
           "source": "MajorFactionsDocumentation.lua",
           "wrapper": "getRenownRewardsForLevel"
+        },
+        {
+          "arguments": [
+            {
+              "name": "majorFactionID",
+              "nilable": false,
+              "type": "number"
+            },
+            {
+              "name": "renownLevel",
+              "nilable": false,
+              "type": "number"
+            }
+          ],
+          "binding": "C_MajorFactions.GetTotalReputationForRenownLevel",
+          "name": "GetTotalReputationForRenownLevel",
+          "returns": [
+            {
+              "name": "totalReputation",
+              "nilable": false,
+              "type": "number"
+            }
+          ],
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "MajorFactionsDocumentation.lua",
+          "wrapper": "getTotalReputationForRenownLevel"
         },
         {
           "arguments": [
@@ -63190,8 +65131,16 @@
           "wrapper": "clearAllTracking"
         },
         {
+          "arguments": [
+            {
+              "name": "id",
+              "nilable": false,
+              "type": "cstring"
+            }
+          ],
           "binding": "C_Minimap.ClearMinimapInsetInfo",
           "name": "ClearMinimapInsetInfo",
+          "secretArguments": "AllowedWhenUntainted",
           "source": "MinimapDocumentation.lua",
           "wrapper": "clearMinimapInsetInfo"
         },
@@ -63484,6 +65433,11 @@
         {
           "arguments": [
             {
+              "name": "id",
+              "nilable": false,
+              "type": "cstring"
+            },
+            {
               "name": "minAngle",
               "nilable": false,
               "type": "number"
@@ -63497,6 +65451,11 @@
               "name": "scalar",
               "nilable": false,
               "type": "number"
+            },
+            {
+              "name": "isCircular",
+              "nilable": false,
+              "type": "bool"
             }
           ],
           "binding": "C_Minimap.SetMinimapInsetInfo",
@@ -63905,6 +65864,19 @@
           "secretArguments": "AllowedWhenUntainted",
           "source": "MinimapFrameAPIDocumentation.lua",
           "wrapper": "setTaskBlobRingTexture"
+        },
+        {
+          "arguments": [
+            {
+              "name": "usingSoftCursor",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "name": "SetUsingSoftCursor",
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "MinimapFrameAPIDocumentation.lua",
+          "wrapper": "setUsingSoftCursor"
         },
         {
           "arguments": [
@@ -64936,6 +66908,19 @@
           "wrapper": "getNumMountsNeedingFanfare"
         },
         {
+          "binding": "C_MountJournal.HasDisplayableMount",
+          "name": "HasDisplayableMount",
+          "returns": [
+            {
+              "name": "hasMount",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "source": "MountJournalDocumentation.lua",
+          "wrapper": "hasDisplayableMount"
+        },
+        {
           "binding": "C_MountJournal.IsDragonridingUnlocked",
           "documentation": [
             "Returns whether the player has unlocked the ability to switch between Skyriding and steady flight styles for flying mounts ."
@@ -65085,6 +67070,19 @@
           "secretArguments": "AllowedWhenUntainted",
           "source": "MountJournalDocumentation.lua",
           "wrapper": "isValidTypeFilter"
+        },
+        {
+          "binding": "C_MountJournal.MountEquipmentAvailable",
+          "name": "MountEquipmentAvailable",
+          "returns": [
+            {
+              "name": "isMountEquipmentAvailable",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "source": "MountJournalDocumentation.lua",
+          "wrapper": "mountEquipmentAvailable"
         },
         {
           "arguments": [
@@ -66063,6 +68061,42 @@
       "wrapper": "namePlateManager"
     },
     {
+      "blizzardNamespace": "C_NameUtil",
+      "environment": "All",
+      "functions": [
+        {
+          "arguments": [
+            {
+              "name": "fullName",
+              "nilable": false,
+              "type": "cstring"
+            }
+          ],
+          "binding": "C_NameUtil.ReplaceSurnameSeparatorWithLinkSeparator",
+          "documentation": [
+            "Replaces the character surname separator with a link separator in a full name string."
+          ],
+          "name": "ReplaceSurnameSeparatorWithLinkSeparator",
+          "returns": [
+            {
+              "name": "result",
+              "nilable": false,
+              "type": "string"
+            }
+          ],
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "NameUtilDocumentation.lua",
+          "wrapper": "replaceSurnameSeparatorWithLinkSeparator"
+        }
+      ],
+      "kind": "namespace",
+      "sources": [
+        "NameUtilDocumentation.lua"
+      ],
+      "system": "NameUtil",
+      "wrapper": "nameUtil"
+    },
+    {
       "blizzardNamespace": "C_Navigation",
       "environment": "All",
       "functions": [
@@ -66718,6 +68752,19 @@
       "environment": "All",
       "functions": [
         {
+          "binding": "C_PaperDollInfo.AmmoNeeded",
+          "name": "AmmoNeeded",
+          "returns": [
+            {
+              "name": "ammoNeeded",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "source": "PaperDollInfoDocumentation.lua",
+          "wrapper": "ammoNeeded"
+        },
+        {
           "binding": "C_PaperDollInfo.CanAutoEquipCursorItem",
           "name": "CanAutoEquipCursorItem",
           "returns": [
@@ -66733,13 +68780,31 @@
         {
           "arguments": [
             {
+              "name": "slot",
+              "nilable": false,
+              "type": "LuaInventorySlot"
+            }
+          ],
+          "binding": "C_PaperDollInfo.CancelTemporaryEnchantment",
+          "documentation": [
+            "Cancels active temporary enchantments on inventory slot items. Imbue enchants take priority over temporary enchants."
+          ],
+          "hasRestrictions": true,
+          "name": "CancelTemporaryEnchantment",
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "PaperDollInfoDocumentation.lua",
+          "wrapper": "cancelTemporaryEnchantment"
+        },
+        {
+          "arguments": [
+            {
               "name": "slotIndex",
               "nilable": false,
               "type": "luaIndex"
             }
           ],
-          "binding": "C_PaperDollInfo.CanCursorCanGoInSlot",
-          "name": "CanCursorCanGoInSlot",
+          "binding": "C_PaperDollInfo.CursorCanGoInSlot",
+          "name": "CursorCanGoInSlot",
           "returns": [
             {
               "name": "canOccupySlot",
@@ -66749,25 +68814,7 @@
           ],
           "secretArguments": "AllowedWhenUntainted",
           "source": "PaperDollInfoDocumentation.lua",
-          "wrapper": "canCursorCanGoInSlot"
-        },
-        {
-          "arguments": [
-            {
-              "name": "slot",
-              "nilable": false,
-              "type": "LuaInventorySlot"
-            }
-          ],
-          "binding": "C_PaperDollInfo.CancelTemporaryEnchantment",
-          "documentation": [
-            "Cancels active temporary enchantments on inventory slot items."
-          ],
-          "hasRestrictions": true,
-          "name": "CancelTemporaryEnchantment",
-          "secretArguments": "AllowedWhenUntainted",
-          "source": "PaperDollInfoDocumentation.lua",
-          "wrapper": "cancelTemporaryEnchantment"
+          "wrapper": "cursorCanGoInSlot"
         },
         {
           "arguments": [
@@ -67064,7 +69111,7 @@
           ],
           "binding": "C_PaperDollInfo.GetTemporaryEnchantmentInfo",
           "documentation": [
-            "Queries information about active temporary enchants on inventory slot items."
+            "Queries information about active temporary enchants on inventory slot items. Imbue enchants take priority over temporary enchants."
           ],
           "mayReturnNothing": true,
           "name": "GetTemporaryEnchantmentInfo",
@@ -67224,6 +69271,19 @@
           ],
           "source": "PartyInfoDocumentation.lua",
           "wrapper": "canInvite"
+        },
+        {
+          "binding": "C_PartyInfo.CanPromoteToLeader",
+          "name": "CanPromoteToLeader",
+          "returns": [
+            {
+              "name": "success",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "source": "PartyInfoDocumentation.lua",
+          "wrapper": "canPromoteToLeader"
         },
         {
           "binding": "C_PartyInfo.CanStartInstanceAbandonVote",
@@ -67960,6 +70020,32 @@
           "wrapper": "isPartyWalkIn"
         },
         {
+          "binding": "C_PartyInfo.IsRaidListEnabled",
+          "name": "IsRaidListEnabled",
+          "returns": [
+            {
+              "name": "isRaidListEnabled",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "source": "PartyInfoSystemStatusDocumentation.lua",
+          "wrapper": "isRaidListEnabled"
+        },
+        {
+          "binding": "C_PartyInfo.IsRaidListSupported",
+          "name": "IsRaidListSupported",
+          "returns": [
+            {
+              "name": "isRaidListSupported",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "source": "PartyInfoSystemStatusDocumentation.lua",
+          "wrapper": "isRaidListSupported"
+        },
+        {
           "arguments": [
             {
               "name": "category",
@@ -68171,7 +70257,8 @@
       ],
       "kind": "namespace",
       "sources": [
-        "PartyInfoDocumentation.lua"
+        "PartyInfoDocumentation.lua",
+        "PartyInfoSystemStatusDocumentation.lua"
       ],
       "system": "PartyInfo",
       "wrapper": "partyInfo"
@@ -69047,6 +71134,79 @@
       "environment": "All",
       "functions": [
         {
+          "arguments": [
+            {
+              "name": "itemID",
+              "nilable": false,
+              "type": "number"
+            }
+          ],
+          "binding": "C_PetInfo.CanPetEatItem",
+          "name": "CanPetEatItem",
+          "returns": [
+            {
+              "name": "canEat",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "PetInfoDocumentation.lua",
+          "wrapper": "canPetEatItem"
+        },
+        {
+          "binding": "C_PetInfo.GetPetFoodTypes",
+          "name": "GetPetFoodTypes",
+          "returns": [
+            {
+              "innerType": "string",
+              "name": "foodTypes",
+              "nilable": false,
+              "type": "table"
+            }
+          ],
+          "source": "PetInfoDocumentation.lua",
+          "wrapper": "getPetFoodTypes"
+        },
+        {
+          "binding": "C_PetInfo.GetPetHappiness",
+          "mayReturnNothing": true,
+          "name": "GetPetHappiness",
+          "returns": [
+            {
+              "name": "happiness",
+              "nilable": false,
+              "type": "number"
+            },
+            {
+              "name": "damagePercentage",
+              "nilable": false,
+              "type": "number"
+            },
+            {
+              "name": "loyaltyRate",
+              "nilable": false,
+              "type": "number"
+            }
+          ],
+          "source": "PetInfoDocumentation.lua",
+          "wrapper": "getPetHappiness"
+        },
+        {
+          "binding": "C_PetInfo.GetPetLoyalty",
+          "mayReturnNothing": true,
+          "name": "GetPetLoyalty",
+          "returns": [
+            {
+              "name": "loyaltyName",
+              "nilable": false,
+              "type": "string"
+            }
+          ],
+          "source": "PetInfoDocumentation.lua",
+          "wrapper": "getPetLoyalty"
+        },
+        {
           "binding": "C_PetInfo.GetPetTalentTree",
           "mayReturnNothing": true,
           "name": "GetPetTalentTree",
@@ -69081,6 +71241,37 @@
           "secretArguments": "AllowedWhenUntainted",
           "source": "PetInfoDocumentation.lua",
           "wrapper": "getPetTamersForMap"
+        },
+        {
+          "binding": "C_PetInfo.GetPetTrainingPoints",
+          "name": "GetPetTrainingPoints",
+          "returns": [
+            {
+              "name": "totalPoints",
+              "nilable": false,
+              "type": "number"
+            },
+            {
+              "name": "usedPoints",
+              "nilable": false,
+              "type": "number"
+            }
+          ],
+          "source": "PetInfoDocumentation.lua",
+          "wrapper": "getPetTrainingPoints"
+        },
+        {
+          "binding": "C_PetInfo.GetPetUIModelSceneID",
+          "name": "GetPetUIModelSceneID",
+          "returns": [
+            {
+              "name": "modelSceneID",
+              "nilable": false,
+              "type": "number"
+            }
+          ],
+          "source": "PetInfoDocumentation.lua",
+          "wrapper": "getPetUIModelSceneID"
         },
         {
           "arguments": [
@@ -69123,6 +71314,19 @@
           "secretArguments": "AllowedWhenUntainted",
           "source": "PetInfoDocumentation.lua",
           "wrapper": "isPetActionPassive"
+        },
+        {
+          "binding": "C_PetInfo.IsPetOrderMoveToPending",
+          "name": "IsPetOrderMoveToPending",
+          "returns": [
+            {
+              "name": "isPetOrderMoveToPending",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "source": "PetInfoDocumentation.lua",
+          "wrapper": "isPetOrderMoveToPending"
         },
         {
           "arguments": [
@@ -70641,11 +72845,12 @@
             }
           ],
           "binding": "C_PlayerInfo.GetName",
+          "mayReturnNothing": true,
           "name": "GetName",
           "returns": [
             {
               "name": "name",
-              "nilable": true,
+              "nilable": false,
               "type": "string"
             }
           ],
@@ -71053,6 +73258,19 @@
           "wrapper": "isTutorialsTabAvailable"
         },
         {
+          "binding": "C_PlayerInfo.ShouldDisplaySurname",
+          "name": "ShouldDisplaySurname",
+          "returns": [
+            {
+              "name": "display",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "source": "PlayerInfoDocumentation.lua",
+          "wrapper": "shouldDisplaySurname"
+        },
+        {
           "arguments": [
             {
               "mixin": "PlayerLocationMixin",
@@ -71210,6 +73428,12 @@
           "name": "ReopenInteraction",
           "source": "PlayerInteractionManagerDocumentation.lua",
           "wrapper": "reopenInteraction"
+        },
+        {
+          "binding": "C_PlayerInteractionManager.ShardTransferConfirm",
+          "name": "ShardTransferConfirm",
+          "source": "PlayerInteractionManagerDocumentation.lua",
+          "wrapper": "shardTransferConfirm"
         }
       ],
       "kind": "namespace",
@@ -71441,6 +73665,19 @@
           "wrapper": "canLootUnit"
         },
         {
+          "binding": "CanPortGraveyard",
+          "name": "CanPortGraveyard",
+          "returns": [
+            {
+              "name": "canPortGraveyard",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "source": "PlayerScriptDocumentation.lua",
+          "wrapper": "canPortGraveyard"
+        },
+        {
           "binding": "CancelAreaSpiritHeal",
           "name": "CancelAreaSpiritHeal",
           "source": "PlayerScriptDocumentation.lua",
@@ -71614,6 +73851,22 @@
           ],
           "source": "PlayerScriptDocumentation.lua",
           "wrapper": "getAreaSpiritHealerTime"
+        },
+        {
+          "binding": "GetArmorPenetration",
+          "flags": [
+            "SecretWhenUnitStatsRestricted"
+          ],
+          "name": "GetArmorPenetration",
+          "returns": [
+            {
+              "name": "result",
+              "nilable": false,
+              "type": "number"
+            }
+          ],
+          "source": "PlayerScriptDocumentation.lua",
+          "wrapper": "getArmorPenetration"
         },
         {
           "arguments": [
@@ -71871,6 +74124,35 @@
           "wrapper": "getCritChance"
         },
         {
+          "arguments": [
+            {
+              "name": "stat",
+              "nilable": false,
+              "type": "luaIndex"
+            },
+            {
+              "name": "value",
+              "nilable": false,
+              "type": "number"
+            }
+          ],
+          "binding": "GetCritChanceFromStat",
+          "flags": [
+            "SecretWhenUnitStatsRestricted"
+          ],
+          "name": "GetCritChanceFromStat",
+          "returns": [
+            {
+              "name": "critChance",
+              "nilable": false,
+              "type": "number"
+            }
+          ],
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "PlayerScriptDocumentation.lua",
+          "wrapper": "getCritChanceFromStat"
+        },
+        {
           "binding": "GetCritChanceProvidesParryEffect",
           "name": "GetCritChanceProvidesParryEffect",
           "returns": [
@@ -71914,6 +74196,19 @@
           ],
           "source": "PlayerScriptDocumentation.lua",
           "wrapper": "getDodgeChanceFromAttribute"
+        },
+        {
+          "binding": "GetEvictionTimeRemaining",
+          "name": "GetEvictionTimeRemaining",
+          "returns": [
+            {
+              "name": "result",
+              "nilable": true,
+              "type": "number"
+            }
+          ],
+          "source": "PlayerScriptDocumentation.lua",
+          "wrapper": "getEvictionTimeRemaining"
         },
         {
           "binding": "GetExpertise",
@@ -71968,6 +74263,70 @@
           "wrapper": "getExpertisePercent"
         },
         {
+          "arguments": [
+            {
+              "name": "playerWeaponSkill",
+              "nilable": true,
+              "type": "number"
+            },
+            {
+              "name": "targetDefenseSkill",
+              "nilable": false,
+              "type": "number"
+            }
+          ],
+          "binding": "GetGlancingBlowChance",
+          "documentation": [
+            "If no playerWeaponSkill value is provided, uses the skill value for the player's main hand weapon/shapeshift form."
+          ],
+          "flags": [
+            "SecretWhenUnitStatsRestricted"
+          ],
+          "name": "GetGlancingBlowChance",
+          "returns": [
+            {
+              "name": "result",
+              "nilable": false,
+              "type": "number"
+            }
+          ],
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "PlayerScriptDocumentation.lua",
+          "wrapper": "getGlancingBlowChance"
+        },
+        {
+          "arguments": [
+            {
+              "name": "playerWeaponSkill",
+              "nilable": true,
+              "type": "number"
+            },
+            {
+              "name": "targetDefenseSkill",
+              "nilable": false,
+              "type": "number"
+            }
+          ],
+          "binding": "GetGlancingBlowPenalty",
+          "documentation": [
+            "If no playerWeaponSkill value is provided, uses the skill value for the player's main hand weapon/shapeshift form."
+          ],
+          "flags": [
+            "SecretWhenUnitStatsRestricted"
+          ],
+          "name": "GetGlancingBlowPenalty",
+          "returns": [
+            {
+              "name": "result",
+              "nilable": false,
+              "type": "number"
+            }
+          ],
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "PlayerScriptDocumentation.lua",
+          "wrapper": "getGlancingBlowPenalty"
+        },
+        {
           "binding": "GetHaste",
           "flags": [
             "SecretWhenUnitStatsRestricted"
@@ -71982,6 +74341,42 @@
           ],
           "source": "PlayerScriptDocumentation.lua",
           "wrapper": "getHaste"
+        },
+        {
+          "binding": "GetHealthRegen",
+          "name": "GetHealthRegen",
+          "returns": [
+            {
+              "name": "healthRegen",
+              "nilable": false,
+              "type": "number"
+            },
+            {
+              "name": "combatHealthRegen",
+              "nilable": false,
+              "type": "number"
+            }
+          ],
+          "source": "PlayerScriptDocumentation.lua",
+          "wrapper": "getHealthRegen"
+        },
+        {
+          "binding": "GetHealthRegenFromSpirit",
+          "name": "GetHealthRegenFromSpirit",
+          "returns": [
+            {
+              "name": "healthRegen",
+              "nilable": false,
+              "type": "number"
+            },
+            {
+              "name": "combatHealthRegen",
+              "nilable": false,
+              "type": "number"
+            }
+          ],
+          "source": "PlayerScriptDocumentation.lua",
+          "wrapper": "getHealthRegenFromSpirit"
         },
         {
           "binding": "GetHitModifier",
@@ -72063,6 +74458,24 @@
           "wrapper": "getManaRegen"
         },
         {
+          "binding": "GetManaRegenFromSpirit",
+          "name": "GetManaRegenFromSpirit",
+          "returns": [
+            {
+              "name": "powerRegen",
+              "nilable": false,
+              "type": "number"
+            },
+            {
+              "name": "combatPowerRegen",
+              "nilable": false,
+              "type": "number"
+            }
+          ],
+          "source": "PlayerScriptDocumentation.lua",
+          "wrapper": "getManaRegenFromSpirit"
+        },
+        {
           "binding": "GetMastery",
           "flags": [
             "SecretWhenUnitStatsRestricted"
@@ -72129,6 +74542,22 @@
           "wrapper": "getMeleeHaste"
         },
         {
+          "binding": "GetMeleeHitChanceTakenModifier",
+          "flags": [
+            "SecretWhenUnitStatsRestricted"
+          ],
+          "name": "GetMeleeHitChanceTakenModifier",
+          "returns": [
+            {
+              "name": "result",
+              "nilable": false,
+              "type": "number"
+            }
+          ],
+          "source": "PlayerScriptDocumentation.lua",
+          "wrapper": "getMeleeHitChanceTakenModifier"
+        },
+        {
           "binding": "GetModResilienceDamageReduction",
           "flags": [
             "SecretWhenUnitStatsRestricted"
@@ -72169,6 +74598,22 @@
           ],
           "source": "PlayerScriptDocumentation.lua",
           "wrapper": "getNormalizedRealmName"
+        },
+        {
+          "binding": "GetOffhandHitModifier",
+          "flags": [
+            "SecretWhenUnitStatsRestricted"
+          ],
+          "name": "GetOffhandHitModifier",
+          "returns": [
+            {
+              "name": "result",
+              "nilable": false,
+              "type": "number"
+            }
+          ],
+          "source": "PlayerScriptDocumentation.lua",
+          "wrapper": "getOffhandHitModifier"
         },
         {
           "binding": "GetOverrideAPBySpellPower",
@@ -72328,6 +74773,59 @@
           "wrapper": "getParryChanceFromAttribute"
         },
         {
+          "binding": "GetPetCritChance",
+          "flags": [
+            "SecretWhenUnitStatsRestricted"
+          ],
+          "name": "GetPetCritChance",
+          "returns": [
+            {
+              "name": "meleeCrit",
+              "nilable": false,
+              "type": "number"
+            },
+            {
+              "name": "spellCrit",
+              "nilable": false,
+              "type": "number"
+            }
+          ],
+          "source": "PlayerScriptDocumentation.lua",
+          "wrapper": "getPetCritChance"
+        },
+        {
+          "binding": "GetPetDodgeChance",
+          "flags": [
+            "SecretWhenUnitStatsRestricted"
+          ],
+          "name": "GetPetDodgeChance",
+          "returns": [
+            {
+              "name": "result",
+              "nilable": false,
+              "type": "number"
+            }
+          ],
+          "source": "PlayerScriptDocumentation.lua",
+          "wrapper": "getPetDodgeChance"
+        },
+        {
+          "binding": "GetPetHitChanceModifier",
+          "flags": [
+            "SecretWhenUnitStatsRestricted"
+          ],
+          "name": "GetPetHitChanceModifier",
+          "returns": [
+            {
+              "name": "result",
+              "nilable": false,
+              "type": "number"
+            }
+          ],
+          "source": "PlayerScriptDocumentation.lua",
+          "wrapper": "getPetHitChanceModifier"
+        },
+        {
           "binding": "GetPetMeleeHaste",
           "flags": [
             "SecretWhenUnitStatsRestricted"
@@ -72358,6 +74856,22 @@
           ],
           "source": "PlayerScriptDocumentation.lua",
           "wrapper": "getPetSpellBonusDamage"
+        },
+        {
+          "binding": "GetPetSpellHitChanceModifier",
+          "flags": [
+            "SecretWhenUnitStatsRestricted"
+          ],
+          "name": "GetPetSpellHitChanceModifier",
+          "returns": [
+            {
+              "name": "result",
+              "nilable": false,
+              "type": "number"
+            }
+          ],
+          "source": "PlayerScriptDocumentation.lua",
+          "wrapper": "getPetSpellHitChanceModifier"
         },
         {
           "binding": "GetPlayerFacing",
@@ -72412,7 +74926,7 @@
             {
               "name": "name",
               "nilable": false,
-              "type": "cstring"
+              "type": "string"
             },
             {
               "name": "realmName",
@@ -72512,6 +75026,35 @@
           "wrapper": "getPvpPowerHealing"
         },
         {
+          "arguments": [
+            {
+              "name": "stat",
+              "nilable": false,
+              "type": "luaIndex"
+            },
+            {
+              "name": "value",
+              "nilable": false,
+              "type": "number"
+            }
+          ],
+          "binding": "GetRangedAttackPowerForStat",
+          "flags": [
+            "SecretWhenUnitStatsRestricted"
+          ],
+          "name": "GetRangedAttackPowerForStat",
+          "returns": [
+            {
+              "name": "result",
+              "nilable": false,
+              "type": "number"
+            }
+          ],
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "PlayerScriptDocumentation.lua",
+          "wrapper": "getRangedAttackPowerForStat"
+        },
+        {
           "binding": "GetRangedCritChance",
           "flags": [
             "SecretWhenUnitStatsRestricted"
@@ -72538,10 +75081,31 @@
               "name": "result",
               "nilable": false,
               "type": "number"
+            },
+            {
+              "name": "quiverHaste",
+              "nilable": false,
+              "type": "number"
             }
           ],
           "source": "PlayerScriptDocumentation.lua",
           "wrapper": "getRangedHaste"
+        },
+        {
+          "binding": "GetRangedHitModifier",
+          "flags": [
+            "SecretWhenUnitStatsRestricted"
+          ],
+          "name": "GetRangedHitModifier",
+          "returns": [
+            {
+              "name": "result",
+              "nilable": false,
+              "type": "number"
+            }
+          ],
+          "source": "PlayerScriptDocumentation.lua",
+          "wrapper": "getRangedHitModifier"
         },
         {
           "binding": "GetReleaseTimeRemaining",
@@ -72770,6 +75334,35 @@
           ],
           "source": "PlayerScriptDocumentation.lua",
           "wrapper": "getSpellCritChance"
+        },
+        {
+          "arguments": [
+            {
+              "name": "stat",
+              "nilable": false,
+              "type": "luaIndex"
+            },
+            {
+              "name": "value",
+              "nilable": false,
+              "type": "number"
+            }
+          ],
+          "binding": "GetSpellCritChanceFromStat",
+          "flags": [
+            "SecretWhenUnitStatsRestricted"
+          ],
+          "name": "GetSpellCritChanceFromStat",
+          "returns": [
+            {
+              "name": "spellCritChance",
+              "nilable": false,
+              "type": "number"
+            }
+          ],
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "PlayerScriptDocumentation.lua",
+          "wrapper": "getSpellCritChanceFromStat"
         },
         {
           "binding": "GetSpellHitModifier",
@@ -73507,6 +76100,19 @@
           "wrapper": "randomRoll"
         },
         {
+          "binding": "ReagentsFromBankAllowed",
+          "name": "ReagentsFromBankAllowed",
+          "returns": [
+            {
+              "name": "allowed",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "source": "PlayerScriptDocumentation.lua",
+          "wrapper": "reagentsFromBankAllowed"
+        },
+        {
           "binding": "RepopMe",
           "name": "RepopMe",
           "source": "PlayerScriptDocumentation.lua",
@@ -73680,6 +76286,32 @@
           "wrapper": "setTaxiBenchmarkMode"
         },
         {
+          "binding": "ShouldDisplayRaidRolesInSocialFrame",
+          "name": "ShouldDisplayRaidRolesInSocialFrame",
+          "returns": [
+            {
+              "name": "result",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "source": "PlayerScriptDocumentation.lua",
+          "wrapper": "shouldDisplayRaidRolesInSocialFrame"
+        },
+        {
+          "binding": "ShouldDisplayStoryModeTooltipInSocialFrame",
+          "name": "ShouldDisplayStoryModeTooltipInSocialFrame",
+          "returns": [
+            {
+              "name": "result",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "source": "PlayerScriptDocumentation.lua",
+          "wrapper": "shouldDisplayStoryModeTooltipInSocialFrame"
+        },
+        {
           "binding": "ShouldShowIslandsWeeklyPOI",
           "name": "ShouldShowIslandsWeeklyPOI",
           "returns": [
@@ -73836,6 +76468,13 @@
           "name": "ToggleSheath",
           "source": "PlayerScriptDocumentation.lua",
           "wrapper": "toggleSheath"
+        },
+        {
+          "binding": "ToggleSit",
+          "hasRestrictions": true,
+          "name": "ToggleSit",
+          "source": "PlayerScriptDocumentation.lua",
+          "wrapper": "toggleSit"
         }
       ],
       "kind": "global",
@@ -77830,6 +80469,20 @@
           "wrapper": "getQuestTagInfo"
         },
         {
+          "binding": "C_QuestLog.GetQuestTimers",
+          "name": "GetQuestTimers",
+          "returns": [
+            {
+              "innerType": "QuestTimerInfo",
+              "name": "questTimers",
+              "nilable": false,
+              "type": "table"
+            }
+          ],
+          "source": "QuestLogDocumentation.lua",
+          "wrapper": "getQuestTimers"
+        },
+        {
           "arguments": [
             {
               "name": "questID",
@@ -78028,6 +80681,19 @@
           "wrapper": "getTitleForQuestID"
         },
         {
+          "binding": "C_QuestLog.GetTrivialRange",
+          "name": "GetTrivialRange",
+          "returns": [
+            {
+              "name": "range",
+              "nilable": false,
+              "type": "number"
+            }
+          ],
+          "source": "QuestLogDocumentation.lua",
+          "wrapper": "getTrivialRange"
+        },
+        {
           "arguments": [
             {
               "name": "uiMapID",
@@ -78108,6 +80774,27 @@
           "secretArguments": "AllowedWhenUntainted",
           "source": "QuestLogDocumentation.lua",
           "wrapper": "isComplete"
+        },
+        {
+          "arguments": [
+            {
+              "name": "questID",
+              "nilable": false,
+              "type": "number"
+            }
+          ],
+          "binding": "C_QuestLog.IsEliteQuest",
+          "name": "IsEliteQuest",
+          "returns": [
+            {
+              "name": "isEliteQuest",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "QuestLogDocumentation.lua",
+          "wrapper": "isEliteQuest"
         },
         {
           "arguments": [
@@ -79238,6 +81925,19 @@
           ],
           "source": "RaidLocksDocumentation.lua",
           "wrapper": "isRaidLockExtendFeatureEnabled"
+        },
+        {
+          "binding": "C_RaidLocks.IsRaidLockExtendFeatureSupported",
+          "name": "IsRaidLockExtendFeatureSupported",
+          "returns": [
+            {
+              "name": "raidLockExtendFeatureSupported",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "source": "RaidLocksDocumentation.lua",
+          "wrapper": "isRaidLockExtendFeatureSupported"
         }
       ],
       "kind": "namespace",
@@ -79288,6 +81988,48 @@
           "secretArguments": "AllowedWhenUntainted",
           "source": "RaidMarkersDocumentation.lua",
           "wrapper": "clearRaidMarker"
+        },
+        {
+          "arguments": [
+            {
+              "name": "startIndex",
+              "nilable": false,
+              "type": "luaIndex"
+            },
+            {
+              "default": false,
+              "name": "reverseSearch",
+              "nilable": false,
+              "type": "bool"
+            },
+            {
+              "default": false,
+              "name": "wrapSearch",
+              "nilable": false,
+              "type": "bool"
+            },
+            {
+              "default": false,
+              "name": "treatDeadNonFriendlyAsAvailable",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "binding": "GetNextAvailableRaidTargetMarkerIndex",
+          "flags": [
+            "SecretInChatMessagingLockdown"
+          ],
+          "name": "GetNextAvailableRaidTargetMarkerIndex",
+          "returns": [
+            {
+              "name": "nextAvailableRaidTargetMarkerIndex",
+              "nilable": false,
+              "type": "luaIndex"
+            }
+          ],
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "RaidMarkersDocumentation.lua",
+          "wrapper": "getNextAvailableRaidTargetMarkerIndex"
         },
         {
           "arguments": [
@@ -79500,6 +82242,27 @@
           "secretArguments": "AllowedWhenUntainted",
           "source": "RecentAlliesDocumentation.lua",
           "wrapper": "getRecentAllyByGUID"
+        },
+        {
+          "arguments": [
+            {
+              "name": "interactionCategoryFilter",
+              "nilable": false,
+              "type": "RecentAlliesInteractionCategoryFilter"
+            }
+          ],
+          "binding": "C_RecentAllies.IsInteractionCategoryFilterSupportedForCurrentGameType",
+          "name": "IsInteractionCategoryFilterSupportedForCurrentGameType",
+          "returns": [
+            {
+              "name": "isInteractionCategoryFilterSupportedForCurrentGameType",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "RecentAlliesDocumentation.lua",
+          "wrapper": "isInteractionCategoryFilterSupportedForCurrentGameType"
         },
         {
           "arguments": [
@@ -81024,8 +83787,9 @@
           ],
           "binding": "C_Roleset.ApplyRolesetFilters",
           "documentation": [
-            "Sets or clears both blocklist and allowlist filters atomically with a single visibility reevaluation. Pass an empty table to clear the corresponding filter."
+            "Sets or clears both blocklist and allowlist filters atomically with a single visibility reevaluation. Pass an empty table to clear the corresponding filter. Blocked for tainted callers while in combat lockdown."
           ],
+          "hasRestrictions": true,
           "name": "ApplyRolesetFilters",
           "secretArguments": "AllowedWhenUntainted",
           "source": "RolesetSystemDocumentation.lua",
@@ -81508,6 +84272,66 @@
       "wrapper": "screen"
     },
     {
+      "blizzardNamespace": "C_ScribeUI",
+      "environment": "All",
+      "functions": [
+        {
+          "arguments": [
+            {
+              "name": "classID",
+              "nilable": false,
+              "type": "ScribeClassID"
+            }
+          ],
+          "binding": "C_ScribeUI.GetClassInfoFromClassID",
+          "name": "GetClassInfoFromClassID",
+          "returns": [
+            {
+              "name": "classInfo",
+              "nilable": true,
+              "type": "ScribeClassInfo"
+            }
+          ],
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "ScribeUIDocumentation.lua",
+          "wrapper": "getClassInfoFromClassID"
+        },
+        {
+          "binding": "C_ScribeUI.GetCurrClassID",
+          "name": "GetCurrClassID",
+          "returns": [
+            {
+              "name": "classID",
+              "nilable": false,
+              "type": "ScribeClassID"
+            }
+          ],
+          "source": "ScribeUIDocumentation.lua",
+          "wrapper": "getCurrClassID"
+        },
+        {
+          "arguments": [
+            {
+              "name": "classID",
+              "nilable": false,
+              "type": "ScribeClassID"
+            }
+          ],
+          "binding": "C_ScribeUI.SetCurrClassID",
+          "name": "SetCurrClassID",
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "ScribeUIDocumentation.lua",
+          "wrapper": "setCurrClassID"
+        }
+      ],
+      "kind": "namespace",
+      "sources": [
+        "ScribeUIDocumentation.lua"
+      ],
+      "system": "ScribeUI",
+      "wrapper": "scribeUI"
+    },
+    {
       "blizzardNamespace": "C_ScriptWarnings",
       "environment": "All",
       "kind": "namespace",
@@ -81572,6 +84396,19 @@
           ],
           "source": "SeasonInfoDocumentation.lua",
           "wrapper": "getCurrentDisplaySeasonID"
+        },
+        {
+          "binding": "C_SeasonInfo.GetTimeUntilCurrentPVPSeasonEnd",
+          "name": "GetTimeUntilCurrentPVPSeasonEnd",
+          "returns": [
+            {
+              "name": "timeInSeconds",
+              "nilable": false,
+              "type": "number"
+            }
+          ],
+          "source": "SeasonInfoDocumentation.lua",
+          "wrapper": "getTimeUntilCurrentPVPSeasonEnd"
         }
       ],
       "kind": "namespace",
@@ -82992,18 +85829,32 @@
           "wrapper": "getHousingVCPurchaseProductID"
         },
         {
-          "binding": "C_SecureTransfer.GetMailInfo",
+          "binding": "C_SecureTransfer.GetMailReceiveInfo",
           "hasRestrictions": true,
-          "name": "GetMailInfo",
+          "name": "GetMailReceiveInfo",
           "returns": [
             {
               "name": "mailInfo",
               "nilable": false,
-              "type": "MailInfo"
+              "type": "MailReceiveInfo"
             }
           ],
           "source": "SecureTransferDocumentation.lua",
-          "wrapper": "getMailInfo"
+          "wrapper": "getMailReceiveInfo"
+        },
+        {
+          "binding": "C_SecureTransfer.GetMailSendInfo",
+          "hasRestrictions": true,
+          "name": "GetMailSendInfo",
+          "returns": [
+            {
+              "name": "mailInfo",
+              "nilable": false,
+              "type": "MailSendInfo"
+            }
+          ],
+          "source": "SecureTransferDocumentation.lua",
+          "wrapper": "getMailSendInfo"
         },
         {
           "binding": "C_SecureTransfer.GetTradePartner",
@@ -83013,11 +85864,25 @@
             {
               "name": "name",
               "nilable": true,
-              "type": "cstring"
+              "type": "string"
             }
           ],
           "source": "SecureTransferDocumentation.lua",
           "wrapper": "getTradePartner"
+        },
+        {
+          "binding": "C_SecureTransfer.GetVCPurchaseProductID",
+          "hasRestrictions": true,
+          "name": "GetVCPurchaseProductID",
+          "returns": [
+            {
+              "name": "productID",
+              "nilable": false,
+              "type": "number"
+            }
+          ],
+          "source": "SecureTransferDocumentation.lua",
+          "wrapper": "getVCPurchaseProductID"
         },
         {
           "binding": "C_SecureTransfer.SendMail",
@@ -83039,6 +85904,27 @@
           ],
           "source": "SecureTransferDocumentation.lua",
           "wrapper": "shouldShowTradeOfferWarning"
+        },
+        {
+          "binding": "C_SecureTransfer.ShouldShowTradeRMTWarning",
+          "hasRestrictions": true,
+          "name": "ShouldShowTradeRMTWarning",
+          "returns": [
+            {
+              "name": "shouldShow",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "source": "SecureTransferDocumentation.lua",
+          "wrapper": "shouldShowTradeRMTWarning"
+        },
+        {
+          "binding": "C_SecureTransfer.TakeMailMoney",
+          "hasRestrictions": true,
+          "name": "TakeMailMoney",
+          "source": "SecureTransferDocumentation.lua",
+          "wrapper": "takeMailMoney"
         }
       ],
       "kind": "namespace",
@@ -89673,6 +92559,13 @@
           "wrapper": "getFrameLevel"
         },
         {
+          "attributes": {
+            "SecretReturnsForAspect": [
+              {
+                "ref": "Enum.SecretAspect.FrameStrata"
+              }
+            ]
+          },
           "name": "GetFrameStrata",
           "returns": [
             {
@@ -90862,9 +93755,16 @@
               "type": "FrameStrata"
             }
           ],
+          "attributes": {
+            "SecretArgumentsAddAspect": [
+              {
+                "ref": "Enum.SecretAspect.FrameStrata"
+              }
+            ]
+          },
           "isProtected": true,
           "name": "SetFrameStrata",
-          "secretArguments": "NotAllowed",
+          "secretArguments": "AllowedWhenUntainted",
           "source": "SimpleFrameAPIDocumentation.lua",
           "wrapper": "setFrameStrata"
         },
@@ -95080,6 +97980,56 @@
           "wrapper": "enableMouseWheel"
         },
         {
+          "arguments": [
+            {
+              "default": true,
+              "name": "fromMouseMotion",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "attributes": {
+            "ChecksForbiddenAspects": [
+              {
+                "Argument": "self",
+                "Aspect": {
+                  "ref": "Enum.ForbiddenAspect.ScriptedInput"
+                }
+              }
+            ]
+          },
+          "isProtected": true,
+          "name": "FocusEnter",
+          "secretArguments": "NotAllowed",
+          "source": "SimpleScriptRegionAPIDocumentation.lua",
+          "wrapper": "focusEnter"
+        },
+        {
+          "arguments": [
+            {
+              "default": true,
+              "name": "fromMouseMotion",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "attributes": {
+            "ChecksForbiddenAspects": [
+              {
+                "Argument": "self",
+                "Aspect": {
+                  "ref": "Enum.ForbiddenAspect.ScriptedInput"
+                }
+              }
+            ]
+          },
+          "isProtected": true,
+          "name": "FocusExit",
+          "secretArguments": "NotAllowed",
+          "source": "SimpleScriptRegionAPIDocumentation.lua",
+          "wrapper": "focusExit"
+        },
+        {
           "flags": [
             "SecretWhenAnchoringSecret"
           ],
@@ -95727,6 +98677,56 @@
           ],
           "source": "SimpleScriptRegionAPIDocumentation.lua",
           "wrapper": "isVisible"
+        },
+        {
+          "arguments": [
+            {
+              "default": "LeftButton",
+              "name": "button",
+              "nilable": false,
+              "type": "cstring"
+            }
+          ],
+          "attributes": {
+            "ChecksForbiddenAspects": [
+              {
+                "Argument": "self",
+                "Aspect": {
+                  "ref": "Enum.ForbiddenAspect.ScriptedInput"
+                }
+              }
+            ]
+          },
+          "isProtected": true,
+          "name": "MouseDown",
+          "secretArguments": "NotAllowed",
+          "source": "SimpleScriptRegionAPIDocumentation.lua",
+          "wrapper": "mouseDown"
+        },
+        {
+          "arguments": [
+            {
+              "default": "LeftButton",
+              "name": "button",
+              "nilable": false,
+              "type": "cstring"
+            }
+          ],
+          "attributes": {
+            "ChecksForbiddenAspects": [
+              {
+                "Argument": "self",
+                "Aspect": {
+                  "ref": "Enum.ForbiddenAspect.ScriptedInput"
+                }
+              }
+            ]
+          },
+          "isProtected": true,
+          "name": "MouseUp",
+          "secretArguments": "NotAllowed",
+          "source": "SimpleScriptRegionAPIDocumentation.lua",
+          "wrapper": "mouseUp"
         },
         {
           "arguments": [
@@ -96827,6 +99827,16 @@
           "wrapper": "getStatusBarTexture"
         },
         {
+          "attributes": {
+            "ChecksForbiddenAspects": [
+              {
+                "Argument": "self",
+                "Aspect": {
+                  "ref": "Enum.ForbiddenAspect.QueryTimerDuration"
+                }
+              }
+            ]
+          },
           "name": "GetTimerDuration",
           "returns": [
             {
@@ -98391,6 +101401,132 @@
     {
       "blizzardNamespace": "C_SkillInfo",
       "environment": "All",
+      "functions": [
+        {
+          "arguments": [
+            {
+              "name": "skillLineID",
+              "nilable": false,
+              "type": "number"
+            }
+          ],
+          "binding": "C_SkillInfo.AbandonSkill",
+          "name": "AbandonSkill",
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "SkillInfoDocumentation.lua",
+          "wrapper": "abandonSkill"
+        },
+        {
+          "arguments": [
+            {
+              "name": "index",
+              "nilable": false,
+              "type": "luaIndex"
+            }
+          ],
+          "binding": "C_SkillInfo.CollapseSkillHeader",
+          "name": "CollapseSkillHeader",
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "SkillInfoDocumentation.lua",
+          "wrapper": "collapseSkillHeader"
+        },
+        {
+          "arguments": [
+            {
+              "name": "index",
+              "nilable": false,
+              "type": "luaIndex"
+            }
+          ],
+          "binding": "C_SkillInfo.ExpandSkillHeader",
+          "name": "ExpandSkillHeader",
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "SkillInfoDocumentation.lua",
+          "wrapper": "expandSkillHeader"
+        },
+        {
+          "binding": "C_SkillInfo.GetNumSkillLines",
+          "name": "GetNumSkillLines",
+          "returns": [
+            {
+              "name": "numSkillLines",
+              "nilable": false,
+              "type": "number"
+            }
+          ],
+          "source": "SkillInfoDocumentation.lua",
+          "wrapper": "getNumSkillLines"
+        },
+        {
+          "binding": "C_SkillInfo.GetSelectedSkill",
+          "name": "GetSelectedSkill",
+          "returns": [
+            {
+              "name": "index",
+              "nilable": false,
+              "type": "luaIndex"
+            }
+          ],
+          "source": "SkillInfoDocumentation.lua",
+          "wrapper": "getSelectedSkill"
+        },
+        {
+          "arguments": [
+            {
+              "name": "index",
+              "nilable": false,
+              "type": "luaIndex"
+            }
+          ],
+          "binding": "C_SkillInfo.GetSkillLineInfo",
+          "name": "GetSkillLineInfo",
+          "returns": [
+            {
+              "name": "skillLineAttributes",
+              "nilable": true,
+              "type": "SkillLineAttributes"
+            }
+          ],
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "SkillInfoDocumentation.lua",
+          "wrapper": "getSkillLineInfo"
+        },
+        {
+          "arguments": [
+            {
+              "name": "ID",
+              "nilable": false,
+              "type": "number"
+            }
+          ],
+          "binding": "C_SkillInfo.GetSkillLineInfoByID",
+          "name": "GetSkillLineInfoByID",
+          "returns": [
+            {
+              "name": "skillLineAttributes",
+              "nilable": true,
+              "type": "SkillLineAttributes"
+            }
+          ],
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "SkillInfoDocumentation.lua",
+          "wrapper": "getSkillLineInfoByID"
+        },
+        {
+          "arguments": [
+            {
+              "name": "index",
+              "nilable": false,
+              "type": "luaIndex"
+            }
+          ],
+          "binding": "C_SkillInfo.SetSelectedSkill",
+          "name": "SetSelectedSkill",
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "SkillInfoDocumentation.lua",
+          "wrapper": "setSelectedSkill"
+        }
+      ],
       "kind": "namespace",
       "sources": [
         "SkillInfoDocumentation.lua"
@@ -98712,6 +101848,12 @@
       "environment": "All",
       "functions": [
         {
+          "binding": "C_SocialRestrictions.AcknowledgeAgeVerificationRestriction",
+          "name": "AcknowledgeAgeVerificationRestriction",
+          "source": "SocialRestrictionsDocumentation.lua",
+          "wrapper": "acknowledgeAgeVerificationRestriction"
+        },
+        {
           "binding": "C_SocialRestrictions.AcknowledgeRegionalChatDisabled",
           "name": "AcknowledgeRegionalChatDisabled",
           "source": "SocialRestrictionsDocumentation.lua",
@@ -98748,6 +101890,39 @@
           ],
           "source": "SocialRestrictionsDocumentation.lua",
           "wrapper": "canSendChat"
+        },
+        {
+          "binding": "C_SocialRestrictions.IsAgeVerificationRestricted",
+          "documentation": [
+            "Returns true if the account is restricted by the Age Verification feature."
+          ],
+          "name": "IsAgeVerificationRestricted",
+          "returns": [
+            {
+              "name": "restricted",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "source": "SocialRestrictionsDocumentation.lua",
+          "wrapper": "isAgeVerificationRestricted"
+        },
+        {
+          "binding": "C_SocialRestrictions.IsAgeVerificationRestrictedMinor",
+          "documentation": [
+            "Returns true if the Age Verification restriction is because the account belongs to a minor, as opposed to an adult who has not yet verified their age."
+          ],
+          "hasRestrictions": true,
+          "name": "IsAgeVerificationRestrictedMinor",
+          "returns": [
+            {
+              "name": "isMinor",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "source": "SocialRestrictionsDocumentation.lua",
+          "wrapper": "isAgeVerificationRestrictedMinor"
         },
         {
           "binding": "C_SocialRestrictions.IsChatDisabled",
@@ -99911,6 +103086,20 @@
           "wrapper": "getActiveSpecGroup"
         },
         {
+          "binding": "C_SpecializationInfo.GetAllClassIDs",
+          "name": "GetAllClassIDs",
+          "returns": [
+            {
+              "innerType": "number",
+              "name": "allClassIDs",
+              "nilable": false,
+              "type": "table"
+            }
+          ],
+          "source": "SpecializationInfoDocumentation.lua",
+          "wrapper": "getAllClassIDs"
+        },
+        {
           "binding": "C_SpecializationInfo.GetAllSelectedPvpTalentIDs",
           "name": "GetAllSelectedPvpTalentIDs",
           "returns": [
@@ -99944,6 +103133,27 @@
           "secretArguments": "AllowedWhenUntainted",
           "source": "SpecializationInfoDocumentation.lua",
           "wrapper": "getClassIDFromSpecID"
+        },
+        {
+          "arguments": [
+            {
+              "name": "groupIndex",
+              "nilable": false,
+              "type": "luaIndex"
+            }
+          ],
+          "binding": "C_SpecializationInfo.GetCombatConfigIDForSpecGroup",
+          "name": "GetCombatConfigIDForSpecGroup",
+          "returns": [
+            {
+              "name": "configID",
+              "nilable": true,
+              "type": "number"
+            }
+          ],
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "SpecializationInfoDocumentation.lua",
+          "wrapper": "getCombatConfigIDForSpecGroup"
         },
         {
           "arguments": [
@@ -100349,6 +103559,19 @@
           "wrapper": "getTalentInfo"
         },
         {
+          "binding": "C_SpecializationInfo.HasPlayerEarnedATalentPoint",
+          "name": "HasPlayerEarnedATalentPoint",
+          "returns": [
+            {
+              "name": "hasEarned",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "source": "SpecializationInfoDocumentation.lua",
+          "wrapper": "hasPlayerEarnedATalentPoint"
+        },
+        {
           "binding": "C_SpecializationInfo.IsInitialized",
           "name": "IsInitialized",
           "returns": [
@@ -100385,6 +103608,27 @@
         {
           "arguments": [
             {
+              "name": "classID",
+              "nilable": false,
+              "type": "number"
+            }
+          ],
+          "binding": "C_SpecializationInfo.IsSpecSelectionEnabled",
+          "name": "IsSpecSelectionEnabled",
+          "returns": [
+            {
+              "name": "enabled",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "SpecializationInfoDocumentation.lua",
+          "wrapper": "isSpecSelectionEnabled"
+        },
+        {
+          "arguments": [
+            {
               "name": "specSetID",
               "nilable": false,
               "type": "number"
@@ -100402,6 +103646,20 @@
           "secretArguments": "AllowedWhenUntainted",
           "source": "SpecializationInfoDocumentation.lua",
           "wrapper": "matchesCurrentSpecSet"
+        },
+        {
+          "arguments": [
+            {
+              "name": "groupIndex",
+              "nilable": false,
+              "type": "luaIndex"
+            }
+          ],
+          "binding": "C_SpecializationInfo.SetActiveSpecGroup",
+          "name": "SetActiveSpecGroup",
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "SpecializationInfoDocumentation.lua",
+          "wrapper": "setActiveSpecGroup"
         },
         {
           "arguments": [
@@ -100675,6 +103933,46 @@
       "environment": "All",
       "functions": [
         {
+          "binding": "C_Spell.CancelAutoRepeatSpell",
+          "documentation": [
+            "Cancels the player's active auto repeat spell, if any"
+          ],
+          "hasRestrictions": true,
+          "name": "CancelAutoRepeatSpell",
+          "returns": [
+            {
+              "name": "wasCancelled",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "source": "SpellDocumentation.lua",
+          "wrapper": "cancelAutoRepeatSpell"
+        },
+        {
+          "arguments": [
+            {
+              "name": "weaponSlot",
+              "nilable": false,
+              "type": "WeaponSlot"
+            },
+            {
+              "name": "enchantmentType",
+              "nilable": false,
+              "type": "ItemEnchantType"
+            }
+          ],
+          "binding": "C_Spell.CancelItemTempEnchantment",
+          "documentation": [
+            "Cancel a temporary enchantment on an item"
+          ],
+          "hasRestrictions": true,
+          "name": "CancelItemTempEnchantment",
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "SpellDocumentation.lua",
+          "wrapper": "cancelItemTempEnchantment"
+        },
+        {
           "arguments": [
             {
               "name": "spellID",
@@ -100762,6 +104060,11 @@
               "name": "powerTypeChanges",
               "nilable": false,
               "type": "table"
+            },
+            {
+              "name": "statAuraChanges",
+              "nilable": true,
+              "type": "StatAuraChangeInfo"
             }
           ],
           "secretArguments": "AllowedWhenUntainted",
@@ -100807,6 +104110,30 @@
         {
           "arguments": [
             {
+              "name": "spellID",
+              "nilable": false,
+              "type": "number"
+            }
+          ],
+          "binding": "C_Spell.GetConfirmationPromptHideOnEscape",
+          "documentation": [
+            "Returns true if a confirmation prompt aura should be hidden when players press the escape key."
+          ],
+          "name": "GetConfirmationPromptHideOnEscape",
+          "returns": [
+            {
+              "name": "hideOnEscape",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "SpellDocumentation.lua",
+          "wrapper": "getConfirmationPromptHideOnEscape"
+        },
+        {
+          "arguments": [
+            {
               "name": "spellIdentifier",
               "nilable": false,
               "type": "SpellIdentifier"
@@ -100825,6 +104152,31 @@
           "secretArguments": "AllowedWhenTainted",
           "source": "SpellDocumentation.lua",
           "wrapper": "getDeadlyDebuffInfo"
+        },
+        {
+          "arguments": [
+            {
+              "name": "itemID",
+              "nilable": false,
+              "type": "number"
+            }
+          ],
+          "binding": "C_Spell.GetItemCooldown",
+          "documentation": [
+            "Returns nil if the item is not found or on cooldown"
+          ],
+          "mayReturnNothing": true,
+          "name": "GetItemCooldown",
+          "returns": [
+            {
+              "name": "spellCooldownInfo",
+              "nilable": false,
+              "type": "SpellCooldownInfo"
+            }
+          ],
+          "secretArguments": "AllowedWhenTainted",
+          "source": "SpellDocumentation.lua",
+          "wrapper": "getItemCooldown"
         },
         {
           "arguments": [
@@ -101640,6 +104992,19 @@
           "wrapper": "getSpellTradeSkillLink"
         },
         {
+          "binding": "C_Spell.GetTargetSpellID",
+          "name": "GetTargetSpellID",
+          "returns": [
+            {
+              "name": "spellID",
+              "nilable": false,
+              "type": "number"
+            }
+          ],
+          "source": "SpellDocumentation.lua",
+          "wrapper": "getTargetSpellID"
+        },
+        {
           "arguments": [
             {
               "name": "spellID",
@@ -101675,6 +105040,42 @@
           "secretArguments": "AllowedWhenUntainted",
           "source": "SpellDocumentation.lua",
           "wrapper": "getVisibilityInfo"
+        },
+        {
+          "arguments": [
+            {
+              "name": "spellIdentifier",
+              "nilable": false,
+              "type": "SpellIdentifier"
+            },
+            {
+              "documentation": [
+                "Optional specific target; If not supplied, the player will be used, or their pet if the spell is a pet spell"
+              ],
+              "name": "targetUnit",
+              "nilable": true,
+              "type": "UnitToken"
+            }
+          ],
+          "binding": "C_Spell.IsActiveSpell",
+          "documentation": [
+            "Returns true if the spell is a currently active toggled spell"
+          ],
+          "flags": [
+            "SecretWhenUnitAuraRestricted",
+            "SecretWhenUnitIdentityRestricted"
+          ],
+          "name": "IsActiveSpell",
+          "returns": [
+            {
+              "name": "isActiveSpell",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "secretArguments": "AllowedWhenTainted",
+          "source": "SpellDocumentation.lua",
+          "wrapper": "isActiveSpell"
         },
         {
           "arguments": [
@@ -101957,7 +105358,7 @@
               "type": "bool"
             }
           ],
-          "secretArguments": "AllowedWhenTainted",
+          "secretArguments": "AllowedWhenUntainted",
           "source": "SpellDocumentation.lua",
           "wrapper": "isSpellCrowdControl"
         },
@@ -102181,6 +105582,13 @@
           "wrapper": "pickupSpell"
         },
         {
+          "binding": "C_Spell.PlaceTargetingSpellAtCursor",
+          "hasRestrictions": true,
+          "name": "PlaceTargetingSpellAtCursor",
+          "source": "SpellDocumentation.lua",
+          "wrapper": "placeTargetingSpellAtCursor"
+        },
+        {
           "arguments": [
             {
               "name": "spellIdentifier",
@@ -102357,6 +105765,20 @@
         {
           "arguments": [
             {
+              "name": "spellID",
+              "nilable": false,
+              "type": "number"
+            }
+          ],
+          "binding": "C_SpellBook.AbortSpellIntro",
+          "name": "AbortSpellIntro",
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "SpellBookDocumentation.lua",
+          "wrapper": "abortSpellIntro"
+        },
+        {
+          "arguments": [
+            {
               "name": "spellBookItemSlotIndex",
               "nilable": false,
               "type": "luaIndex"
@@ -102526,6 +105948,20 @@
           "secretArguments": "AllowedWhenUntainted",
           "source": "SpellBookDocumentation.lua",
           "wrapper": "findSpellOverrideByID"
+        },
+        {
+          "binding": "C_SpellBook.GetClassSkillLineInfo",
+          "mayReturnNothing": true,
+          "name": "GetClassSkillLineInfo",
+          "returns": [
+            {
+              "name": "skillLineInfo",
+              "nilable": false,
+              "type": "SpellBookSkillLineInfo"
+            }
+          ],
+          "source": "SpellBookDocumentation.lua",
+          "wrapper": "getClassSkillLineInfo"
         },
         {
           "arguments": [
@@ -103445,6 +106881,64 @@
               "type": "SpellBookSpellBank"
             }
           ],
+          "binding": "C_SpellBook.IsSpellBookItemLooseFlyoutMember",
+          "documentation": [
+            "Returns true if the SpellBookItem is represented in a Flyout."
+          ],
+          "name": "IsSpellBookItemLooseFlyoutMember",
+          "returns": [
+            {
+              "name": "isFlyoutMember",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "SpellBookDocumentation.lua",
+          "wrapper": "isSpellBookItemLooseFlyoutMember"
+        },
+        {
+          "arguments": [
+            {
+              "name": "spellBookItemSlotIndex",
+              "nilable": false,
+              "type": "luaIndex"
+            },
+            {
+              "name": "spellBookItemSpellBank",
+              "nilable": false,
+              "type": "SpellBookSpellBank"
+            }
+          ],
+          "binding": "C_SpellBook.IsSpellBookItemLowRank",
+          "documentation": [
+            "Returns true if the SpellBookItem is a lower rank of a known higher rank spell.  Returns false if there is only a single rank or it is the highest rank known."
+          ],
+          "name": "IsSpellBookItemLowRank",
+          "returns": [
+            {
+              "name": "isLowRank",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "SpellBookDocumentation.lua",
+          "wrapper": "isSpellBookItemLowRank"
+        },
+        {
+          "arguments": [
+            {
+              "name": "spellBookItemSlotIndex",
+              "nilable": false,
+              "type": "luaIndex"
+            },
+            {
+              "name": "spellBookItemSpellBank",
+              "nilable": false,
+              "type": "SpellBookSpellBank"
+            }
+          ],
           "binding": "C_SpellBook.IsSpellBookItemOffSpec",
           "documentation": [
             "Returns true if the SpellBookItem belongs to a non-active class specialization"
@@ -103647,6 +107141,25 @@
           "secretArguments": "AllowedWhenUntainted",
           "source": "SpellBookDocumentation.lua",
           "wrapper": "pickupSpellBookItem"
+        },
+        {
+          "arguments": [
+            {
+              "name": "spellID",
+              "nilable": false,
+              "type": "number"
+            },
+            {
+              "name": "slotIndex",
+              "nilable": false,
+              "type": "luaIndex"
+            }
+          ],
+          "binding": "C_SpellBook.SetBarSlotFromIntro",
+          "name": "SetBarSlotFromIntro",
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "SpellBookDocumentation.lua",
+          "wrapper": "setBarSlotFromIntro"
         },
         {
           "arguments": [
@@ -103896,6 +107409,12 @@
       "environment": "All",
       "functions": [
         {
+          "binding": "C_StableInfo.BuyStableSlot",
+          "name": "BuyStableSlot",
+          "source": "StableInfoDocumentation.lua",
+          "wrapper": "buyStableSlot"
+        },
+        {
           "binding": "C_StableInfo.ClosePetStables",
           "name": "ClosePetStables",
           "source": "StableInfoDocumentation.lua",
@@ -103930,6 +107449,19 @@
           "wrapper": "getAvailablePetSpecInfos"
         },
         {
+          "binding": "C_StableInfo.GetNextStableSlotCost",
+          "name": "GetNextStableSlotCost",
+          "returns": [
+            {
+              "name": "cost",
+              "nilable": false,
+              "type": "number"
+            }
+          ],
+          "source": "StableInfoDocumentation.lua",
+          "wrapper": "getNextStableSlotCost"
+        },
+        {
           "binding": "C_StableInfo.GetNumActivePets",
           "name": "GetNumActivePets",
           "returns": [
@@ -103954,6 +107486,19 @@
           ],
           "source": "StableInfoDocumentation.lua",
           "wrapper": "getNumStablePets"
+        },
+        {
+          "binding": "C_StableInfo.GetNumStableSlots",
+          "name": "GetNumStableSlots",
+          "returns": [
+            {
+              "name": "numSlots",
+              "nilable": false,
+              "type": "number"
+            }
+          ],
+          "source": "StableInfoDocumentation.lua",
+          "wrapper": "getNumStableSlots"
         },
         {
           "arguments": [
@@ -104175,6 +107720,32 @@
           ],
           "source": "StorePublicUIDocumentation.lua",
           "wrapper": "isEnabled"
+        },
+        {
+          "binding": "C_StorePublic.IsRewardsShopEnabled",
+          "name": "IsRewardsShopEnabled",
+          "returns": [
+            {
+              "name": "enabled",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "source": "StorePublicUIDocumentation.lua",
+          "wrapper": "isRewardsShopEnabled"
+        },
+        {
+          "binding": "C_StorePublic.IsRewardsShopOverrideEnabled",
+          "name": "IsRewardsShopOverrideEnabled",
+          "returns": [
+            {
+              "name": "enabled",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "source": "StorePublicUIDocumentation.lua",
+          "wrapper": "isRewardsShopOverrideEnabled"
         }
       ],
       "kind": "namespace",
@@ -105936,6 +109507,21 @@
         {
           "arguments": [
             {
+              "name": "unit",
+              "nilable": true,
+              "type": "UnitToken"
+            }
+          ],
+          "binding": "SetPreferredGamepadInteractTarget",
+          "hasRestrictions": true,
+          "name": "SetPreferredGamepadInteractTarget",
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "TargetScriptDocumentation.lua",
+          "wrapper": "setPreferredGamepadInteractTarget"
+        },
+        {
+          "arguments": [
+            {
               "name": "facing",
               "nilable": false,
               "type": "number"
@@ -106650,6 +110236,27 @@
         {
           "arguments": [
             {
+              "name": "texture",
+              "nilable": false,
+              "type": "SimpleTexture"
+            }
+          ],
+          "binding": "C_Texture.GetBestTitleIconVersion",
+          "name": "GetBestTitleIconVersion",
+          "returns": [
+            {
+              "name": "version",
+              "nilable": false,
+              "type": "TitleIconVersion"
+            }
+          ],
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "TextureUtilsDocumentation.lua",
+          "wrapper": "getBestTitleIconVersion"
+        },
+        {
+          "arguments": [
+            {
               "name": "fileDataID",
               "nilable": false,
               "type": "number"
@@ -106684,6 +110291,11 @@
               "name": "callback",
               "nilable": false,
               "type": "GetTitleIconTextureCallback"
+            },
+            {
+              "name": "subIcon",
+              "nilable": true,
+              "type": "string"
             }
           ],
           "binding": "C_Texture.GetTitleIconTexture",
@@ -106703,6 +110315,11 @@
               "name": "version",
               "nilable": false,
               "type": "TitleIconVersion"
+            },
+            {
+              "name": "subIcon",
+              "nilable": true,
+              "type": "string"
             }
           ],
           "binding": "C_Texture.IsTitleIconTextureReady",
@@ -106731,9 +110348,17 @@
               "type": "string"
             },
             {
+              "documentation": [
+                "Pass nil to automatically choose based on size of texture."
+              ],
               "name": "version",
-              "nilable": false,
+              "nilable": true,
               "type": "TitleIconVersion"
+            },
+            {
+              "name": "subIcon",
+              "nilable": true,
+              "type": "string"
             }
           ],
           "binding": "C_Texture.SetTitleIconTexture",
@@ -109779,6 +113404,19 @@
           "wrapper": "clearFanfare"
         },
         {
+          "binding": "C_ToyBoxInfo.HasAnyToy",
+          "name": "HasAnyToy",
+          "returns": [
+            {
+              "name": "hasToy",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "source": "ToyBoxInfoDocumentation.lua",
+          "wrapper": "hasAnyToy"
+        },
+        {
           "arguments": [
             {
               "name": "source",
@@ -109939,6 +113577,27 @@
           "secretArguments": "AllowedWhenUntainted",
           "source": "TradeSkillUIDocumentation.lua",
           "wrapper": "canStoreEnchantInItem"
+        },
+        {
+          "arguments": [
+            {
+              "name": "tradeSkillSpellID",
+              "nilable": false,
+              "type": "number"
+            }
+          ],
+          "binding": "C_TradeSkillUI.CanTradeSkillShowCraftingUI",
+          "name": "CanTradeSkillShowCraftingUI",
+          "returns": [
+            {
+              "name": "canShow",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "TradeSkillUIDocumentation.lua",
+          "wrapper": "canTradeSkillShowCraftingUI"
         },
         {
           "binding": "C_TradeSkillUI.CancelProfessionRespec",
@@ -111876,6 +115535,48 @@
     {
       "blizzardNamespace": "C_Trainer",
       "environment": "All",
+      "functions": [
+        {
+          "binding": "C_Trainer.GetCategorizeTrainerUI",
+          "name": "GetCategorizeTrainerUI",
+          "returns": [
+            {
+              "name": "value",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "source": "TrainerDocumentation.lua",
+          "wrapper": "getCategorizeTrainerUI"
+        },
+        {
+          "binding": "C_Trainer.GetTrainerType",
+          "name": "GetTrainerType",
+          "returns": [
+            {
+              "name": "trainerType",
+              "nilable": false,
+              "type": "TrainerType"
+            }
+          ],
+          "source": "TrainerDocumentation.lua",
+          "wrapper": "getTrainerType"
+        },
+        {
+          "arguments": [
+            {
+              "name": "value",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "binding": "C_Trainer.SetCategorizeTrainerUI",
+          "name": "SetCategorizeTrainerUI",
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "TrainerDocumentation.lua",
+          "wrapper": "setCategorizeTrainerUI"
+        }
+      ],
       "kind": "namespace",
       "sources": [
         "TrainerDocumentation.lua"
@@ -112310,6 +116011,56 @@
         {
           "arguments": [
             {
+              "name": "configID",
+              "nilable": false,
+              "type": "number"
+            },
+            {
+              "innerType": "number",
+              "name": "groupIDs",
+              "nilable": false,
+              "type": "table"
+            }
+          ],
+          "binding": "C_Traits.GetGroupCurrencyInfo",
+          "name": "GetGroupCurrencyInfo",
+          "returns": [
+            {
+              "innerType": "GroupCurrencyInfo",
+              "name": "groupCurrencyInfos",
+              "nilable": false,
+              "type": "table"
+            }
+          ],
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "SharedTraitsDocumentation.lua",
+          "wrapper": "getGroupCurrencyInfo"
+        },
+        {
+          "arguments": [
+            {
+              "name": "treeID",
+              "nilable": false,
+              "type": "number"
+            }
+          ],
+          "binding": "C_Traits.GetGroupDisplayInfoByTreeID",
+          "name": "GetGroupDisplayInfoByTreeID",
+          "returns": [
+            {
+              "innerType": "TraitGroupDisplayInfo",
+              "name": "displayInfos",
+              "nilable": false,
+              "type": "table"
+            }
+          ],
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "SharedTraitsDocumentation.lua",
+          "wrapper": "getGroupDisplayInfoByTreeID"
+        },
+        {
+          "arguments": [
+            {
               "name": "nodeID",
               "nilable": false,
               "type": "number"
@@ -112347,6 +116098,32 @@
           ],
           "source": "SharedTraitsDocumentation.lua",
           "wrapper": "getLoadoutSerializationVersion"
+        },
+        {
+          "arguments": [
+            {
+              "name": "traitCurrencyID",
+              "nilable": false,
+              "type": "number"
+            },
+            {
+              "name": "limitBySourcedMax",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "binding": "C_Traits.GetMaxAvailableTraitCurrency",
+          "name": "GetMaxAvailableTraitCurrency",
+          "returns": [
+            {
+              "name": "maxAvailable",
+              "nilable": false,
+              "type": "number"
+            }
+          ],
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "SharedTraitsDocumentation.lua",
+          "wrapper": "getMaxAvailableTraitCurrency"
         },
         {
           "arguments": [
@@ -112513,6 +116290,32 @@
           "secretArguments": "AllowedWhenUntainted",
           "source": "SharedTraitsDocumentation.lua",
           "wrapper": "getSystemIDByTreeID"
+        },
+        {
+          "arguments": [
+            {
+              "name": "traitCurrencyID",
+              "nilable": false,
+              "type": "number"
+            },
+            {
+              "name": "achievementID",
+              "nilable": false,
+              "type": "number"
+            }
+          ],
+          "binding": "C_Traits.GetTraitCurrencyForAchievement",
+          "name": "GetTraitCurrencyForAchievement",
+          "returns": [
+            {
+              "name": "amount",
+              "nilable": false,
+              "type": "number"
+            }
+          ],
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "SharedTraitsDocumentation.lua",
+          "wrapper": "getTraitCurrencyForAchievement"
         },
         {
           "arguments": [
@@ -113628,6 +117431,11 @@
               "name": "transmogLocation",
               "nilable": true,
               "type": "TransmogLocation"
+            },
+            {
+              "name": "option",
+              "nilable": true,
+              "type": "TransmogOutfitSlotOption"
             }
           ],
           "binding": "C_TransmogCollection.GetCategoryAppearances",
@@ -114297,6 +118105,19 @@
           "secretArguments": "AllowedWhenUntainted",
           "source": "TransmogItemsDocumentation.lua",
           "wrapper": "getValidAppearanceSourcesForClass"
+        },
+        {
+          "binding": "C_TransmogCollection.HasAnyAppearance",
+          "name": "HasAnyAppearance",
+          "returns": [
+            {
+              "name": "hasAnyAppearance",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "source": "TransmogItemsDocumentation.lua",
+          "wrapper": "hasAnyAppearance"
         },
         {
           "binding": "C_TransmogCollection.HasFavorites",
@@ -115188,7 +119009,7 @@
               "type": "TransmogOutfitSlot"
             },
             {
-              "name": "weaponOption",
+              "name": "option",
               "nilable": false,
               "type": "TransmogOutfitSlotOption"
             },
@@ -115205,7 +119026,7 @@
             {
               "name": "collectionInfo",
               "nilable": false,
-              "type": "TransmogOutfitWeaponCollectionInfo"
+              "type": "TransmogOutfitCollectionInfo"
             }
           ],
           "secretArguments": "AllowedWhenUntainted",
@@ -115238,7 +119059,7 @@
           "name": "GetEquippedSlotOptionFromTransmogSlot",
           "returns": [
             {
-              "name": "weaponOption",
+              "name": "option",
               "nilable": false,
               "type": "TransmogOutfitSlotOption"
             }
@@ -115383,6 +119204,35 @@
         {
           "arguments": [
             {
+              "name": "slot",
+              "nilable": false,
+              "type": "TransmogOutfitSlot"
+            }
+          ],
+          "binding": "C_TransmogOutfitInfo.GetOptionsForSlot",
+          "mayReturnNothing": true,
+          "name": "GetOptionsForSlot",
+          "returns": [
+            {
+              "innerType": "TransmogOutfitOptionInfo",
+              "name": "options",
+              "nilable": false,
+              "type": "table"
+            },
+            {
+              "innerType": "TransmogOutfitOptionInfo",
+              "name": "artifactOptions",
+              "nilable": true,
+              "type": "table"
+            }
+          ],
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "TransmogOutfitInfoDocumentation.lua",
+          "wrapper": "getOptionsForSlot"
+        },
+        {
+          "arguments": [
+            {
               "name": "outfitID",
               "nilable": false,
               "type": "number"
@@ -115523,6 +119373,11 @@
               "name": "slot",
               "nilable": false,
               "type": "TransmogOutfitSlot"
+            },
+            {
+              "name": "option",
+              "nilable": false,
+              "type": "TransmogOutfitSlotOption"
             }
           ],
           "binding": "C_TransmogOutfitInfo.GetSecondarySlotState",
@@ -115743,35 +119598,6 @@
           "secretArguments": "AllowedWhenUntainted",
           "source": "TransmogOutfitInfoDocumentation.lua",
           "wrapper": "getViewedOutfitSlotInfo"
-        },
-        {
-          "arguments": [
-            {
-              "name": "slot",
-              "nilable": false,
-              "type": "TransmogOutfitSlot"
-            }
-          ],
-          "binding": "C_TransmogOutfitInfo.GetWeaponOptionsForSlot",
-          "mayReturnNothing": true,
-          "name": "GetWeaponOptionsForSlot",
-          "returns": [
-            {
-              "innerType": "TransmogOutfitWeaponOptionInfo",
-              "name": "weaponOptions",
-              "nilable": false,
-              "type": "table"
-            },
-            {
-              "innerType": "TransmogOutfitWeaponOptionInfo",
-              "name": "artifactOptions",
-              "nilable": true,
-              "type": "table"
-            }
-          ],
-          "secretArguments": "AllowedWhenUntainted",
-          "source": "TransmogOutfitInfoDocumentation.lua",
-          "wrapper": "getWeaponOptionsForSlot"
         },
         {
           "binding": "C_TransmogOutfitInfo.HasPendingOutfitSituations",
@@ -116093,6 +119919,11 @@
               "type": "TransmogOutfitSlot"
             },
             {
+              "name": "option",
+              "nilable": false,
+              "type": "TransmogOutfitSlotOption"
+            },
+            {
               "name": "state",
               "nilable": false,
               "type": "bool"
@@ -116113,16 +119944,16 @@
               "type": "TransmogOutfitSlot"
             },
             {
-              "name": "weaponOption",
+              "name": "option",
               "nilable": false,
               "type": "TransmogOutfitSlotOption"
             }
           ],
-          "binding": "C_TransmogOutfitInfo.SetViewedWeaponOptionForSlot",
-          "name": "SetViewedWeaponOptionForSlot",
+          "binding": "C_TransmogOutfitInfo.SetViewedOptionForSlot",
+          "name": "SetViewedOptionForSlot",
           "secretArguments": "AllowedWhenUntainted",
           "source": "TransmogOutfitInfoDocumentation.lua",
-          "wrapper": "setViewedWeaponOptionForSlot"
+          "wrapper": "setViewedOptionForSlot"
         },
         {
           "arguments": [
@@ -116689,6 +120520,19 @@
           "secretArguments": "AllowedWhenUntainted",
           "source": "TransmogSetsDocumentation.lua",
           "wrapper": "getVariantSets"
+        },
+        {
+          "binding": "C_TransmogSets.HasAnyValidSets",
+          "name": "HasAnyValidSets",
+          "returns": [
+            {
+              "name": "hasAnyValidSets",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "source": "TransmogSetsDocumentation.lua",
+          "wrapper": "hasAnyValidSets"
         },
         {
           "binding": "C_TransmogSets.HasAvailableSets",
@@ -117307,6 +121151,21 @@
           "name": "ReturnToTutorialArea",
           "source": "TutorialDocumentation.lua",
           "wrapper": "returnToTutorialArea"
+        },
+        {
+          "arguments": [
+            {
+              "name": "skipTutorial",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "binding": "C_Tutorial.SendTutorialStartButtonTelem",
+          "hasRestrictions": true,
+          "name": "SendTutorialStartButtonTelem",
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "TutorialDocumentation.lua",
+          "wrapper": "sendTutorialStartButtonTelem"
         }
       ],
       "kind": "namespace",
@@ -119289,6 +123148,19 @@
           "wrapper": "playerVehicleHasComboPoints"
         },
         {
+          "binding": "RegionalUniqueNamesEnabled",
+          "name": "RegionalUniqueNamesEnabled",
+          "returns": [
+            {
+              "name": "result",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "source": "UnitDocumentation.lua",
+          "wrapper": "regionalUniqueNamesEnabled"
+        },
+        {
           "arguments": [
             {
               "name": "unit",
@@ -119392,6 +123264,11 @@
             },
             {
               "name": "includeLowPriority",
+              "nilable": true,
+              "type": "bool"
+            },
+            {
+              "name": "preferGamepadIcon",
               "nilable": true,
               "type": "bool"
             }
@@ -119550,6 +123427,11 @@
             },
             {
               "name": "offhandAttackSpeed",
+              "nilable": true,
+              "type": "number"
+            },
+            {
+              "name": "rangedAttackSpeed",
               "nilable": true,
               "type": "number"
             }
@@ -120262,6 +124144,35 @@
               "name": "unit",
               "nilable": false,
               "type": "UnitToken"
+            }
+          ],
+          "binding": "UnitDefenseSkill",
+          "flags": [
+            "SecretWhenUnitStatsRestricted"
+          ],
+          "name": "UnitDefenseSkill",
+          "returns": [
+            {
+              "name": "base",
+              "nilable": false,
+              "type": "number"
+            },
+            {
+              "name": "modifier",
+              "nilable": false,
+              "type": "number"
+            }
+          ],
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "UnitDocumentation.lua",
+          "wrapper": "defenseSkill"
+        },
+        {
+          "arguments": [
+            {
+              "name": "unit",
+              "nilable": false,
+              "type": "UnitToken"
             },
             {
               "name": "mobGUID",
@@ -120726,6 +124637,72 @@
           "secretArguments": "AllowedWhenUntainted",
           "source": "UnitDocumentation.lua",
           "wrapper": "hpPerStamina"
+        },
+        {
+          "arguments": [
+            {
+              "name": "unit",
+              "nilable": true,
+              "type": "UnitToken"
+            }
+          ],
+          "binding": "UnitHasEffectivelyTankAura",
+          "flags": [
+            "SecretWhenUnitIdentityRestricted"
+          ],
+          "name": "UnitHasEffectivelyTankAura",
+          "returns": [
+            {
+              "name": "result",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "UnitDocumentation.lua",
+          "wrapper": "hasEffectivelyTankAura"
+        },
+        {
+          "arguments": [
+            {
+              "name": "unit",
+              "nilable": false,
+              "type": "UnitToken"
+            }
+          ],
+          "binding": "UnitHasLootInteraction",
+          "name": "UnitHasLootInteraction",
+          "returns": [
+            {
+              "name": "result",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "UnitDocumentation.lua",
+          "wrapper": "hasLootInteraction"
+        },
+        {
+          "arguments": [
+            {
+              "name": "unit",
+              "nilable": false,
+              "type": "UnitToken"
+            }
+          ],
+          "binding": "UnitHasMouseoverHighlight",
+          "name": "UnitHasMouseoverHighlight",
+          "returns": [
+            {
+              "name": "result",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "UnitDocumentation.lua",
+          "wrapper": "hasMouseoverHighlight"
         },
         {
           "arguments": [
@@ -121735,6 +125712,27 @@
           "secretArguments": "AllowedWhenUntainted",
           "source": "UnitDocumentation.lua",
           "wrapper": "isHumanPlayer"
+        },
+        {
+          "arguments": [
+            {
+              "name": "unit",
+              "nilable": false,
+              "type": "UnitToken"
+            }
+          ],
+          "binding": "UnitIsInInteractRange",
+          "name": "UnitIsInInteractRange",
+          "returns": [
+            {
+              "name": "result",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "UnitDocumentation.lua",
+          "wrapper": "isInInteractRange"
         },
         {
           "arguments": [
@@ -123239,6 +127237,50 @@
               "type": "UnitToken"
             },
             {
+              "name": "damageClass",
+              "nilable": false,
+              "type": "Damageclass"
+            }
+          ],
+          "binding": "UnitResistance",
+          "flags": [
+            "SecretWhenUnitIdentityRestricted"
+          ],
+          "name": "UnitResistance",
+          "returns": [
+            {
+              "name": "baseResistance",
+              "nilable": false,
+              "type": "number"
+            },
+            {
+              "name": "realResistance",
+              "nilable": false,
+              "type": "number"
+            },
+            {
+              "name": "effectiveResistance",
+              "nilable": false,
+              "type": "number"
+            },
+            {
+              "name": "bonusResistance",
+              "nilable": false,
+              "type": "number"
+            }
+          ],
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "UnitDocumentation.lua",
+          "wrapper": "resistance"
+        },
+        {
+          "arguments": [
+            {
+              "name": "unit",
+              "nilable": false,
+              "type": "UnitToken"
+            },
+            {
               "default": false,
               "name": "useExtendedColors",
               "nilable": false,
@@ -123459,12 +127501,13 @@
           "flags": [
             "SecretReturns"
           ],
+          "mayReturnNothing": true,
           "name": "UnitSpellTargetName",
           "returns": [
             {
               "name": "targetName",
               "nilable": false,
-              "type": "cstring"
+              "type": "string"
             }
           ],
           "secretArguments": "AllowedWhenUntainted",
@@ -123774,6 +127817,27 @@
               "type": "UnitToken"
             }
           ],
+          "binding": "UnitUsesAmmo",
+          "name": "UnitUsesAmmo",
+          "returns": [
+            {
+              "name": "result",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "UnitDocumentation.lua",
+          "wrapper": "usesAmmo"
+        },
+        {
+          "arguments": [
+            {
+              "name": "unit",
+              "nilable": false,
+              "type": "UnitToken"
+            }
+          ],
           "binding": "UnitUsingVehicle",
           "name": "UnitUsingVehicle",
           "returns": [
@@ -124021,6 +128085,9 @@
             }
           ],
           "binding": "C_UnitAuras.AddAuraSound",
+          "documentation": [
+            "Registers a sound for an aura event. The sound is stopped after five seconds of playback. The throttleSeconds value must be between 0 and 5 seconds, inclusive."
+          ],
           "hasRestrictions": true,
           "name": "AddAuraSound",
           "returns": [
@@ -124665,6 +128732,9 @@
         },
         {
           "binding": "C_UnitAuras.GetGroupBuffVisualAlerts",
+          "documentation": [
+            "Returns the alerts passed to SetGroupBuffVisualAlerts plus an entry for every linked rank spell of those group buffs."
+          ],
           "name": "GetGroupBuffVisualAlerts",
           "returns": [
             {
@@ -124679,6 +128749,9 @@
         },
         {
           "binding": "C_UnitAuras.GetHiddenGroupBuffs",
+          "documentation": [
+            "Returns the spell IDs passed to SetHiddenGroupBuffs plus every linked rank spell of those group buffs."
+          ],
           "name": "GetHiddenGroupBuffs",
           "returns": [
             {
@@ -124883,9 +128956,6 @@
         {
           "arguments": [
             {
-              "flags": [
-                "NeverSecret"
-              ],
               "name": "unit",
               "nilable": false,
               "type": "UnitTokenRestrictedForAddOns"
@@ -125964,6 +130034,19 @@
       "environment": "All",
       "functions": [
         {
+          "binding": "C_VideoOptions.AreHighResTexturesAvailable",
+          "name": "AreHighResTexturesAvailable",
+          "returns": [
+            {
+              "name": "areAvailable",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "source": "VideoDocumentation.lua",
+          "wrapper": "areHighResTexturesAvailable"
+        },
+        {
           "binding": "C_VideoOptions.GetCurrentGameWindowSize",
           "name": "GetCurrentGameWindowSize",
           "returns": [
@@ -126039,6 +130122,58 @@
           ],
           "source": "VideoDocumentation.lua",
           "wrapper": "getGxAdapterInfo"
+        },
+        {
+          "binding": "C_VideoOptions.IsLinearEnabledOnStart",
+          "name": "IsLinearEnabledOnStart",
+          "returns": [
+            {
+              "name": "isEnabled",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "source": "VideoDocumentation.lua",
+          "wrapper": "isLinearEnabledOnStart"
+        },
+        {
+          "binding": "C_VideoOptions.IsOutlineModeSupported",
+          "name": "IsOutlineModeSupported",
+          "returns": [
+            {
+              "name": "isSupported",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "source": "VideoDocumentation.lua",
+          "wrapper": "isOutlineModeSupported"
+        },
+        {
+          "binding": "C_VideoOptions.IsPBRWaterSupported",
+          "name": "IsPBRWaterSupported",
+          "returns": [
+            {
+              "name": "isSupported",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "source": "VideoDocumentation.lua",
+          "wrapper": "isPBRWaterSupported"
+        },
+        {
+          "binding": "C_VideoOptions.IsSecondaryLightingSupported",
+          "name": "IsSecondaryLightingSupported",
+          "returns": [
+            {
+              "name": "isSupported",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "source": "VideoDocumentation.lua",
+          "wrapper": "isSecondaryLightingSupported"
         },
         {
           "binding": "C_VideoOptions.IsSpellVisualDensitySystemSupported",
@@ -126239,7 +130374,7 @@
             {
               "name": "channelID",
               "nilable": false,
-              "type": "number"
+              "type": "VoiceChatID"
             }
           ],
           "binding": "C_VoiceChat.ActivateChannel",
@@ -126253,7 +130388,7 @@
             {
               "name": "channelID",
               "nilable": false,
-              "type": "number"
+              "type": "VoiceChatID"
             }
           ],
           "binding": "C_VoiceChat.ActivateChannelTranscription",
@@ -126271,6 +130406,7 @@
             }
           ],
           "binding": "C_VoiceChat.BeginLocalCapture",
+          "hasRestrictions": true,
           "name": "BeginLocalCapture",
           "secretArguments": "AllowedWhenUntainted",
           "source": "VoiceChatDocumentation.lua",
@@ -126328,7 +130464,7 @@
             {
               "name": "channelID",
               "nilable": false,
-              "type": "number"
+              "type": "VoiceChatID"
             }
           ],
           "binding": "C_VoiceChat.DeactivateChannel",
@@ -126342,7 +130478,7 @@
             {
               "name": "channelID",
               "nilable": false,
-              "type": "number"
+              "type": "VoiceChatID"
             }
           ],
           "binding": "C_VoiceChat.DeactivateChannelTranscription",
@@ -126364,7 +130500,7 @@
             {
               "name": "channelID",
               "nilable": true,
-              "type": "number"
+              "type": "VoiceChatID"
             }
           ],
           "source": "VoiceChatDocumentation.lua",
@@ -126382,6 +130518,19 @@
           ],
           "source": "VoiceChatDocumentation.lua",
           "wrapper": "getActiveChannelType"
+        },
+        {
+          "binding": "C_VoiceChat.GetActiveVoiceProviderID",
+          "name": "GetActiveVoiceProviderID",
+          "returns": [
+            {
+              "name": "activeVoiceProviderID",
+              "nilable": false,
+              "type": "VoiceProviderID"
+            }
+          ],
+          "source": "VoiceChatDocumentation.lua",
+          "wrapper": "getActiveVoiceProviderID"
         },
         {
           "binding": "C_VoiceChat.GetAvailableInputDevices",
@@ -126416,7 +130565,7 @@
             {
               "name": "channelID",
               "nilable": false,
-              "type": "number"
+              "type": "VoiceChatID"
             }
           ],
           "binding": "C_VoiceChat.GetChannel",
@@ -126569,7 +130718,7 @@
             {
               "name": "channelID",
               "nilable": false,
-              "type": "number"
+              "type": "VoiceChatID"
             }
           ],
           "binding": "C_VoiceChat.GetLocalPlayerMemberID",
@@ -126578,7 +130727,7 @@
             {
               "name": "memberID",
               "nilable": true,
-              "type": "number"
+              "type": "VoiceChatID"
             }
           ],
           "secretArguments": "AllowedWhenUntainted",
@@ -126603,12 +130752,12 @@
             {
               "name": "memberID",
               "nilable": false,
-              "type": "number"
+              "type": "VoiceChatID"
             },
             {
               "name": "channelID",
               "nilable": false,
-              "type": "number"
+              "type": "VoiceChatID"
             }
           ],
           "binding": "C_VoiceChat.GetMemberGUID",
@@ -126632,7 +130781,7 @@
             {
               "name": "channelID",
               "nilable": false,
-              "type": "number"
+              "type": "VoiceChatID"
             },
             {
               "name": "memberGUID",
@@ -126649,7 +130798,7 @@
             {
               "name": "memberID",
               "nilable": true,
-              "type": "number"
+              "type": "VoiceChatID"
             }
           ],
           "secretArguments": "AllowedWhenUntainted",
@@ -126661,12 +130810,12 @@
             {
               "name": "memberID",
               "nilable": false,
-              "type": "number"
+              "type": "VoiceChatID"
             },
             {
               "name": "channelID",
               "nilable": false,
-              "type": "number"
+              "type": "VoiceChatID"
             }
           ],
           "binding": "C_VoiceChat.GetMemberInfo",
@@ -126690,12 +130839,12 @@
             {
               "name": "memberID",
               "nilable": false,
-              "type": "number"
+              "type": "VoiceChatID"
             },
             {
               "name": "channelID",
               "nilable": false,
-              "type": "number"
+              "type": "VoiceChatID"
             }
           ],
           "binding": "C_VoiceChat.GetMemberName",
@@ -126907,12 +131056,12 @@
             {
               "name": "memberID",
               "nilable": false,
-              "type": "number"
+              "type": "VoiceChatID"
             },
             {
               "name": "channelID",
               "nilable": false,
-              "type": "number"
+              "type": "VoiceChatID"
             }
           ],
           "binding": "C_VoiceChat.IsMemberLocalPlayer",
@@ -126955,12 +131104,12 @@
             {
               "name": "memberID",
               "nilable": false,
-              "type": "number"
+              "type": "VoiceChatID"
             },
             {
               "name": "channelID",
               "nilable": false,
-              "type": "number"
+              "type": "VoiceChatID"
             }
           ],
           "binding": "C_VoiceChat.IsMemberMutedForAll",
@@ -126984,12 +131133,12 @@
             {
               "name": "memberID",
               "nilable": false,
-              "type": "number"
+              "type": "VoiceChatID"
             },
             {
               "name": "channelID",
               "nilable": false,
-              "type": "number"
+              "type": "VoiceChatID"
             }
           ],
           "binding": "C_VoiceChat.IsMemberSilenced",
@@ -127152,7 +131301,7 @@
             {
               "name": "channelID",
               "nilable": false,
-              "type": "number"
+              "type": "VoiceChatID"
             }
           ],
           "binding": "C_VoiceChat.LeaveChannel",
@@ -127162,6 +131311,13 @@
           "wrapper": "leaveChannel"
         },
         {
+          "arguments": [
+            {
+              "name": "channelType",
+              "nilable": true,
+              "type": "ChatChannelType"
+            }
+          ],
           "binding": "C_VoiceChat.Login",
           "name": "Login",
           "returns": [
@@ -127171,6 +131327,7 @@
               "type": "VoiceChatStatusCode"
             }
           ],
+          "secretArguments": "AllowedWhenUntainted",
           "source": "VoiceChatDocumentation.lua",
           "wrapper": "login"
         },
@@ -127233,6 +131390,46 @@
           "secretArguments": "AllowedWhenUntainted",
           "source": "VoiceChatDocumentation.lua",
           "wrapper": "requestJoinChannelByChannelType"
+        },
+        {
+          "binding": "C_VoiceChat.RestoreActiveVoiceProvider",
+          "documentation": [
+            "Changes the active voice provider to the party voice provider, or to the preferred voice provider when the party has none."
+          ],
+          "name": "RestoreActiveVoiceProvider",
+          "returns": [
+            {
+              "name": "changed",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "source": "VoiceChatDocumentation.lua",
+          "wrapper": "restoreActiveVoiceProvider"
+        },
+        {
+          "arguments": [
+            {
+              "name": "voiceProviderID",
+              "nilable": false,
+              "type": "VoiceProviderID"
+            }
+          ],
+          "binding": "C_VoiceChat.SetActiveVoiceProvider",
+          "documentation": [
+            "Changes the active voice provider without changing the preferred voice provider."
+          ],
+          "name": "SetActiveVoiceProvider",
+          "returns": [
+            {
+              "name": "success",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "VoiceChatDocumentation.lua",
+          "wrapper": "setActiveVoiceProvider"
         },
         {
           "arguments": [
@@ -127399,12 +131596,12 @@
             {
               "name": "memberID",
               "nilable": false,
-              "type": "number"
+              "type": "VoiceChatID"
             },
             {
               "name": "channelID",
               "nilable": false,
-              "type": "number"
+              "type": "VoiceChatID"
             }
           ],
           "binding": "C_VoiceChat.SetPortraitTexture",
@@ -127687,6 +131884,19 @@
           "secretArguments": "AllowedWhenUntainted",
           "source": "WarbandSceneInfoDocumentation.lua",
           "wrapper": "setFavorite"
+        },
+        {
+          "binding": "C_WarbandScene.WarbandScenesAvailable",
+          "name": "WarbandScenesAvailable",
+          "returns": [
+            {
+              "name": "areWarbandScenesAvailable",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "source": "WarbandSceneInfoDocumentation.lua",
+          "wrapper": "warbandScenesAvailable"
         }
       ],
       "kind": "namespace",
@@ -128357,6 +132567,91 @@
       "wrapper": "wowEntitlementInfo"
     },
     {
+      "blizzardNamespace": "C_WoWHackAppearance",
+      "environment": "All",
+      "functions": [
+        {
+          "binding": "C_WoWHackAppearance.GetPlayerAuraSpellVisualKitIDs",
+          "name": "GetPlayerAuraSpellVisualKitIDs",
+          "returns": [
+            {
+              "innerType": "number",
+              "name": "spellVisualKitIDs",
+              "nilable": false,
+              "type": "table"
+            }
+          ],
+          "source": "WoWHackAppearanceDocumentation.lua",
+          "wrapper": "getPlayerAuraSpellVisualKitIDs"
+        }
+      ],
+      "kind": "namespace",
+      "sources": [
+        "WoWHackAppearanceDocumentation.lua"
+      ],
+      "system": "WoWHackAppearance",
+      "wrapper": "wowHackAppearance"
+    },
+    {
+      "blizzardNamespace": "C_WoWHackCharacterStats",
+      "environment": "All",
+      "functions": [
+        {
+          "arguments": [
+            {
+              "name": "spellID",
+              "nilable": false,
+              "type": "number"
+            }
+          ],
+          "binding": "C_WoWHackCharacterStats.GetStatPointsBySpellID",
+          "name": "GetStatPointsBySpellID",
+          "returns": [
+            {
+              "name": "estimatedPoints",
+              "nilable": false,
+              "type": "number"
+            }
+          ],
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "WoWHackCharacterStatsDocumentation.lua",
+          "wrapper": "getStatPointsBySpellID"
+        },
+        {
+          "arguments": [
+            {
+              "name": "statSpellID",
+              "nilable": false,
+              "type": "number"
+            },
+            {
+              "name": "increaseSpellID",
+              "nilable": false,
+              "type": "number"
+            }
+          ],
+          "binding": "C_WoWHackCharacterStats.GetStatPointsChangeBySpellID",
+          "name": "GetStatPointsChangeBySpellID",
+          "returns": [
+            {
+              "name": "estimatedPointsChange",
+              "nilable": false,
+              "type": "number"
+            }
+          ],
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "WoWHackCharacterStatsDocumentation.lua",
+          "wrapper": "getStatPointsChangeBySpellID"
+        }
+      ],
+      "kind": "namespace",
+      "sources": [
+        "WoWHackCharacterStatsDocumentation.lua"
+      ],
+      "system": "WoWHackCharacterStats",
+      "wrapper": "wowHackCharacterStats"
+    },
+    {
       "blizzardNamespace": "C_WowSurvey",
       "environment": "All",
       "functions": [
@@ -128393,6 +132688,19 @@
       "blizzardNamespace": "C_WowTokenUI",
       "environment": "All",
       "functions": [
+        {
+          "binding": "C_WowTokenUI.ShouldDisplayInAuctionHouse",
+          "name": "ShouldDisplayInAuctionHouse",
+          "returns": [
+            {
+              "name": "displayInAH",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "source": "WowTokenUIDocumentation.lua",
+          "wrapper": "shouldDisplayInAuctionHouse"
+        },
         {
           "arguments": [
             {

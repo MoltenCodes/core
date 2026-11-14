@@ -85,7 +85,7 @@ local COMMITTED_FLAVORS = {
   { id = "retail", version = "12.1.5", build = 70783, path = { "retail" } },
   { id = "classic-era", version = "1.15.9", build = 70576, path = { "classic", "era" } },
   { id = "classic-mop", version = "5.5.4", build = 70631, path = { "classic", "mop" } },
-  { id = "ptr", version = "12.1.5", build = 69952, path = { "ptr" } },
+  { id = "ptr", version = "12.1.7", build = 70892, path = { "ptr" } },
   { id = "beta", version = "12.0.1", build = 66220, path = { "beta" } },
 }
 

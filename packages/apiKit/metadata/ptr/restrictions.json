@@ -219,10 +219,18 @@
     },
     {
       "documentation": [
-        "Guarded APIs and events produce secret values if the subject unit is not the active player, unless they are an active spectator or commentator of a PvP match."
+        "Guarded APIs and events always produce secret values, unless the active player is an active spectator or commentator of a PvP match."
       ],
       "kind": "secret",
       "name": "SecretWhenLossOfControlInfoRestricted",
+      "source": "SecretPredicatesDocumentation.lua"
+    },
+    {
+      "documentation": [
+        "Guarded APIs always produce secret values, unless the active player is an active spectator or commentator of a PvP match."
+      ],
+      "kind": "secret",
+      "name": "SecretWhenLossOfControlRestricted",
       "source": "SecretPredicatesDocumentation.lua"
     },
     {

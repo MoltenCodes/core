@@ -187,12 +187,20 @@
         {
           "name": "Toobig",
           "value": 3
+        },
+        {
+          "name": "UnexpectedContentSet",
+          "value": 4
+        },
+        {
+          "name": "ContentSetTooLarge",
+          "value": 5
         }
       ],
-      "maxValue": 3,
+      "maxValue": 5,
       "minValue": 0,
       "name": "AccountDataUpdateStatus",
-      "numValues": 4,
+      "numValues": 6,
       "source": "AccountConstantsDocumentation.lua",
       "wrapper": "accountDataUpdateStatus"
     },
@@ -601,6 +609,60 @@
     {
       "fields": [
         {
+          "name": "None",
+          "value": 0
+        },
+        {
+          "name": "Mkb",
+          "value": 1
+        },
+        {
+          "name": "Gamepad",
+          "value": 2
+        },
+        {
+          "name": "All",
+          "value": 3
+        }
+      ],
+      "maxValue": 3,
+      "minValue": 0,
+      "name": "ActionBarSet",
+      "numValues": 4,
+      "source": "ActionBarFrameDocumentation.lua",
+      "system": "ActionBar",
+      "wrapper": "actionBarSet"
+    },
+    {
+      "fields": [
+        {
+          "name": "None",
+          "value": 0
+        },
+        {
+          "name": "WoWHackOffensiveActions",
+          "value": 1
+        },
+        {
+          "name": "WoWHackDefensiveActions",
+          "value": 2
+        },
+        {
+          "name": "WoWHackUltimateActions",
+          "value": 3
+        }
+      ],
+      "maxValue": 3,
+      "minValue": 0,
+      "name": "ActionBarSpellTypeRestriction",
+      "numValues": 4,
+      "source": "ActionBarFrameDocumentation.lua",
+      "system": "ActionBar",
+      "wrapper": "actionBarSpellTypeRestriction"
+    },
+    {
+      "fields": [
+        {
           "name": "Always",
           "value": 0
         },
@@ -643,8 +705,7 @@
       "minValue": 0,
       "name": "AddOnEnableState",
       "numValues": 3,
-      "source": "AddOnsDocumentation.lua",
-      "system": "AddOns",
+      "source": "AddOnConstantsDocumentation.lua",
       "wrapper": "addOnEnableState"
     },
     {
@@ -878,8 +939,7 @@
       "minValue": 0,
       "name": "AddOnSecurityStatus",
       "numValues": 4,
-      "source": "AddOnsDocumentation.lua",
-      "system": "AddOns",
+      "source": "AddOnConstantsDocumentation.lua",
       "wrapper": "addOnSecurityStatus"
     },
     {
@@ -1859,30 +1919,58 @@
           "value": 11
         },
         {
-          "name": "AccountBankTab_1",
+          "name": "CharacterBankTab_7",
           "value": 12
         },
         {
-          "name": "AccountBankTab_2",
+          "name": "CharacterBankTab_8",
           "value": 13
         },
         {
-          "name": "AccountBankTab_3",
+          "name": "CharacterBankTab_9",
           "value": 14
         },
         {
-          "name": "AccountBankTab_4",
+          "name": "AccountBankTab_1",
           "value": 15
         },
         {
-          "name": "AccountBankTab_5",
+          "name": "AccountBankTab_2",
           "value": 16
+        },
+        {
+          "name": "AccountBankTab_3",
+          "value": 17
+        },
+        {
+          "name": "AccountBankTab_4",
+          "value": 18
+        },
+        {
+          "name": "AccountBankTab_5",
+          "value": 19
+        },
+        {
+          "name": "AccountBankTab_6",
+          "value": 20
+        },
+        {
+          "name": "AccountBankTab_7",
+          "value": 21
+        },
+        {
+          "name": "AccountBankTab_8",
+          "value": 22
+        },
+        {
+          "name": "AccountBankTab_9",
+          "value": 23
         }
       ],
-      "maxValue": 16,
+      "maxValue": 23,
       "minValue": -3,
       "name": "BagIndex",
-      "numValues": 20,
+      "numValues": 27,
       "source": "BagIndexConstantsDocumentation.lua",
       "system": "BagIndexConstants",
       "wrapper": "bagIndex"
@@ -2025,6 +2113,20 @@
       "source": "BankDocumentation.lua",
       "system": "Bank",
       "wrapper": "bankLockedReason"
+    },
+    {
+      "fields": [
+        {
+          "name": "AllowMissingBag",
+          "value": 1
+        }
+      ],
+      "maxValue": 1,
+      "minValue": 1,
+      "name": "BankTabFlags",
+      "numValues": 1,
+      "source": "ItemConstantsDocumentation.lua",
+      "wrapper": "bankTabFlags"
     },
     {
       "fields": [
@@ -2292,6 +2394,25 @@
     {
       "fields": [
         {
+          "name": "Skyborne",
+          "value": 0
+        },
+        {
+          "name": "Dungeon",
+          "value": 1
+        }
+      ],
+      "maxValue": 1,
+      "minValue": 0,
+      "name": "Bc26Experience",
+      "numValues": 2,
+      "source": "BlizzCon2026Documentation.lua",
+      "system": "BlizzCon2026Scripts",
+      "wrapper": "bc26Experience"
+    },
+    {
+      "fields": [
+        {
           "name": "None",
           "value": 0
         },
@@ -2328,7 +2449,7 @@
           "value": 8
         },
         {
-          "name": "ReservedFutureFeatureBinding01",
+          "name": "GamepadModeInGameCore",
           "value": 9
         }
       ],
@@ -2456,12 +2577,16 @@
         {
           "name": "MopQuestLogFlagsFixUp",
           "value": 1048576
+        },
+        {
+          "name": "Unused",
+          "value": 2097152
         }
       ],
-      "maxValue": 1048576,
+      "maxValue": 2097152,
       "minValue": 0,
       "name": "BnetAccountFlag",
-      "numValues": 22,
+      "numValues": 23,
       "source": "AccountConstantsDocumentation.lua",
       "wrapper": "bnetAccountFlag"
     },
@@ -2512,7 +2637,7 @@
           "value": 10
         },
         {
-          "name": "WeaponSkillRatingObsolete",
+          "name": "WeaponSkillRating",
           "value": 11
         },
         {
@@ -2640,11 +2765,11 @@
           "value": 42
         },
         {
-          "name": "ManaRegenerationObsolete",
+          "name": "ManaRegeneration",
           "value": 43
         },
         {
-          "name": "Unused",
+          "name": "ArmorPenetrationRating",
           "value": 44
         },
         {
@@ -2660,7 +2785,7 @@
           "value": 47
         },
         {
-          "name": "BlockValueObsolete",
+          "name": "BlockValue",
           "value": 48
         },
         {
@@ -2800,235 +2925,235 @@
           "value": 82
         },
         {
-          "name": "Reserved_83",
+          "name": "PhysicalDamageDone",
           "value": 83
         },
         {
-          "name": "Reserved_84",
+          "name": "HolyDamageDone",
           "value": 84
         },
         {
-          "name": "Reserved_85",
+          "name": "FireDamageDone",
           "value": 85
         },
         {
-          "name": "Reserved_86",
+          "name": "NatureDamageDone",
           "value": 86
         },
         {
-          "name": "Reserved_87",
+          "name": "FrostDamageDone",
           "value": 87
         },
         {
-          "name": "Reserved_88",
+          "name": "ShadowDamageDone",
           "value": 88
         },
         {
-          "name": "Reserved_89",
+          "name": "ArcaneDamageDone",
           "value": 89
         },
         {
-          "name": "Reserved_90",
+          "name": "TwohandedAxesSkill",
           "value": 90
         },
         {
-          "name": "Reserved_91",
+          "name": "TwohandedMacesSkill",
           "value": 91
         },
         {
-          "name": "Reserved_92",
+          "name": "TwohandedSwordsSkill",
           "value": 92
         },
         {
-          "name": "Reserved_93",
+          "name": "AxesSkill",
           "value": 93
         },
         {
-          "name": "Reserved_94",
+          "name": "BowsSkill",
           "value": 94
         },
         {
-          "name": "Reserved_95",
+          "name": "CrossbowsSkill",
           "value": 95
         },
         {
-          "name": "Reserved_96",
+          "name": "DaggersSkill",
           "value": 96
         },
         {
-          "name": "Reserved_97",
+          "name": "DualWieldSkill",
           "value": 97
         },
         {
-          "name": "Reserved_98",
+          "name": "FistWeaponsSkill",
           "value": 98
         },
         {
-          "name": "Reserved_99",
+          "name": "GunsSkill",
           "value": 99
         },
         {
-          "name": "Reserved_100",
+          "name": "MacesSkill",
           "value": 100
         },
         {
-          "name": "Reserved_101",
+          "name": "PolearmsSkill",
           "value": 101
         },
         {
-          "name": "Reserved_102",
+          "name": "StavesSkill",
           "value": 102
         },
         {
-          "name": "Reserved_103",
+          "name": "SwordsSkill",
           "value": 103
         },
         {
-          "name": "Reserved_104",
+          "name": "ThrownSkill",
           "value": 104
         },
         {
-          "name": "Reserved_105",
+          "name": "WandsSkill",
           "value": 105
         },
         {
-          "name": "Reserved_106",
+          "name": "AlchemySkill",
           "value": 106
         },
         {
-          "name": "Reserved_107",
+          "name": "BlacksmithingSkill",
           "value": 107
         },
         {
-          "name": "Reserved_108",
+          "name": "EnchantingSkill",
           "value": 108
         },
         {
-          "name": "Reserved_109",
+          "name": "EngineeringSkill",
           "value": 109
         },
         {
-          "name": "Reserved_110",
+          "name": "JewelcraftingSkill",
           "value": 110
         },
         {
-          "name": "Reserved_111",
+          "name": "LeatherworkingSkill",
           "value": 111
         },
         {
-          "name": "Reserved_112",
+          "name": "HerbalismSkill",
           "value": 112
         },
         {
-          "name": "Reserved_113",
+          "name": "MiningSkill",
           "value": 113
         },
         {
-          "name": "Reserved_114",
+          "name": "SkinningSkill",
           "value": 114
         },
         {
-          "name": "Reserved_115",
+          "name": "CookingSkill",
           "value": 115
         },
         {
-          "name": "Reserved_116",
+          "name": "FirstAidSkill",
           "value": 116
         },
         {
-          "name": "Reserved_117",
+          "name": "FishingSkill",
           "value": 117
         },
         {
-          "name": "Reserved_118",
+          "name": "TailoringSkill",
           "value": 118
         },
         {
-          "name": "Reserved_119",
+          "name": "FirePenetration",
           "value": 119
         },
         {
-          "name": "Reserved_120",
+          "name": "NaturePenetration",
           "value": 120
         },
         {
-          "name": "Reserved_121",
+          "name": "FrostPenetration",
           "value": 121
         },
         {
-          "name": "Reserved_122",
+          "name": "ShadowPenetration",
           "value": 122
         },
         {
-          "name": "Reserved_123",
+          "name": "ArcanePenetration",
           "value": 123
         },
         {
-          "name": "Reserved_124",
+          "name": "SpellResistanceAllSchools",
           "value": 124
         },
         {
-          "name": "Reserved_125",
+          "name": "AttackPowerVsHumanoid",
           "value": 125
         },
         {
-          "name": "Reserved_126",
+          "name": "AttackPowerVsElemental",
           "value": 126
         },
         {
-          "name": "Reserved_127",
+          "name": "AttackPowerVsDemon",
           "value": 127
         },
         {
-          "name": "Reserved_128",
+          "name": "AttackPowerVsUndead",
           "value": 128
         },
         {
-          "name": "Reserved_129",
+          "name": "AttackPowerVsDragonkin",
           "value": 129
         },
         {
-          "name": "Reserved_130",
+          "name": "AttackPowerVsGiant",
           "value": 130
         },
         {
-          "name": "Reserved_131",
+          "name": "AttackPowerVsBeast",
           "value": 131
         },
         {
-          "name": "Reserved_132",
+          "name": "AttackPowerVsMechanical",
           "value": 132
         },
         {
-          "name": "Reserved_133",
+          "name": "SpellDamageVsHumanoid",
           "value": 133
         },
         {
-          "name": "Reserved_134",
+          "name": "SpellDamageVsElemental",
           "value": 134
         },
         {
-          "name": "Reserved_135",
+          "name": "SpellDamageVsDemon",
           "value": 135
         },
         {
-          "name": "Reserved_136",
+          "name": "SpellDamageVsUndead",
           "value": 136
         },
         {
-          "name": "Reserved_137",
+          "name": "SpellDamageVsDragonkin",
           "value": 137
         },
         {
-          "name": "Reserved_138",
+          "name": "SpellDamageVsGiant",
           "value": 138
         },
         {
-          "name": "Reserved_139",
+          "name": "SpellDamageVsBeast",
           "value": 139
         },
         {
-          "name": "Reserved_140",
+          "name": "SpellDamageVsMechanical",
           "value": 140
         },
         {
@@ -3042,6 +3167,28 @@
       "numValues": 142,
       "source": "ItemConstantsDocumentation.lua",
       "wrapper": "bonusStatIndex"
+    },
+    {
+      "fields": [
+        {
+          "name": "Left",
+          "value": 0
+        },
+        {
+          "name": "Center",
+          "value": 1
+        },
+        {
+          "name": "Right",
+          "value": 2
+        }
+      ],
+      "maxValue": 2,
+      "minValue": 0,
+      "name": "BossFrameGrowDirection",
+      "numValues": 3,
+      "source": "EditModeManagerConstantsDocumentation.lua",
+      "wrapper": "bossFrameGrowDirection"
     },
     {
       "fields": [
@@ -3149,12 +3296,24 @@
         {
           "name": "ResultPurchaseTimeout",
           "value": 7
+        },
+        {
+          "name": "ResultInvalidCurrencyType",
+          "value": 8
+        },
+        {
+          "name": "ResultFailedServerValidation",
+          "value": 9
+        },
+        {
+          "name": "ResultFailedServerValidationMissingAchievement",
+          "value": 10
         }
       ],
-      "maxValue": 7,
+      "maxValue": 10,
       "minValue": 0,
       "name": "BulkPurchaseResult",
-      "numValues": 8,
+      "numValues": 11,
       "source": "BattlepayConstantsDocumentation.lua",
       "wrapper": "bulkPurchaseResult"
     },
@@ -4061,6 +4220,40 @@
     {
       "fields": [
         {
+          "name": "Eligible",
+          "value": 0
+        },
+        {
+          "name": "IneligibleOwned",
+          "value": 1
+        },
+        {
+          "name": "IneligibleTokenOnGlues",
+          "value": 2
+        },
+        {
+          "name": "IneligibleMissingRequiredAchievement",
+          "value": 3
+        },
+        {
+          "name": "IneligibleOwnTooManyFromSelectionGroup",
+          "value": 4
+        },
+        {
+          "name": "IneligibleUnknownProduct",
+          "value": 5
+        }
+      ],
+      "maxValue": 5,
+      "minValue": 0,
+      "name": "CatalogShopPurchaseEligibility",
+      "numValues": 6,
+      "source": "CatalogShopConstantsDocumentation.lua",
+      "wrapper": "catalogShopPurchaseEligibility"
+    },
+    {
+      "fields": [
+        {
           "name": "None",
           "value": 0
         },
@@ -4393,12 +4586,24 @@
         {
           "name": "Communities",
           "value": 4
+        },
+        {
+          "name": "DiscordParty",
+          "value": 5
+        },
+        {
+          "name": "DiscordGuild",
+          "value": 6
+        },
+        {
+          "name": "DiscordSolo",
+          "value": 7
         }
       ],
-      "maxValue": 4,
+      "maxValue": 7,
       "minValue": 0,
       "name": "ChatChannelType",
-      "numValues": 5,
+      "numValues": 8,
       "source": "ChatConstantsDocumentation.lua",
       "wrapper": "chatChannelType"
     },
@@ -4535,6 +4740,52 @@
       "numValues": 8,
       "source": "CharacterCustomizationSharedDocumentation.lua",
       "wrapper": "chrModelFeatureFlags"
+    },
+    {
+      "fields": [
+        {
+          "name": "IsCaster",
+          "value": 1
+        },
+        {
+          "name": "IsRanged",
+          "value": 2
+        },
+        {
+          "name": "IsMelee",
+          "value": 4
+        },
+        {
+          "name": "ChallengeModeSpiritAsHit",
+          "value": 8
+        },
+        {
+          "name": "SheatheInvertedForDualWield",
+          "value": 16
+        },
+        {
+          "name": "OverrideSpec",
+          "value": 32
+        },
+        {
+          "name": "RecommendedSpec",
+          "value": 64
+        },
+        {
+          "name": "DisabledForTesting",
+          "value": 128
+        },
+        {
+          "name": "AllowedSpecForBoost",
+          "value": 256
+        }
+      ],
+      "maxValue": 256,
+      "minValue": 1,
+      "name": "ChrSpecializationFlags",
+      "numValues": 9,
+      "source": "SpecializationConstantsDocumentation.lua",
+      "wrapper": "chrSpecializationFlags"
     },
     {
       "fields": [
@@ -5934,12 +6185,16 @@
         {
           "name": "Under10Percent",
           "value": 9
+        },
+        {
+          "name": "AlwaysOn",
+          "value": 10
         }
       ],
-      "maxValue": 9,
+      "maxValue": 10,
       "minValue": 0,
       "name": "CombatAudioAlertPulsePercentValues",
-      "numValues": 10,
+      "numValues": 11,
       "source": "CombatAudioAlertSharedDocumentation.lua",
       "wrapper": "combatAudioAlertPulsePercentValues"
     },
@@ -8090,12 +8345,16 @@
         {
           "name": "WrongVersion",
           "value": 48
+        },
+        {
+          "name": "ClassTrial",
+          "value": 49
         }
       ],
-      "maxValue": 48,
+      "maxValue": 49,
       "minValue": 0,
       "name": "CraftingOrderResult",
-      "numValues": 49,
+      "numValues": 50,
       "source": "ProfessionConstantsDocumentation.lua",
       "wrapper": "craftingOrderResult"
     },
@@ -8809,6 +9068,24 @@
     {
       "fields": [
         {
+          "name": "DebugLogging",
+          "value": 1
+        },
+        {
+          "name": "IgnoreTimeBeforeStart",
+          "value": 2
+        }
+      ],
+      "maxValue": 2,
+      "minValue": 1,
+      "name": "CurrencyWeeksFromStartOption",
+      "numValues": 2,
+      "source": "CurrencyConstantsDocumentation.lua",
+      "wrapper": "currencyWeeksFromStartOption"
+    },
+    {
+      "fields": [
+        {
           "name": "Mouse",
           "value": 0
         },
@@ -9015,190 +9292,194 @@
           "value": 46
         },
         {
-          "name": "PointErrorCursor",
+          "name": "GamepadInteractCursor",
           "value": 47
         },
         {
-          "name": "CastErrorCursor",
+          "name": "PointErrorCursor",
           "value": 48
         },
         {
-          "name": "BuyErrorCursor",
+          "name": "CastErrorCursor",
           "value": 49
         },
         {
-          "name": "AttackErrorCursor",
+          "name": "BuyErrorCursor",
           "value": 50
         },
         {
-          "name": "InteractErrorCursor",
+          "name": "AttackErrorCursor",
           "value": 51
         },
         {
-          "name": "SpeakErrorCursor",
+          "name": "InteractErrorCursor",
           "value": 52
         },
         {
-          "name": "InspectErrorCursor",
+          "name": "SpeakErrorCursor",
           "value": 53
         },
         {
-          "name": "PickupErrorCursor",
+          "name": "InspectErrorCursor",
           "value": 54
         },
         {
-          "name": "TaxiErrorCursor",
+          "name": "PickupErrorCursor",
           "value": 55
         },
         {
-          "name": "TrainerErrorCursor",
+          "name": "TaxiErrorCursor",
           "value": 56
         },
         {
-          "name": "MineErrorCursor",
+          "name": "TrainerErrorCursor",
           "value": 57
         },
         {
-          "name": "SkinErrorCursor",
+          "name": "MineErrorCursor",
           "value": 58
         },
         {
-          "name": "GatherErrorCursor",
+          "name": "SkinErrorCursor",
           "value": 59
         },
         {
-          "name": "LockErrorCursor",
+          "name": "GatherErrorCursor",
           "value": 60
         },
         {
-          "name": "MailErrorCursor",
+          "name": "LockErrorCursor",
           "value": 61
         },
         {
-          "name": "LootAllErrorCursor",
+          "name": "MailErrorCursor",
           "value": 62
         },
         {
-          "name": "RepairErrorCursor",
+          "name": "LootAllErrorCursor",
           "value": 63
         },
         {
-          "name": "RepairnpcErrorCursor",
+          "name": "RepairErrorCursor",
           "value": 64
         },
         {
-          "name": "ItemErrorCursor",
+          "name": "RepairnpcErrorCursor",
           "value": 65
         },
         {
-          "name": "SkinHordeErrorCursor",
+          "name": "ItemErrorCursor",
           "value": 66
         },
         {
-          "name": "SkinAllianceErrorCursor",
+          "name": "SkinHordeErrorCursor",
           "value": 67
         },
         {
-          "name": "InnkeeperErrorCursor",
+          "name": "SkinAllianceErrorCursor",
           "value": 68
         },
         {
-          "name": "CampaignQuestErrorCursor",
+          "name": "InnkeeperErrorCursor",
           "value": 69
         },
         {
-          "name": "CampaignQuestTurninErrorCursor",
+          "name": "CampaignQuestErrorCursor",
           "value": 70
         },
         {
-          "name": "QuestErrorCursor",
+          "name": "CampaignQuestTurninErrorCursor",
           "value": 71
         },
         {
-          "name": "QuestRepeatableErrorCursor",
+          "name": "QuestErrorCursor",
           "value": 72
         },
         {
-          "name": "QuestTurninErrorCursor",
+          "name": "QuestRepeatableErrorCursor",
           "value": 73
         },
         {
-          "name": "QuestLegendaryErrorCursor",
+          "name": "QuestTurninErrorCursor",
           "value": 74
         },
         {
-          "name": "QuestLegendaryTurninErrorCursor",
+          "name": "QuestLegendaryErrorCursor",
           "value": 75
         },
         {
-          "name": "QuestImportantErrorCursor",
+          "name": "QuestLegendaryTurninErrorCursor",
           "value": 76
         },
         {
-          "name": "QuestImportantTurninErrorCursor",
+          "name": "QuestImportantErrorCursor",
           "value": 77
         },
         {
-          "name": "QuestMetaErrorCursor",
+          "name": "QuestImportantTurninErrorCursor",
           "value": 78
         },
         {
-          "name": "QuestMetaTurninErrorCursor",
+          "name": "QuestMetaErrorCursor",
           "value": 79
         },
         {
-          "name": "QuestRecurringErrorCursor",
+          "name": "QuestMetaTurninErrorCursor",
           "value": 80
         },
         {
-          "name": "QuestRecurringTurninErrorCursor",
+          "name": "QuestRecurringErrorCursor",
           "value": 81
         },
         {
-          "name": "VehicleErrorCursor",
+          "name": "QuestRecurringTurninErrorCursor",
           "value": 82
         },
         {
-          "name": "MapPinErrorCursor",
+          "name": "VehicleErrorCursor",
           "value": 83
         },
         {
-          "name": "PingErrorCursor",
+          "name": "MapPinErrorCursor",
           "value": 84
         },
         {
-          "name": "EnchantErrorCursor",
+          "name": "PingErrorCursor",
           "value": 85
         },
         {
-          "name": "StablemasterErrorCursor",
+          "name": "EnchantErrorCursor",
           "value": 86
         },
         {
-          "name": "PaletteErrorCursor",
+          "name": "StablemasterErrorCursor",
           "value": 87
         },
         {
-          "name": "BroomErrorCursor",
+          "name": "PaletteErrorCursor",
           "value": 88
         },
         {
-          "name": "HoldingHandErrorCursor",
+          "name": "BroomErrorCursor",
           "value": 89
         },
         {
-          "name": "GrabbingHandErrorCursor",
+          "name": "HoldingHandErrorCursor",
           "value": 90
         },
         {
-          "name": "CustomCursor",
+          "name": "GrabbingHandErrorCursor",
           "value": 91
+        },
+        {
+          "name": "CustomCursor",
+          "value": 92
         }
       ],
-      "maxValue": 91,
+      "maxValue": 92,
       "minValue": 0,
       "name": "Cursormode",
-      "numValues": 92,
+      "numValues": 93,
       "source": "CursorConstDocumentation.lua",
       "wrapper": "cursormode"
     },
@@ -9930,6 +10211,20 @@
     {
       "fields": [
         {
+          "name": "InvalidDiscordID",
+          "value": 0
+        }
+      ],
+      "maxValue": 0,
+      "minValue": 0,
+      "name": "DiscordChannelID",
+      "numValues": 1,
+      "source": "DiscordConstantsDocumentation.lua",
+      "wrapper": "discordChannelID"
+    },
+    {
+      "fields": [
+        {
           "name": "Default",
           "value": 0
         },
@@ -9952,6 +10247,20 @@
     {
       "fields": [
         {
+          "name": "InvalidDiscordID",
+          "value": 0
+        }
+      ],
+      "maxValue": 0,
+      "minValue": 0,
+      "name": "DiscordGuildID",
+      "numValues": 1,
+      "source": "DiscordConstantsDocumentation.lua",
+      "wrapper": "discordGuildID"
+    },
+    {
+      "fields": [
+        {
           "name": "SeparateStream",
           "value": 1
         }
@@ -9962,6 +10271,62 @@
       "numValues": 1,
       "source": "DiscordConstantsDocumentation.lua",
       "wrapper": "discordGuildSettings"
+    },
+    {
+      "fields": [
+        {
+          "name": "InvalidDiscordID",
+          "value": 0
+        }
+      ],
+      "maxValue": 0,
+      "minValue": 0,
+      "name": "DiscordID",
+      "numValues": 1,
+      "source": "DiscordConstantsDocumentation.lua",
+      "wrapper": "discordID"
+    },
+    {
+      "fields": [
+        {
+          "name": "InvalidDiscordID",
+          "value": 0
+        }
+      ],
+      "maxValue": 0,
+      "minValue": 0,
+      "name": "DiscordLobbyID",
+      "numValues": 1,
+      "source": "DiscordConstantsDocumentation.lua",
+      "wrapper": "discordLobbyID"
+    },
+    {
+      "fields": [
+        {
+          "name": "InvalidDiscordID",
+          "value": 0
+        }
+      ],
+      "maxValue": 0,
+      "minValue": 0,
+      "name": "DiscordMemberID",
+      "numValues": 1,
+      "source": "DiscordConstantsDocumentation.lua",
+      "wrapper": "discordMemberID"
+    },
+    {
+      "fields": [
+        {
+          "name": "InvalidDiscordID",
+          "value": 0
+        }
+      ],
+      "maxValue": 0,
+      "minValue": 0,
+      "name": "DiscordMessageID",
+      "numValues": 1,
+      "source": "DiscordConstantsDocumentation.lua",
+      "wrapper": "discordMessageID"
     },
     {
       "fields": [
@@ -10168,14 +10533,22 @@
           "value": 34
         },
         {
-          "name": "ShowLossOfControl",
+          "name": "ShowGroupFinder",
           "value": 35
+        },
+        {
+          "name": "ShowLossOfControl",
+          "value": 36
+        },
+        {
+          "name": "ShowSwingTimer",
+          "value": 37
         }
       ],
-      "maxValue": 35,
+      "maxValue": 37,
       "minValue": 0,
       "name": "EditModeAccountSetting",
-      "numValues": 36,
+      "numValues": 38,
       "source": "EditModeManagerConstantsDocumentation.lua",
       "wrapper": "editModeAccountSetting"
     },
@@ -10702,6 +11075,50 @@
     {
       "fields": [
         {
+          "name": "Compact",
+          "value": 0
+        },
+        {
+          "name": "ShowEmptyBars",
+          "value": 1
+        },
+        {
+          "name": "ShowButtonPrompts",
+          "value": 2
+        },
+        {
+          "name": "ShowHighlight",
+          "value": 3
+        },
+        {
+          "name": "ShouldExpand",
+          "value": 4
+        }
+      ],
+      "maxValue": 4,
+      "minValue": 0,
+      "name": "EditModeGamepadMainActionBarSetting",
+      "numValues": 5,
+      "source": "EditModeManagerConstantsDocumentation.lua",
+      "wrapper": "editModeGamepadMainActionBarSetting"
+    },
+    {
+      "fields": [
+        {
+          "name": "Size",
+          "value": 0
+        }
+      ],
+      "maxValue": 0,
+      "minValue": 0,
+      "name": "EditModeGroupFinderSetting",
+      "numValues": 1,
+      "source": "EditModeManagerConstantsDocumentation.lua",
+      "wrapper": "editModeGroupFinderSetting"
+    },
+    {
+      "fields": [
+        {
           "name": "Preset",
           "value": 0
         },
@@ -10742,6 +11159,38 @@
     {
       "fields": [
         {
+          "name": "Hidden",
+          "value": 0
+        }
+      ],
+      "maxValue": 0,
+      "minValue": 0,
+      "name": "EditModeMainActionBarEndCapSetting",
+      "numValues": 1,
+      "source": "EditModeManagerConstantsDocumentation.lua",
+      "wrapper": "editModeMainActionBarEndCapSetting"
+    },
+    {
+      "fields": [
+        {
+          "name": "EndCapLeft",
+          "value": 1
+        },
+        {
+          "name": "EndCapRight",
+          "value": 2
+        }
+      ],
+      "maxValue": 2,
+      "minValue": 1,
+      "name": "EditModeMainActionBarEndCapSystemIndices",
+      "numValues": 2,
+      "source": "EditModeManagerConstantsDocumentation.lua",
+      "wrapper": "editModeMainActionBarEndCapSystemIndices"
+    },
+    {
+      "fields": [
+        {
           "name": "Orientation",
           "value": 0
         },
@@ -10754,7 +11203,7 @@
           "value": 2
         },
         {
-          "name": "EyeSize",
+          "name": "DeprecatedEyeSize",
           "value": 3
         }
       ],
@@ -10874,12 +11323,16 @@
         {
           "name": "HideAltPower",
           "value": 14
+        },
+        {
+          "name": "AllowMouseoverThrough",
+          "value": 15
         }
       ],
-      "maxValue": 14,
+      "maxValue": 15,
       "minValue": 0,
       "name": "EditModePersonalResourceDisplaySetting",
-      "numValues": 15,
+      "numValues": 16,
       "source": "EditModeManagerConstantsDocumentation.lua",
       "wrapper": "editModePersonalResourceDisplaySetting"
     },
@@ -10892,12 +11345,16 @@
         {
           "name": "Classic",
           "value": 1
+        },
+        {
+          "name": "Gamepad",
+          "value": 2
         }
       ],
-      "maxValue": 1,
+      "maxValue": 2,
       "minValue": 0,
       "name": "EditModePresetLayouts",
-      "numValues": 2,
+      "numValues": 3,
       "source": "EditModeManagerConstantsDocumentation.lua",
       "wrapper": "editModePresetLayouts"
     },
@@ -10980,6 +11437,88 @@
       "numValues": 2,
       "source": "EditModeManagerConstantsDocumentation.lua",
       "wrapper": "editModeStatusTrackingBarSystemIndices"
+    },
+    {
+      "fields": [
+        {
+          "name": "Scale",
+          "value": 0
+        },
+        {
+          "name": "Opacity",
+          "value": 1
+        },
+        {
+          "name": "Visibility",
+          "value": 2
+        },
+        {
+          "name": "Width",
+          "value": 3
+        },
+        {
+          "name": "Height",
+          "value": 4
+        },
+        {
+          "name": "ShowBarTitle",
+          "value": 5
+        },
+        {
+          "name": "ShowTime",
+          "value": 6
+        }
+      ],
+      "maxValue": 6,
+      "minValue": 0,
+      "name": "EditModeSwingTimerSetting",
+      "numValues": 7,
+      "source": "EditModeManagerConstantsDocumentation.lua",
+      "wrapper": "editModeSwingTimerSetting"
+    },
+    {
+      "fields": [
+        {
+          "name": "MainHand",
+          "value": 1
+        },
+        {
+          "name": "OffHand",
+          "value": 2
+        },
+        {
+          "name": "Ranged",
+          "value": 3
+        }
+      ],
+      "maxValue": 3,
+      "minValue": 1,
+      "name": "EditModeSwingTimerSystemIndices",
+      "numValues": 3,
+      "source": "EditModeManagerConstantsDocumentation.lua",
+      "wrapper": "editModeSwingTimerSystemIndices"
+    },
+    {
+      "fields": [
+        {
+          "name": "Always",
+          "value": 0
+        },
+        {
+          "name": "InCombat",
+          "value": 1
+        },
+        {
+          "name": "Hidden",
+          "value": 2
+        }
+      ],
+      "maxValue": 2,
+      "minValue": 0,
+      "name": "EditModeSwingTimerVisibility",
+      "numValues": 3,
+      "source": "EditModeManagerConstantsDocumentation.lua",
+      "wrapper": "editModeSwingTimerVisibility"
     },
     {
       "fields": [
@@ -11088,14 +11627,34 @@
           "value": 25
         },
         {
-          "name": "LossOfControl",
+          "name": "MainActionBarEndCap",
           "value": 26
+        },
+        {
+          "name": "GroupFinder",
+          "value": 27
+        },
+        {
+          "name": "LossOfControl",
+          "value": 28
+        },
+        {
+          "name": "SwingTimer",
+          "value": 29
+        },
+        {
+          "name": "GamepadMainActionBar",
+          "value": 30
+        },
+        {
+          "name": "GamepadInfoHud",
+          "value": 31
         }
       ],
-      "maxValue": 26,
+      "maxValue": 31,
       "minValue": 0,
       "name": "EditModeSystem",
-      "numValues": 27,
+      "numValues": 32,
       "source": "EditModeManagerConstantsDocumentation.lua",
       "wrapper": "editModeSystem"
     },
@@ -11206,12 +11765,20 @@
         {
           "name": "BuffIconSize",
           "value": 22
+        },
+        {
+          "name": "UseHorizontalLayout",
+          "value": 23
+        },
+        {
+          "name": "GrowDirection",
+          "value": 24
         }
       ],
-      "maxValue": 22,
+      "maxValue": 24,
       "minValue": 0,
       "name": "EditModeUnitFrameSetting",
-      "numValues": 23,
+      "numValues": 25,
       "source": "EditModeManagerConstantsDocumentation.lua",
       "wrapper": "editModeUnitFrameSetting"
     },
@@ -12071,12 +12638,16 @@
         {
           "name": "HouseUpgradeAvailable",
           "value": 26
+        },
+        {
+          "name": "RenownFactionLeveledUp",
+          "value": 27
         }
       ],
-      "maxValue": 26,
+      "maxValue": 27,
       "minValue": 0,
       "name": "EventToastEventType",
-      "numValues": 27,
+      "numValues": 28,
       "source": "UIEventToastConstantsDocumentation.lua",
       "wrapper": "eventToastEventType"
     },
@@ -12093,6 +12664,44 @@
       "numValues": 1,
       "source": "UIEventToastConstantsDocumentation.lua",
       "wrapper": "eventToastFlags"
+    },
+    {
+      "fields": [
+        {
+          "name": "Outsider",
+          "value": 0
+        },
+        {
+          "name": "OutsiderParty",
+          "value": 1
+        },
+        {
+          "name": "JoinParty",
+          "value": 2
+        },
+        {
+          "name": "LeaveParty",
+          "value": 3
+        },
+        {
+          "name": "ServerExpiryNormal",
+          "value": 4
+        },
+        {
+          "name": "ServerExpiryAggressive",
+          "value": 5
+        },
+        {
+          "name": "ServerExpiryParty",
+          "value": 6
+        }
+      ],
+      "maxValue": 6,
+      "minValue": 0,
+      "name": "EvictionType",
+      "numValues": 7,
+      "source": "DistrictConstantsDocumentation.lua",
+      "wrapper": "evictionType"
     },
     {
       "fields": [
@@ -12470,14 +13079,40 @@
           ],
           "name": "AddAnimations",
           "value": 16384
+        },
+        {
+          "documentation": [
+            "Restricts APIs that query the timer duration object of a status bar."
+          ],
+          "name": "QueryTimerDuration",
+          "value": 32768
         }
       ],
-      "maxValue": 16384,
+      "maxValue": 32768,
       "minValue": 1,
       "name": "ForbiddenAspect",
-      "numValues": 15,
+      "numValues": 16,
       "source": "ForbiddenAspectConstantsDocumentation.lua",
       "wrapper": "forbiddenAspect"
+    },
+    {
+      "fields": [
+        {
+          "name": "Classic",
+          "value": 0
+        },
+        {
+          "name": "Enhanced",
+          "value": 1
+        }
+      ],
+      "maxValue": 1,
+      "minValue": 0,
+      "name": "ForeverExperiencePreset",
+      "numValues": 2,
+      "source": "GameRulesDocumentation.lua",
+      "system": "GameRules",
+      "wrapper": "foreverExperiencePreset"
     },
     {
       "fields": [
@@ -12662,6 +13297,10 @@
           "value": 44
         },
         {
+          "name": "RemoteMirrorState",
+          "value": 45
+        },
+        {
           "name": "TagItem",
           "value": 200
         },
@@ -12797,7 +13436,7 @@
       "maxValue": 255,
       "minValue": 0,
       "name": "FragmentID",
-      "numValues": 78,
+      "numValues": 79,
       "source": "WowCSConstantsDocumentation.lua",
       "wrapper": "fragmentID"
     },
@@ -13006,12 +13645,20 @@
         {
           "name": "Reserved1",
           "value": 51
+        },
+        {
+          "name": "Reserved2",
+          "value": 52
+        },
+        {
+          "name": "Reserved3",
+          "value": 53
         }
       ],
-      "maxValue": 51,
+      "maxValue": 53,
       "minValue": 1,
       "name": "FrameTutorialAccount",
-      "numValues": 51,
+      "numValues": 53,
       "source": "TutorialDocumentation.lua",
       "system": "Tutorial",
       "wrapper": "frameTutorialAccount"
@@ -13093,6 +13740,147 @@
       "numValues": 3,
       "source": "GameRulesConstantsDocumentation.lua",
       "wrapper": "gameRuleType"
+    },
+    {
+      "fields": [
+        {
+          "name": "SpecialPageTopBar",
+          "value": 1
+        },
+        {
+          "name": "Page1LeftBar",
+          "value": 2
+        },
+        {
+          "name": "Page1RightBar",
+          "value": 3
+        },
+        {
+          "name": "Page1BottomBar",
+          "value": 4
+        },
+        {
+          "name": "Page2TopBar",
+          "value": 5
+        },
+        {
+          "name": "Page2LeftBar",
+          "value": 6
+        },
+        {
+          "name": "Page2RightBar",
+          "value": 7
+        },
+        {
+          "name": "Page2BottomBar",
+          "value": 8
+        },
+        {
+          "name": "Page3TopBar",
+          "value": 9
+        },
+        {
+          "name": "Page3LeftBar",
+          "value": 10
+        },
+        {
+          "name": "Page3RightBar",
+          "value": 11
+        },
+        {
+          "name": "Page3BottomBar",
+          "value": 12
+        }
+      ],
+      "maxValue": 12,
+      "minValue": 1,
+      "name": "GamepadPossessBarOverride",
+      "numValues": 12,
+      "source": "GamepadUIDocumentation.lua",
+      "system": "GamepadUI",
+      "wrapper": "gamepadPossessBarOverride"
+    },
+    {
+      "fields": [
+        {
+          "name": "None",
+          "value": 1
+        },
+        {
+          "name": "Page1LeftBar",
+          "value": 2
+        },
+        {
+          "name": "Page1RightBar",
+          "value": 3
+        },
+        {
+          "name": "Page1BottomBar",
+          "value": 4
+        },
+        {
+          "name": "Page2TopBar",
+          "value": 5
+        },
+        {
+          "name": "Page2LeftBar",
+          "value": 6
+        },
+        {
+          "name": "Page2RightBar",
+          "value": 7
+        },
+        {
+          "name": "Page2BottomBar",
+          "value": 8
+        },
+        {
+          "name": "Page3TopBar",
+          "value": 9
+        },
+        {
+          "name": "Page3LeftBar",
+          "value": 10
+        },
+        {
+          "name": "Page3RightBar",
+          "value": 11
+        },
+        {
+          "name": "Page3BottomBar",
+          "value": 12
+        }
+      ],
+      "maxValue": 12,
+      "minValue": 1,
+      "name": "GamepadStanceBarOverride",
+      "numValues": 12,
+      "source": "GamepadUIDocumentation.lua",
+      "system": "GamepadUI",
+      "wrapper": "gamepadStanceBarOverride"
+    },
+    {
+      "fields": [
+        {
+          "name": "Hostile",
+          "value": 0
+        },
+        {
+          "name": "Friendly",
+          "value": 1
+        },
+        {
+          "name": "All",
+          "value": 2
+        }
+      ],
+      "maxValue": 2,
+      "minValue": 0,
+      "name": "GamepadTargetingFilters",
+      "numValues": 3,
+      "source": "GamepadTargetingDocumentation.lua",
+      "system": "GamepadTargetingManager",
+      "wrapper": "gamepadTargetingFilters"
     },
     {
       "fields": [
@@ -14031,12 +14819,28 @@
         {
           "name": "TieredEntrance",
           "value": 66
+        },
+        {
+          "name": "PetUntrainer",
+          "value": 67
+        },
+        {
+          "name": "TransmogOptIn",
+          "value": 68
+        },
+        {
+          "name": "TransmogOptOut",
+          "value": 69
+        },
+        {
+          "name": "RewardsShop",
+          "value": 70
         }
       ],
-      "maxValue": 66,
+      "maxValue": 70,
       "minValue": 0,
       "name": "GossipNpcOption",
-      "numValues": 67,
+      "numValues": 71,
       "source": "GossipConstantsDocumentation.lua",
       "wrapper": "gossipNpcOption"
     },
@@ -14551,12 +15355,20 @@
         {
           "name": "Throttled",
           "value": 52
+        },
+        {
+          "name": "BankSelfFound",
+          "value": 53
+        },
+        {
+          "name": "InviteBadSuperDistrict",
+          "value": 54
         }
       ],
-      "maxValue": 52,
+      "maxValue": 54,
       "minValue": 0,
       "name": "GuildErrorType",
-      "numValues": 53,
+      "numValues": 55,
       "source": "GuildConstantsDocumentation.lua",
       "wrapper": "guildErrorType"
     },
@@ -14607,12 +15419,16 @@
         {
           "name": "BeginEventOnlyOnStageChange",
           "value": 64
+        },
+        {
+          "name": "StagesUseDatetimes",
+          "value": 128
         }
       ],
-      "maxValue": 64,
+      "maxValue": 128,
       "minValue": 1,
       "name": "HolidayFlags",
-      "numValues": 7,
+      "numValues": 8,
       "source": "CalendarConstantsDocumentation.lua",
       "wrapper": "holidayFlags"
     },
@@ -16641,6 +17457,24 @@
     {
       "fields": [
         {
+          "name": "Included",
+          "value": 1
+        },
+        {
+          "name": "PlayerSelectable",
+          "value": 2
+        }
+      ],
+      "maxValue": 2,
+      "minValue": 1,
+      "name": "InclusionMode",
+      "numValues": 2,
+      "source": "CatalogShopConstantsDocumentation.lua",
+      "wrapper": "inclusionMode"
+    },
+    {
+      "fields": [
+        {
           "name": "FinalMilestone",
           "value": 1
         }
@@ -16691,6 +17525,24 @@
       "numValues": 4,
       "source": "InputConstantsDocumentation.lua",
       "wrapper": "inputContext"
+    },
+    {
+      "fields": [
+        {
+          "name": "Mkb",
+          "value": 0
+        },
+        {
+          "name": "Gamepad",
+          "value": 1
+        }
+      ],
+      "maxValue": 1,
+      "minValue": 0,
+      "name": "InputDeviceInterfaceType",
+      "numValues": 2,
+      "source": "InputConstantsDocumentation.lua",
+      "wrapper": "inputDeviceInterfaceType"
     },
     {
       "fields": [
@@ -17186,14 +18038,84 @@
         {
           "name": "Relic",
           "value": 12
+        },
+        {
+          "name": "Draught",
+          "value": 13
+        },
+        {
+          "name": "Device",
+          "value": 14
+        },
+        {
+          "name": "ItemenhancementTemporary",
+          "value": 15
         }
       ],
-      "maxValue": 12,
+      "maxValue": 15,
       "minValue": 0,
       "name": "ItemConsumableSubclass",
-      "numValues": 13,
+      "numValues": 16,
       "source": "ItemConstantsDocumentation.lua",
       "wrapper": "itemConsumableSubclass"
+    },
+    {
+      "fields": [
+        {
+          "name": "Bag",
+          "value": 0
+        },
+        {
+          "name": "Soul",
+          "value": 1
+        },
+        {
+          "name": "Herb",
+          "value": 2
+        },
+        {
+          "name": "Enchanting",
+          "value": 3
+        },
+        {
+          "name": "Engineering",
+          "value": 4
+        },
+        {
+          "name": "Gem",
+          "value": 5
+        },
+        {
+          "name": "Mining",
+          "value": 6
+        },
+        {
+          "name": "Leatherworking",
+          "value": 7
+        },
+        {
+          "name": "Inscription",
+          "value": 8
+        },
+        {
+          "name": "Tacklebox",
+          "value": 9
+        },
+        {
+          "name": "Cooking",
+          "value": 10
+        },
+        {
+          "name": "Reagent",
+          "value": 11
+        }
+      ],
+      "maxValue": 11,
+      "minValue": 0,
+      "name": "ItemContainerSubclass",
+      "numValues": 12,
+      "source": "ItemConstantsDocumentation.lua",
+      "wrapper": "itemContainerSubclass"
     },
     {
       "fields": [
@@ -17208,6 +18130,68 @@
       "numValues": 1,
       "source": "ItemConstantsDocumentation.lua",
       "wrapper": "itemConversionFlags"
+    },
+    {
+      "fields": [
+        {
+          "name": "Unknown",
+          "value": -1
+        },
+        {
+          "name": "ItemCreated",
+          "value": 1
+        },
+        {
+          "name": "SpellVisualKit",
+          "value": 2
+        },
+        {
+          "name": "Quest",
+          "value": 3
+        },
+        {
+          "name": "LootItem",
+          "value": 4
+        },
+        {
+          "name": "VendorItem",
+          "value": 5
+        },
+        {
+          "name": "MailItem",
+          "value": 6
+        },
+        {
+          "name": "GameObjectKey",
+          "value": 7
+        },
+        {
+          "name": "PlayerCollection",
+          "value": 8
+        },
+        {
+          "name": "GuildReward",
+          "value": 9
+        },
+        {
+          "name": "SpellLearned",
+          "value": 10
+        },
+        {
+          "name": "SpellTrainer",
+          "value": 11
+        },
+        {
+          "name": "Miscellaneous",
+          "value": 12
+        }
+      ],
+      "maxValue": 12,
+      "minValue": -1,
+      "name": "ItemDiscoverySource",
+      "numValues": 13,
+      "source": "ItemConstantsDocumentation.lua",
+      "wrapper": "itemDiscoverySource"
     },
     {
       "fields": [
@@ -17254,6 +18238,32 @@
       "source": "UIWidgetManagerDocumentation.lua",
       "system": "UIWidgetManager",
       "wrapper": "itemDisplayTooltipEnabledType"
+    },
+    {
+      "fields": [
+        {
+          "name": "None",
+          "value": 0
+        },
+        {
+          "name": "Permanent",
+          "value": 1
+        },
+        {
+          "name": "Temporary",
+          "value": 2
+        },
+        {
+          "name": "Imbue",
+          "value": 3
+        }
+      ],
+      "maxValue": 3,
+      "minValue": 0,
+      "name": "ItemEnchantType",
+      "numValues": 4,
+      "source": "ItemConstantsDocumentation.lua",
+      "wrapper": "itemEnchantType"
     },
     {
       "fields": [
@@ -17630,6 +18640,32 @@
       "numValues": 9,
       "source": "ItemQualitiesDocumentation.lua",
       "wrapper": "itemQuality"
+    },
+    {
+      "fields": [
+        {
+          "name": "ObsoleteQuiver",
+          "value": 0
+        },
+        {
+          "name": "ObsoleteBolts",
+          "value": 1
+        },
+        {
+          "name": "Quiver",
+          "value": 2
+        },
+        {
+          "name": "Ammopouch",
+          "value": 3
+        }
+      ],
+      "maxValue": 3,
+      "minValue": 0,
+      "name": "ItemQuiverSubclass",
+      "numValues": 4,
+      "source": "ItemConstantsDocumentation.lua",
+      "wrapper": "itemQuiverSubclass"
     },
     {
       "fields": [
@@ -18697,6 +19733,32 @@
     {
       "fields": [
         {
+          "name": "None",
+          "value": 0
+        },
+        {
+          "name": "Legacy",
+          "value": 1
+        },
+        {
+          "name": "Discord",
+          "value": 2
+        },
+        {
+          "name": "Custom",
+          "value": 3
+        }
+      ],
+      "maxValue": 3,
+      "minValue": 0,
+      "name": "LFGEntryVoiceMode",
+      "numValues": 4,
+      "source": "LFGConstantsDocumentation.lua",
+      "wrapper": "lfgEntryVoiceMode"
+    },
+    {
+      "fields": [
+        {
           "name": "RoleCount",
           "value": 0
         },
@@ -19297,6 +20359,78 @@
           "value": 0
         },
         {
+          "name": "NotAllowed",
+          "value": 1
+        },
+        {
+          "name": "UniqueRestriction",
+          "value": 2
+        },
+        {
+          "name": "NotDisenchantable",
+          "value": 3
+        },
+        {
+          "name": "InsufficientEnchantSkill",
+          "value": 4
+        },
+        {
+          "name": "GreedOnly",
+          "value": 5
+        },
+        {
+          "name": "HasBetterExactItem",
+          "value": 6
+        },
+        {
+          "name": "MissingProfession",
+          "value": 7
+        }
+      ],
+      "maxValue": 7,
+      "minValue": 0,
+      "name": "LootRollDisabledReason",
+      "numValues": 8,
+      "source": "LootConstants_MainlineDocumentation.lua",
+      "wrapper": "lootRollDisabledReason"
+    },
+    {
+      "fields": [
+        {
+          "name": "Pass",
+          "value": 0
+        },
+        {
+          "name": "Need",
+          "value": 1
+        },
+        {
+          "name": "Greed",
+          "value": 2
+        },
+        {
+          "name": "Disenchant",
+          "value": 3
+        },
+        {
+          "name": "Transmog",
+          "value": 4
+        }
+      ],
+      "maxValue": 4,
+      "minValue": 0,
+      "name": "LootRollType",
+      "numValues": 5,
+      "source": "LootConstants_MainlineDocumentation.lua",
+      "wrapper": "lootRollType"
+    },
+    {
+      "fields": [
+        {
+          "name": "None",
+          "value": 0
+        },
+        {
           "name": "Item",
           "value": 1
         },
@@ -19686,12 +20820,20 @@
         {
           "name": "AccountBanker",
           "value": 4194304
+        },
+        {
+          "name": "TrainerClass",
+          "value": 8388608
+        },
+        {
+          "name": "VendorAmmo",
+          "value": 16777216
         }
       ],
-      "maxValue": 4194304,
+      "maxValue": 16777216,
       "minValue": 0,
       "name": "MinimapTrackingFilter",
-      "numValues": 24,
+      "numValues": 26,
       "source": "MinimapConstantsDocumentation.lua",
       "wrapper": "minimapTrackingFilter"
     },
@@ -19890,6 +21032,28 @@
       "numValues": 4,
       "source": "MountConstantsDocumentation.lua",
       "wrapper": "mountTypeFlag"
+    },
+    {
+      "fields": [
+        {
+          "name": "Firstname",
+          "value": 0
+        },
+        {
+          "name": "Surname",
+          "value": 1
+        },
+        {
+          "name": "Combined",
+          "value": 2
+        }
+      ],
+      "maxValue": 2,
+      "minValue": 0,
+      "name": "NamePartType",
+      "numValues": 3,
+      "source": "LocalizationSharedDocumentation.lua",
+      "wrapper": "namePartType"
     },
     {
       "fields": [
@@ -20192,6 +21356,24 @@
       "numValues": 2,
       "source": "NamePlateConstantsDocumentation.lua",
       "wrapper": "namePlateType"
+    },
+    {
+      "fields": [
+        {
+          "name": "CharacterName",
+          "value": 0
+        },
+        {
+          "name": "Surname",
+          "value": 1
+        }
+      ],
+      "maxValue": 1,
+      "minValue": 0,
+      "name": "NamegenType",
+      "numValues": 2,
+      "source": "NameGenConstantsDocumentation.lua",
+      "wrapper": "namegenType"
     },
     {
       "fields": [
@@ -20529,12 +21711,16 @@
         {
           "name": "PlayerLocked",
           "value": 9
+        },
+        {
+          "name": "RPEDisabled",
+          "value": 10
         }
       ],
-      "maxValue": 9,
+      "maxValue": 10,
       "minValue": 0,
       "name": "NoRPEReason",
-      "numValues": 10,
+      "numValues": 11,
       "source": "CharacterServicesConstantsDocumentation.lua",
       "wrapper": "noRPEReason"
     },
@@ -20994,7 +22180,7 @@
       "minValue": 0,
       "name": "PetActionFeedback",
       "numValues": 5,
-      "source": "PetConstantsDocumentation.lua",
+      "source": "PetConstants_SharedDocumentation.lua",
       "wrapper": "petActionFeedback"
     },
     {
@@ -21072,19 +22258,51 @@
           "value": 17
         },
         {
-          "name": "Max",
+          "name": "Slot11",
           "value": 18
         },
         {
-          "name": "VehicleAction",
+          "name": "Slot12",
           "value": 19
+        },
+        {
+          "name": "Slot13",
+          "value": 20
+        },
+        {
+          "name": "Slot14",
+          "value": 21
+        },
+        {
+          "name": "Slot15",
+          "value": 22
+        },
+        {
+          "name": "Slot16",
+          "value": 23
+        },
+        {
+          "name": "Slot17",
+          "value": 24
+        },
+        {
+          "name": "Slot18",
+          "value": 25
+        },
+        {
+          "name": "Max",
+          "value": 26
+        },
+        {
+          "name": "VehicleAction",
+          "value": 27
         }
       ],
-      "maxValue": 19,
+      "maxValue": 27,
       "minValue": 0,
       "name": "PetActionbuttonType",
-      "numValues": 20,
-      "source": "PetConstantsDocumentation.lua",
+      "numValues": 28,
+      "source": "PetConstants_SharedDocumentation.lua",
       "wrapper": "petActionbuttonType"
     },
     {
@@ -21243,7 +22461,7 @@
       "minValue": 0,
       "name": "PetMode",
       "numValues": 4,
-      "source": "PetConstantsDocumentation.lua",
+      "source": "PetConstants_SharedDocumentation.lua",
       "wrapper": "petMode"
     },
     {
@@ -21273,7 +22491,7 @@
       "minValue": 0,
       "name": "PetOrders",
       "numValues": 5,
-      "source": "PetConstantsDocumentation.lua",
+      "source": "PetConstants_SharedDocumentation.lua",
       "wrapper": "petOrders"
     },
     {
@@ -21299,7 +22517,7 @@
       "minValue": 0,
       "name": "PetOverride",
       "numValues": 4,
-      "source": "PetConstantsDocumentation.lua",
+      "source": "PetConstants_SharedDocumentation.lua",
       "wrapper": "petOverride"
     },
     {
@@ -21433,7 +22651,7 @@
       "minValue": 0,
       "name": "Pettameresult",
       "numValues": 16,
-      "source": "PetConstantsDocumentation.lua",
+      "source": "PetConstants_SharedDocumentation.lua",
       "wrapper": "pettameresult"
     },
     {
@@ -21457,12 +22675,16 @@
         {
           "name": "TimerunningHwt",
           "value": 4
+        },
+        {
+          "name": "RuleSet",
+          "value": 5
         }
       ],
-      "maxValue": 4,
+      "maxValue": 5,
       "minValue": 0,
       "name": "PhaseReason",
-      "numValues": 5,
+      "numValues": 6,
       "source": "UnitDocumentation.lua",
       "system": "Unit",
       "wrapper": "phaseReason"
@@ -22480,12 +23702,24 @@
         {
           "name": "TieredEntrance",
           "value": 79
+        },
+        {
+          "name": "PetUntrainer",
+          "value": 80
+        },
+        {
+          "name": "RewardsShop",
+          "value": 81
+        },
+        {
+          "name": "ReservedFuture",
+          "value": 82
         }
       ],
-      "maxValue": 79,
+      "maxValue": 82,
       "minValue": 0,
       "name": "PlayerInteractionType",
-      "numValues": 80,
+      "numValues": 83,
       "source": "PlayerInteractionManagerConstantsDocumentation.lua",
       "wrapper": "playerInteractionType"
     },
@@ -22532,6 +23766,28 @@
       "numValues": 3,
       "source": "PlayerMentorshipConstantsDocumentation.lua",
       "wrapper": "playerMentorshipStatus"
+    },
+    {
+      "fields": [
+        {
+          "name": "MainHand",
+          "value": 0
+        },
+        {
+          "name": "OffHand",
+          "value": 1
+        },
+        {
+          "name": "Ranged",
+          "value": 2
+        }
+      ],
+      "maxValue": 2,
+      "minValue": 0,
+      "name": "PlayerSwingType",
+      "numValues": 3,
+      "source": "SwingTimerDocumentation.lua",
+      "wrapper": "playerSwingType"
     },
     {
       "fields": [
@@ -24545,6 +25801,48 @@
     {
       "fields": [
         {
+          "name": "RaidMarker_0",
+          "value": 84996
+        },
+        {
+          "name": "RaidMarker_1",
+          "value": 84997
+        },
+        {
+          "name": "RaidMarker_2",
+          "value": 84998
+        },
+        {
+          "name": "RaidMarker_3",
+          "value": 84999
+        },
+        {
+          "name": "RaidMarker_4",
+          "value": 85000
+        },
+        {
+          "name": "RaidMarker_5",
+          "value": 171555
+        },
+        {
+          "name": "RaidMarker_6",
+          "value": 171556
+        },
+        {
+          "name": "RaidMarker_7",
+          "value": 171557
+        }
+      ],
+      "maxValue": 171557,
+      "minValue": 84996,
+      "name": "RaidMarkerSpellids",
+      "numValues": 8,
+      "source": "RaidMarkerConstantsDocumentation.lua",
+      "wrapper": "raidMarkerSpellids"
+    },
+    {
+      "fields": [
+        {
           "name": "Fulfill",
           "value": 0
         },
@@ -24609,10 +25907,10 @@
       ],
       "maxValue": 5,
       "minValue": 0,
-      "name": "RecentAlliesFriendTag",
+      "name": "RecentAlliesInteractionCategoryFilter",
       "numValues": 6,
       "source": "RecentAlliesConstantsDocumentation.lua",
-      "wrapper": "recentAlliesFriendTag"
+      "wrapper": "recentAlliesInteractionCategoryFilter"
     },
     {
       "fields": [
@@ -25198,6 +26496,40 @@
     {
       "fields": [
         {
+          "name": "Talents",
+          "value": 0
+        },
+        {
+          "name": "Glyphs",
+          "value": 1
+        },
+        {
+          "name": "SetPrimarySpecialization",
+          "value": 2
+        },
+        {
+          "name": "PetTalents",
+          "value": 3
+        },
+        {
+          "name": "Legacy",
+          "value": 4
+        },
+        {
+          "name": "Specialization",
+          "value": 5
+        }
+      ],
+      "maxValue": 5,
+      "minValue": 0,
+      "name": "RespecType",
+      "numValues": 6,
+      "source": "TraitConstantsDocumentation.lua",
+      "wrapper": "respecType"
+    },
+    {
+      "fields": [
+        {
           "name": "None",
           "value": 0
         },
@@ -25268,6 +26600,24 @@
       "numValues": 2,
       "source": "PlayerHousingConstantsDocumentation.lua",
       "wrapper": "retroactiveDecorRewardFlags"
+    },
+    {
+      "fields": [
+        {
+          "name": "None",
+          "value": 0
+        },
+        {
+          "name": "Enabled",
+          "value": 1
+        }
+      ],
+      "maxValue": 1,
+      "minValue": 0,
+      "name": "RewardsShopFlags",
+      "numValues": 2,
+      "source": "GameRulesConstantsDocumentation.lua",
+      "wrapper": "rewardsShopFlags"
     },
     {
       "fields": [
@@ -25596,6 +26946,33 @@
     {
       "fields": [
         {
+          "name": "None",
+          "value": 1492
+        },
+        {
+          "name": "Witch",
+          "value": 1496
+        },
+        {
+          "name": "Slayer",
+          "value": 1497
+        },
+        {
+          "name": "Inquisitor",
+          "value": 1498
+        }
+      ],
+      "maxValue": 1498,
+      "minValue": 1492,
+      "name": "ScribeClassID",
+      "numValues": 4,
+      "source": "ScribeUIDocumentation.lua",
+      "system": "ScribeUI",
+      "wrapper": "scribeClassID"
+    },
+    {
+      "fields": [
+        {
           "name": "Postcall",
           "value": 2
         },
@@ -25806,6 +27183,59 @@
       "numValues": 4,
       "source": "ValidateNameConstantsDocumentation.lua",
       "wrapper": "scrubStringFlags"
+    },
+    {
+      "fields": [
+        {
+          "name": "BeforeLogin",
+          "value": 0
+        },
+        {
+          "name": "CharacterCreation",
+          "value": 1
+        },
+        {
+          "name": "BarberShop",
+          "value": 2
+        },
+        {
+          "name": "OptionsMenu",
+          "value": 3
+        }
+      ],
+      "maxValue": 3,
+      "minValue": 0,
+      "name": "SdToggleUsageLocation",
+      "numValues": 4,
+      "source": "AccountConstantsDocumentation.lua",
+      "wrapper": "sdToggleUsageLocation"
+    },
+    {
+      "fields": [
+        {
+          "name": "BeforeLogin",
+          "value": 0
+        },
+        {
+          "name": "CharacterCreation",
+          "value": 1
+        },
+        {
+          "name": "BarberShop",
+          "value": 2
+        },
+        {
+          "name": "OptionsMenu",
+          "value": 3
+        }
+      ],
+      "maxValue": 3,
+      "minValue": 0,
+      "name": "SdToggleUsageLocationUI",
+      "numValues": 4,
+      "source": "GameRulesDocumentation.lua",
+      "system": "GameRules",
+      "wrapper": "sdToggleUsageLocationUI"
     },
     {
       "fields": [
@@ -26096,14 +27526,40 @@
         {
           "name": "RadialProgress",
           "value": 8388608
+        },
+        {
+          "name": "FrameStrata",
+          "value": 16777216
         }
       ],
-      "maxValue": 8388608,
+      "maxValue": 16777216,
       "minValue": 1,
       "name": "SecretAspect",
-      "numValues": 30,
+      "numValues": 31,
       "source": "SecretAspectConstantsDocumentation.lua",
       "wrapper": "secretAspect"
+    },
+    {
+      "fields": [
+        {
+          "name": "None",
+          "value": 0
+        },
+        {
+          "name": "Unique",
+          "value": 1
+        },
+        {
+          "name": "Repeatable",
+          "value": 2
+        }
+      ],
+      "maxValue": 2,
+      "minValue": 0,
+      "name": "SelectionConstraint",
+      "numValues": 3,
+      "source": "CatalogShopConstantsDocumentation.lua",
+      "wrapper": "selectionConstraint"
     },
     {
       "fields": [
@@ -26680,6 +28136,38 @@
     {
       "fields": [
         {
+          "name": "Primary",
+          "value": 0
+        },
+        {
+          "name": "Secondary",
+          "value": 1
+        }
+      ],
+      "maxValue": 1,
+      "minValue": 0,
+      "name": "SpecGroup",
+      "numValues": 2,
+      "source": "SpecializationConstantsDocumentation.lua",
+      "wrapper": "specGroup"
+    },
+    {
+      "fields": [
+        {
+          "name": "DevOnly",
+          "value": 1
+        }
+      ],
+      "maxValue": 1,
+      "minValue": 1,
+      "name": "SpecializationSpellsFlag",
+      "numValues": 1,
+      "source": "SpecializationConstantsDocumentation.lua",
+      "wrapper": "specializationSpellsFlag"
+    },
+    {
+      "fields": [
+        {
           "name": "TalentTab",
           "value": 0
         },
@@ -27060,7 +28548,7 @@
       "minValue": 0,
       "name": "StableResult",
       "numValues": 17,
-      "source": "PetConstantsDocumentation.lua",
+      "source": "PetConstants_SharedDocumentation.lua",
       "wrapper": "stableResult"
     },
     {
@@ -27522,12 +29010,16 @@
         {
           "name": "MaxLevel",
           "value": 2
+        },
+        {
+          "name": "SubscriptionPeriod",
+          "value": 3
         }
       ],
-      "maxValue": 2,
+      "maxValue": 3,
       "minValue": 0,
       "name": "SubscriptionInterstitialType",
-      "numValues": 3,
+      "numValues": 4,
       "source": "ExpansionDocumentation.lua",
       "system": "Expansion",
       "wrapper": "subscriptionInterstitialType"
@@ -27770,14 +29262,22 @@
     {
       "fields": [
         {
+          "name": "None",
+          "value": 0
+        },
+        {
           "name": "IsLFG",
           "value": 1
+        },
+        {
+          "name": "DisableTraitSystem",
+          "value": 2
         }
       ],
-      "maxValue": 1,
-      "minValue": 1,
+      "maxValue": 2,
+      "minValue": 0,
       "name": "TieredEntranceTierFlag",
-      "numValues": 1,
+      "numValues": 3,
       "source": "DelvesConstantsDocumentation.lua",
       "wrapper": "tieredEntranceTierFlag"
     },
@@ -27808,7 +29308,7 @@
           "value": 5
         },
         {
-          "name": "Placeholder_6",
+          "name": "Tale",
           "value": 6
         }
       ],
@@ -28650,6 +30150,32 @@
     {
       "fields": [
         {
+          "name": "General",
+          "value": 0
+        },
+        {
+          "name": "TalentsObsolete",
+          "value": 1
+        },
+        {
+          "name": "Tradeskills",
+          "value": 2
+        },
+        {
+          "name": "Pet",
+          "value": 3
+        }
+      ],
+      "maxValue": 3,
+      "minValue": 0,
+      "name": "TrainerType",
+      "numValues": 4,
+      "source": "TrainerConstantsDocumentation.lua",
+      "wrapper": "trainerType"
+    },
+    {
+      "fields": [
+        {
           "name": "ActiveForSpec",
           "value": 1
         },
@@ -28660,12 +30186,16 @@
         {
           "name": "SharedActionBars",
           "value": 4
+        },
+        {
+          "name": "SecondarySpec",
+          "value": 8
         }
       ],
-      "maxValue": 4,
+      "maxValue": 8,
       "minValue": 1,
       "name": "TraitCombatConfigFlags",
-      "numValues": 3,
+      "numValues": 4,
       "source": "TraitConstantsDocumentation.lua",
       "wrapper": "traitCombatConfigFlags"
     },
@@ -28682,12 +30212,16 @@
         {
           "name": "IsSufficient",
           "value": 4
+        },
+        {
+          "name": "SuppressGrantIfPurchased",
+          "value": 8
         }
       ],
-      "maxValue": 4,
+      "maxValue": 8,
       "minValue": 1,
       "name": "TraitCondFlag",
-      "numValues": 3,
+      "numValues": 4,
       "source": "TraitConstantsDocumentation.lua",
       "wrapper": "traitCondFlag"
     },
@@ -28768,12 +30302,16 @@
         {
           "name": "Generic",
           "value": 3
+        },
+        {
+          "name": "CamelotCombat",
+          "value": 4
         }
       ],
-      "maxValue": 3,
+      "maxValue": 4,
       "minValue": 0,
       "name": "TraitConfigType",
-      "numValues": 4,
+      "numValues": 5,
       "source": "TraitConstantsDocumentation.lua",
       "wrapper": "traitConfigType"
     },
@@ -29150,6 +30688,28 @@
       "numValues": 2,
       "source": "TraitConstantsDocumentation.lua",
       "wrapper": "traitTreeFlag"
+    },
+    {
+      "fields": [
+        {
+          "name": "None",
+          "value": 0
+        },
+        {
+          "name": "DataError",
+          "value": 1
+        },
+        {
+          "name": "ClassPointDeficit",
+          "value": 2
+        }
+      ],
+      "maxValue": 2,
+      "minValue": 0,
+      "name": "TraitVendorResetFailureReason",
+      "numValues": 3,
+      "source": "TraitConstantsDocumentation.lua",
+      "wrapper": "traitVendorResetFailureReason"
     },
     {
       "fields": [
@@ -29879,12 +31439,28 @@
         {
           "name": "ArtifactSpecFour",
           "value": 11
+        },
+        {
+          "name": "ArmorCloth",
+          "value": 12
+        },
+        {
+          "name": "ArmorLeather",
+          "value": 13
+        },
+        {
+          "name": "ArmorMail",
+          "value": 14
+        },
+        {
+          "name": "ArmorPlate",
+          "value": 15
         }
       ],
-      "maxValue": 11,
+      "maxValue": 15,
       "minValue": 0,
       "name": "TransmogOutfitSlotOption",
-      "numValues": 12,
+      "numValues": 16,
       "source": "TransmogOutfitConstantsDocumentation.lua",
       "wrapper": "transmogOutfitSlotOption"
     },
@@ -29963,12 +31539,16 @@
         {
           "name": "AppearanceIsNotValid",
           "value": 1
+        },
+        {
+          "name": "AppearanceIsOverridden",
+          "value": 2
         }
       ],
-      "maxValue": 1,
+      "maxValue": 2,
       "minValue": 1,
       "name": "TransmogOutfitSlotSaveFlags",
-      "numValues": 1,
+      "numValues": 2,
       "source": "TransmogOutfitConstantsDocumentation.lua",
       "wrapper": "transmogOutfitSlotSaveFlags"
     },
@@ -29987,22 +31567,30 @@
           "value": 2
         },
         {
-          "name": "PendingWeaponChanges",
+          "name": "WrongArmorTypeEquipped",
           "value": 3
         },
         {
-          "name": "WeaponDoesNotSupportIllusions",
+          "name": "EquippedItemLowLevel",
           "value": 4
         },
         {
-          "name": "NothingEquipped",
+          "name": "PendingWeaponChanges",
           "value": 5
+        },
+        {
+          "name": "WeaponDoesNotSupportIllusions",
+          "value": 6
+        },
+        {
+          "name": "NothingEquipped",
+          "value": 7
         }
       ],
-      "maxValue": 5,
+      "maxValue": 7,
       "minValue": 0,
       "name": "TransmogOutfitSlotWarning",
-      "numValues": 6,
+      "numValues": 8,
       "source": "TransmogOutfitConstantsDocumentation.lua",
       "wrapper": "transmogOutfitSlotWarning"
     },
@@ -30134,6 +31722,24 @@
       "numValues": 3,
       "source": "TransmogSharedDocumentation.lua",
       "wrapper": "transmogSearchType"
+    },
+    {
+      "fields": [
+        {
+          "name": "None",
+          "value": 0
+        },
+        {
+          "name": "OptOut",
+          "value": 1
+        }
+      ],
+      "maxValue": 1,
+      "minValue": 0,
+      "name": "TransmogSettingsUpdateType",
+      "numValues": 2,
+      "source": "TransmogOutfitConstantsDocumentation.lua",
+      "wrapper": "transmogSettingsUpdateType"
     },
     {
       "fields": [
@@ -30370,12 +31976,16 @@
         {
           "name": "TimeOfDay",
           "value": 10
+        },
+        {
+          "name": "SettingsUpdate",
+          "value": 11
         }
       ],
-      "maxValue": 10,
+      "maxValue": 11,
       "minValue": 0,
       "name": "TransmogSituationTrigger",
-      "numValues": 11,
+      "numValues": 12,
       "source": "TransmogOutfitConstantsDocumentation.lua",
       "wrapper": "transmogSituationTrigger"
     },
@@ -30488,12 +32098,16 @@
         {
           "name": "Offhand",
           "value": 12
+        },
+        {
+          "name": "Ranged",
+          "value": 13
         }
       ],
-      "maxValue": 12,
+      "maxValue": 13,
       "minValue": 0,
       "name": "TransmogSlot",
-      "numValues": 13,
+      "numValues": 14,
       "source": "TransmogConstantsDocumentation.lua",
       "wrapper": "transmogSlot"
     },
@@ -30792,13 +32406,17 @@
         },
         {
           "name": "UseJourneyUnlockToastText",
-          "value": 3
+          "value": 4
+        },
+        {
+          "name": "HideRenownLevelUpToast",
+          "value": 8
         }
       ],
-      "maxValue": 3,
+      "maxValue": 8,
       "minValue": 1,
       "name": "UICovenantDisplayInfoFlags",
-      "numValues": 3,
+      "numValues": 4,
       "source": "UICovenantDisplayInfoConstantsDocumentation.lua",
       "wrapper": "uiCovenantDisplayInfoFlags"
     },
@@ -30837,7 +32455,7 @@
           "value": 7
         },
         {
-          "name": "AmmoObsolete",
+          "name": "Ammo",
           "value": 8
         },
         {
@@ -31176,12 +32794,20 @@
         {
           "name": "UseCenterForOriginZ",
           "value": 8
+        },
+        {
+          "name": "AddDropShadowAtM2Feet",
+          "value": 16
+        },
+        {
+          "name": "ShowFloatingProjectedTextures",
+          "value": 32
         }
       ],
-      "maxValue": 8,
+      "maxValue": 32,
       "minValue": 1,
       "name": "UIModelSceneActorFlag",
-      "numValues": 4,
+      "numValues": 6,
       "source": "UIModelInfoSharedDocumentation.lua",
       "wrapper": "uiModelSceneActorFlag"
     },
@@ -32188,7 +33814,7 @@
       "minValue": 1,
       "name": "UnitMirrorPetFlags",
       "numValues": 5,
-      "source": "PetConstantsDocumentation.lua",
+      "source": "PetConstants_SharedDocumentation.lua",
       "wrapper": "unitMirrorPetFlags"
     },
     {
@@ -34015,8 +35641,12 @@
           "value": 55
         },
         {
-          "name": "EndProxyErrors",
+          "name": "ProxyNoMixedAlliance",
           "value": 56
+        },
+        {
+          "name": "EndProxyErrors",
+          "value": 57
         },
         {
           "name": "BeginDbErrors",
@@ -34374,9 +36004,31 @@
       "maxValue": 20097,
       "minValue": 0,
       "name": "VasTransactionPurchaseResult",
-      "numValues": 145,
+      "numValues": 146,
       "source": "BattlepayConstantsDocumentation.lua",
       "wrapper": "vasTransactionPurchaseResult"
+    },
+    {
+      "fields": [
+        {
+          "name": "VcIsReset",
+          "value": 0
+        },
+        {
+          "name": "VcIsInitializing",
+          "value": 1
+        },
+        {
+          "name": "VcIsInitialized",
+          "value": 2
+        }
+      ],
+      "maxValue": 2,
+      "minValue": 0,
+      "name": "VcInitState",
+      "numValues": 3,
+      "source": "CatalogShopConstantsDocumentation.lua",
+      "wrapper": "vcInitState"
     },
     {
       "fields": [
@@ -34640,15 +36292,38 @@
         {
           "name": "InvalidOutputDevice",
           "value": 24
+        },
+        {
+          "name": "PlayerVoiceChatAgeVerificationRestricted",
+          "value": 25
         }
       ],
-      "maxValue": 24,
+      "maxValue": 25,
       "minValue": 0,
       "name": "VoiceChatStatusCode",
-      "numValues": 25,
+      "numValues": 26,
       "source": "VoiceChatDocumentation.lua",
       "system": "VoiceChat",
       "wrapper": "voiceChatStatusCode"
+    },
+    {
+      "fields": [
+        {
+          "name": "Legacy",
+          "value": 0
+        },
+        {
+          "name": "Discord",
+          "value": 1
+        }
+      ],
+      "maxValue": 1,
+      "minValue": 0,
+      "name": "VoiceProviderID",
+      "numValues": 2,
+      "source": "VoiceChatDocumentation.lua",
+      "system": "VoiceChat",
+      "wrapper": "voiceProviderID"
     },
     {
       "fields": [
@@ -35024,12 +36699,16 @@
         {
           "name": "OffHand",
           "value": 1
+        },
+        {
+          "name": "Ranged",
+          "value": 2
         }
       ],
-      "maxValue": 1,
+      "maxValue": 2,
       "minValue": 0,
       "name": "WeaponSlot",
-      "numValues": 2,
+      "numValues": 3,
       "source": "ItemConstantsDocumentation.lua",
       "wrapper": "weaponSlot"
     },

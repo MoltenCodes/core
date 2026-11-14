@@ -49,8 +49,8 @@ object types described in the types only: Retail (client 12.1.5, build 70783:
 6,440 functions, 4,970 bound in 316 namespaces; 1,784 events, 856
 enumerations), Classic Era (1.15.9, build 70576: 4,590 functions, 3,230 bound
 in 261 namespaces), Mists of Pandaria Classic (5.5.4, build 70631: 4,591
-functions, 3,231 bound in 261), the Public Test Realm (12.1.5, build 69952:
-6,437 functions, 4,967 bound in 316) and Beta (12.0.1, build 66220, the
+functions, 3,231 bound in 261), the Public Test Realm (12.1.7, build 70892:
+6,667 functions, 5,189 bound in 329) and Beta (12.0.1, build 66220, the
 mirror's last beta export: 5,942 functions, 4,652 bound in 304). `metadata/<flavour>/provenance.json` names the build each capture
 was taken from; `metadata/<flavour>/history.json` is its build history. A
 capture is only as current as the mirror branch it came from: the Beta branch

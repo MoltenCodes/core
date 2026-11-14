@@ -249,6 +249,65 @@
       "wrapper": "callings"
     },
     {
+      "name": "CatalogShopAchievementServerValidationConstants",
+      "source": "CatalogShopConstantsDocumentation.lua",
+      "values": [
+        {
+          "name": "HAS_REQUIRED_ACHIEVEMENT_THROTTLE",
+          "type": "number",
+          "value": 100
+        },
+        {
+          "name": "SHOP_WOW_STOREFRONT_ATTRIBUTE_REQUIRED_ACHIEVEMENT",
+          "type": "cstring",
+          "value": "RequiredAchievementID"
+        },
+        {
+          "name": "SERVER_VALIDATION_BYPASS_FORMAT",
+          "type": "cstring",
+          "value": "%s but bypass is enabled"
+        }
+      ],
+      "wrapper": "catalogShopAchievementServerValidationConstants"
+    },
+    {
+      "name": "CatalogShopConsts",
+      "source": "CatalogShopConstantsDocumentation.lua",
+      "values": [
+        {
+          "name": "LINK_TAG_SERVICES",
+          "type": "string",
+          "value": "services"
+        },
+        {
+          "name": "PRODUCT_TYPE_MOUNT",
+          "type": "string",
+          "value": "Mount"
+        },
+        {
+          "name": "PRODUCT_TYPE_PET",
+          "type": "string",
+          "value": "Pet"
+        },
+        {
+          "name": "PRODUCT_TYPE_TOY",
+          "type": "string",
+          "value": "Toy"
+        },
+        {
+          "name": "PRODUCT_TYPE_DECOR",
+          "type": "string",
+          "value": "Decor"
+        },
+        {
+          "name": "NUMBER_OF_LICENSES_ON_TRACKING_PRODUCT",
+          "type": "number",
+          "value": 1
+        }
+      ],
+      "wrapper": "catalogShopConsts"
+    },
+    {
       "name": "CatalogShopVirtualCurrencyConstants",
       "source": "CatalogShopConstantsDocumentation.lua",
       "values": [
@@ -261,6 +320,16 @@
           "name": "TRADERS_TENDER_VC_CURRENCY_CODE",
           "type": "cstring",
           "value": "XWP"
+        },
+        {
+          "name": "TALEBOUND_VC_CURRENCY_CODE",
+          "type": "cstring",
+          "value": "XZC"
+        },
+        {
+          "name": "VC_CURRENCY_CODE_SIZE",
+          "type": "number",
+          "value": 3
         }
       ],
       "wrapper": "catalogShopVirtualCurrencyConstants"
@@ -548,6 +617,11 @@
           "value": 1792
         },
         {
+          "name": "CLASSIC_HONOR_CURRENCY_ID",
+          "type": "number",
+          "value": 1901
+        },
+        {
           "name": "ARTIFACT_KNOWLEDGE_CURRENCY_ID",
           "type": "number",
           "value": 1171
@@ -633,6 +707,16 @@
           "value": 2032
         },
         {
+          "name": "CURRENCY_ID_RENOWN_PVP_RANK",
+          "type": "number",
+          "value": 3473
+        },
+        {
+          "name": "CURRENCY_ID_RENOWN_LEGACY",
+          "type": "number",
+          "value": 3485
+        },
+        {
           "name": "IMMEDIATE_CURRENCY_WALLET_ITEM_ID",
           "type": "number",
           "value": 276637
@@ -644,6 +728,18 @@
         }
       ],
       "wrapper": "currencyConsts"
+    },
+    {
+      "name": "DeathRecapConsts",
+      "source": "DeathRecapConstantsDocumentation.lua",
+      "values": [
+        {
+          "name": "SWING_DAMAGE_SPELL_ID",
+          "type": "number",
+          "value": 88163
+        }
+      ],
+      "wrapper": "deathRecapConsts"
     },
     {
       "name": "DelvesConsts",
@@ -710,8 +806,8 @@
       "wrapper": "editModeConsts"
     },
     {
-      "name": "EditModeLayoutConsts",
-      "source": "EditModeManagerConstants_MainlineDocumentation.lua",
+      "name": "EditModeLayoutConsts_Mainline",
+      "source": "EditModeManagerConstantsDocumentation.lua",
       "values": [
         {
           "expression": "Enum.EditModePresetLayouts.Modern",
@@ -719,7 +815,7 @@
           "type": "EditModePresetLayouts"
         }
       ],
-      "wrapper": "editModeLayoutConsts"
+      "wrapper": "editModeLayoutConstsMainline"
     },
     {
       "name": "EncodingLimits",
@@ -844,6 +940,69 @@
         }
       ],
       "wrapper": "eventScheduler"
+    },
+    {
+      "name": "GamepadActionBarConstants",
+      "source": "GamepadUIDocumentation.lua",
+      "system": "GamepadUI",
+      "values": [
+        {
+          "name": "NUM_SLOTS_PER_GAMEPAD_ACTION_BAR_GROUP",
+          "type": "number",
+          "value": 4
+        },
+        {
+          "name": "NUM_GROUPS_PER_GAMEPAD_ACTION_BAR",
+          "type": "number",
+          "value": 2
+        },
+        {
+          "expression": "Constants.GamepadActionBarConstants.NUM_SLOTS_PER_GAMEPAD_ACTION_BAR_GROUP * Constants.GamepadActionBarConstants.NUM_GROUPS_PER_GAMEPAD_ACTION_BAR",
+          "name": "NUM_SLOTS_PER_GAMEPAD_ACTION_BAR",
+          "type": "number"
+        },
+        {
+          "name": "NUM_PAGEABLE_BARS_IN_GAMEPAD_ACTION_BAR_PAGE_UNIT",
+          "type": "number",
+          "value": 4
+        },
+        {
+          "expression": "Constants.GamepadActionBarConstants.NUM_PAGEABLE_BARS_IN_GAMEPAD_ACTION_BAR_PAGE_UNIT * Constants.GamepadActionBarConstants.NUM_SLOTS_PER_GAMEPAD_ACTION_BAR",
+          "name": "NUM_PAGEABLE_SLOTS_PER_GAMEPAD_ACTION_BAR_PAGE_UNIT_STANDARD_PAGE",
+          "type": "number"
+        },
+        {
+          "name": "NUM_RESERVED_SLOTS_PER_GAMEPAD_ACTION_BAR_PAGE_UNIT",
+          "type": "number",
+          "value": 4
+        },
+        {
+          "name": "NUM_PAGES_PER_GAMEPAD_ACTION_BAR_PAGE_UNIT",
+          "type": "number",
+          "value": 4
+        },
+        {
+          "name": "NUM_STANDARD_PAGES_PER_GAMEPAD_ACTION_BAR_PAGE_UNIT",
+          "type": "number",
+          "value": 3
+        },
+        {
+          "name": "GAMEPAD_ACTION_BAR_PAGE_UNIT_SPECIAL_PAGE_INDEX",
+          "type": "number",
+          "value": 4
+        },
+        {
+          "expression": "Constants.GamepadActionBarConstants.NUM_PAGEABLE_SLOTS_PER_GAMEPAD_ACTION_BAR_PAGE_UNIT_STANDARD_PAGE * Constants.GamepadActionBarConstants.NUM_STANDARD_PAGES_PER_GAMEPAD_ACTION_BAR_PAGE_UNIT",
+          "name": "NUM_PAGEABLE_SLOTS_PER_GAMEPAD_ACTION_BAR_PAGE_UNIT",
+          "type": "number"
+        },
+        {
+          "name": "NUM_GAMEPAD_STANCE_ACTION_BARS",
+          "type": "number",
+          "value": 5
+        }
+      ],
+      "wrapper": "gamepadActionBarConstants"
     },
     {
       "name": "GroupBuffUIConstants",
@@ -1045,6 +1204,41 @@
           "name": "DEFAULT_RETENTION",
           "type": "number",
           "value": 7
+        },
+        {
+          "name": "MAXIMUM_QUEST_ITEM_LOOT_PRIORITY_VALUES",
+          "type": "number",
+          "value": 16
+        },
+        {
+          "name": "NUM_RAND_PROP_POINTS_CATEGORIES",
+          "type": "number",
+          "value": 5
+        },
+        {
+          "name": "NUM_PROFESSION_PROP_POINTS_CATEGORIES",
+          "type": "number",
+          "value": 2
+        },
+        {
+          "name": "CASTER_WEAPON_DAMAGE_REDUCTION_DIVISOR_WITH_FLAG",
+          "type": "number",
+          "value": 3
+        },
+        {
+          "name": "CASTER_WEAPON_SPELL_POWER_MULT_WITH_FLAG",
+          "type": "number",
+          "value": 2
+        },
+        {
+          "name": "CASTER_WEAPON_SPELL_HEALING_MULT_WITH_FLAG",
+          "type": "number",
+          "value": 3.76
+        },
+        {
+          "name": "CASTER_WEAPON_SPELL_HEALING_DAMAGE_MULT_WITH_FLAG",
+          "type": "number",
+          "value": 1.253
         }
       ],
       "wrapper": "itemConsts"
@@ -1091,7 +1285,89 @@
       "wrapper": "lfgRoleConstants"
     },
     {
-      "name": "LevelConstsExposed",
+      "name": "LegacyConsts",
+      "source": "LegacyConstantsDocumentation.lua",
+      "values": [
+        {
+          "name": "LEGACY_REWARD_TRACK_FACTION_ID",
+          "type": "number",
+          "value": 2802
+        },
+        {
+          "name": "LEGACY_POINTS_TRAIT_CURRENCY_ID",
+          "type": "number",
+          "value": 4225
+        },
+        {
+          "name": "LEGACY_TREE_PROFESSIONS_ID",
+          "type": "number",
+          "value": 1187
+        },
+        {
+          "name": "LEGACY_TREE_ADVENTURE_ID",
+          "type": "number",
+          "value": 1188
+        },
+        {
+          "name": "LEGACY_TREE_PROGRESSION_ID",
+          "type": "number",
+          "value": 1189
+        },
+        {
+          "name": "LEGACY_TREE_ADVENTURE_TALENTED_NODE_ID",
+          "type": "number",
+          "value": 110298
+        },
+        {
+          "name": "LEGACY_DEFAULT_CATEGORY_WARRIOR",
+          "type": "number",
+          "value": 15585
+        },
+        {
+          "name": "LEGACY_DEFAULT_CATEGORY_PALADIN",
+          "type": "number",
+          "value": 15580
+        },
+        {
+          "name": "LEGACY_DEFAULT_CATEGORY_HUNTER",
+          "type": "number",
+          "value": 15578
+        },
+        {
+          "name": "LEGACY_DEFAULT_CATEGORY_ROGUE",
+          "type": "number",
+          "value": 15582
+        },
+        {
+          "name": "LEGACY_DEFAULT_CATEGORY_PRIEST",
+          "type": "number",
+          "value": 15581
+        },
+        {
+          "name": "LEGACY_DEFAULT_CATEGORY_SHAMAN",
+          "type": "number",
+          "value": 15583
+        },
+        {
+          "name": "LEGACY_DEFAULT_CATEGORY_MAGE",
+          "type": "number",
+          "value": 15579
+        },
+        {
+          "name": "LEGACY_DEFAULT_CATEGORY_WARLOCK",
+          "type": "number",
+          "value": 15584
+        },
+        {
+          "name": "LEGACY_DEFAULT_CATEGORY_DRUID",
+          "type": "number",
+          "value": 15577
+        }
+      ],
+      "wrapper": "legacyConsts"
+    },
+    {
+      "name": "LevelConstsExposed_RetailAndClassic",
       "source": "LevelConstantsDocumentation.lua",
       "values": [
         {
@@ -1103,13 +1379,18 @@
           "name": "MIN_ACHIEVEMENT_LEVEL",
           "type": "number",
           "value": 10
+        },
+        {
+          "name": "MIN_TALENT_LEVEL",
+          "type": "number",
+          "value": 10
         }
       ],
-      "wrapper": "levelConstsExposed"
+      "wrapper": "levelConstsExposedRetailAndClassic"
     },
     {
-      "name": "LootConsts",
-      "source": "LootConstantsDocumentation.lua",
+      "name": "LootConsts_Retail",
+      "source": "LootConstants_MainlineDocumentation.lua",
       "values": [
         {
           "name": "MasterLootQualityThreshold",
@@ -1117,7 +1398,7 @@
           "value": 5
         }
       ],
-      "wrapper": "lootConsts"
+      "wrapper": "lootConstsRetail"
     },
     {
       "name": "LossOfControlConsts",
@@ -1161,6 +1442,11 @@
           "name": "WORLD_STATE_RAPID_RENOWN_CAP_10_0",
           "type": "number",
           "value": 20851
+        },
+        {
+          "name": "PVP_RANK_POINTS_FACTION_ID",
+          "type": "number",
+          "value": 2800
         },
         {
           "name": "PLUNDERSTORM_MAJOR_FACTION_ID",
@@ -1212,43 +1498,33 @@
       "wrapper": "partyCountdownConstants"
     },
     {
-      "name": "PetConsts",
-      "source": "PetConstantsDocumentation.lua",
+      "name": "PetBattleConsts",
+      "source": "PetBattleConstantsDocumentation.lua",
       "values": [
         {
-          "name": "PETNUMBER_INVALIDSLOT",
+          "name": "SUMMON_RANDOM_FAVORITE_BATTLEPET_SPELL_ID",
           "type": "number",
-          "value": -1
-        },
-        {
-          "name": "MAX_SUMMONABLE_PETS",
-          "type": "number",
-          "value": 25
-        },
-        {
-          "name": "PETNUMBER_INVALIDPET",
-          "type": "number",
-          "value": 0
-        },
-        {
-          "name": "PETNUMBER_PENDINGPET",
-          "type": "number",
-          "value": -1
+          "value": 243819
         }
       ],
-      "wrapper": "petConsts"
+      "wrapper": "petBattleConsts"
     },
     {
-      "name": "PetConsts_PostCata",
+      "name": "PetConsts_Retail",
       "source": "PetConstantsDocumentation.lua",
       "values": [
+        {
+          "name": "PET_XP_LEVEL_MODIFIER",
+          "type": "number",
+          "value": 0.05
+        },
         {
           "name": "NUM_PET_SLOTS_THAT_NEED_LEARNED_SPELL",
           "type": "number",
           "value": 5
         },
         {
-          "expression": "Constants.PetConsts_PostCata.NUM_PET_SLOTS_THAT_NEED_LEARNED_SPELL",
+          "expression": "Constants.PetConsts.NUM_PET_SLOTS_THAT_NEED_LEARNED_SPELL",
           "name": "MAX_SUMMONABLE_HUNTER_PETS",
           "type": "number"
         },
@@ -1258,52 +1534,32 @@
           "value": 200
         },
         {
-          "expression": "Constants.PetConsts_PostCata.MAX_SUMMONABLE_HUNTER_PETS",
+          "expression": "Constants.PetConsts.MAX_SUMMONABLE_HUNTER_PETS",
           "name": "EXTRA_PET_STABLE_SLOT",
           "type": "number"
         },
         {
-          "expression": "Constants.PetConsts_PostCata.EXTRA_PET_STABLE_SLOT",
+          "expression": "Constants.PetConsts.EXTRA_PET_STABLE_SLOT",
           "name": "STABLED_PETS_FIRST_SLOT_INDEX",
           "type": "number"
         },
         {
-          "expression": "Constants.PetConsts_PostCata.MAX_STABLE_SLOTS + Constants.PetConsts_PostCata.NUM_PET_SLOTS_THAT_NEED_LEARNED_SPELL",
+          "expression": "Constants.PetConsts.MAX_STABLE_SLOTS + Constants.PetConsts.NUM_PET_SLOTS_THAT_NEED_LEARNED_SPELL",
           "name": "NUM_PET_SLOTS_HUNTER",
           "type": "number"
         },
         {
-          "expression": "Constants.PetConsts.MAX_SUMMONABLE_PETS",
-          "name": "NUM_PET_SLOTS_DEATHKNIGHT",
-          "type": "number"
-        },
-        {
-          "name": "DEATHKNIGHT_PET_CREATURE_ID",
-          "type": "number",
-          "value": 26125
-        },
-        {
-          "name": "NUM_PET_SLOTS_MAGE",
-          "type": "number",
-          "value": 1
-        },
-        {
-          "expression": "Constants.PetConsts.MAX_SUMMONABLE_PETS",
-          "name": "NUM_PET_SLOTS_WARLOCK",
-          "type": "number"
-        },
-        {
-          "expression": "Constants.PetConsts_PostCata.NUM_PET_SLOTS_HUNTER",
+          "expression": "Constants.PetConsts.NUM_PET_SLOTS_HUNTER",
           "name": "MAX_NUM_PET_SLOTS",
           "type": "number"
         },
         {
-          "name": "PET_MAX_LEVEL_DIFFERENCE",
+          "name": "DEFAULT_PET_PERSONALITY",
           "type": "number",
           "value": 0
         }
       ],
-      "wrapper": "petConstsPostCata"
+      "wrapper": "petConstsRetail"
     },
     {
       "name": "ProfessionConsts",
@@ -1375,6 +1631,18 @@
       "wrapper": "pvpInfoConsts"
     },
     {
+      "name": "QuestLogConstsMainlineRetail",
+      "source": "QuestConstantsDocumentation.lua",
+      "values": [
+        {
+          "name": "MAXIMUM_NUM_QUESTS_LOG_CAN_ACCEPT",
+          "type": "number",
+          "value": 35
+        }
+      ],
+      "wrapper": "questLogConstsMainlineRetail"
+    },
+    {
       "name": "QuestWatchConsts",
       "source": "QuestConstantsDocumentation.lua",
       "values": [
@@ -1397,6 +1665,33 @@
       "wrapper": "questWatchConsts"
     },
     {
+      "name": "RaidMarkerConsts",
+      "source": "RaidMarkerConstantsDocumentation.lua",
+      "values": [
+        {
+          "name": "MAX_RAID_TARGETS_USER",
+          "type": "number",
+          "value": 8
+        },
+        {
+          "name": "MAX_RAID_TARGETS_RESTRICTED",
+          "type": "number",
+          "value": 8
+        },
+        {
+          "name": "MAX_VALID_RAID_TARGETS",
+          "type": "number",
+          "value": 0
+        },
+        {
+          "name": "MAX_RAID_MARKERS",
+          "type": "number",
+          "value": 8
+        }
+      ],
+      "wrapper": "raidMarkerConsts"
+    },
+    {
       "name": "RecentAlliesConsts",
       "source": "RecentAlliesConstantsDocumentation.lua",
       "values": [
@@ -1407,6 +1702,28 @@
         }
       ],
       "wrapper": "recentAlliesConsts"
+    },
+    {
+      "name": "RewardsVcConstants",
+      "source": "CurrencyConstantsDocumentation.lua",
+      "values": [
+        {
+          "name": "REWARDS_VC_UPDATE_THROTTLE",
+          "type": "number",
+          "value": 60
+        },
+        {
+          "name": "REWARDS_VC_GET_REQUEST_THROTTLE",
+          "type": "number",
+          "value": 5
+        },
+        {
+          "name": "REWARDS_VC_GRANT_REQUEST_THROTTLE",
+          "type": "number",
+          "value": 5
+        }
+      ],
+      "wrapper": "rewardsVcConstants"
     },
     {
       "name": "SpellBookSpellIDs",
@@ -1446,6 +1763,18 @@
         }
       ],
       "wrapper": "spellCooldownConsts"
+    },
+    {
+      "name": "SpellUIConsts",
+      "source": "SpellConstantsDocumentation.lua",
+      "values": [
+        {
+          "name": "CONFIRMATION_PROMPT_HIDE_ON_ESCAPE",
+          "type": "bool",
+          "value": true
+        }
+      ],
+      "wrapper": "spellUIConsts"
     },
     {
       "name": "TTSConstants",
@@ -1631,6 +1960,11 @@
           "value": 1247613
         },
         {
+          "name": "CLEAR_TRANSMOG_OUTFIT_MANUAL_SPELL_ID",
+          "type": "number",
+          "value": 1247917
+        },
+        {
           "name": "TRANSMOG_OUTFIT_SLOT_NONE",
           "type": "TransmogOutfitSlot",
           "value": -1
@@ -1717,12 +2051,12 @@
         {
           "name": "HIDDEN_GROUP_BUFF_LIST_SIZE",
           "type": "number",
-          "value": 32
+          "value": 128
         },
         {
           "name": "GROUP_BUFF_VISUAL_ALERT_LIST_SIZE",
           "type": "number",
-          "value": 32
+          "value": 128
         }
       ],
       "wrapper": "unitAuraUIConstants"

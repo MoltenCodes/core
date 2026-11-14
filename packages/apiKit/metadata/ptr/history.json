@@ -6,6 +6,61 @@
       "commit": "5c9363cc1b4e80b98963e3fcc87ab460fa911a94",
       "committedAt": "2026-09-22T21:30:39Z",
       "version": "12.1.5"
+    },
+    {
+      "build": 70892,
+      "capturedOn": "2026-11-14",
+      "commit": "a750208e2382f24eb3d3a83939082a182420c44b",
+      "committedAt": "2026-11-12T22:24:09Z",
+      "counts": {
+        "constant": {
+          "added": 74,
+          "changed": 2,
+          "removed": 20
+        },
+        "constantsTable": {
+          "added": 14,
+          "changed": 0,
+          "removed": 5
+        },
+        "enum": {
+          "added": 53,
+          "changed": 44,
+          "removed": 1
+        },
+        "enumField": {
+          "added": 359,
+          "changed": 59,
+          "removed": 72
+        },
+        "event": {
+          "added": 40,
+          "changed": 30,
+          "removed": 4
+        },
+        "function": {
+          "added": 235,
+          "changed": 70,
+          "removed": 5
+        },
+        "namespace": {
+          "added": 13,
+          "changed": 0,
+          "removed": 0
+        },
+        "restriction": {
+          "added": 1,
+          "changed": 1,
+          "removed": 0
+        },
+        "structure": {
+          "added": 19,
+          "changed": 29,
+          "removed": 3
+        }
+      },
+      "report": "docs/changes/ptr/69952-70892.md",
+      "version": "12.1.7"
     }
   ],
   "schema": 1

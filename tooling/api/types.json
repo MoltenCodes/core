@@ -1,5 +1,5 @@
 {
-  "verified": "2026-09-24",
+  "verified": "2026-11-15",
   "types": {
     "AbbreviateConfig": {
       "kind": "class",
@@ -126,6 +126,10 @@
       "lua": "string"
     },
     "DiscordID": {
+      "kind": "alias",
+      "lua": "string"
+    },
+    "DiscordMemberOpaqueID": {
       "kind": "alias",
       "lua": "string"
     },
@@ -389,6 +393,10 @@
       "kind": "class",
       "lua": "PlayerLocationMixin"
     },
+    "PreferredPlaySettingsStatus": {
+      "kind": "opaque",
+      "lua": "any"
+    },
     "PurchaseHouseDisabledReason": {
       "kind": "opaque",
       "lua": "any"
@@ -596,6 +604,10 @@
     "Vocalerrorsounds": {
       "kind": "opaque",
       "lua": "any"
+    },
+    "VoiceChatID": {
+      "kind": "alias",
+      "lua": "number"
     },
     "WOWGUID": {
       "kind": "alias",

@@ -886,6 +886,11 @@
           "name": "isHideVisual",
           "nilable": true,
           "type": "bool"
+        },
+        {
+          "name": "isValidForEquippedItem",
+          "nilable": true,
+          "type": "bool"
         }
       ],
       "name": "AppearanceSourceInfo",
@@ -1014,6 +1019,12 @@
         {
           "default": false,
           "name": "isLocked",
+          "nilable": false,
+          "type": "bool"
+        },
+        {
+          "default": false,
+          "name": "hasUnseenGlow",
           "nilable": false,
           "type": "bool"
         }
@@ -2687,6 +2698,11 @@
           "name": "timerunningSeasonID",
           "nilable": true,
           "type": "number"
+        },
+        {
+          "name": "subIcon",
+          "nilable": true,
+          "type": "string"
         }
       ],
       "name": "BNetGameAccountInfo",
@@ -4335,6 +4351,11 @@
           "name": "quantityInBundle",
           "nilable": false,
           "type": "number"
+        },
+        {
+          "name": "selectionConstraint",
+          "nilable": true,
+          "type": "SelectionConstraint"
         }
       ],
       "name": "CatalogShopBundleChildInfo",
@@ -4787,6 +4808,36 @@
           "name": "deferredGameTimeDays",
           "nilable": false,
           "type": "number"
+        },
+        {
+          "name": "vcCurrencyCode",
+          "nilable": true,
+          "type": "string"
+        },
+        {
+          "name": "hasAllRequiredAchievements",
+          "nilable": true,
+          "type": "bool"
+        },
+        {
+          "name": "missingAchievementName",
+          "nilable": true,
+          "type": "string"
+        },
+        {
+          "name": "doNotShowWebString",
+          "nilable": false,
+          "type": "bool"
+        },
+        {
+          "name": "purchaseEligibility",
+          "nilable": false,
+          "type": "CatalogShopPurchaseEligibility"
+        },
+        {
+          "name": "purchaseEligibilityText",
+          "nilable": true,
+          "type": "string"
         }
       ],
       "name": "CatalogShopProductInfo",
@@ -4827,6 +4878,39 @@
         }
       ],
       "name": "CatalogShopSectionInfo",
+      "source": "CatalogShopDocumentation.lua",
+      "system": "CatalogShop"
+    },
+    {
+      "fields": [
+        {
+          "name": "name",
+          "nilable": false,
+          "type": "string"
+        },
+        {
+          "name": "description",
+          "nilable": false,
+          "type": "string"
+        },
+        {
+          "name": "quantity",
+          "nilable": false,
+          "type": "number"
+        },
+        {
+          "name": "inclusionMode",
+          "nilable": false,
+          "type": "InclusionMode"
+        },
+        {
+          "innerType": "CatalogShopBundleChildInfo",
+          "name": "products",
+          "nilable": false,
+          "type": "table"
+        }
+      ],
+      "name": "CatalogShopSelectionGroupInfo",
       "source": "CatalogShopDocumentation.lua",
       "system": "CatalogShop"
     },
@@ -9336,6 +9420,48 @@
     {
       "fields": [
         {
+          "name": "isDefault",
+          "nilable": false,
+          "type": "bool"
+        },
+        {
+          "name": "creditsFileID",
+          "nilable": false,
+          "type": "number"
+        },
+        {
+          "name": "keyArt",
+          "nilable": false,
+          "type": "string"
+        },
+        {
+          "name": "background",
+          "nilable": false,
+          "type": "string"
+        },
+        {
+          "name": "name",
+          "nilable": false,
+          "type": "string"
+        },
+        {
+          "name": "logo",
+          "nilable": false,
+          "type": "fileID"
+        },
+        {
+          "name": "soundKit",
+          "nilable": true,
+          "type": "number"
+        }
+      ],
+      "name": "CreditsDisplayInfo",
+      "source": "ExpansionDocumentation.lua",
+      "system": "Expansion"
+    },
+    {
+      "fields": [
+        {
           "name": "criteriaID",
           "nilable": false,
           "type": "number"
@@ -10121,7 +10247,7 @@
         },
         {
           "flags": [
-            "NeverSecret"
+            "SecretValue"
           ],
           "name": "specIconID",
           "nilable": false,
@@ -10274,7 +10400,7 @@
         },
         {
           "flags": [
-            "NeverSecret"
+            "SecretValue"
           ],
           "name": "specIconID",
           "nilable": false,
@@ -10470,7 +10596,7 @@
         {
           "name": "userID",
           "nilable": false,
-          "type": "DiscordID"
+          "type": "DiscordMemberOpaqueID"
         },
         {
           "name": "globalName",
@@ -11228,6 +11354,11 @@
           "type": "EditModeLayoutType"
         },
         {
+          "name": "interfaceStyle",
+          "nilable": true,
+          "type": "InputDeviceInterfaceType"
+        },
+        {
           "innerType": "EditModeSystemInfo",
           "name": "systems",
           "nilable": false,
@@ -11571,7 +11702,7 @@
     {
       "fields": [
         {
-          "name": "lootListID",
+          "name": "lootListKey",
           "nilable": false,
           "type": "number"
         },
@@ -12592,6 +12723,65 @@
       "name": "FillUpFramesWidgetVisualizationInfo",
       "source": "UIWidgetManagerDocumentation.lua",
       "system": "UIWidgetManager"
+    },
+    {
+      "fields": [
+        {
+          "name": "name",
+          "nilable": false,
+          "type": "string"
+        },
+        {
+          "name": "description",
+          "nilable": false,
+          "type": "string"
+        },
+        {
+          "name": "numSlots",
+          "nilable": false,
+          "type": "number"
+        },
+        {
+          "name": "isKnown",
+          "nilable": false,
+          "type": "bool"
+        }
+      ],
+      "name": "FlyoutInfo",
+      "source": "FlyoutDocumentation.lua",
+      "system": "Flyout"
+    },
+    {
+      "fields": [
+        {
+          "name": "spellID",
+          "nilable": false,
+          "type": "number"
+        },
+        {
+          "name": "overrideSpellID",
+          "nilable": false,
+          "type": "number"
+        },
+        {
+          "name": "isKnown",
+          "nilable": false,
+          "type": "bool"
+        },
+        {
+          "name": "name",
+          "nilable": true,
+          "type": "string"
+        },
+        {
+          "name": "specID",
+          "nilable": true,
+          "type": "number"
+        }
+      ],
+      "name": "FlyoutSlotInfo",
+      "source": "FlyoutDocumentation.lua",
+      "system": "Flyout"
     },
     {
       "fields": [
@@ -14291,7 +14481,18 @@
     {
       "fields": [
         {
+          "documentation": [
+            "The persisted key for this item, shared by every rank of the spell."
+          ],
           "name": "spellID",
+          "nilable": false,
+          "type": "number"
+        },
+        {
+          "documentation": [
+            "The spell used for name, icon and tooltip: the highest known rank, or the lowest rank if none are known."
+          ],
+          "name": "displaySpellID",
           "nilable": false,
           "type": "number"
         },
@@ -14335,6 +14536,24 @@
       ],
       "name": "GroupBuffVisualAlertInfo",
       "source": "UnitConstantsDocumentation.lua"
+    },
+    {
+      "fields": [
+        {
+          "name": "traitNodeGroupID",
+          "nilable": false,
+          "type": "number"
+        },
+        {
+          "innerType": "TreeCurrencyInfo",
+          "name": "currencyInfos",
+          "nilable": false,
+          "type": "table"
+        }
+      ],
+      "name": "GroupCurrencyInfo",
+      "source": "SharedTraitsDocumentation.lua",
+      "system": "SharedTraits"
     },
     {
       "fields": [
@@ -14849,6 +15068,14 @@
           "name": "reasonString",
           "nilable": false,
           "type": "cstring"
+        },
+        {
+          "documentation": [
+            "If set, a unique custom sound to play when selecting the house type instead of the default sound"
+          ],
+          "name": "onSelectSoundKitID",
+          "nilable": true,
+          "type": "number"
         }
       ],
       "name": "HouseExteriorTypeOption",
@@ -16944,6 +17171,11 @@
           "name": "hasWorldTier",
           "nilable": false,
           "type": "bool"
+        },
+        {
+          "name": "instanceServerID",
+          "nilable": true,
+          "type": "number"
         }
       ],
       "name": "InstanceInfo",
@@ -18071,6 +18303,11 @@
           "type": "kstringLfgListApplicant"
         },
         {
+          "name": "voiceMode",
+          "nilable": false,
+          "type": "LFGEntryVoiceMode"
+        },
+        {
           "name": "censored",
           "nilable": false,
           "type": "bool"
@@ -18196,6 +18433,12 @@
           "name": "requiredPvpRating",
           "nilable": false,
           "type": "number"
+        },
+        {
+          "default": "None",
+          "name": "voiceMode",
+          "nilable": false,
+          "type": "LFGEntryVoiceMode"
         }
       ],
       "name": "LfgListingCreateData",
@@ -18234,6 +18477,11 @@
           "name": "voiceChat",
           "nilable": false,
           "type": "kstringLfgListSearch"
+        },
+        {
+          "name": "voiceMode",
+          "nilable": false,
+          "type": "LFGEntryVoiceMode"
         },
         {
           "name": "censored",
@@ -18623,6 +18871,23 @@
     {
       "fields": [
         {
+          "name": "sender",
+          "nilable": false,
+          "type": "string"
+        },
+        {
+          "name": "money",
+          "nilable": false,
+          "type": "number"
+        }
+      ],
+      "name": "MailReceiveInfo",
+      "source": "SecureTransferDocumentation.lua",
+      "system": "SecureTransfer"
+    },
+    {
+      "fields": [
+        {
           "name": "target",
           "nilable": false,
           "type": "string"
@@ -18633,7 +18898,7 @@
           "type": "number"
         }
       ],
-      "name": "MailInfo",
+      "name": "MailSendInfo",
       "source": "SecureTransferDocumentation.lua",
       "system": "SecureTransfer"
     },
@@ -18677,6 +18942,11 @@
         },
         {
           "name": "useJourneyUnlockToast",
+          "nilable": false,
+          "type": "bool"
+        },
+        {
+          "name": "hideRenownLevelUpToast",
           "nilable": false,
           "type": "bool"
         },
@@ -18742,6 +19012,48 @@
         }
       ],
       "name": "MajorFactionData",
+      "source": "MajorFactionsDocumentation.lua",
+      "system": "MajorFactionsUI"
+    },
+    {
+      "fields": [
+        {
+          "name": "renownLevel",
+          "nilable": false,
+          "type": "number"
+        },
+        {
+          "name": "previousWeekProgressiveMaxLevel",
+          "nilable": false,
+          "type": "number"
+        },
+        {
+          "name": "currentWeekProgressiveMaxLevel",
+          "nilable": false,
+          "type": "number"
+        },
+        {
+          "name": "maxLevel",
+          "nilable": false,
+          "type": "number"
+        },
+        {
+          "name": "renownReputationEarned",
+          "nilable": false,
+          "type": "number"
+        },
+        {
+          "name": "renownLevelThreshold",
+          "nilable": false,
+          "type": "number"
+        },
+        {
+          "name": "weekNumber",
+          "nilable": false,
+          "type": "number"
+        }
+      ],
+      "name": "MajorFactionProgressionInfo",
       "source": "MajorFactionsDocumentation.lua",
       "system": "MajorFactionsUI"
     },
@@ -20658,6 +20970,14 @@
           "flags": [
             "NeverSecret"
           ],
+          "name": "gender",
+          "nilable": false,
+          "type": "number"
+        },
+        {
+          "flags": [
+            "NeverSecret"
+          ],
           "name": "className",
           "nilable": false,
           "type": "string"
@@ -20711,6 +21031,9 @@
           "type": "string"
         },
         {
+          "flags": [
+            "NeverSecret"
+          ],
           "name": "honorLevel",
           "nilable": false,
           "type": "number"
@@ -21467,6 +21790,31 @@
         },
         {
           "name": "specID",
+          "nilable": false,
+          "type": "number"
+        },
+        {
+          "name": "loyaltyLevel",
+          "nilable": false,
+          "type": "number"
+        },
+        {
+          "name": "loyaltyName",
+          "nilable": false,
+          "type": "string"
+        },
+        {
+          "name": "happinessLevel",
+          "nilable": false,
+          "type": "number"
+        },
+        {
+          "name": "experience",
+          "nilable": false,
+          "type": "number"
+        },
+        {
+          "name": "experienceNeeded",
           "nilable": false,
           "type": "number"
         }
@@ -23432,6 +23780,23 @@
     {
       "fields": [
         {
+          "name": "questID",
+          "nilable": false,
+          "type": "number"
+        },
+        {
+          "name": "questTimer",
+          "nilable": false,
+          "type": "number"
+        }
+      ],
+      "name": "QuestTimerInfo",
+      "source": "QuestLogDocumentation.lua",
+      "system": "QuestLog"
+    },
+    {
+      "fields": [
+        {
           "name": "queueType",
           "nilable": false,
           "type": "cstring"
@@ -24097,8 +24462,8 @@
           "type": "bool"
         },
         {
-          "innerType": "RecentAlliesFriendTag",
-          "name": "interests",
+          "innerType": "RecentAlliesInteractionCategoryFilter",
+          "name": "interactionCategoryFilters",
           "nilable": false,
           "type": "table"
         }
@@ -24417,6 +24782,11 @@
         },
         {
           "name": "price",
+          "nilable": false,
+          "type": "string"
+        },
+        {
+          "name": "currencyCode",
           "nilable": false,
           "type": "string"
         }
@@ -25476,6 +25846,33 @@
     {
       "fields": [
         {
+          "name": "className",
+          "nilable": false,
+          "type": "string"
+        },
+        {
+          "name": "classDescription",
+          "nilable": false,
+          "type": "string"
+        },
+        {
+          "name": "classTextureAtlasName",
+          "nilable": false,
+          "type": "string"
+        },
+        {
+          "name": "traitTreeID",
+          "nilable": false,
+          "type": "number"
+        }
+      ],
+      "name": "ScribeClassInfo",
+      "source": "ScribeUIDocumentation.lua",
+      "system": "ScribeUI"
+    },
+    {
+      "fields": [
+        {
           "name": "luaScriptBucketThrottleMaxMsPerSecondNormal",
           "nilable": false,
           "type": "number"
@@ -25807,6 +26204,118 @@
       "name": "SendPingResult",
       "source": "PingManagerSecureDocumentation.lua",
       "system": "PingManagerSecure"
+    },
+    {
+      "fields": [
+        {
+          "innerType": "number",
+          "name": "classIDs",
+          "nilable": false,
+          "type": "table"
+        },
+        {
+          "innerType": "number",
+          "name": "raceIDs",
+          "nilable": false,
+          "type": "table"
+        },
+        {
+          "innerType": "number",
+          "name": "uiMapIDs",
+          "nilable": false,
+          "type": "table"
+        }
+      ],
+      "name": "SendWhoFilters",
+      "source": "FriendListDocumentation.lua",
+      "system": "FriendList"
+    },
+    {
+      "fields": [
+        {
+          "name": "skillID",
+          "nilable": false,
+          "type": "number"
+        },
+        {
+          "name": "name",
+          "nilable": false,
+          "type": "cstring"
+        },
+        {
+          "name": "isHeader",
+          "nilable": false,
+          "type": "bool"
+        },
+        {
+          "name": "isCollapsed",
+          "nilable": false,
+          "type": "bool"
+        },
+        {
+          "name": "rank",
+          "nilable": false,
+          "type": "number"
+        },
+        {
+          "name": "tempPoints",
+          "nilable": false,
+          "type": "number"
+        },
+        {
+          "name": "modifier",
+          "nilable": false,
+          "type": "number"
+        },
+        {
+          "name": "maxRank",
+          "nilable": false,
+          "type": "number"
+        },
+        {
+          "name": "isAbandonable",
+          "nilable": false,
+          "type": "bool"
+        },
+        {
+          "name": "stepCost",
+          "nilable": false,
+          "type": "number"
+        },
+        {
+          "name": "rankCost",
+          "nilable": false,
+          "type": "number"
+        },
+        {
+          "name": "minLevel",
+          "nilable": false,
+          "type": "number"
+        },
+        {
+          "name": "costType",
+          "nilable": false,
+          "type": "number"
+        },
+        {
+          "name": "parentSkillLineID",
+          "nilable": false,
+          "type": "number"
+        },
+        {
+          "name": "skillLineCategoryID",
+          "nilable": false,
+          "type": "number"
+        },
+        {
+          "name": "description",
+          "nilable": false,
+          "type": "cstring"
+        }
+      ],
+      "name": "SkillLineAttributes",
+      "source": "SkillInfoDocumentation.lua",
+      "system": "SkillInfo"
     },
     {
       "fields": [
@@ -27288,6 +27797,28 @@
     {
       "fields": [
         {
+          "name": "maxStatChange",
+          "nilable": false,
+          "type": "number"
+        },
+        {
+          "name": "critPercentChange",
+          "nilable": false,
+          "type": "number"
+        },
+        {
+          "name": "meleeHitChanceTakenChange",
+          "nilable": false,
+          "type": "number"
+        }
+      ],
+      "name": "StatAuraChangeInfo",
+      "source": "SpellDocumentation.lua",
+      "system": "Spell"
+    },
+    {
+      "fields": [
+        {
           "name": "shownState",
           "nilable": false,
           "type": "WidgetShownState"
@@ -28465,6 +28996,28 @@
     {
       "fields": [
         {
+          "name": "questID",
+          "nilable": false,
+          "type": "number"
+        },
+        {
+          "name": "description",
+          "nilable": false,
+          "type": "string"
+        },
+        {
+          "name": "completed",
+          "nilable": false,
+          "type": "bool"
+        }
+      ],
+      "name": "TieredEntranceProgressInfo",
+      "source": "DelvesUIDocumentation.lua",
+      "system": "DelvesUI"
+    },
+    {
+      "fields": [
+        {
           "name": "id",
           "nilable": false,
           "type": "number"
@@ -29193,6 +29746,43 @@
     {
       "fields": [
         {
+          "name": "groupID",
+          "nilable": false,
+          "type": "number"
+        },
+        {
+          "name": "treeID",
+          "nilable": false,
+          "type": "number"
+        },
+        {
+          "name": "skillLineID",
+          "nilable": false,
+          "type": "number"
+        },
+        {
+          "name": "orderIndex",
+          "nilable": false,
+          "type": "number"
+        },
+        {
+          "name": "displayName",
+          "nilable": false,
+          "type": "cstring"
+        },
+        {
+          "name": "icon",
+          "nilable": false,
+          "type": "number"
+        }
+      ],
+      "name": "TraitGroupDisplayInfo",
+      "source": "SharedTraitsDocumentation.lua",
+      "system": "SharedTraits"
+    },
+    {
+      "fields": [
+        {
           "name": "ID",
           "nilable": false,
           "type": "number"
@@ -29529,6 +30119,11 @@
           "type": "bool"
         },
         {
+          "name": "cannotRefund",
+          "nilable": false,
+          "type": "bool"
+        },
+        {
           "name": "rootNodeID",
           "nilable": true,
           "type": "number"
@@ -29781,6 +30376,16 @@
           "type": "bool"
         },
         {
+          "name": "minIlvl",
+          "nilable": false,
+          "type": "number"
+        },
+        {
+          "name": "isValidForEquippedItem",
+          "nilable": false,
+          "type": "bool"
+        },
+        {
           "documentation": [
             "For internal testing only"
           ],
@@ -29892,6 +30497,28 @@
     {
       "fields": [
         {
+          "name": "name",
+          "nilable": false,
+          "type": "cstring"
+        },
+        {
+          "name": "isWeapon",
+          "nilable": false,
+          "type": "bool"
+        },
+        {
+          "name": "canHaveIllusions",
+          "nilable": false,
+          "type": "bool"
+        }
+      ],
+      "name": "TransmogOutfitCollectionInfo",
+      "source": "TransmogOutfitInfoDocumentation.lua",
+      "system": "TransmogOutfitInfo"
+    },
+    {
+      "fields": [
+        {
           "name": "outfitID",
           "nilable": false,
           "type": "number"
@@ -29946,6 +30573,28 @@
         }
       ],
       "name": "TransmogOutfitLinkedSlotInfo",
+      "source": "TransmogOutfitInfoDocumentation.lua",
+      "system": "TransmogOutfitInfo"
+    },
+    {
+      "fields": [
+        {
+          "name": "type",
+          "nilable": false,
+          "type": "TransmogOutfitSlotOption"
+        },
+        {
+          "name": "name",
+          "nilable": false,
+          "type": "cstring"
+        },
+        {
+          "name": "enabled",
+          "nilable": false,
+          "type": "bool"
+        }
+      ],
+      "name": "TransmogOutfitOptionInfo",
       "source": "TransmogOutfitInfoDocumentation.lua",
       "system": "TransmogOutfitInfo"
     },
@@ -30019,50 +30668,6 @@
         }
       ],
       "name": "TransmogOutfitSlotInfo",
-      "source": "TransmogOutfitInfoDocumentation.lua",
-      "system": "TransmogOutfitInfo"
-    },
-    {
-      "fields": [
-        {
-          "name": "name",
-          "nilable": false,
-          "type": "cstring"
-        },
-        {
-          "name": "isWeapon",
-          "nilable": false,
-          "type": "bool"
-        },
-        {
-          "name": "canHaveIllusions",
-          "nilable": false,
-          "type": "bool"
-        }
-      ],
-      "name": "TransmogOutfitWeaponCollectionInfo",
-      "source": "TransmogOutfitInfoDocumentation.lua",
-      "system": "TransmogOutfitInfo"
-    },
-    {
-      "fields": [
-        {
-          "name": "weaponOption",
-          "nilable": false,
-          "type": "TransmogOutfitSlotOption"
-        },
-        {
-          "name": "name",
-          "nilable": false,
-          "type": "cstring"
-        },
-        {
-          "name": "enabled",
-          "nilable": false,
-          "type": "bool"
-        }
-      ],
-      "name": "TransmogOutfitWeaponOptionInfo",
       "source": "TransmogOutfitInfoDocumentation.lua",
       "system": "TransmogOutfitInfo"
     },
@@ -30422,6 +31027,11 @@
           "name": "spent",
           "nilable": false,
           "type": "number"
+        },
+        {
+          "name": "spentInTree",
+          "nilable": true,
+          "type": "number"
         }
       ],
       "name": "TreeCurrencyInfo",
@@ -30752,6 +31362,16 @@
         },
         {
           "name": "useCenterForOriginZ",
+          "nilable": false,
+          "type": "bool"
+        },
+        {
+          "name": "addDropShadowAtM2Feet",
+          "nilable": false,
+          "type": "bool"
+        },
+        {
+          "name": "showFloatingProjectedTextures",
           "nilable": false,
           "type": "bool"
         },
@@ -31537,11 +32157,17 @@
           "type": "number"
         },
         {
+          "documentation": [
+            "Sound file to play. Playback stops after five seconds."
+          ],
           "name": "soundFileName",
           "nilable": true,
           "type": "string"
         },
         {
+          "documentation": [
+            "Sound file to play. Playback stops after five seconds."
+          ],
           "name": "soundFileID",
           "nilable": true,
           "type": "number"
@@ -31552,6 +32178,9 @@
           "type": "string"
         },
         {
+          "documentation": [
+            "Minimum time in seconds between plays. Must be between 0 and 5 seconds, inclusive. Invalid values reject registration."
+          ],
           "name": "throttleSeconds",
           "nilable": true,
           "type": "number"
@@ -32244,6 +32873,11 @@
           "type": "TransmogOutfitDisplayType"
         },
         {
+          "name": "isAppearanceOverridden",
+          "nilable": false,
+          "type": "bool"
+        },
+        {
           "name": "isTransmogrified",
           "nilable": false,
           "type": "bool"
@@ -32445,7 +33079,7 @@
           ],
           "name": "channelID",
           "nilable": false,
-          "type": "number"
+          "type": "VoiceChatID"
         },
         {
           "flags": [
@@ -32532,7 +33166,7 @@
         {
           "name": "memberID",
           "nilable": false,
-          "type": "number"
+          "type": "VoiceChatID"
         },
         {
           "name": "isActive",
@@ -32668,6 +33302,43 @@
       "name": "WarbandSceneSearchInfo",
       "source": "WarbandSceneInfoDocumentation.lua",
       "system": "WarbandSceneInfo"
+    },
+    {
+      "fields": [
+        {
+          "name": "hasEnchant",
+          "nilable": false,
+          "type": "bool"
+        },
+        {
+          "name": "enchantType",
+          "nilable": false,
+          "type": "ItemEnchantType"
+        },
+        {
+          "name": "timeLeft",
+          "nilable": false,
+          "type": "number"
+        },
+        {
+          "name": "charges",
+          "nilable": false,
+          "type": "number"
+        },
+        {
+          "name": "enchantID",
+          "nilable": false,
+          "type": "number"
+        },
+        {
+          "name": "enchantIconID",
+          "nilable": false,
+          "type": "number"
+        }
+      ],
+      "name": "WeaponEnchantInfo",
+      "source": "ItemDocumentation.lua",
+      "system": "Item"
     },
     {
       "fields": [
@@ -32820,6 +33491,23 @@
       "name": "WeeklyRewardActivityTierProgress",
       "source": "WeeklyRewardsDocumentation.lua",
       "system": "WeeklyRewards"
+    },
+    {
+      "fields": [
+        {
+          "name": "name",
+          "nilable": false,
+          "type": "string"
+        },
+        {
+          "name": "ID",
+          "nilable": false,
+          "type": "number"
+        }
+      ],
+      "name": "WhoFilter",
+      "source": "FriendListDocumentation.lua",
+      "system": "FriendList"
     },
     {
       "fields": [

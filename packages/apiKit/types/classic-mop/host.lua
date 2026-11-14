@@ -51,6 +51,8 @@
 
 ---@alias DiscordID string
 
+---@alias DiscordMemberOpaqueID string
+
 ---@alias DrawLayer string
 
 ---@alias DurationMillisecondsPrimitive number
@@ -218,6 +220,8 @@
 ---@class Vector2DMixin
 
 ---@class Vector3DMixin
+
+---@alias VoiceChatID number
 
 ---@alias WOWGUID string
 
