@@ -4,8 +4,10 @@ This guide moves an addon from Ace3 to the MoltenCodes Kits, one Ace3
 library at a time. Each section shows the Ace3 code first, then the same
 thing with the Kits, then the differences that change behaviour. Every
 MoltenCodes sample uses the API as documented in the Kit's `docs/API.md`
-today; the samples that use **BridgeKit** are marked *planned*, because that
-package is designed but not implemented yet (see
+today. **BridgeKit** ships in parts: its AceSerializer-3.0 reader and writer
+are current (revision 1), and the samples that use its AceDB importer,
+AceConfig adapter or AceComm channel are marked *planned*, because those parts
+are designed but not implemented yet (see
 [`BRIDGE_KIT_DESIGN.md`](BRIDGE_KIT_DESIGN.md)).
 
 The Ace3 behaviour described here was read from Ace3 at commit
@@ -86,7 +88,7 @@ show the addon form, which works without ModuleKit.
 | AceConfigDialog-3.0 | WidgetKit `RenderOptions` | [AceConfig](#aceconfig-30-aceconfigregistry-aceconfigdialog-aceconfigcmd) |
 | AceConfigCmd-3.0 | CommandKit `BindOptions` | [AceConfig](#aceconfig-30-aceconfigregistry-aceconfigdialog-aceconfigcmd) |
 | AceGUI-3.0 | WidgetKit | [AceGUI](#acegui-30) |
-| AceSerializer-3.0 | CodecKit; Ace-format compatibility: BridgeKit (planned) | [AceSerializer](#aceserializer-30) |
+| AceSerializer-3.0 | CodecKit; Ace-format compatibility: BridgeKit (`AceSerialize`, `AceDeserialize`) | [AceSerializer](#aceserializer-30) |
 | AceComm-3.0 (with ChatThrottleLib) | CommKit; Ace-format compatibility: BridgeKit (planned) | [AceComm](#acecomm-30) |
 
 ## LibStub
@@ -845,7 +847,8 @@ local ok, kind, version, payload = CodecKit:DecodeMany(text, { channel = "addon"
   addon channel (or printable, `channel = "print"`, for export strings), with
   optional DEFLATE compression (`compress = "deflate"`). An Ace3 peer cannot
   read it, and CodecKit does not read AceSerializer text; for that, see
-  [talking to Ace3 peers](#talking-to-ace3-peers-during-the-move).
+  [reading and writing AceSerializer text](#reading-and-writing-aceserializer-text)
+  and [talking to Ace3 peers](#talking-to-ace3-peers-during-the-move).
 - **Nothing raises on bad input**: decoding returns `false` and a reason for
   any string; a secret value raises at the caller when encoding.
 - **Validate what you decode** with a SchemaKit schema before using it; see
@@ -904,9 +907,39 @@ local handle, refused = comm:Send({
 Three things cannot be rewritten by hand without risk: the saved variable
 your players' settings live in, a large options table, and a wire format
 peers still speak. BridgeKit is designed for exactly these three
-([`BRIDGE_KIT_DESIGN.md`](BRIDGE_KIT_DESIGN.md)). **None of the code in this
-section runs yet**; it shows the planned API so an addon can plan its
-migration, and it will be made current when BridgeKit ships.
+([`BRIDGE_KIT_DESIGN.md`](BRIDGE_KIT_DESIGN.md)). **Only the first recipe
+below runs today**, the AceSerializer one; the others show the planned API so
+an addon can plan its migration, and each is made current when its part
+ships.
+
+### Reading and writing AceSerializer text
+
+*Current API* (BridgeKit revision 1). Export strings players saved and
+messages an Ace3 version of the addon sends are AceSerializer text. BridgeKit
+reads and writes it byte for byte with AceSerializer-3.0, without Ace3:
+
+```lua
+local BridgeKit = Registry:Get("bridgeKit", 1)
+
+-- An export string a player pasted, written by the Ace3 version.
+local ok, kind, payload = BridgeKit:AceDeserialize(pasted)
+if not ok then
+  print("Not a valid export string (" .. kind .. ").")
+end
+
+-- Text the Ace3 version can still read.
+local written, text = BridgeKit:AceSerialize("sync", 3, { a = 1 })
+```
+
+- **Nothing raises on bad text**: `AceDeserialize` returns `false` and a
+  reason for any string, where Ace3 raises inside its own `pcall`. Depth,
+  value count, string length and text size are bounded.
+- **Refusals where Ace3 would break**: NaN, cycles, functions and coroutines
+  are `false, reason` from `AceSerialize`.
+- New data belongs in CodecKit's format; keep BridgeKit only for as long as
+  old export strings or Ace3 peers exist, then remove it from `embeds.xml`.
+- The reasons, limits and deviations are in
+  [`bridgeKit/docs/API.md`](../packages/bridgeKit/docs/API.md).
 
 ### Importing an AceDB saved variable
 

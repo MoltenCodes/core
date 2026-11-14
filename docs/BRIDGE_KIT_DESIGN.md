@@ -1,11 +1,13 @@
 # BridgeKit design baseline
 
-> **Status:** design baseline, written 2026-09-25 for review; **not
-> implemented**. Package N in
+> **Status:** design baseline, written 2026-09-25 for review; **in
+> delivery**. Package N in
 > [`ROADMAP.md`](ROADMAP.md#package-n--bridgekit-migrating-from-ace3). The
 > owner answered the [open questions](#16-open-questions-for-the-owner) on
-> 2026-11-15, accepting every recommendation (decisions 9 to 13 below); code
-> starts with step N0 when the owner says go.
+> 2026-11-15, accepting every recommendation (decisions 9 to 13 below). Steps
+> N0 (the CommKit and SettingsKit prerequisites) and N1 (the AceSerializer
+> reader and writer, `packages/bridgeKit/`) are done; N2 to N5 follow
+> ([section 15](#15-delivery-sequence)).
 >
 > This document is the canonical design of `bridgeKit`, the MoltenCodes
 > package that makes migrating an addon from Ace3 a product feature: an
@@ -363,7 +365,7 @@ anywhere raises at the caller.
 `AceDeserialize` returns `true` and every value (their count preserved,
 `nil`s included), or `false, reason` with reason one of `"notAceSerializer"`,
 `"missingTerminator"`, `"invalidNumber"`, `"invalidFloat"`,
-`"unknownControl"`, `"tableFormat"`, `"invalidKey"`, `"maxDepth"`,
+`"invalidEscape"`, `"unknownControl"`, `"tableFormat"`, `"invalidKey"`, `"maxDepth"`,
 `"maxValues"`, `"maxStringLength"`, `"maxTextBytes"`, `"maxListValues"`. It
 raises only for a non-string or secret argument. Section 8.2 maps these to
 Ace's own messages.
@@ -779,7 +781,13 @@ undefined.
   reads (hexadecimal included, as `tonumber` is what Ace calls), and repeated
   keys (last wins). It never raises on any string. Deviations: a NaN key is
   refused (`"invalidKey"`; Ace raises inside its `pcall` and returns `false`
-  too), and the limits apply.
+  too), so is `~~` or a tilde before a character below `@` (`"invalidEscape"`;
+  Ace fails inside `string.char`), a `^F` number is scaled with `ldexp`
+  rather than `mantissa * 2^exponent` (decision 15), and the limits apply.
+  Recording Ace3 (step N1) settled what the description above left open:
+  bytes before the first caret are ignored, the end code inside a table is a
+  table format error, and `^t`, `^f` or `^1` where a value is expected is an
+  unknown control.
 - **Reasons** map to Ace's messages: `"notAceSerializer"` (`253`),
   `"missingTerminator"` (`179`), `"invalidNumber"` (`194`),
   `"invalidFloat"` (`199`, `204`), `"unknownControl"` (`232`),
@@ -1048,7 +1056,9 @@ Each step ends with the gates green and a read-only review.
 - [x] **N0 — prerequisites** (done 2026-11-15: CommKit 0.5.0, revision 8, and SettingsKit 0.3.2; gates green and a read-only review, whose two findings were fixed): CommKit raw addon
       messages (P1, a CommKit minor version with specs and a client suite
       update) and SettingsKit's layout section (P2, documentation).
-- [ ] **N1 — serializer**: `AceSerialize`, `AceDeserialize`, limits, fixtures.
+- [x] **N1 — serializer**: `AceSerialize`, `AceDeserialize`, limits, fixtures
+      (done 2026-11-15: bridgeKit 0.1.0, revision 1; 90 specs generated from
+      Ace3's recorded output, decisions 14 and 15).
 - [ ] **N2 — AceConfig adapter**: `ConvertAceConfig`, `DefineAceConfig`,
       reports, `FormatReport`.
 - [ ] **N3 — AceDB importer**: `PreviewAceDB`, `ImportAceDB`,
@@ -1102,3 +1112,5 @@ were asked.
 | 11 | AceDB scopes SettingsKit lacks (`race`, `factionrealm`, `factionrealmregion`, `locale`) map into a map field the addon declares; SettingsKit gains those scopes only if addons ask (2026-11-15). | 16.3, 7 |
 | 12 | Function-valued `name`, `order`, `sorting`, `hasAlpha` and `fontSize` are evaluated once at conversion and reported as `evaluatedOnce` (2026-11-15). | 16.4, 6 |
 | 13 | Licence reading confirmed: recorded Ace3 output as fixtures with provenance, no Ace3 source or tests in the repository, Ace3 fetched at run time and never redistributed for the benchmark and the client tests (2026-11-15). | 16.5, 3.2 |
+| 14 | Fixtures are recorded by `python3 -m tooling.fixtures.ace_serializer`, which runs the pinned Ace3 (fetched and checksummed by `tooling.bench.ace3`, outside the repository) under host Lua 5.1 over our own inputs and commits only its output, with provenance, as `packages/bridgeKit/tests/fixtures/AceSerializerFixtures.lua` (2026-11-15). | 3.2, 13.1 |
+| 15 | The reader scales a `^F` number with `ldexp`, so a subnormal number Ace's writer produces and Ace's own reader reads as `0` reads back exactly; for every other integer exponent the two give the same number. An escape Ace cannot read is the reason `"invalidEscape"`, added to the vocabulary of section 5.6 (2026-11-15). | 5.6, 8.2 |
