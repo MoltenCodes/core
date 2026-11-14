@@ -6,6 +6,21 @@
       "commit": "cde55d0033e89b246381385b2f063cd6c6047ef8",
       "committedAt": "2026-09-22T21:31:23Z",
       "version": "5.5.4"
+    },
+    {
+      "build": 70631,
+      "capturedOn": "2026-11-14",
+      "commit": "e5d9b3a22c3f0f6f41ebac0e454f4969594261cf",
+      "committedAt": "2026-10-27T14:16:09Z",
+      "counts": {
+        "function": {
+          "added": 1,
+          "changed": 0,
+          "removed": 0
+        }
+      },
+      "report": "docs/changes/classic-mop/69934-70631.md",
+      "version": "5.5.4"
     }
   ],
   "schema": 1

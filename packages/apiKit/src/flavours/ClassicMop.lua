@@ -1,8 +1,8 @@
 -- MoltenCodes ApiKit: Mists of Pandaria Classic bindings (wow.classic.mop.api)
 --
 -- GENERATED FILE. Do not edit. Regenerate with `python3 -m tooling.api.generate`.
--- Source: Gethe/wow-ui-source@cde55d0033e89b246381385b2f063cd6c6047ef8 (classic),
--- client 5.5.4, build 69934, captured 2026-09-24.
+-- Source: Gethe/wow-ui-source@e5d9b3a22c3f0f6f41ebac0e454f4969594261cf (classic),
+-- client 5.5.4, build 70631, captured 2026-11-14.
 --
 -- Every entry is a direct alias of the host function, bound only when the
 -- running client has it. See docs/API_KIT_DESIGN.md, section 7.2.
@@ -500,6 +500,7 @@ ApiKit:RegisterFlavor("classic-mop", function(api, host)
       local target = {}
       api.battleNet = target
       target.areHighResTexturesInstalled = source.AreHighResTexturesInstalled
+      target.areRealIDFriendsEnabled = source.AreRealIDFriendsEnabled
       target.bnCheckBattleTagInviteToRecentAlly = source.BNCheckBattleTagInviteToRecentAlly
       target.canToggleHighResTexturesWithoutClientReload =
         source.CanToggleHighResTexturesWithoutClientReload
@@ -7330,4 +7331,4 @@ ApiKit:RegisterFlavor("classic-mop", function(api, host)
     target.unitEventConstants = source.UnitEventConstants
     target.unitPowerSpellIDs = source.UnitPowerSpellIDs
   end
-end, { version = "5.5.4", build = 69934 })
+end, { version = "5.5.4", build = 70631 })
