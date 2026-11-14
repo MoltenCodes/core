@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.2.0 — 2026-11-15
+
+A metadata refresh to the client builds the mirror carried on 2026-11-14
+(issue #1). The facade is unchanged; the generated flavour files, the types,
+the metadata, the change reports under `docs/changes/` and each flavour's
+`history.json` move to the new builds. A refresh is at least a minor version
+(`docs/RELEASES.md`, *Versioning*).
+
+- Retail: `Gethe/wow-ui-source@297d7aaa` (live), client 12.1.0 b69933 → 12.1.5 b70783. 6,338 → 6,440 documented functions, 4,900 → 4,970 bound in 312 → 316 namespaces; 1,782 → 1,784 events, 844 → 856 enumerations. Report: `docs/changes/retail/69933-70783.md` (functions +111 −9 ~62; namespaces +7 −1; enumerations +12 ~18). **Breaking for Retail:** the client no longer documents `tableUtil` (`count`, `create`, `findIndexedMismatch`, `freeze`, `isfrozen`), `stringUtil.trim`, `pvp.getRandomTrainingGroundRewards`, `pvp.hasRandomTrainingGroundWinToday`, `pvp.joinRandomTrainingGroundBattleground` or `Enum.BagFlag.IgnoreSoulbound`. The tables now document `string` and `table` as namespaces of their own (`api.string.trim`, `api.table.count`, ...), so the five `tableUtil` and `stringUtil` wrappers have successors under those names; the three training-ground functions have none. The real-client suite's `RELOCATED_BINDINGS` follows the new Retail metadata (`pvp.getArenaOpponentSpec` is documented as the global `GetArenaOpponentSpec`; the `string` and `table` functions are no longer relocations), and its Retail counts and build follow the capture.
+
 ## 0.1.4 — 2026-09-25
 
 - Fixed: a function the client's documentation tables place outside its system's namespace with its own `Namespace` attribute was bound through the system's namespace, a host member that does not exist, so its wrapper was silently absent. Found on Retail 12.1.0 b69933: `api.restrictedActions.inCombatLockdown` was `nil` because the Retail file read `C_RestrictedActions.InCombatLockdown`, while the tables mark `InCombatLockdown` with `Namespace = ""`, a global. `tooling/api/normalize.py` now takes the function's own `Namespace` over its system's for the binding (empty string: a global; another name: that table), and `tooling/api/validate.py` refuses a binding that disagrees with the attribute. Wrapper names do not move (`docs/NAMING.md`, rule 3).

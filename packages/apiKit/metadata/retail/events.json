@@ -668,6 +668,14 @@
       "wrapper": "ajRewardDataReceived"
     },
     {
+      "literalName": "ALERT_AGE_VERIFICATION_RESTRICTED",
+      "name": "AlertAgeVerificationRestricted",
+      "source": "SocialRestrictionsDocumentation.lua",
+      "synchronous": true,
+      "system": "SocialRestrictions",
+      "wrapper": "alertAgeVerificationRestricted"
+    },
+    {
       "literalName": "ALERT_REGIONAL_CHAT_DISABLED",
       "name": "AlertRegionalChatDisabled",
       "source": "SocialRestrictionsDocumentation.lua",
@@ -30524,6 +30532,9 @@
           "type": "cstring"
         },
         {
+          "flags": [
+            "SecretValue"
+          ],
           "name": "amount",
           "nilable": false,
           "type": "number"
@@ -31409,7 +31420,7 @@
           ],
           "name": "castBarID",
           "nilable": true,
-          "type": "number"
+          "type": "UnitCastBarID"
         }
       ],
       "source": "UnitDocumentation.lua",
@@ -31450,7 +31461,7 @@
           ],
           "name": "castBarID",
           "nilable": true,
-          "type": "number"
+          "type": "UnitCastBarID"
         }
       ],
       "source": "UnitDocumentation.lua",
@@ -31486,7 +31497,7 @@
           ],
           "name": "castBarID",
           "nilable": true,
-          "type": "number"
+          "type": "UnitCastBarID"
         }
       ],
       "source": "UnitDocumentation.lua",
@@ -31522,7 +31533,7 @@
           ],
           "name": "castBarID",
           "nilable": true,
-          "type": "number"
+          "type": "UnitCastBarID"
         }
       ],
       "source": "UnitDocumentation.lua",
@@ -31558,7 +31569,7 @@
           ],
           "name": "castBarID",
           "nilable": true,
-          "type": "number"
+          "type": "UnitCastBarID"
         }
       ],
       "source": "UnitDocumentation.lua",
@@ -31604,7 +31615,7 @@
           ],
           "name": "castBarID",
           "nilable": true,
-          "type": "number"
+          "type": "UnitCastBarID"
         }
       ],
       "source": "UnitDocumentation.lua",
@@ -31640,7 +31651,7 @@
           ],
           "name": "castBarID",
           "nilable": true,
-          "type": "number"
+          "type": "UnitCastBarID"
         }
       ],
       "source": "UnitDocumentation.lua",
@@ -31676,7 +31687,7 @@
           ],
           "name": "castBarID",
           "nilable": true,
-          "type": "number"
+          "type": "UnitCastBarID"
         }
       ],
       "source": "UnitDocumentation.lua",
@@ -31712,7 +31723,7 @@
           ],
           "name": "castBarID",
           "nilable": true,
-          "type": "number"
+          "type": "UnitCastBarID"
         }
       ],
       "source": "UnitDocumentation.lua",
@@ -31753,7 +31764,7 @@
           ],
           "name": "castBarID",
           "nilable": true,
-          "type": "number"
+          "type": "UnitCastBarID"
         }
       ],
       "source": "UnitDocumentation.lua",
@@ -31911,7 +31922,7 @@
           ],
           "name": "castBarID",
           "nilable": true,
-          "type": "number"
+          "type": "UnitCastBarID"
         }
       ],
       "source": "UnitDocumentation.lua",
@@ -31947,7 +31958,7 @@
           ],
           "name": "castBarID",
           "nilable": true,
-          "type": "number"
+          "type": "UnitCastBarID"
         }
       ],
       "source": "UnitDocumentation.lua",
@@ -31983,7 +31994,7 @@
           ],
           "name": "castBarID",
           "nilable": true,
-          "type": "number"
+          "type": "UnitCastBarID"
         }
       ],
       "source": "UnitDocumentation.lua",
@@ -33786,6 +33797,17 @@
       "system": "PaperDollInfo",
       "unique": true,
       "wrapper": "weaponSlotChanged"
+    },
+    {
+      "documentation": [
+        "The weather has taken a turn."
+      ],
+      "literalName": "WEATHER_CHANGED",
+      "name": "WeatherChanged",
+      "source": "WeatherScriptDocumentation.lua",
+      "system": "WeatherScript",
+      "unique": true,
+      "wrapper": "weatherChanged"
     },
     {
       "literalName": "WEEKLY_REWARDS_ITEM_CHANGED",

@@ -47,6 +47,11 @@
           "value": 1
         },
         {
+          "name": "CAAPulsePlayerHealthPercentDefault",
+          "type": "number",
+          "value": 0
+        },
+        {
           "name": "CAATargetNameDefault",
           "type": "bool",
           "value": true
@@ -663,6 +668,16 @@
           "name": "DELVES_COMPANION_TOOLTIP_WIDGET_SET_ID",
           "type": "number",
           "value": 1331
+        },
+        {
+          "name": "DELVES_COMPANION_BRANN_CREATURE_ID",
+          "type": "number",
+          "value": 210759
+        },
+        {
+          "name": "DELVES_COMPANION_VALEERA_CREATURE_ID",
+          "type": "number",
+          "value": 248567
         }
       ],
       "wrapper": "delvesConsts"

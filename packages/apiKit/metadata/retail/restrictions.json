@@ -104,6 +104,15 @@
     },
     {
       "documentation": [
+        "Guarded APIs on a timed signal map raise an error when the map holds secret values and is accessed from a tainted execution context."
+      ],
+      "failureMode": "Error",
+      "kind": "precondition",
+      "name": "RequiresTimedSignalMapAccess",
+      "source": "TimedSignalMapSharedDocumentation.lua"
+    },
+    {
+      "documentation": [
         "Guarded APIs and events require that callers have access to unit aura data."
       ],
       "failureMode": "Error",
@@ -215,6 +224,14 @@
       "kind": "secret",
       "name": "SecretWhenLossOfControlInfoRestricted",
       "source": "SecretPredicatesDocumentation.lua"
+    },
+    {
+      "documentation": [
+        "Guarded APIs produce secret values if the subject Lua table contains any secret keys."
+      ],
+      "kind": "secret",
+      "name": "SecretWhenLuaTableHasSecretKeys",
+      "source": "LuaValuePredicatesDocumentation.lua"
     },
     {
       "documentation": [
@@ -401,6 +418,16 @@
       "name": "RequiresLimitedInput",
       "source": "InputDocumentation.lua",
       "system": "Input"
+    },
+    {
+      "documentation": [
+        "Prevents Remove and Null transliterators when used with secret text arguments."
+      ],
+      "failureMode": "ReturnNothing",
+      "kind": "precondition",
+      "name": "TransliteratorAllowed",
+      "source": "IntlDocumentation.lua",
+      "system": "Intl"
     },
     {
       "failureMode": "ReturnNothing",

@@ -30,8 +30,10 @@ author needs to predict a name from the Blizzard one.
    binding moves. `InCombatLockdown`, documented in the `RestrictedActions`
    system (`C_RestrictedActions`) with `Namespace = ""`, is the global
    `InCombatLockdown` reached as `api.restrictedActions.inCombatLockdown`;
-   `count` of `LuaTableUtil` (`C_TableUtil`, `Namespace = "table"`) is
-   `table.count` reached as `api.tableUtil.count`. It is not renamed by the
+   in the Classic metadata, `count` of `LuaTableUtil` (`C_TableUtil`,
+   `Namespace = "table"`) is `table.count` reached as `api.tableUtil.count`
+   (Retail 12.1.5 documents `table` as a namespace of its own, so there it is
+   `api.table.count`). It is not renamed by the
    rules of a global function (rule 4).
 4. **Global functions** drop their system's words when their name starts with
    them and more words follow: `UnitName` in `Unit` → `api.unit.name`,

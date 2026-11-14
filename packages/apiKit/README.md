@@ -45,8 +45,8 @@ metadata under `metadata/<flavour>/` and are never edited by hand. The
 metadata's own description is [`tooling/api/SCHEMA.md`](../../tooling/api/SCHEMA.md).
 All five flavours are committed. The counts are documented functions, of
 which the bound ones are wrapper entries and the rest are methods of script
-object types described in the types only: Retail (client 12.1.0, build 69933:
-6,338 functions, 4,900 bound in 312 namespaces; 1,782 events, 844
+object types described in the types only: Retail (client 12.1.5, build 70783:
+6,440 functions, 4,970 bound in 316 namespaces; 1,784 events, 856
 enumerations), Classic Era (1.15.9, build 69722: 4,589 functions, 3,229 bound
 in 261 namespaces), Mists of Pandaria Classic (5.5.4, build 69934: 4,590
 functions, 3,230 bound in 261), the Public Test Realm (12.1.5, build 69952:

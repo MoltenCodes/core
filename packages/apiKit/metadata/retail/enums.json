@@ -1769,10 +1769,6 @@
           "value": 2097152
         },
         {
-          "name": "IgnoreSoulbound",
-          "value": 4194304
-        },
-        {
           "name": "IgnoreReagentBags",
           "value": 8388608
         },
@@ -1796,7 +1792,7 @@
       "maxValue": 134217728,
       "minValue": 1,
       "name": "BagFlag",
-      "numValues": 28,
+      "numValues": 27,
       "source": "BagConstantsDocumentation.lua",
       "wrapper": "bagFlag"
     },
@@ -2802,12 +2798,248 @@
         {
           "name": "ProfessionIngenuity",
           "value": 82
+        },
+        {
+          "name": "Reserved_83",
+          "value": 83
+        },
+        {
+          "name": "Reserved_84",
+          "value": 84
+        },
+        {
+          "name": "Reserved_85",
+          "value": 85
+        },
+        {
+          "name": "Reserved_86",
+          "value": 86
+        },
+        {
+          "name": "Reserved_87",
+          "value": 87
+        },
+        {
+          "name": "Reserved_88",
+          "value": 88
+        },
+        {
+          "name": "Reserved_89",
+          "value": 89
+        },
+        {
+          "name": "Reserved_90",
+          "value": 90
+        },
+        {
+          "name": "Reserved_91",
+          "value": 91
+        },
+        {
+          "name": "Reserved_92",
+          "value": 92
+        },
+        {
+          "name": "Reserved_93",
+          "value": 93
+        },
+        {
+          "name": "Reserved_94",
+          "value": 94
+        },
+        {
+          "name": "Reserved_95",
+          "value": 95
+        },
+        {
+          "name": "Reserved_96",
+          "value": 96
+        },
+        {
+          "name": "Reserved_97",
+          "value": 97
+        },
+        {
+          "name": "Reserved_98",
+          "value": 98
+        },
+        {
+          "name": "Reserved_99",
+          "value": 99
+        },
+        {
+          "name": "Reserved_100",
+          "value": 100
+        },
+        {
+          "name": "Reserved_101",
+          "value": 101
+        },
+        {
+          "name": "Reserved_102",
+          "value": 102
+        },
+        {
+          "name": "Reserved_103",
+          "value": 103
+        },
+        {
+          "name": "Reserved_104",
+          "value": 104
+        },
+        {
+          "name": "Reserved_105",
+          "value": 105
+        },
+        {
+          "name": "Reserved_106",
+          "value": 106
+        },
+        {
+          "name": "Reserved_107",
+          "value": 107
+        },
+        {
+          "name": "Reserved_108",
+          "value": 108
+        },
+        {
+          "name": "Reserved_109",
+          "value": 109
+        },
+        {
+          "name": "Reserved_110",
+          "value": 110
+        },
+        {
+          "name": "Reserved_111",
+          "value": 111
+        },
+        {
+          "name": "Reserved_112",
+          "value": 112
+        },
+        {
+          "name": "Reserved_113",
+          "value": 113
+        },
+        {
+          "name": "Reserved_114",
+          "value": 114
+        },
+        {
+          "name": "Reserved_115",
+          "value": 115
+        },
+        {
+          "name": "Reserved_116",
+          "value": 116
+        },
+        {
+          "name": "Reserved_117",
+          "value": 117
+        },
+        {
+          "name": "Reserved_118",
+          "value": 118
+        },
+        {
+          "name": "Reserved_119",
+          "value": 119
+        },
+        {
+          "name": "Reserved_120",
+          "value": 120
+        },
+        {
+          "name": "Reserved_121",
+          "value": 121
+        },
+        {
+          "name": "Reserved_122",
+          "value": 122
+        },
+        {
+          "name": "Reserved_123",
+          "value": 123
+        },
+        {
+          "name": "Reserved_124",
+          "value": 124
+        },
+        {
+          "name": "Reserved_125",
+          "value": 125
+        },
+        {
+          "name": "Reserved_126",
+          "value": 126
+        },
+        {
+          "name": "Reserved_127",
+          "value": 127
+        },
+        {
+          "name": "Reserved_128",
+          "value": 128
+        },
+        {
+          "name": "Reserved_129",
+          "value": 129
+        },
+        {
+          "name": "Reserved_130",
+          "value": 130
+        },
+        {
+          "name": "Reserved_131",
+          "value": 131
+        },
+        {
+          "name": "Reserved_132",
+          "value": 132
+        },
+        {
+          "name": "Reserved_133",
+          "value": 133
+        },
+        {
+          "name": "Reserved_134",
+          "value": 134
+        },
+        {
+          "name": "Reserved_135",
+          "value": 135
+        },
+        {
+          "name": "Reserved_136",
+          "value": 136
+        },
+        {
+          "name": "Reserved_137",
+          "value": 137
+        },
+        {
+          "name": "Reserved_138",
+          "value": 138
+        },
+        {
+          "name": "Reserved_139",
+          "value": 139
+        },
+        {
+          "name": "Reserved_140",
+          "value": 140
+        },
+        {
+          "name": "Reserved_141",
+          "value": 141
         }
       ],
-      "maxValue": 82,
+      "maxValue": 141,
       "minValue": 0,
       "name": "BonusStatIndex",
-      "numValues": 83,
+      "numValues": 142,
       "source": "ItemConstantsDocumentation.lua",
       "wrapper": "bonusStatIndex"
     },
@@ -2845,6 +3077,44 @@
       "source": "PvpInfoDocumentation.lua",
       "system": "PvpInfo",
       "wrapper": "brawlType"
+    },
+    {
+      "fields": [
+        {
+          "documentation": [
+            "Locate extended grapheme cluster boundaries, which are treated as user-perceived character units."
+          ],
+          "name": "Character",
+          "value": 0
+        },
+        {
+          "documentation": [
+            "Locate word boundaries for selection, search, and whole-word operations, including locale dictionary support where available."
+          ],
+          "name": "Word",
+          "value": 1
+        },
+        {
+          "documentation": [
+            "Locate sentence boundaries while handling cases such as periods in numbers or abbreviations and trailing punctuation."
+          ],
+          "name": "Sentence",
+          "value": 2
+        },
+        {
+          "documentation": [
+            "Locate positions where text can wrap, using Unicode line-breaking rules that handle punctuation and hyphenated words."
+          ],
+          "name": "Line",
+          "value": 3
+        }
+      ],
+      "maxValue": 3,
+      "minValue": 0,
+      "name": "BreakType",
+      "numValues": 4,
+      "source": "IntlSharedTypesDocumentation.lua",
+      "wrapper": "breakType"
     },
     {
       "fields": [
@@ -5245,6 +5515,51 @@
     {
       "fields": [
         {
+          "documentation": [
+            "Compare base-character differences and ignore accents, case, and later collation levels."
+          ],
+          "name": "Primary",
+          "value": 0
+        },
+        {
+          "documentation": [
+            "Compare accent or diacritic differences after base characters match, while ignoring tertiary differences such as case."
+          ],
+          "name": "Secondary",
+          "value": 1
+        },
+        {
+          "documentation": [
+            "Compare case, letter variants, and similar tertiary differences after primary and secondary differences match."
+          ],
+          "name": "Tertiary",
+          "value": 2
+        },
+        {
+          "documentation": [
+            "Distinguish punctuation, whitespace, symbols, or Japanese Hiragana/Katakana differences after the first three levels match."
+          ],
+          "name": "Quaternary",
+          "value": 3
+        },
+        {
+          "documentation": [
+            "Use NFD Unicode code point order as a final tie-breaker after all other collation levels match."
+          ],
+          "name": "Identical",
+          "value": 4
+        }
+      ],
+      "maxValue": 4,
+      "minValue": 0,
+      "name": "CollationStrength",
+      "numValues": 5,
+      "source": "IntlSharedTypesDocumentation.lua",
+      "wrapper": "collationStrength"
+    },
+    {
+      "fields": [
+        {
           "name": "ItemQualityPoor",
           "value": 0
         },
@@ -5343,12 +5658,16 @@
         {
           "name": "PlayerDebuffs",
           "value": 8
+        },
+        {
+          "name": "PlayerHealthPulse",
+          "value": 9
         }
       ],
-      "maxValue": 8,
+      "maxValue": 9,
       "minValue": 0,
       "name": "CombatAudioAlertCategory",
-      "numValues": 9,
+      "numValues": 10,
       "source": "CombatAudioAlertSharedDocumentation.lua",
       "wrapper": "combatAudioAlertCategory"
     },
@@ -5573,6 +5892,56 @@
       "numValues": 6,
       "source": "CombatAudioAlertSharedDocumentation.lua",
       "wrapper": "combatAudioAlertPlayerResourceFormatValues"
+    },
+    {
+      "fields": [
+        {
+          "name": "Off",
+          "value": 0
+        },
+        {
+          "name": "Under90Percent",
+          "value": 1
+        },
+        {
+          "name": "Under80Percent",
+          "value": 2
+        },
+        {
+          "name": "Under70Percent",
+          "value": 3
+        },
+        {
+          "name": "Under60Percent",
+          "value": 4
+        },
+        {
+          "name": "Under50Percent",
+          "value": 5
+        },
+        {
+          "name": "Under40Percent",
+          "value": 6
+        },
+        {
+          "name": "Under30Percent",
+          "value": 7
+        },
+        {
+          "name": "Under20Percent",
+          "value": 8
+        },
+        {
+          "name": "Under10Percent",
+          "value": 9
+        }
+      ],
+      "maxValue": 9,
+      "minValue": 0,
+      "name": "CombatAudioAlertPulsePercentValues",
+      "numValues": 10,
+      "source": "CombatAudioAlertSharedDocumentation.lua",
+      "wrapper": "combatAudioAlertPulsePercentValues"
     },
     {
       "fields": [
@@ -6638,12 +7007,16 @@
         {
           "name": "HideByDefault",
           "value": 2
+        },
+        {
+          "name": "SelectHighestLevelLinkedSpell",
+          "value": 4
         }
       ],
-      "maxValue": 2,
+      "maxValue": 4,
       "minValue": 1,
       "name": "CooldownSetSpellFlags",
-      "numValues": 2,
+      "numValues": 3,
       "source": "CooldownViewerConstantsDocumentation.lua",
       "wrapper": "cooldownSetSpellFlags"
     },
@@ -7952,12 +8325,16 @@
         {
           "name": "Epic",
           "value": 4
+        },
+        {
+          "name": "EpicTier2",
+          "value": 5
         }
       ],
-      "maxValue": 4,
+      "maxValue": 5,
       "minValue": 1,
       "name": "CurioRarity",
-      "numValues": 4,
+      "numValues": 5,
       "source": "DelvesConstantsDocumentation.lua",
       "wrapper": "curioRarity"
     },
@@ -8331,6 +8708,51 @@
       "numValues": 5,
       "source": "CurrencyConstantsDocumentation.lua",
       "wrapper": "currencyGainFlags"
+    },
+    {
+      "fields": [
+        {
+          "documentation": [
+            "A symbolic name for a currency, such as '$' for USD."
+          ],
+          "name": "Symbol",
+          "value": 0
+        },
+        {
+          "documentation": [
+            "The shortest narrow currency symbol, such as '$' instead of 'US$' for USD in en-CA."
+          ],
+          "name": "NarrowSymbol",
+          "value": 1
+        },
+        {
+          "documentation": [
+            "The long name for a currency, such as 'US Dollar' for USD."
+          ],
+          "name": "Long",
+          "value": 2
+        },
+        {
+          "documentation": [
+            "The formal currency symbol is similar to the regular currency symbol, but it always takes the form used in formal settings such as banking; for example, 'NT$' instead of '$' for TWD in zh-TW."
+          ],
+          "name": "FormalSymbol",
+          "value": 3
+        },
+        {
+          "documentation": [
+            "The variant symbol for a currency is an alternative symbol that is not necessarily as widely used as the regular symbol."
+          ],
+          "name": "VariantSymbol",
+          "value": 4
+        }
+      ],
+      "maxValue": 4,
+      "minValue": 0,
+      "name": "CurrencyNameStyle",
+      "numValues": 5,
+      "source": "IntlSharedTypesDocumentation.lua",
+      "wrapper": "currencyNameStyle"
     },
     {
       "fields": [
@@ -9403,6 +9825,51 @@
       "numValues": 2,
       "source": "DamageConstantsDocumentation.lua",
       "wrapper": "damageclassType"
+    },
+    {
+      "fields": [
+        {
+          "documentation": [
+            "Do not include this date or time portion in the formatter."
+          ],
+          "name": "None",
+          "value": 0
+        },
+        {
+          "documentation": [
+            "Use the shortest locale format, generally numeric, such as 12/13/52 or 3:30pm."
+          ],
+          "name": "Short",
+          "value": 1
+        },
+        {
+          "documentation": [
+            "Use a longer locale format than Short, such as abbreviated month names for dates."
+          ],
+          "name": "Medium",
+          "value": 2
+        },
+        {
+          "documentation": [
+            "Use a longer locale format with fuller names or time fields than Medium."
+          ],
+          "name": "Long",
+          "value": 3
+        },
+        {
+          "documentation": [
+            "Use the most completely specified locale format, such as weekday, era, or time zone when applicable."
+          ],
+          "name": "Full",
+          "value": 4
+        }
+      ],
+      "maxValue": 4,
+      "minValue": 0,
+      "name": "DateTimeStyle",
+      "numValues": 5,
+      "source": "IntlSharedTypesDocumentation.lua",
+      "wrapper": "dateTimeStyle"
     },
     {
       "fields": [
@@ -11604,12 +12071,16 @@
         {
           "name": "HouseUpgradeAvailable",
           "value": 26
+        },
+        {
+          "name": "RenownFactionLeveledUp",
+          "value": 27
         }
       ],
-      "maxValue": 26,
+      "maxValue": 27,
       "minValue": 0,
       "name": "EventToastEventType",
-      "numValues": 27,
+      "numValues": 28,
       "source": "UIEventToastConstantsDocumentation.lua",
       "wrapper": "eventToastEventType"
     },
@@ -11989,12 +12460,26 @@
           ],
           "name": "QueryRotation",
           "value": 4096
+        },
+        {
+          "documentation": [
+            "Restricts APIs that query the progress or state of animations."
+          ],
+          "name": "QueryAnimationProgress",
+          "value": 8192
+        },
+        {
+          "documentation": [
+            "Restricts APIs that add animations to animation groups."
+          ],
+          "name": "AddAnimations",
+          "value": 16384
         }
       ],
-      "maxValue": 4096,
+      "maxValue": 16384,
       "minValue": 1,
       "name": "ForbiddenAspect",
-      "numValues": 13,
+      "numValues": 15,
       "source": "ForbiddenAspectConstantsDocumentation.lua",
       "wrapper": "forbiddenAspect"
     },
@@ -12005,176 +12490,180 @@
           "value": 0
         },
         {
-          "name": "EntityPosition",
+          "name": "AuthMirrorState",
           "value": 1
         },
         {
-          "name": "CgObject",
+          "name": "EntityPosition",
           "value": 2
         },
         {
-          "name": "JamDispatcher",
+          "name": "CgObject",
           "value": 3
         },
         {
-          "name": "HeartbeatData",
+          "name": "JamDispatcher",
           "value": 4
         },
         {
-          "name": "FTransportLink",
+          "name": "HeartbeatData",
           "value": 5
         },
         {
-          "name": "ClientObservablesData",
+          "name": "FTransportLink",
           "value": 6
         },
         {
-          "name": "TimerQueues",
+          "name": "ClientObservablesData",
           "value": 7
         },
         {
-          "name": "TransferSuspensionData",
+          "name": "TimerQueues",
           "value": 8
         },
         {
-          "name": "DeferredMessages",
+          "name": "TransferSuspensionData",
           "value": 9
         },
         {
-          "name": "FPersistableJamServers",
+          "name": "DeferredMessages",
           "value": 10
         },
         {
-          "name": "FPlayerJamServers",
+          "name": "FPersistableJamServers",
           "value": 11
         },
         {
-          "name": "FLootObjectList",
+          "name": "FPlayerJamServers",
           "value": 12
         },
         {
-          "name": "FPlayerOwnershipLink",
+          "name": "FLootObjectList",
           "value": 13
         },
         {
-          "name": "FUnitAreaTriggerLink",
+          "name": "FPlayerOwnershipLink",
           "value": 14
         },
         {
-          "name": "Actor",
+          "name": "FUnitAreaTriggerLink",
           "value": 15
         },
         {
-          "name": "FPhaseShiftData",
+          "name": "Actor",
           "value": 16
         },
         {
-          "name": "FVendor",
+          "name": "FPhaseShiftData",
           "value": 17
         },
         {
-          "name": "MirroredObjectC",
+          "name": "FVendor",
           "value": 18
         },
         {
-          "name": "FMeshObjectData",
+          "name": "MirroredObjectC",
           "value": 19
         },
         {
-          "name": "FHousingDecor",
+          "name": "FMeshObjectData",
           "value": 20
         },
         {
-          "name": "FHousingRoom",
+          "name": "FHousingDecor",
           "value": 21
         },
         {
-          "name": "FHousingRoomComponentMesh",
+          "name": "FHousingRoom",
           "value": 22
         },
         {
-          "name": "FHousingPlayerHouse",
+          "name": "FHousingRoomComponentMesh",
           "value": 23
         },
         {
-          "name": "FHousingHouseDecorSet",
+          "name": "FHousingPlayerHouse",
           "value": 24
         },
         {
-          "name": "FHousingHouseRoomSet",
+          "name": "FHousingHouseDecorSet",
           "value": 25
         },
         {
-          "name": "FHousingDecorProxy",
+          "name": "FHousingHouseRoomSet",
           "value": 26
         },
         {
-          "name": "FJamHousingCornerstone",
+          "name": "FHousingDecorProxy",
           "value": 27
         },
         {
-          "name": "FHousingDecorActor",
+          "name": "FJamHousingCornerstone",
           "value": 28
         },
         {
-          "name": "FHousingPlotAreaTrigger",
+          "name": "FHousingDecorActor",
           "value": 29
         },
         {
-          "name": "FNeighborhoodMirrorData",
+          "name": "FHousingPlotAreaTrigger",
           "value": 30
         },
         {
-          "name": "FMirroredPositionData",
+          "name": "FNeighborhoodMirrorData",
           "value": 31
         },
         {
-          "name": "FPlayerHouseInfo",
+          "name": "FMirroredPositionData",
           "value": 32
         },
         {
-          "name": "FHousingStorageMirrorData",
+          "name": "FPlayerHouseInfo",
           "value": 33
         },
         {
-          "name": "FHousingFixture",
+          "name": "FHousingStorageMirrorData",
           "value": 34
         },
         {
-          "name": "FHousingHouseFixtureSet",
+          "name": "FHousingFixture",
           "value": 35
         },
         {
-          "name": "Timer",
+          "name": "FHousingHouseFixtureSet",
           "value": 36
         },
         {
-          "name": "FPlayerInitiativeInfo",
+          "name": "Timer",
           "value": 37
         },
         {
-          "name": "FNeighborhoodStateData",
+          "name": "FPlayerInitiativeInfo",
           "value": 38
         },
         {
-          "name": "FUnitAIGroupLink",
+          "name": "FNeighborhoodStateData",
           "value": 39
         },
         {
-          "name": "FPathingDynamicLinks",
+          "name": "FUnitAIGroupLink",
           "value": 40
         },
         {
-          "name": "FPathingDoor",
+          "name": "FPathingDynamicLinks",
           "value": 41
         },
         {
-          "name": "FWorldStateListenerData",
+          "name": "FPathingDoor",
           "value": 42
         },
         {
-          "name": "FMapObject",
+          "name": "FWorldStateListenerData",
           "value": 43
+        },
+        {
+          "name": "FMapObject",
+          "value": 44
         },
         {
           "name": "TagItem",
@@ -12312,7 +12801,7 @@
       "maxValue": 255,
       "minValue": 0,
       "name": "FragmentID",
-      "numValues": 77,
+      "numValues": 78,
       "source": "WowCSConstantsDocumentation.lua",
       "wrapper": "fragmentID"
     },
@@ -12517,12 +13006,16 @@
         {
           "name": "HousingPetBeds",
           "value": 50
+        },
+        {
+          "name": "Reserved1",
+          "value": 51
         }
       ],
-      "maxValue": 50,
+      "maxValue": 51,
       "minValue": 1,
       "name": "FrameTutorialAccount",
-      "numValues": 50,
+      "numValues": 51,
       "source": "TutorialDocumentation.lua",
       "system": "Tutorial",
       "wrapper": "frameTutorialAccount"
@@ -13542,12 +14035,16 @@
         {
           "name": "TieredEntrance",
           "value": 66
+        },
+        {
+          "name": "RewardsShop",
+          "value": 67
         }
       ],
-      "maxValue": 66,
+      "maxValue": 67,
       "minValue": 0,
       "name": "GossipNpcOption",
-      "numValues": 67,
+      "numValues": 68,
       "source": "GossipConstantsDocumentation.lua",
       "wrapper": "gossipNpcOption"
     },
@@ -15563,174 +16060,178 @@
           "value": 70
         },
         {
-          "name": "MissingCoreFixture",
+          "name": "MessageTooLong",
           "value": 71
         },
         {
-          "name": "MissingDye",
+          "name": "MissingCoreFixture",
           "value": 72
         },
         {
-          "name": "MissingExpansionAccess",
+          "name": "MissingDye",
           "value": 73
         },
         {
-          "name": "MissingFactionMap",
+          "name": "MissingExpansionAccess",
           "value": 74
         },
         {
-          "name": "MissingPrivateNeighborhoodInvite",
+          "name": "MissingFactionMap",
           "value": 75
         },
         {
-          "name": "MoreHouseSlotsNeeded",
+          "name": "MissingPrivateNeighborhoodInvite",
           "value": 76
         },
         {
-          "name": "MoreSignaturesNeeded",
+          "name": "MoreHouseSlotsNeeded",
           "value": 77
         },
         {
-          "name": "NeighborhoodNotFound",
+          "name": "MoreSignaturesNeeded",
           "value": 78
         },
         {
-          "name": "NoNeighborhoodOwnershipRequests",
+          "name": "NeighborhoodNotFound",
           "value": 79
         },
         {
-          "name": "NotInDecorEditMode",
+          "name": "NoNeighborhoodOwnershipRequests",
           "value": 80
         },
         {
-          "name": "NotInFixtureEditMode",
+          "name": "NotInDecorEditMode",
           "value": 81
         },
         {
-          "name": "NotInLayoutEditMode",
+          "name": "NotInFixtureEditMode",
           "value": 82
         },
         {
-          "name": "NotInsideHouse",
+          "name": "NotInLayoutEditMode",
           "value": 83
         },
         {
-          "name": "NotOnOwnedPlot",
+          "name": "NotInsideHouse",
           "value": 84
         },
         {
-          "name": "OperationAborted",
+          "name": "NotOnOwnedPlot",
           "value": 85
         },
         {
-          "name": "OwnerNotInGuild",
+          "name": "OperationAborted",
           "value": 86
         },
         {
-          "name": "PermissionDenied",
+          "name": "OwnerNotInGuild",
           "value": 87
         },
         {
-          "name": "PlacementTargetInvalid",
+          "name": "PermissionDenied",
           "value": 88
         },
         {
-          "name": "PlayerNotFound",
+          "name": "PlacementTargetInvalid",
           "value": 89
         },
         {
-          "name": "PlayerNotInInstance",
+          "name": "PlayerNotFound",
           "value": 90
         },
         {
-          "name": "PlotNotFound",
+          "name": "PlayerNotInInstance",
           "value": 91
         },
         {
-          "name": "PlotNotVacant",
+          "name": "PlotNotFound",
           "value": 92
         },
         {
-          "name": "PlotReservationCooldown",
+          "name": "PlotNotVacant",
           "value": 93
         },
         {
-          "name": "PlotReserved",
+          "name": "PlotReservationCooldown",
           "value": 94
         },
         {
-          "name": "RoomNotFound",
+          "name": "PlotReserved",
           "value": 95
         },
         {
-          "name": "RoomPlacementOutOfBounds",
+          "name": "RoomNotFound",
           "value": 96
         },
         {
-          "name": "RoomUpdateFailed",
+          "name": "RoomPlacementOutOfBounds",
           "value": 97
         },
         {
-          "name": "RpcFailure",
+          "name": "RoomUpdateFailed",
           "value": 98
         },
         {
-          "name": "ServiceNotAvailable",
+          "name": "RpcFailure",
           "value": 99
         },
         {
-          "name": "StaticDataNotFound",
+          "name": "ServiceNotAvailable",
           "value": 100
         },
         {
-          "name": "TimeoutLimit",
+          "name": "StaticDataNotFound",
           "value": 101
         },
         {
-          "name": "TimerunningNotAllowed",
+          "name": "TimeoutLimit",
           "value": 102
         },
         {
-          "name": "TokenRequired",
+          "name": "TimerunningNotAllowed",
           "value": 103
         },
         {
-          "name": "TooManyRequests",
+          "name": "TokenRequired",
           "value": 104
         },
         {
-          "name": "TransactionFailure",
+          "name": "TooManyRequests",
           "value": 105
         },
         {
-          "name": "UncollectedExteriorFixture",
+          "name": "TransactionFailure",
           "value": 106
         },
         {
-          "name": "UncollectedHouseType",
+          "name": "UncollectedExteriorFixture",
           "value": 107
         },
         {
-          "name": "UncollectedRoom",
+          "name": "UncollectedHouseType",
           "value": 108
         },
         {
-          "name": "UncollectedRoomMaterial",
+          "name": "UncollectedRoom",
           "value": 109
         },
         {
-          "name": "UncollectedRoomTheme",
+          "name": "UncollectedRoomMaterial",
           "value": 110
         },
         {
-          "name": "UnlockOperationFailed",
+          "name": "UncollectedRoomTheme",
           "value": 111
+        },
+        {
+          "name": "UnlockOperationFailed",
+          "value": 112
         }
       ],
-      "maxValue": 111,
+      "maxValue": 112,
       "minValue": 0,
       "name": "HousingResult",
-      "numValues": 112,
+      "numValues": 113,
       "source": "PlayerHousingConstantsDocumentation.lua",
       "wrapper": "housingResult"
     },
@@ -18536,6 +19037,72 @@
     {
       "fields": [
         {
+          "documentation": [
+            "Canonicalizes the locale identifier into ICU's canonical locale ID form."
+          ],
+          "name": "Canonicalize",
+          "value": 0
+        },
+        {
+          "documentation": [
+            "Adds likely script and region subtags according to CLDR likely-subtags data."
+          ],
+          "name": "AddLikelySubtags",
+          "value": 1
+        },
+        {
+          "documentation": [
+            "Minimizes script and region subtags according to CLDR likely-subtags data."
+          ],
+          "name": "RemoveLikelySubtags",
+          "value": 2
+        },
+        {
+          "documentation": [
+            "Gets the language code from the locale identifier."
+          ],
+          "name": "Language",
+          "value": 3
+        },
+        {
+          "documentation": [
+            "Gets the script code from the locale identifier."
+          ],
+          "name": "Script",
+          "value": 4
+        },
+        {
+          "documentation": [
+            "Gets the region code from the locale identifier."
+          ],
+          "name": "Region",
+          "value": 5
+        },
+        {
+          "documentation": [
+            "Gets the variant code from the locale identifier."
+          ],
+          "name": "Variant",
+          "value": 6
+        },
+        {
+          "documentation": [
+            "Gets the parent locale identifier."
+          ],
+          "name": "ParentLocale",
+          "value": 7
+        }
+      ],
+      "maxValue": 7,
+      "minValue": 0,
+      "name": "LocaleTransform",
+      "numValues": 8,
+      "source": "IntlSharedTypesDocumentation.lua",
+      "wrapper": "localeTransform"
+    },
+    {
+      "fields": [
+        {
           "name": "Fatal",
           "value": 1
         },
@@ -20100,6 +20667,44 @@
     {
       "fields": [
         {
+          "documentation": [
+            "Canonical decomposition followed by canonical composition."
+          ],
+          "name": "Nfc",
+          "value": 0
+        },
+        {
+          "documentation": [
+            "Canonical decomposition."
+          ],
+          "name": "Nfd",
+          "value": 1
+        },
+        {
+          "documentation": [
+            "Compatibility decomposition followed by canonical composition."
+          ],
+          "name": "Nfkc",
+          "value": 2
+        },
+        {
+          "documentation": [
+            "Compatibility decomposition."
+          ],
+          "name": "Nfkd",
+          "value": 3
+        }
+      ],
+      "maxValue": 3,
+      "minValue": 0,
+      "name": "NormalizationForm",
+      "numValues": 4,
+      "source": "IntlSharedTypesDocumentation.lua",
+      "wrapper": "normalizationForm"
+    },
+    {
+      "fields": [
+        {
           "name": "AllowMultiple",
           "value": 1
         },
@@ -20114,6 +20719,44 @@
       "numValues": 2,
       "source": "ProfessionConstantsDocumentation.lua",
       "wrapper": "npcCraftingOrderSetFlags"
+    },
+    {
+      "fields": [
+        {
+          "documentation": [
+            "Use normal decimal number format for the locale."
+          ],
+          "name": "Decimal",
+          "value": 0
+        },
+        {
+          "documentation": [
+            "Use decimal formatting with zero minimum and maximum fraction digits in this wrapper."
+          ],
+          "name": "Integer",
+          "value": 1
+        },
+        {
+          "documentation": [
+            "Use percent number format for the locale."
+          ],
+          "name": "Percent",
+          "value": 2
+        },
+        {
+          "documentation": [
+            "Use generic currency format with a currency symbol and non-accounting minus-sign negatives."
+          ],
+          "name": "Currency",
+          "value": 3
+        }
+      ],
+      "maxValue": 3,
+      "minValue": 0,
+      "name": "NumberStyle",
+      "numValues": 4,
+      "source": "IntlSharedTypesDocumentation.lua",
+      "wrapper": "numberStyle"
     },
     {
       "fields": [
@@ -21481,6 +22124,34 @@
     {
       "fields": [
         {
+          "name": "Log",
+          "value": 1
+        }
+      ],
+      "maxValue": 1,
+      "minValue": 1,
+      "name": "PlayerDataElementAccountFlags",
+      "numValues": 1,
+      "source": "PlayerDataConstantsDocumentation.lua",
+      "wrapper": "playerDataElementAccountFlags"
+    },
+    {
+      "fields": [
+        {
+          "name": "Log",
+          "value": 1
+        }
+      ],
+      "maxValue": 1,
+      "minValue": 1,
+      "name": "PlayerDataElementCharacterFlags",
+      "numValues": 1,
+      "source": "PlayerDataConstantsDocumentation.lua",
+      "wrapper": "playerDataElementCharacterFlags"
+    },
+    {
+      "fields": [
+        {
           "name": "Int",
           "value": 0
         },
@@ -21817,12 +22488,16 @@
         {
           "name": "TieredEntrance",
           "value": 79
+        },
+        {
+          "name": "RewardsShop",
+          "value": 80
         }
       ],
-      "maxValue": 79,
+      "maxValue": 80,
       "minValue": 0,
       "name": "PlayerInteractionType",
-      "numValues": 80,
+      "numValues": 81,
       "source": "PlayerInteractionManagerConstantsDocumentation.lua",
       "wrapper": "playerInteractionType"
     },
@@ -21896,6 +22571,30 @@
       "source": "LobbyMatchmakerInfoDocumentation.lua",
       "system": "LobbyMatchmakerInfo",
       "wrapper": "plunderstormQueueState"
+    },
+    {
+      "fields": [
+        {
+          "documentation": [
+            "Use plural rules for counted quantities, such as 1 file vs. 2 files."
+          ],
+          "name": "Cardinal",
+          "value": 0
+        },
+        {
+          "documentation": [
+            "Use plural rules for ordered values, such as 1st, 2nd, 3rd, and 4th."
+          ],
+          "name": "Ordinal",
+          "value": 1
+        }
+      ],
+      "maxValue": 1,
+      "minValue": 0,
+      "name": "PluralType",
+      "numValues": 2,
+      "source": "IntlSharedTypesDocumentation.lua",
+      "wrapper": "pluralType"
     },
     {
       "fields": [
@@ -26971,12 +27670,28 @@
         {
           "name": "EncounterSucccessOnly",
           "value": 1
+        },
+        {
+          "name": "PvPRatedOnly",
+          "value": 2
+        },
+        {
+          "name": "PvPUnratedOnly",
+          "value": 4
+        },
+        {
+          "name": "PvPWinOnly",
+          "value": 8
+        },
+        {
+          "name": "PvPLossOnly",
+          "value": 16
         }
       ],
-      "maxValue": 1,
+      "maxValue": 16,
       "minValue": 0,
       "name": "SurveyDeliveryFlags",
-      "numValues": 2,
+      "numValues": 6,
       "source": "WowSurveyConstantsDocumentation.lua",
       "wrapper": "surveyDeliveryFlags"
     },
@@ -27005,12 +27720,20 @@
         {
           "name": "EncounterEnd",
           "value": 5
+        },
+        {
+          "name": "AchievementCompleted",
+          "value": 6
+        },
+        {
+          "name": "BattlegroundEnd",
+          "value": 7
         }
       ],
-      "maxValue": 5,
+      "maxValue": 7,
       "minValue": 0,
       "name": "SurveyDeliveryMoment",
-      "numValues": 6,
+      "numValues": 8,
       "source": "WowSurveyConstantsDocumentation.lua",
       "wrapper": "surveyDeliveryMoment"
     },
@@ -27091,12 +27814,20 @@
         {
           "name": "Lairs",
           "value": 4
+        },
+        {
+          "name": "Placeholder_5",
+          "value": 5
+        },
+        {
+          "name": "Placeholder_6",
+          "value": 6
         }
       ],
-      "maxValue": 4,
+      "maxValue": 6,
       "minValue": 0,
       "name": "TieredEntranceType",
-      "numValues": 5,
+      "numValues": 7,
       "source": "DelvesConstantsDocumentation.lua",
       "wrapper": "tieredEntranceType"
     },
@@ -27428,12 +28159,20 @@
         {
           "name": "UnitDead",
           "value": 49
+        },
+        {
+          "name": "UnitCriteriaProgress",
+          "value": 50
+        },
+        {
+          "name": "AuraCaster",
+          "value": 51
         }
       ],
-      "maxValue": 49,
+      "maxValue": 51,
       "minValue": 0,
       "name": "TooltipDataLineType",
-      "numValues": 50,
+      "numValues": 52,
       "source": "TooltipInfoSharedDocumentation.lua",
       "wrapper": "tooltipDataLineType"
     },
@@ -28728,12 +29467,16 @@
         {
           "name": "AllowedRangedShieldsHoldables",
           "value": 4
+        },
+        {
+          "name": "HiddenIllusion",
+          "value": 8
         }
       ],
-      "maxValue": 4,
+      "maxValue": 8,
       "minValue": 1,
       "name": "TransmogIllusionFlags",
-      "numValues": 3,
+      "numValues": 4,
       "source": "TransmogSharedDocumentation.lua",
       "wrapper": "transmogIllusionFlags"
     },
@@ -33909,12 +34652,16 @@
         {
           "name": "InvalidOutputDevice",
           "value": 24
+        },
+        {
+          "name": "PlayerVoiceChatAgeVerificationRestricted",
+          "value": 25
         }
       ],
-      "maxValue": 24,
+      "maxValue": 25,
       "minValue": 0,
       "name": "VoiceChatStatusCode",
-      "numValues": 25,
+      "numValues": 26,
       "source": "VoiceChatDocumentation.lua",
       "system": "VoiceChat",
       "wrapper": "voiceChatStatusCode"
@@ -34301,6 +35048,36 @@
       "numValues": 2,
       "source": "ItemConstantsDocumentation.lua",
       "wrapper": "weaponSlot"
+    },
+    {
+      "fields": [
+        {
+          "name": "Clear",
+          "value": 0
+        },
+        {
+          "name": "Rain",
+          "value": 1
+        },
+        {
+          "name": "Snow",
+          "value": 2
+        },
+        {
+          "name": "Sandstorm",
+          "value": 3
+        },
+        {
+          "name": "Miscellaneous",
+          "value": 4
+        }
+      ],
+      "maxValue": 4,
+      "minValue": 0,
+      "name": "WeatherType",
+      "numValues": 5,
+      "source": "WeatherConstantsDocumentation.lua",
+      "wrapper": "weatherType"
     },
     {
       "fields": [

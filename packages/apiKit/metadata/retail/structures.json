@@ -2687,6 +2687,11 @@
           "name": "timerunningSeasonID",
           "nilable": true,
           "type": "number"
+        },
+        {
+          "name": "subIcon",
+          "nilable": true,
+          "type": "string"
         }
       ],
       "name": "BNetGameAccountInfo",
@@ -5368,6 +5373,71 @@
       "name": "CharacterCurrencyData",
       "source": "CurrencyInfoDocumentation.lua",
       "system": "CurrencySystem"
+    },
+    {
+      "documentation": [
+        "Unicode property values for the first code point in a string."
+      ],
+      "fields": [
+        {
+          "documentation": [
+            "The Unicode code point tested for character properties."
+          ],
+          "name": "codePoint",
+          "nilable": false,
+          "type": "number"
+        },
+        {
+          "documentation": [
+            "True if the code point is a letter character with general category L."
+          ],
+          "name": "isAlphabetic",
+          "nilable": false,
+          "type": "bool"
+        },
+        {
+          "documentation": [
+            "True if the code point is a digit character with general category Nd."
+          ],
+          "name": "isDigit",
+          "nilable": false,
+          "type": "bool"
+        },
+        {
+          "documentation": [
+            "True if the code point has the Unicode White_Space property."
+          ],
+          "name": "isWhitespace",
+          "nilable": false,
+          "type": "bool"
+        },
+        {
+          "documentation": [
+            "The short Unicode property value name for the code point's general category."
+          ],
+          "name": "generalCategory",
+          "nilable": false,
+          "type": "string"
+        },
+        {
+          "documentation": [
+            "The short ISO 15924 script code for the code point's script."
+          ],
+          "name": "scriptCode",
+          "nilable": false,
+          "type": "string"
+        },
+        {
+          "documentation": [
+            "The short Unicode property value name for the code point's block."
+          ],
+          "name": "blockCode",
+          "nilable": false,
+          "type": "string"
+        }
+      ],
+      "name": "CharacterProperties",
+      "source": "IntlSharedTypesDocumentation.lua"
     },
     {
       "fields": [
@@ -9160,6 +9230,78 @@
     {
       "fields": [
         {
+          "name": "frameType",
+          "nilable": false,
+          "type": "cstring"
+        },
+        {
+          "name": "name",
+          "nilable": true,
+          "type": "cstring"
+        },
+        {
+          "name": "parent",
+          "nilable": true,
+          "type": "SimpleFrame"
+        },
+        {
+          "innerType": "cstring",
+          "name": "inherits",
+          "nilable": true,
+          "type": "table"
+        },
+        {
+          "name": "id",
+          "nilable": true,
+          "type": "number"
+        },
+        {
+          "default": false,
+          "name": "forbidden",
+          "nilable": false,
+          "type": "bool"
+        },
+        {
+          "default": false,
+          "name": "hidden",
+          "nilable": false,
+          "type": "bool"
+        }
+      ],
+      "name": "CreateFrameOptions",
+      "source": "FrameScriptDocumentation.lua",
+      "system": "FrameScript"
+    },
+    {
+      "fields": [
+        {
+          "name": "name",
+          "nilable": true,
+          "type": "cstring"
+        },
+        {
+          "name": "drawLayer",
+          "nilable": true,
+          "type": "DrawLayer"
+        },
+        {
+          "name": "templateName",
+          "nilable": true,
+          "type": "cstring"
+        },
+        {
+          "name": "subLevel",
+          "nilable": true,
+          "type": "number"
+        }
+      ],
+      "name": "CreateRegionParams",
+      "source": "SimpleFrameAPIDocumentation.lua",
+      "system": "SimpleFrameAPI"
+    },
+    {
+      "fields": [
+        {
           "name": "id",
           "nilable": false,
           "type": "number"
@@ -9414,6 +9556,31 @@
       "system": "CurrencySystem"
     },
     {
+      "documentation": [
+        "A parsed numeric amount and currency from a localized currency string."
+      ],
+      "fields": [
+        {
+          "documentation": [
+            "The numeric amount parsed by the currency parser."
+          ],
+          "name": "amount",
+          "nilable": false,
+          "type": "number"
+        },
+        {
+          "documentation": [
+            "The ISO 4217 currency code parsed alongside the amount."
+          ],
+          "name": "currencyCode",
+          "nilable": false,
+          "type": "string"
+        }
+      ],
+      "name": "CurrencyParseResult",
+      "source": "IntlSharedTypesDocumentation.lua"
+    },
+    {
       "fields": [
         {
           "name": "sourceCharacterGUID",
@@ -9502,6 +9669,15 @@
           "type": "number"
         },
         {
+          "default": 0,
+          "documentation": [
+            "The minimum number of aura applications represented by the bar."
+          ],
+          "name": "minApplications",
+          "nilable": false,
+          "type": "number"
+        },
+        {
           "documentation": [
             "Optional interpolation method used when updating the bar value."
           ],
@@ -9526,6 +9702,31 @@
         }
       ],
       "name": "CustomAuraButtonApplicationCountOptions",
+      "source": "AuraContainerUtilDocumentation.lua",
+      "system": "AuraContainerUtil"
+    },
+    {
+      "fields": [
+        {
+          "default": false,
+          "documentation": [
+            "If true, append realm names to the displayed string."
+          ],
+          "name": "showRealmName",
+          "nilable": false,
+          "type": "bool"
+        },
+        {
+          "default": false,
+          "documentation": [
+            "If true, apply class coloring to the text."
+          ],
+          "name": "useClassColors",
+          "nilable": false,
+          "type": "bool"
+        }
+      ],
+      "name": "CustomAuraButtonCasterNameOptions",
       "source": "AuraContainerUtilDocumentation.lua",
       "system": "AuraContainerUtil"
     },
@@ -9895,6 +10096,9 @@
       ],
       "fields": [
         {
+          "flags": [
+            "ConditionalSecret"
+          ],
           "name": "sourceGUID",
           "nilable": true,
           "type": "WOWGUID"
@@ -11533,7 +11737,7 @@
           ],
           "name": "maxEventDuration",
           "nilable": true,
-          "type": "DurationSeconds"
+          "type": "Seconds"
         },
         {
           "default": true,
@@ -11615,7 +11819,7 @@
           ],
           "name": "duration",
           "nilable": false,
-          "type": "DurationSeconds"
+          "type": "Seconds"
         },
         {
           "documentation": [
@@ -11626,7 +11830,7 @@
           ],
           "name": "maxQueueDuration",
           "nilable": false,
-          "type": "DurationSeconds"
+          "type": "Seconds"
         },
         {
           "documentation": [
@@ -11672,13 +11876,13 @@
         {
           "name": "duration",
           "nilable": false,
-          "type": "DurationSeconds"
+          "type": "Seconds"
         },
         {
           "default": 0,
           "name": "maxQueueDuration",
           "nilable": false,
-          "type": "DurationSeconds"
+          "type": "Seconds"
         },
         {
           "default": "",
@@ -11726,7 +11930,7 @@
           ],
           "name": "minimumDuration",
           "nilable": true,
-          "type": "DurationSeconds"
+          "type": "Seconds"
         },
         {
           "documentation": [
@@ -11734,7 +11938,7 @@
           ],
           "name": "maximumDuration",
           "nilable": true,
-          "type": "DurationSeconds"
+          "type": "Seconds"
         },
         {
           "documentation": [
@@ -11742,7 +11946,7 @@
           ],
           "name": "minimumEventIntroDuration",
           "nilable": true,
-          "type": "DurationSeconds"
+          "type": "Seconds"
         },
         {
           "documentation": [
@@ -11750,7 +11954,7 @@
           ],
           "name": "minimumEventGapDuration",
           "nilable": true,
-          "type": "DurationSeconds"
+          "type": "Seconds"
         },
         {
           "documentation": [
@@ -11919,7 +12123,7 @@
         {
           "name": "duration",
           "nilable": false,
-          "type": "DurationSeconds"
+          "type": "Seconds"
         },
         {
           "name": "severity",
@@ -12076,11 +12280,6 @@
           "name": "subtitleTooltipUiWidgetSetID",
           "nilable": true,
           "type": "number"
-        },
-        {
-          "name": "hideDefaultAtlas",
-          "nilable": true,
-          "type": "bool"
         },
         {
           "name": "showSoundKitID",
@@ -24739,8 +24938,13 @@
         {
           "mixin": "ColorMixin",
           "name": "themeColor",
-          "nilable": false,
+          "nilable": true,
           "type": "colorRGB"
+        },
+        {
+          "name": "startSoundKitID",
+          "nilable": true,
+          "type": "number"
         }
       ],
       "name": "ScenarioDisplayInfo",
@@ -25273,6 +25477,33 @@
       "name": "ScheduledEventInfo",
       "source": "EventSchedulerUIDocumentation.lua",
       "system": "EventSchedulerUI"
+    },
+    {
+      "fields": [
+        {
+          "name": "luaScriptBucketThrottleMaxMsPerSecondNormal",
+          "nilable": false,
+          "type": "number"
+        },
+        {
+          "name": "luaScriptBucketThrottleMaxMsPerSecondRestricted",
+          "nilable": false,
+          "type": "number"
+        },
+        {
+          "name": "luaScriptBucketThrottleMaxMsBurstNormal",
+          "nilable": false,
+          "type": "number"
+        },
+        {
+          "name": "luaScriptBucketThrottleMaxMsBurstRestricted",
+          "nilable": false,
+          "type": "number"
+        }
+      ],
+      "name": "ScriptBucketThrottleLimits",
+      "source": "FrameScriptDocumentation.lua",
+      "system": "FrameScript"
     },
     {
       "name": "ScriptObject",
@@ -28322,6 +28553,31 @@
       "system": "DelvesUI"
     },
     {
+      "documentation": [
+        "Structure associating a key with a scheduled time."
+      ],
+      "fields": [
+        {
+          "documentation": [
+            "The key that has been scheduled."
+          ],
+          "name": "key",
+          "nilable": false,
+          "type": "number"
+        },
+        {
+          "documentation": [
+            "Absolute time, on the same clock as GetTime(), at which the key is scheduled to signal."
+          ],
+          "name": "time",
+          "nilable": false,
+          "type": "FrameTime"
+        }
+      ],
+      "name": "TimedSignalMapEntry",
+      "source": "TimedSignalMapSharedDocumentation.lua"
+    },
+    {
       "fields": [
         {
           "name": "text",
@@ -31286,11 +31542,17 @@
           "type": "number"
         },
         {
+          "documentation": [
+            "Sound file to play. Playback stops after five seconds."
+          ],
           "name": "soundFileName",
           "nilable": true,
           "type": "string"
         },
         {
+          "documentation": [
+            "Sound file to play. Playback stops after five seconds."
+          ],
           "name": "soundFileID",
           "nilable": true,
           "type": "number"
@@ -31299,6 +31561,14 @@
           "name": "outputChannel",
           "nilable": true,
           "type": "string"
+        },
+        {
+          "documentation": [
+            "Minimum time in seconds between plays. Must be between 0 and 5 seconds, inclusive. Invalid values reject registration."
+          ],
+          "name": "throttleSeconds",
+          "nilable": true,
+          "type": "number"
         }
       ],
       "name": "UnitAuraSoundInfo",
@@ -31390,7 +31660,7 @@
           ],
           "name": "castBarID",
           "nilable": true,
-          "type": "number"
+          "type": "UnitCastBarID"
         },
         {
           "flags": [
@@ -31472,7 +31742,7 @@
           ],
           "name": "castBarID",
           "nilable": true,
-          "type": "number"
+          "type": "UnitCastBarID"
         }
       ],
       "name": "UnitChannelInfoResult",
@@ -32412,6 +32682,24 @@
       "name": "WarbandSceneSearchInfo",
       "source": "WarbandSceneInfoDocumentation.lua",
       "system": "WarbandSceneInfo"
+    },
+    {
+      "fields": [
+        {
+          "default": "Clear",
+          "name": "type",
+          "nilable": false,
+          "type": "WeatherType"
+        },
+        {
+          "name": "intensity",
+          "nilable": false,
+          "type": "number"
+        }
+      ],
+      "name": "WeatherInfo",
+      "source": "WeatherScriptDocumentation.lua",
+      "system": "WeatherScript"
     },
     {
       "fields": [

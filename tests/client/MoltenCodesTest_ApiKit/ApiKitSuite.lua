@@ -82,7 +82,7 @@ local FLAVOR_IDS = { "retail", "classic-era", "classic-mop", "ptr", "beta" }
 --- "Flavours"; the last line of each `src/flavours/<Flavour>.lua`), and the
 --- path of its `api` table under `MoltenCodes.wow`.
 local COMMITTED_FLAVORS = {
-  { id = "retail", version = "12.1.0", build = 69933, path = { "retail" } },
+  { id = "retail", version = "12.1.5", build = 70783, path = { "retail" } },
   { id = "classic-era", version = "1.15.9", build = 69722, path = { "classic", "era" } },
   { id = "classic-mop", version = "5.5.4", build = 69934, path = { "classic", "mop" } },
   { id = "ptr", version = "12.1.5", build = 69952, path = { "ptr" } },
@@ -132,10 +132,10 @@ local FLAVOUR_EXPECTATIONS = {
     emptyPath = { "classic", "era" },
     projectId = 1,
     buildFactsApply = true,
-    namespaceCount = 312,
-    functionCount = 4900,
-    eventCount = 1782,
-    enumCount = 844,
+    namespaceCount = 316,
+    functionCount = 4970,
+    eventCount = 1784,
+    enumCount = 856,
     allocationGetters = { { "systemTime", "getTime" }, { "build", "isTestBuild" } },
   },
   ["classic-era"] = {
@@ -212,11 +212,28 @@ local NAMESPACE_ALIASES = { profiler = "addOnProfiler" }
 --- function, exactly the `wrapper` and `binding` of
 --- packages/apiKit/metadata/retail/namespaces.json;
 --- tooling/tests/test_api_committed_flavours.py holds this list to that file.
---- The committed Classic Era and Mists of Pandaria Classic metadata relocate
---- the same seven functions to the same host paths.
+--- Since Retail 12.1.5 (build 70783) the tables document `string` and `table`
+--- as namespaces of their own, so `trim`, `count`, `create`, `freeze` and
+--- `isfrozen` are no longer relocations there, and `GetArenaOpponentSpec` is
+--- documented as a global. The Classic metadata keeps the earlier list, in
+--- `CLASSIC_RELOCATED_BINDINGS` below.
 --- The identity walk resolves these from here, and reports every one whose
 --- host member is missing or whose wrapper is not bound.
 local RELOCATED_BINDINGS = {
+  {
+    "localization",
+    "getDefaultAbbreviationBreakpoints",
+    "C_StringUtil",
+    "GetDefaultAbbreviationBreakpoints",
+  },
+  { "pvp", "getArenaOpponentSpec", nil, "GetArenaOpponentSpec" },
+  { "restrictedActions", "inCombatLockdown", nil, "InCombatLockdown" },
+}
+
+--- The same list for the committed Classic Era and Mists of Pandaria Classic
+--- metadata, which relocate the same seven functions to the same host paths;
+--- tooling/tests/test_api_committed_flavours.py holds it to both files.
+local CLASSIC_RELOCATED_BINDINGS = {
   {
     "localization",
     "getDefaultAbbreviationBreakpoints",
@@ -230,6 +247,10 @@ local RELOCATED_BINDINGS = {
   { "tableUtil", "freeze", "table", "freeze" },
   { "tableUtil", "isfrozen", "table", "isfrozen" },
 }
+
+--- The relocated bindings of the running flavour's metadata.
+local RUNNING_RELOCATED_BINDINGS = RUNNING.id == "retail" and RELOCATED_BINDINGS
+  or CLASSIC_RELOCATED_BINDINGS
 
 --- Host namespaces whose unbound functions the additions test logs: the ones
 --- addons reach for most, and the ones the framework's own Kits call.
@@ -472,12 +493,12 @@ local function relocatedHostValue(host, relocated)
   return holder[relocated[4]]
 end
 
----`RELOCATED_BINDINGS` keyed by wrapper path, `restrictedActions.inCombatLockdown`.
+---`RUNNING_RELOCATED_BINDINGS` keyed by wrapper path, `restrictedActions.inCombatLockdown`.
 ---@return table<string, table>
 local function indexRelocatedBindings()
   local index = {}
-  for position = 1, #RELOCATED_BINDINGS do
-    local relocated = RELOCATED_BINDINGS[position]
+  for position = 1, #RUNNING_RELOCATED_BINDINGS do
+    local relocated = RUNNING_RELOCATED_BINDINGS[position]
     index[relocated[1] .. "." .. relocated[2]] = relocated
   end
   return index
@@ -678,8 +699,8 @@ local function walkSurface(api, host)
   -- A binding whose host member is missing leaves its wrapper unbound, which
   -- the walk above cannot see; for the relocated bindings the host path is
   -- known, so each is checked from the host's side too.
-  for position = 1, #RELOCATED_BINDINGS do
-    local relocated = RELOCATED_BINDINGS[position]
+  for position = 1, #RUNNING_RELOCATED_BINDINGS do
+    local relocated = RUNNING_RELOCATED_BINDINGS[position]
     local wrapperPath = relocated[1] .. "." .. relocated[2]
     local hostValue = relocatedHostValue(host, relocated)
     local target = api[relocated[1]]
@@ -1088,7 +1109,7 @@ bindings:Test(
     ctx:Log(
       ("relocated bindings (their own Namespace attribute): %d of %d bound"):format(
         report.relocated,
-        #RELOCATED_BINDINGS
+        #RUNNING_RELOCATED_BINDINGS
       )
     )
     logNames(ctx, "bindings that are not the named host function", report.mismatches)
@@ -1110,7 +1131,7 @@ bindings:Test(
     ctx:Expect(#report.notFunctions):ToBe(0)
     ctx:Expect(#report.missingHostMembers):ToBe(0)
     ctx:Expect(#report.unboundRelocated):ToBe(0)
-    ctx:Expect(report.relocated):ToBe(#RELOCATED_BINDINGS)
+    ctx:Expect(report.relocated):ToBe(#RUNNING_RELOCATED_BINDINGS)
     ctx:Expect(report.functions > 0):ToBe(true)
     ctx:Expect(report.functions <= RUNNING.functionCount):ToBe(true)
     ctx:Expect(report.namespaces <= RUNNING.namespaceCount):ToBe(true)

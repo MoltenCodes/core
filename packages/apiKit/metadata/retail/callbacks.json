@@ -237,6 +237,26 @@
       "system": "UITimer"
     },
     {
+      "arguments": [
+        {
+          "documentation": [
+            "The key whose scheduled time has arrived; secret if the timed signal map has secret values."
+          ],
+          "flags": [
+            "ConditionalSecret"
+          ],
+          "name": "key",
+          "nilable": false,
+          "type": "number"
+        }
+      ],
+      "documentation": [
+        "Invoked by a timed signal map when a scheduled time has arrived."
+      ],
+      "name": "TimedSignalMapCallback",
+      "source": "TimedSignalMapSharedDocumentation.lua"
+    },
+    {
       "name": "TimerCallback",
       "source": "UITimerDocumentation.lua",
       "system": "UITimer"

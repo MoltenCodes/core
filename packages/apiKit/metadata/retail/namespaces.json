@@ -1889,6 +1889,33 @@
         {
           "arguments": [
             {
+              "name": "actionID",
+              "nilable": false,
+              "type": "luaIndex"
+            }
+          ],
+          "binding": "C_ActionBar.IsMacroActionWithShowTooltip",
+          "documentation": [
+            "Returns whether the given action button contains a macro with an explicit #showtooltip directive."
+          ],
+          "flags": [
+            "RequiresValidActionSlot"
+          ],
+          "name": "IsMacroActionWithShowTooltip",
+          "returns": [
+            {
+              "name": "isMacroActionWithShowTooltip",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "ActionBarFrameDocumentation.lua",
+          "wrapper": "isMacroActionWithShowTooltip"
+        },
+        {
+          "arguments": [
+            {
               "name": "spellID",
               "nilable": false,
               "type": "SpellIdentifier"
@@ -2986,6 +3013,45 @@
           ],
           "source": "AdventureMapDocumentation.lua",
           "wrapper": "getAdventureMapTextureKit"
+        },
+        {
+          "binding": "C_AdventureMap.GetNumMapInsets",
+          "name": "GetNumMapInsets",
+          "returns": [
+            {
+              "name": "numMapInsets",
+              "nilable": false,
+              "type": "number"
+            }
+          ],
+          "source": "AdventureMapDocumentation.lua",
+          "wrapper": "getNumMapInsets"
+        },
+        {
+          "binding": "C_AdventureMap.GetNumQuestOffers",
+          "name": "GetNumQuestOffers",
+          "returns": [
+            {
+              "name": "numQuestOffers",
+              "nilable": false,
+              "type": "number"
+            }
+          ],
+          "source": "AdventureMapDocumentation.lua",
+          "wrapper": "getNumQuestOffers"
+        },
+        {
+          "binding": "C_AdventureMap.GetNumZoneChoices",
+          "name": "GetNumZoneChoices",
+          "returns": [
+            {
+              "name": "numZoneChoices",
+              "nilable": false,
+              "type": "number"
+            }
+          ],
+          "source": "AdventureMapDocumentation.lua",
+          "wrapper": "getNumZoneChoices"
         },
         {
           "arguments": [
@@ -6871,6 +6937,27 @@
           "secretArguments": "AllowedWhenUntainted",
           "source": "AuraContainerUtilDocumentation.lua",
           "wrapper": "processCustomAuraButtonApplicationCountOptions"
+        },
+        {
+          "arguments": [
+            {
+              "name": "options",
+              "nilable": true,
+              "type": "CustomAuraButtonCasterNameOptions"
+            }
+          ],
+          "binding": "C_AuraContainerUtil.ProcessCustomAuraButtonCasterNameOptions",
+          "name": "ProcessCustomAuraButtonCasterNameOptions",
+          "returns": [
+            {
+              "name": "result",
+              "nilable": false,
+              "type": "CustomAuraButtonCasterNameOptions"
+            }
+          ],
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "AuraContainerUtilDocumentation.lua",
+          "wrapper": "processCustomAuraButtonCasterNameOptions"
         },
         {
           "arguments": [
@@ -13981,6 +14068,12 @@
               "name": "className",
               "nilable": false,
               "type": "string"
+            },
+            {
+              "mixin": "ColorMixin",
+              "name": "tintColor",
+              "nilable": true,
+              "type": "colorRGB"
             }
           ],
           "binding": "C_ClassColor.GetClassColor",
@@ -30985,7 +31078,7 @@
             {
               "name": "loopTimerDuration",
               "nilable": false,
-              "type": "DurationSeconds"
+              "type": "Seconds"
             }
           ],
           "source": "EncounterTimelineDocumentation.lua",
@@ -31083,7 +31176,7 @@
             {
               "name": "currentTime",
               "nilable": false,
-              "type": "DurationSeconds"
+              "type": "Seconds"
             }
           ],
           "source": "EncounterTimelineDocumentation.lua",
@@ -31157,7 +31250,7 @@
             {
               "name": "highlightTime",
               "nilable": false,
-              "type": "DurationSeconds"
+              "type": "Seconds"
             }
           ],
           "source": "EncounterTimelineDocumentation.lua",
@@ -31255,7 +31348,7 @@
             {
               "name": "timeElapsed",
               "nilable": false,
-              "type": "DurationSeconds"
+              "type": "Seconds"
             }
           ],
           "secretArguments": "NotAllowed",
@@ -31282,7 +31375,7 @@
             {
               "name": "timeRemaining",
               "nilable": false,
-              "type": "DurationSeconds"
+              "type": "Seconds"
             }
           ],
           "secretArguments": "NotAllowed",
@@ -31361,7 +31454,7 @@
               ],
               "name": "maxEventDuration",
               "nilable": true,
-              "type": "DurationSeconds"
+              "type": "Seconds"
             },
             {
               "default": true,
@@ -31457,7 +31550,7 @@
             {
               "name": "maxEventDuration",
               "nilable": false,
-              "type": "DurationSeconds"
+              "type": "Seconds"
             }
           ],
           "secretArguments": "NotAllowed",
@@ -34208,6 +34301,7 @@
       "environment": "All",
       "functions": [
         {
+          "isProtected": true,
           "name": "Clear",
           "source": "FrameAPICooldownDocumentation.lua",
           "wrapper": "clear"
@@ -34289,7 +34383,7 @@
             {
               "name": "seconds",
               "nilable": false,
-              "type": "DurationSecondsPrimitive"
+              "type": "Seconds"
             }
           ],
           "source": "FrameAPICooldownDocumentation.lua",
@@ -34328,7 +34422,7 @@
             {
               "name": "seconds",
               "nilable": false,
-              "type": "DurationSecondsPrimitive"
+              "type": "Seconds"
             }
           ],
           "source": "FrameAPICooldownDocumentation.lua",
@@ -34421,7 +34515,7 @@
             {
               "name": "milliseconds",
               "nilable": false,
-              "type": "DurationMillisecondsPrimitive"
+              "type": "Milliseconds"
             }
           ],
           "source": "FrameAPICooldownDocumentation.lua",
@@ -34523,12 +34617,12 @@
             {
               "name": "start",
               "nilable": false,
-              "type": "DurationSeconds"
+              "type": "Seconds"
             },
             {
               "name": "duration",
               "nilable": false,
-              "type": "DurationSeconds"
+              "type": "Seconds"
             },
             {
               "default": 1,
@@ -34544,6 +34638,7 @@
               }
             ]
           },
+          "isProtected": true,
           "name": "SetCooldown",
           "secretArguments": "AllowedWhenUntainted",
           "source": "FrameAPICooldownDocumentation.lua",
@@ -34554,7 +34649,7 @@
             {
               "name": "duration",
               "nilable": false,
-              "type": "DurationSeconds"
+              "type": "Seconds"
             },
             {
               "default": 1,
@@ -34570,6 +34665,7 @@
               }
             ]
           },
+          "isProtected": true,
           "name": "SetCooldownDuration",
           "secretArguments": "AllowedWhenUntainted",
           "source": "FrameAPICooldownDocumentation.lua",
@@ -34589,6 +34685,7 @@
               "type": "bool"
             }
           ],
+          "isProtected": true,
           "name": "SetCooldownFromDurationObject",
           "secretArguments": "AllowedWhenUntainted",
           "source": "FrameAPICooldownDocumentation.lua",
@@ -34599,12 +34696,12 @@
             {
               "name": "expirationTime",
               "nilable": false,
-              "type": "DurationSeconds"
+              "type": "Seconds"
             },
             {
               "name": "duration",
               "nilable": false,
-              "type": "DurationSeconds"
+              "type": "Seconds"
             },
             {
               "default": 1,
@@ -34620,6 +34717,7 @@
               }
             ]
           },
+          "isProtected": true,
           "name": "SetCooldownFromExpirationTime",
           "secretArguments": "AllowedWhenUntainted",
           "source": "FrameAPICooldownDocumentation.lua",
@@ -34651,6 +34749,7 @@
               }
             ]
           },
+          "isProtected": true,
           "name": "SetCooldownUNIX",
           "secretArguments": "AllowedWhenUntainted",
           "source": "FrameAPICooldownDocumentation.lua",
@@ -34664,7 +34763,7 @@
               ],
               "name": "seconds",
               "nilable": false,
-              "type": "DurationSecondsPrimitive"
+              "type": "Seconds"
             }
           ],
           "documentation": [
@@ -34709,7 +34808,7 @@
               ],
               "name": "seconds",
               "nilable": false,
-              "type": "DurationSecondsPrimitive"
+              "type": "Seconds"
             }
           ],
           "documentation": [
@@ -34883,7 +34982,7 @@
             {
               "name": "milliseconds",
               "nilable": false,
-              "type": "DurationMillisecondsPrimitive"
+              "type": "Milliseconds"
             }
           ],
           "documentation": [
@@ -38792,6 +38891,27 @@
         {
           "arguments": [
             {
+              "name": "options",
+              "nilable": false,
+              "type": "CreateFrameOptions"
+            }
+          ],
+          "binding": "CreateFrameWithOptions",
+          "name": "CreateFrameWithOptions",
+          "returns": [
+            {
+              "name": "frame",
+              "nilable": false,
+              "type": "SimpleFrame"
+            }
+          ],
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "FrameScriptDocumentation.lua",
+          "wrapper": "createFrameWithOptions"
+        },
+        {
+          "arguments": [
+            {
               "name": "mixins",
               "nilable": false,
               "strideIndex": 1,
@@ -38977,6 +39097,19 @@
           "secretArguments": "AllowedWhenUntainted",
           "source": "FrameScriptDocumentation.lua",
           "wrapper": "getForbiddenObjectTable"
+        },
+        {
+          "binding": "GetScriptBucketThrottleLimits",
+          "name": "GetScriptBucketThrottleLimits",
+          "returns": [
+            {
+              "name": "limits",
+              "nilable": false,
+              "type": "ScriptBucketThrottleLimits"
+            }
+          ],
+          "source": "FrameScriptDocumentation.lua",
+          "wrapper": "getScriptBucketThrottleLimits"
         },
         {
           "binding": "GetSourceLocation",
@@ -50798,6 +50931,1014 @@
       "wrapper": "interfaceFileManifest"
     },
     {
+      "blizzardNamespace": "C_Intl",
+      "environment": "All",
+      "functions": [
+        {
+          "arguments": [
+            {
+              "documentation": [
+                "The first UTF-8 string passed to collation comparison."
+              ],
+              "name": "left",
+              "nilable": false,
+              "type": "cstring"
+            },
+            {
+              "documentation": [
+                "The second UTF-8 string passed to collation comparison."
+              ],
+              "name": "right",
+              "nilable": false,
+              "type": "cstring"
+            },
+            {
+              "documentation": [
+                "The comparison level used by the collator for ordering and equality."
+              ],
+              "name": "strength",
+              "nilable": false,
+              "type": "CollationStrength"
+            }
+          ],
+          "binding": "C_Intl.CompareStrings",
+          "documentation": [
+            "Compares two UTF-8 strings using the options specified on a collator."
+          ],
+          "mayReturnNothing": true,
+          "name": "CompareStrings",
+          "returns": [
+            {
+              "documentation": [
+                "The comparison result: less than, equal to, or greater than zero."
+              ],
+              "name": "result",
+              "nilable": false,
+              "type": "number"
+            }
+          ],
+          "secretArguments": "AllowedWhenTainted",
+          "source": "IntlDocumentation.lua",
+          "wrapper": "compareStrings"
+        },
+        {
+          "arguments": [
+            {
+              "documentation": [
+                "The locale ID used to initialize the locale context object."
+              ],
+              "name": "locale",
+              "nilable": false,
+              "type": "cstring"
+            }
+          ],
+          "binding": "C_Intl.CreateLocaleContext",
+          "documentation": [
+            "Creates a locale context object for locale-scoped internationalization operations."
+          ],
+          "name": "CreateLocaleContext",
+          "returns": [
+            {
+              "documentation": [
+                "A locale context userdata object for calling locale-scoped APIs."
+              ],
+              "name": "context",
+              "nilable": false,
+              "type": "LuaLocaleContext"
+            }
+          ],
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "IntlDocumentation.lua",
+          "wrapper": "createLocaleContext"
+        },
+        {
+          "arguments": [
+            {
+              "documentation": [
+                "The UTF-8 text whose boundary offsets are requested."
+              ],
+              "name": "text",
+              "nilable": false,
+              "type": "cstring"
+            },
+            {
+              "documentation": [
+                "The break iterator kind to use for boundary analysis."
+              ],
+              "name": "breakType",
+              "nilable": false,
+              "type": "BreakType"
+            }
+          ],
+          "binding": "C_Intl.FindBreaks",
+          "documentation": [
+            "Opens a break iterator for locating text boundaries in a specified locale."
+          ],
+          "mayReturnNothing": true,
+          "name": "FindBreaks",
+          "returns": [
+            {
+              "documentation": [
+                "The native UTF-8 string indices for the text boundaries (returned with 1-based indexes for lua convenience)."
+              ],
+              "innerType": "luaIndex",
+              "name": "byteOffsets",
+              "nilable": false,
+              "type": "table"
+            }
+          ],
+          "secretArguments": "AllowedWhenTainted",
+          "source": "IntlDocumentation.lua",
+          "wrapper": "findBreaks"
+        },
+        {
+          "arguments": [
+            {
+              "documentation": [
+                "The UTF-8 text scanned by the string search iterator."
+              ],
+              "name": "text",
+              "nilable": false,
+              "type": "cstring"
+            },
+            {
+              "documentation": [
+                "The UTF-8 pattern whose collation-aware matches are returned."
+              ],
+              "name": "pattern",
+              "nilable": false,
+              "type": "cstring"
+            },
+            {
+              "documentation": [
+                "The comparison level used by the collator while searching for matches."
+              ],
+              "name": "strength",
+              "nilable": false,
+              "type": "CollationStrength"
+            }
+          ],
+          "binding": "C_Intl.FindStringMatches",
+          "documentation": [
+            "Creates a string search iterator using a collator and returns every match position."
+          ],
+          "mayReturnNothing": true,
+          "name": "FindStringMatches",
+          "returns": [
+            {
+              "documentation": [
+                "The UTF-8 byte offsets of matches in the text (returned with 1-based indexes for lua convenience)."
+              ],
+              "innerType": "luaIndex",
+              "name": "byteOffsets",
+              "nilable": false,
+              "type": "table"
+            }
+          ],
+          "secretArguments": "AllowedWhenTainted",
+          "source": "IntlDocumentation.lua",
+          "wrapper": "findStringMatches"
+        },
+        {
+          "arguments": [
+            {
+              "documentation": [
+                "The UTF-8 text converted with locale-independent case folding."
+              ],
+              "name": "text",
+              "nilable": false,
+              "type": "cstring"
+            }
+          ],
+          "binding": "C_Intl.FoldCase",
+          "documentation": [
+            "Case-folds the characters in a string; case-folding is locale-independent and not context-sensitive."
+          ],
+          "mayReturnNothing": true,
+          "name": "FoldCase",
+          "returns": [
+            {
+              "documentation": [
+                "The case-folded string, which may be longer or shorter than the original."
+              ],
+              "name": "result",
+              "nilable": false,
+              "type": "string"
+            }
+          ],
+          "secretArguments": "AllowedWhenTainted",
+          "source": "IntlDocumentation.lua",
+          "wrapper": "foldCase"
+        },
+        {
+          "arguments": [
+            {
+              "documentation": [
+                "The double value formatted by the locale currency formatter."
+              ],
+              "name": "number",
+              "nilable": false,
+              "type": "number"
+            },
+            {
+              "documentation": [
+                "The 3-letter null-terminated ISO 4217 currency code for currency formatting."
+              ],
+              "name": "currencyCode",
+              "nilable": false,
+              "type": "cstring"
+            }
+          ],
+          "binding": "C_Intl.FormatCurrency",
+          "documentation": [
+            "Formats a double as a localized currency value using the provided ISO 4217 currency code."
+          ],
+          "mayReturnNothing": true,
+          "name": "FormatCurrency",
+          "returns": [
+            {
+              "documentation": [
+                "The localized currency text produced by the formatter."
+              ],
+              "name": "result",
+              "nilable": false,
+              "type": "string"
+            }
+          ],
+          "secretArguments": "AllowedWhenTainted",
+          "source": "IntlDocumentation.lua",
+          "wrapper": "formatCurrency"
+        },
+        {
+          "arguments": [
+            {
+              "documentation": [
+                "The date as seconds since the Unix epoch; this API converts it to milliseconds."
+              ],
+              "name": "unixTimeSeconds",
+              "nilable": false,
+              "type": "number"
+            },
+            {
+              "documentation": [
+                "The date format length; None omits the date portion."
+              ],
+              "name": "style",
+              "nilable": false,
+              "type": "DateTimeStyle"
+            },
+            {
+              "documentation": [
+                "The time zone ID applied to the formatter; empty strings keep the formatter default."
+              ],
+              "name": "timeZone",
+              "nilable": false,
+              "type": "cstring"
+            }
+          ],
+          "binding": "C_Intl.FormatDate",
+          "documentation": [
+            "Formats Unix time as localized date text using locale date patterns, symbols, style, and optional time zone."
+          ],
+          "mayReturnNothing": true,
+          "name": "FormatDate",
+          "returns": [
+            {
+              "documentation": [
+                "The formatted date string."
+              ],
+              "name": "result",
+              "nilable": false,
+              "type": "string"
+            }
+          ],
+          "secretArguments": "AllowedWhenTainted",
+          "source": "IntlDocumentation.lua",
+          "wrapper": "formatDate"
+        },
+        {
+          "arguments": [
+            {
+              "documentation": [
+                "The date and time as seconds since the Unix epoch; this API converts it to milliseconds."
+              ],
+              "name": "unixTimeSeconds",
+              "nilable": false,
+              "type": "number"
+            },
+            {
+              "documentation": [
+                "The date format length; None omits the date portion."
+              ],
+              "name": "dateStyle",
+              "nilable": false,
+              "type": "DateTimeStyle"
+            },
+            {
+              "documentation": [
+                "The time format length; None omits the time portion."
+              ],
+              "name": "timeStyle",
+              "nilable": false,
+              "type": "DateTimeStyle"
+            },
+            {
+              "documentation": [
+                "The time zone ID applied to the formatter; empty strings keep the formatter default."
+              ],
+              "name": "timeZone",
+              "nilable": false,
+              "type": "cstring"
+            }
+          ],
+          "binding": "C_Intl.FormatDateTime",
+          "documentation": [
+            "Formats Unix time as localized date and time text using locale patterns, symbols, styles, and optional time zone."
+          ],
+          "mayReturnNothing": true,
+          "name": "FormatDateTime",
+          "returns": [
+            {
+              "documentation": [
+                "The formatted date and time string."
+              ],
+              "name": "result",
+              "nilable": false,
+              "type": "string"
+            }
+          ],
+          "secretArguments": "AllowedWhenTainted",
+          "source": "IntlDocumentation.lua",
+          "wrapper": "formatDateTime"
+        },
+        {
+          "arguments": [
+            {
+              "documentation": [
+                "The double value formatted according to the selected number formatter."
+              ],
+              "name": "number",
+              "nilable": false,
+              "type": "number"
+            },
+            {
+              "documentation": [
+                "The number style to format with; Currency is not accepted here, use FormatCurrency instead."
+              ],
+              "name": "style",
+              "nilable": false,
+              "type": "NumberStyle"
+            }
+          ],
+          "binding": "C_Intl.FormatNumber",
+          "documentation": [
+            "Formats a double with locale number formatting using locale symbols, grouping, and the selected non-currency style."
+          ],
+          "mayReturnNothing": true,
+          "name": "FormatNumber",
+          "returns": [
+            {
+              "documentation": [
+                "The localized number text produced by the formatter."
+              ],
+              "name": "result",
+              "nilable": false,
+              "type": "string"
+            }
+          ],
+          "secretArguments": "AllowedWhenTainted",
+          "source": "IntlDocumentation.lua",
+          "wrapper": "formatNumber"
+        },
+        {
+          "arguments": [
+            {
+              "documentation": [
+                "The time as seconds since the Unix epoch; this API converts it to milliseconds."
+              ],
+              "name": "unixTimeSeconds",
+              "nilable": false,
+              "type": "number"
+            },
+            {
+              "documentation": [
+                "The time format length; None omits the time portion."
+              ],
+              "name": "style",
+              "nilable": false,
+              "type": "DateTimeStyle"
+            },
+            {
+              "documentation": [
+                "The time zone ID applied to the formatter; empty strings keep the formatter default."
+              ],
+              "name": "timeZone",
+              "nilable": false,
+              "type": "cstring"
+            }
+          ],
+          "binding": "C_Intl.FormatTime",
+          "documentation": [
+            "Formats Unix time as localized time text using locale time patterns, symbols, style, and optional time zone."
+          ],
+          "mayReturnNothing": true,
+          "name": "FormatTime",
+          "returns": [
+            {
+              "documentation": [
+                "The formatted time string."
+              ],
+              "name": "result",
+              "nilable": false,
+              "type": "string"
+            }
+          ],
+          "secretArguments": "AllowedWhenTainted",
+          "source": "IntlDocumentation.lua",
+          "wrapper": "formatTime"
+        },
+        {
+          "arguments": [
+            {
+              "documentation": [
+                "The string whose first code point is tested."
+              ],
+              "name": "text",
+              "nilable": false,
+              "type": "cstring"
+            }
+          ],
+          "binding": "C_Intl.GetCharacterProperties",
+          "documentation": [
+            "Returns Unicode property values for the first code point in a string."
+          ],
+          "mayReturnNothing": true,
+          "name": "GetCharacterProperties",
+          "returns": [
+            {
+              "documentation": [
+                "Unicode property values for the first code point."
+              ],
+              "name": "result",
+              "nilable": false,
+              "type": "CharacterProperties"
+            }
+          ],
+          "secretArguments": "AllowedWhenTainted",
+          "source": "IntlDocumentation.lua",
+          "wrapper": "getCharacterProperties"
+        },
+        {
+          "arguments": [
+            {
+              "documentation": [
+                "The null-terminated 3-letter ISO 4217 currency code."
+              ],
+              "name": "currencyCode",
+              "nilable": false,
+              "type": "cstring"
+            }
+          ],
+          "binding": "C_Intl.GetCurrencyFractionDigits",
+          "documentation": [
+            "Returns the number of fraction digits that should be displayed for the given currency."
+          ],
+          "mayReturnNothing": true,
+          "name": "GetCurrencyFractionDigits",
+          "returns": [
+            {
+              "documentation": [
+                "The non-negative number of fraction digits to be displayed, or 0 if the lookup fails."
+              ],
+              "name": "result",
+              "nilable": false,
+              "type": "number"
+            }
+          ],
+          "secretArguments": "AllowedWhenTainted",
+          "source": "IntlDocumentation.lua",
+          "wrapper": "getCurrencyFractionDigits"
+        },
+        {
+          "arguments": [
+            {
+              "documentation": [
+                "The null-terminated 3-letter ISO 4217 currency code."
+              ],
+              "name": "currencyCode",
+              "nilable": false,
+              "type": "cstring"
+            },
+            {
+              "documentation": [
+                "The selector for which kind of currency name to return."
+              ],
+              "name": "nameStyle",
+              "nilable": false,
+              "type": "CurrencyNameStyle"
+            }
+          ],
+          "binding": "C_Intl.GetCurrencyName",
+          "documentation": [
+            "Returns the display name for a currency in the given locale."
+          ],
+          "mayReturnNothing": true,
+          "name": "GetCurrencyName",
+          "returns": [
+            {
+              "documentation": [
+                "The display string for the currency, or the currency code itself if no localized name is available."
+              ],
+              "name": "result",
+              "nilable": false,
+              "type": "string"
+            }
+          ],
+          "secretArguments": "AllowedWhenTainted",
+          "source": "IntlDocumentation.lua",
+          "wrapper": "getCurrencyName"
+        },
+        {
+          "binding": "C_Intl.GetCurrentLocale",
+          "documentation": [
+            "Gets the current locale used by C_Intl."
+          ],
+          "name": "GetCurrentLocale",
+          "returns": [
+            {
+              "documentation": [
+                "The current locale ID."
+              ],
+              "name": "result",
+              "nilable": false,
+              "type": "cstring"
+            }
+          ],
+          "source": "IntlDocumentation.lua",
+          "wrapper": "getCurrentLocale"
+        },
+        {
+          "arguments": [
+            {
+              "documentation": [
+                "The locale whose language conventions are used for the display name"
+              ],
+              "name": "displayLocale",
+              "nilable": false,
+              "type": "cstring"
+            }
+          ],
+          "binding": "C_Intl.GetDisplayName",
+          "documentation": [
+            "Gets a display name suitable for the specified locale."
+          ],
+          "mayReturnNothing": true,
+          "name": "GetDisplayName",
+          "returns": [
+            {
+              "documentation": [
+                "The displayable name for the locale."
+              ],
+              "name": "result",
+              "nilable": false,
+              "type": "string"
+            }
+          ],
+          "secretArguments": "AllowedWhenTainted",
+          "source": "IntlDocumentation.lua",
+          "wrapper": "getDisplayName"
+        },
+        {
+          "arguments": [
+            {
+              "documentation": [
+                "The UTF-8 text converted into collation sort-key bytes."
+              ],
+              "name": "text",
+              "nilable": false,
+              "type": "cstring"
+            },
+            {
+              "documentation": [
+                "The comparison level used by the collator; lower strengths ignore later-level differences."
+              ],
+              "name": "strength",
+              "nilable": false,
+              "type": "CollationStrength"
+            }
+          ],
+          "binding": "C_Intl.GetSortKey",
+          "documentation": [
+            "Transforms a string into a collation sort key."
+          ],
+          "mayReturnNothing": true,
+          "name": "GetSortKey",
+          "returns": [
+            {
+              "documentation": [
+                "The sort key bytes excluding the terminating zero byte."
+              ],
+              "name": "sortKey",
+              "nilable": false,
+              "type": "string"
+            }
+          ],
+          "secretArguments": "AllowedWhenTainted",
+          "source": "IntlDocumentation.lua",
+          "wrapper": "getSortKey"
+        },
+        {
+          "arguments": [
+            {
+              "documentation": [
+                "The UTF-8 text checked against the requested normalization form."
+              ],
+              "name": "text",
+              "nilable": false,
+              "type": "cstring"
+            },
+            {
+              "documentation": [
+                "The normalization form to test against."
+              ],
+              "name": "form",
+              "nilable": false,
+              "type": "NormalizationForm"
+            }
+          ],
+          "binding": "C_Intl.IsNormalized",
+          "documentation": [
+            "Tests if the string is normalized according to the specified normalization form."
+          ],
+          "name": "IsNormalized",
+          "returns": [
+            {
+              "documentation": [
+                "True if the string is normalized according to the specified form."
+              ],
+              "name": "isNormalized",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "secretArguments": "AllowedWhenTainted",
+          "source": "IntlDocumentation.lua",
+          "wrapper": "isNormalized"
+        },
+        {
+          "arguments": [
+            {
+              "documentation": [
+                "The UTF-8 text counted by character break iteration."
+              ],
+              "name": "text",
+              "nilable": false,
+              "type": "cstring"
+            }
+          ],
+          "binding": "C_Intl.Length",
+          "documentation": [
+            "Counts character break boundaries in UTF-8 text."
+          ],
+          "mayReturnNothing": true,
+          "name": "Length",
+          "returns": [
+            {
+              "documentation": [
+                "The number of character boundaries minus the initial boundary."
+              ],
+              "name": "result",
+              "nilable": false,
+              "type": "number"
+            }
+          ],
+          "secretArguments": "AllowedWhenTainted",
+          "source": "IntlDocumentation.lua",
+          "wrapper": "length"
+        },
+        {
+          "arguments": [
+            {
+              "documentation": [
+                "The UTF-8 text that is normalized."
+              ],
+              "name": "text",
+              "nilable": false,
+              "type": "cstring"
+            },
+            {
+              "documentation": [
+                "The normalization form to write."
+              ],
+              "name": "form",
+              "nilable": false,
+              "type": "NormalizationForm"
+            }
+          ],
+          "binding": "C_Intl.Normalize",
+          "documentation": [
+            "Writes the normalized form of the source string to the destination string."
+          ],
+          "mayReturnNothing": true,
+          "name": "Normalize",
+          "returns": [
+            {
+              "documentation": [
+                "The normalized form of the source string."
+              ],
+              "name": "result",
+              "nilable": false,
+              "type": "string"
+            }
+          ],
+          "secretArguments": "AllowedWhenTainted",
+          "source": "IntlDocumentation.lua",
+          "wrapper": "normalize"
+        },
+        {
+          "arguments": [
+            {
+              "documentation": [
+                "The localized currency text to parse for both amount and ISO 4217 code."
+              ],
+              "name": "text",
+              "nilable": false,
+              "type": "cstring"
+            }
+          ],
+          "binding": "C_Intl.ParseCurrency",
+          "documentation": [
+            "Parses an entire localized currency string into a double amount and ISO 4217 currency code."
+          ],
+          "mayReturnNothing": true,
+          "name": "ParseCurrency",
+          "returns": [
+            {
+              "documentation": [
+                "The numeric amount and ISO 4217 currency code parsed from the localized currency text."
+              ],
+              "name": "result",
+              "nilable": false,
+              "type": "CurrencyParseResult"
+            }
+          ],
+          "secretArguments": "AllowedWhenTainted",
+          "source": "IntlDocumentation.lua",
+          "wrapper": "parseCurrency"
+        },
+        {
+          "arguments": [
+            {
+              "documentation": [
+                "The localized numeric text to parse with the selected style."
+              ],
+              "name": "text",
+              "nilable": false,
+              "type": "cstring"
+            },
+            {
+              "documentation": [
+                "The number style to parse with; Currency is not accepted here, use ParseCurrency instead."
+              ],
+              "name": "style",
+              "nilable": false,
+              "type": "NumberStyle"
+            }
+          ],
+          "binding": "C_Intl.ParseNumber",
+          "documentation": [
+            "Parses an entire localized number string into a double using the selected non-currency number formatter."
+          ],
+          "mayReturnNothing": true,
+          "name": "ParseNumber",
+          "returns": [
+            {
+              "documentation": [
+                "The numeric value parsed from the localized number text."
+              ],
+              "name": "result",
+              "nilable": false,
+              "type": "number"
+            }
+          ],
+          "secretArguments": "AllowedWhenTainted",
+          "source": "IntlDocumentation.lua",
+          "wrapper": "parseNumber"
+        },
+        {
+          "arguments": [
+            {
+              "documentation": [
+                "The number for which the plural rule has to be determined."
+              ],
+              "name": "number",
+              "nilable": false,
+              "type": "number"
+            },
+            {
+              "documentation": [
+                "The plural rule type, cardinal or ordinal."
+              ],
+              "name": "pluralType",
+              "nilable": false,
+              "type": "PluralType"
+            }
+          ],
+          "binding": "C_Intl.SelectPlural",
+          "documentation": [
+            "Returns the keyword of the first plural rule that applies to a number."
+          ],
+          "mayReturnNothing": true,
+          "name": "SelectPlural",
+          "returns": [
+            {
+              "documentation": [
+                "The plural keyword for the rule that applies to the number."
+              ],
+              "name": "result",
+              "nilable": false,
+              "type": "string"
+            }
+          ],
+          "secretArguments": "AllowedWhenTainted",
+          "source": "IntlDocumentation.lua",
+          "wrapper": "selectPlural"
+        },
+        {
+          "arguments": [
+            {
+              "documentation": [
+                "The UTF-8 text whose characters are lowercased."
+              ],
+              "name": "text",
+              "nilable": false,
+              "type": "cstring"
+            }
+          ],
+          "binding": "C_Intl.ToLower",
+          "documentation": [
+            "Lowercases the characters in a string; casing is locale-dependent and context-sensitive."
+          ],
+          "mayReturnNothing": true,
+          "name": "ToLower",
+          "returns": [
+            {
+              "documentation": [
+                "The lowercased string, which may be longer or shorter than the original."
+              ],
+              "name": "result",
+              "nilable": false,
+              "type": "string"
+            }
+          ],
+          "secretArguments": "AllowedWhenTainted",
+          "source": "IntlDocumentation.lua",
+          "wrapper": "toLower"
+        },
+        {
+          "arguments": [
+            {
+              "documentation": [
+                "The UTF-8 text whose titlecase positions are mapped."
+              ],
+              "name": "text",
+              "nilable": false,
+              "type": "cstring"
+            }
+          ],
+          "binding": "C_Intl.ToTitle",
+          "documentation": [
+            "Titlecases a string using titlecase positions determined by the default Unicode algorithm."
+          ],
+          "mayReturnNothing": true,
+          "name": "ToTitle",
+          "returns": [
+            {
+              "documentation": [
+                "The titlecased string, which may be longer or shorter than the original."
+              ],
+              "name": "result",
+              "nilable": false,
+              "type": "string"
+            }
+          ],
+          "secretArguments": "AllowedWhenTainted",
+          "source": "IntlDocumentation.lua",
+          "wrapper": "toTitle"
+        },
+        {
+          "arguments": [
+            {
+              "documentation": [
+                "The UTF-8 text whose characters are uppercased."
+              ],
+              "name": "text",
+              "nilable": false,
+              "type": "cstring"
+            }
+          ],
+          "binding": "C_Intl.ToUpper",
+          "documentation": [
+            "Uppercases the characters in a string; casing is locale-dependent and context-sensitive."
+          ],
+          "mayReturnNothing": true,
+          "name": "ToUpper",
+          "returns": [
+            {
+              "documentation": [
+                "The uppercased string, which may be longer or shorter than the original."
+              ],
+              "name": "result",
+              "nilable": false,
+              "type": "string"
+            }
+          ],
+          "secretArguments": "AllowedWhenTainted",
+          "source": "IntlDocumentation.lua",
+          "wrapper": "toUpper"
+        },
+        {
+          "arguments": [
+            {
+              "documentation": [
+                "The locale transform to apply."
+              ],
+              "name": "transform",
+              "nilable": false,
+              "type": "LocaleTransform"
+            }
+          ],
+          "binding": "C_Intl.TransformLocale",
+          "documentation": [
+            "Applies a locale transform to the current locale and returns the transformed locale string."
+          ],
+          "mayReturnNothing": true,
+          "name": "TransformLocale",
+          "returns": [
+            {
+              "documentation": [
+                "The transformed locale string."
+              ],
+              "name": "result",
+              "nilable": false,
+              "type": "string"
+            }
+          ],
+          "secretArguments": "AllowedWhenTainted",
+          "source": "IntlDocumentation.lua",
+          "wrapper": "transformLocale"
+        },
+        {
+          "arguments": [
+            {
+              "documentation": [
+                "The UTF-8 text converted by the opened transliterator."
+              ],
+              "name": "text",
+              "nilable": false,
+              "type": "cstring"
+            },
+            {
+              "documentation": [
+                "A registered transliterator ID, such as a source-target system transliterator."
+              ],
+              "name": "transliteratorID",
+              "nilable": false,
+              "type": "cstring"
+            }
+          ],
+          "binding": "C_Intl.Transliterate",
+          "documentation": [
+            "Opens a system transliterator by ID and transliterates the text in place."
+          ],
+          "flags": [
+            "TransliteratorAllowed"
+          ],
+          "mayReturnNothing": true,
+          "name": "Transliterate",
+          "returns": [
+            {
+              "documentation": [
+                "The UTF-8 text after transliterator rules are applied."
+              ],
+              "name": "result",
+              "nilable": false,
+              "type": "string"
+            }
+          ],
+          "secretArguments": "AllowedWhenTainted",
+          "source": "IntlDocumentation.lua",
+          "wrapper": "transliterate"
+        }
+      ],
+      "kind": "namespace",
+      "sources": [
+        "IntlDocumentation.lua"
+      ],
+      "system": "Intl",
+      "wrapper": "intl"
+    },
+    {
       "blizzardNamespace": "C_InvasionInfo",
       "environment": "All",
       "functions": [
@@ -55364,6 +56505,19 @@
           "wrapper": "doesCrossFactionQueueRequireFullPremade"
         },
         {
+          "binding": "C_LFGInfo.GetActiveLFGDungeonName",
+          "name": "GetActiveLFGDungeonName",
+          "returns": [
+            {
+              "name": "name",
+              "nilable": false,
+              "type": "string"
+            }
+          ],
+          "source": "LFGInfoDocumentation.lua",
+          "wrapper": "getActiveLFGDungeonName"
+        },
+        {
           "arguments": [
             {
               "name": "category",
@@ -58195,7 +59349,7 @@
             {
               "name": "delta",
               "nilable": false,
-              "type": "DurationSeconds"
+              "type": "Seconds"
             }
           ],
           "documentation": [
@@ -58219,7 +59373,7 @@
             {
               "name": "delta",
               "nilable": false,
-              "type": "DurationSeconds"
+              "type": "Seconds"
             }
           ],
           "documentation": [
@@ -58598,7 +59752,7 @@
             {
               "name": "elapsedDuration",
               "nilable": false,
-              "type": "DurationSeconds"
+              "type": "Seconds"
             }
           ],
           "secretArguments": "AllowedWhenUntainted",
@@ -58685,7 +59839,7 @@
             {
               "name": "remainingDuration",
               "nilable": false,
-              "type": "DurationSeconds"
+              "type": "Seconds"
             }
           ],
           "secretArguments": "AllowedWhenUntainted",
@@ -58757,7 +59911,7 @@
             {
               "name": "totalDuration",
               "nilable": false,
-              "type": "DurationSeconds"
+              "type": "Seconds"
             }
           ],
           "secretArguments": "AllowedWhenUntainted",
@@ -58906,7 +60060,7 @@
             {
               "name": "duration",
               "nilable": false,
-              "type": "DurationSeconds"
+              "type": "Seconds"
             },
             {
               "default": 1,
@@ -58936,7 +60090,7 @@
             {
               "name": "duration",
               "nilable": false,
-              "type": "DurationSeconds"
+              "type": "Seconds"
             },
             {
               "default": 1,
@@ -58993,6 +60147,811 @@
       ],
       "system": "LuaDurationObjectAPI",
       "wrapper": "luaDurationObjectAPI"
+    },
+    {
+      "environment": "All",
+      "functions": [
+        {
+          "arguments": [
+            {
+              "documentation": [
+                "The first UTF-8 string passed to collation comparison."
+              ],
+              "name": "left",
+              "nilable": false,
+              "type": "cstring"
+            },
+            {
+              "documentation": [
+                "The second UTF-8 string passed to collation comparison."
+              ],
+              "name": "right",
+              "nilable": false,
+              "type": "cstring"
+            },
+            {
+              "documentation": [
+                "The comparison level used by the collator for ordering and equality."
+              ],
+              "name": "strength",
+              "nilable": false,
+              "type": "CollationStrength"
+            }
+          ],
+          "documentation": [
+            "Compares two UTF-8 strings using the options specified on a collator."
+          ],
+          "mayReturnNothing": true,
+          "name": "CompareStrings",
+          "returns": [
+            {
+              "documentation": [
+                "The comparison result: less than, equal to, or greater than zero."
+              ],
+              "name": "result",
+              "nilable": false,
+              "type": "number"
+            }
+          ],
+          "secretArguments": "AllowedWhenTainted",
+          "source": "LuaLocaleContextAPIDocumentation.lua",
+          "wrapper": "compareStrings"
+        },
+        {
+          "arguments": [
+            {
+              "documentation": [
+                "The UTF-8 text whose boundary offsets are requested."
+              ],
+              "name": "text",
+              "nilable": false,
+              "type": "cstring"
+            },
+            {
+              "documentation": [
+                "The break iterator kind to use for boundary analysis."
+              ],
+              "name": "breakType",
+              "nilable": false,
+              "type": "BreakType"
+            }
+          ],
+          "documentation": [
+            "Opens a break iterator for locating text boundaries in the context locale."
+          ],
+          "mayReturnNothing": true,
+          "name": "FindBreaks",
+          "returns": [
+            {
+              "documentation": [
+                "The native UTF-8 string indices for the text boundaries (returned with 1-based indexes for lua convenience)."
+              ],
+              "innerType": "luaIndex",
+              "name": "byteOffsets",
+              "nilable": false,
+              "type": "table"
+            }
+          ],
+          "secretArguments": "AllowedWhenTainted",
+          "source": "LuaLocaleContextAPIDocumentation.lua",
+          "wrapper": "findBreaks"
+        },
+        {
+          "arguments": [
+            {
+              "documentation": [
+                "The UTF-8 text scanned by the string search iterator."
+              ],
+              "name": "text",
+              "nilable": false,
+              "type": "cstring"
+            },
+            {
+              "documentation": [
+                "The UTF-8 pattern whose collation-aware matches are returned."
+              ],
+              "name": "pattern",
+              "nilable": false,
+              "type": "cstring"
+            },
+            {
+              "documentation": [
+                "The comparison level used by the collator while searching for matches."
+              ],
+              "name": "strength",
+              "nilable": false,
+              "type": "CollationStrength"
+            }
+          ],
+          "documentation": [
+            "Creates a string search iterator using a collator and returns every match position."
+          ],
+          "mayReturnNothing": true,
+          "name": "FindStringMatches",
+          "returns": [
+            {
+              "documentation": [
+                "The UTF-8 byte offsets of matches in the text (returned with 1-based indexes for lua convenience)."
+              ],
+              "innerType": "luaIndex",
+              "name": "byteOffsets",
+              "nilable": false,
+              "type": "table"
+            }
+          ],
+          "secretArguments": "AllowedWhenTainted",
+          "source": "LuaLocaleContextAPIDocumentation.lua",
+          "wrapper": "findStringMatches"
+        },
+        {
+          "arguments": [
+            {
+              "documentation": [
+                "The UTF-8 text converted with locale-independent case folding."
+              ],
+              "name": "text",
+              "nilable": false,
+              "type": "cstring"
+            }
+          ],
+          "documentation": [
+            "Case-folds the characters in a string; case-folding is locale-independent and not context-sensitive."
+          ],
+          "mayReturnNothing": true,
+          "name": "FoldCase",
+          "returns": [
+            {
+              "documentation": [
+                "The case-folded string, which may be longer or shorter than the original."
+              ],
+              "name": "result",
+              "nilable": false,
+              "type": "string"
+            }
+          ],
+          "secretArguments": "AllowedWhenTainted",
+          "source": "LuaLocaleContextAPIDocumentation.lua",
+          "wrapper": "foldCase"
+        },
+        {
+          "arguments": [
+            {
+              "documentation": [
+                "The double value formatted by the locale currency formatter."
+              ],
+              "name": "number",
+              "nilable": false,
+              "type": "number"
+            },
+            {
+              "documentation": [
+                "The 3-letter null-terminated ISO 4217 currency code for currency formatting."
+              ],
+              "name": "currencyCode",
+              "nilable": false,
+              "type": "cstring"
+            }
+          ],
+          "documentation": [
+            "Formats a double as a localized currency value using the provided ISO 4217 currency code."
+          ],
+          "mayReturnNothing": true,
+          "name": "FormatCurrency",
+          "returns": [
+            {
+              "documentation": [
+                "The localized currency text produced by the formatter."
+              ],
+              "name": "result",
+              "nilable": false,
+              "type": "string"
+            }
+          ],
+          "secretArguments": "AllowedWhenTainted",
+          "source": "LuaLocaleContextAPIDocumentation.lua",
+          "wrapper": "formatCurrency"
+        },
+        {
+          "arguments": [
+            {
+              "documentation": [
+                "The date as seconds since the Unix epoch; this API converts it to milliseconds."
+              ],
+              "name": "unixTimeSeconds",
+              "nilable": false,
+              "type": "number"
+            },
+            {
+              "documentation": [
+                "The date format length; None omits the date portion."
+              ],
+              "name": "style",
+              "nilable": false,
+              "type": "DateTimeStyle"
+            },
+            {
+              "documentation": [
+                "The time zone ID applied to the formatter; empty strings keep the formatter default."
+              ],
+              "name": "timeZone",
+              "nilable": false,
+              "type": "cstring"
+            }
+          ],
+          "documentation": [
+            "Formats Unix time as localized date text using locale date patterns, symbols, style, and optional time zone."
+          ],
+          "mayReturnNothing": true,
+          "name": "FormatDate",
+          "returns": [
+            {
+              "documentation": [
+                "The formatted date string."
+              ],
+              "name": "result",
+              "nilable": false,
+              "type": "string"
+            }
+          ],
+          "secretArguments": "AllowedWhenTainted",
+          "source": "LuaLocaleContextAPIDocumentation.lua",
+          "wrapper": "formatDate"
+        },
+        {
+          "arguments": [
+            {
+              "documentation": [
+                "The date and time as seconds since the Unix epoch; this API converts it to milliseconds."
+              ],
+              "name": "unixTimeSeconds",
+              "nilable": false,
+              "type": "number"
+            },
+            {
+              "documentation": [
+                "The date format length; None omits the date portion."
+              ],
+              "name": "dateStyle",
+              "nilable": false,
+              "type": "DateTimeStyle"
+            },
+            {
+              "documentation": [
+                "The time format length; None omits the time portion."
+              ],
+              "name": "timeStyle",
+              "nilable": false,
+              "type": "DateTimeStyle"
+            },
+            {
+              "documentation": [
+                "The time zone ID applied to the formatter; empty strings keep the formatter default."
+              ],
+              "name": "timeZone",
+              "nilable": false,
+              "type": "cstring"
+            }
+          ],
+          "documentation": [
+            "Formats Unix time as localized date and time text using locale patterns, symbols, styles, and optional time zone."
+          ],
+          "mayReturnNothing": true,
+          "name": "FormatDateTime",
+          "returns": [
+            {
+              "documentation": [
+                "The formatted date and time string."
+              ],
+              "name": "result",
+              "nilable": false,
+              "type": "string"
+            }
+          ],
+          "secretArguments": "AllowedWhenTainted",
+          "source": "LuaLocaleContextAPIDocumentation.lua",
+          "wrapper": "formatDateTime"
+        },
+        {
+          "arguments": [
+            {
+              "documentation": [
+                "The double value formatted according to the selected number formatter."
+              ],
+              "name": "number",
+              "nilable": false,
+              "type": "number"
+            },
+            {
+              "documentation": [
+                "The number style to format with; Currency is not accepted here, use FormatCurrency instead."
+              ],
+              "name": "style",
+              "nilable": false,
+              "type": "NumberStyle"
+            }
+          ],
+          "documentation": [
+            "Formats a double with locale number formatting using locale symbols, grouping, and the selected non-currency style."
+          ],
+          "mayReturnNothing": true,
+          "name": "FormatNumber",
+          "returns": [
+            {
+              "documentation": [
+                "The localized number text produced by the formatter."
+              ],
+              "name": "result",
+              "nilable": false,
+              "type": "string"
+            }
+          ],
+          "secretArguments": "AllowedWhenTainted",
+          "source": "LuaLocaleContextAPIDocumentation.lua",
+          "wrapper": "formatNumber"
+        },
+        {
+          "arguments": [
+            {
+              "documentation": [
+                "The time as seconds since the Unix epoch; this API converts it to milliseconds."
+              ],
+              "name": "unixTimeSeconds",
+              "nilable": false,
+              "type": "number"
+            },
+            {
+              "documentation": [
+                "The time format length; None omits the time portion."
+              ],
+              "name": "style",
+              "nilable": false,
+              "type": "DateTimeStyle"
+            },
+            {
+              "documentation": [
+                "The time zone ID applied to the formatter; empty strings keep the formatter default."
+              ],
+              "name": "timeZone",
+              "nilable": false,
+              "type": "cstring"
+            }
+          ],
+          "documentation": [
+            "Formats Unix time as localized time text using locale time patterns, symbols, style, and optional time zone."
+          ],
+          "mayReturnNothing": true,
+          "name": "FormatTime",
+          "returns": [
+            {
+              "documentation": [
+                "The formatted time string."
+              ],
+              "name": "result",
+              "nilable": false,
+              "type": "string"
+            }
+          ],
+          "secretArguments": "AllowedWhenTainted",
+          "source": "LuaLocaleContextAPIDocumentation.lua",
+          "wrapper": "formatTime"
+        },
+        {
+          "arguments": [
+            {
+              "documentation": [
+                "The null-terminated 3-letter ISO 4217 currency code."
+              ],
+              "name": "currencyCode",
+              "nilable": false,
+              "type": "cstring"
+            },
+            {
+              "documentation": [
+                "The selector for which kind of currency name to return."
+              ],
+              "name": "style",
+              "nilable": false,
+              "type": "CurrencyNameStyle"
+            }
+          ],
+          "documentation": [
+            "Returns the display name for a currency in the context locale."
+          ],
+          "mayReturnNothing": true,
+          "name": "GetCurrencyName",
+          "returns": [
+            {
+              "documentation": [
+                "The display string for the currency, or the currency code itself if no localized name is available."
+              ],
+              "name": "result",
+              "nilable": false,
+              "type": "string"
+            }
+          ],
+          "secretArguments": "AllowedWhenTainted",
+          "source": "LuaLocaleContextAPIDocumentation.lua",
+          "wrapper": "getCurrencyName"
+        },
+        {
+          "arguments": [
+            {
+              "documentation": [
+                "The locale whose language conventions are used for the display name"
+              ],
+              "name": "displayLocale",
+              "nilable": false,
+              "type": "cstring"
+            }
+          ],
+          "documentation": [
+            "Gets a display name suitable for the specified locale."
+          ],
+          "mayReturnNothing": true,
+          "name": "GetDisplayName",
+          "returns": [
+            {
+              "documentation": [
+                "The displayable name for the locale."
+              ],
+              "name": "result",
+              "nilable": false,
+              "type": "string"
+            }
+          ],
+          "secretArguments": "AllowedWhenTainted",
+          "source": "LuaLocaleContextAPIDocumentation.lua",
+          "wrapper": "getDisplayName"
+        },
+        {
+          "documentation": [
+            "Gets the locale used by this locale context."
+          ],
+          "name": "GetLocale",
+          "returns": [
+            {
+              "documentation": [
+                "The locale ID of this locale context."
+              ],
+              "name": "result",
+              "nilable": false,
+              "type": "string"
+            }
+          ],
+          "source": "LuaLocaleContextAPIDocumentation.lua",
+          "wrapper": "getLocale"
+        },
+        {
+          "arguments": [
+            {
+              "documentation": [
+                "The UTF-8 text converted into collation sort-key bytes."
+              ],
+              "name": "text",
+              "nilable": false,
+              "type": "cstring"
+            },
+            {
+              "documentation": [
+                "The comparison level used by the collator; lower strengths ignore later-level differences."
+              ],
+              "name": "strength",
+              "nilable": false,
+              "type": "CollationStrength"
+            }
+          ],
+          "documentation": [
+            "Transforms a string into a collation sort key."
+          ],
+          "mayReturnNothing": true,
+          "name": "GetSortKey",
+          "returns": [
+            {
+              "documentation": [
+                "The sort key bytes excluding the terminating zero byte."
+              ],
+              "name": "result",
+              "nilable": false,
+              "type": "string"
+            }
+          ],
+          "secretArguments": "AllowedWhenTainted",
+          "source": "LuaLocaleContextAPIDocumentation.lua",
+          "wrapper": "getSortKey"
+        },
+        {
+          "arguments": [
+            {
+              "documentation": [
+                "The UTF-8 text counted by character break iteration."
+              ],
+              "name": "text",
+              "nilable": false,
+              "type": "cstring"
+            }
+          ],
+          "documentation": [
+            "Counts character break boundaries in UTF-8 text."
+          ],
+          "mayReturnNothing": true,
+          "name": "Length",
+          "returns": [
+            {
+              "documentation": [
+                "The number of character boundaries minus the initial boundary."
+              ],
+              "name": "result",
+              "nilable": false,
+              "type": "number"
+            }
+          ],
+          "secretArguments": "AllowedWhenTainted",
+          "source": "LuaLocaleContextAPIDocumentation.lua",
+          "wrapper": "length"
+        },
+        {
+          "arguments": [
+            {
+              "documentation": [
+                "The localized currency text to parse for both amount and ISO 4217 code."
+              ],
+              "name": "text",
+              "nilable": false,
+              "type": "cstring"
+            }
+          ],
+          "documentation": [
+            "Parses an entire localized currency string into a double amount and ISO 4217 currency code."
+          ],
+          "mayReturnNothing": true,
+          "name": "ParseCurrency",
+          "returns": [
+            {
+              "documentation": [
+                "The numeric amount and ISO 4217 currency code parsed from the localized currency text."
+              ],
+              "name": "result",
+              "nilable": false,
+              "type": "CurrencyParseResult"
+            }
+          ],
+          "secretArguments": "AllowedWhenTainted",
+          "source": "LuaLocaleContextAPIDocumentation.lua",
+          "wrapper": "parseCurrency"
+        },
+        {
+          "arguments": [
+            {
+              "documentation": [
+                "The localized numeric text to parse with the selected style."
+              ],
+              "name": "text",
+              "nilable": false,
+              "type": "cstring"
+            },
+            {
+              "documentation": [
+                "The number style to parse with; Currency is not accepted here, use ParseCurrency instead."
+              ],
+              "name": "style",
+              "nilable": false,
+              "type": "NumberStyle"
+            }
+          ],
+          "documentation": [
+            "Parses an entire localized number string into a double using the selected non-currency number formatter."
+          ],
+          "mayReturnNothing": true,
+          "name": "ParseNumber",
+          "returns": [
+            {
+              "documentation": [
+                "The numeric value parsed from the localized number text."
+              ],
+              "name": "result",
+              "nilable": false,
+              "type": "number"
+            }
+          ],
+          "secretArguments": "AllowedWhenTainted",
+          "source": "LuaLocaleContextAPIDocumentation.lua",
+          "wrapper": "parseNumber"
+        },
+        {
+          "arguments": [
+            {
+              "documentation": [
+                "The number for which the plural rule has to be determined."
+              ],
+              "name": "number",
+              "nilable": false,
+              "type": "number"
+            },
+            {
+              "documentation": [
+                "The plural rule type, cardinal or ordinal."
+              ],
+              "name": "pluralType",
+              "nilable": false,
+              "type": "PluralType"
+            }
+          ],
+          "documentation": [
+            "Returns the keyword of the first plural rule that applies to a number."
+          ],
+          "mayReturnNothing": true,
+          "name": "SelectPlural",
+          "returns": [
+            {
+              "documentation": [
+                "The plural keyword for the rule that applies to the number."
+              ],
+              "name": "result",
+              "nilable": false,
+              "type": "string"
+            }
+          ],
+          "secretArguments": "AllowedWhenTainted",
+          "source": "LuaLocaleContextAPIDocumentation.lua",
+          "wrapper": "selectPlural"
+        },
+        {
+          "arguments": [
+            {
+              "documentation": [
+                "The locale ID used by subsequent locale context calls."
+              ],
+              "name": "locale",
+              "nilable": false,
+              "type": "cstring"
+            }
+          ],
+          "documentation": [
+            "Sets the locale used by this locale context."
+          ],
+          "name": "SetLocale",
+          "returns": [
+            {
+              "documentation": [
+                "True if the locale was updated."
+              ],
+              "name": "success",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "LuaLocaleContextAPIDocumentation.lua",
+          "wrapper": "setLocale"
+        },
+        {
+          "arguments": [
+            {
+              "documentation": [
+                "The UTF-8 text whose characters are lowercased."
+              ],
+              "name": "text",
+              "nilable": false,
+              "type": "cstring"
+            }
+          ],
+          "documentation": [
+            "Lowercases the characters in a string; casing is locale-dependent and context-sensitive."
+          ],
+          "mayReturnNothing": true,
+          "name": "ToLower",
+          "returns": [
+            {
+              "documentation": [
+                "The lowercased string, which may be longer or shorter than the original."
+              ],
+              "name": "result",
+              "nilable": false,
+              "type": "string"
+            }
+          ],
+          "secretArguments": "AllowedWhenTainted",
+          "source": "LuaLocaleContextAPIDocumentation.lua",
+          "wrapper": "toLower"
+        },
+        {
+          "arguments": [
+            {
+              "documentation": [
+                "The UTF-8 text whose titlecase positions are mapped."
+              ],
+              "name": "text",
+              "nilable": false,
+              "type": "cstring"
+            }
+          ],
+          "documentation": [
+            "Titlecases a string using titlecase positions determined by the default Unicode algorithm."
+          ],
+          "mayReturnNothing": true,
+          "name": "ToTitle",
+          "returns": [
+            {
+              "documentation": [
+                "The titlecased string, which may be longer or shorter than the original."
+              ],
+              "name": "result",
+              "nilable": false,
+              "type": "string"
+            }
+          ],
+          "secretArguments": "AllowedWhenTainted",
+          "source": "LuaLocaleContextAPIDocumentation.lua",
+          "wrapper": "toTitle"
+        },
+        {
+          "arguments": [
+            {
+              "documentation": [
+                "The UTF-8 text whose characters are uppercased."
+              ],
+              "name": "text",
+              "nilable": false,
+              "type": "cstring"
+            }
+          ],
+          "documentation": [
+            "Uppercases the characters in a string; casing is locale-dependent and context-sensitive."
+          ],
+          "mayReturnNothing": true,
+          "name": "ToUpper",
+          "returns": [
+            {
+              "documentation": [
+                "The uppercased string, which may be longer or shorter than the original."
+              ],
+              "name": "result",
+              "nilable": false,
+              "type": "string"
+            }
+          ],
+          "secretArguments": "AllowedWhenTainted",
+          "source": "LuaLocaleContextAPIDocumentation.lua",
+          "wrapper": "toUpper"
+        },
+        {
+          "arguments": [
+            {
+              "documentation": [
+                "The locale transform to apply."
+              ],
+              "name": "transform",
+              "nilable": false,
+              "type": "LocaleTransform"
+            }
+          ],
+          "documentation": [
+            "Applies a locale transform to the context locale and returns the transformed locale string."
+          ],
+          "mayReturnNothing": true,
+          "name": "TransformLocale",
+          "returns": [
+            {
+              "documentation": [
+                "The transformed locale string."
+              ],
+              "name": "result",
+              "nilable": false,
+              "type": "string"
+            }
+          ],
+          "secretArguments": "AllowedWhenTainted",
+          "source": "LuaLocaleContextAPIDocumentation.lua",
+          "wrapper": "transformLocale"
+        }
+      ],
+      "kind": "object",
+      "objectType": "Userdata",
+      "sources": [
+        "LuaLocaleContextAPIDocumentation.lua"
+      ],
+      "system": "LuaLocaleContextAPI",
+      "wrapper": "luaLocaleContextAPI"
     },
     {
       "blizzardNamespace": "C_MacOptions",
@@ -60635,6 +62594,453 @@
       ],
       "system": "MapExplorationInfo",
       "wrapper": "mapExplorationInfo"
+    },
+    {
+      "blizzardNamespace": "math",
+      "environment": "All",
+      "functions": [
+        {
+          "arguments": [
+            {
+              "documentation": [
+                "The value to clamp."
+              ],
+              "name": "value",
+              "nilable": false,
+              "type": "number"
+            },
+            {
+              "documentation": [
+                "The inclusive lower bound."
+              ],
+              "name": "minimum",
+              "nilable": false,
+              "type": "number"
+            },
+            {
+              "documentation": [
+                "The inclusive upper bound."
+              ],
+              "name": "maximum",
+              "nilable": false,
+              "type": "number"
+            }
+          ],
+          "binding": "math.clamp",
+          "documentation": [
+            "Clamps a value to the inclusive range defined by the minimum and maximum values."
+          ],
+          "name": "clamp",
+          "returns": [
+            {
+              "documentation": [
+                "The clamped value."
+              ],
+              "name": "clampedValue",
+              "nilable": false,
+              "type": "number"
+            }
+          ],
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "LuaMathExtensionsDocumentation.lua",
+          "wrapper": "clamp"
+        },
+        {
+          "arguments": [
+            {
+              "documentation": [
+                "The value to inspect."
+              ],
+              "name": "value",
+              "nilable": false,
+              "type": "number"
+            }
+          ],
+          "binding": "math.isfinite",
+          "documentation": [
+            "Returns whether a value is finite."
+          ],
+          "name": "isfinite",
+          "returns": [
+            {
+              "documentation": [
+                "True if the value is neither infinite nor NaN; otherwise false."
+              ],
+              "name": "finite",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "LuaMathExtensionsDocumentation.lua",
+          "wrapper": "isfinite"
+        },
+        {
+          "arguments": [
+            {
+              "documentation": [
+                "The value to inspect."
+              ],
+              "name": "value",
+              "nilable": false,
+              "type": "number"
+            }
+          ],
+          "binding": "math.isinf",
+          "documentation": [
+            "Returns whether a value is positive or negative infinity."
+          ],
+          "name": "isinf",
+          "returns": [
+            {
+              "documentation": [
+                "True if the value is positive or negative infinity; otherwise false."
+              ],
+              "name": "infinite",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "LuaMathExtensionsDocumentation.lua",
+          "wrapper": "isinf"
+        },
+        {
+          "arguments": [
+            {
+              "documentation": [
+                "The value to inspect."
+              ],
+              "name": "value",
+              "nilable": false,
+              "type": "number"
+            }
+          ],
+          "binding": "math.isnan",
+          "documentation": [
+            "Returns whether a value is NaN."
+          ],
+          "name": "isnan",
+          "returns": [
+            {
+              "documentation": [
+                "True if the value is NaN; otherwise false."
+              ],
+              "name": "nan",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "LuaMathExtensionsDocumentation.lua",
+          "wrapper": "isnan"
+        },
+        {
+          "arguments": [
+            {
+              "documentation": [
+                "The value returned when the interpolation amount is 0."
+              ],
+              "name": "startValue",
+              "nilable": false,
+              "type": "number"
+            },
+            {
+              "documentation": [
+                "The value returned when the interpolation amount is 1."
+              ],
+              "name": "endValue",
+              "nilable": false,
+              "type": "number"
+            },
+            {
+              "documentation": [
+                "The interpolation amount. Values outside [0, 1] extrapolate beyond the two values."
+              ],
+              "name": "amount",
+              "nilable": false,
+              "type": "number"
+            }
+          ],
+          "binding": "math.lerp",
+          "documentation": [
+            "Linearly interpolates between two values."
+          ],
+          "name": "lerp",
+          "returns": [
+            {
+              "documentation": [
+                "The interpolated value."
+              ],
+              "name": "interpolatedValue",
+              "nilable": false,
+              "type": "number"
+            }
+          ],
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "LuaMathExtensionsDocumentation.lua",
+          "wrapper": "lerp"
+        },
+        {
+          "arguments": [
+            {
+              "documentation": [
+                "The value to normalize."
+              ],
+              "name": "value",
+              "nilable": false,
+              "type": "number"
+            },
+            {
+              "documentation": [
+                "The value that maps to 0."
+              ],
+              "name": "minimum",
+              "nilable": false,
+              "type": "number"
+            },
+            {
+              "documentation": [
+                "The value that maps to 1."
+              ],
+              "name": "maximum",
+              "nilable": false,
+              "type": "number"
+            }
+          ],
+          "binding": "math.normalize",
+          "documentation": [
+            "Returns the relative position of a value within a range, where the minimum maps to 0 and the maximum maps to 1."
+          ],
+          "name": "normalize",
+          "returns": [
+            {
+              "documentation": [
+                "The normalized value. Values outside the input range produce results outside [0, 1]."
+              ],
+              "name": "normalizedValue",
+              "nilable": false,
+              "type": "number"
+            }
+          ],
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "LuaMathExtensionsDocumentation.lua",
+          "wrapper": "normalize"
+        },
+        {
+          "arguments": [
+            {
+              "documentation": [
+                "The value to map."
+              ],
+              "name": "value",
+              "nilable": false,
+              "type": "number"
+            },
+            {
+              "documentation": [
+                "The lower endpoint of the source range."
+              ],
+              "name": "sourceMinimum",
+              "nilable": false,
+              "type": "number"
+            },
+            {
+              "documentation": [
+                "The upper endpoint of the source range."
+              ],
+              "name": "sourceMaximum",
+              "nilable": false,
+              "type": "number"
+            },
+            {
+              "documentation": [
+                "The lower endpoint of the destination range."
+              ],
+              "name": "destinationMinimum",
+              "nilable": false,
+              "type": "number"
+            },
+            {
+              "documentation": [
+                "The upper endpoint of the destination range."
+              ],
+              "name": "destinationMaximum",
+              "nilable": false,
+              "type": "number"
+            }
+          ],
+          "binding": "math.remap",
+          "documentation": [
+            "Maps a value from one range to the corresponding position in another range."
+          ],
+          "name": "remap",
+          "returns": [
+            {
+              "documentation": [
+                "The mapped value. Values outside the source range are extrapolated beyond the destination range."
+              ],
+              "name": "remappedValue",
+              "nilable": false,
+              "type": "number"
+            }
+          ],
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "LuaMathExtensionsDocumentation.lua",
+          "wrapper": "remap"
+        },
+        {
+          "arguments": [
+            {
+              "documentation": [
+                "The value to round."
+              ],
+              "name": "value",
+              "nilable": false,
+              "type": "number"
+            },
+            {
+              "default": 0,
+              "documentation": [
+                "The number of decimal places to preserve. Negative values round to positions left of the decimal point."
+              ],
+              "name": "decimalPlaces",
+              "nilable": false,
+              "type": "number"
+            }
+          ],
+          "binding": "math.round",
+          "documentation": [
+            "Rounds a value to the specified number of decimal places, with halfway values rounded away from zero."
+          ],
+          "name": "round",
+          "returns": [
+            {
+              "documentation": [
+                "The rounded value."
+              ],
+              "name": "roundedValue",
+              "nilable": false,
+              "type": "number"
+            }
+          ],
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "LuaMathExtensionsDocumentation.lua",
+          "wrapper": "round"
+        },
+        {
+          "arguments": [
+            {
+              "documentation": [
+                "The value to clamp."
+              ],
+              "name": "value",
+              "nilable": false,
+              "type": "number"
+            }
+          ],
+          "binding": "math.saturate",
+          "documentation": [
+            "Clamps a value to the inclusive range [0, 1]."
+          ],
+          "name": "saturate",
+          "returns": [
+            {
+              "documentation": [
+                "The value clamped to the inclusive range [0, 1]."
+              ],
+              "name": "saturatedValue",
+              "nilable": false,
+              "type": "number"
+            }
+          ],
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "LuaMathExtensionsDocumentation.lua",
+          "wrapper": "saturate"
+        },
+        {
+          "arguments": [
+            {
+              "documentation": [
+                "The value whose sign will be returned."
+              ],
+              "name": "value",
+              "nilable": false,
+              "type": "number"
+            }
+          ],
+          "binding": "math.sign",
+          "documentation": [
+            "Returns -1 for negative values, 0 for zero, and 1 for positive values."
+          ],
+          "name": "sign",
+          "returns": [
+            {
+              "documentation": [
+                "The sign of the value."
+              ],
+              "name": "sign",
+              "nilable": false,
+              "type": "number"
+            }
+          ],
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "LuaMathExtensionsDocumentation.lua",
+          "wrapper": "sign"
+        },
+        {
+          "arguments": [
+            {
+              "documentation": [
+                "The value to wrap."
+              ],
+              "name": "value",
+              "nilable": false,
+              "type": "number"
+            },
+            {
+              "documentation": [
+                "The inclusive lower bound of the range."
+              ],
+              "name": "minimum",
+              "nilable": false,
+              "type": "number"
+            },
+            {
+              "documentation": [
+                "The exclusive upper bound of the range."
+              ],
+              "name": "maximum",
+              "nilable": false,
+              "type": "number"
+            }
+          ],
+          "binding": "math.wrap",
+          "documentation": [
+            "Wraps a value into the half-open range [minimum, maximum)."
+          ],
+          "name": "wrap",
+          "returns": [
+            {
+              "documentation": [
+                "The wrapped value, greater than or equal to minimum and less than maximum. If minimum equals maximum, returns minimum."
+              ],
+              "name": "wrapped",
+              "nilable": false,
+              "type": "number"
+            }
+          ],
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "LuaMathExtensionsDocumentation.lua",
+          "wrapper": "wrap"
+        }
+      ],
+      "kind": "namespace",
+      "sources": [
+        "LuaMathExtensionsDocumentation.lua"
+      ],
+      "system": "LuaMathExtensions",
+      "wrapper": "math"
     },
     {
       "blizzardNamespace": "C_MerchantFrame",
@@ -70012,6 +72418,11 @@
               "name": "realmName",
               "nilable": false,
               "type": "cstring"
+            },
+            {
+              "name": "level",
+              "nilable": true,
+              "type": "number"
             }
           ],
           "secretArguments": "AllowedWhenTainted",
@@ -71437,7 +73848,9 @@
     {
       "blizzardNamespace": "C_Pony",
       "documentation": [
-        "A pony is not simply a small horse., Time to pony up some documentation., See? Pony."
+        "A pony is not simply a small horse.",
+        "Time to pony up some documentation.",
+        "See? Pony."
       ],
       "environment": "All",
       "kind": "namespace",
@@ -72295,6 +74708,39 @@
         {
           "arguments": [
             {
+              "name": "index",
+              "nilable": false,
+              "type": "luaIndex"
+            }
+          ],
+          "attributes": {
+            "Namespace": ""
+          },
+          "binding": "GetArenaOpponentSpec",
+          "flags": [
+            "SecretReturns"
+          ],
+          "mayReturnNothing": true,
+          "name": "GetArenaOpponentSpec",
+          "returns": [
+            {
+              "name": "specializationID",
+              "nilable": false,
+              "type": "number"
+            },
+            {
+              "name": "gender",
+              "nilable": false,
+              "type": "number"
+            }
+          ],
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "PvpInfoDocumentation.lua",
+          "wrapper": "getArenaOpponentSpec"
+        },
+        {
+          "arguments": [
+            {
               "name": "teamSize",
               "nilable": false,
               "type": "number"
@@ -72984,8 +75430,8 @@
           "wrapper": "getRandomEpicBGRewards"
         },
         {
-          "binding": "C_PvP.GetRandomTrainingGroundRewards",
-          "name": "GetRandomTrainingGroundRewards",
+          "binding": "C_PvP.GetRandomTrainingGroundArenaRewards",
+          "name": "GetRandomTrainingGroundArenaRewards",
           "returns": [
             {
               "name": "honor",
@@ -73016,7 +75462,42 @@
             }
           ],
           "source": "PvpInfoDocumentation.lua",
-          "wrapper": "getRandomTrainingGroundRewards"
+          "wrapper": "getRandomTrainingGroundArenaRewards"
+        },
+        {
+          "binding": "C_PvP.GetRandomTrainingGroundBGRewards",
+          "name": "GetRandomTrainingGroundBGRewards",
+          "returns": [
+            {
+              "name": "honor",
+              "nilable": false,
+              "type": "number"
+            },
+            {
+              "name": "experience",
+              "nilable": false,
+              "type": "number"
+            },
+            {
+              "innerType": "BattlefieldItemReward",
+              "name": "itemRewards",
+              "nilable": true,
+              "type": "table"
+            },
+            {
+              "innerType": "BattlefieldCurrencyReward",
+              "name": "currencyRewards",
+              "nilable": true,
+              "type": "table"
+            },
+            {
+              "name": "roleShortageBonus",
+              "nilable": true,
+              "type": "RoleShortageReward"
+            }
+          ],
+          "source": "PvpInfoDocumentation.lua",
+          "wrapper": "getRandomTrainingGroundBGRewards"
         },
         {
           "binding": "C_PvP.GetRatedBGRewards",
@@ -73432,17 +75913,30 @@
           "wrapper": "hasMatchStarted"
         },
         {
-          "binding": "C_PvP.HasRandomTrainingGroundWinToday",
-          "name": "HasRandomTrainingGroundWinToday",
+          "binding": "C_PvP.HasRandomTrainingGroundArenaWinToday",
+          "name": "HasRandomTrainingGroundArenaWinToday",
           "returns": [
             {
-              "name": "hasRandomTrainingGroundWinToday",
+              "name": "hasRandomTrainingGroundArenaWinToday",
               "nilable": false,
               "type": "bool"
             }
           ],
           "source": "PvpInfoDocumentation.lua",
-          "wrapper": "hasRandomTrainingGroundWinToday"
+          "wrapper": "hasRandomTrainingGroundArenaWinToday"
+        },
+        {
+          "binding": "C_PvP.HasRandomTrainingGroundBGWinToday",
+          "name": "HasRandomTrainingGroundBGWinToday",
+          "returns": [
+            {
+              "name": "hasRandomTrainingGroundBGWinToday",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "source": "PvpInfoDocumentation.lua",
+          "wrapper": "hasRandomTrainingGroundBGWinToday"
         },
         {
           "binding": "C_PvP.IsActiveBattlefield",
@@ -73736,6 +76230,48 @@
           "wrapper": "isSubZonePVPPOI"
         },
         {
+          "arguments": [
+            {
+              "name": "lfgDungeonsID",
+              "nilable": false,
+              "type": "number"
+            }
+          ],
+          "binding": "C_PvP.IsTrainingGroundsArena",
+          "name": "IsTrainingGroundsArena",
+          "returns": [
+            {
+              "name": "isTrainingGroundsArena",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "PvpInfoDocumentation.lua",
+          "wrapper": "isTrainingGroundsArena"
+        },
+        {
+          "arguments": [
+            {
+              "name": "lfgDungeonsID",
+              "nilable": false,
+              "type": "number"
+            }
+          ],
+          "binding": "C_PvP.IsTrainingGroundsBG",
+          "name": "IsTrainingGroundsBG",
+          "returns": [
+            {
+              "name": "isTrainingGroundsBG",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "PvpInfoDocumentation.lua",
+          "wrapper": "isTrainingGroundsBG"
+        },
+        {
           "binding": "C_PvP.IsWarModeActive",
           "name": "IsWarModeActive",
           "returns": [
@@ -73811,10 +76347,10 @@
           "wrapper": "joinRandomTrainingGroundArena"
         },
         {
-          "binding": "C_PvP.JoinRandomTrainingGroundBattleground",
-          "name": "JoinRandomTrainingGroundBattleground",
+          "binding": "C_PvP.JoinRandomTrainingGroundBG",
+          "name": "JoinRandomTrainingGroundBG",
           "source": "PvpInfoDocumentation.lua",
-          "wrapper": "joinRandomTrainingGroundBattleground"
+          "wrapper": "joinRandomTrainingGroundBG"
         },
         {
           "binding": "C_PvP.JoinRatedBGBlitz",
@@ -78488,8 +81024,9 @@
           ],
           "binding": "C_Roleset.ApplyRolesetFilters",
           "documentation": [
-            "Sets or clears both blocklist and allowlist filters atomically with a single visibility reevaluation. Pass an empty table to clear the corresponding filter."
+            "Sets or clears both blocklist and allowlist filters atomically with a single visibility reevaluation. Pass an empty table to clear the corresponding filter. Blocked for tainted callers while in combat lockdown."
           ],
+          "hasRestrictions": true,
           "name": "ApplyRolesetFilters",
           "secretArguments": "AllowedWhenUntainted",
           "source": "RolesetSystemDocumentation.lua",
@@ -79053,7 +81590,7 @@
             {
               "name": "seconds",
               "nilable": false,
-              "type": "DurationSecondsDouble"
+              "type": "Seconds"
             }
           ],
           "documentation": [
@@ -79109,7 +81646,7 @@
             {
               "name": "seconds",
               "nilable": false,
-              "type": "DurationSecondsDouble"
+              "type": "Seconds"
             }
           ],
           "documentation": [
@@ -79135,7 +81672,7 @@
             {
               "name": "seconds",
               "nilable": false,
-              "type": "DurationSecondsDouble"
+              "type": "Seconds"
             }
           ],
           "documentation": [
@@ -79161,7 +81698,7 @@
             {
               "name": "seconds",
               "nilable": false,
-              "type": "DurationSecondsDouble"
+              "type": "Seconds"
             }
           ],
           "documentation": [
@@ -79187,7 +81724,7 @@
             {
               "name": "seconds",
               "nilable": false,
-              "type": "DurationSecondsDouble"
+              "type": "Seconds"
             },
             {
               "documentation": [
@@ -79254,7 +81791,7 @@
             {
               "name": "approximationSeconds",
               "nilable": false,
-              "type": "DurationSecondsDouble"
+              "type": "Seconds"
             }
           ],
           "source": "SecondsFormatterAPIDocumentation.lua",
@@ -79371,7 +81908,7 @@
             {
               "name": "threshold",
               "nilable": false,
-              "type": "DurationSecondsDouble"
+              "type": "Seconds"
             }
           ],
           "source": "SecondsFormatterAPIDocumentation.lua",
@@ -79459,7 +81996,7 @@
             {
               "name": "seconds",
               "nilable": false,
-              "type": "DurationSecondsDouble"
+              "type": "Seconds"
             }
           ],
           "documentation": [
@@ -79603,7 +82140,7 @@
             {
               "name": "threshold",
               "nilable": false,
-              "type": "DurationSecondsDouble"
+              "type": "Seconds"
             }
           ],
           "documentation": [
@@ -80566,6 +83103,16 @@
           "wrapper": "getDuration"
         },
         {
+          "attributes": {
+            "ChecksForbiddenAspects": [
+              {
+                "Argument": "self",
+                "Aspect": {
+                  "ref": "Enum.ForbiddenAspect.QueryAnimationProgress"
+                }
+              }
+            ]
+          },
           "name": "GetElapsed",
           "returns": [
             {
@@ -80602,6 +83149,16 @@
           "wrapper": "getOrder"
         },
         {
+          "attributes": {
+            "ChecksForbiddenAspects": [
+              {
+                "Argument": "self",
+                "Aspect": {
+                  "ref": "Enum.ForbiddenAspect.QueryAnimationProgress"
+                }
+              }
+            ]
+          },
           "name": "GetProgress",
           "returns": [
             {
@@ -80666,6 +83223,16 @@
           "wrapper": "getScript"
         },
         {
+          "attributes": {
+            "ChecksForbiddenAspects": [
+              {
+                "Argument": "self",
+                "Aspect": {
+                  "ref": "Enum.ForbiddenAspect.QueryAnimationProgress"
+                }
+              }
+            ]
+          },
           "name": "GetSmoothProgress",
           "returns": [
             {
@@ -80788,6 +83355,16 @@
           "wrapper": "hookScript"
         },
         {
+          "attributes": {
+            "ChecksForbiddenAspects": [
+              {
+                "Argument": "self",
+                "Aspect": {
+                  "ref": "Enum.ForbiddenAspect.QueryAnimationProgress"
+                }
+              }
+            ]
+          },
           "name": "IsDelaying",
           "returns": [
             {
@@ -80800,6 +83377,16 @@
           "wrapper": "isDelaying"
         },
         {
+          "attributes": {
+            "ChecksForbiddenAspects": [
+              {
+                "Argument": "self",
+                "Aspect": {
+                  "ref": "Enum.ForbiddenAspect.QueryAnimationProgress"
+                }
+              }
+            ]
+          },
           "name": "IsDone",
           "returns": [
             {
@@ -80812,6 +83399,16 @@
           "wrapper": "isDone"
         },
         {
+          "attributes": {
+            "ChecksForbiddenAspects": [
+              {
+                "Argument": "self",
+                "Aspect": {
+                  "ref": "Enum.ForbiddenAspect.QueryAnimationProgress"
+                }
+              }
+            ]
+          },
           "name": "IsPaused",
           "returns": [
             {
@@ -80824,6 +83421,16 @@
           "wrapper": "isPaused"
         },
         {
+          "attributes": {
+            "ChecksForbiddenAspects": [
+              {
+                "Argument": "self",
+                "Aspect": {
+                  "ref": "Enum.ForbiddenAspect.QueryAnimationProgress"
+                }
+              }
+            ]
+          },
           "name": "IsPlaying",
           "returns": [
             {
@@ -80836,6 +83443,16 @@
           "wrapper": "isPlaying"
         },
         {
+          "attributes": {
+            "ChecksForbiddenAspects": [
+              {
+                "Argument": "self",
+                "Aspect": {
+                  "ref": "Enum.ForbiddenAspect.QueryAnimationProgress"
+                }
+              }
+            ]
+          },
           "name": "IsStopped",
           "returns": [
             {
@@ -80956,6 +83573,16 @@
               "type": "number"
             }
           ],
+          "attributes": {
+            "ChecksForbiddenAspects": [
+              {
+                "Argument": "parent",
+                "Aspect": {
+                  "ref": "Enum.ForbiddenAspect.AddAnimations"
+                }
+              }
+            ]
+          },
           "flags": [
             "CheckAllowChangeParent"
           ],
@@ -81424,6 +84051,16 @@
               "type": "cstring"
             }
           ],
+          "attributes": {
+            "ChecksForbiddenAspects": [
+              {
+                "Argument": "self",
+                "Aspect": {
+                  "ref": "Enum.ForbiddenAspect.AddAnimations"
+                }
+              }
+            ]
+          },
           "name": "CreateAnimation",
           "returns": [
             {
@@ -81479,6 +84116,16 @@
           "wrapper": "getDuration"
         },
         {
+          "attributes": {
+            "ChecksForbiddenAspects": [
+              {
+                "Argument": "self",
+                "Aspect": {
+                  "ref": "Enum.ForbiddenAspect.QueryAnimationProgress"
+                }
+              }
+            ]
+          },
           "name": "GetElapsed",
           "returns": [
             {
@@ -81491,6 +84138,16 @@
           "wrapper": "getElapsed"
         },
         {
+          "attributes": {
+            "ChecksForbiddenAspects": [
+              {
+                "Argument": "self",
+                "Aspect": {
+                  "ref": "Enum.ForbiddenAspect.QueryAnimationProgress"
+                }
+              }
+            ]
+          },
           "name": "GetLoopState",
           "returns": [
             {
@@ -81515,6 +84172,16 @@
           "wrapper": "getLooping"
         },
         {
+          "attributes": {
+            "ChecksForbiddenAspects": [
+              {
+                "Argument": "self",
+                "Aspect": {
+                  "ref": "Enum.ForbiddenAspect.QueryAnimationProgress"
+                }
+              }
+            ]
+          },
           "name": "GetProgress",
           "returns": [
             {
@@ -81641,6 +84308,16 @@
           "wrapper": "hookScript"
         },
         {
+          "attributes": {
+            "ChecksForbiddenAspects": [
+              {
+                "Argument": "self",
+                "Aspect": {
+                  "ref": "Enum.ForbiddenAspect.QueryAnimationProgress"
+                }
+              }
+            ]
+          },
           "name": "IsDone",
           "returns": [
             {
@@ -81653,6 +84330,16 @@
           "wrapper": "isDone"
         },
         {
+          "attributes": {
+            "ChecksForbiddenAspects": [
+              {
+                "Argument": "self",
+                "Aspect": {
+                  "ref": "Enum.ForbiddenAspect.QueryAnimationProgress"
+                }
+              }
+            ]
+          },
           "name": "IsPaused",
           "returns": [
             {
@@ -81665,6 +84352,16 @@
           "wrapper": "isPaused"
         },
         {
+          "attributes": {
+            "ChecksForbiddenAspects": [
+              {
+                "Argument": "self",
+                "Aspect": {
+                  "ref": "Enum.ForbiddenAspect.QueryAnimationProgress"
+                }
+              }
+            ]
+          },
           "name": "IsPendingFinish",
           "returns": [
             {
@@ -81677,6 +84374,16 @@
           "wrapper": "isPendingFinish"
         },
         {
+          "attributes": {
+            "ChecksForbiddenAspects": [
+              {
+                "Argument": "self",
+                "Aspect": {
+                  "ref": "Enum.ForbiddenAspect.QueryAnimationProgress"
+                }
+              }
+            ]
+          },
           "name": "IsPlaying",
           "returns": [
             {
@@ -81689,6 +84396,16 @@
           "wrapper": "isPlaying"
         },
         {
+          "attributes": {
+            "ChecksForbiddenAspects": [
+              {
+                "Argument": "self",
+                "Aspect": {
+                  "ref": "Enum.ForbiddenAspect.QueryAnimationProgress"
+                }
+              }
+            ]
+          },
           "name": "IsReverse",
           "returns": [
             {
@@ -92489,6 +95206,18 @@
           "wrapper": "getRight"
         },
         {
+          "name": "GetRoundLayoutToNearestPixel",
+          "returns": [
+            {
+              "name": "enabled",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "source": "SimpleScriptRegionAPIDocumentation.lua",
+          "wrapper": "getRoundLayoutToNearestPixel"
+        },
+        {
           "flags": [
             "SecretWhenAnchoringSecret"
           ],
@@ -93106,6 +95835,20 @@
           "secretArguments": "NotAllowed",
           "source": "SimpleScriptRegionAPIDocumentation.lua",
           "wrapper": "setPropagateMouseMotion"
+        },
+        {
+          "arguments": [
+            {
+              "name": "enabled",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "isProtected": true,
+          "name": "SetRoundLayoutToNearestPixel",
+          "secretArguments": "NotAllowed",
+          "source": "SimpleScriptRegionAPIDocumentation.lua",
+          "wrapper": "setRoundLayoutToNearestPixel"
         },
         {
           "arguments": [
@@ -95970,6 +98713,12 @@
       "environment": "All",
       "functions": [
         {
+          "binding": "C_SocialRestrictions.AcknowledgeAgeVerificationRestriction",
+          "name": "AcknowledgeAgeVerificationRestriction",
+          "source": "SocialRestrictionsDocumentation.lua",
+          "wrapper": "acknowledgeAgeVerificationRestriction"
+        },
+        {
           "binding": "C_SocialRestrictions.AcknowledgeRegionalChatDisabled",
           "name": "AcknowledgeRegionalChatDisabled",
           "source": "SocialRestrictionsDocumentation.lua",
@@ -96006,6 +98755,39 @@
           ],
           "source": "SocialRestrictionsDocumentation.lua",
           "wrapper": "canSendChat"
+        },
+        {
+          "binding": "C_SocialRestrictions.IsAgeVerificationRestricted",
+          "documentation": [
+            "Returns true if the account is restricted by the Age Verification feature."
+          ],
+          "name": "IsAgeVerificationRestricted",
+          "returns": [
+            {
+              "name": "restricted",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "source": "SocialRestrictionsDocumentation.lua",
+          "wrapper": "isAgeVerificationRestricted"
+        },
+        {
+          "binding": "C_SocialRestrictions.IsAgeVerificationRestrictedMinor",
+          "documentation": [
+            "Returns true if the Age Verification restriction is because the account belongs to a minor, as opposed to an adult who has not yet verified their age."
+          ],
+          "hasRestrictions": true,
+          "name": "IsAgeVerificationRestrictedMinor",
+          "returns": [
+            {
+              "name": "isMinor",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "source": "SocialRestrictionsDocumentation.lua",
+          "wrapper": "isAgeVerificationRestrictedMinor"
         },
         {
           "binding": "C_SocialRestrictions.IsChatDisabled",
@@ -101506,6 +104288,249 @@
       "wrapper": "streaming"
     },
     {
+      "blizzardNamespace": "string",
+      "environment": "All",
+      "functions": [
+        {
+          "arguments": [
+            {
+              "documentation": [
+                "The string to search."
+              ],
+              "name": "str",
+              "nilable": false,
+              "type": "stringView"
+            },
+            {
+              "documentation": [
+                "The literal substring for which to search."
+              ],
+              "name": "substring",
+              "nilable": false,
+              "type": "stringView"
+            }
+          ],
+          "binding": "string.contains",
+          "documentation": [
+            "Returns true if a string contains the specified literal substring."
+          ],
+          "name": "contains",
+          "returns": [
+            {
+              "documentation": [
+                "True if the string contains the specified substring; otherwise false."
+              ],
+              "name": "contains",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "LuaStringExtensionsDocumentation.lua",
+          "wrapper": "contains"
+        },
+        {
+          "arguments": [
+            {
+              "documentation": [
+                "The string to inspect."
+              ],
+              "name": "str",
+              "nilable": false,
+              "type": "stringView"
+            },
+            {
+              "documentation": [
+                "The suffix for which to search."
+              ],
+              "name": "suffix",
+              "nilable": false,
+              "type": "stringView"
+            }
+          ],
+          "binding": "string.endswith",
+          "documentation": [
+            "Returns true if a string ends with the specified suffix."
+          ],
+          "name": "endswith",
+          "returns": [
+            {
+              "documentation": [
+                "True if the string ends with the specified suffix; otherwise false."
+              ],
+              "name": "endsWith",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "LuaStringExtensionsDocumentation.lua",
+          "wrapper": "endswith"
+        },
+        {
+          "arguments": [
+            {
+              "documentation": [
+                "The string to trim."
+              ],
+              "name": "str",
+              "nilable": false,
+              "type": "stringView"
+            },
+            {
+              "default": " \\r\\n\\t",
+              "documentation": [
+                "The set of bytes to remove."
+              ],
+              "name": "characters",
+              "nilable": false,
+              "type": "stringView"
+            }
+          ],
+          "binding": "string.ltrim",
+          "documentation": [
+            "Returns a string with all bytes in the specified character set removed from the start."
+          ],
+          "name": "ltrim",
+          "returns": [
+            {
+              "documentation": [
+                "The left-trimmed string."
+              ],
+              "name": "trimmed",
+              "nilable": false,
+              "type": "stringView"
+            }
+          ],
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "LuaStringExtensionsDocumentation.lua",
+          "wrapper": "ltrim"
+        },
+        {
+          "arguments": [
+            {
+              "documentation": [
+                "The string to trim."
+              ],
+              "name": "str",
+              "nilable": false,
+              "type": "stringView"
+            },
+            {
+              "default": " \\r\\n\\t",
+              "documentation": [
+                "The set of bytes to remove."
+              ],
+              "name": "characters",
+              "nilable": false,
+              "type": "stringView"
+            }
+          ],
+          "binding": "string.rtrim",
+          "documentation": [
+            "Returns a string with all bytes in the specified character set removed from the end."
+          ],
+          "name": "rtrim",
+          "returns": [
+            {
+              "documentation": [
+                "The right-trimmed string."
+              ],
+              "name": "trimmed",
+              "nilable": false,
+              "type": "stringView"
+            }
+          ],
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "LuaStringExtensionsDocumentation.lua",
+          "wrapper": "rtrim"
+        },
+        {
+          "arguments": [
+            {
+              "documentation": [
+                "The string to inspect."
+              ],
+              "name": "str",
+              "nilable": false,
+              "type": "stringView"
+            },
+            {
+              "documentation": [
+                "The prefix for which to search."
+              ],
+              "name": "prefix",
+              "nilable": false,
+              "type": "stringView"
+            }
+          ],
+          "binding": "string.startswith",
+          "documentation": [
+            "Returns true if a string starts with the specified prefix."
+          ],
+          "name": "startswith",
+          "returns": [
+            {
+              "documentation": [
+                "True if the string starts with the specified prefix; otherwise false."
+              ],
+              "name": "startsWith",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "LuaStringExtensionsDocumentation.lua",
+          "wrapper": "startswith"
+        },
+        {
+          "arguments": [
+            {
+              "documentation": [
+                "The string to trim."
+              ],
+              "name": "str",
+              "nilable": false,
+              "type": "stringView"
+            },
+            {
+              "default": " \\r\\n\\t",
+              "documentation": [
+                "The set of bytes to remove."
+              ],
+              "name": "characters",
+              "nilable": false,
+              "type": "stringView"
+            }
+          ],
+          "binding": "string.trim",
+          "documentation": [
+            "Returns a string with all bytes in the specified character set removed from both ends."
+          ],
+          "name": "trim",
+          "returns": [
+            {
+              "documentation": [
+                "The trimmed string."
+              ],
+              "name": "trimmed",
+              "nilable": false,
+              "type": "stringView"
+            }
+          ],
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "LuaStringExtensionsDocumentation.lua",
+          "wrapper": "trim"
+        }
+      ],
+      "kind": "namespace",
+      "sources": [
+        "LuaStringExtensionsDocumentation.lua"
+      ],
+      "system": "LuaStringExtensions",
+      "wrapper": "string"
+    },
+    {
       "blizzardNamespace": "C_StringUtil",
       "environment": "All",
       "functions": [
@@ -101874,39 +104899,6 @@
           "secretArguments": "AllowedWhenTainted",
           "source": "StringUtilDocumentation.lua",
           "wrapper": "wrapString"
-        },
-        {
-          "arguments": [
-            {
-              "name": "str",
-              "nilable": false,
-              "type": "stringView"
-            },
-            {
-              "default": " \\r\\n\\t",
-              "name": "characters",
-              "nilable": false,
-              "type": "stringView"
-            }
-          ],
-          "attributes": {
-            "Namespace": "string"
-          },
-          "binding": "string.trim",
-          "documentation": [
-            "Returns a string with all bytes in the 'characters' set removed from the start and end."
-          ],
-          "name": "trim",
-          "returns": [
-            {
-              "name": "trimmed",
-              "nilable": false,
-              "type": "stringView"
-            }
-          ],
-          "secretArguments": "AllowedWhenUntainted",
-          "source": "StringUtilDocumentation.lua",
-          "wrapper": "trim"
         }
       ],
       "kind": "namespace",
@@ -102461,143 +105453,274 @@
       "wrapper": "systemVisibilityManager"
     },
     {
-      "blizzardNamespace": "C_TableUtil",
+      "blizzardNamespace": "table",
       "environment": "All",
       "functions": [
         {
           "arguments": [
             {
-              "name": "t1",
+              "documentation": [
+                "The table to search."
+              ],
+              "name": "table",
               "nilable": false,
-              "type": "LuaValueReference"
+              "type": "table"
             },
             {
-              "name": "t2",
-              "nilable": false,
-              "type": "LuaValueReference"
+              "documentation": [
+                "The value for which to search."
+              ],
+              "name": "value",
+              "nilable": true,
+              "type": "any"
             }
           ],
-          "binding": "C_TableUtil.FindIndexedMismatch",
+          "binding": "table.contains",
           "documentation": [
-            "Given two tables, finds the first index in the range (1, #t1) and (1, #t2) where two elements compare as inequal, or nil if no such elements are found."
+            "Returns true if any value in the table compares equal to the specified value."
           ],
-          "name": "FindIndexedMismatch",
+          "name": "contains",
           "returns": [
             {
-              "name": "index",
-              "nilable": true,
-              "type": "number"
+              "documentation": [
+                "True if any entry in the table has the specified value."
+              ],
+              "name": "containsValue",
+              "nilable": false,
+              "type": "bool"
             }
           ],
           "secretArguments": "AllowedWhenUntainted",
-          "source": "LuaTableUtilDocumentation.lua",
-          "wrapper": "findIndexedMismatch"
+          "source": "LuaTableExtensionsDocumentation.lua",
+          "wrapper": "contains"
         },
         {
           "arguments": [
             {
+              "documentation": [
+                "The table whose entries will be counted."
+              ],
               "name": "table",
               "nilable": false,
-              "type": "LuaValueReference"
+              "type": "table"
             }
           ],
-          "attributes": {
-            "Namespace": "table"
-          },
           "binding": "table.count",
-          "mayReturnNothing": true,
+          "documentation": [
+            "Returns the number of entries in the table."
+          ],
+          "flags": [
+            "SecretWhenLuaTableHasSecretKeys"
+          ],
           "name": "count",
           "returns": [
             {
               "documentation": [
-                "Total number of elements within the table"
+                "The number of entries in the table."
               ],
-              "name": "numTableNodes",
-              "nilable": false,
-              "type": "number"
-            },
-            {
-              "documentation": [
-                "Total number of elements within the table that had integral keys in the range [1..numTableNodes]"
-              ],
-              "name": "numArrayNodes",
-              "nilable": false,
-              "type": "number"
-            },
-            {
-              "documentation": [
-                "Largest integral key within the table, or zero if no such keys were found"
-              ],
-              "name": "maxArrayIndex",
+              "name": "count",
               "nilable": false,
               "type": "number"
             }
           ],
           "secretArguments": "AllowedWhenUntainted",
-          "source": "LuaTableUtilDocumentation.lua",
+          "source": "LuaTableExtensionsDocumentation.lua",
           "wrapper": "count"
         },
         {
           "arguments": [
             {
+              "documentation": [
+                "The number of array entries for which to preallocate storage."
+              ],
               "name": "arraySizeHint",
               "nilable": false,
               "type": "number"
             },
             {
               "default": 0,
+              "documentation": [
+                "The number of non-array entries for which to preallocate storage."
+              ],
               "name": "nodeSizeHint",
               "nilable": false,
               "type": "number"
             }
           ],
-          "attributes": {
-            "Namespace": "table"
-          },
           "binding": "table.create",
+          "documentation": [
+            "Creates an empty table with storage preallocated for the specified number of array and non-array entries."
+          ],
           "name": "create",
           "returns": [
             {
               "name": "table",
               "nilable": false,
-              "type": "LuaValueReference"
+              "type": "table"
             }
           ],
           "secretArguments": "AllowedWhenUntainted",
-          "source": "LuaTableUtilDocumentation.lua",
+          "source": "LuaTableExtensionsDocumentation.lua",
           "wrapper": "create"
         },
         {
           "arguments": [
             {
+              "documentation": [
+                "The table to freeze."
+              ],
               "name": "table",
               "nilable": false,
-              "type": "LuaValueReference"
+              "type": "table"
             }
           ],
-          "attributes": {
-            "Namespace": "table"
-          },
           "binding": "table.freeze",
           "documentation": [
             "Marks a supplied table as frozen, preventing any modifications to its contents, or replacement of its metatable. If the table has a pre-existing metatable with a '__newindex' table or function, assignments will pass through without raising errors. For tainted code, only tables created by the same addon making this function call are permitted to be frozen."
           ],
           "name": "freeze",
+          "returns": [
+            {
+              "documentation": [
+                "The supplied table, passed through."
+              ],
+              "name": "frozen",
+              "nilable": false,
+              "type": "table"
+            }
+          ],
           "secretArguments": "AllowedWhenUntainted",
-          "source": "LuaTableUtilDocumentation.lua",
+          "source": "LuaTableExtensionsDocumentation.lua",
           "wrapper": "freeze"
+        },
+        {
+          "arguments": [
+            {
+              "documentation": [
+                "The table to inspect."
+              ],
+              "name": "table",
+              "nilable": false,
+              "type": "table"
+            }
+          ],
+          "binding": "table.getcountinfo",
+          "documentation": [
+            "Returns detailed information about the number and distribution of entries in the table."
+          ],
+          "flags": [
+            "SecretWhenLuaTableHasSecretKeys"
+          ],
+          "name": "getcountinfo",
+          "returns": [
+            {
+              "documentation": [
+                "The total number of entries in the table."
+              ],
+              "name": "numEntries",
+              "nilable": false,
+              "type": "number"
+            },
+            {
+              "documentation": [
+                "The number of entries with positive integral keys."
+              ],
+              "name": "numPositiveIntegerKeys",
+              "nilable": false,
+              "type": "number"
+            },
+            {
+              "documentation": [
+                "The largest positive integral key in the table, or zero if no such keys were found."
+              ],
+              "name": "maxPositiveIntegerKey",
+              "nilable": false,
+              "type": "number"
+            }
+          ],
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "LuaTableExtensionsDocumentation.lua",
+          "wrapper": "getcountinfo"
+        },
+        {
+          "arguments": [
+            {
+              "documentation": [
+                "The table to search."
+              ],
+              "name": "table",
+              "nilable": false,
+              "type": "table"
+            },
+            {
+              "documentation": [
+                "The value for which to search."
+              ],
+              "name": "value",
+              "nilable": true,
+              "type": "any"
+            }
+          ],
+          "binding": "table.indexof",
+          "documentation": [
+            "Returns the first integer index whose value compares equal to the specified value, searching consecutively from index 1 until the first nil value."
+          ],
+          "name": "indexof",
+          "returns": [
+            {
+              "documentation": [
+                "The first matching index, or nil if no match is found."
+              ],
+              "name": "index",
+              "nilable": true,
+              "type": "number"
+            }
+          ],
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "LuaTableExtensionsDocumentation.lua",
+          "wrapper": "indexof"
         },
         {
           "arguments": [
             {
               "name": "table",
               "nilable": false,
-              "type": "LuaValueReference"
+              "type": "table"
             }
           ],
-          "attributes": {
-            "Namespace": "table"
-          },
+          "binding": "table.isempty",
+          "documentation": [
+            "Returns true if the table contains no entries."
+          ],
+          "flags": [
+            "SecretWhenLuaTableHasSecretKeys"
+          ],
+          "name": "isempty",
+          "returns": [
+            {
+              "documentation": [
+                "True if the table contains no entries; otherwise false."
+              ],
+              "name": "empty",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "LuaTableExtensionsDocumentation.lua",
+          "wrapper": "isempty"
+        },
+        {
+          "arguments": [
+            {
+              "documentation": [
+                "The table to inspect."
+              ],
+              "name": "table",
+              "nilable": false,
+              "type": "table"
+            }
+          ],
           "binding": "table.isfrozen",
           "documentation": [
             "Returns true if a table has been marked as frozen."
@@ -102605,22 +105728,161 @@
           "name": "isfrozen",
           "returns": [
             {
+              "documentation": [
+                "True if the table has been made read-only; otherwise false."
+              ],
               "name": "frozen",
               "nilable": false,
               "type": "bool"
             }
           ],
           "secretArguments": "AllowedWhenUntainted",
-          "source": "LuaTableUtilDocumentation.lua",
+          "source": "LuaTableExtensionsDocumentation.lua",
           "wrapper": "isfrozen"
+        },
+        {
+          "arguments": [
+            {
+              "documentation": [
+                "The table whose keys will be returned."
+              ],
+              "name": "table",
+              "nilable": false,
+              "type": "table"
+            }
+          ],
+          "binding": "table.keys",
+          "documentation": [
+            "Returns an array containing the keys of the specified table."
+          ],
+          "name": "keys",
+          "returns": [
+            {
+              "documentation": [
+                "An array containing the table's keys. The order of the returned keys is unspecified."
+              ],
+              "name": "keys",
+              "nilable": false,
+              "type": "any"
+            }
+          ],
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "LuaTableExtensionsDocumentation.lua",
+          "wrapper": "keys"
+        },
+        {
+          "arguments": [
+            {
+              "documentation": [
+                "The table from which to remove a value."
+              ],
+              "name": "table",
+              "nilable": false,
+              "type": "table"
+            },
+            {
+              "documentation": [
+                "The integer index of the value to remove. If omitted, the last value is removed."
+              ],
+              "name": "index",
+              "nilable": true,
+              "type": "number"
+            }
+          ],
+          "binding": "table.removeunordered",
+          "documentation": [
+            "Removes the value at the specified integer index by replacing it with the last value in the array and shortening the array by one element. The order of values in the array is not preserved."
+          ],
+          "name": "removeunordered",
+          "returns": [
+            {
+              "documentation": [
+                "The removed value, or nil if the index is outside the array bounds."
+              ],
+              "name": "value",
+              "nilable": true,
+              "type": "any"
+            }
+          ],
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "LuaTableExtensionsDocumentation.lua",
+          "wrapper": "removeunordered"
+        },
+        {
+          "arguments": [
+            {
+              "documentation": [
+                "The table from which to remove values."
+              ],
+              "name": "table",
+              "nilable": false,
+              "type": "table"
+            },
+            {
+              "documentation": [
+                "The value to remove."
+              ],
+              "name": "value",
+              "nilable": true,
+              "type": "any"
+            }
+          ],
+          "binding": "table.removevalue",
+          "documentation": [
+            "Removes all values equal to the specified value from the array portion of a table."
+          ],
+          "name": "removevalue",
+          "returns": [
+            {
+              "documentation": [
+                "The number of values removed."
+              ],
+              "name": "removedCount",
+              "nilable": false,
+              "type": "number"
+            }
+          ],
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "LuaTableExtensionsDocumentation.lua",
+          "wrapper": "removevalue"
+        },
+        {
+          "arguments": [
+            {
+              "documentation": [
+                "The table whose values will be returned."
+              ],
+              "name": "table",
+              "nilable": false,
+              "type": "table"
+            }
+          ],
+          "binding": "table.values",
+          "documentation": [
+            "Returns an array containing the values of the specified table."
+          ],
+          "name": "values",
+          "returns": [
+            {
+              "documentation": [
+                "An array containing the table's values. The order of the returned values is unspecified."
+              ],
+              "name": "values",
+              "nilable": false,
+              "type": "any"
+            }
+          ],
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "LuaTableExtensionsDocumentation.lua",
+          "wrapper": "values"
         }
       ],
       "kind": "namespace",
       "sources": [
-        "LuaTableUtilDocumentation.lua"
+        "LuaTableExtensionsDocumentation.lua"
       ],
-      "system": "LuaTableUtil",
-      "wrapper": "tableUtil"
+      "system": "LuaTableExtensions",
+      "wrapper": "table"
     },
     {
       "blizzardNamespace": "C_TalkingHead",
@@ -103462,6 +106724,11 @@
               "name": "callback",
               "nilable": false,
               "type": "GetTitleIconTextureCallback"
+            },
+            {
+              "name": "subIcon",
+              "nilable": true,
+              "type": "string"
             }
           ],
           "binding": "C_Texture.GetTitleIconTexture",
@@ -103481,6 +106748,11 @@
               "name": "version",
               "nilable": false,
               "type": "TitleIconVersion"
+            },
+            {
+              "name": "subIcon",
+              "nilable": true,
+              "type": "string"
             }
           ],
           "binding": "C_Texture.IsTitleIconTextureReady",
@@ -103512,6 +106784,11 @@
               "name": "version",
               "nilable": false,
               "type": "TitleIconVersion"
+            },
+            {
+              "name": "subIcon",
+              "nilable": true,
+              "type": "string"
             }
           ],
           "binding": "C_Texture.SetTitleIconTexture",
@@ -103604,6 +106881,231 @@
       "wrapper": "threat"
     },
     {
+      "documentation": [
+        "An object that manages a collection of integer keys, each scheduled to signal at a specific time.",
+        "When a key's time arrives it is removed from the map and passed to the map's callback, letting you track many keyed deadlines through a single callback rather than scheduling each one individually."
+      ],
+      "environment": "All",
+      "functions": [
+        {
+          "documentation": [
+            "Cancels all scheduled signals."
+          ],
+          "flags": [
+            "RequiresTimedSignalMapAccess"
+          ],
+          "name": "CancelAllSignals",
+          "source": "TimedSignalMapAPIDocumentation.lua",
+          "wrapper": "cancelAllSignals"
+        },
+        {
+          "arguments": [
+            {
+              "documentation": [
+                "Key to cancel. No effect if the key is not scheduled."
+              ],
+              "name": "key",
+              "nilable": false,
+              "type": "number"
+            }
+          ],
+          "documentation": [
+            "Cancels the scheduled signal for the specified key, if one exists."
+          ],
+          "flags": [
+            "RequiresTimedSignalMapAccess"
+          ],
+          "name": "CancelSignal",
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "TimedSignalMapAPIDocumentation.lua",
+          "wrapper": "cancelSignal"
+        },
+        {
+          "documentation": [
+            "Returns the next key due to signal along with its scheduled time."
+          ],
+          "flags": [
+            "RequiresTimedSignalMapAccess"
+          ],
+          "name": "GetNextSignal",
+          "returns": [
+            {
+              "documentation": [
+                "The key that has been scheduled."
+              ],
+              "name": "key",
+              "nilable": false,
+              "type": "number"
+            },
+            {
+              "documentation": [
+                "Absolute time, on the same clock as GetTime(), at which the key is scheduled to signal."
+              ],
+              "name": "time",
+              "nilable": false,
+              "type": "FrameTime"
+            }
+          ],
+          "source": "TimedSignalMapAPIDocumentation.lua",
+          "wrapper": "getNextSignal"
+        },
+        {
+          "documentation": [
+            "Returns the number of keys currently scheduled to signal."
+          ],
+          "flags": [
+            "RequiresTimedSignalMapAccess"
+          ],
+          "name": "GetSignalCount",
+          "returns": [
+            {
+              "documentation": [
+                "Count of scheduled keys."
+              ],
+              "name": "count",
+              "nilable": false,
+              "type": "size"
+            }
+          ],
+          "source": "TimedSignalMapAPIDocumentation.lua",
+          "wrapper": "getSignalCount"
+        },
+        {
+          "arguments": [
+            {
+              "documentation": [
+                "Key to query."
+              ],
+              "name": "key",
+              "nilable": false,
+              "type": "number"
+            }
+          ],
+          "documentation": [
+            "Returns the absolute time at which the specified key is scheduled to signal."
+          ],
+          "flags": [
+            "ConstSecretAccessor",
+            "RequiresTimedSignalMapAccess"
+          ],
+          "name": "GetSignalTime",
+          "returns": [
+            {
+              "documentation": [
+                "Absolute time the key will signal; nil if not scheduled."
+              ],
+              "name": "time",
+              "nilable": true,
+              "type": "FrameTime"
+            }
+          ],
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "TimedSignalMapAPIDocumentation.lua",
+          "wrapper": "getSignalTime"
+        },
+        {
+          "arguments": [
+            {
+              "documentation": [
+                "Key to test."
+              ],
+              "name": "key",
+              "nilable": false,
+              "type": "number"
+            }
+          ],
+          "documentation": [
+            "Returns whether the specified key is currently scheduled to signal."
+          ],
+          "flags": [
+            "ConstSecretAccessor",
+            "RequiresTimedSignalMapAccess"
+          ],
+          "name": "HasSignal",
+          "returns": [
+            {
+              "documentation": [
+                "True if the key is scheduled to signal."
+              ],
+              "name": "hasSignal",
+              "nilable": false,
+              "type": "bool"
+            }
+          ],
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "TimedSignalMapAPIDocumentation.lua",
+          "wrapper": "hasSignal"
+        },
+        {
+          "arguments": [
+            {
+              "documentation": [
+                "Key to signal. Re-scheduling an existing key replaces its time."
+              ],
+              "name": "key",
+              "nilable": false,
+              "type": "number"
+            },
+            {
+              "documentation": [
+                "Delay in seconds from now, converted to an absolute time when scheduled."
+              ],
+              "name": "secondsFromNow",
+              "nilable": false,
+              "type": "Seconds"
+            }
+          ],
+          "documentation": [
+            "Schedules the specified key to signal after a delay from the current time, replacing any existing schedule for that key."
+          ],
+          "flags": [
+            "RequiresTimedSignalMapAccess"
+          ],
+          "name": "SignalAfter",
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "TimedSignalMapAPIDocumentation.lua",
+          "wrapper": "signalAfter"
+        },
+        {
+          "arguments": [
+            {
+              "documentation": [
+                "Key to signal. Re-scheduling an existing key replaces its time."
+              ],
+              "name": "key",
+              "nilable": false,
+              "type": "number"
+            },
+            {
+              "documentation": [
+                "Absolute time at which to signal, on the same clock as GetTime()."
+              ],
+              "name": "time",
+              "nilable": false,
+              "type": "FrameTime"
+            }
+          ],
+          "documentation": [
+            "Schedules the specified key to signal at an absolute time, replacing any existing schedule for that key."
+          ],
+          "flags": [
+            "RequiresTimedSignalMapAccess"
+          ],
+          "name": "SignalAt",
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "TimedSignalMapAPIDocumentation.lua",
+          "wrapper": "signalAt"
+        }
+      ],
+      "kind": "object",
+      "objectType": "Userdata",
+      "sources": [
+        "TimedSignalMapAPIDocumentation.lua"
+      ],
+      "system": "TimedSignalMapAPI",
+      "wrapper": "timedSignalMapAPI"
+    },
+    {
       "blizzardNamespace": "C_Timer",
       "environment": "All",
       "functions": [
@@ -103656,6 +107158,36 @@
           "secretArguments": "AllowedWhenUntainted",
           "source": "UITimerDocumentation.lua",
           "wrapper": "newTicker"
+        },
+        {
+          "arguments": [
+            {
+              "documentation": [
+                "Callback to execute when each entry becomes due."
+              ],
+              "name": "callback",
+              "nilable": false,
+              "type": "TimedSignalMapCallback"
+            }
+          ],
+          "binding": "C_Timer.NewTimedSignalMap",
+          "documentation": [
+            "Creates a new timed signal map that invokes the supplied callback with each key as it becomes due."
+          ],
+          "name": "NewTimedSignalMap",
+          "returns": [
+            {
+              "documentation": [
+                "The newly created timed signal map."
+              ],
+              "name": "signalMap",
+              "nilable": false,
+              "type": "TimedSignalMap"
+            }
+          ],
+          "secretArguments": "AllowedWhenUntainted",
+          "source": "UITimerDocumentation.lua",
+          "wrapper": "newTimedSignalMap"
         },
         {
           "arguments": [
@@ -116353,7 +119885,7 @@
               ],
               "name": "castBarID",
               "nilable": true,
-              "type": "number"
+              "type": "UnitCastBarID"
             },
             {
               "flags": [
@@ -116469,7 +120001,7 @@
               ],
               "name": "castBarID",
               "nilable": true,
-              "type": "number"
+              "type": "UnitCastBarID"
             }
           ],
           "secretArguments": "AllowedWhenUntainted",
@@ -120544,6 +124076,9 @@
             }
           ],
           "binding": "C_UnitAuras.AddAuraSound",
+          "documentation": [
+            "Registers a sound for an aura event. The sound is stopped after five seconds of playback. The throttleSeconds value must be between 0 and 5 seconds, inclusive."
+          ],
           "hasRestrictions": true,
           "name": "AddAuraSound",
           "returns": [
@@ -120808,6 +124343,37 @@
           "secretArguments": "AllowedWhenTainted",
           "source": "UnitAuraDocumentation.lua",
           "wrapper": "getAuraBaseDuration"
+        },
+        {
+          "arguments": [
+            {
+              "name": "auraInstanceUnit",
+              "nilable": false,
+              "type": "UnitToken"
+            },
+            {
+              "name": "auraInstanceID",
+              "nilable": false,
+              "type": "number"
+            }
+          ],
+          "binding": "C_UnitAuras.GetAuraCasterGUID",
+          "flags": [
+            "RequiresUnitAuraAccess",
+            "RequiresValidUnitAuraInstance",
+            "SecretWhenUnitAuraRestricted"
+          ],
+          "name": "GetAuraCasterGUID",
+          "returns": [
+            {
+              "name": "casterGUID",
+              "nilable": true,
+              "type": "WOWGUID"
+            }
+          ],
+          "secretArguments": "AllowedWhenTainted",
+          "source": "UnitAuraDocumentation.lua",
+          "wrapper": "getAuraCasterGUID"
         },
         {
           "arguments": [
@@ -121207,6 +124773,45 @@
           "secretArguments": "AllowedWhenTainted",
           "source": "UnitAuraDocumentation.lua",
           "wrapper": "getPlayerAuraBySpellID"
+        },
+        {
+          "arguments": [
+            {
+              "name": "auraInstanceUnit",
+              "nilable": false,
+              "type": "UnitToken"
+            },
+            {
+              "name": "auraInstanceID",
+              "nilable": false,
+              "type": "number"
+            },
+            {
+              "name": "spellID",
+              "nilable": true,
+              "type": "SpellIdentifier"
+            }
+          ],
+          "binding": "C_UnitAuras.GetRefreshCarryOverDuration",
+          "documentation": [
+            "Returns the client-predicted amount of time that a new spellcast of the same spell would carry over to the new application of that aura. Takes an optional spellID to use as the new duration if that cannot be derived from the aura, if that value isn't supplied the aura's spellID will be used"
+          ],
+          "flags": [
+            "RequiresUnitAuraAccess",
+            "RequiresValidUnitAuraInstance",
+            "SecretWhenUnitAuraRestricted"
+          ],
+          "name": "GetRefreshCarryOverDuration",
+          "returns": [
+            {
+              "name": "newDuration",
+              "nilable": true,
+              "type": "number"
+            }
+          ],
+          "secretArguments": "AllowedWhenTainted",
+          "source": "UnitAuraDocumentation.lua",
+          "wrapper": "getRefreshCarryOverDuration"
         },
         {
           "arguments": [
@@ -124148,6 +127753,37 @@
       ],
       "system": "WarbandSceneInfo",
       "wrapper": "warbandScene"
+    },
+    {
+      "blizzardNamespace": "C_Weather",
+      "documentation": [
+        "Cloudy, with a chance of documentation."
+      ],
+      "environment": "All",
+      "functions": [
+        {
+          "binding": "C_Weather.GetCurrentWeather",
+          "documentation": [
+            "C_Weather the outlook is favorable."
+          ],
+          "name": "GetCurrentWeather",
+          "returns": [
+            {
+              "name": "info",
+              "nilable": false,
+              "type": "WeatherInfo"
+            }
+          ],
+          "source": "WeatherScriptDocumentation.lua",
+          "wrapper": "getCurrentWeather"
+        }
+      ],
+      "kind": "namespace",
+      "sources": [
+        "WeatherScriptDocumentation.lua"
+      ],
+      "system": "WeatherScript",
+      "wrapper": "weather"
     },
     {
       "blizzardNamespace": "C_WeeklyRewards",

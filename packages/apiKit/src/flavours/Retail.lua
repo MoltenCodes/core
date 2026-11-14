@@ -1,8 +1,8 @@
 -- MoltenCodes ApiKit: Retail bindings (wow.retail.api)
 --
 -- GENERATED FILE. Do not edit. Regenerate with `python3 -m tooling.api.generate`.
--- Source: Gethe/wow-ui-source@09b9db7948abc9b9648dedaab51eb0cf3ee67b31 (live),
--- client 12.1.0, build 69933, captured 2026-09-24.
+-- Source: Gethe/wow-ui-source@297d7aaaa736f346b3e036f38ee088eaf7f8c07f (live),
+-- client 12.1.5, build 70783, captured 2026-11-14.
 --
 -- Every entry is a direct alias of the host function, bound only when the
 -- running client has it. See docs/API_KIT_DESIGN.md, section 7.2.
@@ -153,6 +153,7 @@ ApiKit:RegisterFlavor("retail", function(api, host)
       target.isHelpfulAction = source.IsHelpfulAction
       target.isInterruptAction = source.IsInterruptAction
       target.isItemAction = source.IsItemAction
+      target.isMacroActionWithShowTooltip = source.IsMacroActionWithShowTooltip
       target.isOnBarOrSpecialBar = source.IsOnBarOrSpecialBar
       target.isPossessBarVisible = source.IsPossessBarVisible
       target.isStackableAction = source.IsStackableAction
@@ -234,6 +235,9 @@ ApiKit:RegisterFlavor("retail", function(api, host)
       local target = {}
       api.adventureMap = target
       target.getAdventureMapTextureKit = source.GetAdventureMapTextureKit
+      target.getNumMapInsets = source.GetNumMapInsets
+      target.getNumQuestOffers = source.GetNumQuestOffers
+      target.getNumZoneChoices = source.GetNumZoneChoices
       target.getQuestPortraitInfo = source.GetQuestPortraitInfo
     end
   end
@@ -470,6 +474,8 @@ ApiKit:RegisterFlavor("retail", function(api, host)
         source.ProcessCustomAuraButtonApplicationBarOptions
       target.processCustomAuraButtonApplicationCountOptions =
         source.ProcessCustomAuraButtonApplicationCountOptions
+      target.processCustomAuraButtonCasterNameOptions =
+        source.ProcessCustomAuraButtonCasterNameOptions
       target.processCustomAuraButtonDispelTypeTextOptions =
         source.ProcessCustomAuraButtonDispelTypeTextOptions
       target.processCustomAuraButtonDispelTypeTextureOptions =
@@ -2393,6 +2399,7 @@ ApiKit:RegisterFlavor("retail", function(api, host)
     local target = {}
     api.frameScript = target
     target.addSourceLocationExclude = host.AddSourceLocationExclude
+    target.createFrameWithOptions = host.CreateFrameWithOptions
     target.createFromMixins = host.CreateFromMixins
     target.createSecureDelegate = host.CreateSecureDelegate
     target.createWindow = host.CreateWindow
@@ -2401,6 +2408,7 @@ ApiKit:RegisterFlavor("retail", function(api, host)
     target.getErrorCallstackHeight = host.GetErrorCallstackHeight
     target.getEventTime = host.GetEventTime
     target.getForbiddenObjectTable = host.GetForbiddenObjectTable
+    target.getScriptBucketThrottleLimits = host.GetScriptBucketThrottleLimits
     target.getSourceLocation = host.GetSourceLocation
     target.mixin = host.Mixin
     target.registerEventCallback = host.RegisterEventCallback
@@ -3258,6 +3266,40 @@ ApiKit:RegisterFlavor("retail", function(api, host)
     end
   end
   do
+    local source = host.C_Intl
+    if source then
+      local target = {}
+      api.intl = target
+      target.compareStrings = source.CompareStrings
+      target.createLocaleContext = source.CreateLocaleContext
+      target.findBreaks = source.FindBreaks
+      target.findStringMatches = source.FindStringMatches
+      target.foldCase = source.FoldCase
+      target.formatCurrency = source.FormatCurrency
+      target.formatDate = source.FormatDate
+      target.formatDateTime = source.FormatDateTime
+      target.formatNumber = source.FormatNumber
+      target.formatTime = source.FormatTime
+      target.getCharacterProperties = source.GetCharacterProperties
+      target.getCurrencyFractionDigits = source.GetCurrencyFractionDigits
+      target.getCurrencyName = source.GetCurrencyName
+      target.getCurrentLocale = source.GetCurrentLocale
+      target.getDisplayName = source.GetDisplayName
+      target.getSortKey = source.GetSortKey
+      target.isNormalized = source.IsNormalized
+      target.length = source.Length
+      target.normalize = source.Normalize
+      target.parseCurrency = source.ParseCurrency
+      target.parseNumber = source.ParseNumber
+      target.selectPlural = source.SelectPlural
+      target.toLower = source.ToLower
+      target.toTitle = source.ToTitle
+      target.toUpper = source.ToUpper
+      target.transformLocale = source.TransformLocale
+      target.transliterate = source.Transliterate
+    end
+  end
+  do
     local source = host.C_InvasionInfo
     if source then
       local target = {}
@@ -3564,6 +3606,7 @@ ApiKit:RegisterFlavor("retail", function(api, host)
       target.doesActivePartyMeetPremadeLaunchCount = source.DoesActivePartyMeetPremadeLaunchCount
       target.doesCrossFactionQueueRequireFullPremade =
         source.DoesCrossFactionQueueRequireFullPremade
+      target.getActiveLFGDungeonName = source.GetActiveLFGDungeonName
       target.getAllEntriesForCategory = source.GetAllEntriesForCategory
       target.getDungeonInfo = source.GetDungeonInfo
       target.getLFDLockStates = source.GetLFDLockStates
@@ -3881,6 +3924,24 @@ ApiKit:RegisterFlavor("retail", function(api, host)
       api.mapExplorationInfo = target
       target.getExploredAreaIDsAtPosition = source.GetExploredAreaIDsAtPosition
       target.getExploredMapTextures = source.GetExploredMapTextures
+    end
+  end
+  do
+    local source = host.math
+    if source then
+      local target = {}
+      api.math = target
+      target.clamp = source.clamp
+      target.isfinite = source.isfinite
+      target.isinf = source.isinf
+      target.isnan = source.isnan
+      target.lerp = source.lerp
+      target.normalize = source.normalize
+      target.remap = source.remap
+      target.round = source.round
+      target.saturate = source.saturate
+      target.sign = source.sign
+      target.wrap = source.wrap
     end
   end
   do
@@ -4721,9 +4782,8 @@ ApiKit:RegisterFlavor("retail", function(api, host)
   end
   do
     local source = host.C_PvP
+    local target = {}
     if source then
-      local target = {}
-      api.pvp = target
       target.arePvpTalentsUnlocked = source.ArePvpTalentsUnlocked
       target.areTrainingGroundsEnabled = source.AreTrainingGroundsEnabled
       target.canDisplayDeaths = source.CanDisplayDeaths
@@ -4773,7 +4833,8 @@ ApiKit:RegisterFlavor("retail", function(api, host)
       target.getRandomBGRewards = source.GetRandomBGRewards
       target.getRandomEpicBGInfo = source.GetRandomEpicBGInfo
       target.getRandomEpicBGRewards = source.GetRandomEpicBGRewards
-      target.getRandomTrainingGroundRewards = source.GetRandomTrainingGroundRewards
+      target.getRandomTrainingGroundArenaRewards = source.GetRandomTrainingGroundArenaRewards
+      target.getRandomTrainingGroundBGRewards = source.GetRandomTrainingGroundBGRewards
       target.getRatedBGRewards = source.GetRatedBGRewards
       target.getRatedSoloRBGMinItemLevel = source.GetRatedSoloRBGMinItemLevel
       target.getRatedSoloRBGRewards = source.GetRatedSoloRBGRewards
@@ -4794,7 +4855,8 @@ ApiKit:RegisterFlavor("retail", function(api, host)
       target.getZonePVPInfo = source.GetZonePVPInfo
       target.hasArenaSkirmishWinToday = source.HasArenaSkirmishWinToday
       target.hasMatchStarted = source.HasMatchStarted
-      target.hasRandomTrainingGroundWinToday = source.HasRandomTrainingGroundWinToday
+      target.hasRandomTrainingGroundArenaWinToday = source.HasRandomTrainingGroundArenaWinToday
+      target.hasRandomTrainingGroundBGWinToday = source.HasRandomTrainingGroundBGWinToday
       target.isActiveBattlefield = source.IsActiveBattlefield
       target.isActiveMatchRegistered = source.IsActiveMatchRegistered
       target.isArena = source.IsArena
@@ -4817,13 +4879,15 @@ ApiKit:RegisterFlavor("retail", function(api, host)
       target.isSoloRBG = source.IsSoloRBG
       target.isSoloShuffle = source.IsSoloShuffle
       target.isSubZonePVPPOI = source.IsSubZonePVPPOI
+      target.isTrainingGroundsArena = source.IsTrainingGroundsArena
+      target.isTrainingGroundsBG = source.IsTrainingGroundsBG
       target.isWarModeActive = source.IsWarModeActive
       target.isWarModeDesired = source.IsWarModeDesired
       target.isWarModeFeatureEnabled = source.IsWarModeFeatureEnabled
       target.joinBattlefield = source.JoinBattlefield
       target.joinBrawl = source.JoinBrawl
       target.joinRandomTrainingGroundArena = source.JoinRandomTrainingGroundArena
-      target.joinRandomTrainingGroundBattleground = source.JoinRandomTrainingGroundBattleground
+      target.joinRandomTrainingGroundBG = source.JoinRandomTrainingGroundBG
       target.joinRatedBGBlitz = source.JoinRatedBGBlitz
       target.joinTrainingGround = source.JoinTrainingGround
       target.requestCrowdControlSpell = source.RequestCrowdControlSpell
@@ -4833,6 +4897,10 @@ ApiKit:RegisterFlavor("retail", function(api, host)
       target.startSpectatorSoloRBGWarGame = source.StartSpectatorSoloRBGWarGame
       target.togglePVP = source.TogglePVP
       target.toggleWarMode = source.ToggleWarMode
+    end
+    target.getArenaOpponentSpec = host.GetArenaOpponentSpec
+    if source or next(target) then
+      api.pvp = target
     end
   end
   do
@@ -5346,9 +5414,12 @@ ApiKit:RegisterFlavor("retail", function(api, host)
     if source then
       local target = {}
       api.socialRestrictions = target
+      target.acknowledgeAgeVerificationRestriction = source.AcknowledgeAgeVerificationRestriction
       target.acknowledgeRegionalChatDisabled = source.AcknowledgeRegionalChatDisabled
       target.canReceiveChat = source.CanReceiveChat
       target.canSendChat = source.CanSendChat
+      target.isAgeVerificationRestricted = source.IsAgeVerificationRestricted
+      target.isAgeVerificationRestrictedMinor = source.IsAgeVerificationRestrictedMinor
       target.isChatDisabled = source.IsChatDisabled
       target.isFriendsDisabled = source.IsFriendsDisabled
       target.isMuted = source.IsMuted
@@ -5664,9 +5735,23 @@ ApiKit:RegisterFlavor("retail", function(api, host)
     target.getFileStreamingStatus = host.GetFileStreamingStatus
   end
   do
-    local source = host.C_StringUtil
-    local target = {}
+    local source = host.string
     if source then
+      local target = {}
+      api.string = target
+      target.contains = source.contains
+      target.endswith = source.endswith
+      target.ltrim = source.ltrim
+      target.rtrim = source.rtrim
+      target.startswith = source.startswith
+      target.trim = source.trim
+    end
+  end
+  do
+    local source = host.C_StringUtil
+    if source then
+      local target = {}
+      api.stringUtil = target
       target.createAbbreviatedNumberFormatter = source.CreateAbbreviatedNumberFormatter
       target.createNumericRuleFormatter = source.CreateNumericRuleFormatter
       target.createSecondsFormatter = source.CreateSecondsFormatter
@@ -5681,15 +5766,6 @@ ApiKit:RegisterFlavor("retail", function(api, host)
       target.stripTextureMarkupForLooseFiles = source.StripTextureMarkupForLooseFiles
       target.truncateWhenZero = source.TruncateWhenZero
       target.wrapString = source.WrapString
-    end
-    do
-      local elsewhere = host.string
-      if elsewhere then
-        target.trim = elsewhere.trim
-      end
-    end
-    if source or next(target) then
-      api.stringUtil = target
     end
   end
   do
@@ -5761,22 +5837,22 @@ ApiKit:RegisterFlavor("retail", function(api, host)
     end
   end
   do
-    local source = host.C_TableUtil
-    local target = {}
+    local source = host.table
     if source then
-      target.findIndexedMismatch = source.FindIndexedMismatch
-    end
-    do
-      local elsewhere = host.table
-      if elsewhere then
-        target.count = elsewhere.count
-        target.create = elsewhere.create
-        target.freeze = elsewhere.freeze
-        target.isfrozen = elsewhere.isfrozen
-      end
-    end
-    if source or next(target) then
-      api.tableUtil = target
+      local target = {}
+      api.table = target
+      target.contains = source.contains
+      target.count = source.count
+      target.create = source.create
+      target.freeze = source.freeze
+      target.getcountinfo = source.getcountinfo
+      target.indexof = source.indexof
+      target.isempty = source.isempty
+      target.isfrozen = source.isfrozen
+      target.keys = source.keys
+      target.removeunordered = source.removeunordered
+      target.removevalue = source.removevalue
+      target.values = source.values
     end
   end
   do
@@ -5873,6 +5949,7 @@ ApiKit:RegisterFlavor("retail", function(api, host)
       api.timer = target
       target.after = source.After
       target.newTicker = source.NewTicker
+      target.newTimedSignalMap = source.NewTimedSignalMap
       target.newTimer = source.NewTimer
     end
   end
@@ -6792,6 +6869,7 @@ ApiKit:RegisterFlavor("retail", function(api, host)
       target.doesAuraHaveExpirationTime = source.DoesAuraHaveExpirationTime
       target.getAuraApplicationDisplayCount = source.GetAuraApplicationDisplayCount
       target.getAuraBaseDuration = source.GetAuraBaseDuration
+      target.getAuraCasterGUID = source.GetAuraCasterGUID
       target.getAuraDataByAuraInstanceID = source.GetAuraDataByAuraInstanceID
       target.getAuraDataByIndex = source.GetAuraDataByIndex
       target.getAuraDataBySlot = source.GetAuraDataBySlot
@@ -6805,6 +6883,7 @@ ApiKit:RegisterFlavor("retail", function(api, host)
       target.getGroupBuffVisualAlerts = source.GetGroupBuffVisualAlerts
       target.getHiddenGroupBuffs = source.GetHiddenGroupBuffs
       target.getPlayerAuraBySpellID = source.GetPlayerAuraBySpellID
+      target.getRefreshCarryOverDuration = source.GetRefreshCarryOverDuration
       target.getRefreshExtendedDuration = source.GetRefreshExtendedDuration
       target.getUnitAuraBySpellID = source.GetUnitAuraBySpellID
       target.getUnitAuraInstanceIDs = source.GetUnitAuraInstanceIDs
@@ -6980,6 +7059,14 @@ ApiKit:RegisterFlavor("retail", function(api, host)
     end
   end
   do
+    local source = host.C_Weather
+    if source then
+      local target = {}
+      api.weather = target
+      target.getCurrentWeather = source.GetCurrentWeather
+    end
+  end
+  do
     local source = host.C_WeeklyRewards
     if source then
       local target = {}
@@ -7142,6 +7229,7 @@ ApiKit:RegisterFlavor("retail", function(api, host)
     ajRaidAction = "AJ_RAID_ACTION",
     ajRefreshDisplay = "AJ_REFRESH_DISPLAY",
     ajRewardDataReceived = "AJ_REWARD_DATA_RECEIVED",
+    alertAgeVerificationRestricted = "ALERT_AGE_VERIFICATION_RESTRICTED",
     alertRegionalChatDisabled = "ALERT_REGIONAL_CHAT_DISABLED",
     alliedRaceClose = "ALLIED_RACE_CLOSE",
     alliedRaceOpen = "ALLIED_RACE_OPEN",
@@ -8857,6 +8945,7 @@ ApiKit:RegisterFlavor("retail", function(api, host)
     waypointUpdate = "WAYPOINT_UPDATE",
     weaponEnchantChanged = "WEAPON_ENCHANT_CHANGED",
     weaponSlotChanged = "WEAPON_SLOT_CHANGED",
+    weatherChanged = "WEATHER_CHANGED",
     weeklyRewardsItemChanged = "WEEKLY_REWARDS_ITEM_CHANGED",
     weeklyRewardsUpdate = "WEEKLY_REWARDS_UPDATE",
     whoListUpdate = "WHO_LIST_UPDATE",
@@ -8936,6 +9025,7 @@ ApiKit:RegisterFlavor("retail", function(api, host)
     target.bnetAccountFlag = source.BnetAccountFlag
     target.bonusStatIndex = source.BonusStatIndex
     target.brawlType = source.BrawlType
+    target.breakType = source.BreakType
     target.bulkPurchaseResult = source.BulkPurchaseResult
     target.bulkPurchaseStatus = source.BulkPurchaseStatus
     target.bulkRefundResult = source.BulkRefundResult
@@ -9000,6 +9090,7 @@ ApiKit:RegisterFlavor("retail", function(api, host)
     target.clubStreamNotificationFilter = source.ClubStreamNotificationFilter
     target.clubStreamType = source.ClubStreamType
     target.clubType = source.ClubType
+    target.collationStrength = source.CollationStrength
     target.colorOverride = source.ColorOverride
     target.combatAudioAlertCastState = source.CombatAudioAlertCastState
     target.combatAudioAlertCategory = source.CombatAudioAlertCategory
@@ -9013,6 +9104,7 @@ ApiKit:RegisterFlavor("retail", function(api, host)
       source.CombatAudioAlertPlayerHealthFormatValues
     target.combatAudioAlertPlayerResourceFormatValues =
       source.CombatAudioAlertPlayerResourceFormatValues
+    target.combatAudioAlertPulsePercentValues = source.CombatAudioAlertPulsePercentValues
     target.combatAudioAlertSayIfTargetedType = source.CombatAudioAlertSayIfTargetedType
     target.combatAudioAlertSpecSetting = source.CombatAudioAlertSpecSetting
     target.combatAudioAlertTargetCastFormatValues = source.CombatAudioAlertTargetCastFormatValues
@@ -9083,6 +9175,7 @@ ApiKit:RegisterFlavor("retail", function(api, host)
     target.currencyFlags = source.CurrencyFlags
     target.currencyFlagsB = source.CurrencyFlagsB
     target.currencyGainFlags = source.CurrencyGainFlags
+    target.currencyNameStyle = source.CurrencyNameStyle
     target.currencyTokenCategoryFlags = source.CurrencyTokenCategoryFlags
     target.currencyType = source.CurrencyType
     target.cursorStyle = source.CursorStyle
@@ -9104,6 +9197,7 @@ ApiKit:RegisterFlavor("retail", function(api, host)
     target.damageMeterVisibility = source.DamageMeterVisibility
     target.damageclass = source.Damageclass
     target.damageclassType = source.DamageclassType
+    target.dateTimeStyle = source.DateTimeStyle
     target.disableAccountProfilesFlags = source.DisableAccountProfilesFlags
     target.discordAccountType = source.DiscordAccountType
     target.discordDisplayNameType = source.DiscordDisplayNameType
@@ -9319,6 +9413,7 @@ ApiKit:RegisterFlavor("retail", function(api, host)
     target.limitedInputType = source.LimitedInputType
     target.linkedCurrencyFlags = source.LinkedCurrencyFlags
     target.loadConfigResult = source.LoadConfigResult
+    target.localeTransform = source.LocaleTransform
     target.logPriority = source.LogPriority
     target.logicLogicop = source.LogicLogicop
     target.logicMathop = source.LogicMathop
@@ -9369,7 +9464,9 @@ ApiKit:RegisterFlavor("retail", function(api, host)
     target.newCharGear = source.NewCharGear
     target.noRPEReason = source.NoRPEReason
     target.nodeOpFailureReason = source.NodeOpFailureReason
+    target.normalizationForm = source.NormalizationForm
     target.npcCraftingOrderSetFlags = source.NpcCraftingOrderSetFlags
+    target.numberStyle = source.NumberStyle
     target.numericRuleFormatRounding = source.NumericRuleFormatRounding
     target.onUpdateMode = source.OnUpdateMode
     target.partyPoseFlags = source.PartyPoseFlags
@@ -9406,11 +9503,14 @@ ApiKit:RegisterFlavor("retail", function(api, host)
     target.playerCompanionInfoFlags = source.PlayerCompanionInfoFlags
     target.playerCurrencyFlags = source.PlayerCurrencyFlags
     target.playerCurrencyFlagsDbFlags = source.PlayerCurrencyFlagsDbFlags
+    target.playerDataElementAccountFlags = source.PlayerDataElementAccountFlags
+    target.playerDataElementCharacterFlags = source.PlayerDataElementCharacterFlags
     target.playerDataElementType = source.PlayerDataElementType
     target.playerInteractionType = source.PlayerInteractionType
     target.playerMentorshipApplicationResult = source.PlayerMentorshipApplicationResult
     target.playerMentorshipStatus = source.PlayerMentorshipStatus
     target.plunderstormQueueState = source.PlunderstormQueueState
+    target.pluralType = source.PluralType
     target.powerType = source.PowerType
     target.powerTypeSign = source.PowerTypeSign
     target.powerTypeSlot = source.PowerTypeSlot
@@ -9702,6 +9802,7 @@ ApiKit:RegisterFlavor("retail", function(api, host)
     target.warbandSceneFlags = source.WarbandSceneFlags
     target.warbandScenePlacementType = source.WarbandScenePlacementType
     target.weaponSlot = source.WeaponSlot
+    target.weatherType = source.WeatherType
     target.widgetAnimationType = source.WidgetAnimationType
     target.widgetCurrencyClass = source.WidgetCurrencyClass
     target.widgetEnabledState = source.WidgetEnabledState
@@ -9791,4 +9892,4 @@ ApiKit:RegisterFlavor("retail", function(api, host)
     target.unitEventConstants = source.UnitEventConstants
     target.unitPowerSpellIDs = source.UnitPowerSpellIDs
   end
-end, { version = "12.1.0", build = 69933 })
+end, { version = "12.1.5", build = 70783 })

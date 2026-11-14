@@ -11,7 +11,8 @@ exhaustive because the check is cheap.
 
 It also holds the real-client suite's `RELOCATED_BINDINGS` (the Retail
 bindings its identity walk cannot derive from the names) to the Retail
-metadata.
+metadata, and its `CLASSIC_RELOCATED_BINDINGS` to the Classic Era and Mists of
+Pandaria Classic metadata.
 
 The binding checks need a Lua 5.1 interpreter on the path and are skipped
 without one.
@@ -211,11 +212,13 @@ def relocated_bindings(metadata: model.FlavourMetadata) -> set[tuple[str, str, s
     return relocated
 
 
-def suite_relocated_bindings(text: str) -> set[tuple[str, str, str | None, str]]:
-    """`RELOCATED_BINDINGS` as the real-client suite writes it."""
-    block = re.search(r"^local RELOCATED_BINDINGS = \{\n(.*?)^\}", text, re.MULTILINE | re.DOTALL)
+def suite_relocated_bindings(
+    text: str, table_name: str = "RELOCATED_BINDINGS"
+) -> set[tuple[str, str, str | None, str]]:
+    """One relocated-binding table of the real-client suite, as it writes it."""
+    block = re.search(rf"^local {table_name} = \{{\n(.*?)^\}}", text, re.MULTILINE | re.DOTALL)
     if block is None:
-        raise AssertionError(f"{CLIENT_SUITE}: no RELOCATED_BINDINGS table")
+        raise AssertionError(f"{CLIENT_SUITE}: no {table_name} table")
     entries = set()
     for namespace, wrapper, table, name in RELOCATED_ENTRY_RE.findall(block.group(1)):
         entries.add((namespace, wrapper, None if table == "nil" else table.strip('"'), name))
@@ -284,7 +287,7 @@ class CommittedFlavourTests(unittest.TestCase):
 
 
 class ClientSuiteTests(unittest.TestCase):
-    """The real-client suite's hand-kept binding list agrees with the Retail metadata."""
+    """The real-client suite's hand-kept binding lists agree with the metadata."""
 
     def test_the_client_suite_lists_every_relocated_retail_binding(self):
         """The real-client walk resolves these by hand, so the list must be the metadata's."""
@@ -294,6 +297,16 @@ class ClientSuiteTests(unittest.TestCase):
             relocated_bindings(metadata),
             suite_relocated_bindings(CLIENT_SUITE.read_text(encoding="utf-8")),
         )
+
+    def test_the_client_suite_lists_every_relocated_classic_binding(self):
+        """Classic Era and Mists of Pandaria Classic share one list in the suite."""
+        suite = suite_relocated_bindings(
+            CLIENT_SUITE.read_text(encoding="utf-8"), "CLASSIC_RELOCATED_BINDINGS"
+        )
+        for flavour_id in ("classic-era", "classic-mop"):
+            with self.subTest(flavour=flavour_id):
+                metadata = model.read_metadata(PACKAGE_DIR / "metadata" / flavour_id)
+                self.assertEqual(relocated_bindings(metadata), suite)
 
 
 if __name__ == "__main__":
