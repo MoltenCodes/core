@@ -190,3 +190,7 @@ changelog, 0.1.4). A flavour an older copy's file already installed keeps
 that surface for the session, because a flavour is installed once and the
 first file to register it wins (above); only a session in which a revision 4
 flavour file registers first gets the corrected bindings.
+Revision 5 keeps the revision 4 state and methods the same way: it ships the
+flavour files generated from the 2026-11-14 captures (changelog, 0.2.0), and
+the same first-registration rule decides which build's surface a session
+gets.

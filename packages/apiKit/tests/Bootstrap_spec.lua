@@ -167,6 +167,37 @@ describe("ApiKit bootstrap", function()
     end
   )
 
+  it(
+    "upgrades a revision 4 copy in place and keeps the surface its flavour file installed",
+    function()
+      -- Revision 5 changes no facade state or method either; it carries the
+      -- flavour files of the refreshed captures, under the same
+      -- first-registration rule as revision 4.
+      TestEnv.Reset()
+      TestEnv.InstallWowApi()
+      TestEnv.SetClient({ projectId = 1, testBuild = false, betaBuild = false })
+      require("Registry")
+      local old = TestEnv.LoadRevision(4)
+      local state = old._state
+      local runs = 0
+      assert.is_true(old:RegisterFlavor("retail", function(api)
+        runs = runs + 1
+        api.marker = true
+      end, { version = "12.1.0", build = 69933 }))
+
+      local upgraded = TestEnv.requireAfterFailedLoad("ApiKit")
+
+      assert.are.equal(old, upgraded)
+      assert.are.equal(5, upgraded.REVISION)
+      assert.are.equal(state, upgraded._state)
+      assert.are.same({ "12.1.0", 69933 }, { upgraded:GetMetadataBuild("retail") })
+      assert.is_false(upgraded:RegisterFlavor("retail", function()
+        runs = runs + 1
+      end, { version = "12.1.5", build = 70783 }))
+      assert.are.equal(1, runs)
+    end
+  )
+
   it("re-probes the client when a newer revision upgrades in place", function()
     local ApiKit = TestEnv.NewPackageFor("tbc")
     assert.are.equal("unsupported", ApiKit:GetFlavor())

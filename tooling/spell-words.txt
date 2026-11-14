@@ -54,8 +54,10 @@ Pandaria
 Quadrata
 REGEN
 Skurri
+Soulbound
 spellbook
 tocname
+transmog
 UIDROPDOWNMENU
 Wago
 WOWGUID
