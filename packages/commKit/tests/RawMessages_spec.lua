@@ -371,9 +371,12 @@ describe("CommKit raw messages", function()
           "CommKit.Scope:SendRaw request.parts must be an array of strings",
           sendRaw(with(holed))
         )
+        -- An array with an extra key is what is under test.
+        -- selene: allow(mixed_table)
+        local labelled = { "a", label = "b" }
         assert.are.equal(
           "CommKit.Scope:SendRaw request.parts must be an array of strings",
-          sendRaw(with({ "a", label = "b" }))
+          sendRaw(with(labelled))
         )
         assert.are.equal(
           "CommKit.Scope:SendRaw request.parts[1] must be 1 to 255 bytes",
