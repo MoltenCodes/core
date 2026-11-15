@@ -389,6 +389,27 @@ describe("CommKit bootstrap", function()
     assert(scope:SendRaw({ prefix = "CKRaw", parts = { "raw" }, distribution = "PARTY" }))
   end)
 
+  it("upgrades a revision 8 state in place with a send queued", function()
+    local older = TestEnv.Load({ commKitRevision = 8 })
+    assert.are.equal(8, older.REVISION)
+    local olderState = rawget(older, "_state")
+    local scope = older:CreateScope()
+    older:SetLimits({ burst = 400, maxCps = 100 })
+    local handle = scope:Send({ prefix = PREFIX, text = TestEnv.Text(700), distribution = "PARTY" })
+    assert.are.equal("sending", handle:GetState())
+
+    package.loaded["CommKit"] = nil
+    local CommKit = require("CommKit")
+    assert.are.equal(older, CommKit)
+    assert.is_true(CommKit.REVISION > 8)
+    assert.are.equal(olderState, rawget(CommKit, "_state"))
+    assert.are.equal(400, CommKit:GetLimits().burst)
+
+    TestEnv.Advance(10)
+    assert.are.equal("sent", handle:GetState())
+    assert.is_false(olderState.driver.job)
+  end)
+
   it("requires Registry", function()
     TestEnv.Reset()
     TestEnv.InstallWowApi()

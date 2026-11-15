@@ -196,6 +196,31 @@ describe("CommKit SyncSet", function()
     assert.are.equal(65, sync:GetRemote("Peer65", "level"))
   end)
 
+  it("keeps a peer whose reply is still queued instead of evicting it", function()
+    -- Revision 9: evicting it let the same peer queue a second reply.
+    CommKit:SetLimits({ burst = 255, maxCps = 1, maxSyncPeers = 1 })
+    -- A message the bucket cannot finish keeps the reply below queued.
+    assert(scope:Send({ prefix = "CKFill", text = TestEnv.Text(600), distribution = "PARTY" }))
+    receive({ 1, {} }, "PeerA")
+    TestEnv.Advance(2)
+    local dropped = CommKit:GetStatistics().syncReplyDropped
+    receive({ 1, {} }, "PeerB")
+    assert.are.equal(dropped + 1, CommKit:GetStatistics().syncReplyDropped)
+    receive({ 1, {} }, "PeerA")
+    assert.are.equal(dropped + 2, CommKit:GetStatistics().syncReplyDropped)
+
+    -- The driver run already scheduled at the old rate pays for the rest.
+    TestEnv.Advance(1000)
+    local replies = 0
+    for _, entry in ipairs(TestEnv.TakeOutbox()) do
+      if entry.prefix == PREFIX then
+        assert.are.equal("PeerA", entry.target)
+        replies = replies + 1
+      end
+    end
+    assert.are.equal(1, replies)
+  end)
+
   it("holds at most 16 listeners and closes cleanly", function()
     for _ = 2, 16 do
       assert.is_truthy(sync:OnChanged(function() end))

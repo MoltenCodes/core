@@ -72,7 +72,7 @@
 
 local PACKAGE_NAME = "commKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 8
+local IMPLEMENTATION_REVISION = 9
 
 -- The API generation of every package CommKit uses: required (Registry,
 -- SignalKit, EventKit, TimerKit, SchedulerKit, PoolKit) and optional
@@ -763,7 +763,6 @@ if
   or type(rawget(SignalKit, "New")) ~= "function"
   or type(rawget(SignalKit, "Connect")) ~= "function"
   or type(rawget(SignalKit, "Fire")) ~= "function"
-  or type(rawget(SignalKit, "DisconnectAll")) ~= "function"
 then
   error("MoltenCodes CommKit requires SignalKit API 1 to be loaded first", 2)
 end
@@ -804,7 +803,7 @@ then
   error("MoltenCodes CommKit requires SchedulerKit API 1 to be loaded first", 2)
 end
 
--- PoolKit leases the message, stream and chunk-list records.
+-- PoolKit leases the stream records of multi-chunk messages being reassembled.
 local PoolKit = getPackage(Registry, "poolKit", DEPENDENCY_API.poolKit)
 if
   type(PoolKit) ~= "table"
@@ -2037,6 +2036,12 @@ local function deferCallback(callback, handle, first, second)
   end
   if deferred.cursor < deferred.count then
     flushDeferred()
+    -- `stopDriver` keeps its job while calls are held; a cancel or close
+    -- that emptied the queue meanwhile left that job armed, and nothing else
+    -- would disarm it now that the held calls ran.
+    if state.queuedMessages == 0 and not driver.running then
+      stopDriver()
+    end
   end
   isolatedCall(callback, handle, first, second)
 end
@@ -3623,10 +3628,23 @@ local enqueueSend
 local encodeSyncMessage, receiveSync
 
 do
+  ---Whether a reply to `peer` is still in the queue.
+  ---@param peer table
+  ---@return boolean
+  local function replyPending(peer)
+    local reply = rawget(peer, "reply")
+    if reply == false then
+      return false
+    end
+    local replyState = rawget(reply, "_state")
+    return replyState == SEND_STATE.queued or replyState == SEND_STATE.sending
+  end
+
   ---Return the peer record for `sender`, creating it when `create` is true.
   ---When the cache is full, the least recently seen peer that was not
-  ---answered within the reply interval is evicted; when every peer was, `nil`
-  ---is returned, so an eviction can never lift a peer's reply interval.
+  ---answered within the reply interval and has no reply in the queue is
+  ---evicted; when every peer was, `nil` is returned, so an eviction can never
+  ---lift a peer's reply interval or let it queue a second reply.
   ---@param syncSet CommKit.SyncSet
   ---@param sender string
   ---@param create boolean
@@ -3653,7 +3671,11 @@ do
         local touched = rawget(candidate, "touched")
         local repliedAt = rawget(candidate, "repliedAt")
         local throttled = repliedAt ~= false and currentTime - repliedAt < SYNC.replyIntervalSeconds
-        if not throttled and (oldestTouch == nil or touched < oldestTouch) then
+        if
+          not throttled
+          and not replyPending(candidate)
+          and (oldestTouch == nil or touched < oldestTouch)
+        then
           oldestName, oldestTouch = name, touched
         end
       end
@@ -3682,18 +3704,6 @@ do
       return nil
     end
     return text
-  end
-
-  ---Whether a reply to `peer` is still in the queue.
-  ---@param peer table
-  ---@return boolean
-  local function replyPending(peer)
-    local reply = rawget(peer, "reply")
-    if reply == false then
-      return false
-    end
-    local replyState = rawget(reply, "_state")
-    return replyState == SEND_STATE.queued or replyState == SEND_STATE.sending
   end
 
   ---Queue a reply to `sender`, counting its bytes against the shared reply
@@ -4784,7 +4794,8 @@ function SyncSetMethods.Request(self, target)
 end
 
 ---Call `callback(sender, field, value)` when a peer's field changes; `value`
----is `nil` when the peer cleared it. At most 16 listeners per SyncSet.
+---is `nil` when the peer cleared it. Returns `nil, "full"` past the
+---SyncSet's `maxListeners` (16 unless the options said otherwise).
 ---@param self CommKit.SyncSet
 ---@param callback CommKit.ChangedCallback
 ---@return CommKit.Connection|nil connection
@@ -4833,9 +4844,11 @@ end
 -- Scope methods --------------------------------------------------------------
 
 ---Register `callback` for whole messages on `prefix`. The prefix is
----registered with the client on first use. Returns `nil, "full"` past 32
----registrations, `nil, "closed"` on a closed scope, and the client's refusal
----(`"invalidPrefix"`, `"maxPrefixes"`, ...) when it refuses the prefix.
+---registered with the client on first use. Returns `nil, "full"` past the
+---scope's `maxRegistrations` (32 unless the scope's options said otherwise),
+---`nil, "closed"` on a closed scope, `nil, "framingConflict"` when the prefix
+---holds raw registrations, and the client's refusal (`"invalidPrefix"`,
+---`"maxPrefixes"`, ...) when it refuses the prefix.
 ---@param self CommKit.Scope
 ---@param prefix string
 ---@param callback CommKit.ReceiveCallback

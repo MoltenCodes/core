@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.5.1 — 2026-11-15
+
+Fixes from an audit. The wire protocol, API generation 1 and every bound are unchanged.
+
+- Fixed: a `Cancel`, `CancelAll` or `Close` that emptied the queue while completion callbacks a run inside `Send` held back were still waiting left the driver job armed. `stopDriver` keeps the job while calls are held, and nothing disarmed it once the cancel ran them, so the next send the bucket paid for came back `"queued"` instead of `"sent"` and waited for that job. `deferCallback` now disarms the driver after running the held calls when the queue is empty outside a run.
+- Fixed: a SyncSet peer whose reply was still queued could be evicted from a full peer cache, and the same sender's next request then queued a second reply. Eviction now skips a peer with a reply queued; when every peer is answered or pending, the new peer is dropped as before. `docs/API.md` states it.
+- Removed the load-time requirement that SignalKit expose `DisconnectAll`: CommKit never calls it.
+- Comments: the PoolKit dependency leases only stream records; `OnChanged` and `Register` name their configurable bounds (`maxListeners`, `maxRegistrations`), and `Register` lists `"framingConflict"`. `docs/API.md` states implementation revision 9 (it still said 7).
+- Implementation revision 9. The state layout is unchanged: an upgrade over revision 8 keeps the state as it is.
+- 263 specs (was 260): the driver disarmed after such a cancel (`SendAtOnce_spec.lua`), a peer with a queued reply kept (`SyncSet_spec.lua`), and an in-place upgrade from revision 8 (`Bootstrap_spec.lua`).
+
 ## 0.5.0 — 2026-11-15
 
 Additive within API generation 1, approved by the owner on 2026-11-15 as bridgeKit's prerequisite P1 (`docs/BRIDGE_KIT_DESIGN.md`, section 4.3, decision 9): **raw addon messages**, so a foreign wire format such as AceComm's shares CommKit's queue and session budget instead of sending beside it. CommKit's own wire protocol is unchanged; peers on every earlier revision interoperate.

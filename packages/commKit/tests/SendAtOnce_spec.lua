@@ -166,6 +166,24 @@ describe("CommKit sends at once", function()
     assert.are.equal(0, state.deferred.count)
   end)
 
+  it("disarms the driver when a cancel empties the queue while callbacks are held", function()
+    -- Revision 9: the cancel used to leave the job armed after running the
+    -- held callbacks, so the next send the bucket paid for stayed queued.
+    CommKit:SetLimits({ burst = 255, maxCps = 10 })
+    local first = scope:Send(tracked("a", TestEnv.Text(200)))
+    assert.are.equal("sent", first:GetState())
+    local second = scope:Send(tracked("b", "later"))
+    assert.are.equal("queued", second:GetState())
+    assert.is_true(second:Cancel())
+    assert.are.same({ "a progress 200", "a sent nil", "b cancelled cancelled" }, calls)
+    assert.is_false(state.driver.job)
+    assert.are.equal(0, driverJobs())
+
+    state.budget.tokens = 255
+    local third = scope:Send({ prefix = PREFIX, text = "x", distribution = "PARTY" })
+    assert.are.equal("sent", third:GetState())
+  end)
+
   it("keeps each handle's callbacks in order across the held and the driven chunks", function()
     CommKit:SetLimits({ burst = 700, maxCps = 1000 })
     scope:Send(tracked("a", TestEnv.Text(1000)))
