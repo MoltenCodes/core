@@ -234,6 +234,8 @@ Revision 8 changes no layout: only the closure `plainGetter` returns (see [The n
 
 Revision 9 changes no layout. Every in-place upgrade, from any revision, walks `state.views` once and builds the depth probe of every live record view below a scope root: `depthProbes` is file-local, so a newer copy starts without the probes the older one built, and before revision 9 only an upgrade over revisions 1 to 5 rebuilt them, which sent writes through nested views to the full check after an upgrade over revisions 6 to 8. `FastPaths_spec.lua` upgrades in place and counts SchemaKit checks of nested writes.
 
+Revision 13 changes no layout: an unknown `SetLimits` key that is not a string, number or boolean is named by its type instead of being passed to `tostring`, and an upgrade over revision 12 replaces the methods only. `Limits_spec.lua` checks it.
+
 ## Spec profiles
 
 Everything spec profiles add lives in `installSpecProfiles`, a function called once from a `do` block near the end of the file, because the main chunk is at 197 of Lua 5.1's 200 register slots: its helpers are locals of that function, not of the main chunk. It publishes `GetSpecIndex` on the facade, `SetSpecProfile`, `GetSpecProfile` and `ApplySpecProfile` on the prototype, and three dispatch entries: `onDatabaseOpened(db)`, which `Open` calls last, `forgetSpecProfiles(raw, name)`, which `DeleteProfile` calls, and `onSpecEvent()`, which the shared listener calls, so an upgrade replaces all three.

@@ -316,6 +316,67 @@ describe("SettingsKit limits", function()
     )
   end)
 
+  it("names a table key by its type without running its __tostring", function()
+    local converted = false
+    local key = setmetatable({}, {
+      __tostring = function()
+        converted = true
+        error("a caller's __tostring ran inside SettingsKit", 0)
+      end,
+    })
+    local line
+    local ok, value = pcall(function()
+      line = currentLine() + 1
+      SettingsKit:SetLimits({ [key] = 64 })
+    end)
+    assertReportedAt(
+      line,
+      "SettingsKit:SetLimits limits.<table> is not a recognised limit",
+      ok,
+      value
+    )
+    assert.is_false(converted)
+    assert.are.same({ maxProfileNameLength = 64, pathKeyLimit = 32 }, SettingsKit:GetLimits())
+  end)
+
+  it("upgrades the previous revision in place and names a table key by its type", function()
+    local workingRevision = SettingsKit.REVISION
+    TestEnv.Reset()
+    TestEnv.InstallWowApi()
+    require("Registry")
+    require("SignalKit")
+    require("EventKit")
+    -- The schema below is built from the SchemaKit this fresh session loads.
+    S = require("SchemaKit")
+    local previous = TestEnv.LoadRevision(workingRevision - 1)
+    TestEnv.SetPlayer()
+    local state = rawget(previous, "_state")
+    previous:SetLimits({ maxProfileNameLength = 128 })
+    local db = previous:Open("MyAddonDB", schema())
+
+    local upgraded = TestEnv.ReloadPackage()
+    assert.are.equal(previous, upgraded)
+    assert.are.equal(workingRevision, upgraded.REVISION)
+    assert.are.equal(state, rawget(upgraded, "_state"))
+    assert.are.equal(db, upgraded:Open("MyAddonDB"))
+    assert.are.same({ maxProfileNameLength = 128, pathKeyLimit = 32 }, upgraded:GetLimits())
+
+    local converted = false
+    local key = setmetatable({}, {
+      __tostring = function()
+        converted = true
+        return "converted"
+      end,
+    })
+    TestEnv.expectErrorContaining(
+      "SettingsKit:SetLimits limits.<table> is not a recognised limit",
+      function()
+        upgraded:SetLimits({ [key] = 64 })
+      end
+    )
+    assert.is_false(converted)
+  end)
+
   it(
     "keeps the sentinel, the set limits and each database's scan bound across an upgrade",
     function()

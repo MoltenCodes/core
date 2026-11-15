@@ -2,7 +2,7 @@
 
 SettingsKit API generation **1** opens a database over an addon's saved variable: scoped views whose reads fall back to schema defaults and whose writes are validated at the writer's line, profiles (also switched by specialization), change signals, versioned migrations and compaction.
 
-Implementation revision: **12**.
+Implementation revision: **13**.
 
 ## Loading
 
@@ -534,7 +534,7 @@ SettingsKit:SetLimits({ maxProfileNameLength = 128 })
 local limits = SettingsKit:GetLimits() -- a fresh table: { maxProfileNameLength = 128, pathKeyLimit = 32 }
 ```
 
-`SetLimits` accepts any subset and raises at the caller, before changing anything, on a secret key or value (`SettingsKit:SetLimits limits must not have a secret key`, `SettingsKit:SetLimits limits.pathKeyLimit must not be a secret value`, asked before the key indexes anything or the value is compared), on an unknown name, on `SettingsKit.UNBOUNDED` (naming the reason) or on a value outside the range: `SettingsKit:SetLimits limits.pathKeyLimit must be an integer from 1 to 1024`. **The limits are shared by every consumer in the session**: every embedded copy and every addon's databases use one set. A library should rely on the defaults; an addon that raises a limit raises it for everybody. A changed `pathKeyLimit` applies to paths rendered afterwards; the paths of views built earlier keep their rendering.
+`SetLimits` accepts any subset and raises at the caller, before changing anything, on a secret key or value (`SettingsKit:SetLimits limits must not have a secret key`, `SettingsKit:SetLimits limits.pathKeyLimit must not be a secret value`, asked before the key indexes anything or the value is compared), on an unknown name (`SettingsKit:SetLimits limits.maxDepth is not a recognised limit`; a key that is not a string, number or boolean is named by its type, `limits.<table>`, so its `__tostring` never runs), on `SettingsKit.UNBOUNDED` (naming the reason) or on a value outside the range: `SettingsKit:SetLimits limits.pathKeyLimit must be an integer from 1 to 1024`. **The limits are shared by every consumer in the session**: every embedded copy and every addon's databases use one set. A library should rely on the defaults; an addon that raises a limit raises it for everybody. A changed `pathKeyLimit` applies to paths rendered afterwards; the paths of views built earlier keep their rendering.
 
 `SettingsKit.UNBOUNDED` and the shared limits live in the package state, so every embedded copy publishes the same sentinel and an in-place upgrade keeps the limits a consumer set.
 

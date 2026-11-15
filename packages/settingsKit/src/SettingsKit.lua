@@ -53,7 +53,7 @@
 
 local PACKAGE_NAME = "settingsKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 12
+local IMPLEMENTATION_REVISION = 13
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_SCHEMAKIT_API = 1
 local REQUIRED_SIGNALKIT_API = 1
@@ -3801,7 +3801,16 @@ local function validateLimitUpdate(limits, level)
       error("SettingsKit:SetLimits limits must not have a secret key", level)
     end
     if type(key) ~= "string" or LIMIT_CEILINGS[key] == nil then
-      error("SettingsKit:SetLimits limits." .. tostring(key) .. " is not a recognised limit", level)
+      -- A string, number or boolean is shown as itself; anything else is
+      -- named by its type, because `tostring` on a table or userdata runs its
+      -- `__tostring`, foreign code that can raise or answer a secret and so
+      -- replace this refusal. Inline, as the main chunk is near 200 locals.
+      local kind = type(key)
+      local shown = "<" .. kind .. ">"
+      if kind == "string" or kind == "number" or kind == "boolean" then
+        shown = tostring(key)
+      end
+      error("SettingsKit:SetLimits limits." .. shown .. " is not a recognised limit", level)
     end
     local value = rawget(limits, key)
     if isSecret(value) then

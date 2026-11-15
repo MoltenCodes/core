@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.2 — 2026-11-15
+
+- Fixed: `SetLimits` built its unknown-limit message with `tostring(key)`. For a table or userdata key that runs the key's `__tostring`, foreign code that can raise or answer a secret, so the caller saw that code's error (or a message it chose) instead of the refusal. A string key is still shown as written and a number or boolean as its text; any other key is named by its type, `SettingsKit:SetLimits limits.<table> is not a recognised limit`, and its `__tostring` never runs. The description is written inline in `validateLimitUpdate`, so the main chunk's local count is unchanged. Documented under *Limits* in `docs/API.md`.
+- Implementation revision 13. No state or layout changed: an upgrade over revision 12 replaces the methods and keeps every database, view, listener and limit.
+- Specs: 271 → 273. A table key whose `__tostring` records that it ran and raises is refused at the caller's line with `limits.<table>` and no limit changes; an in-place upgrade from the previous revision keeps the state, a raised limit and an open database and uses the new message. The revision 10 upgrade spec expects revision 13.
+
 ## 0.4.1 — 2026-11-15
 
 Fixes from a review of spec profiles. API generation 1 and the saved-table layout are unchanged.
