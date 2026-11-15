@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.7.5 — 2026-11-15
+
+- `docs/API.md` (At logout) no longer says that a bus obtained only through `SignalKit:Bus(name)` always stays open at logout. That holds for the closes SignalKit arranges itself (cases b and c); `CloseAddonBus(name)` closes whatever bus carries the name, so in case (a), where LifecycleKit calls it for every addon it tracks, such a bus is closed when that addon shuts down.
+- `docs/API.md` names implementation revision 9 at the top (it still said 8) and the Registry key as `(signalKit, API 1)` instead of `(signal, API 1)`.
+- The source comment on the shared `isolate` field no longer describes the per-subscription delivery closures revision 9 removed; it names the isolated dispatch that reads it.
+- Documentation and comments only: `luac -s -l` gives the same instruction listing before and after, so the implementation revision stays 9.
+
 ## 0.7.4 — 2026-09-25
 
 - Performance round against AceEvent-3.0 messages (host benchmark, `docs/BENCHMARKS.md`). Before, a bus subscription was a six-field handle (an eight-slot hash part) plus a delivery closure that isolated the callback, every disconnect that crossed the compaction threshold allocated a new listener array, and a publish reached a subscriber through `Fire` and the closure.

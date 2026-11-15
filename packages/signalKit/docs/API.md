@@ -2,7 +2,7 @@
 
 Package: `signalKit`  
 API generation: `1`  
-Implementation revision: `8`
+Implementation revision: `9`
 
 SignalKit provides deterministic callback dispatch with explicit connection lifetimes, and named message buses built on the same signals. A signal can tell its owner when it becomes observed ([hooks](#hooks-onfirst-and-onlast)), counts its firings ([`GetGeneration`](#signalgetgeneration)) and, as a [journal](#journals), keeps its last firings for explicit pull.
 
@@ -531,10 +531,13 @@ that moved to (a) or (b) to LifecycleKit. A failure in another Kit while
 deciding goes to the host error handler; `ForAddon` still returns the bus, and
 the next call asks again.
 
-Only a bus `ForAddon` has returned is closed at logout. A bus obtained only
-through `SignalKit:Bus(name)` is a shared bus, not an addon's, and stays open
-even when its name is an addon's; once `ForAddon` names it, it is that addon's
-bus.
+SignalKit itself closes at logout only a bus `ForAddon` has returned: in cases
+(b) and (c) a bus obtained only through `SignalKit:Bus(name)` is a shared bus,
+not an addon's, and stays open even when its name is an addon's; once
+`ForAddon` names it, it is that addon's bus. `CloseAddonBus(name)` closes
+whatever bus carries the name, so in case (a), where LifecycleKit calls it for
+every addon it tracks when that addon shuts down, a bus obtained through
+`Bus(name)` under the name of such an addon is closed too.
 
 In case (b) SignalKit's `OnShutdown` subscription is made at the first
 `ForAddon`, so it runs before the addon's own shutdown callbacks subscribed
@@ -816,7 +819,7 @@ passes through them untouched.
 
 ## Embedded copies and revision upgrades
 
-Registry owns the stable `SignalKit` package table for `(signal, API 1)`. SignalKit instances use that shared table as their method prototype, so existing signal instances observe compatible package-method upgrades loaded into the same API generation.
+Registry owns the stable `SignalKit` package table for `(signalKit, API 1)`. SignalKit instances use that shared table as their method prototype, so existing signal instances observe compatible package-method upgrades loaded into the same API generation.
 
 `SignalKit.Connection` is also preserved as one shared method table across compatible package revisions, allowing existing connection handles to observe compatible connection-method upgrades.
 

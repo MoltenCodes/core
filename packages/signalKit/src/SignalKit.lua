@@ -483,8 +483,9 @@ local function newState()
     scopeMetatable = { __index = scopePrototype },
     journalPrototype = journalPrototype,
     journalMetatable = journalMetatable,
-    -- Delivery closures read the isolation function from here, so a newer
-    -- copy replaces it for subscriptions that already exist.
+    -- The dispatch of an isolated bus topic signal reads the isolation
+    -- function from here, so a newer copy replaces it for subscriptions that
+    -- already exist.
     isolate = false,
     -- `SignalKit.UNBOUNDED`. It lives in the state so that every revision
     -- publishes the same table and a comparison against it keeps working
