@@ -1047,7 +1047,9 @@ def validate_changelog_versions(
 
     The first `## <version> — <date>` heading of a package changelog is the
     newest release; the manifest must carry exactly that version, and the
-    date must not lie after ``today`` (UTC by default). This is what the
+    date must not lie more than one day after ``today`` (UTC by default): a
+    contributor east of UTC dates a release by a calendar that can already be
+    one day ahead of UTC (time zones reach UTC+14). This is what the
     version pins once kept by `Manifest_spec.lua` files were reaching for: a
     version raised without a changelog entry, or an entry without the raise.
     """
@@ -1082,9 +1084,13 @@ def validate_changelog_versions(
         except ValueError:
             errors.append(error(path, f'"{heading.group("date")}" is not a calendar date'))
             continue
-        if released > today:
+        if released > today + datetime.timedelta(days=1):
             errors.append(
-                error(path, f"the newest entry is dated {released}, after today ({today})")
+                error(
+                    path,
+                    f"the newest entry is dated {released}, more than a day after today "
+                    f"({today}, UTC)",
+                )
             )
     return errors
 

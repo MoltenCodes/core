@@ -400,7 +400,7 @@ where there is one, the line to add:
 - every package's part files against its manifest (see "Kit parts");
 - every manifest `version` equals the version of the first
   `## <version> — <date>` heading of the package's `CHANGELOG.md`, and that
-  date is not after today (UTC), so a version is never raised without its
+  date is at most one day after today (UTC, so contributors east of UTC are not refused), so a version is never raised without its
   changelog entry or the reverse;
 - the indexes: [`README.md`](README.md) in `docs/` links every other document
   there and every package README, and

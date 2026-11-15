@@ -569,11 +569,20 @@ class RepositoryPartsTests(FixtureRepository):
         self.write_parted_repository()
 
         errors = validate_repository.validate_changelog_versions(
-            self.manifests()[0], today=datetime.date(2026, 11, 14)
+            self.manifests()[0], today=datetime.date(2026, 11, 13)
         )
 
         self.assertEqual(3, len(errors))
-        self.assertIn("after today (2026-11-14)", errors[0])
+        self.assertIn("more than a day after today (2026-11-13, UTC)", errors[0])
+
+    def test_changelog_date_may_be_one_day_ahead_of_utc(self):
+        self.write_parted_repository()
+
+        errors = validate_repository.validate_changelog_versions(
+            self.manifests()[0], today=datetime.date(2026, 11, 14)
+        )
+
+        self.assertEqual([], errors)
 
     def test_changelog_needs_a_release_heading(self):
         self.write_parted_repository()
