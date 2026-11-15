@@ -102,7 +102,7 @@ The cursor is preserved between rendered frames. HIGH work therefore receives gr
 
 "Only when nothing else is ready" must not become "never" on a permanently busy client. After **256 consecutive resumes** of contending work while an IDLE job waits, SchedulerKit promotes one IDLE job ahead of the weighted lanes and resets the counter.
 
-The counter is charged only while IDLE work is actually waiting, so an IDLE job that arrives after a long busy stretch does not immediately jump the queue on credit it never earned. Under sustained load the guard leaves IDLE below half a percent of total service.
+The counter is charged only while IDLE work is actually waiting (a cancelled IDLE job whose queue entry has not been popped yet does not count, since revision 19), so an IDLE job that arrives after a long busy stretch does not immediately jump the queue on credit it never earned. Under sustained load the guard leaves IDLE below half a percent of total service.
 
 Priority controls **service preference**, not correctness. A consumer must never rely on a lower-priority job being complete before a higher-priority job unless it models that dependency explicitly in its own state. A job may also be demoted by the scheduler itself (see the runaway threshold below), so `GetPriority()` is not guaranteed to return the value the job was scheduled with.
 
@@ -352,7 +352,7 @@ job:Cancel()
 
 A cancelled queued job remains harmless even if its stale queue node has not yet been popped. A delayed job invalidates its logical generation before TimerKit cancellation is attempted, so an already-queued native timer callback cannot resurrect it.
 
-Cancelling a running job does **not** forcibly abort Lua currently on the stack. `Context:IsCancelled()` lets a cooperative callback observe cancellation and return early. `Context:ShouldYield()` returns `true` for a self-cancelled running callback, and `Context:Yield()` remains legal so control can be surrendered immediately. Once control returns or yields, the cancelled job is not requeued.
+Cancelling a running job does **not** forcibly abort Lua currently on the stack. `Context:IsCancelled()` lets a cooperative callback observe cancellation and return early. `Context:ShouldYield()` returns `true` for a self-cancelled running callback, and `Context:Yield()` remains legal so control can be surrendered immediately. Once control returns, yields or raises, the cancelled job is not requeued: a self-cancelled job that then raises stays `cancelled`, and the error is neither retried by a lane nor reported (since revision 19).
 
 `Cancel()` returns `false` for already terminal jobs.
 
@@ -580,6 +580,9 @@ refresh("BAG_UPDATE")  -- returns true; call it as often as you like
 - If TimerKit cannot arm the handle's timer, the failure is reported through
   the host error handler and the owed fire is kept: the next call opens a new
   window, and `Flush()` delivers it at once.
+- If TimerKit cannot arm the timer on the first call of a burst, the failure
+  is raised to that caller instead, and the call is dropped together with any
+  fire still owed: nothing is pending afterwards.
 
 | Method | Purpose |
 |---|---|
@@ -627,7 +630,10 @@ refusal is counted. A key already in the set is still updated. Refusing was
 chosen over evicting an older key because a set that silently loses a key
 it already accepted is harder to reason about than one that says no. A `nil`
 or NaN key raises at the caller; a closed handle returns `false`.
-`intervalSeconds` may be `0`, which means the next frame.
+`intervalSeconds` may be `0`, which means the next frame. If TimerKit cannot
+arm the interval timer on the first key of an interval, the failure is raised
+to that caller; the key stays collected, and the next call arms the timer again
+(or `Flush()` delivers it).
 
 | Method | Purpose |
 |---|---|
@@ -638,9 +644,13 @@ or NaN key raises at the caller; a closed handle returns `false`.
 | `Close()` | Drop the keys, cancel a delivery still waiting for the lane, and leave the scope. A delivery the lane already admitted finishes. Terminal; returns `false` when already closed. |
 | `IsClosed()` | Whether the handle is closed. |
 
-`Flush()` called from inside the handle's own callback returns `false`: the
-delivery in progress is not re-entered. The same holds for a `Debounce`
-handle.
+Without a lane, `Flush()` called from inside the handle's own callback returns
+`false`: the delivery in progress is not re-entered. The same holds for a
+`Debounce` handle. With a lane the callback runs as a lane job, and a `Flush()`
+from inside it sees that job: a `Coalesce` handle with keys collected returns
+`false, "deferred"` (the interval timer delivers them once the job is done),
+and a `Debounce` handle with a fire owed returns `true` and fires again once
+the running job finishes. Either returns `false` when nothing is owed.
 
 ### `Watch(predicate, intervalSeconds, callback[, options])`
 
@@ -845,6 +855,11 @@ The facade, Job/Scope/Context prototypes, metatables, ready queues, scopes, acti
 The installed OnUpdate trampoline does not permanently close over one implementation revision. It resolves the current shared dispatch function on every scheduler frame. TimerKit delay callbacks use the same dispatch indirection.
 
 A future compatible SchedulerKit revision can therefore update execution behavior while preserving existing facade, Job, Scope, Context, queue, and addon-scope identity.
+
+Revision 19 changes behaviour only (a self-cancelled job that raises stays
+cancelled, and a cancelled IDLE entry no longer charges the starvation guard);
+package state is unchanged and a revision-18 copy's jobs, workers, timers and
+handles carry over as they are.
 
 Revision 18 adds worker coroutines: `workerFinished`, `idleWorkers` and
 `idleWorkerCount` in package state, seeded into older state in place. A job

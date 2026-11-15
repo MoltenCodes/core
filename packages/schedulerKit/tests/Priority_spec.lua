@@ -159,6 +159,37 @@ describe("SchedulerKit priorities", function()
     assert.are.equal("second I", order[400 + 257])
   end)
 
+  it("earns no guard credit while the IDLE lane holds only a cancelled job", function()
+    local SchedulerKit = TestEnv.NewPackage()
+    SchedulerKit:SetMaxResumesPerFrame(1000)
+    local order = {}
+    SchedulerKit:Schedule(function(context)
+      while true do
+        order[#order + 1] = "H"
+        if #order == 100 then
+          SchedulerKit:Schedule(function()
+            order[#order + 1] = "I"
+          end, { priority = SchedulerKit.Priority.IDLE })
+        end
+        context:Yield()
+      end
+    end, { priority = SchedulerKit.Priority.HIGH })
+    -- Cancelled while a HIGH job is ready, so its entry stays in the IDLE
+    -- lane until the frame pass reaches it.
+    local stale = SchedulerKit:Schedule(function()
+      order[#order + 1] = "stale I"
+    end, { priority = SchedulerKit.Priority.IDLE })
+    stale:Cancel()
+
+    TestEnv.Tick()
+
+    -- The cancelled entry starved nothing, so the IDLE job that arrives
+    -- later waits a full guard period of 256 resumes, not the 156 left of
+    -- the period the cancelled entry was charged for.
+    assert.are.equal("H", order[100 + 256])
+    assert.are.equal("I", order[100 + 257])
+  end)
+
   it("keeps the fairness cursor across frames", function()
     local SchedulerKit = TestEnv.NewPackage()
     SchedulerKit:SetMaxResumesPerFrame(1)

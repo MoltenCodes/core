@@ -398,6 +398,21 @@ describe("SchedulerKit cooperative jobs", function()
     assert.are.equal(0, SchedulerKit:GetActiveCount())
   end)
 
+  it("keeps a job that cancels itself and then raises cancelled", function()
+    local SchedulerKit = TestEnv.NewPackage()
+    local job
+    job = SchedulerKit:Schedule(function()
+      job:Cancel()
+      error("raised after cancelling", 0)
+    end)
+
+    TestEnv.Tick()
+    assert.are.equal("cancelled", job:GetState())
+    assert.is_false(job:HasError())
+    assert.are.equal(0, #TestEnv.ReportedErrors())
+    assert.are.equal(0, SchedulerKit:GetActiveCount())
+  end)
+
   it("rejects raw coroutine yields", function()
     local SchedulerKit = TestEnv.NewPackage()
     local job = SchedulerKit:Schedule(function()

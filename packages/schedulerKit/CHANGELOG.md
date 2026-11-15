@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.8.7 — 2026-11-15
+
+- Fixed a job that cancels itself and then raises ending `failed`. The error branch of a resume retried or failed the job without looking at its state, so the raise overwrote the cancellation: the job reported `failed`, the error went to the host error handler, and a lane submission with attempts left was even re-armed for a retry. A cancelled job now stays `cancelled` and the raise is dropped. Regression specs in `Cooperative_spec.lua` and `Lane_spec.lua`.
+- Fixed the IDLE starvation guard earning credit for a cancelled IDLE job. While the IDLE lane held only a cancelled entry nobody had popped yet, every contending resume still charged the guard, so an IDLE job arriving later was promoted after the rest of that period instead of a full 256 resumes. The guard now counts only while the lane holds a live job. Regression spec in `Priority_spec.lua`.
+- `docs/API.md`: `Debounce` and `Coalesce` state what happens when TimerKit cannot arm the timer on the first call of a burst (the error is raised to the caller; a `Debounce` drops that call and any owed fire, a `Coalesce` keeps the key). `Flush()` from inside the handle's own callback returns `false` only without a lane; with a lane a `Coalesce` handle returns `false, "deferred"` and a `Debounce` handle `true`, as now documented.
+- Implementation revision 19. Package state is unchanged: an in-place upgrade from revision 18 keeps facade, state, jobs and handles (`Bootstrap_spec.lua`). API generation 1 is unchanged.
+
 ## 0.8.6 — 2026-09-25
 
 Performance round 2: cheaper jobs and `Coalesce` handles. Implementation revision 18; API generation 1 is unchanged.

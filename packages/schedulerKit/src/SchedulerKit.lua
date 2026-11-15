@@ -45,7 +45,7 @@
 
 local PACKAGE_NAME = "schedulerKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 18
+local IMPLEMENTATION_REVISION = 19
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_TIMER_API = 1
 local STATE_SCHEMA = 1
@@ -1482,7 +1482,9 @@ local function nextReadyJob()
   end
 
   local laneOccupied = state.laneOccupied --[[@as table<integer, boolean>]]
-  local idleWaiting = laneOccupied[PRIORITY_IDLE] == true
+  -- Only a live IDLE job is starved: a lane holding nothing but cancelled
+  -- entries must not earn credit for the next IDLE job to spend at once.
+  local idleWaiting = laneOccupied[PRIORITY_IDLE] == true and queueHasLive(PRIORITY_IDLE)
   if not idleWaiting then
     -- Nothing is being starved, so the guard must not accumulate credit
     -- that a later IDLE job could spend immediately.
@@ -2158,6 +2160,12 @@ local function resumeJob(job)
   state.currentJob = false
 
   if not ok then
+    -- A job that cancelled itself and then raised stays cancelled: the
+    -- cancellation already finished it, so the raise is neither retried nor
+    -- reported as a failure.
+    if job._state == "cancelled" then
+      return
+    end
     -- A lane submission with attempts left is re-armed after its backoff
     -- instead of failing; see "Coalescing family".
     local lane = job._lane
