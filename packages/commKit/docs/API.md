@@ -495,6 +495,7 @@ These stay fixed, because the client or the wire format sets them:
 | chunk header | 4 bytes, 251 payload bytes | the wire format of API generation 1 |
 | chunks per message | 16383, 5624 on the logged channel | two header digits of radix 128 or 75 |
 | SyncSet `fields` | 1 to 32 names of 1 to 64 bytes | a static declaration every peer shares; a request carries one hash per field |
+| raw message | 1 to 4096 parts of 1 to 255 bytes (`SendRaw`) | the client's message limit, and a fixed bound on the array `SendRaw` copies |
 | chunks per driver run | 32 | a per-frame work cap, not retention |
 
 ```lua
@@ -524,7 +525,7 @@ local limits = CommKit:GetLimits() -- a fresh table
 | `secretsDropped` | received messages dropped because an argument was secret |
 | `streamsMalformed`, `streamsRestarted`, `streamsAborted`, `streamsDiscarded`, `chunksRefusedQuota` | reassembly drops by reason |
 | `syncRequests`, `syncAcknowledgements`, `syncDeliveries`, `syncRejected` | SyncSet messages received, and those refused |
-| `syncReplyDropped` | SyncSet replies not queued: one already pending for that peer, or the 8 KB reply allowance full |
+| `syncReplyDropped` | SyncSet replies not queued: one already pending for that peer, or the reply allowance (`maxSyncReplyBytes`, 8 KB by default) full |
 | `queuedMessages`, `queuedBytes`, `openStreams` | the current queue and reassembly totals |
 
 ## Scopes and shutdown

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.2 — 2026-11-15
+
+- Documentation: the README had no migration table from the libraries CommKit replaces. It now has *Moving from AceComm-3.0 and ChatThrottleLib*, mapping `RegisterComm`, `UnregisterComm`, `UnregisterAllComm`, `SendCommMessage` and its progress callback, ChatThrottleLib's `SendAddonMessage` and `SendAddonMessageLogged` and its queue names to CommKit, and pointing to BridgeKit for AceComm's wire format and to `docs/MIGRATING_FROM_ACE3.md` for a full port. The mapping was checked against AceComm-3.0's and ChatThrottleLib's own source.
+- Documentation: `docs/API.md` ("Statistics") said `syncReplyDropped` counts replies dropped because "the 8 KB reply allowance" was full; the allowance is the `maxSyncReplyBytes` limit, 8 KB by default, and the row now says so. The table of fixed constants under *Limits* did not list the raw message bound; it now gives `SendRaw`'s 1 to 4096 parts of 1 to 255 bytes.
+- Documentation only: the implementation revision is unchanged (9).
+
 ## 0.5.1 — 2026-11-15
 
 Fixes from an audit. The wire protocol, API generation 1 and every bound are unchanged.

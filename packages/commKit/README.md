@@ -45,6 +45,21 @@ What each piece promises:
 
 Every bound is documented under *Limits* in the API: a scope's `maxRegistrations` and a SyncSet's `maxListeners` accept `CommKit.UNBOUNDED`, and the session-shared limits are raised through `SetLimits`.
 
+### Moving from AceComm-3.0 and ChatThrottleLib
+
+CommKit does both libraries' jobs: AceComm's splitting and reassembly, and ChatThrottleLib's pacing and priorities. Its wire format is its own, so peers still on AceComm cannot read it; keep the two on different prefixes during the move, or speak AceComm's format through CommKit with [BridgeKit](../bridgeKit/). [`docs/MIGRATING_FROM_ACE3.md`](../../docs/MIGRATING_FROM_ACE3.md#acecomm-30) walks through a port.
+
+| AceComm-3.0, ChatThrottleLib | CommKit |
+|---|---|
+| `self:RegisterComm(prefix, method)` | `comm:Register(prefix, callback)`: a connection, or `nil, reason`. |
+| `self:UnregisterComm(prefix)` | `connection:Disconnect()` |
+| `self:UnregisterAllComm()` | `comm:UnregisterAll()` |
+| `self:SendCommMessage(prefix, text, distribution, target, priority, callbackFn, callbackArg)` | `comm:Send({ prefix = prefix, text = text, distribution = distribution, target = target, priority = CommKit.Priority.BULK, onProgress = ..., onComplete = ... })`. A send that does not fit is refused with `nil, reason` instead of queued without bound. |
+| `callbackFn(callbackArg, sent, length, sendResult)` | `onProgress(handle, bytesSent, bytesTotal)` after every chunk, and `onComplete(handle, state, reason)` once. |
+| `ChatThrottleLib:SendAddonMessage(priority, prefix, text, chatType, target)` | `comm:SendRaw({ prefix = prefix, parts = { text }, distribution = chatType, target = target, priority = ... })`, which sends the text as written through the same queue and budget. |
+| `ChatThrottleLib:SendAddonMessageLogged(...)` | `comm:Send({ ..., constraints = { logged = true } })`; `SendRaw` has no logged form. |
+| ChatThrottleLib's per-prefix `queueName` | One pipe per destination and channel, taking turns inside each priority. |
+
 Received data is untrusted: decode it with CodecKit and validate it with SchemaKit before use. See [`docs/API.md`](docs/API.md) for the full contract and [`docs/INTERNALS.md`](docs/INTERNALS.md) for the implementation.
 
 ## Embedding
