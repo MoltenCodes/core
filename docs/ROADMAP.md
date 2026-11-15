@@ -7852,6 +7852,584 @@ Namespace costs measured outside the bench (scripts above, same host):
    `docs/ROADMAP.md`, `docs/README.md` (a link to `docs/records/`).
 9. Status: recorded 2026-11-15; code follows.
 
+**Package O records: core and parts for SchedulerKit, EventKit, CodecKit and CommKit**
+
+Status: recorded 2026-11-15; code follows.
+
+Four records under ADR 0001 (a Kit is a core file plus optional parts), one
+per Kit, followed by the shared contract they all follow and the measured
+footprint of the sets an addon actually embeds. The records go into
+`docs/ROADMAP.md`, package O, after the codecKit record.
+
+**Measurements behind the records**
+
+Host Lua 5.1.5, 64-bit, debug information kept as the client keeps it, the
+shared fake client (`tooling/bench/lua/BenchHost.lua`), the memory
+diagnosis's `exec.lua` (one process per set, string table pre-grown, resident
+heap after a full collection). "Today" is the working tree at `ad2626a`.
+"Core alone (measured)" is a research copy of each file with the part's
+sections removed and replaced by stubs, loaded in the same set; the real core
+adds the part interface, `HasPart` and the fix-it stubs, priced at 1 to 3 KB
+per Kit. A part's own figure is today minus the measured core; where one
+section becomes several parts, the measured total is split in proportion to
+the live prototype bytes of each subsection (`Bytecode.lua` pricing).
+Ace3 figures are the pinned bench copy (`ACE3_COMMIT` `5e2e0d3b`) measured
+the same way.
+
+| Kit | Today | Core alone (measured) | Parts (resident when loaded) | Core + every part (expected) | Ace3 it replaces |
+|---|---:|---:|---|---:|---|
+| SchedulerKit | 176.0 KB | 89.9 KB | Coalescing ≈ 51 KB, Lanes ≈ 24 KB, Watch ≈ 12 KB (86.1 KB measured together) | ≈ 179 KB | AceBucket 9.6 KB (the Coalescing part's counterpart); the core has none (AceTimer's role is TimerKit's) |
+| EventKit | 106.3 KB | 80.9 KB | Coalescing 25.4 KB today, ≈ 42 KB once it times itself by TimerKit (eventKit record) | ≈ 124 KB | AceEvent 6.7 KB + CallbackHandler 10.2 KB = 16.9 KB |
+| CodecKit | 148.5 KB | 91.8 KB | Compression 56.7 KB, plus 59.0 KB of DEFLATE tables built on the first Lua compression or decompression (lazy since revision 9) | ≈ 150 KB (≈ 209 KB after a Lua compression) | AceSerializer 11.5 KB; compression has no Ace3 counterpart |
+| CommKit | 213.9 KB | 180.2 KB | SyncSet 33.7 KB; ChatThrottle ≈ 24 KB (new, priced at 44 KB per 1,000 lines for about 550 lines) | ≈ 216 KB without ChatThrottle, ≈ 240 KB with it | AceComm 14.1 KB + ChatThrottleLib 32.7 KB = 46.7 KB; SchedulerKit no longer required (commKit record) |
+
+The sets an addon embeds (resident, KB, one process each). "Split" is the
+cores only; "split + drivers on TimerKit" adds the two TimerKit changes in
+the eventKit and commKit records below. The comm rows without SchedulerKit
+were measured with a research copy of CommKit that loads without it; the
+TimerKit driver is priced at about 2 KB on top. The bucket row's EventKit
+part is priced: today's 25.4 KB plus about 17 KB for its own TimerKit timing
+(the prototypes of SchedulerKit's coalesce and a debounce without arguments,
+`leading` or `maxWaitSeconds`, scaled by the measured resident-to-prototype
+ratio of 1.29).
+
+| Set | Today | Split | Split + drivers on TimerKit | Ace3 | Ratio today → split → with TimerKit drivers |
+|---|---:|---:|---:|---:|---|
+| Smallest useful: Registry, SignalKit, EventKit, LifecycleKit, TimerKit | 353.5 | 328.2 | 328.2 | 53.8 (LibStub, CallbackHandler, AceAddon, AceEvent, AceTimer) | 6.6× → 6.1× → 6.1× |
+| AceBucket counterpart: the smallest set plus `Coalesce` (today and split: SchedulerKit and its Coalescing part with EventKit's part; with TimerKit: EventKit's part only) | 529.8 | ≈ 495 | ≈ 370 | 63.4 (plus AceBucket) | 8.4× → 7.8× → 5.8× |
+| Events + timers + comm: the smallest set plus PoolKit and CommKit (and SchedulerKit, which CommKit requires until its driver runs on TimerKit) | 824.3 | 679.2 | ≈ 589 (587.2 measured) | 100.5 (plus AceComm and ChatThrottleLib) | 8.2× → 6.8× → 5.9× |
+| The same with HookKit (outside traffic charged) and CodecKit (serialisation) | 1,035.3 | 833.7 | ≈ 744 (742.0 measured) | 129.8 (plus AceHook and AceSerializer) | 8.0× → 6.4× → 5.7× |
+
+Said plainly: the split and the two TimerKit drivers save a typical addon
+25 KB (event and timer set), 160 KB (buckets), 235 KB (comm set) and 290 KB
+(comm set with serialisation); an addon that embeds a part pays what it pays
+today plus a few KB. None of it brings these sets near Ace3: the cores
+themselves hold about 6 times Ace3's resident memory, because of code volume
+in every core (SignalKit 87 KB, PoolKit 79 KB, LifecycleKit 71 KB), not of
+optional features. The levers that act on the cores are the memory
+diagnosis's fix 3 (shared helper families, −100 to −145 KB over the set),
+fix 6 and fix 10, outside these records.
+
+The smallest-set figure is higher than the memory diagnosis's 333 KB because
+package O's first records added method-name callbacks and scope reopening to
+SignalKit, EventKit, TimerKit and LifecycleKit.
+
+**The contract every split here follows**
+
+This is ADR 0001 applied to Kits that existed as whole files. It is the same
+for the four records and should be the same for every Kit split in package O.
+
+- **Layout.** `src/<Facade>.lua` and `src/parts/<Facade>-<Part>.lua`, each
+  part declared under `parts` in the manifest with `revision` 1.
+- **What stays on the facade.** Every member a part provides keeps its name
+  on the facade and on the shared prototypes even when the part is not
+  loaded. Without the part it is a stub that raises at the caller's line:
+  `SchedulerKit:Debounce is in SchedulerKit's Coalescing part, which is not
+  loaded: add schedulerKit\parts\SchedulerKit-Coalescing.lua to embeds.xml
+  after schedulerKit\SchedulerKit.lua` (AddonKit's wording). Keeping the
+  member means the public-surface check of every other copy, which tests
+  for these members by `type(...) == "function"`, still accepts the facade.
+  Limits, statistics keys and reason codes of a part stay in the core's
+  tables, so `SetLimits`, `GetLimits` and `GetStatistics` keep one shape
+  whichever parts are loaded.
+- **`Kit:HasPart(name)`**, new on each split facade: `true` when the named
+  part is installed. Other Kits that use a part optionally test this, never
+  `type(Kit.Member) == "function"`, which a stub satisfies.
+- **The part interface.** The core publishes, in its state, `parts` (part
+  name to `{ revision = n }`), `helpers` (the core functions a part calls,
+  read through the table at call time on cold paths, so an upgraded core
+  serves a part loaded before it) and `partInterface` (an integer, 1 now).
+  Entries are only added; a core that must change one adds a new entry and
+  raises `partInterface`. A part checks `partInterface` at file scope and
+  raises `MoltenCodes <Facade> part <Part> requires <Facade> API 1 to be
+  loaded first` when its core is missing or older than the interface it
+  needs. The core's own hooks into a part (closing a scope's members, a lane
+  job ending) are dispatch entries the part fills; the core's defaults do
+  nothing, which is exact, since no member of an absent part can exist.
+- **Revisions.** Highest wins, per Kit and per part. A part file of an equal
+  or lower revision than the installed one returns without touching
+  anything.
+- **Upgrading from the last whole file** (the shared rule for every split in package O). The previous revisions were whole
+  files. A split core that takes over from one upgrades in place, as today.
+  When its part is loaded too, the part adopts the whole revision's live
+  objects (same layouts, which these records do not change) and every handle
+  keeps working. When the part is not loaded, the core cannot run that
+  code: it closes the live objects of the absent part at takeover, installs
+  the stubs, and reports once through `geterrorhandler()` which part to
+  embed. A whole revision loaded after a split core is the lower revision
+  and yields, so its addon gets the stub's error. Both cases need one addon
+  that embeds a whole development copy beside another that embeds a split
+  core without the part. No revision of these Kits was ever published (no
+  tag, no release), so no addon in the wild can be in that position; the
+  specs pin both behaviours so they stay loud and safe.
+
+---
+
+**schedulerKit (package O): the coalescing family in three parts** — a change to facade `SchedulerKit`
+
+1. Package `schedulerKit`, facade `SchedulerKit`, API generation 1
+   (additive), version 0.10.0 (from 0.9.0), implementation revision 22
+   (from 21). Parts, revision 1 each: `Coalescing`, `Lanes`, `Watch`.
+2. Purpose: the memory diagnosis's largest optional section: the coalescing
+   family is 67 KB of the Kit's 124 KB of live prototypes and 86 KB of its
+   176 KB resident, loaded by every addon that embeds SchedulerKit, and
+   until now every comm addon did (CommKit's driver was a SchedulerKit job;
+   the commKit record below makes SchedulerKit optional for it). Usage
+   decides the cut:
+   - **Core: jobs, scopes, priorities, the frame budget, delays, repeats,
+     cooperative execution, logout coverage.** CommKit's driver when
+     SchedulerKit is present, CodecKit's asynchronous calls and ModuleKit's
+     `Jobs` scope use them.
+   - **`Coalescing`: `Debounce` and `Coalesce`** with their handles and the
+     family's shared machinery (one clock, member links, protected
+     delivery, the family timer scope): callable handles for any code, the
+     general form of AceBucket's job (`RegisterBucketEvent` in 3 of 16
+     corpus addons, 19 sites; `RegisterBucketMessage` in 1; the Ace3 gaps
+     diagnosis's usage corpus). EventKit's `Coalesce` needs it only with a
+     `lane` (the eventKit record times it by TimerKit otherwise), and
+     WidgetKit's `BindPosition` uses `Debounce` when it finds it.
+   - **`Lanes`: `Lane`, lane objects and delivery of `Debounce`/`Coalesce`
+     into a lane.** No Ace3 counterpart; no other Kit uses lanes.
+   - **`Watch`.** No Ace3 counterpart; no other Kit uses it.
+   Splitting lanes and watch off the coalescing part means an addon that
+   debounces or coalesces its own calls carries about 51 KB instead of
+   86 KB.
+   Non-goals: any behaviour change of the family; trimming the coalesce
+   member (P5 of the runtime diagnosis); moving the driver off SchedulerKit.
+3. Dependencies: core unchanged (registry API 2, timerKit API 1; eventKit,
+   lifecycleKit optional). `Coalescing`: none beyond its core. `Lanes` and
+   `Watch`: `"parts": ["Coalescing"]` (they use its clock, member links,
+   protected calls and timer scope).
+4. Surface.
+   - New: `SchedulerKit:HasPart(name)`.
+   - Unchanged names, arguments, returns, errors and levels for `Debounce`,
+     `Coalesce`, `Watch`, `Lane` on the facade and the scope prototype, and
+     for every handle method, when their part is loaded.
+   - Without the part: those members raise at the caller with the file to
+     embed. `Debounce` or `Coalesce` given `options.lane` while `Lanes` is
+     not loaded raise the same way, naming `SchedulerKit-Lanes`.
+   - The limits `maxLanes`, `maxWatchIntervals`, `maxWatchersPerInterval`
+     and `maxDebounceArguments` stay in the core's limits and keep their
+     validation, whichever parts are loaded.
+5. Ownership: unchanged. Members still sit on their scope's second intrusive
+   list; the core's `CancelAll`/`Close` reach them through the dispatch
+   entries `cancelFamilyMembers` and `closeFamilyMembers`, which the
+   `Coalescing` part fills (defaults do nothing). `laneJobFinished` and
+   `retryLaneJob` become dispatch entries the `Lanes` part fills. The shared
+   metatables and prototypes (`familyMetatables`, `familyPrototypes`) stay
+   in the core's state, created by the core, so a part loaded by another
+   addon finds them.
+6. Performance and memory: SchedulerKit alone 176.0 KB → 89.9 KB measured
+   for the core (expected about 92 KB with the part interface), Coalescing
+   about 51 KB, Lanes about 24 KB, Watch about 12 KB; core with every part
+   about 179 KB. Against Ace3: core plus Coalescing about 143 KB against
+   AceBucket's 9.6 KB, though an addon replacing AceBucket's event buckets
+   now needs only EventKit's part (eventKit record); the core has no Ace3
+   counterpart. Hot paths: a
+   coalesce handle's `__call` and the delivery path read one helper
+   through the part interface (the clock); the job loop is unchanged.
+   Expected bench (`buckets`, against AceBucket, one run): record-event,
+   burst and register-remove within 3% of today. The main chunk drops from
+   194 locals (the installer is one local; its forward-declared hooks become
+   dispatch entries): expected about 190. Duplicate embedding: an addon
+   without the parts compiles about 2,300 fewer lines.
+7. Tests, failing first where a spec can observe it:
+   - Bootstrap and Manifest specs for each part (`PART_REVISION` equals the
+     manifest, a part without its core raises the ADR 0001 message, an equal
+     or lower part revision returns without changes, a higher one upgrades
+     in place with live handles);
+   - every existing family spec runs with the three parts loaded and passes
+     unchanged (same messages, same levels);
+   - without each part: every facade, scope and option entry raises at the
+     caller's line with the file to embed; `HasPart`; `CancelAll` and
+     `Close` on scopes work; limits accept and report the family limits;
+   - `Debounce` with `lane` and no `Lanes` part raises at the caller;
+   - lane jobs: finishing, failing and retrying through the dispatch entries;
+   - in-place upgrade from revision 21 (whole file) with live debounce,
+     coalesce, watch and lane objects: with all parts loaded, all keep
+     working; with none, they are closed and one report names the parts;
+     revision 21 loaded after a core-only revision 22 yields and its
+     `Debounce` call gets the stub's error;
+   - the public-surface check of revision 21 accepts a core-only facade.
+   Client suite: a debounce through the part in the real client.
+8. Docs: README (parts table, embedding lines, migration row for AceBucket
+   naming the part), `docs/API.md` (Parts, `HasPart`, the stub errors,
+   "Coalescing and lanes" says which part holds what), `INTERNALS.md`
+   (the part interface, dispatch hooks, upgrade from the whole file),
+   `CHANGELOG.md` 0.10.0, `tests/README.md`, client suite `EXPECTED.md`.
+   Shared files (text for the maintainer): `docs/EMBEDDING.md` generated
+   footprint and parts blocks; `docs/MIGRATING_FROM_ACE3.md` AceBucket rows
+   name `EventKit-Coalescing` (and `SchedulerKit-Coalescing` with
+   `SchedulerKit-Lanes` for a `lane`). WidgetKit's `BindPosition` moves to
+   `SchedulerKit:HasPart("Coalescing")` and the parts contract in
+   widgetKit's own record.
+9. Status: recorded 2026-11-15; code follows.
+
+---
+
+**eventKit (package O): Coalesce and Derive as a part, timed by TimerKit** — a change to facade `EventKit`
+
+1. Package `eventKit`, facade `EventKit`, API generation 1 (additive),
+   version 0.11.0 (from 0.10.0), implementation revision 22 (from 21). Part
+   `Coalescing`, revision 1.
+2. Purpose: two changes, both for memory.
+   - **Split.** `Coalesce` and `Derive` are 19.5 KB of EventKit's 74.1 KB
+     of live prototypes and 25.4 KB resident, in the smallest set every
+     addon embeds. Usage: `RegisterEvent` is in 8 of 16 corpus addons (215
+     sites, AceEvent addons, frame receivers excluded) and stays core with
+     units and the combat log; the bucket counterpart `Coalesce` is in 3 of
+     16; `Derive` has no Ace3 counterpart. The combat-log routing (4.8 KB of
+     prototypes) and unit groups (2.4 KB) stay in the core: damage meters
+     and unit frames, the commonest addon kinds, use them, and their parts
+     would save less than the interface they need.
+   - **Timed by TimerKit.** Today `Coalesce` needs SchedulerKit, so the
+     AceBucket counterpart costs SchedulerKit's core and its Coalescing
+     part as well (about 141 KB on top of EventKit's part). Without a lane,
+     SchedulerKit's `Coalesce` and `Debounce` do nothing a TimerKit timer
+     does not already do: they arm one TimerKit timer in the owning scope
+     and deliver from its callback, never as a scheduler job (SchedulerKit
+     `docs/API.md`, "One clock"). The part therefore times `Coalesce` and
+     `Derive` itself on one TimerKit timer per handle, with the semantics
+     SchedulerKit documents for them: the first key starts the interval,
+     `maxKeys` (default 256) refuses new keys past it and counts them, the
+     set is one of two reused tables, a key recorded during the callback
+     goes into the next interval, `intervalSeconds = 0` is the next frame, a
+     timer that cannot be armed on the first key raises to that caller and
+     keeps the key, `Flush()` from inside the callback returns `false`,
+     `GetStats()` returns `{ keys, refused, delivered, deferred, dropped }`
+     in a reused table, and a raising callback is reported through the host
+     error handler. `Derive`'s recompute is a quiet-period timer on the same
+     clock (`delaySeconds`, default 0, the next frame). **A `lane` option
+     still goes to SchedulerKit**: lanes are SchedulerKit's, so a `Coalesce`
+     given `lane` uses SchedulerKit's `Coalesce` exactly as today and needs
+     SchedulerKit with its Coalescing and Lanes parts; it is refused at the
+     caller naming the missing file otherwise. No guarantee is weakened:
+     every documented option, return, error and ordering is the same.
+     One documented fallback changes, for the better, and is recorded as a
+     behaviour change: the table "SchedulerKit is optional" becomes
+     "TimerKit is optional". With TimerKit and without SchedulerKit,
+     `Coalesce` now works instead of being refused, and `Derive` coalesces
+     its recomputes instead of recomputing synchronously; without TimerKit,
+     both behave as they do today without SchedulerKit. TimerKit is in the
+     smallest set, so in practice every addon gets coalescing from
+     EventKit's part alone.
+   Non-goals: the method-name form for `Coalesce`; a lane without
+   SchedulerKit.
+3. Dependencies: core unchanged (registry API 2, signalKit API 1;
+   lifecycleKit and schedulerKit optional, but the core no longer uses
+   SchedulerKit at all). Part `Coalescing`: `optionalDependencies` `timerKit`
+   API 1 (the timing) and `schedulerKit` API 1 with `"parts": ["Coalescing",
+   "Lanes"]` (only for `lane`).
+4. Surface:
+   - New: `EventKit:HasPart(name)`.
+   - `Coalesce` and `Derive` on the facade and the scope prototype, and the
+     handle methods, unchanged with the part loaded; stubs without it.
+   - `Coalesce` without TimerKit: `EventKit:Coalesce requires TimerKit API
+     1, which is not available (absent)` at the caller (today's message names
+     SchedulerKit). `Coalesce` with `lane` and SchedulerKit absent, or its
+     Coalescing or Lanes part absent, is refused at the caller with the file
+     named; today's "predates coalescing" refusal stays for a SchedulerKit
+     revision 6 or older. The part asks `SchedulerKit:HasPart` when that
+     method exists and falls back to today's member test for a whole
+     SchedulerKit revision.
+5. Ownership: unchanged. Composite handles join their EventKit scope; the
+   scope sweep closes them through `state.composites.close`, which the part
+   fills, with their TimerKit timer (in one TimerKit scope the part owns,
+   created on the first handle, as CommKit owns its scopes) or their
+   SchedulerKit handle. `MAXIMUM_COMPOSITE_EVENTS` moves into the part.
+   Timer callbacks resolve through `state.composites`, so an upgraded part
+   takes over pending timers. Handles made by revision 21 keep their
+   SchedulerKit timing handle and are served through it until closed; the
+   part reads which kind a handle holds from the handle.
+6. Performance and memory: EventKit 106.3 KB → 80.9 KB measured for the core
+   (about 82 KB expected); the part about 42 KB (today's 25.4 KB plus about
+   17 KB for its own timing, priced), core and part about 124 KB. Smallest
+   set 353.5 → 328.2 KB measured (Ace3 53.8 KB: 6.6× → 6.1×). The AceBucket
+   counterpart (the smallest set plus `Coalesce`) 529.8 KB today → about
+   495 KB split on SchedulerKit → about 370 KB timed by TimerKit, against
+   63.4 KB for Ace3's smallest set plus AceBucket (8.4× → 5.8×). Against
+   AceEvent + CallbackHandler (16.9 KB) the core goes 6.3× → 4.8×.
+   Dispatch, connect and disconnect paths unchanged: `eventDispatch` and
+   churn benches within noise. The bucket benches (`buckets record-event`,
+   `burst`, `register-remove` against AceBucket) are expected at or below
+   today, since a key no longer crosses into a second Kit's `__call`; phase 2
+   measures them in one run. Main chunk 187 → about 160 locals.
+7. Tests: Bootstrap and Manifest for the part; every Coalesce/Derive spec
+   with the part loaded, unchanged, run once with SchedulerKit absent
+   (TimerKit timing) and once with a `lane`; the SchedulerKit coalesce
+   semantics listed in point 2, each as a spec on the TimerKit path (first
+   key, `maxKeys` refusals and counts, reused set, keys during the callback,
+   zero interval, arm failure on the first key, `Flush` inside the callback,
+   `GetStats`, callback error reported); `Derive` debounced, `delaySeconds`,
+   and synchronous without TimerKit; without the part, stubs at the
+   caller's line and `HasPart`; `lane` without SchedulerKit or its parts;
+   in-place upgrade from revision 21 with a live coalesce and derive handle
+   on SchedulerKit timing (part loaded: kept and still delivering; not
+   loaded: closed, reported once); revision 21 after a core-only revision 22
+   yields. Client suite: a coalesced `UNIT_HEALTH` burst with only
+   EventKit's part and TimerKit.
+8. Docs: README (migration row for AceBucket naming one part), `docs/API.md`
+   (Parts, `HasPart`, "TimerKit is optional", the `lane` rule, the timing
+   semantics stated in EventKit's own docs instead of by reference),
+   `INTERNALS.md` (the two timing kinds, the part's TimerKit scope),
+   `CHANGELOG.md` 0.11.0 (with the fallback change), `tests/README.md`,
+   client suite `EXPECTED.md`. Shared (text for the maintainer):
+   `docs/MIGRATING_FROM_ACE3.md` AceBucket rows name `EventKit-Coalescing`
+   only; the example addon's `embeds.xml` gains
+   `eventKit\parts\EventKit-Coalescing.lua` (its `Core.lua` uses
+   `Coalesce`), and `docs/COOKBOOK.md`'s coalescing recipe names it.
+9. Status: recorded 2026-11-15; code follows.
+
+---
+
+**codecKit (package O): compression as a part** — a change to facade `CodecKit`
+
+1. Package `codecKit`, facade `CodecKit`, API generation 1 (additive),
+   version 0.3.0 (from 0.2.2), implementation revision 10 (from 9). Part
+   `Compression`, revision 1.
+2. Purpose: the DEFLATE compressor, inflater, Huffman code builders, table
+   builders and the native compressor are 40 KB of CodecKit's 96 KB of live
+   prototypes and 56.7 KB resident, carried by every addon that serialises.
+   Usage: AceSerializer is referenced by 6 of 16 corpus addons (Details,
+   Grid2, Plater, Rarity, Skada, WeakAuras), all for values, and CommKit's
+   documented send recipe uses `Encode` with the addon channel; Ace3 has no
+   compression, and nothing in this repository calls `Compress` or
+   `compress = true` besides CodecKit itself. The print channel stays in the
+   core: 5.0 KB of prototypes with its tables already built on first use, and
+   it is what an export string needs even uncompressed. The asynchronous
+   variants stay: their yield checks live in the serialiser's loops.
+   Non-goals: format changes; a native inflater.
+3. Dependencies: core unchanged (registry API 2, poolKit API 1,
+   schedulerKit API 1 optional). Part: none beyond its core.
+4. Surface:
+   - New: `CodecKit:HasPart(name)`.
+   - With the part: `Compress`, `Decompress`, `compress`/`level` options and
+     compressed frames exactly as today, byte for byte.
+   - Without it: `Compress`, `Decompress`, and `Encode`, `EncodeMany` or
+     `EncodeAsync` with `compress = true`, raise at the caller with the file
+     to embed (a setup mistake, deterministic). Decoding a compressed frame
+     is data from a peer, so it never raises: `Decode`, `DecodeMany` return
+     `nil, "compressionUnavailable"`, `DecodeAsync` calls back with
+     `false, "compressionUnavailable"`, a new reason within the non-raising
+     contract. A peer can therefore never make an addon raise by sending a
+     compressed frame.
+5. Ownership: unchanged. The lazily built DEFLATE tables move into the part
+   and stay file-local to it, built on first use as since revision 9.
+6. Performance and memory: CodecKit 148.5 KB → 91.8 KB measured for the core
+   (about 93 KB expected), part 56.7 KB, plus 59.0 KB of tables after the
+   first Lua compression or decompression. Against AceSerializer (11.5 KB):
+   12.9× → 8.0×. Encode and decode of uncompressed frames unchanged (one
+   flag test that already exists); the `codec` bench within noise. Main
+   chunk 190 → about 182 locals.
+7. Tests: Bootstrap and Manifest for the part; every compression spec and
+   the byte-for-byte round trips with the part; without it: each raising
+   entry at the caller's line, `compressionUnavailable` from the three
+   decode paths, uncompressed frames unaffected; in-place upgrade from
+   revision 9 with an asynchronous compression running (part loaded: it
+   finishes; not loaded: it completes with `false,
+   "compressionUnavailable"` and one report); revision 9 after a core-only
+   revision 10 yields. Client suite: native compression through the part.
+8. Docs: README, `docs/API.md` (Parts, `HasPart`, the new reason under
+   "The non-raising contract" and "Compression"), `INTERNALS.md`,
+   `CHANGELOG.md` 0.3.0, `tests/README.md`, client suite `EXPECTED.md`.
+9. Status: recorded 2026-11-15; code follows.
+
+---
+
+**commKit (package O): SyncSet as a part, ChatThrottle, a new part for chat and Battle.net sends, and SchedulerKit optional** — a change to facade `CommKit`
+
+1. Package `commKit`, facade `CommKit`, API generation 1 (additive),
+   version 0.6.0 (from 0.5.3), implementation revision 11 (from 10). Parts,
+   revision 1 each: `SyncSet` (moved), `ChatThrottle` (new).
+2. Purpose: three things.
+   - **Split.** SyncSet with its content hashes and methods is 21.4 KB of
+     CommKit's 134.7 KB of live prototypes and 33.7 KB resident. It has no
+     Ace3 counterpart and nothing else in the repository creates one.
+     Reassembly stays in the core: AceComm reassembles multipart messages
+     itself, and all four corpus addons that use AceComm (Details, Grid2,
+     Skada, WeakAuras) also use AceSerializer, so their payloads routinely
+     pass 255 bytes; a receiver without reassembly would drop a peer's
+     messages silently. Raw messages and the outside-traffic hooks stay too
+     (5 KB of prototypes; the hooks are what makes the shared budget
+     mutual).
+   - **ChatThrottle** (the Ace3 gaps diagnosis, work package 11):
+     ChatThrottleLib also throttles `SendChatMessage` and Battle.net game
+     data; CommKit throttles addon messages only, and its `constraints.
+     battleNet` is inert. Corpus use of either is 0 of 16, so it is a part:
+     an addon that needs it pays for it, no one else does. CommKit's main
+     chunk holds 198 of 200 locals, so it could not go into the core anyway.
+   - **SchedulerKit optional.** The driver uses SchedulerKit for one job at
+     a time and nothing else: `Schedule` to wake it, `NextFrame` after the
+     32-chunk run cap, `After` for a bucket or backoff wait. It is a plain
+     job, never a coroutine, and never asks `ShouldYield`. Requiring
+     SchedulerKit costs every comm addon its 90 KB core. From this revision
+     the driver uses SchedulerKit **when it is loaded**, exactly as today,
+     and TimerKit (already required) when it is not: `After(0)` for a wake
+     or the run cap, `After(delay)` for a wait. What each documented
+     guarantee needs:
+     - *Fairness* (the weighted rotation, the pipe ring, order inside a
+       pipe), the bucket, the run cap, backoff and the fast path live in
+       the run itself and do not change.
+     - *Nothing armed when idle*: one TimerKit timer instead of one job,
+       cancelled when the queue empties and no callback is held; the
+       frame-rate ticker is TimerKit's already.
+     - *The frame budget*: SchedulerKit's frame budget exists only while
+       SchedulerKit is loaded, and then the driver is its job, as today, so
+       a run still waits for the shared budget. Without SchedulerKit there
+       is no budget to share, and a run is bounded by the documented
+       32-chunk cap, as an inline run inside `Send` already is today.
+     - *No callback before `Send` returns*, and held callbacks made by the
+       next run before it sends: unchanged. API.md says that run is "a
+       SchedulerKit job scheduled with `Schedule` (so it runs in
+       SchedulerKit's next pass: on a later frame, or later in the current
+       pass when `Send` was called from a SchedulerKit job)". With TimerKit
+       it runs on a later frame; the "current pass" case needs a SchedulerKit
+       job on the stack, so SchedulerKit is loaded and the driver uses it.
+       Every documented timing therefore holds; only the sentence names
+       both drivers.
+     - *Error isolation*: a scheduled run keeps its own `pcall` around
+       `driveChunks`, as the inline run has, so a failure is reported and a
+       retry is arranged whichever Kit fired it.
+     - *Logout and scopes*: CommKit owns one SchedulerKit scope today and
+       one TimerKit scope already; the driver's timer lives in the TimerKit
+       scope, closed with the others.
+     No documented guarantee is weakened, so the lever is in this record.
+     What changes is loading: CommKit no longer raises `MoltenCodes CommKit
+     requires SchedulerKit API 1 to be loaded first`; it now needs six
+     files, not seven.
+   Non-goals: selecting Battle.net for an ordinary `Send` (a send addresses
+   a player by name, Battle.net by game account; `constraints.battleNet`
+   stays accepted and inert, as documented); splitting chat messages longer
+   than the client accepts; moving the driver off SchedulerKit when
+   SchedulerKit is loaded.
+3. Dependencies: core: registry API 2, signalKit, eventKit, timerKit,
+   poolKit API 1 required; `schedulerKit` API 1 moves from `dependencies` to
+   `optionalDependencies`, beside codecKit, hookKit, schemaKit and
+   lifecycleKit. SchedulerKit is found through `Registry:Find` when the
+   driver is scheduled (cached once found, as EventKit caches it), so a
+   SchedulerKit loaded after CommKit is used from the next schedule. `SyncSet`: `codecKit` API 1 required (today it is
+   required at the call), `schemaKit` API 1 optional. `ChatThrottle`: none
+   beyond the core; `hookKit` optional (the Battle.net hook). Client API,
+   from apiKit's generated tables (Gethe/wow-ui-source `live` `297d7aa`
+   12.1.5, `classic` `e5d9b3a` 5.5.4, `classic_era` `4192ac6` 1.15.9):
+   `C_ChatInfo.SendChatMessage(message, chatType?, languageID?, target?)`,
+   no return value, `HasRestrictions`, flag
+   `RestrictedForMacroChatMessages`, secret arguments
+   `AllowedWhenUntainted` (live); `C_BattleNet.SendGameData(gameAccountID,
+   prefix, data)` returning `SendAddonMessageResult`
+   (`BattleNetDocumentation.lua`, all three flavours); event
+   `BN_CHAT_MSG_ADDON(prefix, text, channel, senderID)` (all three).
+   warcraft.wiki.gg, `API_C_ChatInfo.SendChatMessage` (read 2026-11-15):
+   SAY and YELL need a hardware event in the outdoor world, CHANNEL indoors
+   and outdoors. Each use is guarded for the flavour gate.
+4. Surface.
+   - New: `CommKit:HasPart(name)`.
+   - **SyncSet**, with the part: `scope:SyncSet`, the prototype and every
+     method unchanged. Without it: `scope:SyncSet` raises at the caller with
+     the file to embed (on a closed scope it still returns `nil, "closed"`
+     first, as today). `UnregisterAll`, `Close` and logout close SyncSets
+     through a dispatch entry the part fills. `maxSyncPeers`,
+     `maxSyncReplyBytes` and the `sync*` statistics stay in the core's
+     tables.
+   - **ChatThrottle** (new, in the part; stubs on the scope prototype
+     without it):
+     - `scope:SendChat(request)` with `text`, `chatType` (non-empty string),
+       `languageID`, `target`, `priority`, `onComplete`; returns a send
+       handle or `nil, reason`. Charged to the same bucket as addon
+       messages (text plus `messageOverhead`), in its own pipe per chat
+       type, target and language, served by the same rotation. **SAY, YELL
+       and CHANNEL are never queued**: they leave inside the call when the
+       bucket can pay, or are refused with `"hardwareEvent"`, because a
+       queued send runs without the hardware event the client requires.
+       Other refusals as `Send`: `"closed"`, `"queueFull"`, `"tooLarge"`
+       (longer than the client's chat limit, which is read from Blizzard's
+       UI source before code), `"unavailable"`. A secret `text` or `target`
+       raises at the caller (the client refuses secrets from tainted
+       code). The client returns nothing, so a chat send completes `sent`
+       when the call returned without raising.
+     - `scope:SendBattleNet(request)` with `prefix`, `text`,
+       `gameAccountID` (positive integer), `priority`, `onProgress`,
+       `onComplete`: CommKit's framing and multi-chunk messages over
+       `SendGameData`, a pipe per game account, the client's result read
+       as for addon messages (a throttle sets the pipe aside, as today).
+       The chunk size is the addon-message size until a client check
+       confirms what `SendGameData` accepts; the generated documentation
+       does not say.
+     - `scope:RegisterBattleNet(prefix, callback)`: `callback(prefix, text,
+       senderID)` for whole messages received through
+       `BN_CHAT_MSG_ADDON`, reassembled by the core's reassembly with a
+       sender key of its own, so Battle.net and realm senders never share a
+       stream. Counts toward `maxRegistrations`.
+     - With HookKit, `C_BattleNet.SendGameData` joins the outside-traffic
+       hooks, so another addon's Battle.net traffic is charged to the
+       budget, as ChatThrottleLib charges it; CommKit already hooks
+       `SendChatMessage`.
+     - Statistics: chat and Battle.net sends count in the existing
+       counters; no new keys.
+5. Ownership: SyncSets and Battle.net registrations belong to their scope
+   and close with it; chat and Battle.net sends are send handles like any
+   other and are cancelled by `CancelAll` and `Close`. The core gains a
+   transport field on a pipe (absent for addon and logged pipes) that names
+   the part's sender, so the driver serves every pipe in one rotation. The
+   driver's pending run is a SchedulerKit job or a TimerKit timer; both are
+   cancelled through `Cancel()`, and a run already scheduled by revision 10
+   (always a job) is taken over as it is.
+6. Performance and memory: CommKit 213.9 KB → 180.2 KB measured for the core
+   (about 182 KB expected), SyncSet 33.7 KB, ChatThrottle about 24 KB.
+   Against AceComm + ChatThrottleLib (46.7 KB): 4.6× → 3.9× core only;
+   with ChatThrottle, which covers what ChatThrottleLib adds, about 4.4×.
+   Comm set (Registry, SignalKit, EventKit, LifecycleKit, TimerKit, PoolKit,
+   CommKit): 824.3 KB today with SchedulerKit required → 679.2 KB measured
+   split → about 589 KB without SchedulerKit (587.2 KB measured with a
+   research copy of CommKit that loads without it, plus about 2 KB for the
+   TimerKit driver). Against Ace3's 100.5 KB: 8.2× → 6.8× → 5.9×. With
+   HookKit and CodecKit, against Ace3 plus AceHook and AceSerializer
+   (129.8 KB): 1,035.3 → 833.7 → about 744 KB (742.0 measured), 8.0× → 6.4×
+   → 5.7×. The driver reads one pipe field per chunk and, once per schedule,
+   which Kit to schedule on: the `comm` bench (send-200,
+   send-1000, send-8000, receive) within 2% of today with SchedulerKit
+   loaded, and measured once more without it; the fast path, which
+   schedules nothing, unchanged. The main chunk drops from 198 to about 193 locals.
+7. Tests, failing first where a spec can observe it:
+   - Bootstrap and Manifest for both parts; every SyncSet spec with the
+     part, unchanged; without it, the stub at the caller's line, `HasPart`,
+     scope close and logout with no SyncSet part;
+   - `SendChat`: queued types through the bucket and rotation; SAY, YELL
+     and CHANNEL sent inside the call or refused `"hardwareEvent"`, never
+     queued; each refusal; a secret text raising at the caller; our own
+     chat not charged twice by the existing hook;
+   - `SendBattleNet` and `RegisterBattleNet`: one and several chunks to a
+     fake game account, throttle results, reassembly keyed apart from a
+     realm sender of the same text, the hook charging foreign
+     `SendGameData` traffic, `"unavailable"` without `C_BattleNet`;
+   - in-place upgrade from revision 10 with a live SyncSet (part loaded:
+     kept; not loaded: closed, reported once) and a queued message waiting
+     on a revision 10 driver job; revision 10 after a core-only revision 11
+     yields;
+   - the driver without SchedulerKit, every existing driver spec run both
+     ways: rotation order, bucket waits, the run cap continuing on a later
+     frame, backoff reinstatement, held callbacks made before the next
+     chunk, nothing armed once idle (no timer, no ticker), a raising run
+     reported and retried, `CancelAll`/`Close` while a run is pending, and a
+     SchedulerKit loaded after CommKit taking over at the next schedule;
+     loading without SchedulerKit succeeds; the Manifest spec shows
+     `schedulerKit` optional.
+   Client suite (never run here): `SendChat` to a whisper target and to
+   SAY from a key binding (hardware event) and from a timer (refused);
+   `SendBattleNet` to the player's own game account and the largest chunk
+   it accepts; `BN_CHAT_MSG_ADDON` arguments as the tables state.
+8. Docs: README (parts, a ChatThrottleLib migration table), `docs/API.md`
+   (Parts, `HasPart`, a "Chat and Battle.net" section with the hardware-
+   event rule, `constraints.battleNet` still inert and why), `INTERNALS.md`
+   (pipe transports, the Battle.net sender key, the part interface, the
+   two drivers), the "Loading" and "Queues and priorities" sections
+   (six files, SchedulerKit optional, the driver sentence naming both),
+   `CHANGELOG.md` 0.6.0, `tests/README.md`, client suite `EXPECTED.md`.
+   Shared (text for the maintainer): `docs/MIGRATING_FROM_ACE3.md`
+   ChatThrottleLib rows (`SendChatMessage`, `BNSendGameData`) and the
+   corrected "shared budget" row; `docs/EMBEDDING.md` generated blocks.
+9. Status: recorded 2026-11-15; code follows.
+
 #### Package N — bridgeKit, migrating from Ace3
 
 Decided 2026-09-25 with the project owner, from the external review that
