@@ -50,6 +50,7 @@ Headerraid
 Hitem
 langmask
 libstub
+Lifegiving
 loadouts
 MAXEMOTEINDEX
 mcttestcmd

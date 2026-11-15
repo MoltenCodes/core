@@ -2210,7 +2210,7 @@ code and treated as agreed as under decision 15.
    saved table*, *Embedded copies and upgrades* for revision 11),
    INTERNALS.md (the shared listener and the section), README (a
    migration table from LibDualSpec-1.0), CHANGELOG, tests/README;
-   ROADMAP's settingsKit record and package M checklist (Friday's).
+   ROADMAP's settingsKit record and package M checklist (the maintainer's).
 9. Status: implemented 2026-11-15 under core decision 16, settingsKit
    0.4.0, revision 11, 33 specs (268 in all), with two additions decided
    while building: `PLAYER_LEVEL_CHANGED` is listened to as well
@@ -2331,7 +2331,7 @@ code and treated as agreed as under decision 15.
    performance rows, the selection deviation), INTERNALS.md (rows in the
    view's pool, the row-parts table), CHANGELOG, tests/README, the client
    suite's EXPECTED.md; EMBEDDING's host-requirements row and package M's
-   checklist (Friday).
+   checklist (the maintainer).
 9. Status: implemented 2026-11-15 under core decision 16, 0.4.0, revision
    12, 30 specs in `ScrollList_spec.lua`; the client cases
    (`widgetKit.scrollList` and the combat suite `widgetKit.scrollListCombat`
@@ -2751,7 +2751,7 @@ copy; spells absent from a flavour or from the player's spellbook drop out:
    its fallback and the bound), README (the "Standard compression" line and
    the host facilities in Embedding), CHANGELOG, tests/README,
    EXPECTED.md for the client suite; `docs/EMBEDDING.md` host-requirements
-   row for codecKit (Friday applies it).
+   row for codecKit (applied by the maintainer).
 9. Status: implemented 2026-11-15 under core decision 16, 0.2.0, revision
    7, 146 specs. Recorded deviation: native compression only. A frame has
    no declared length, checksum or end marker of its own, so CodecKit
@@ -2783,8 +2783,7 @@ recorded in `docs/decisions/`. Each record below is written before its code.
 **Kit parts and the embeds generator (core decision 19a)** — repository tooling, no facade
 
 1. Tooling for Kits made of a core file plus optional part files, so an
-   addon loads only what it uses (core decision 19a). Owner: the tooling
-   agent (`tooling/`, `tests/support/framework/`, `docs/TOOLING.md`,
+   addon loads only what it uses (core decision 19a). Scope: (`tooling/`, `tests/support/framework/`, `docs/TOOLING.md`,
    `docs/decisions/`, `.github/workflows/`, the manifest schema). No Kit is
    split by this record: every Kit stays single-file and behaves exactly as
    today. Splitting a Kit is its owner's record (wave 2 starts with
@@ -2957,7 +2956,7 @@ recorded in `docs/decisions/`. Each record below is written before its code.
 
 **Lua limits gate and version check (architecture plan items 1 and 2)** — repository tooling, no facade
 
-1. Two repository gates under core decision 18, owned by the tooling agent:
+1. Two repository gates under core decision 18, in the tooling:
    `tooling/validation/lua_limits.py` with its ratchet file
    `tooling/validation/lua_limits.json`, and a manifest-against-CHANGELOG
    version check in `tooling/validation/validate_repository.py`. The second
@@ -3123,7 +3122,7 @@ copied.
      receiver, so the method-name callbacks of decision 19c work on it as
      they come from the runtime Kits (for example
      `self.scope.Events:Connect("BAG_UPDATE", self, "OnBagUpdate")`, in
-     whatever form the runtime agent's records fix). The guide, cookbook and
+     whatever form the runtime Kits' records fix). The guide, cookbook and
      specs use that form where the loaded revisions support it, detected
      from each Kit's documented capability, and the closure form otherwise.
    - **Database.** `MC:Database(savedVariable, defaults, options?)` opens a
@@ -3173,7 +3172,7 @@ copied.
      addon editing it never changes another's.
    - Non-goals: Ace-style mixins (`self:RegisterEvent`) on the addon
      object, a second options or database implementation, LibStub
-     emulation (BridgeKit's), generating `embeds.xml` (the tooling agent's
+     emulation (BridgeKit's), generating `embeds.xml` (the tooling's
      F6), and strict module scopes (a ModuleKit addition, below).
 
 3. Dependencies: registry API 2, required, and nothing else required.
@@ -3191,8 +3190,8 @@ copied.
    inference, `Database`, `Range`, `Enum`) and `Composition.lua`
    (`Options`, `Launcher`, `LAUNCHER_DEFAULTS`), in the runtime
    subdirectory layout `docs/PACKAGE_MANIFEST.md` describes; the exact
-   directory and how a part is declared optional follow the tooling
-   agent's part format. A part installs its methods into
+   directory and how a part is declared optional follow the Kit parts
+   format (the tooling record above). A part installs its methods into
    `AddonKit._state.parts` under its own revision check, so an upgraded
    part takes over. A method of a part that is not loaded raises
    `MC:Database is in AddonKit's Database part, which is not loaded: add
@@ -3251,7 +3250,7 @@ copied.
    `__index` function call; they are setup-time calls. Schema inference
    runs once per `Database` call and allocates only the nodes SettingsKit
    needs anyway; the database's own cost is SettingsKit's (and shrinks with
-   the settings agent's sparse nodes). The catalogue is kept compact (one
+   SchemaKit's sparse nodes). The catalogue is kept compact (one
    string-keyed table of facade name to generation, the package ID derived
    by lower-casing the first letter and the file path built only when an
    error needs it).
@@ -3335,17 +3334,17 @@ copied.
    fixture, every snippet run by the Guide spec) and `COOKBOOK.md` (one
    5-to-15-line recipe per common task: the ten tasks plus bucketed events,
    a window, a confirmation dialog, a tooltip, migrations, spec profiles,
-   each linking to the Kit's API). Text for Friday in the report: ROADMAP
+   each linking to the Kit's API). Text for the shared documents: ROADMAP
    placement of this record, ARCHITECTURE's package list, EMBEDDING rows,
    `packages/README.md` row, the README hero snippet and link,
    `docs/README.md` map entries, MIGRATING_FROM_ACE3 "Before you start",
    `meta/MoltenCodes.lua` (`For` on the namespace class), the coverage
    floor, spell words, and a sentence for `registry/docs/API.md` reserving
-   the `For` key (transport agent's package).
+   the `For` key (Registry's package).
 
 9. Status: recorded 2026-11-15 under core decisions 18 and 19; code
    follows. Work that depends on other owners, none of it blocking:
-   - runtime agent: method-name callbacks (19c) in EventKit, TimerKit,
+   - the runtime Kits: method-name callbacks (19c) in EventKit, TimerKit,
      HookKit and the SignalKit bus; AddonKit uses them and adds nothing of
      its own. Requested, optional: a ModuleKit opt-in that makes a read of
      a scope field whose Kit is absent raise `self.scope.Timers needs
@@ -3353,13 +3352,357 @@ copied.
      embeds.xml` instead of reading `nil` (usability F5). `NewAddon` and
      `NewModule` turn it on when ModuleKit offers it; without it, the
      documented `nil` stays.
-   - settings agent: no contract change needed. If SettingsKit gains a
+   - SettingsKit: no contract change needed. If SettingsKit gains a
      record with a wildcard fallback, AddonKit maps `["*"]` beside named
      keys onto it; if OptionsKit `range` takes `min`/`max` from the bound
      schema, the guide drops the duplicated bounds.
-   - tooling agent: the part-file format and the generated `embeds.xml`
+   - the tooling: the part-file format and the generated `embeds.xml`
      the error messages point to.
-   - transport agent: the reservation sentence in Registry's API docs.
+   - Registry: the reservation sentence in Registry's API docs.
+
+Settings records (settingsKit, schemaKit, optionsKit, commandKit), basis: the
+decision 18 settings and memory diagnoses (prototypes measured against Ace3
+in the same host benchmark run, Lua 5.1.5). "Measured" means a prototype
+run; "estimate" means priced from measurements, not run.
+
+Client facts used, read 2026-11-15 from Gethe/wow-ui-source
+`Blizzard_APIDocumentationGenerated/UnitDocumentation.lua`:
+
+- `UnitNameUnmodified(unit)` → `unitName, unitServer`, both strings, not
+  nilable: `live` 12.1.5 (70783) line 2434 (with
+  `SecretWhenUnitIdentityRestricted = true`), `classic` 5.5.4 (70631) line
+  1456, `classic_era` 1.15.9 (70576) line 1456. Also in this repository's
+  `packages/apiKit/metadata/{retail,classic-mop,classic-era}/namespaces.json`.
+- `UnitName` on `live` carries `SecretWhenUnitNameIdentityRestricted = true`
+  (line 2400).
+- warcraft.wiki.gg `API_UnitNameUnmodified` (redirects to `API_UnitName`):
+  `UnitName` reports a changed name under effects such as the Lifegiving Seed effect,
+  "`UnitNameUnmodified()` is unaffected by this".
+- `RegionalUniqueNamesEnabled()` → `bool` exists only on the `forever` branch
+  (1.60.1, 70938, line 536); it is absent from `live`, `classic` and
+  `classic_era`. WoW Forever (interface 1.60.x) is not in
+  `tooling/validation/supported_clients.json`.
+- AceDB-3.0 (BSD-style licence, read only, nothing copied): at `5e2e0d3`
+  (`AceDB-3.0.lua:263-282`) it keys characters by `UnitNameUnmodified`, and
+  between interface 16000 and 19999 by name, surname and ruleset; at the
+  current upstream head `ac3d122` the test is `RegionalUniqueNamesEnabled()`
+  and the key is `name .. " " .. surname` with the ruleset as realm key.
+
+---
+
+**settingsKit read-through views, lazy Open, client-refused secret probes removed** — a change to facade `SettingsKit`
+
+1. Package `settingsKit`, facade `SettingsKit`, API generation 1 (additive),
+   version 0.5.0 (from 0.4.2), implementation revision 14 (from 13), node
+   layout 4 (from 3).
+2. Purpose: a `db.profile.x` read costs what AceDB's does, `Open` costs no
+   more than AceDB's in memory, and a write costs only what its validation
+   needs. Five changes:
+   a. **Read-through chains** (perf-settings fix 1, prototype B). Each record
+      view keeps its empty proxy (so every write still reaches `__newindex`
+      and is validated at the writer's line) but gets its own metatable whose
+      `__index` is a table: `proxy → shadow (the child views of record
+      fields, only for records that have some) → saved table (given a
+      SettingsKit metatable) → scalar defaults`. The VM answers a read with no
+      Lua call. A keyed section whose every key answers with an entry view
+      reads through its entry cache, with the function path on a miss. The
+      function path (`viewIndex`) stays for what a chain cannot answer: a
+      saved table with a foreign metatable, a record without a default stored
+      as a scalar, and a view with a plain-table default (`READ_COPY`) not yet
+      stored (the view reads through `viewIndex` until every such key has its
+      copy, then is bound to its chain; a read-only database keeps the
+      function path for such a view, so a raw read never stores anything,
+      `Getter_spec.lua:209`). The chain record is folded into the proxy's
+      metatable (fields beside `__index`/`__newindex`/`__metatable`), and the
+      saved-table metatable and defaults table are shared per plan when the
+      view's defaults are its plan's own. Chains are rebound by one helper
+      called at the end of every mutating method, after the mutation (never
+      before: the prototype rebound `Compact` before removing tables and wrote
+      into a detached table); a table write rebinds only the written view's
+      subtree. The generation scheme stays underneath (writes, `Pairs`,
+      `Validate` and getters made by revisions 7 to 13 resolve through it).
+      `scanValue` accepts a table carrying SettingsKit's saved-table marker.
+   b. **Decision 19b: the read-side secret-key probes are removed** from
+      `viewIndex` (`SettingsKit.lua:2033-2039`) and `databaseIndex`
+      (`3561-3566`). On the client a secret key raises before `__index` runs
+      (docs/EMBEDDING.md "Measured on the client", Retail 12.1.0 b69933), so
+      the probes could never fire there. A read with a secret key now raises
+      the client's own error, "attempted to index a table that cannot be
+      indexed with secret keys", at the reading line; SettingsKit's messages
+      "... cannot be read with a secret key" and "SettingsKit databases cannot
+      be read with a secret key" are gone. `viewIndex` keeps the `type(value)`
+      test (no new exception to the repository rule is needed: the chain does
+      the hot read). Every other secret check stays: write keys and values,
+      `Getter`, `Validate`, `Compact`, profile names, scope names, client
+      answers.
+   c. **Lazy Open** (fix 4, prototype C, completed). A scope root is built by
+      `databaseIndex` on the first `db.<scope>` read, a view's probe table by
+      its first full check. Every site that read `rawget(db, scopeName)`
+      goes through one root accessor: `Getter`, `Validate`, `Pairs`,
+      `SetProfile`'s republication of `db.profile`, spec profiles, `Compact`
+      and the upgrade path (the prototype missed `Getter`, `Validate` and spec
+      profiles: 21 spec failures). Record children stay eager when their
+      parent is built, because the shadow must hold them. **Layout sections
+      stay eager**: `docs/API.md` *The saved table* promises that `Open`
+      creates every missing section in a writable database and lets other
+      code read the layout, so the prototype's lazy layout is not taken (it
+      would save about 1.5 KB and 250 instructions on a new saved variable
+      only).
+   d. **Non-allocating depth limit** (fix 5): `depthAllows` and
+      `readMaxDepth` read `SchemaKit:GetLimit("maxDepth")` (schemaKit record
+      below) and keep the depth-probe check as the fallback for a SchemaKit
+      revision without it. `SetLimits` still applies at once.
+   e. **Fused scalar write path** (fix 8): one function for the common write
+      (a verified record view, a non-table value, a field with a compiled fast
+      check): read-only and detached tests, the value's secret probe, the fast
+      check, the store, the signal. Everything else takes the current path.
+      Messages and error levels unchanged.
+   f. **Character key from `UnitNameUnmodified`** (ace3-gaps side finding):
+      `readScopeKeys` asks `UnitNameUnmodified("player")` first and falls back
+      to `UnitName("player")` when it is absent or its answer is not usable
+      (secret, empty, not a string), so no client that has a key today loses
+      it. The two answer alike except under a name-changing effect, where
+      today's key is the effect's name, so existing saved data keeps its key.
+   g. **`db:Getter` becomes a thin closure over the chain**: bound to a view,
+      `return proxy[key]`; following a scope, `return db[scopeName][key]`.
+      Its argument checks and the key's secret probe at creation stay. A call
+      cannot cost less than the plain read it performs plus one Lua call;
+      that floor is the target. Getters made by revisions 7 to 13 keep their
+      closures and keep working (the generation scheme stays). The docs say
+      a plain read is now the hot-loop answer and `Getter` is for handing a
+      reader around.
+   Non-goals: lazy layout sections (above), lazy record children under
+   chains, splitting views or spec profiles into a part file (decision 18a,
+   wave 2), WoW Forever's regional unique names (not a supported client; see
+   the report), a plan built from SchemaKit's compiled nodes instead of
+   `Describe` copies (not measured).
+3. Dependencies: registry API 2, schemaKit API 1 (uses `GetLimit` when
+   present, falls back without it), signalKit API 1, eventKit API 1 optional;
+   all unchanged. Host: `UnitNameUnmodified` added, guarded
+   (`type(...) == "function"`), its answer checked with `issecretvalue`
+   first; `UnitName` stays as the fallback.
+4. Surface: no new method on databases or views. `SettingsKit:GetCharacterKey()`
+   → `string|nil`, the `char` key `Open` would use now (an addition so
+   BridgeKit computes the same key instead of repeating the rule; the maintainer's
+   call, see the report). Behaviour changes, all in CHANGELOG and
+   `docs/API.md`: (i) raw saved tables reachable from an open database carry
+   a SettingsKit metatable, so `MyAddonDB.profiles.Default.scale` read
+   directly answers the default instead of `nil`, as with AceDB; `rawget`,
+   `next` and `pairs` are unaffected, nothing on disk changes (the client
+   saves no metatables), a table that leaves the tree keeps the harmless
+   metatable; (ii) a table assigned through a view gets that metatable;
+   (iii) a secret key read raises the client's error (19b); (iv) the `char`
+   key row of *The saved table* names `UnitNameUnmodified` with the
+   `UnitName` fallback.
+5. Ownership: chain metatables, shared per-plan saved metatables and defaults
+   live in `state` (weak-keyed where they hang off views), not in file
+   locals, so a later revision rebinds them. In-place upgrade from revision
+   13: every live view in `state.views` gets its chain; the old shared
+   `VIEW_METATABLE` is protected by `__metatable`, which SettingsKit owns, so
+   the upgrade clears that field, sets each live proxy's new metatable and
+   restores it; databases opened by revision 13 keep their eagerly built
+   roots; rebinding then runs once per database. Getters and listeners of
+   revision 13 keep working.
+6. Performance and memory (host Lua, bench, against AceDB in the same run):
+
+   | Case | Today (rev 13) | Expected | Basis |
+   |---|---|---|---|
+   | read-default | 29.6x | 3.6x | measured, prototype D |
+   | read-saved | 29.8x (33 instructions) | 2.8x (2 instructions, as AceDB) | measured, D |
+   | read-nested | 35.9x | 2.1x | measured, D |
+   | read-entry-default | 41.6x | 2.3x | measured, D |
+   | read-getter | 2.56x (39 ns) | about 1.5x (20 to 25 ns; floor 15.8 ns per call) | estimate from `Floors.lua` |
+   | open-empty | 4.87x, 8.3 KB | 2.3x, 2.6 KB (AceDB 3.3 KB) | measured, D (D had lazy layout: add up to 1.5 KB here, estimate) |
+   | open-populated | 2.57x, 7.7 KB | 2.8x, 8.4 KB in D; 2.0x or less with per-plan sharing | D measured; sharing an estimate |
+   | retained per open DB (AceDB 3 872 B) | 7 192 B | 7 880 B in D; about 5 KB with sharing (400 to 600 B per view) | D measured; sharing an estimate |
+   | switch-profile | 0.24x | 0.21x (stays faster than AceDB) | measured, D |
+   | write-scalar | 53x (146 instructions) | about 25x (about 70 instructions) | estimate (fix 8) |
+   | write-nested | 177x (324 instructions) | 93x (169) measured with the depth read; about 60x with the fused path | C measured; fused an estimate |
+
+   No allocation on a read or a write. Rebinding allocates nothing; building
+   a view allocates its metatable (and, without sharing, its defaults and
+   saved metatable). "Open below AceDB": in memory yes for a new saved
+   variable without reads; in time no (2.3x), the remainder is validation,
+   scope keys and plan lookup.
+7. Tests: chains for every read kind (default, saved, nested, keyed entry,
+   wildcard default, detached view, read-only database, foreign metatable,
+   scalar stored where a record is declared, `READ_COPY` before and after its
+   copy, read-only `READ_COPY`), rebinding after every mutating method
+   (`SetProfile`, `CopyProfile`, `ResetProfile`, `DeleteProfile`,
+   `ResetDatabase`, `Compact` including logout, `Resync`, table writes, spec
+   switches), a mutation that raises halfway; the nine specs prototype B
+   fails, resolved: raw inspections through `rawget` (`Writes_spec.lua:85`,
+   `:182`), `Aliasing_spec.lua:44` asserting SettingsKit's marker instead of
+   no metatable, the three secret-key read specs rewritten to assert no
+   SettingsKit probe and no SettingsKit message (`Aliasing_spec.lua:259`,
+   `Writes_spec.lua:331`, `Defaults_spec.lua:122`), `Getter_spec.lua:209`
+   (failing first), and the upgrade specs (`Bootstrap_spec.lua:79`,
+   `Caching_spec.lua:338`) with an upgrade from revision 13 rebuilding live
+   views; lazy roots through `Getter`, `Validate`, `Pairs`, spec profiles
+   and `Compact` before any read; `Open_spec.lua:15` unchanged (layout
+   stays eager); `Allocation_spec.lua` (nothing on reads and writes, the
+   root's cost on its first read); the depth read with and without
+   `GetLimit` and after `SetLimits`; the fused write's messages and levels;
+   the character key from `UnitNameUnmodified`, the fallback when absent,
+   secret or empty; `GetCharacterKey`; getters of revision 13 after the
+   upgrade. Client suite (never run): `db.profile[secret]` and `db[secret]`
+   raise the client's "cannot be indexed with secret keys" at the reading
+   line, before any SettingsKit code; `GetCharacterKey()` equals
+   `UnitNameUnmodified("player") .. " - " .. GetRealmName()`.
+8. Docs: README (reads cost what AceDB's do; migration table rows for raw
+   reads and `UnitNameUnmodified`), `docs/API.md` (*Host facilities* row for
+   `issecretvalue` loses reads, *The saved table* `char` row, *Reads*, *Views
+   hold their saved tables*, `db:Getter`, *Error behaviour* messages removed,
+   *Performance* table, revision 14 under *Embedded copies and upgrades*),
+   `docs/INTERNALS.md` (the chain, its rebinding rule, node layout 4, the
+   upgrade), CHANGELOG, `tests/README.md`, the client suite's `EXPECTED.md`.
+9. Status: recorded 2026-11-15 under core decisions 18 and 19; code follows.
+
+---
+
+**schemaKit sparse compiled nodes and `GetLimit`** — a change to facade `SchemaKit`
+
+1. Package `schemaKit`, facade `SchemaKit`, API generation 1 (additive),
+   version 0.2.0 (from 0.1.6), implementation revision 6 (from 5), node
+   layout 2 (from 1).
+2. Purpose: a compiled schema node holds only the fields its kind uses, and a
+   consumer on a hot path can read one shared limit without allocating.
+   a. **Sparse nodes** (memory.md fix 1, perf-settings fix 3, prototype
+      `memory/proto/schemaKit/SchemaKit.lua`): `newCompiledNode` sets
+      `layout`, `kind` and `expected`; every other field is set only by the
+      builder that uses it. The seven `~= false` tests become truthiness
+      tests, which read old fixed nodes and new sparse nodes alike;
+      `Describe` answers `integer = node.integer == true`, so its output is
+      unchanged.
+   b. **`SchemaKit:GetLimit(name)`** → the current value of one shared limit
+      (`maxDepth`, `maxPatternCaptures`, `pathKeyLimit`, `defaultArrayMax`),
+      no allocation. `GetLimits` stays as it is (a fresh table).
+   Non-goals: changing compiled nodes into another representation, a
+   SettingsKit plan built from compiled nodes.
+3. Dependencies: registry API 2, unchanged. No host API.
+4. Surface: `SchemaKit:GetLimit(name)`; it raises at the caller for a dot
+   call, a secret name and a name that is not one of the four limits.
+   Compiled nodes stay private; nothing else changes.
+5. Ownership: unchanged. In-place upgrade from revision 5: every node in
+   `state.nodes` is copied into a sparse table and every reference to it
+   (`of`, `inner`, `keys`, `values`, `alternatives`, `fieldNodes`, schema
+   records, the proxy map) is re-pointed through an old-to-new map, so
+   schemas built before the upgrade give their memory back (Lua 5.1 never
+   shrinks a table's hash part in place). A node the walk missed still works,
+   since the tests accept both layouts.
+6. Performance and memory: a 4-field schema 13 523 B to 4 723 B (−65%,
+   measured, memory.md); the bench schema's 38 nodes 49.0 KB to 15.2 KB
+   (measured copy, `CompactNodes.lua`); about −1 KB per node in every addon.
+   Check speed unchanged (a missing field reads as fast as a `false` one).
+   `GetLimit` is one validated lookup; SettingsKit's write-nested drops from
+   324 to 169 instructions with it (measured, prototype C).
+7. Tests: the 133 existing specs pass on sparse nodes (prototype: 133/133);
+   node sizes (at most 8 hash slots for scalars, measured with the existing
+   table-size helper); `Describe` output identical for every kind; the
+   upgrade from revision 5 (fixed nodes become sparse, references
+   re-pointed, old schemas check and describe as before, a schema built
+   after the upgrade); `GetLimit` for each limit, after `SetLimits`, no
+   allocation, its argument errors at the caller's line.
+8. Docs: `docs/API.md` (`GetLimit`, *Limits*), `docs/INTERNALS.md` (node
+   layout 2, the upgrade), CHANGELOG, README (memory), `tests/README.md`;
+   client suite: `GetLimit` returns the defaults.
+9. Status: recorded 2026-11-15 under core decisions 18 and 19; code follows.
+
+---
+
+**optionsKit smaller records, labels on failure, cheaper `ProfileOptions`** — an internal change to facade `OptionsKit`
+
+1. Package `optionsKit`, facade `OptionsKit`, API generation 1 (no surface
+   change), version 0.6.2 (from 0.6.1), implementation revision 13 (from
+   12), record layout bump.
+2. Purpose: less memory per option and less work per `ProfileOptions` call.
+   a. **Records of at most 8 hash fields** for the common option (name,
+      description, get and set, or bind): `_depth` and `_path` derived from
+      the parent chain when needed (`Walk`, info, error messages; `Walk`
+      carries them down instead of recomputing), `_bind` rebuilt from scope
+      and keys on the failure path, `_bindCount` replaced by `#_bindKeys`,
+      `_order` and `_hints` stored only when not the default (read as
+      `DEFAULT_ORDER` and `NO_HINTS`), the constructor listing at most 8
+      fields so Lua sizes an 8-slot hash.
+   b. **Labels built only on failure**: `buildOption` and its checks receive
+      the parent label and the key and build `label .. ".args." .. key` (and
+      `.validate`, `.values`, …) only in the branch that raises. Messages and
+      levels unchanged. `Tree:Set` checks with `Check` and builds its
+      `Assert` label only on failure.
+   c. **`ProfileOptions`**: SettingsKit found through the Registry once and
+      kept (a found implementation is stable per package and API; a miss is
+      looked up again), and `validateProfileDatabase` skipped when the
+      database is already the cache key. With SettingsKit's `databaseIndex`
+      no longer probing (settingsKit record, 2b), each remaining `db[method]`
+      probe is a plain method lookup.
+   Non-goals: lazy records built on first use (memory.md fix 7 main form: an
+   author mutating the tree between `Define` and first use would see the
+   change), positional records.
+3. Dependencies: unchanged (registry API 2, schemaKit API 1, signalKit API 1,
+   settingsKit API 1 optional).
+4. Surface: none. `Describe`, `Walk`, info tables and every message unchanged.
+5. Ownership: records stay immutable after `Define`. In-place upgrade from
+   revision 12: records of trees defined before keep their fields; the
+   accessors read both layouts (a stored `_path`/`_depth`/`_bindCount` is
+   used when present), so no record migration is needed.
+6. Performance and memory: about −320 B per option (721 to 401 B per record,
+   estimate from measured table sizing); −9% of `Define`'s allocation for the
+   `args` label alone (measured), more with the other labels (estimate);
+   define-50 time stays below AceConfigRegistry's (0.88x today).
+   profile-options-build 6.2x to 4.6x (430 to 290 instructions, measured,
+   prototype G) and toward 60 to 100 instructions with the cache-hit skip and
+   the kept lookup (estimate); cmd-set-range, toggle, select, refused 10 to
+   20% faster with CommandKit's kept lookup (measured, prototype H).
+7. Tests: record sizes (8 hash slots for get/set and bind options with a
+   description), every Define message unchanged and at the caller's line
+   (existing ErrorLevels specs), no label built on success (allocation
+   spec), `Walk` and info paths and depths, a bind error naming the bind
+   path, `ProfileOptions` on a cache hit asking no `db[method]` and no
+   Registry lookup, SettingsKit registered after the first call, the upgrade
+   from revision 12 with a tree defined before it.
+8. Docs: `docs/INTERNALS.md` (record fields, the derived ones),
+   CHANGELOG, `tests/README.md`, README performance note. API.md unchanged
+   except its *Performance* notes.
+9. Status: recorded 2026-11-15 under core decisions 18 and 19; code follows.
+
+---
+
+**commandKit secret question without a per-call Registry lookup** — an internal change to facade `CommandKit`
+
+1. Package `commandKit`, facade `CommandKit`, API generation 1 (no surface
+   change), version 0.2.10 (from 0.2.9), implementation revision 10 (from 9).
+2. Purpose: `isSecret` (`CommandKit.lua:658`) looks ClientKit up through the
+   Registry on every call (70 to 100 instructions each, twice per Register,
+   also on every options-binding write). It now looks it up on the first
+   secret question and keeps the answer, a miss included, in state. A
+   ClientKit registered after that first question is not consulted; on the
+   client that changes no answer, because ClientKit's `IsSecret` asks the
+   same `issecretvalue` (`ClientKit.lua:873`). Alias liveness is kept, by
+   the owner's decision: every Register still reads every foreign
+   `SLASH_<key><n>` and chat-type alias live (prototype E's alias index is
+   not taken).
+   Non-goals: the alias index, reading only the next alias slot, any change
+   to dispatch or parsing.
+3. Dependencies: unchanged; clientKit API 1 stays optional.
+4. Surface: none.
+5. Ownership: the kept lookup lives in `state`, so an upgraded revision
+   starts from it; a ClientKit implementation table is stable per package
+   and API across its own upgrades (Registry: "one stable implementation
+   table per (package, API) pair"). Upgrade from revision 9: the field is
+   created empty and filled on first use.
+6. Performance and memory: register-unregister about 3 011 to about 2 840
+   instructions (the `isSecret` lookups, 124 to 170 instructions, measured
+   share of prototype E), so about 28x instead of 30x (estimate); the scan
+   (2 130 instructions, 71%) stays, which is the price of the kept liveness.
+   Options command line 10 to 20% faster (measured, prototype H). No new
+   allocation.
+7. Tests: ClientKit asked when registered before the first question
+   (`SecretValues_spec.lua:74` stays), one Registry lookup for many
+   questions, a miss kept, the upgrade from revision 9;
+   `TakenCheck_spec.lua:123` ("reads every alias live") unchanged.
+8. Docs: `docs/INTERNALS.md` (the kept lookup and why a miss may be kept),
+   CHANGELOG, `tests/README.md`.
+9. Status: recorded 2026-11-15 under core decisions 18 and 19; code follows.
 
 #### Package N — bridgeKit, migrating from Ace3
 
