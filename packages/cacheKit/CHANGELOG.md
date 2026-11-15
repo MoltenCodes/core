@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.7 — 2026-11-15
+
+- `docs/API.md` states implementation revision 6; it still said 5. Documentation only: implementation revision 6 is unchanged.
+
 ## 0.2.6 — 2026-09-24
 
 - Fixed: a secret `ttlSeconds` (Retail 12.x) given to `NewTtl`, `Memoize` or `cache:PutNegative` is refused at the caller's line with the existing `... ttlSeconds must be a finite number greater than zero` before it is compared with anything, and a secret `NewQueue` `overflow` is refused with the existing `CacheKit:NewQueue overflow must be "dropOldest", "dropNewest" or "reject"` before it is used as a key of the policy set. A secret compared with a value of its own type, or used as a table key, raises at that line (measured on Retail 12.1.0 b69933), which reported the failure inside CacheKit instead. The probe is the `issecretvalue` bound at load, as for the limits; a client without it refuses nothing. `docs/API.md` *Secret values* lists both.
