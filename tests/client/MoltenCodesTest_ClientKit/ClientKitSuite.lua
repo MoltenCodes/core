@@ -1513,3 +1513,39 @@ secretTest("a secret field name is refused by manifest:Get at the calling line",
     snapshot:Get(secret)
   end, lines, "ClientKit.Manifest:Get field must not be a secret value")
 end)
+
+--- The client's refusal of a secret table key, measured on a read on Retail 12.1.0 b69933.
+local SECRET_KEY_REFUSAL = "cannot be indexed with secret keys"
+
+secretTest(
+  "writing a genuine secret key to a manifest is refused at the calling line, by the client before __newindex or by ClientKit naming <secret value>, and the log says which",
+  function(ctx)
+    local snapshot = ClientKit:GetManifest(addonName)
+    ctx:Expect(type(snapshot)):ToBe("table")
+    if type(snapshot) ~= "table" then
+      return
+    end
+    local secret = makeSecret(ctx, "field")
+    local startLine = 0
+    local succeeded, message = pcall(function()
+      startLine = currentLine()
+      snapshot[secret] = true
+    end)
+    ctx:Log("client message: " .. tostring(message))
+    ctx:Expect(succeeded):ToBe(false)
+    ctx:Expect(expectThisFile(ctx, message)):ToBe(startLine + 1)
+    local text = tostring(message)
+    local refusedByClient = string.find(text, SECRET_KEY_REFUSAL, 1, true) ~= nil
+    local refusedByKit = string.find(text, "field <secret value> cannot be written", 1, true) ~= nil
+    -- Core decision 19b: a refusal by the client before `__newindex` runs makes
+    -- the store-side secret checks in BridgeKit, Registry and ClientKit dead
+    -- code; a refusal by ClientKit means they are still needed.
+    if refusedByClient then
+      ctx:Log("measured: the client refuses a secret key on assignment, before __newindex runs")
+    elseif refusedByKit then
+      ctx:Log("measured: a secret key reaches __newindex on assignment; ClientKit refused it")
+    end
+    ctx:Expect(refusedByClient or refusedByKit):ToBe(true)
+    ctx:Expect(rawget(snapshot, "field")):ToBeNil()
+  end
+)

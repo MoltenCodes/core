@@ -44,7 +44,7 @@
 
 local PACKAGE_NAME = "clientKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 7
+local IMPLEMENTATION_REVISION = 8
 local REQUIRED_REGISTRY_API = 2
 local STATE_SCHEMA = 1
 
@@ -737,6 +737,18 @@ bindHostFunctions()
 probeLocale()
 probeCapabilities()
 
+---The secret probe: the `issecretvalue` bound at load, or, when the client had
+---none then, the global's current value, so a probe installed after load is
+---still honoured. `false` when there is none (nothing is secret).
+---@return function|false
+local function readSecretProbe()
+  local isSecretValue = rawget(host, "isSecretValue")
+  if isSecretValue then
+    return isSecretValue
+  end
+  return readGlobalFunction("issecretvalue")
+end
+
 -- Validation helpers ----------------------------------------------------------
 --
 -- Argument validation raises with an explicit stack level so the reported
@@ -744,18 +756,24 @@ probeCapabilities()
 -- `error` needs inside the function that receives it.
 
 ---Describe a caller-supplied value for an error message without formatting a
----secret into it.
+---secret into it, and without running its code: a table or userdata may carry
+---a `__tostring` metamethod, so anything but a string, number, boolean or `nil`
+---is named by its type (`<table>`).
 ---@param value any
 ---@return string
 local function describeValue(value)
-  local isSecretValue = rawget(host, "isSecretValue")
+  local isSecretValue = readSecretProbe()
   if isSecretValue and isSecretValue(value) then
     return SECRET_PLACEHOLDER
   end
-  if type(value) == "string" then
+  local valueType = type(value)
+  if valueType == "string" then
     return string.format("%q", value)
   end
-  return tostring(value)
+  if valueType == "number" or valueType == "boolean" or valueType == "nil" then
+    return tostring(value)
+  end
+  return "<" .. valueType .. ">"
 end
 
 ---@param value any
@@ -776,7 +794,7 @@ end
 ---@param parameterName string
 ---@param level integer stack level the failure is reported at
 local function validateNotSecret(value, methodName, parameterName, level)
-  local isSecretValue = rawget(host, "isSecretValue")
+  local isSecretValue = readSecretProbe()
   if isSecretValue and isSecretValue(value) then
     error(methodName .. " " .. parameterName .. " must not be a secret value", level)
   end
@@ -871,7 +889,7 @@ end
 ---@param value any
 ---@return boolean
 local function packageIsSecret(_, value)
-  local isSecretValue = rawget(host, "isSecretValue")
+  local isSecretValue = readSecretProbe()
   if not isSecretValue then
     return false
   end

@@ -103,3 +103,79 @@ describe("ClientKit:IsEventValid", function()
     end)
   end)
 end)
+
+describe("ClientKit secret probe resolution", function()
+  after_each(function()
+    Env.Reset()
+  end)
+
+  it("honours an issecretvalue installed after load on a client that had none", function()
+    local ClientKit = Env.NewPackageFor("mists")
+    local secret = Env.NewSecretValue()
+    assert.is_false(ClientKit:IsSecret(secret))
+
+    -- The stub stands in for a client API that only exists in the global table.
+    -- selene: allow(global_usage)
+    rawset(_G, "issecretvalue", function(value)
+      return rawequal(value, secret) or value == "hiddenName"
+    end)
+
+    assert.is_true(ClientKit:IsSecret(secret))
+    assert.is_false(ClientKit:IsSecret("Player"))
+    assert.has_error(function()
+      ClientKit:Has("hiddenName")
+    end, "ClientKit:Has capability must not be a secret value")
+  end)
+end)
+
+describe("ClientKit value descriptions", function()
+  after_each(function()
+    Env.Reset()
+  end)
+
+  ---A table whose `__tostring` records that it ran, then raises.
+  ---@return table key
+  ---@return fun(): integer ran how often `__tostring` ran
+  local function trappedKey()
+    local runs = 0
+    local key = setmetatable({}, {
+      __tostring = function()
+        runs = runs + 1
+        error("__tostring must not run inside ClientKit")
+      end,
+    })
+    return key, function()
+      return runs
+    end
+  end
+
+  it("names a table limit key by type without running its __tostring", function()
+    local ClientKit = Env.NewPackageFor("mainline")
+    local key, runs = trappedKey()
+    assert.has_error(function()
+      ClientKit:SetLimits({ [key] = 1 })
+    end, "ClientKit:SetLimits does not know limit <table>")
+    assert.are.equal(0, runs())
+  end)
+
+  it("names a table field written to a manifest by type without running its __tostring", function()
+    local ClientKit = Env.NewPackageFor("mainline")
+    Env.RegisterAddOn("MyAddon")
+    local manifest = ClientKit:GetManifest("MyAddon")
+    local key, runs = trappedKey()
+    assert.has_error(function()
+      manifest[key] = true
+    end, 'ClientKit manifest for "MyAddon" is read-only; field <table> cannot be written')
+    assert.are.equal(0, runs())
+  end)
+
+  it("still shows strings quoted and numbers and booleans as written", function()
+    local ClientKit = Env.NewPackageFor("mainline")
+    assert.has_error(function()
+      ClientKit:Has("nope")
+    end, 'ClientKit:Has does not know capability "nope"')
+    assert.has_error(function()
+      ClientKit:SetLimits({ [7] = 1 })
+    end, "ClientKit:SetLimits does not know limit 7")
+  end)
+end)

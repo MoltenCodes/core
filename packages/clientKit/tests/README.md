@@ -81,7 +81,7 @@ The suite covers:
 |---|---|
 | `Flavor_spec.lua` | flavour, build, interface number, `IsAtLeast` |
 | `Capabilities_spec.lua` | `Has`, the capability table, allocation guard |
-| `Taint_spec.lua` | `IsSecret`, `CanAccessFrame`, `IsEventValid` |
+| `Taint_spec.lua` | `IsSecret`, `CanAccessFrame`, `IsEventValid`; a probe installed after load honoured; error descriptions that name a table by type without running its `__tostring` |
 | `Shims_spec.lua` | `GetSpellInfo`, `GetItemInfo`, `GetAddOnMetadata`, `IsAddOnLoaded` |
 | `GetManifest_spec.lua` | `GetManifest`, the snapshot fields, locale fallback, `Get`, caching |
 | `Deprecation_spec.lua` | `Deprecate`, `Warn`, call sites, modes, reports, limits, the optional-Kit pattern |

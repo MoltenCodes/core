@@ -18,7 +18,7 @@ describe("ClientKit bootstrap", function()
     local ClientKit, Registry = Env.NewPackageFor("mainline")
     assert.are.equal(ClientKit, Registry:Get("clientKit", 1))
     assert.are.equal(1, ClientKit.API)
-    assert.are.equal(7, ClientKit.REVISION)
+    assert.are.equal(8, ClientKit.REVISION)
   end)
 
   it("reuses the shared facade and state on a duplicate load", function()
@@ -116,7 +116,7 @@ describe("ClientKit bootstrap", function()
     local upgraded = Env.ReloadPackage()
 
     assert.are.equal(ClientKit, upgraded)
-    assert.are.equal(7, ClientKit.REVISION)
+    assert.are.equal(8, ClientKit.REVISION)
     assert.are.equal(state, ClientKit._state)
     assert.are.equal(host, ClientKit._state.host)
     assert.is_table(state.manifests)
@@ -133,14 +133,14 @@ describe("ClientKit bootstrap", function()
     Env.SetAddOnMetadata("MyAddon", "Title", "My Addon")
     local manifest = ClientKit:GetManifest("MyAddon")
 
-    -- Revisions 3, 4, 5 and 7 changed no state field, and the copy loaded as
+    -- Revisions 3, 4, 5, 7 and 8 changed no state field, and the copy loaded as
     -- revision 2 is the working file, so it already carries the deprecation
     -- state revision 6 adds: the real file loads over it as a plain in-place
     -- upgrade. "upgrades a revision 5 layout" covers adding that state.
     local upgraded = Env.ReloadPackage()
 
     assert.are.equal(ClientKit, upgraded)
-    assert.are.equal(7, ClientKit.REVISION)
+    assert.are.equal(8, ClientKit.REVISION)
     assert.are.equal(state, ClientKit._state)
     assert.are.equal(manifest, ClientKit:GetManifest("MyAddon"))
     assert.are.equal("My Addon", manifest:Get("Title"))
@@ -158,14 +158,14 @@ describe("ClientKit bootstrap", function()
     local upgraded = Env.ReloadPackage()
 
     assert.are.equal(ClientKit, upgraded)
-    assert.are.equal(7, upgraded.REVISION)
+    assert.are.equal(8, upgraded.REVISION)
     assert.are.equal(state, upgraded._state)
     assert.are.equal(manifest, upgraded:GetManifest("MyAddon"))
     assert.are.equal(1, Env.MetadataReads("MyAddon", "Title"))
   end)
 
   it("upgrades the previous revision in place to the working file", function()
-    local previousRevision = 6
+    local previousRevision = 7
     Env.NewHostFor("mainline", { locale = "deDE", secretStrings = { 120000 } })
     local ClientKit = Env.LoadSourceAtRevision(previousRevision)
     local state = ClientKit._state
@@ -193,7 +193,7 @@ describe("ClientKit bootstrap", function()
     assert.has_error(function()
       manifest.Get({ name = Env.NewSecretValue() }, "Title")
     end, "ClientKit.Manifest:Get must be called on a manifest")
-    -- Revision 7 changed no state field: the deprecation state, its
+    -- Revisions 7 and 8 changed no state field: the deprecation state, its
     -- reporter and its report are kept, and the rewritten `IsAtLeast`
     -- refuses a secret before comparing it.
     assert.are.equal("silent", upgraded:GetDeprecationMode())
@@ -231,7 +231,7 @@ describe("ClientKit bootstrap", function()
     local upgraded = Env.ReloadPackage()
 
     assert.are.equal(ClientKit, upgraded)
-    assert.are.equal(7, upgraded.REVISION)
+    assert.are.equal(8, upgraded.REVISION)
     assert.are.equal(state, upgraded._state)
     assert.are.equal(manifest, upgraded:GetManifest("MyAddon"))
     assert.are.equal(1, Env.MetadataReads("MyAddon", "Title"))

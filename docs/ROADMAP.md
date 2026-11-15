@@ -4500,7 +4500,10 @@ Client facts used, read 2026-11-15 from Gethe/wow-ui-source
    suffix tables, the handle without `_schema`), `CHANGELOG.md` 0.5.3,
    `README.md` performance note, `tests/README.md`, the client suite's
    `EXPECTED.md`.
-9. Status: recorded 2026-11-15 under core decisions 18 and 19; code follows.
+9. Status: implemented 2026-11-15 under core decisions 18 and 19, 0.5.3,
+   revision 10, 12 specs (275). Raw messages' NUL check is a plain find as
+   well; reassembly key suffixes are made per stream id on first receipt
+   rather than all on the first receive.
 
 **localeKit fast unneeded-locale path** — an internal change to facade `LocaleKit`
 
@@ -4559,7 +4562,8 @@ Client facts used, read 2026-11-15 from Gethe/wow-ui-source
 8. Docs: `docs/API.md` (cost note, the secret-key read), `INTERNALS.md`,
    `CHANGELOG.md` 0.1.7, `tests/README.md`, the client suite's
    `EXPECTED.md`.
-9. Status: recorded 2026-11-15 under core decisions 18 and 19; code follows.
+9. Status: implemented 2026-11-15 under core decisions 18 and 19, 0.1.7,
+   revision 5, 5 specs (124).
 
 **registry cheaper lookups** — an internal change to facade `Registry`
 
@@ -4623,7 +4627,10 @@ Client facts used, read 2026-11-15 from Gethe/wow-ui-source
    here): unchanged.
 8. Docs: `docs/API.md` ("Lookup cost"), `CHANGELOG.md` 0.6.11,
    `tests/README.md`.
-9. Status: recorded 2026-11-15 under core decisions 18 and 19; code follows.
+9. Status: implemented 2026-11-15 under core decisions 18 and 19, 0.6.11,
+   revision 16, plain indexing on the owner's decision (Registry's state
+   carries no metatable; the docs/API.md "Lookup cost" sentence replaced), 2
+   specs (143), 999 lines.
 
 **codecKit key descriptions, lazy tables and cheaper scans** — a fix and an internal change to facade `CodecKit`
 
@@ -4737,7 +4744,9 @@ Client facts used, read 2026-11-15 from Gethe/wow-ui-source
    `INTERNALS.md` (lazy tables, the cache, plain finds, one-pass options),
    `CHANGELOG.md` 0.2.2, `README.md` performance and memory notes,
    `tests/README.md`, the client suite's `EXPECTED.md`.
-9. Status: recorded 2026-11-15 under core decisions 18 and 19; code follows.
+9. Status: implemented 2026-11-15 under core decisions 18 and 19, 0.2.2,
+   revision 9, 16 specs (165). A flat `Encode` and an inline number path were
+   not tried: the profile puts the remaining cost per value.
 
 **bridgeKit AceSerializer speed and SettingsKit's character key** — an internal change to facade `BridgeKit`
 
@@ -4845,7 +4854,9 @@ Client facts used, read 2026-11-15 from Gethe/wow-ui-source
    `docs/BRIDGE_KIT_DESIGN.md` section 7.3 ("Scope by scope", the `char`
    row) follows the new rule; that file is outside the package, so its text
    is supplied for the owner to apply.
-9. Status: recorded 2026-11-15 under core decisions 18 and 19; code follows.
+9. Status: implemented 2026-11-15 under core decisions 18 and 19, 0.5.2,
+   revision 7, 11 specs (302); the store-side key checks stay on the owner's
+   decision; docs/BRIDGE_KIT_DESIGN.md 7.3 updated.
 
 **clientKit probe fallback and value descriptions** — a fix to facade `ClientKit`
 
@@ -4890,7 +4901,9 @@ Client facts used, read 2026-11-15 from Gethe/wow-ui-source
 8. Docs: `docs/API.md` (value descriptions in errors, the probe rule),
    `CHANGELOG.md` 0.3.2, `tests/README.md`, the client suite's
    `EXPECTED.md`.
-9. Status: recorded 2026-11-15 under core decisions 18 and 19; code follows.
+9. Status: implemented 2026-11-15 under core decisions 18 and 19, 0.3.2,
+   revision 8, 4 specs (182); the client suite records whether a secret key is
+   refused on assignment before `__newindex`.
 
 #### Package N — bridgeKit, migrating from Ace3
 

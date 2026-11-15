@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.2 — 2026-11-15
+
+- Fixed: an error message described a caller's value with `tostring`, so a table with a `__tostring` metamethod given as a `SetLimits` key or written to a manifest snapshot ran the caller's code inside ClientKit, which could raise its own error or answer a secret. A string is still quoted and a number, boolean or `nil` shown as written; anything else is named by its type: `ClientKit:SetLimits does not know limit <table>`, `ClientKit manifest for "MyAddon" is read-only; field <table> cannot be written`. `Taint_spec.lua` ("ClientKit value descriptions") holds the regression specs, each with a `__tostring` that records that it ran and raises.
+- The secret probe follows the rule every Kit follows: the `issecretvalue` bound at load is used, and only when the client had none then is the global looked up on each call, so a probe installed after load is honoured by `IsSecret` and every secret refusal. `Has("secretValues")` stays the answer read at load.
+- Implementation revision 8. No state field changed: an in-place upgrade from revision 7 keeps the manifest cache, the deprecation state and the limits (`Bootstrap_spec.lua`, "upgrades the previous revision in place to the working file", now loads revision 7).
+- Client suite: `clientKit.secrets` gains `writing a genuine secret key to a manifest is refused at the calling line, ...`, which records whether the client refuses a secret key on assignment before `__newindex` runs (core decision 19b); `EXPECTED.md` lists it and its totals move to 45 tests. Written, not run.
+- 182 specs (was 178).
+
 ## 0.3.1 — 2026-11-15
 
 - `IsAtLeast(interfaceNumber)` compared its argument before asking `issecretvalue`. A secret number passed the type check (`type` answers a secret's real type) and then reached the NaN test and the floor comparison, and comparing a secret from insecure code raises at the comparison (warcraft.wiki.gg, "Secret Values"), so the error named ClientKit's line instead of the caller's. `IsAtLeast` now refuses a secret first, at the caller: `ClientKit:IsAtLeast interfaceNumber must not be a secret value`. `ErrorLevels_spec.lua` ("refuses a secret IsAtLeast interfaceNumber at the caller before comparing it") is the regression spec; the client suite gains the same check with a value made by `secretwrap`.

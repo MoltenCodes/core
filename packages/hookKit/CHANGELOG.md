@@ -27,7 +27,7 @@ Documented-behaviour change, approved by the owner: **HookKit no longer uses Cli
 
 - **The secret check asks the host alone.** `isSecret` uses the `issecretvalue` read at load when there was one. Without one it reads the global again (`rawget(_G, "issecretvalue")`, a few nanoseconds) on each check and answers `false` while there is none. Decided and pinned: a probe that appears later in the session, which the real client cannot do but a test environment or a shim can, is honoured at once instead of being ignored until reload, so no secret can slip past because of load order. A probe present at load stays in use even if the global is later replaced or removed. Secret names are still refused before any comparison, key use or string operation; nothing else in the argument checks changed.
 - **ClientKit is no longer an optional dependency.** Its `IsSecret` answers from the same host function (read when ClientKit loaded), so HookKit had nothing else to ask it; `package.manifest.json` drops `clientKit` from `optionalDependencies`. A ClientKit loaded beside HookKit is simply not looked for. `docs/API.md` ("Optional facilities": the ClientKit row replaced by an `issecretvalue` row and the paragraph under it, "Cost", "Deviations", "Upgrades", the release rule at "Unhook"), `docs/INTERNALS.md` and the README say so.
-- Host benchmark, `python3 -m tooling.bench.run --workload hooks --rounds 3` on an Apple M5 Pro (the host has no `issecretvalue`), before and after this change in the same session, with other agents' work running (load average 1.8 before, 2.5 after; compare the ratios, the sides are interleaved). Median ns per operation; allocation is deterministic and unchanged.
+- Host benchmark, `python3 -m tooling.bench.run --workload hooks --rounds 3` on an Apple M5 Pro (the host has no `issecretvalue`), before and after this change in the same session, with other work running (load average 1.8 before, 2.5 after; compare the ratios, the sides are interleaved). Median ns per operation; allocation is deterministic and unchanged.
 
   | Case | Before | After | AceHook (before / after) | Ratio before → after | Allocated (AceHook) |
   |---|---:|---:|---:|---|---|
@@ -46,7 +46,7 @@ Documented-behaviour change, approved by the owner: **HookKit no longer uses Cli
 
 ## 0.2.6 — 2026-09-25
 
-- Performance. Installing and removing a hook, and calling a replacement, cost less. Measured with the host benchmark (`python3 -m tooling.bench.run --workload hooks --rounds 3`, before and after this change, median ns per operation with AceHook-3.0 measured in the same run; other agents' benchmarks and specs ran on the machine at the same time, load average about 2.6 before and 3.1 after, so compare the ratios and the allocation, which is deterministic):
+- Performance. Installing and removing a hook, and calling a replacement, cost less. Measured with the host benchmark (`python3 -m tooling.bench.run --workload hooks --rounds 3`, before and after this change, median ns per operation with AceHook-3.0 measured in the same run; other benchmarks and specs ran on the machine at the same time, load average about 2.6 before and 3.1 after, so compare the ratios and the allocation, which is deterministic):
 
   | Case | Before | After | AceHook (before / after) | Ratio before → after | Allocated before → after (AceHook) |
   |---|---:|---:|---:|---|---|

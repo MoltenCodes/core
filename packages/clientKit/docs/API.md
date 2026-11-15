@@ -152,7 +152,9 @@ The rules these probes serve are in
 
 Returns `issecretvalue(value)` on a client that has it. On a client without
 `issecretvalue` — Retail before 12.0, older Classic builds — every value
-answers `false`, which is correct there: nothing is secret. Ask it before
+answers `false`, which is correct there: nothing is secret. The function is
+bound when ClientKit loads; when the client had none then, the global is
+looked up on every call, so one installed later is still used. Ask it before
 comparing, indexing, doing arithmetic on or keying a table by a value the
 client handed you.
 
@@ -548,7 +550,10 @@ MyAddon/Core.lua:12: ClientKit:IsAtLeast interfaceNumber must be a number
 ```
 
 A caller-supplied value is formatted into a message only when `IsSecret`
-says it is not secret; a secret is described as `<secret value>`. A secret
+says it is not secret; a secret is described as `<secret value>`. A string is
+quoted, a number, boolean or `nil` shown as written, and any other value named
+by its type (`<table>`), so a `__tostring` metamethod never runs inside
+ClientKit. A secret
 `interfaceNumber` passed to `IsAtLeast`, a secret `capability` passed to
 `Has`, and a secret `addonName` or `field` passed to `GetManifest` or
 `manifest:Get`, is refused at the caller
@@ -657,6 +662,9 @@ creates is refused as corrupted.
 
 Revision 7 changed no state field (it refuses a secret `IsAtLeast` argument
 before comparing it), so an upgrade over revision 6 keeps the manifest cache
-and the whole deprecation state as they are.
+and the whole deprecation state as they are. Revision 8 changed no state field
+either (error descriptions name a table by type, and the secret probe falls
+back to the global when the client had none at load); an upgrade over
+revision 7 keeps everything.
 
 `_state` is private; its layout is not part of the contract.
