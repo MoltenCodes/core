@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.2 — 2026-11-15
+
+- The README had no migration table from AceHook-3.0, the library HookKit replaces. It now maps the embedded addon object to `ForAddon`, each hook method, `hookSecure` to `options.forceSecure`, `self.hooks[object].Method` to the raw handler's first argument and `Original`, method-name handlers to functions, `Unhook`, `UnhookAll`, `IsHooked` (whose second result is the kind, not the handler) and `OnEmbedDisable`, and links the walkthrough in `docs/MIGRATING_FROM_ACE3.md`.
+- `docs/API.md` did not give the messages for an `object` or `frame` that is not a table, an `options` that is not a table, a scope method called on something that is not a scope, or a facade method called with a dot; *Refusals* now does. *Loading* gives the load-time errors for a Registry without `Bootstrap` and a corrupted package state.
+- `tests/README.md` named only the upgrade from revision 2 among the upgrades to the working file; it now also names the upgrade from the previous revision and the release of a revision 4 script hook by the secret-handler rule, which `Bootstrap_spec.lua` runs.
+- Documentation only: implementation revision 7 is unchanged.
+
 ## 0.3.1 — 2026-11-15
 
 - Source comment: `scope:SecureHook` returns `nil, "full"` when the scope already holds its own `maxHooks` hooks, which is `MAX_HOOKS` unless the scope was opened and never for an `UNBOUNDED` scope (the comment named `MAX_HOOKS` as the limit of every scope). Comment only: the implementation revision is unchanged.

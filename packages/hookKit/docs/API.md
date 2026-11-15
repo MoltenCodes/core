@@ -39,7 +39,7 @@ HookKit depends only on Registry API 2. Portable WoW code resolves the package t
 local HookKit = MoltenCodes.Registries[2]:Get("hookKit", 1)
 ```
 
-HookKit does not rely on `require()` at runtime. Loading it without Registry raises `MoltenCodes HookKit requires Registry API 2 to be loaded first`.
+HookKit does not rely on `require()` at runtime. Loading it without Registry raises `MoltenCodes HookKit requires Registry API 2 to be loaded first`; over a Registry whose facade has no `Bootstrap`, `MoltenCodes HookKit requires a valid Registry API 2 facade`. A shared package state that fails validation raises `MoltenCodes HookKit package state is corrupted or incomplete` instead of being overwritten.
 
 ### Optional facilities
 
@@ -165,7 +165,7 @@ Every refusal raises at the caller's line and installs nothing.
 
 **Double hooks** are refused rather than silently replaced: an implicit unhook-then-hook would reorder the chain behind the caller's back. Two *different* scopes may hook the same target; their closures chain.
 
-Argument errors name the parameter: `HookKit.Scope:Hook method must be a non-empty string`, `... handler must be a function`, `... options contains unknown field "<name>"`, `... options.forceSecure must be a boolean`, `HookKit.Scope:HookScript frame must have a GetScript method`. A method, script, global or addon name that is a secret value is refused with `... must not be a secret value`, before HookKit compares it or uses it as a key. A secret `options.forceSecure` (Retail 12.x; a secret boolean passes the type check) is refused the same way, with `... options.forceSecure must not be a secret value`, before HookKit compares or tests it; testing a secret boolean raises in tainted code (measured on Retail 12.1.0 b69933).
+Argument errors name the parameter: `HookKit.Scope:Hook method must be a non-empty string`, `... handler must be a function`, `... object must be a table` (and `frame` for the script methods), `... options must be a table`, `... options contains unknown field "<name>"`, `... options.forceSecure must be a boolean`, `HookKit.Scope:HookScript frame must have a GetScript method`. A scope method called on something that is not a scope raises `HookKit.Scope:Hook must be called on a HookKit scope`, and a facade method called with a dot `HookKit:ForAddon must be called on the HookKit facade; use HookKit:ForAddon(...)`. A method, script, global or addon name that is a secret value is refused with `... must not be a secret value`, before HookKit compares it or uses it as a key. A secret `options.forceSecure` (Retail 12.x; a secret boolean passes the type check) is refused the same way, with `... options.forceSecure must not be a secret value`, before HookKit compares or tests it; testing a secret boolean raises in tainted code (measured on Retail 12.1.0 b69933).
 
 ## Unhook: restore or go inert
 

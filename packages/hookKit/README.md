@@ -36,6 +36,23 @@ What each piece promises:
 
 See [`docs/API.md`](docs/API.md) for the complete contract, which leads with the taint each semantic causes, and [`docs/INTERNALS.md`](docs/INTERNALS.md) for the record layout.
 
+### Moving from AceHook-3.0
+
+| AceHook-3.0 | HookKit |
+|---|---|
+| `LibStub("AceAddon-3.0"):NewAddon("MyAddon", "AceHook-3.0")`, hooks on the addon object | `local hooks = HookKit:ForAddon("MyAddon")`, hooks on the addon's scope |
+| `self:SecureHook(object, "Method", handler)`, `self:SecureHook("GlobalName", handler)` | `hooks:SecureHook(object, "Method", handler)`, `hooks:SecureHook("GlobalName", handler)`, reversible with `Unhook` |
+| `self:SecureHookScript(frame, "OnShow", handler)` | `hooks:SecureHookScript(frame, "OnShow", handler)` |
+| `self:Hook(object, "Method", handler, hookSecure)` | `hooks:Hook(object, "Method", handler, { forceSecure = true })`; without the option a secure target is refused at your line |
+| `self:RawHook(object, "Method", handler)`, the original read from `self.hooks[object].Method` | `hooks:RawHook(object, "Method", function(original, ...) end)`: the original is the handler's first argument, and `hooks:Original(object, "Method")` |
+| `self:HookScript(frame, "OnUpdate", handler)`, `self:RawHookScript(...)` | `hooks:HookScript(frame, "OnUpdate", handler)`, `hooks:RawHookScript(...)` |
+| A handler given as a method name (`"OnTooltipSetUnit"`) | A function: `function(tooltip, unit) MyAddon:OnTooltipSetUnit(tooltip, unit) end` |
+| `self:Unhook(object, "Method")`, `self:UnhookAll()` | `hooks:Unhook(object, "Method")`, `hooks:UnhookAll()` |
+| `self:IsHooked(object, "Method")`, answering `true` and the handler | `hooks:IsHooked(object, "Method")`, answering `true` and the kind (`"secure"`, `"hook"`, ...) |
+| Hooks undone when the addon is disabled (`OnEmbedDisable` calls `UnhookAll`) | `hooks:UnhookAll()` in your own disable code; the scope stays usable. The addon scope is closed at logout for you (see "At logout" in the API). |
+
+Every hook method returns `true`, or `nil, "full"` past the scope's 256 hooks. [`docs/MIGRATING_FROM_ACE3.md`](../../docs/MIGRATING_FROM_ACE3.md#acehook-30) walks through a whole addon.
+
 ## Embedding
 
 [`../../docs/EMBEDDING.md`](../../docs/EMBEDDING.md) is the addon author's guide:
