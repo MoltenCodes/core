@@ -59,8 +59,8 @@ one skip. Those clients have not been run (no game time; see
 | `the client has the Blizzard_Menu functions ...` | `MenuUtil.CreateContextMenu`, `Menu.ModifyMenu` and `Menu.GetManager` exist on this client. |
 | `a context menu of every entry kind ...` | The real element descriptions accept every call MenuKit makes (title, button with tooltip, disabled button, checkbox, radio, divider, spacer, submenu): the menu function runs once with the owner, a menu opens, and `CloseMenus` closes it. |
 | `a DropdownButton set up by SetupDropdown ...` | `SetupMenu` takes MenuKit's generator; Blizzard's `OpenMenu` calls the menu function again, asks `isSelected`, and `CloseMenu` closes it. The log gives how often each was called. |
-| `an extension of MENU_UNIT_SELF ...` | `Menu.ModifyMenu` calls MenuKit's callback when the unit menu opens, with Blizzard's context data (the log gives `contextData.unit`), and `Remove` unregisters it. |
-| `OpenContextMenu refuses a secret entry text ...` | A `secretwrap` value is refused at this file's line, before Blizzard sees it. |
+| `an extension of MENU_UNIT_SELF ...` | `Menu.ModifyMenu` calls MenuKit's callback when the unit menu opens, with Blizzard's context data (the log gives `contextData.unit`), and `Remove` unregisters it. Blizzard also calls a new callback at once with the last `MENU_UNIT_SELF` menu of the session; the log says whether it did, and only a call after `ExtendMenu` returned counts as the right click. |
+| `OpenContextMenu refuses a secret entry text ...` | A `secretwrap` value is refused at this file's line, before Blizzard sees it. The call is a statement, not a tail call, so the caller's line stays on the stack. |
 
 ## What a run leaves behind
 

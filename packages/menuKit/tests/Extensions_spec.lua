@@ -65,6 +65,17 @@ describe("MenuKit extensions", function()
     end
   )
 
+  it("fills the last menu Blizzard generated under the tag at once, as ModifyMenu does", function()
+    local opened = api.OpenTagged("MENU_UNIT_SELF", {}, { unit = "player" })
+    local seen = nil
+    MenuKit:ExtendMenu("MENU_UNIT_SELF", function(_, contextData)
+      seen = contextData
+      return { { kind = "title", text = "Mine" } }
+    end)
+    assert.are.same({ unit = "player" }, seen)
+    assert.are.same({ "button:Blizzard's own line", "title:Mine" }, opened:Outline())
+  end)
+
   it("holds at most maxExtensions and frees a slot on Remove", function()
     MenuKit:SetLimits({ maxExtensions = 2 })
     local first = MenuKit:ExtendMenu("MENU_UNIT_SELF", {})

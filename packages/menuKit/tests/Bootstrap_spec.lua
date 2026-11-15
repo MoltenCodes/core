@@ -64,6 +64,33 @@ describe("MenuKit bootstrap", function()
     end
   )
 
+  it(
+    "upgrades from revision 1 in place: its dropdowns and extensions are built by this revision",
+    function()
+      -- Install the host stand-ins, then start over with a copy carrying
+      -- revision 1, the way an older addon's embedded copy loads first.
+      local _, api = TestEnv.NewPackage()
+      TestEnv.SetGlobal("MoltenCodes", nil)
+      package.loaded.Registry = nil
+      package.loaded.MenuKit = nil
+      require("Registry")
+      local old = TestEnv.LoadRevision(1)
+      local dropdown = api.NewDropdown()
+      old:SetupDropdown(dropdown, { { kind = "title", text = "Before" } })
+      local extension = old:ExtendMenu("MENU_UNIT_SELF", { { kind = "title", text = "Mine" } })
+
+      local upgraded = TestEnv.ReloadPackage()
+      assert.are.equal(old, upgraded)
+      assert.is_true(upgraded.REVISION > 1)
+      assert.are.same({ "title:Before" }, dropdown:Open():Outline())
+      assert.are.same(
+        { "button:Blizzard's own line", "title:Mine" },
+        api.OpenTagged("MENU_UNIT_SELF", {}, {}):Outline()
+      )
+      assert.is_true(extension:Remove())
+    end
+  )
+
   it("refuses shared state whose limits hold an invalid value", function()
     local MenuKit = TestEnv.NewPackage()
     rawset(MenuKit._state.limits, "maxExtensions", MenuKit.UNBOUNDED)

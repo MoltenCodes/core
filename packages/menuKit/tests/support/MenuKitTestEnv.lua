@@ -156,7 +156,9 @@ end
 ---  with `generator(owner, root)` and returns a menu table;
 ---* `Menu.ModifyMenu(tag, callback)` registers `callback(owner, root,
 ---  contextData)` for menus tagged `tag` and returns a handle whose
----  `Unregister` removes it;
+---  `Unregister` removes it; when a menu with that tag was filled before, it
+---  first calls `callback` at once with the last one, as Blizzard does with
+---  its `generatedDescriptions`;
 ---* `Menu.GetManager():CloseMenus()` closes every menu.
 ---
 ---Extra fields for the specs: `contextMenus` (every root description a
@@ -169,6 +171,8 @@ end
 function MenuKitTestEnv.InstallMenu()
   local api = { contextMenus = {}, closed = 0 }
   local callbacks = {}
+  -- The last menu filled per tag, with its owner and context data.
+  local generated = {}
 
   local menuUtil = {}
   function menuUtil.CreateContextMenu(owner, generator)
@@ -183,6 +187,10 @@ function MenuKitTestEnv.InstallMenu()
   function menu.ModifyMenu(tag, callback)
     if type(tag) ~= "string" then
       error("Menu stand-in: tag must be a string", 2)
+    end
+    local last = generated[tag]
+    if last ~= nil then
+      callback(last.owner, last.root, last.contextData)
     end
     callbacks[tag] = callbacks[tag] or {}
     local entry = { callback = callback }
@@ -210,6 +218,7 @@ function MenuKitTestEnv.InstallMenu()
   function api.OpenTagged(tag, owner, contextData)
     local root = newDescription("root")
     root:CreateButton("Blizzard's own line")
+    generated[tag] = { owner = owner, root = root, contextData = contextData }
     for _, entry in ipairs(callbacks[tag] or {}) do
       entry.callback(owner, root, contextData)
     end

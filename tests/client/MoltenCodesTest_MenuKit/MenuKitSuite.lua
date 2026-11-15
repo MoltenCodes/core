@@ -299,6 +299,12 @@ extensions:Test(
       reached = contextData
       return { { kind = "divider" }, { kind = "title", text = "MoltenCodes Test: MenuKit" } }
     end)
+    -- `Menu.ModifyMenu` calls a new callback at once with the last
+    -- `MENU_UNIT_SELF` menu Blizzard generated this session (Blizzard_Menu,
+    -- Menu.lua, `generatedDescriptions`), so a right click made before the
+    -- run would count as this one. Only a call after this line does.
+    ctx:Log("filled at once from an earlier menu: " .. tostring(reached ~= nil))
+    reached = nil
     atCleanUp(function()
       extension:Remove()
       MenuKit:CloseMenus()
@@ -338,8 +344,12 @@ elseif not Harness:CanMakeSecrets() then
 else
   secrets:Test(SECRET_TEST, function(ctx)
     local secret = secretWrap("hidden")
+    -- A statement, not `return MenuKit:OpenContextMenu(...)`: a tail call
+    -- would take this function's frame off the stack, and the error would
+    -- carry no file and line to look for.
     local succeeded, message = pcall(function()
-      return MenuKit:OpenContextMenu(nil, { { kind = "title", text = secret } })
+      local menu = MenuKit:OpenContextMenu(nil, { { kind = "title", text = secret } })
+      return menu
     end)
     ctx:Expect(succeeded):ToBe(false)
     ctx:Log("client message: " .. tostring(message))

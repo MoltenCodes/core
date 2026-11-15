@@ -42,7 +42,7 @@ What each piece promises:
 
 - **Blizzard draws, MenuKit describes.** Every entry becomes Blizzard's own element description (`CreateButton`, `CreateCheckbox`, `CreateRadio`, `CreateTitle`, `CreateDivider`, `CreateSpacer`), so menus look and behave like the client's, on Retail, Mists of Pandaria Classic and Classic Era alike.
 - **Checked at your line.** An unknown kind, a field the kind does not take (a typo such as `onclick`), a missing text or callback, or a secret value is refused when you call MenuKit, with the path of the entry: `MenuKit:OpenContextMenu menu[2].entries[1].text must be a non-empty string`.
-- **Live.** A menu given as a function is called each time it opens; one given as an array is read again each time. Nothing is cached between openings.
+- **Live.** A menu given as a function is called each time Blizzard generates it (when it opens and, for a dropdown, also to show its selection); one given as an array is read again each time. Nothing is cached between openings.
 - **Callbacks cannot break the menu.** `onClick`, `isSelected`, `setSelected`, `disabled` and the menu function run protected; one that raises is reported through the error handler and the menu goes on.
 - **Removable extensions.** `ExtendMenu` adds your entries after Blizzard's own every time the tagged menu opens, until `extension:Remove()`.
 - **Bounded by default, opened on purpose.** 256 entries per menu and 4 menus deep, each opened with `MenuKit:SetLimits` up to `MenuKit.UNBOUNDED`; 64 extensions, up to 1024.

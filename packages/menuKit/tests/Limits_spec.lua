@@ -110,4 +110,22 @@ describe("MenuKit limits", function()
     MenuKit:SetLimits({ maxExtensions = 1024 })
     assert.are.equal(1024, MenuKit:GetLimits().maxExtensions)
   end)
+
+  -- Revision 2: the check reads an entry's own fields, so the build must read
+  -- the same ones. Revision 1 built from fields an `__index` metatable
+  -- supplied, so a submenu the check never saw bypassed maxEntries.
+  it("builds only the entry fields it checked, not ones a metatable supplies", function()
+    TestEnv.InstallHostErrorHandler()
+    MenuKit:SetLimits({ maxEntries = 3 })
+    local inherited = { entries = buttons(10), onClick = "not a function", disabled = true }
+    local entry = setmetatable({ kind = "button", text = "Parent" }, { __index = inherited })
+    MenuKit:OpenContextMenu(nil, { entry })
+    local root = api.contextMenus[1]
+    assert.are.same({ "button:Parent" }, root:Outline())
+    local button = root.children[1]
+    assert.are.same({}, button.children)
+    assert.is_nil(button.responder)
+    assert.is_true(button:IsEnabled())
+    assert.are.same({}, TestEnv.TakeReportedValues())
+  end)
 end)

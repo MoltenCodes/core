@@ -39,7 +39,7 @@
 
 local PACKAGE_NAME = "menuKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 1
+local IMPLEMENTATION_REVISION = 2
 local REQUIRED_REGISTRY_API = 2
 local STATE_SCHEMA = 1
 
@@ -577,16 +577,16 @@ end
 ---@param description table Blizzard's element description
 ---@param entry MenuKit.Entry
 local function decorate(description, entry)
-  local disabled = entry.disabled
+  local disabled = rawget(entry, "disabled")
   if type(disabled) == "boolean" then
     description:SetEnabled(not disabled)
   elseif type(disabled) == "function" then
-    local data = entry.data
+    local data = rawget(entry, "data")
     description:SetEnabled(function()
       return protectedCall(disabled, data) ~= true
     end)
   end
-  local tooltip = entry.tooltip
+  local tooltip = rawget(entry, "tooltip")
   if type(tooltip) == "string" then
     description:SetTooltip(function(tooltipFrame)
       tooltipFrame:SetText(tooltip, nil, nil, nil, nil, true)
@@ -595,37 +595,42 @@ local function decorate(description, entry)
 end
 
 ---Add every entry to Blizzard's description `parent`, submenus included.
----The entries were checked before this runs.
+---The entries were checked before this runs. Every field is read with
+---`rawget`, as the check reads it: a field an `__index` metatable supplies was
+---never checked, so it must not reach Blizzard (a submenu there would escape
+---`maxEntries` and `maxDepth`).
 ---@param parent table a root or element description
 ---@param entries MenuKit.Entry[]
 local function addEntries(parent, entries)
   for index = 1, #entries do
-    local entry = entries[index]
-    local kind = entry.kind
-    local data = entry.data
+    local entry = rawget(entries, index)
+    local kind = rawget(entry, "kind")
+    local data = rawget(entry, "data")
+    local text = rawget(entry, "text")
     if kind == "divider" then
       parent:CreateDivider()
     elseif kind == "spacer" then
       parent:CreateSpacer()
     elseif kind == "title" then
-      parent:CreateTitle(entry.text)
+      parent:CreateTitle(text)
     elseif kind == "button" then
-      local onClick = entry.onClick
+      local onClick = rawget(entry, "onClick")
       local responder = nil
       if onClick then
         responder = function(clicked)
           protectedCall(onClick, clicked)
         end
       end
-      local description = parent:CreateButton(entry.text, responder, data)
+      local description = parent:CreateButton(text, responder, data)
       decorate(description, entry)
-      if entry.entries then
-        addEntries(description, entry.entries)
+      local submenu = rawget(entry, "entries")
+      if submenu then
+        addEntries(description, submenu)
       end
     else
       -- The check made both functions for a checkbox and a radio.
-      local isSelected = entry.isSelected --[[@as function]]
-      local setSelected = entry.setSelected --[[@as function]]
+      local isSelected = rawget(entry, "isSelected") --[[@as function]]
+      local setSelected = rawget(entry, "setSelected") --[[@as function]]
       local function readSelected(selectedData)
         return protectedCall(isSelected, selectedData) == true
       end
@@ -634,9 +639,9 @@ local function addEntries(parent, entries)
       end
       local description
       if kind == "checkbox" then
-        description = parent:CreateCheckbox(entry.text, readSelected, writeSelected, data)
+        description = parent:CreateCheckbox(text, readSelected, writeSelected, data)
       else
-        description = parent:CreateRadio(entry.text, readSelected, writeSelected, data)
+        description = parent:CreateRadio(text, readSelected, writeSelected, data)
       end
       decorate(description, entry)
     end

@@ -2,7 +2,7 @@
 
 MenuKit API generation **1** turns menus described as plain tables into Blizzard's Menu API calls: context menus, dropdown menus and removable extensions of Blizzard's tagged menus, each checked at the caller's line, bounded, and with every callback run protected.
 
-Implementation revision: **1**.
+Implementation revision: **2**.
 
 ## Loading
 
@@ -31,7 +31,7 @@ MenuKit reads these host globals at call time, never at load:
 | `issecretvalue` | every check | Nothing is treated as secret. |
 | `geterrorhandler` | callbacks and menu functions that raise, a menu function's result that fails the check | The failure is printed. |
 
-Retail, Mists of Pandaria Classic and Classic Era ship `Blizzard_Menu` with the same `Menu.lua` and `MenuUtil.lua` (branches `live`, `classic` and `classic_era` of Blizzard's interface source, read 2026-11-15). The one difference, `MenuUtil.CreateHighlightButton` on Retail alone, is not used.
+Retail, Mists of Pandaria Classic and Classic Era ship `Blizzard_Menu` (branches `live`, `classic` and `classic_era` of Blizzard's interface source, read 2026-11-15). The files differ in small ways: Retail alone has `MenuUtil.CreateHighlightButton` and, on element descriptions, `HasResponder`, `SetCheckbox` and `EnumerateElementDescriptions`. MenuKit uses none of these, and every function it calls (`MenuUtil.CreateContextMenu`, `Menu.ModifyMenu`, `Menu.GetManager():CloseMenus()`, `DropdownButton:SetupMenu`, and the description methods `CreateButton`, `CreateCheckbox`, `CreateRadio`, `CreateTitle`, `CreateDivider`, `CreateSpacer`, `SetEnabled` and `SetTooltip`) has the same code on all three.
 
 ## Public surface
 
@@ -44,7 +44,7 @@ Retail, Mists of Pandaria Classic and Classic Era ship `Blizzard_Menu` with the 
 | `SetLimits(limits)` / `GetLimits()` | Change or read `maxEntries`, `maxDepth` and `maxExtensions`; `GetLimits` returns a fresh table. |
 | `MAX_ENTRIES`, `MAX_DEPTH`, `MAX_EXTENSIONS`, `EXTENSIONS_CEILING` | `256`, `4`, `64`, `1024`. |
 | `UNBOUNDED` | Sentinel `maxEntries` and `maxDepth` accept to lift the bound. |
-| `API`, `REVISION` | `1`, `1`. |
+| `API`, `REVISION` | `1`, `2`. |
 
 An extension:
 
@@ -55,7 +55,7 @@ An extension:
 
 ## Menus and entries
 
-A **menu** is an array of entries, or a function returning one. A function is called each time the menu opens, with the owner (for an extension, also Blizzard's context data: `function(owner, contextData)`); an array is read again each time, so a change to it shows at the next opening. Nothing is cached between openings.
+A **menu** is an array of entries, or a function returning one. A function is called each time Blizzard generates the menu, with the owner (for an extension, also Blizzard's context data: `function(owner, contextData)`); an array is read again each time, so a change to it shows at the next opening. Nothing is cached between openings. Blizzard generates a context menu when it opens. It generates a dropdown's menu when it opens and also to show the dropdown's selection: at `SetupDropdown` while the dropdown is shown, and when it is shown (`DropdownButtonMixin:SetupMenu`, `OpenMenu`, `OnShow` in `Blizzard_Menu`), so a dropdown's menu function runs more often than the menu opens. For an extension, see [`ExtendMenu`](#menukitextendmenutag-menu).
 
 An **entry** is a table with a `kind` and the fields that kind takes:
 
@@ -66,12 +66,12 @@ An **entry** is a table with a `kind` and the fields that kind takes:
 | `data` | optional | optional | — | — | Any value, handed to the entry's callbacks; never inspected, so it may be a secret. |
 | `disabled` | optional | optional | — | — | `true` greys the line out; a function `disabled(data)` is asked whenever Blizzard polls the line. |
 | `tooltip` | optional | optional | — | — | A string shown when the cursor rests on the line. |
-| `onClick` | optional | — | — | — | `onClick(data)` when clicked. A button without one does nothing when clicked. |
+| `onClick` | optional | — | — | — | `onClick(data)` when clicked; what it returns is ignored. A button without one has no responder, so clicking it does nothing and the menu stays open. |
 | `entries` | optional | — | — | — | An entry array: the button opens it as a submenu. |
 | `isSelected` | — | required | — | — | `isSelected(data)`: whether the line shows as selected. |
 | `setSelected` | — | required | — | — | `setSelected(data)` when clicked. |
 
-Any other field is refused, so a typo (`onclick`, `disable`) is caught at your line.
+Any other field is refused, so a typo (`onclick`, `disable`) is caught at your line. Only an entry's own fields count: MenuKit reads them with `rawget`, both when it checks the entry and when it builds it, so a field an `__index` metatable would supply is neither checked nor used (revision 2; revision 1 built from such fields, which let a submenu escape `maxEntries` and `maxDepth`).
 
 How each entry maps to Blizzard's element descriptions:
 
@@ -85,7 +85,7 @@ How each entry maps to Blizzard's element descriptions:
 | `disabled` | `description:SetEnabled(not disabled)`, or `SetEnabled(function)` for a function. |
 | `tooltip` | `description:SetTooltip(function(tooltip) tooltip:SetText(text, nil, nil, nil, nil, true) end)`. |
 
-Blizzard's own rules then apply: a button's click closes the menu, a checkbox click keeps it open and refreshes it, a submenu opens on hover.
+Blizzard's own rules then apply: a button's click closes every menu (MenuKit's responder returns nothing, which Blizzard treats as `MenuResponse.CloseAll`), a radio click closes it too, a checkbox click keeps it open and refreshes it (`MenuResponse.Refresh`), and a submenu opens on hover.
 
 ## Checks and failures
 
@@ -107,7 +107,7 @@ The other arguments are refused at your line: `owner must be a frame or nil` (an
 
 ## `MenuKit:ExtendMenu(tag, menu)`
 
-Calls `Menu.ModifyMenu(tag, callback)` and keeps the handle Blizzard returns. Every time a menu tagged `tag` opens, Blizzard first adds its own lines, then calls every registered callback in registration order; MenuKit's adds `menu`'s entries at the end. Tags are Blizzard's: the unit menus are `MENU_UNIT_<TYPE>` (`MENU_UNIT_SELF`, `MENU_UNIT_PARTY`, `MENU_UNIT_RAID_PLAYER`, ...) and carry a `contextData` table (`contextData.unit`, `contextData.name`, ...); `Menu.PrintOpenMenuTags()` in the client lists the tags of the menus open at that moment.
+Calls `Menu.ModifyMenu(tag, callback)` and keeps the handle Blizzard returns. Every time a menu tagged `tag` opens, Blizzard first adds its own lines, then calls every registered callback in registration order; MenuKit's adds `menu`'s entries at the end. When a menu with that tag was generated earlier in the session, `Menu.ModifyMenu` also calls the new callback at once with the last one (Blizzard keeps it in `generatedDescriptions`), so a menu function runs inside `ExtendMenu` with that menu's owner and context data, and its entries are added to that menu, open or not. Tags are Blizzard's: the unit menus are `MENU_UNIT_<TYPE>` (`MENU_UNIT_SELF`, `MENU_UNIT_PARTY`, `MENU_UNIT_RAID_PLAYER`, ...) and carry a `contextData` table (`contextData.unit`, `contextData.name`, ...); `Menu.PrintOpenMenuTags()` in the client lists the tags of the menus open at that moment.
 
 `extension:Remove()` calls the handle's `Unregister`. A handle that raises there is reported, and the extension still counts as removed. At most `maxExtensions` extensions are registered at a time: `MenuKit:ExtendMenu holds at most 64 extensions; remove one, or raise maxExtensions with MenuKit:SetLimits`.
 
