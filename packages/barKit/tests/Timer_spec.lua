@@ -78,6 +78,45 @@ describe("BarKit timers", function()
     assert.is_false(frame:IsShown())
   end)
 
+  it("keeps a bar that onFinished started again, releaseOnFinish or not", function()
+    local restarted = nil
+    bar:Start(1, {
+      releaseOnFinish = true,
+      onFinished = function(finished)
+        finished:Start(5)
+        restarted = finished
+      end,
+    })
+    TestEnv.Advance(frame, 2)
+    assert.are.equal(bar, restarted)
+    assert.is_true(bar:IsRunning())
+    assert.are.equal(5, bar:GetRemaining())
+    assert.are.equal(1, BarKit._state.acquiredCount)
+    assert.is_true(frame:IsShown())
+    assert.are.equal(frame:GetScript("OnUpdate"), BarKit._state.scripts.OnUpdate)
+    TestEnv.Advance(frame, 6)
+    assert.are.equal(1, BarKit._state.acquiredCount)
+  end)
+
+  it(
+    "does not release a bar onFinished released itself, nor the bar acquired in its place",
+    function()
+      local replacement = nil
+      bar:Start(1, {
+        releaseOnFinish = true,
+        onFinished = function(finished)
+          BarKit:Release(finished)
+          replacement = BarKit:Acquire()
+        end,
+      })
+      TestEnv.Advance(frame, 2)
+      assert.are.equal(frame, replacement:GetFrame())
+      assert.are.equal(1, BarKit._state.acquiredCount)
+      assert.is_false(replacement:IsRunning())
+      assert.are.same({}, TestEnv.TakeReportedValues())
+    end
+  )
+
   it("pauses and resumes from where it was", function()
     bar:Start(20)
     TestEnv.Advance(frame, 5)

@@ -7,10 +7,12 @@
 --- this package's module load order and the helpers only its specs need:
 ---
 ---   the screen       `UIParent`, 1920 x 1080 at the origin;
----   the cursor       `SetMouseOver(frame, over)` gives a frame an
----                    `IsMouseOver` answering `over`, which the shared stub
----                    does not model;
----   secret values    `InstallSecretProbe` and `NewSecret`;
+---   the clock        `GetTime`, set with `SetTime` and moved on with
+---                    `Advance`, which also runs a frame's `OnUpdate` once;
+---   scripts          `Run(frame, scriptName, ...)`;
+---   reports          `TakeReportedValues`;
+---   secret values    `InstallSecretProbe`, `NewSecret` and
+---                    `ModelSecretTextAspect`;
 ---   upgrades         `LoadRevision`.
 local FrameworkTestEnv = require("FrameworkTestEnv")
 
@@ -111,6 +113,33 @@ function BarKitTestEnv.NewSecret()
   local secret = {}
   secrets[secret] = true
   return secret
+end
+
+---Give `fontString` the secret text aspect the client gives a font string
+---(measured on Retail 12.1.0 b69933, 2026-09-25, recorded in widgetKit's
+---docs/API.md "Secret values"): once it showed a secret, `GetText` answers a
+---secret even for a plain text set later, until `ClearText` empties it and
+---removes the aspect. The shared frame stub does not model aspects.
+---@param fontString table
+function BarKitTestEnv.ModelSecretTextAspect(fontString)
+  local setText, getText = fontString.SetText, fontString.GetText
+  function fontString:SetText(text)
+    if secrets[text] then
+      self.secretTextAspect = true
+    end
+    setText(self, text)
+  end
+  function fontString:GetText()
+    local text = getText(self)
+    if self.secretTextAspect and not secrets[text] then
+      return BarKitTestEnv.NewSecret()
+    end
+    return text
+  end
+  function fontString:ClearText()
+    self.secretTextAspect = false
+    setText(self, nil)
+  end
 end
 
 ---Load the BarKit source again as a copy carrying `revision`, the way a

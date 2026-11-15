@@ -24,8 +24,8 @@ On Retail, exactly these lines, in this order:
 MoltenCodes Test: running barKit: 3 suites. Results follow when every test has finished.
 MoltenCodes Test: PASS barKit.facade: Registry:Get('barKit', 1) is the BarKit facade with API 1 and every documented method
 MoltenCodes Test: PASS barKit.facade: the installed BarKit carries the revision of the committed manifest
-MoltenCodes Test: PASS barKit.status: the client's StatusBar takes a secret value and range through SetValue and SetMinMax
 MoltenCodes Test: PASS barKit.status: a status bar shows a plain value, label, icon and colour
+MoltenCodes Test: PASS barKit.status: the client's StatusBar takes a secret value and range, and a reused bar's label reads plainly
 MoltenCodes Test: PASS barKit.timer: a timer bar runs to its end on the client's frames, calls onFinished once and releases itself
 MoltenCodes Test: PASS barKit.timer: a released bar's frame is handed out again
 MoltenCodes Test: barKit: 6 passed, 0 failed, 0 skipped, 0 timed out (6 tests)
@@ -45,9 +45,9 @@ skip. Those clients have not been run (no game time; see
 |---|---|
 | `Registry:Get('barKit', 1) ...` | The loaded facade is API 1 with every method docs/API.md lists. |
 | `the installed BarKit carries the revision ...` | Registry selected the committed manifest's revision. |
-| `the client's StatusBar takes a secret value ...` | `SetMinMax(0, secret)` and `SetValue(secret)` with `secretwrap` values raise nothing: the client's status bar draws what the addon may not read. |
-| `a status bar shows a plain value ...` | Value, label and icon are on the client's frame as set. |
-| `a timer bar runs to its end ...` | A 0.5-second timer runs out on the client's `OnUpdate` and `GetTime` within three seconds, calls `onFinished` once and, with `releaseOnFinish`, releases the bar cleared. |
+| `a status bar shows a plain value ...` | Value, label and icon are on the client's frame as set. Runs before the secret test, because a frame given a secret value may keep reading as one; on a second run in one session the value comparison is replaced by a log line when the reused frame answers a secret. |
+| `the client's StatusBar takes a secret value ...` | `SetMinMax(0, secret)`, `SetValue(secret)` and `SetLabel(secret, { allowSecret = true })` with `secretwrap` values raise nothing: the client's status bar draws what the addon may not read. The bar is then released and acquired again (the same frame): a plain label reads back plainly, which proves that BarKit's `ClearText` on release removes the secret text aspect. The log says whether the reused frame's `GetValue` still answers a secret after plain values: Blizzard's API documentation says `SetValue` adds the `BarValue` aspect and names no way for addon code to remove it, and this measures whether it stays. |
+| `a timer bar runs to its end ...` | A 0.5-second timer runs out on the client's `OnUpdate` and `GetTime` within three seconds, calls `onFinished` once and, with `releaseOnFinish`, releases the bar cleared (its value text `nil` or `""`). |
 | `a released bar's frame is handed out again` | The pool reuses the frame and builds no new one. |
 
 ## What a run leaves behind
@@ -66,4 +66,5 @@ saved variable besides the harness's own results.
 
 The chat lines, and after `/reload` the file
 `WTF/Account/<ACCOUNT>/SavedVariables/MoltenCodesTest.lua` from the flavour
-folder.
+folder: it holds the secret test's log line saying whether a reused frame's
+`GetValue` still answers a secret.

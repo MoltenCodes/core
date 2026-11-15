@@ -30,9 +30,9 @@ pull:Start(10, {
 What each piece promises:
 
 - **The client's own status bar.** `SetValue` and `SetMinMax` pass a secret value to the `StatusBar` untouched, so a bar shows what an addon may not read. Any other value must be a number, checked at your line.
-- **Timers that cost nothing when idle.** A running timer runs one `OnUpdate` that sets the fill and writes the time text only when it changes; `Pause` holds it where it is, `Resume` goes on from there, `Stop` ends it without its callback. A status bar runs nothing per frame.
-- **Callbacks cannot break it.** `onFinished` runs protected; one that raises is reported through the error handler.
-- **Pooled and clean.** Bars are frames the client never frees, so they come from a PoolKit pool that keeps every one. `BarKit:Release` gives a bar back cleared of every text, icon, colour, value, timer and callback.
+- **Timers that cost nothing when idle.** A running timer runs one `OnUpdate` that sets the fill and writes the time text only when it changes; `Pause` holds it where it is, `Resume` goes on from there, `Stop` ends it without its callback. A status bar runs nothing per frame. The client runs `OnUpdate` only for a shown frame, so a timer on a hidden bar keeps its end time but finishes, and calls `onFinished`, only once the bar is shown again.
+- **Callbacks cannot break it.** `onFinished` runs protected; one that raises is reported through the error handler. It may start the bar again (a repeating timer), which keeps the bar even with `releaseOnFinish`, or release it.
+- **Pooled and clean.** Bars are frames the client never frees, so they come from a PoolKit pool that keeps every one. `BarKit:Release` gives a bar back cleared of every text, icon, colour, value, timer and callback, its texts emptied with the client's `ClearText` so a secret shown in one use never makes a later plain text read back as a secret.
 - **Bounded.** At most 64 bars acquired at once, up to 512 with `BarKit:SetLimits({ maxBars = n })`; there is no unbounded setting, as each bar is a frame the session keeps.
 
 Non-goals: laying bars out in groups (anchor them yourself, or use WidgetKit's layouts), unit-frame logic, reading unit data.

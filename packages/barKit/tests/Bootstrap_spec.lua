@@ -57,6 +57,19 @@ describe("BarKit bootstrap", function()
     assert.are.equal(0, pool:GetActiveCount())
   end)
 
+  it("takes over a bar acquired by revision 1, whose record has no secret text fields", function()
+    local BarKit = TestEnv.NewPackage()
+    TestEnv.InstallSecretProbe()
+    local bar = BarKit:Acquire()
+    local record = BarKit._state.records[bar]
+    record.secretLabel, record.secretValueText = nil, nil
+    bar:SetLabel("plain")
+    bar:SetLabel(TestEnv.NewSecret(), { allowSecret = true })
+    bar:Start(1, { releaseOnFinish = true })
+    TestEnv.Advance(bar:GetFrame(), 2)
+    assert.are.equal(0, BarKit._state.acquiredCount)
+  end)
+
   it("refuses shared state whose limit holds an invalid value", function()
     local BarKit = TestEnv.NewPackage()
     rawset(BarKit._state.limits, "maxBars", 513)

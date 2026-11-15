@@ -123,6 +123,36 @@ describe("BarKit arguments, limits and secrets", function()
       },
       {
         function()
+          bar:Start(5, { releaseOnFinish = 1 })
+        end,
+        "BarKit.Bar:Start options.releaseOnFinish must be a boolean",
+      },
+      {
+        function()
+          bar:Start(5, { repeating = true })
+        end,
+        "BarKit.Bar:Start options holds an unknown field; it accepts onFinished, fill and releaseOnFinish",
+      },
+      {
+        function()
+          bar:Start(5, true)
+        end,
+        "BarKit.Bar:Start options must be a table or nil",
+      },
+      {
+        function()
+          bar:SetMinMax(0, "max")
+        end,
+        "BarKit.Bar:SetMinMax maximum must be a number",
+      },
+      {
+        function()
+          BarKit:Acquire({ height = -1 })
+        end,
+        "BarKit:Acquire options.height must be a number above 0",
+      },
+      {
+        function()
           bar.GetFrame({})
         end,
         "BarKit.Bar:GetFrame must be called on an acquired BarKit bar; use bar:GetFrame(...)",
@@ -217,6 +247,36 @@ describe("BarKit arguments, limits and secrets", function()
         "must be called on an acquired BarKit bar",
         function()
           bar.Stop(secret)
+        end,
+      },
+      {
+        "BarKit.Bar:SetLabel options.allowSecret must be a boolean",
+        function()
+          bar:SetLabel("x", { allowSecret = secret })
+        end,
+      },
+      {
+        "BarKit.Bar:Start options holds an unknown field",
+        function()
+          bar:Start(5, { [secret] = true })
+        end,
+      },
+      {
+        "BarKit.Bar:Start options.fill must be a boolean",
+        function()
+          bar:Start(5, { fill = secret })
+        end,
+      },
+      {
+        "BarKit:Acquire options.parent must be a frame or nil",
+        function()
+          BarKit:Acquire({ parent = secret })
+        end,
+      },
+      {
+        "BarKit:Release bar must be an acquired BarKit bar",
+        function()
+          BarKit:Release(secret)
         end,
       },
     }) do

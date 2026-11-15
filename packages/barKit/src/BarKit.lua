@@ -35,7 +35,7 @@
 
 local PACKAGE_NAME = "barKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 1
+local IMPLEMENTATION_REVISION = 2
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_POOLKIT_API = 1
 local STATE_SCHEMA = 1
@@ -490,14 +490,30 @@ function dispatch.build()
   return frame
 end
 
+---Empty a font string. `ClearText` also removes the client's secret text
+---aspect, which a font string that showed a secret keeps through a plain
+---`SetText` (measured on Retail 12.1.0 b69933 for WidgetKit, whose
+---docs/API.md records it): without it, the next text drawn there would read
+---back as a secret. Every promised client has `ClearText` (Blizzard's
+---`SimpleFontStringAPIDocumentation.lua` on `live`, `classic` and
+---`classic_era`); a host without it gets `SetText(nil)`.
+---@param fontString table
+local function clearFontString(fontString)
+  if type(fontString.ClearText) == "function" then
+    fontString:ClearText()
+  else
+    fontString:SetText(nil)
+  end
+end
+
 ---Return a bar frame to the pool with nothing of its last use left.
 ---@param frame table
 function dispatch.reset(frame)
   frame:Hide()
   frame:SetScript("OnUpdate", nil)
   frame:ClearAllPoints()
-  frame.label:SetText(nil)
-  frame.valueText:SetText(nil)
+  clearFontString(frame.label)
+  clearFontString(frame.valueText)
   frame.icon:SetTexture(nil)
   frame.icon:Hide()
   frame:SetMinMaxValues(0, 1)
@@ -576,6 +592,10 @@ local function drawTimer(record, remaining)
   local text = timeText(remaining)
   if text ~= record.shownTime then
     record.shownTime = text
+    if record.secretValueText then
+      record.secretValueText = false
+      clearFontString(frame.valueText)
+    end
     frame.valueText:SetText(text)
   end
 end
@@ -601,7 +621,9 @@ function dispatch.tick(frame)
       reportError(failure)
     end
   end
-  if release and records[record.handle] == record then
+  -- `onFinished` may have started the bar again or released it; a bar
+  -- running a new timer is the addon's again, and a released one is gone.
+  if release and records[record.handle] == record and not record.endsAt then
     BarKit:Release(record.handle)
   end
 end
@@ -635,8 +657,17 @@ local function setText(record, fontString, text, options, label)
   elseif type(text) ~= "nil" and type(text) ~= "string" and type(text) ~= "number" then
     error(label .. " text must be a string, a number or nil", 3)
   end
-  fontString:SetText((not isSecret(text) and type(text) == "number") and tostring(text) or text)
-  if fontString == record.frame.valueText then
+  local isValueText = fontString == record.frame.valueText
+  local secretField = isValueText and "secretValueText" or "secretLabel"
+  local secret = isSecret(text)
+  if not secret and record[secretField] then
+    -- The font string showed a secret: remove the client's aspect first, so
+    -- this plain text reads back as itself.
+    clearFontString(fontString)
+  end
+  record[secretField] = secret
+  fontString:SetText((not secret and type(text) == "number") and tostring(text) or text)
+  if isValueText then
     -- A text set by hand replaces the time text until the next tick.
     record.shownTime = false
   end
@@ -905,6 +936,8 @@ local function packageAcquire(self, options)
     onFinished = false,
     releaseOnFinish = false,
     shownTime = false,
+    secretLabel = false,
+    secretValueText = false,
   }
   drawIcon(record)
   records[handle] = record

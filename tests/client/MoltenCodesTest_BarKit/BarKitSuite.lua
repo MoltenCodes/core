@@ -7,7 +7,9 @@
 --
 --   * the installed facade and its committed revision;
 --   * the client's `StatusBar` taking a secret value, made by `secretwrap`,
---     through `SetValue` and `SetMinMax` without an error;
+--     through `SetValue` and `SetMinMax` without an error, and a released
+--     bar's label reading a plain text plainly after it showed a secret;
+--     whether the reused frame's `GetValue` stays secret is logged;
 --   * a timer bar run to its end on the client's own frame updates and
 --     clock, `onFinished` called once and the bar released;
 --   * a released bar's frame handed out again.
@@ -135,8 +137,32 @@ end)
 
 local status = newSuite("status")
 
+-- The plain test runs first: the secret test leaves its frame in the pool,
+-- and a frame given a secret value may keep the client's BarValue aspect
+-- (see the secret test), which would make `GetValue` below answer a secret.
+status:Test("a status bar shows a plain value, label, icon and colour", function(ctx)
+  local bar = centredBar()
+  bar:SetMinMax(0, 200)
+  bar:SetValue(150)
+  bar:SetLabel("Health")
+  bar:SetValueText("150 / 200")
+  bar:SetIcon(136243)
+  bar:SetColor(0.1, 0.8, 0.1)
+  local frame = bar:GetFrame()
+  local shown = frame:GetValue()
+  if type(isSecretValue) == "function" and isSecretValue(shown) then
+    -- A second run in one session can hand out the frame the secret test
+    -- used; its value then reads as a secret and is not compared.
+    ctx:Log("this frame showed a secret value earlier in the session; GetValue answers a secret")
+  else
+    ctx:Expect(shown):ToBe(150)
+  end
+  ctx:Expect(frame.label:GetText()):ToBe("Health")
+  ctx:Expect(frame.icon:IsShown()):ToBe(true)
+end)
+
 local SECRET_TEST =
-  "the client's StatusBar takes a secret value and range through SetValue and SetMinMax"
+  "the client's StatusBar takes a secret value and range, and a reused bar's label reads plainly"
 
 if type(isSecretValue) ~= "function" or type(secretWrap) ~= "function" then
   status:Skip(
@@ -148,29 +174,37 @@ elseif not Harness:CanMakeSecrets() then
 else
   status:Test(SECRET_TEST, function(ctx)
     local bar = centredBar()
+    local frame = bar:GetFrame()
     local value, maximum = secretWrap(60), secretWrap(100)
     local ok, failure = pcall(function()
       bar:SetMinMax(0, maximum)
       bar:SetValue(value)
+      bar:SetLabel(secretWrap("Secret name"), { allowSecret = true })
     end)
     ctx:Log("result: " .. tostring(ok) .. " " .. tostring(failure))
     ctx:Expect(ok):ToBe(true)
+
+    -- BarKit revision 2 empties a released bar's texts with `ClearText`,
+    -- which removes the client's secret text aspect; the next plain label on
+    -- the same frame must read back as itself.
+    BarKit:Release(bar)
+    local again = centredBar()
+    ctx:Expect(again:GetFrame()):ToBe(frame)
+    again:SetLabel("Plain name")
+    local text = frame.label:GetText()
+    ctx:Expect(isSecretValue(text)):ToBe(false)
+    if not isSecretValue(text) then
+      ctx:Expect(text):ToBe("Plain name")
+    end
+
+    -- Measured, not judged: Blizzard's API documentation says SetValue and
+    -- SetMinMaxValues add the BarValue secret aspect, and names no way for
+    -- addon code to remove it (SetToDefaults is protected).
+    again:SetMinMax(0, 10)
+    again:SetValue(5)
+    ctx:Log("reused frame's GetValue is secret: " .. tostring(isSecretValue(frame:GetValue())))
   end)
 end
-
-status:Test("a status bar shows a plain value, label, icon and colour", function(ctx)
-  local bar = centredBar()
-  bar:SetMinMax(0, 200)
-  bar:SetValue(150)
-  bar:SetLabel("Health")
-  bar:SetValueText("150 / 200")
-  bar:SetIcon(136243)
-  bar:SetColor(0.1, 0.8, 0.1)
-  local frame = bar:GetFrame()
-  ctx:Expect(frame:GetValue()):ToBe(150)
-  ctx:Expect(frame.label:GetText()):ToBe("Health")
-  ctx:Expect(frame.icon:IsShown()):ToBe(true)
-end)
 
 -- barKit.timer ---------------------------------------------------------------
 
@@ -196,7 +230,11 @@ timer:Test(
       :ToBe(true)
     ctx:Expect(calls):ToBe(1)
     ctx:Expect(frame:IsShown()):ToBe(false)
-    ctx:Expect(frame.valueText:GetText()):ToBe(nil)
+    -- Emptied with `ClearText`; the client answers an empty text with `nil`
+    -- (measured for SetText on Retail 12.1.0, widgetKit docs/API.md), and
+    -- `""` is accepted in case `ClearText` answers differently.
+    local text = frame.valueText:GetText()
+    ctx:Expect(text == nil or text == ""):ToBe(true)
   end
 )
 
