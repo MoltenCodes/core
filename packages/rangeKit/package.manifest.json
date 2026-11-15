@@ -1,0 +1,14 @@
+{
+  "name": "rangeKit",
+  "displayName": "RangeKit",
+  "description": "Unit range estimates for World of Warcraft addons: the distance to a unit bracketed in yards from the player's own spells and the client's interact distances, and whether it is within a given range.",
+  "version": "0.1.0",
+  "license": "MIT",
+  "api": 1,
+  "revision": 1,
+  "dependencies": {
+    "registry": {
+      "api": 2
+    }
+  }
+}

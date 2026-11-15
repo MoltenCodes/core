@@ -1,0 +1,111 @@
+local TestEnv = require("RangeKitTestEnv")
+
+describe("RangeKit bootstrap", function()
+  after_each(TestEnv.Reset)
+
+  it("publishes through Registry", function()
+    local RangeKit, Registry = TestEnv.NewPackage()
+    local registered, revision = Registry:Get("rangeKit", 1)
+    assert.are.equal(RangeKit, registered)
+    assert.are.equal(RangeKit.REVISION, revision)
+  end)
+
+  it("returns the same facade on a duplicate embedded load and keeps its listeners", function()
+    local RangeKit = TestEnv.NewPackage()
+    local connection = RangeKit:OnCheckersChanged(function() end)
+    local eventFrame = rawget(RangeKit._state, "eventFrame")
+    local reloaded = TestEnv.ReloadPackage()
+    assert.are.equal(RangeKit, reloaded)
+    assert.are.equal(eventFrame, rawget(reloaded._state, "eventFrame"))
+    assert.is_true(connection:IsConnected())
+  end)
+
+  it("does not reinterpret private state owned by a newer compatible revision", function()
+    local RangeKit, Registry = TestEnv.NewPackage()
+    local shippedRevision = RangeKit.REVISION
+    local upgraded, previous = Registry:Register("rangeKit", 1, 99)
+    assert.are.equal(RangeKit, upgraded)
+    assert.are.equal(shippedRevision, previous)
+
+    rawset(RangeKit, "REVISION", 99)
+    rawset(RangeKit, "_state", { schema = 999 })
+    package.loaded["RangeKit"] = nil
+    local reloaded = require("RangeKit")
+    assert.are.equal(RangeKit, reloaded)
+    assert.are.equal(99, reloaded.REVISION)
+  end)
+
+  it(
+    "upgrades in place: the event frame, listeners, lists and the limit run the new code",
+    function()
+      local RangeKit = TestEnv.NewPackage()
+      TestEnv.Learn(589, 40)
+      local calls = 0
+      local connection = RangeKit:OnCheckersChanged(function()
+        calls = calls + 1
+      end)
+      RangeKit:SetLimits({ maxListeners = 100 })
+      TestEnv.PlaceUnit("target", 35, "hostile")
+      assert.are.same({ 28, 40 }, { RangeKit:GetRange("target") })
+      assert.are.equal(1, calls)
+      local eventFrame = rawget(RangeKit._state, "eventFrame")
+
+      local upgraded = TestEnv.LoadRevision(RangeKit.REVISION + 1)
+      assert.are.equal(RangeKit, upgraded)
+      assert.are.equal(2, upgraded.REVISION)
+      assert.are.equal(100, upgraded:GetLimits().maxListeners)
+      assert.are.equal(eventFrame, rawget(upgraded._state, "eventFrame"))
+      assert.are.same({ 28, 40 }, { upgraded:GetRange("target") })
+
+      TestEnv.Learn(5019, 30)
+      TestEnv.Emit("SPELLS_CHANGED")
+      assert.are.equal(2, calls)
+      assert.are.same({ 30, 40 }, { upgraded:GetRange("target") })
+      assert.is_true(connection:Disconnect())
+    end
+  )
+
+  it("refuses shared state whose limit or lists hold an invalid value", function()
+    local RangeKit = TestEnv.NewPackage()
+    rawset(RangeKit._state.limits, "maxListeners", 257)
+    TestEnv.expectErrorContaining("package state is corrupted or incomplete", function()
+      TestEnv.ReloadPackage()
+    end)
+
+    RangeKit = TestEnv.NewPackage()
+    rawset(RangeKit._state.lists, "pet", nil)
+    TestEnv.expectErrorContaining("package state is corrupted or incomplete", function()
+      TestEnv.ReloadPackage()
+    end)
+
+    RangeKit = TestEnv.NewPackage()
+    rawset(RangeKit._state.lists.harm, "spells", nil)
+    TestEnv.expectErrorContaining("package state is corrupted or incomplete", function()
+      TestEnv.ReloadPackage()
+    end)
+
+    RangeKit = TestEnv.NewPackage()
+    rawset(RangeKit._state, "lists", false)
+    TestEnv.expectErrorContaining("package state is corrupted or incomplete", function()
+      TestEnv.ReloadPackage()
+    end)
+  end)
+
+  it("requires Registry", function()
+    TestEnv.Reset()
+    TestEnv.InstallWowApi()
+    local ok, value = pcall(require, "RangeKit")
+    assert.is_false(ok)
+    assert.is_truthy(tostring(value):find("Registry API 2", 1, true))
+  end)
+
+  it("refuses an incomplete facade left by an earlier failed load", function()
+    TestEnv.Reset()
+    TestEnv.InstallWowApi()
+    local Registry = require("Registry")
+    Registry:Register("rangeKit", 1, 1)
+    local ok, value = pcall(TestEnv.requireAfterFailedLoad, "RangeKit")
+    assert.is_false(ok)
+    assert.is_truthy(tostring(value):find("MoltenCodes RangeKit", 1, true))
+  end)
+end)

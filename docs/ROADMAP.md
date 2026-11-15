@@ -1969,7 +1969,7 @@ code and treated as agreed as under decision 15.
 - [ ] **clientKit** deprecation warnings (W13).
 - [ ] **settingsKit** spec profiles, with OptionsKit's `ProfileOptions` choice.
 - [ ] **widgetKit** virtualised lists (`ScrollList`).
-- [ ] **rangeKit** — unit range estimates.
+- [x] **rangeKit** — unit range estimates (2026-11-15; client suite not run).
 - [ ] **unitFrameKit** — the unit frame shown for a unit.
 - [ ] **codecKit** native DEFLATE through `C_EncodingUtil`.
 
@@ -2358,7 +2358,18 @@ code and treated as agreed as under decision 15.
    `noItems`, `maxCacheAge`), API.md (the per-class candidate list with its
    source, the combat rule, the yard values), CHANGELOG, tests/README;
    EMBEDDING rows; ARCHITECTURE's package list.
-9. Status: recorded 2026-11-15 under core decision 16; code follows.
+9. Status: implemented 2026-11-15 under core decision 16, 0.1.0, revision
+   1, 41 specs; the client suite (`tests/client/MoltenCodesTest_RangeKit`)
+   is written and has not been run in a client. Deviations from the points
+   above: a spell with a minimum range is joined with a checker, without a
+   minimum of its own, whose range lies from that minimum up to the spell's
+   range (a checker below the minimum would leave a gap); the pet list holds
+   the pet spells and the friend spells together; at equal range a spell is
+   kept over an interact checker, since it stays usable in combat; no cap on
+   checkers in code, because the built-in data holds at most four spells per
+   kind; without the spell functions RangeKit still answers from interact
+   checks (`nil` only without `UnitExists`); the event frame is made at
+   load, or at the first query when `CreateFrame` appears later.
 
 Candidate spell IDs (the built-in list; reach is read from the client).
 Taken from LibRangeCheck-3.0 minor 39 (MIT), which the Kit's code does not

@@ -118,6 +118,10 @@
   - changed-files:
       - any-glob-to-any-file: "packages/profileKit/**"
 
+"kit: rangeKit":
+  - changed-files:
+      - any-glob-to-any-file: "packages/rangeKit/**"
+
 "kit: readinessKit":
   - changed-files:
       - any-glob-to-any-file: "packages/readinessKit/**"

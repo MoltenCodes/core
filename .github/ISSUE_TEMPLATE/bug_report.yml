@@ -76,6 +76,7 @@ body:
         - panelKit
         - poolKit
         - profileKit
+        - rangeKit
         - readinessKit
         - schedulerKit
         - schemaKit

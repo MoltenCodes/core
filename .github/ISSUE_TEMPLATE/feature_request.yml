@@ -51,6 +51,7 @@ body:
         - panelKit
         - poolKit
         - profileKit
+        - rangeKit
         - readinessKit
         - Repository tooling
         - schedulerKit

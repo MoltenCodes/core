@@ -36,6 +36,7 @@ Current packages:
 - [`commKit`](commKit/) — addon messaging: chunk protocol, bounded reassembly, refusing priority queues, session bandwidth budget, sync sets.
 - [`widgetKit`](widgetKit/) — pooled versioned widgets, List/Fill/Flow layouts, anchors, position bindings, OptionsKit renderer.
 - [`editModeKit`](editModeKit/) — Edit Mode for addon frames: a labelled overlay that drags each frame, positions saved per layout.
+- [`rangeKit`](rangeKit/) — unit range estimates in yards from the player's spells and interact distances.
 - [`glowKit`](glowKit/) — glows: pixel lines running round a frame and a pulsing border, keyed per frame, on pooled overlays.
 - [`bindingKit`](bindingKit/) — override key bindings in named scopes: commands, button clicks and Lua functions, applied after combat when set during it.
 - [`toastKit`](toastKit/) — short notifications: titled toasts with icons and click handlers, stacked at one anchor, held under the cursor, fading out.

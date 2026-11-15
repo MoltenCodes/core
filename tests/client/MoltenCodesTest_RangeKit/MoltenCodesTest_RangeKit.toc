@@ -1,0 +1,11 @@
+## Interface: 120105, 50504, 20506, 11509
+## Title: MoltenCodes Test: RangeKit
+## Notes: Real-client test suites for MoltenCodes RangeKit. Run them with /mct run rangeKit. Two tests wait for you: one to walk away from your target, one to change a talent.
+## Author: MoltenCodes
+## Version: 1.0.0
+## Dependencies: MoltenCodesTest
+## X-Category: Development Tools
+## X-License: MIT
+
+# Development only: never ship this addon. See tests/client/README.md.
+RangeKitSuite.lua

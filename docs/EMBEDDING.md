@@ -155,6 +155,7 @@ registry
 ├──→ dialogKit
 ├──→ bindingKit
 ├──→ editModeKit
+├──→ rangeKit
 ├──→ poolKit
 │       ├──→ codecKit
 │       ├──→ tooltipKit
@@ -223,6 +224,7 @@ optionsKit/OptionsKit.lua
 widgetKit/WidgetKit.lua
 panelKit/PanelKit.lua
 profileKit/ProfileKit.lua
+rangeKit/RangeKit.lua
 readinessKit/ReadinessKit.lua
 settingsKit/SettingsKit.lua
 toastKit/ToastKit.lua
@@ -264,7 +266,7 @@ optional and found at call time, so embedding one Kit costs this many files:
 
 | Files | Kit | Alongside `registry/Registry.lua` |
 |---|---|---|
-| 2 | `clientKit`, `cacheKit`, `compatKit`, `profileKit`, `schemaKit`, `localeKit`, `hookKit`, `interopKit`, `bridgeKit`, `menuKit`, `dialogKit`, `bindingKit`, `editModeKit`, `poolKit`, `signalKit`, `timerKit` | nothing |
+| 2 | `clientKit`, `cacheKit`, `compatKit`, `profileKit`, `schemaKit`, `localeKit`, `hookKit`, `interopKit`, `bridgeKit`, `menuKit`, `dialogKit`, `bindingKit`, `editModeKit`, `rangeKit`, `poolKit`, `signalKit`, `timerKit` | nothing |
 | 3 | `apiKit` | nothing; the third file is the flavour file of the client you support (one more per further flavour) |
 | 3 | `codecKit`, `tooltipKit`, `barKit`, `toastKit`, `glowKit` | `poolKit` |
 | 3 | `commandKit` | `schemaKit` |
@@ -672,6 +674,7 @@ actually touch, which is deliberately small:
 | `testKit` (development only) | LifecycleKit's and SchedulerKit's surfaces | `issecretvalue` (nothing treated as secret), `issecurevariable` (`ToBeSecure` fails), `GetTimePreciseSec` (`durationMs` 0), `geterrorhandler` (`print`), EventKit and TimerKit API 1 through `Registry:Find` |
 | `commKit` | SignalKit's, EventKit's, TimerKit's, SchedulerKit's and PoolKit's surfaces; `GetTimePreciseSec`; `C_ChatInfo.SendAddonMessage` (legacy global fallback; else `Send` refuses `"unavailable"`) | `C_ChatInfo.RegisterAddonMessagePrefix` and `IsAddonMessagePrefixRegistered` (legacy globals, then nothing registered), `C_ChatInfo.SendAddonMessageLogged` (logged sends refused), the events `CHAT_MSG_ADDON`, `CHAT_MSG_ADDON_LOGGED`, `GROUP_ROSTER_UPDATE`, `PLAYER_ENTERING_WORLD`, `GetFramerate` (no low-frame-rate mode), `UnitInParty` and `UnitInRaid` (no roster eviction; streams still expire), `Enum` (12.x values assumed), `securecallfunction` (`pcall`), `issecretvalue`, `geterrorhandler` (`print`), CodecKit API 1 (`SyncSet` raises), HookKit API 1 (outside traffic uncharged), SchemaKit API 1 (`schema` raises); LifecycleKit API 1 through `Registry:Find` (otherwise CommKit's own `PLAYER_LOGOUT` watcher closes its addon scopes) |
 | `widgetKit` | PoolKit's and SignalKit's surfaces; `CreateFrame` | `UIParent` (released frames rest on a hidden holder), `issecretvalue` (nothing secret), `geterrorhandler` (`print`), `ColorPickerFrame:SetupColorPickerAndShow` (a click fires the current colour), `IsAltKeyDown`, `IsControlKeyDown`, `IsShiftKeyDown` (no modifiers), OptionsKit API 1 through `Registry:Find` (`RenderOptions` raises at the caller), SchedulerKit API 1 (saves are immediate), MediaKit API 1 (`CreateMediaPicker` raises; the renderer uses the option's `values`) |
+| `rangeKit` | nothing (without `UnitExists` every unit counts as missing: `nil`) | `CreateFrame` (no rebuild events until it exists), `C_EventUtils` (every rebuild event registered), `UnitClass`, `C_SpellBook`, `C_Spell`, `Enum` (no spell checkers), `CheckInteractDistance` (no interact checkers), `UnitCanAttack`, `UnitCanAssist`, `UnitIsDeadOrGhost`, `UnitIsUnit` (answer counts as no), `InCombatLockdown` (never in combat), `issecretvalue` (nothing secret), `geterrorhandler` (`print`) |
 | `editModeKit` | `CreateFrame`, `UIParent` and `EventRegistry` (`Register` raises at the caller) | `EditModeManagerFrame` (the layout is named `"default"`), `InCombatLockdown` (never in combat: moves happen at once), `issecretvalue` (nothing secret), `geterrorhandler` (`print`) |
 | `glowKit` | PoolKit's surface; `CreateFrame` (`Start` raises at the caller) | `issecretvalue` (nothing secret) |
 | `bindingKit` | `CreateFrame`, `SetOverrideBinding`, `SetOverrideBindingClick` and `ClearOverrideBindings` (`CreateScope` raises at the caller) | `InCombatLockdown` (never in combat: changes apply at once), `issecretvalue` (nothing secret), `geterrorhandler` (`print`) |
