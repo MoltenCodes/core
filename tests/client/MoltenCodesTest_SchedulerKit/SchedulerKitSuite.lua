@@ -6,7 +6,8 @@
 -- inside the game client with the installed MoltenCodes addon, what that
 -- fixture can only simulate:
 --
---   * the installed facade, its committed revision and its package defaults;
+--   * the installed facade, its committed revision, its three parts and its
+--     package defaults;
 --   * the three clocks SchedulerKit relies on: `GetTime` fixed for a frame,
 --     `debugprofilestop` (the budget clock) and `GetTimePreciseSec`, with the
 --     readings logged;
@@ -198,7 +199,11 @@ local FACADE_METHODS = {
   "Lane",
   "SetLimits",
   "GetLimits",
+  "HasPart",
 }
+
+--- The parts of the coalescing family; the MoltenCodes addon embeds them all.
+local PARTS = { "Coalescing", "Lanes", "Watch" }
 
 --- Every method docs/API.md of schedulerKit lists on a job handle.
 local JOB_METHODS = {
@@ -821,6 +826,18 @@ facade:Test(
       end
     end
     ctx:Fail("Expected.lua does not list schedulerKit")
+  end
+)
+
+facade:Test(
+  "the installed MoltenCodes addon carries the Coalescing, Lanes and Watch parts, and HasPart reports each",
+  function(ctx)
+    for _, part in ipairs(PARTS) do
+      local loaded = SchedulerKit:HasPart(part)
+      ctx:Log(("part %s loaded: %s"):format(part, tostring(loaded)))
+      ctx:Expect(loaded):ToBe(true)
+    end
+    ctx:Expect(SchedulerKit:HasPart("NoSuchPart")):ToBe(false)
   end
 )
 

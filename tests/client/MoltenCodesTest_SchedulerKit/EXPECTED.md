@@ -36,6 +36,7 @@ client):
 MoltenCodes Test: running schedulerKit: 12 suites. Results follow when every test has finished.
 MoltenCodes Test: PASS schedulerKit.facade: Registry:Get('schedulerKit', 1) is the SchedulerKit facade with API 1 and four priorities, and its jobs, scopes and contexts carry every documented method
 MoltenCodes Test: PASS schedulerKit.facade: the installed SchedulerKit carries the revision of the committed manifest
+MoltenCodes Test: PASS schedulerKit.facade: the installed MoltenCodes addon carries the Coalescing, Lanes and Watch parts, and HasPart reports each
 MoltenCodes Test: PASS schedulerKit.facade: the frame budget is the 2 ms default, the resume ceiling the 1000 default, and the runaway threshold the 500 ms the harness sets for a run
 MoltenCodes Test: PASS schedulerKit.clocks: GetTime stays fixed within a frame while debugprofilestop and GetTimePreciseSec advance together over 5 ms of work, and all three move across a rendered frame (readings logged)
 MoltenCodes Test: PASS schedulerKit.budget: a job of forty 0.5 ms units that yields when ShouldYield says so is spread over rendered frames, spending at most the budget plus one unit in each (ms per frame logged)
@@ -213,8 +214,9 @@ method, so every such message names the same line number.
 
 | Test | Proves in the real client |
 |---|---|
-| `Registry:Get('schedulerKit', 1) is the SchedulerKit facade ...` | The facade the client loaded is API 1 with all twenty facade methods of docs/API.md, `UNBOUNDED`, and the priorities ordered `HIGH < NORMAL < LOW < IDLE`; a scope carries its thirteen methods, a job its ten, and the context a running job receives its four; `GetJob` inside the job is the handle `Schedule` returned. |
+| `Registry:Get('schedulerKit', 1) is the SchedulerKit facade ...` | The facade the client loaded is API 1 with all twenty-one facade methods of docs/API.md, `UNBOUNDED`, and the priorities ordered `HIGH < NORMAL < LOW < IDLE`; a scope carries its thirteen methods, a job its ten, and the context a running job receives its four; `GetJob` inside the job is the handle `Schedule` returned. |
 | `the installed SchedulerKit carries the revision ...` | Registry's selected revision and the facade's `REVISION` are both the committed manifest's, not an older or newer embedded copy. |
+| `the installed MoltenCodes addon carries the Coalescing, Lanes and Watch parts ...` | The standalone addon loads `SchedulerKit-Coalescing.lua`, `SchedulerKit-Lanes.lua` and `SchedulerKit-Watch.lua` after the core, so `HasPart` answers `true` for each and `false` for a name that is no part. The log gives each answer. |
 | `the frame budget is the 2 ms default ...` | With no other addon retuning SchedulerKit, the budget is 2 ms and the resume ceiling 1000; the runaway threshold reads 500 ms because the harness raised it for the run. The log gives all three. |
 | `GetTime stays fixed within a frame ...` | Over 5 ms of busy work in one frame, `GetTime` does not move (the frame key every frame-counting test relies on), `debugprofilestop` advances at least 5 ms, and `GetTimePreciseSec` advances at least as far less 0.5 ms; across the next rendered frame all three move. The log gives every delta: whether `debugprofilestop` counts only addon time or wall time shows as a difference between its delta and the wall clock's over a frame. |
 | `a job of forty 0.5 ms units ...` | A job that checks `ShouldYield` after each 0.5 ms unit is spread over at least seven rendered frames (20 ms of work at no more than 3 ms per frame), and no frame gives it more than the budget plus one unit plus 0.5 ms. The log gives the budget, the frames, the yields and the milliseconds spent in each frame. |

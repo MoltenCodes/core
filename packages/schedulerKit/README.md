@@ -18,7 +18,7 @@ SchedulerKit is **not** a preemptive thread scheduler. A Lua callback must eithe
 - manual and addon-owned cancellation scopes; a closed manual scope can be reopened with `Scope:Reopen()`, which is how ModuleKit keeps a module's `scope.Jobs` across enable cycles;
 - addon scopes closed through `SchedulerKit:CloseAddonScopes(addonName)`; an addon scope closes at logout whenever LifecycleKit or EventKit is loaded, and otherwise by your own call (see "At logout" in [`docs/API.md`](docs/API.md));
 - callback-error isolation, captured tracebacks, and per-job diagnostics;
-- the coalescing family: `Debounce` (quiet-period calls with `leading` and `maxWaitSeconds`), `Coalesce` (keys collected once per interval), `Watch` (shared-ticker polling), and named **lanes** that ration a scarce resource with an in-flight cap, a minimum interval, retry with backoff and a bounded queue;
+- the coalescing family, in three optional parts an addon embeds only when it uses them: `Debounce` (quiet-period calls with `leading` and `maxWaitSeconds`) and `Coalesce` (keys collected once per interval) in **Coalescing**, named **lanes** that ration a scarce resource with an in-flight cap, a minimum interval, retry with backoff and a bounded queue in **Lanes**, and `Watch` (shared-ticker polling) in **Watch**; `SchedulerKit:HasPart(name)` says which are loaded;
 - stale delayed-callback protection;
 - compatible embedded-copy identity through Registry.
 
@@ -58,6 +58,9 @@ SchedulerKit replaces no Ace3 library as a whole: AceTimer-3.0 is TimerKit,
 and AceBucket-3.0's event buckets are EventKit `Coalesce`. Its message buckets
 are SchedulerKit `Coalesce`:
 
+Embed `schedulerKit\parts\SchedulerKit-Coalescing.lua` after the core for
+these.
+
 | AceBucket-3.0 | SchedulerKit |
 |---|---|
 | `self:RegisterBucketMessage(message, interval, callback)` | `local changed = work:Coalesce(callback, interval)`, called with each key from the message's subscriber: `bus:Subscribe(topic, function(key) changed(key) end)` |
@@ -81,9 +84,27 @@ troubleshooting. This package's load order inside a consuming addon is:
 Libs\MoltenCodes\registry\Registry.lua
 Libs\MoltenCodes\timerKit\TimerKit.lua
 Libs\MoltenCodes\schedulerKit\SchedulerKit.lua
+Libs\MoltenCodes\schedulerKit\parts\SchedulerKit-Coalescing.lua
+Libs\MoltenCodes\schedulerKit\parts\SchedulerKit-Lanes.lua
+Libs\MoltenCodes\schedulerKit\parts\SchedulerKit-Watch.lua
 ```
 
-Minimum footprint: Embed 3 files: Registry, TimerKit, SchedulerKit.
+Minimum footprint: Embed 3 files: Registry, TimerKit, SchedulerKit. The three
+part files are optional; each follows the core, and Lanes and Watch follow
+Coalescing. `python3 -m tooling.package.embeds schedulerKit schedulerKit/Coalescing`
+prints the lines for a selection.
+
+| Part | Adds | Resident memory (host Lua 5.1, debug info kept) |
+|---|---|---:|
+| core | jobs, scopes, priorities, the frame budget, delays, logout coverage | 98.5 KB |
+| Coalescing | `Debounce`, `Coalesce`, the family's shared machinery | 53.2 KB |
+| Lanes | `Lane`, `options.lane` | 25.1 KB |
+| Watch | `Watch` | 11.7 KB |
+
+Measured 2026-11-15 on host Lua 5.1, the fake client, one process; the whole file of revision 21 held 179.7 KB.
+
+A member of a part that is not loaded raises at the caller's line with the
+file to embed; see [Core and parts](docs/API.md#core-and-parts).
 
 Direct runtime dependencies: Registry API 2, TimerKit API 1.
 Every file above is required; omitting one makes this package raise at

@@ -436,11 +436,14 @@ describe("SchedulerKit error levels", function()
     require("TimerKit")
 
     local old = TestEnv.LoadRevision(15)
+
+    TestEnv.LoadParts()
     local scope = old:CreateScope()
     local job = scope:After(5, noop)
 
     package.loaded["SchedulerKit"] = nil
     local upgraded = require("SchedulerKit")
+    TestEnv.LoadParts()
     assert.are.equal(old, upgraded)
     assert.is_true(upgraded.REVISION > 15)
 

@@ -2,7 +2,7 @@ local TestEnv = require("SchedulerKitTestEnv")
 
 -- The implementation revision this suite was written against; Manifest_spec
 -- holds it to package.manifest.json.
-local CURRENT_REVISION = 21
+local CURRENT_REVISION = 22
 
 describe("SchedulerKit bootstrap", function()
   after_each(TestEnv.Reset)
@@ -148,6 +148,8 @@ describe("SchedulerKit bootstrap", function()
     lowQueue.tail = 1
 
     local upgraded = require("SchedulerKit")
+
+    TestEnv.LoadParts()
     assert.are.equal(old, upgraded)
     assert.are.equal(CURRENT_REVISION, upgraded.REVISION)
 
@@ -221,6 +223,8 @@ describe("SchedulerKit bootstrap", function()
     }, scopeMetatable)
 
     local upgraded = require("SchedulerKit")
+
+    TestEnv.LoadParts()
     assert.are.equal(old, upgraded)
     assert.are.equal(CURRENT_REVISION, upgraded.REVISION)
     local state = rawget(upgraded, "_state")
@@ -251,6 +255,8 @@ describe("SchedulerKit bootstrap", function()
     require("TimerKit")
 
     local old = TestEnv.LoadRevision(7)
+
+    TestEnv.LoadParts()
     assert.are.equal(7, old.REVISION)
     local lane = old:Lane("upgraded", { retry = { attempts = 2, backoffSeconds = 1 } })
     -- Revision 7 lanes kept no admitted set.
@@ -258,6 +264,7 @@ describe("SchedulerKit bootstrap", function()
 
     package.loaded["SchedulerKit"] = nil
     local upgraded = require("SchedulerKit")
+    TestEnv.LoadParts()
     assert.are.equal(old, upgraded)
     assert.are.equal(CURRENT_REVISION, upgraded.REVISION)
     assert.are.equal(lane, upgraded:Lane("upgraded"))
@@ -282,6 +289,7 @@ describe("SchedulerKit bootstrap", function()
     -- scopes are given the subscription revision 9 would have stored, and
     -- the second one fails to disconnect, which must not stop the upgrade.
     local old = TestEnv.LoadRevision(9)
+    TestEnv.LoadParts()
     local disconnects = 0
     local carried = old:ForAddon("Carried")
     local failing = old:ForAddon("Failing")
@@ -303,6 +311,7 @@ describe("SchedulerKit bootstrap", function()
 
     package.loaded["SchedulerKit"] = nil
     local upgraded = require("SchedulerKit")
+    TestEnv.LoadParts()
 
     assert.are.equal(old, upgraded)
     assert.are.equal(CURRENT_REVISION, upgraded.REVISION)
@@ -332,11 +341,14 @@ describe("SchedulerKit bootstrap", function()
     require("TimerKit")
 
     local old = TestEnv.LoadRevision(10)
+
+    TestEnv.LoadParts()
     rawset(old._state, "limits", nil)
     rawset(old._state, "unbounded", nil)
 
     package.loaded["SchedulerKit"] = nil
     local upgraded = require("SchedulerKit")
+    TestEnv.LoadParts()
 
     assert.are.equal(old, upgraded)
     assert.are.equal("table", type(upgraded.UNBOUNDED))
@@ -355,6 +367,8 @@ describe("SchedulerKit bootstrap", function()
     require("TimerKit")
 
     local old = TestEnv.LoadRevision(12)
+
+    TestEnv.LoadParts()
     old:SetMaxResumesPerFrame(1)
     local slices = 0
     local yielding = old:Schedule(function(context)
@@ -372,6 +386,7 @@ describe("SchedulerKit bootstrap", function()
 
     package.loaded["SchedulerKit"] = nil
     local upgraded = require("SchedulerKit")
+    TestEnv.LoadParts()
     assert.are.equal(old, upgraded)
     assert.are.equal(CURRENT_REVISION, upgraded.REVISION)
 
@@ -403,6 +418,8 @@ describe("SchedulerKit bootstrap", function()
     require("TimerKit")
 
     local old = TestEnv.LoadRevision(current - 1)
+
+    TestEnv.LoadParts()
     old:SetMaxResumesPerFrame(1)
     local state = old._state
     local lane = old:Lane("previous")
@@ -418,6 +435,7 @@ describe("SchedulerKit bootstrap", function()
 
     package.loaded["SchedulerKit"] = nil
     local upgraded = require("SchedulerKit")
+    TestEnv.LoadParts()
     assert.are.equal(old, upgraded)
     assert.are.equal(state, upgraded._state)
     assert.are.equal(current, upgraded.REVISION)
@@ -449,6 +467,8 @@ describe("SchedulerKit bootstrap", function()
     require("TimerKit")
 
     local old = TestEnv.LoadRevision(17)
+
+    TestEnv.LoadParts()
     local state = old._state
     -- Revision 17 had no worker coroutines: a job's coroutine was its own.
     rawset(state, "workerFinished", nil)
@@ -457,6 +477,7 @@ describe("SchedulerKit bootstrap", function()
 
     package.loaded["SchedulerKit"] = nil
     local upgraded = require("SchedulerKit")
+    TestEnv.LoadParts()
     assert.are.equal(old, upgraded)
     assert.are.equal("table", type(state.workerFinished))
     assert.are.same({}, state.idleWorkers)
@@ -475,6 +496,8 @@ describe("SchedulerKit bootstrap", function()
     require("TimerKit")
 
     local old = TestEnv.LoadRevision(CURRENT_REVISION - 1)
+
+    TestEnv.LoadParts()
     old:Schedule(function() end)
     TestEnv.Tick()
     local finished = old._state.workerFinished
@@ -482,6 +505,7 @@ describe("SchedulerKit bootstrap", function()
 
     package.loaded["SchedulerKit"] = nil
     local upgraded = require("SchedulerKit")
+    TestEnv.LoadParts()
     -- A newer copy never resumes a worker body an older copy wrote; the
     -- finished token is kept, so a worker still running an older job ends
     -- in a way the newer copy recognises.
@@ -497,6 +521,8 @@ describe("SchedulerKit bootstrap", function()
     require("TimerKit")
 
     local old = TestEnv.LoadRevision(CURRENT_REVISION - 1)
+
+    TestEnv.LoadParts()
     old:SetMaxResumesPerFrame(1)
     local job = old:Schedule(function(context)
       context:Yield()
@@ -506,6 +532,7 @@ describe("SchedulerKit bootstrap", function()
 
     package.loaded["SchedulerKit"] = nil
     local upgraded = require("SchedulerKit")
+    TestEnv.LoadParts()
     TestEnv.Tick()
     assert.are.equal("completed", job:GetState())
     assert.are.equal(1, upgraded._state.idleWorkerCount)

@@ -25,6 +25,7 @@ The suite covers:
 - lane and family edge cases: newest debounce arguments against a full lane, `Flush` deferral, member close against admitted and waiting deliveries, timer-arm failure recovery, retries against the minimum interval and `Close`, backwards clock steps, Watch callback tracebacks, and FIFO index reset;
 - an allocation guard on the resume path: a job yielding slice after slice, across every priority, allocates nothing, and a never-drained priority queue keeps its indices at the front;
 - in-place upgrades from revisions 3, 6, 7, 9, 10, 11, 12 and 14, and from the previous revision (the current one minus one), keeping the facade and state tables;
+- the core and its parts: every part member stubbed at the caller's line without its part, `HasPart`, scopes and limits with no part loaded, part load order and revision rules, `options.lane` without Lanes, a newer core keeping older parts, and the hand-over from the whole-file revision 21 with and without the parts;
 - secret values on the `mainline` host: every argument a check would compare refused before the comparison, a secret coalesce value stored, ordinary arguments still accepted.
 
 Spec files:
@@ -51,8 +52,9 @@ Spec files:
 | `Lane_spec.lua` | lanes: sharing, `maxInFlight`, `minIntervalSeconds`, retries, `maxQueued`, `Close`, allocation-free refusals, family delivery |
 | `Bootstrap_spec.lua` | duplicate loading, live job identity, the revision-3, -6, -7, -9, -10, -12 and -17 upgrades and the previous-revision upgrade (worker state seeded, idle workers dropped, a started job finished, the table-key limit refusal), live family handles |
 | `SecretValues_spec.lua` | secret arguments, options, option field names, limits and coalesce keys refused with `... must not be a secret value` at the caller's line, the scheduling methods' included; a secret coalesce value delivered; the probe kept from load, a probe installed after load honoured, a non-function global ignored |
-| `Manifest_spec.lua` | runtime API and revision against `package.manifest.json` |
+| `Parts_spec.lua` | the core without its parts (stubs at the caller's line, `HasPart`, scopes and limits), part bootstrap (core first, Coalescing before Lanes and Watch, `options.lane` without Lanes, equal, higher and lower part revisions, a newer core keeping older parts), the hand-over from revision 21 (parts loaded: live handles kept; no parts: closed on the next frame and reported once; revision 21 yielding to a core without parts; nothing armed when nothing was left) |
+| `Manifest_spec.lua` | runtime API and revision against `package.manifest.json`, and each part's revision in the manifest and in its file |
 
-`support/SchedulerKitTestEnv.lua` adds the optional-Kit loaders, `LoadRevision` (this source loaded as an older revision for upgrade specs) and `AllocatedKilobytes` (the allocation meter every allocation guard uses) to the shared fixture.
+`support/SchedulerKitTestEnv.lua` adds the optional-Kit loaders; `NewPackage` (the core and every part, so the family specs run unchanged), `NewCore`, `LoadPart(name)` and `LoadParts()`; `LoadRevision` (this source loaded as an older revision for upgrade specs), `LoadPartRevision(name, n)` and `LoadWholeRevision()` (the revision 21 file kept in `fixtures/`) and `AllocatedKilobytes` (the allocation meter every allocation guard uses) to the shared fixture.
 
 Tests intentionally avoid production-only test hooks. The fake host lives under `tests/support/` and is never part of the published runtime API.

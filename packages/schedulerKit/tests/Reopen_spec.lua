@@ -125,11 +125,13 @@ describe("SchedulerKit Scope:Reopen", function()
     require("Registry")
     require("TimerKit")
     local old = TestEnv.LoadRevision(current - 1)
+    TestEnv.LoadParts()
     local scope = old:CreateScope()
     scope:Close()
 
     package.loaded["SchedulerKit"] = nil
     local upgraded = require("SchedulerKit")
+    TestEnv.LoadParts()
     assert.are.equal(current, upgraded.REVISION)
     assert.is_true(scope:Reopen())
     local ran = false

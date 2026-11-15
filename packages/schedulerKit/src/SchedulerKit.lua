@@ -45,10 +45,17 @@
 
 local PACKAGE_NAME = "schedulerKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 21
+local IMPLEMENTATION_REVISION = 22
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_TIMER_API = 1
 local STATE_SCHEMA = 1
+-- The interface SchedulerKit's parts are written against
+-- (docs/decisions/0001-kit-core-and-parts.md). Entries of `_state.helpers`
+-- are only ever added; a core that must change one adds a new entry and
+-- raises this number.
+local PART_INTERFACE = 1
+-- The last revision that was one whole file, the coalescing family included.
+local LAST_WHOLE_REVISION = 21
 
 -- LifecycleKit and EventKit are optional. Each is found through
 -- `Registry:Find` when an addon asks for its scope, only to arrange that the
@@ -101,20 +108,20 @@ local SCHEDULING_OPTION_KEYS = {
   name = true,
 }
 
--- The coalescing family (Debounce, Coalesce, Watch, lanes). Every bound below
--- is documented in docs/API.md under "Coalescing and lanes".
+-- The coalescing family (Debounce, Coalesce, Watch, lanes) lives in the parts;
+-- its limits stay here so `SetLimits` and `GetLimits` keep one shape whichever
+-- parts are loaded. Every bound below is documented in docs/API.md under
+-- "Coalescing and lanes".
 
 -- The package-wide limits below are defaults: `SchedulerKit:SetLimits` changes
 -- them (design constitution, principle 4a) and `GetLimits` reads them back.
 --
 -- A debounce handle keeps the arguments of its last call in a reused slot, so
--- recording a call never allocates. Up to `FAST_DEBOUNCE_ARGUMENTS` values are
--- staged without a table; a wider limit is allowed up to its ceiling, because
+-- recording a call never allocates. Eight values are staged without a table
+-- (the Coalescing part); a wider limit is allowed up to its ceiling, because
 -- the slot grows once per handle and is then reused. `UNBOUNDED` is refused.
 local DEFAULT_MAX_DEBOUNCE_ARGUMENTS = 8
 local MAX_DEBOUNCE_ARGUMENTS_CEILING = 64
-local FAST_DEBOUNCE_ARGUMENTS = 8
-local DEFAULT_COALESCE_MAX_KEYS = 256
 -- Watchers sharing one interval share one ticker. The number of distinct
 -- intervals is one TimerKit ticker each, so it has a ceiling and refuses
 -- `UNBOUNDED`; the watchers on one interval are the consumer's own and may be
@@ -139,28 +146,6 @@ local LIMIT_UNBOUNDED_REFUSALS = {
   maxWatchIntervals = "each interval is one TimerKit ticker",
   maxDebounceArguments = "the argument slot is reused per handle",
 }
-local DEFAULT_LANE_MAX_IN_FLIGHT = 1
-local DEFAULT_LANE_MAX_QUEUED = 64
-local DEFAULT_RETRY_MULTIPLIER = 2
--- A timer that wakes this close to its due time counts as due, so host timer
--- rounding cannot turn one wake into a chain of near-zero re-arms.
-local DUE_TOLERANCE_SECONDS = 0.001
-
-local DEBOUNCE_OPTION_KEYS = { leading = true, maxWaitSeconds = true, lane = true }
-local COALESCE_OPTION_KEYS = { maxKeys = true, lane = true }
-local LANE_OPTION_KEYS = {
-  maxInFlight = true,
-  minIntervalSeconds = true,
-  retry = true,
-  maxQueued = true,
-}
-local RETRY_OPTION_KEYS = {
-  attempts = true,
-  backoffSeconds = true,
-  multiplier = true,
-  maxBackoffSeconds = true,
-}
-local SUBMIT_OPTION_KEYS = { priority = true, name = true, scope = true }
 
 -- Public types --------------------------------------------------------------
 --
@@ -408,6 +393,7 @@ local SUBMIT_OPTION_KEYS = { priority = true, name = true, scope = true }
 ---@field UNBOUNDED table Sentinel a limit takes to be lifted, where that is allowed.
 ---@field SetLimits fun(self: SchedulerKit, limits: table)
 ---@field GetLimits fun(self: SchedulerKit): SchedulerKit.Limits
+---@field HasPart fun(self: SchedulerKit, name: string): boolean `true` when the named part ("Coalescing", "Lanes" or "Watch") is loaded
 
 ---The package-wide limits. `SetLimits` accepts any subset; `GetLimits` returns
 ---a fresh copy of all of them.
@@ -761,6 +747,16 @@ local function validateCurrentState(implementation)
     return false
   end
 
+  -- Revision 22 parts, seeded into older state below.
+  if
+    type(rawget(currentState, "parts")) ~= "table"
+    or type(rawget(currentState, "helpers")) ~= "table"
+    or type(rawget(currentState, "familyHelpers")) ~= "table"
+    or type(rawget(currentState, "partInterface")) ~= "number"
+  then
+    return false
+  end
+
   -- Revision 12 logout fallback, seeded into older state below.
   if
     rawget(currentState, "logoutConnection") == nil
@@ -982,6 +978,30 @@ for index = 1, #FAMILY_KINDS do
     rawset(prototypes, kind, {})
   end
   rawset(rawget(metatables, kind), "__index", rawget(prototypes, kind))
+end
+
+-- Revision 22 moves the coalescing family into parts. A state without
+-- `parts` was written by a whole-file revision, which carried every part; what
+-- it made is settled on the next frame, once the parts loaded with this core
+-- have had their turn (see "Parts").
+local inheritedWholeRevision = nil
+if type(previousRevision) ~= "nil" and type(rawget(state, "parts")) ~= "table" then
+  inheritedWholeRevision = previousRevision
+end
+if type(rawget(state, "parts")) ~= "table" then
+  rawset(state, "parts", {})
+end
+if type(rawget(state, "helpers")) ~= "table" then
+  rawset(state, "helpers", {})
+end
+if type(rawget(state, "familyHelpers")) ~= "table" then
+  rawset(state, "familyHelpers", {})
+end
+if
+  type(rawget(state, "partInterface")) ~= "number"
+  or rawget(state, "partInterface") < PART_INTERFACE
+then
+  rawset(state, "partInterface", PART_INTERFACE)
 end
 
 -- Revision 10 no longer requires LifecycleKit. Revisions 9 and older
@@ -1626,13 +1646,11 @@ end
 
 -- Job terminal/error handling ---------------------------------------------
 
--- The coalescing family builds on the job machinery below, and the job
--- machinery has to tell the family when a lane job ends or raises. These are
--- assigned in the "Coalescing family" section.
-local laneJobFinished
-local retryLaneJob
-local cancelFamilyMembers
-local closeFamilyMembers
+-- The coalescing family's parts build on the job machinery below, and the job
+-- machinery tells them when a lane job ends or raises, and when a scope
+-- cancels or closes its members, through the dispatch entries
+-- `laneJobFinished`, `retryLaneJob`, `cancelFamilyMembers` and
+-- `closeFamilyMembers` (see "Parts").
 
 ---Release the TimerKit handle a delayed job is holding, if any.
 ---@param job SchedulerKit.Job
@@ -1663,7 +1681,7 @@ local function finishJob(job, terminalState)
   -- Only a lane submission carries a lane; ordinary jobs pay one read.
   local lane = job._lane
   if lane ~= nil and lane ~= false then
-    laneJobFinished(job, lane, terminalState)
+    state.dispatch.laneJobFinished(job, lane, terminalState)
   end
 end
 
@@ -2214,9 +2232,9 @@ local function resumeJob(job)
       return
     end
     -- A lane submission with attempts left is re-armed after its backoff
-    -- instead of failing; see "Coalescing family".
+    -- instead of failing; see the Lanes part.
     local lane = job._lane
-    if lane ~= nil and lane ~= false and retryLaneJob(job, lane) then
+    if lane ~= nil and lane ~= false and state.dispatch.retryLaneJob(job, lane) then
       return
     end
     -- Capture the stack before the thread reference is dropped: Lua 5.1
@@ -2311,2286 +2329,403 @@ local function runFrame()
   updateDriver()
 end
 
--- Coalescing family ---------------------------------------------------------
+-- Parts -------------------------------------------------------------------------
 --
--- Debounce, Coalesce, Watch and lanes are one design, documented together in
--- docs/API.md under "Coalescing and lanes":
+-- The coalescing family lives in three part files (docs/decisions/
+-- 0001-kit-core-and-parts.md): `SchedulerKit-Coalescing` (Debounce,
+-- Coalesce and the family's shared machinery), `SchedulerKit-Lanes` and
+-- `SchedulerKit-Watch`, which both need Coalescing. An addon embeds the core
+-- and only the parts it uses.
 --
---   * Debounce and Coalesce are callable handles that decide *when* a burst of
---     calls is over. Their timers are TimerKit timers in the owning scope's
---     TimerKit scope, and every due time is computed on one clock,
---     `GetTimePreciseSec`, the clock TimerKit's deadlines use.
---   * Watch shares one TimerKit ticker between every predicate polled at the
---     same interval.
---   * A lane decides *how much* of a scarce resource is used at once. Its
---     submissions are ordinary scheduler jobs, held in the "delayed" state
---     until the lane admits them. Debounce and Coalesce fire into a lane when
---     one is given, so the whole family shares one throttling vocabulary.
+-- What the core keeps for them, so a part loaded by any addon finds it: the
+-- family's shared state (lanes, watch groups, metatables, method tables and
+-- limits, seeded in the bootstrap), `_state.parts` (part name to its
+-- revision), `_state.helpers` (the core functions a part calls, read at call
+-- time), `_state.familyHelpers` (what the parts share with each other) and
+-- `_state.partInterface`. The core reaches a part only through dispatch
+-- entries; the defaults below stand in while a part is not loaded, and are
+-- exact then, because no member of an absent part can exist.
 --
--- Debounce, Coalesce and Watch handles are "members" of a SchedulerKit scope:
--- they sit on a second intrusive list beside the scope's jobs, so `CancelAll`
--- and `Close` release them exactly like jobs. Lanes are shared by name in
--- package state and are not owned by a scope; each submission's job is.
+-- Every member a part provides stays on the facade, on the scope prototype
+-- and on the handle prototypes even without its part: a stub that raises at
+-- the caller's line with the file to embed. Other copies test for these
+-- members with `type(...) == "function"`, so their public-surface checks keep
+-- accepting the facade; Kits that use a part optionally ask `HasPart`.
 --
--- Handles and lanes are validated by metatable identity. Their metatables and
--- method tables live in shared state (`familyMetatables`, `familyPrototypes`),
--- and TimerKit callbacks and lane-job callbacks resolve behaviour through
--- `_state.dispatch`, so a later compatible revision upgrades live handles.
+-- A core that takes over from a whole-file revision (21 or older) whose part
+-- is not loaded cannot run that part's code. It stubs the members at once
+-- (the part, loaded right after the core in the same addon, replaces them
+-- before anything runs), and on the next frame closes the live objects of
+-- every part still missing and reports once which files to embed.
 
--- The section is one installer function: Lua 5.1 allows at most 200 locals
--- in one function, and the main chunk of this file is close to that. The
--- installer commits its own public methods; only the hooks forward-declared
--- above the job machinery escape it.
----Install the coalescing family onto the shared prototypes and facade.
-local function installCoalescingFamily()
-  local FAMILY_METATABLES = rawget(state, "familyMetatables")
-  local FAMILY_PROTOTYPES = rawget(state, "familyPrototypes")
-  local DEBOUNCE_METATABLE = rawget(FAMILY_METATABLES, "debounce")
-  local COALESCE_METATABLE = rawget(FAMILY_METATABLES, "coalesce")
-  local WATCH_METATABLE = rawget(FAMILY_METATABLES, "watch")
-  local LANE_METATABLE = rawget(FAMILY_METATABLES, "lane")
+-- Assigned in the block below; `installPartStubs` runs at commit.
+local retireMember
+local installPartStubs
+local settleWholeRevision
+local hasReachableFamilyObjects
 
-  ---Current monotonic wall-clock seconds, the one clock every due time of the
-  ---family is computed on.
-  ---@return number seconds
-  local function nowSeconds()
-    return nowFromPreciseClock() / 1000
-  end
+do
+  -- The members of each part, by the table they sit on. `after` is the file a
+  -- part's line follows in embeds.xml.
+  local PART_LAYOUT = {
+    {
+      name = "Coalescing",
+      after = "schedulerKit\\SchedulerKit.lua",
+      facade = { "Debounce", "Coalesce" },
+      scope = { "Debounce", "Coalesce" },
+      handles = {
+        debounce = { "Cancel", "Flush", "IsPending", "Close", "IsClosed" },
+        coalesce = { "Cancel", "Flush", "IsPending", "GetStats", "Close", "IsClosed" },
+      },
+      hooks = { "cancelFamilyMembers", "closeFamilyMembers", "familyWake", "runDelivery" },
+    },
+    {
+      name = "Lanes",
+      after = "schedulerKit\\parts\\SchedulerKit-Coalescing.lua",
+      facade = { "Lane" },
+      scope = {},
+      handles = { lane = { "Submit", "GetStats", "GetName", "Close", "IsClosed" } },
+      hooks = { "laneJobFinished", "retryLaneJob" },
+    },
+    {
+      name = "Watch",
+      after = "schedulerKit\\parts\\SchedulerKit-Coalescing.lua",
+      facade = { "Watch" },
+      scope = { "Watch" },
+      handles = { watch = { "Cancel", "IsActive" } },
+      hooks = { "watchTick" },
+    },
+  }
 
-  ---Resolve one entry of the shared dispatch table, failing loudly when the
-  ---shared state was damaged.
-  ---@param key string
+  -- The handle labels the stubs name, as the parts' own errors do.
+  local HANDLE_LABELS = {
+    debounce = "SchedulerKit.DebounceHandle",
+    coalesce = "SchedulerKit.CoalesceHandle",
+    lane = "SchedulerKit.Lane",
+    watch = "SchedulerKit.WatchHandle",
+  }
+
+  ---A member that raises, at its caller's line, that `part` is not loaded.
+  ---@param label string the member as its caller wrote it
+  ---@param part table one entry of `PART_LAYOUT`
   ---@return function
-  local function dispatchEntry(key)
-    local entry = state.dispatch[key]
-    if type(entry) ~= "function" then
-      error("MoltenCodes SchedulerKit runtime dispatch is corrupted", 0)
-    end
-    return entry
-  end
-
-  ---Reject an option table that is not a table or names an unknown field. The
-  ---alphabetically first unknown field is named, as for scheduling options.
-  ---@param options any
-  ---@param allowed table<string, boolean>
-  ---@param methodName string public method name, used in the argument errors
-  ---@param level integer stack level the failure is reported at
-  local function validateOptionTable(options, allowed, methodName, level)
-    if type(options) == "nil" then
-      return
-    end
-    if type(options) ~= "table" then
-      error(methodName .. " options must be a table", level)
-    end
-
-    local unknown = nil
-    for key in pairs(options) do
-      -- A secret key would raise at the table read below with no useful
-      -- line; it is refused first, at the caller's.
-      refuseSecretValue(key, methodName .. " options field name", level + 1)
-      if allowed[key] ~= true then
-        local display = describeKey(key)
-        if unknown == nil or display < unknown then
-          unknown = display
-        end
-      end
-    end
-    if unknown ~= nil then
-      error(methodName .. ' options contains unknown field "' .. unknown .. '"', level)
-    end
-  end
-
-  ---@param value any
-  ---@param label string argument description, used in the argument error
-  ---@param level integer stack level the failure is reported at
-  local function validateOptionalBoolean(value, label, level)
-    refuseSecretValue(value, label, level + 1)
-    if type(value) ~= "nil" and type(value) ~= "boolean" then
-      error(label .. " must be a boolean", level)
-    end
-  end
-
-  ---@param value any
-  ---@param label string argument description, used in the argument error
-  ---@param level integer stack level the failure is reported at
-  local function validateCount(value, label, level)
-    refuseSecretValue(value, label, level + 1)
-    if
-      type(value) ~= "number"
-      or value ~= value
-      or value == math.huge
-      or value ~= math.floor(value)
-      or value < 0
-    then
-      error(label .. " must be a finite integer greater than or equal to zero", level)
-    end
-  end
-
-  ---@param member any receiver the public method was called on
-  ---@param metatable table the metatable every handle of the expected kind carries
-  ---@param methodName string public method name, used in the argument error
-  ---@param noun string what the receiver should have been, for the message
-  local function validateMember(member, metatable, methodName, noun)
-    if getmetatable(member) ~= metatable then
-      error(methodName .. " must be called on a SchedulerKit " .. noun, 3)
-    end
-  end
-
-  ---@param lane any
-  ---@param label string argument description, used in the argument error
-  ---@param level integer stack level the failure is reported at
-  local function validateOptionalLane(lane, label, level)
-    if type(lane) ~= "nil" and getmetatable(lane) ~= LANE_METATABLE then
-      error(label .. " must be a SchedulerKit lane", level)
-    end
-  end
-
-  ---Empty a reused table in place, keeping its allocated slots for next time.
-  ---Assigning `nil` to a field already visited is legal during `next` traversal.
-  ---@param set table
-  local function wipe(set)
-    for key in next, set do
-      set[key] = nil
-    end
-  end
-
-  -- Scope membership ----------------------------------------------------------
-
-  ---Append `member` to `scope`'s intrusive member list. Scopes created by a
-  ---revision before 7 carry no member links; `nil` reads as an empty list.
-  ---@param scope SchedulerKit.Scope
-  ---@param member table
-  local function linkMember(scope, member)
-    local tail = scope._familyTail or false
-    member._familyPrev = tail
-    member._familyNext = false
-    if tail ~= false then
-      tail._familyNext = member
-    else
-      scope._familyHead = member
-    end
-    scope._familyTail = member
-    member._linked = true
-  end
-
-  ---Remove `member` from its scope's member list, once. Never raises.
-  ---@param member table
-  local function unlinkMember(member)
-    if member._linked ~= true then
-      return
-    end
-    local scope = member._scope
-    local previous = member._familyPrev
-    local following = member._familyNext
-    if previous ~= false then
-      previous._familyNext = following
-    else
-      scope._familyHead = following
-    end
-    if following ~= false then
-      following._familyPrev = previous
-    else
-      scope._familyTail = previous
-    end
-    member._familyPrev = false
-    member._familyNext = false
-    member._linked = false
-  end
-
-  -- Timers ----------------------------------------------------------------------
-
-  ---Return the package-internal TimerKit scope behind watch tickers and lane
-  ---timers, creating it on first use. It is never closed: what it holds is
-  ---released when its watch group or lane goes away.
-  ---@return TimerKit.Scope
-  local function ensureFamilyTimerScope()
-    local timerScope = rawget(state, "familyTimerScope")
-    if timerScope ~= false then
-      return timerScope
-    end
-    timerScope = TimerKit:CreateScope()
-    if type(timerScope) ~= "table" then
-      error("MoltenCodes SchedulerKit TimerKit returned an invalid scope", 0)
-    end
-    rawset(state, "familyTimerScope", timerScope)
-    return timerScope
-  end
-
-  -- One shared wake callback serves every Debounce, Coalesce and lane timer, so
-  -- arming allocates no closure. The owner travels on the TimerKit handle as
-  -- public user data, exactly as a delayed job does.
-  ---Shared TimerKit callback that wakes whichever member or lane armed it.
-  ---@param timerHandle TimerKit.Timer
-  ---@return boolean woken
-  local function familyWakeCallback(timerHandle)
-    if type(timerHandle) ~= "table" then
-      return false
-    end
-    local owner = timerHandle:GetUserData()
-    if type(owner) ~= "table" then
-      return false
-    end
-    timerHandle:SetUserData(nil)
-    -- A cancelled or re-armed owner no longer points at this handle.
-    if owner._timer ~= timerHandle then
-      return false
-    end
-    owner._timer = false
-
-    -- A TimerKit callback has no caller to raise to, so a failure inside the
-    -- wake is reported rather than escaping into the host timer.
-    local ok, value = pcall(dispatchEntry("familyWake"), owner)
-    if not ok then
-      reportError(value)
-      return false
-    end
-    return true
-  end
-
-  ---Arm `owner`'s one timer for `seconds` in `timerScope`.
-  ---@param owner table a member or a lane
-  ---@param timerScope TimerKit.Scope
-  ---@param seconds number
-  local function armOwnerTimer(owner, timerScope, seconds)
-    local timerHandle = timerScope:After(seconds, familyWakeCallback)
-    if type(timerHandle) ~= "table" then
-      error("MoltenCodes SchedulerKit TimerKit returned an invalid timer handle", 0)
-    end
-    -- TimerKit never fires synchronously from `After`, so both halves of the
-    -- link are in place before the handle can wake.
-    owner._timer = timerHandle
-    timerHandle:SetUserData(owner)
-  end
-
-  ---Arm a member's timer in its owning scope's TimerKit scope.
-  ---@param member table
-  ---@param seconds number
-  local function armMemberTimer(member, seconds)
-    armOwnerTimer(member, ensureTimerScope(member._scope), seconds)
-  end
-
-  ---Cancel `owner`'s timer if one is armed. May re-raise a host failure after
-  ---the owner has already let go of the handle.
-  ---@param owner table a member or a lane
-  local function cancelOwnerTimer(owner)
-    local timerHandle = owner._timer --[[@as TimerKit.Timer|false|nil]]
-    if timerHandle == false or timerHandle == nil then
-      return
-    end
-    owner._timer = false
-    timerHandle:SetUserData(nil)
-    timerHandle:Cancel()
-  end
-
-  -- Protected invocation ----------------------------------------------------
-  --
-  -- A Debounce or Coalesce fire without a lane runs its callback synchronously
-  -- inside the TimerKit callback. It is protected with `xpcall`, which in Lua 5.1
-  -- takes no arguments, so the callback and up to eight arguments are staged in
-  -- reusable upvalues and forwarded by one trampoline: a fire allocates nothing.
-  -- The trampoline copies the staged values into locals before calling, so a
-  -- callback that fires another handle cannot corrupt its own arguments.
-
-  ---@type function|false
-  local stagedCallback = false
-  local stagedCount = 0
-  local staged1, staged2, staged3, staged4, staged5, staged6, staged7, staged8
-
-  ---Call `callback` with exactly `count` of the eight values.
-  ---@param callback function
-  ---@param count integer
-  ---@return any ...
-  local function callWithCount(callback, count, a1, a2, a3, a4, a5, a6, a7, a8)
-    if count == 0 then
-      return callback()
-    elseif count == 1 then
-      return callback(a1)
-    elseif count == 2 then
-      return callback(a1, a2)
-    elseif count == 3 then
-      return callback(a1, a2, a3)
-    elseif count == 4 then
-      return callback(a1, a2, a3, a4)
-    elseif count == 5 then
-      return callback(a1, a2, a3, a4, a5)
-    elseif count == 6 then
-      return callback(a1, a2, a3, a4, a5, a6)
-    elseif count == 7 then
-      return callback(a1, a2, a3, a4, a5, a6, a7)
-    end
-    return callback(a1, a2, a3, a4, a5, a6, a7, a8)
-  end
-
-  ---Reusable `xpcall` trampoline for the staged callback.
-  ---@return any ...
-  local function invokeStaged()
-    -- Only ever invoked right after `callProtected` staged a function.
-    local callback = stagedCallback --[[@as function]]
-    local count = stagedCount
-    local a1, a2, a3, a4 = staged1, staged2, staged3, staged4
-    local a5, a6, a7, a8 = staged5, staged6, staged7, staged8
-    stagedCallback, stagedCount = false, 0
-    staged1, staged2, staged3, staged4 = nil, nil, nil, nil
-    staged5, staged6, staged7, staged8 = nil, nil, nil, nil
-    return callWithCount(callback, count, a1, a2, a3, a4, a5, a6, a7, a8)
-  end
-
-  -- The client's `debugstack`, read once at load: the Retail client publishes
-  -- no `debug` global, so it is `captureFailure`'s only stack source there, as
-  -- it is `captureTraceback`'s. The installer runs once per load, and its
-  -- locals do not count against the main chunk's limit.
-  -- selene: allow(global_usage)
-  local nativeDebugStack = rawget(_G, "debugstack")
-  if type(nativeDebugStack) ~= "function" then
-    nativeDebugStack = false
-  end
-
-  -- The stack level both sources start from. Inside an `xpcall` handler the
-  -- failing frames are still on the current stack; called through `pcall`,
-  -- level 1 is `pcall` itself and level 2 this handler, so level 3 is the
-  -- first frame of the failure (`[C]: in function 'error'` for a raise).
-  local FAILURE_STACK_LEVEL = 3
-
-  ---`xpcall` handler: capture the stack while the failing frame still exists.
-  ---
-  ---`debug.traceback` is used when the host has it, otherwise the client's
-  ---`debugstack`, whose bare stack is prefixed with the rendered message and a
-  ---`stack traceback:` header so both give the same shape as `captureTraceback`.
-  ---With neither, or when the source fails, the original message is returned.
-  ---@param message any
-  ---@return any report
-  local function captureFailure(message)
-    if nativeTraceback ~= nil then
-      local ok, traceback = pcall(nativeTraceback, tostring(message), FAILURE_STACK_LEVEL)
-      if ok and type(traceback) == "string" then
-        return traceback
-      end
-      return message
-    end
-    if nativeDebugStack == false then
-      return message
-    end
-    local ok, stack = pcall(nativeDebugStack, FAILURE_STACK_LEVEL)
-    if not ok or type(stack) ~= "string" then
-      return message
-    end
-    return tostring(message) .. "\nstack traceback:\n" .. stack
-  end
-
-  ---Run `callback` with `count` arguments, reporting a raise to the host error
-  ---handler instead of propagating it.
-  ---@param callback function
-  ---@param count integer
-  local function callProtected(callback, count, a1, a2, a3, a4, a5, a6, a7, a8)
-    stagedCallback, stagedCount = callback, count
-    staged1, staged2, staged3, staged4 = a1, a2, a3, a4
-    staged5, staged6, staged7, staged8 = a5, a6, a7, a8
-    local ok, failure = xpcall(invokeStaged, captureFailure)
-    if not ok then
-      reportError(failure)
-    end
-  end
-
-  -- Lanes -------------------------------------------------------------------
-  --
-  -- A lane rations one scarce resource: at most `maxInFlight` submissions run
-  -- at once, two starts are at least `minIntervalSeconds` apart, a submission
-  -- that raises is retried with exponential backoff, and at most `maxQueued`
-  -- submissions wait. A submission is an ordinary scheduler job created in the
-  -- "delayed" state and parked in the lane's FIFO; admission moves it to the
-  -- ready queues exactly as a delay expiring would. The job stays owned by its
-  -- scope, so closing the scope cancels it wherever it is, and `finishJob`
-  -- reports every terminal state back to the lane.
-
-  local admittedJobs
-
-  ---Whether `job` is still waiting for admission and should be served.
-  ---@param job any
-  ---@return boolean
-  local function isWaitingLaneJob(job)
-    return type(job) == "table"
-      and rawget(job, "_laneAdmitted") == false
-      and rawget(job, "_state") == "delayed"
-  end
-
-  ---Drop stale entries from the lane FIFO so its backing array holds at most
-  ---the live waiting submissions. Only runs when the array is full of entries
-  ---some of which were cancelled in place, so it is bounded by `maxQueued`.
-  ---@param lane SchedulerKit.Lane
-  local function compactLaneQueue(lane)
-    local items = rawget(lane, "_items")
-    local head = rawget(lane, "_head")
-    local tail = rawget(lane, "_tail")
-    local write = 0
-    for read = head, tail do
-      local job = items[read]
-      items[read] = nil
-      if isWaitingLaneJob(job) then
-        write = write + 1
-        items[write] = job
-      end
-    end
-    rawset(lane, "_head", 1)
-    rawset(lane, "_tail", write)
-  end
-
-  ---Take the next waiting submission, discarding stale entries.
-  ---@param lane SchedulerKit.Lane
-  ---@return SchedulerKit.Job|nil
-  local function popLaneJob(lane)
-    local items = rawget(lane, "_items")
-    local head = rawget(lane, "_head")
-    local tail = rawget(lane, "_tail")
-    while head <= tail do
-      local job = items[head]
-      items[head] = nil
-      head = head + 1
-      if isWaitingLaneJob(job) then
-        if head > tail then
-          -- Drained: restart at the front so the indices do not
-          -- climb for the lane's whole life.
-          head, tail = 1, 0
-          rawset(lane, "_tail", 0)
-        end
-        rawset(lane, "_head", head)
-        return job
-      end
-    end
-    rawset(lane, "_head", 1)
-    rawset(lane, "_tail", 0)
-    return nil
-  end
-
-  ---Arm a lane's interval timer in the package-internal timer scope.
-  ---@param lane SchedulerKit.Lane
-  ---@param seconds number
-  local function armLaneTimer(lane, seconds)
-    armOwnerTimer(lane, ensureFamilyTimerScope(), seconds)
-  end
-
-  ---Return the set of the lane's admitted, unfinished jobs. A lane created by
-  ---revision 7 has none; it is created on first use.
-  ---@param lane SchedulerKit.Lane
-  ---@return table<SchedulerKit.Job, boolean>
-  function admittedJobs(lane)
-    local admitted = rawget(lane, "_admitted")
-    if type(admitted) ~= "table" then
-      admitted = {}
-      rawset(lane, "_admitted", admitted)
-    end
-    return admitted
-  end
-
-  ---Admit waiting submissions while the lane has room and its interval allows.
-  ---
-  ---Never raises: it is reached from `finishJob` and from a TimerKit callback,
-  ---where nobody can observe a raise. A failure to arm the interval timer is
-  ---reported, and the queue resumes on the next submission or completion.
-  ---@param lane SchedulerKit.Lane
-  ---@return boolean admitted whether a submission entered the ready queues
-  local function pumpLane(lane)
-    local admitted = false
-    while
-      rawget(lane, "_closed") ~= true
-      and rawget(lane, "_timer") == false
-      and rawget(lane, "_inFlight") < rawget(lane, "_maxInFlight")
-      and rawget(lane, "_queued") > 0
-    do
-      local minInterval = rawget(lane, "_minInterval")
-      local lastStart = rawget(lane, "_lastStart")
-      if minInterval > 0 and lastStart ~= false then
-        local wait = lastStart + minInterval - nowSeconds()
-        -- A clock that stepped backwards cannot stretch the wait
-        -- past one interval.
-        if wait > minInterval then
-          wait = minInterval
-        end
-        if wait > DUE_TOLERANCE_SECONDS then
-          local ok, value = pcall(armLaneTimer, lane, wait)
-          if not ok then
-            reportError(value)
-          end
-          return admitted
-        end
-      end
-
-      local job = popLaneJob(lane)
-      if job == nil then
-        -- The count and the FIFO disagree; trust the FIFO.
-        rawset(lane, "_queued", 0)
-        return admitted
-      end
-
-      rawset(lane, "_queued", rawget(lane, "_queued") - 1)
-      rawset(lane, "_inFlight", rawget(lane, "_inFlight") + 1)
-      rawset(lane, "_lastStart", nowSeconds())
-      rawset(job, "_laneAdmitted", true)
-      rawset(job, "_state", "pending")
-      admittedJobs(lane)[job] = true
-      queuePush(job)
-      admitted = true
-    end
-    return admitted
-  end
-
-  ---Create one lane submission, or refuse it without allocating.
-  ---@param lane SchedulerKit.Lane
-  ---@param scope SchedulerKit.Scope open scope that owns the job
-  ---@param callback SchedulerKit.Callback
-  ---@param priority integer
-  ---@param name string|nil
-  ---@param owner table|false the Debounce or Coalesce member delivering through it
-  ---@return SchedulerKit.Job|nil job
-  ---@return string|nil reason `"full"` or `"closed"` when refused
-  local function submitToLane(lane, scope, callback, priority, name, owner)
-    if rawget(lane, "_closed") == true then
-      rawset(lane, "_refused", rawget(lane, "_refused") + 1)
-      return nil, "closed"
-    end
-    local maxQueued = rawget(lane, "_maxQueued")
-    if rawget(lane, "_queued") >= maxQueued then
-      rawset(lane, "_refused", rawget(lane, "_refused") + 1)
-      return nil, "full"
-    end
-    if rawget(lane, "_tail") - rawget(lane, "_head") + 1 >= maxQueued then
-      compactLaneQueue(lane)
-    end
-
-    local job = newJob(scope, callback, priority, name, false)
-    rawset(job, "_state", "delayed")
-    rawset(job, "_lane", lane)
-    rawset(job, "_laneAdmitted", false)
-    rawset(job, "_attempt", 0)
-    rawset(job, "_laneOwner", owner)
-
-    local tail = rawget(lane, "_tail") + 1
-    rawset(lane, "_tail", tail)
-    rawget(lane, "_items")[tail] = job
-    rawset(lane, "_queued", rawget(lane, "_queued") + 1)
-
-    if pumpLane(lane) then
-      local ok, value = pcall(updateDriver)
-      if not ok then
-        reportError(value)
-      end
-    end
-    return job, nil
-  end
-
-  -- Assigned below, once Debounce and Coalesce delivery exist.
-  local memberDeliveryFinished
-
-  ---Account for a lane job reaching a terminal state. Called from `finishJob`
-  ---for every lane job, exactly once.
-  ---@param job SchedulerKit.Job
-  ---@param lane SchedulerKit.Lane
-  ---@param terminalState "completed"|"cancelled"|"failed"
-  function laneJobFinished(job, lane, terminalState)
-    rawset(job, "_lane", false)
-    if rawget(job, "_laneAdmitted") == true then
-      admittedJobs(lane)[job] = nil
-      rawset(lane, "_inFlight", rawget(lane, "_inFlight") - 1)
-    else
-      rawset(lane, "_queued", rawget(lane, "_queued") - 1)
-    end
-
-    if terminalState == "completed" then
-      rawset(lane, "_completed", rawget(lane, "_completed") + 1)
-    elseif terminalState == "failed" then
-      rawset(lane, "_failed", rawget(lane, "_failed") + 1)
-    else
-      rawset(lane, "_cancelled", rawget(lane, "_cancelled") + 1)
-    end
-
-    local owner = rawget(job, "_laneOwner")
-    if type(owner) == "table" then
-      rawset(job, "_laneOwner", false)
-      -- `finishJob` runs inside cancellation and the frame pass; a failing
-      -- follow-up delivery must not escape into either.
-      local ok, value = pcall(memberDeliveryFinished, owner, job, terminalState)
-      if not ok then
-        reportError(value)
-      end
-    end
-
-    -- Whoever finished the job updates the driver afterwards: cancellation
-    -- does, and so does the frame pass.
-    pumpLane(lane)
-  end
-
-  ---Re-arm a lane job whose attempt raised, if its lane still allows a retry.
-  ---
-  ---A retried attempt is not reported to the host error handler: the retry is
-  ---the expected outcome. Only the attempt that exhausts the policy fails the
-  ---job and is reported, with its traceback, like any other job failure. The job
-  ---keeps its in-flight slot during the backoff, which is what backing off a
-  ---resource means.
-  ---@param job SchedulerKit.Job
-  ---@param lane SchedulerKit.Lane
-  ---@return boolean retried
-  function retryLaneJob(job, lane)
-    local attempt = rawget(job, "_attempt")
-    if
-      type(attempt) ~= "number"
-      or attempt >= rawget(lane, "_attempts")
-      or rawget(lane, "_closed") == true
-    then
-      -- A closed lane retries nothing: the attempt that raised fails.
-      return false
-    end
-
-    rawset(job, "_attempt", attempt + 1)
-    rawset(lane, "_retried", rawget(lane, "_retried") + 1)
-    rawset(job, "_coroutine", false)
-    rawset(job, "_generation", rawget(job, "_generation") + 1)
-
-    local backoff = rawget(lane, "_backoff") * rawget(lane, "_multiplier") ^ attempt
-    local maxBackoff = rawget(lane, "_maxBackoff")
-    if maxBackoff ~= false and backoff > maxBackoff then
-      backoff = maxBackoff
-    end
-
-    -- A retry is a start: it waits at least until the lane's minimum
-    -- interval has passed since the last start. The start itself is
-    -- recorded when the backoff expires (see `wakeDelayed`).
-    local minInterval = rawget(lane, "_minInterval")
-    local lastStart = rawget(lane, "_lastStart")
-    if minInterval > 0 and lastStart ~= false then
-      local wait = lastStart + minInterval - nowSeconds()
-      if wait > minInterval then
-        wait = minInterval
-      end
-      if wait > backoff then
-        backoff = wait
-      end
-    end
-
-    local ok, value = pcall(armDelay, job, backoff)
-    if not ok then
-      if rawget(job, "_state") ~= "failed" then
-        markJobFailed(job, "SchedulerKit failed to arm a lane retry", false)
-      end
-      reportError(value)
-    end
-    return true
-  end
-
-  ---Read and validate one lane's options into plain values.
-  ---@param options any
-  ---@param methodName string public method name, used in the argument errors
-  ---@param level integer stack level the failures are reported at
-  ---@return integer maxInFlight, number minInterval, integer attempts, number backoff, number multiplier, number|false maxBackoff, integer maxQueued
-  local function readLaneOptions(options, methodName, level)
-    validateOptionTable(options, LANE_OPTION_KEYS, methodName, level + 1)
-    local maxInFlight = DEFAULT_LANE_MAX_IN_FLIGHT
-    local minInterval = 0
-    local maxQueued = DEFAULT_LANE_MAX_QUEUED
-    local attempts, backoff, multiplier, maxBackoff = 0, 0, DEFAULT_RETRY_MULTIPLIER, false
-    if type(options) == "nil" then
-      return maxInFlight, minInterval, attempts, backoff, multiplier, maxBackoff, maxQueued
-    end
-
-    if type(rawget(options, "maxInFlight")) ~= "nil" then
-      maxInFlight = rawget(options, "maxInFlight")
-      validatePositiveInteger(maxInFlight, methodName .. " maxInFlight", level + 1)
-    end
-    if type(rawget(options, "minIntervalSeconds")) ~= "nil" then
-      minInterval = rawget(options, "minIntervalSeconds")
-      validateFinitePositive(minInterval, methodName .. " minIntervalSeconds", true, level + 1)
-    end
-    if type(rawget(options, "maxQueued")) ~= "nil" then
-      maxQueued = rawget(options, "maxQueued")
-      validatePositiveInteger(maxQueued, methodName .. " maxQueued", level + 1)
-    end
-
-    local retry = rawget(options, "retry")
-    if type(retry) ~= "nil" then
-      validateOptionTable(retry, RETRY_OPTION_KEYS, methodName .. " retry", level + 1)
-      if type(rawget(retry, "attempts")) ~= "nil" then
-        attempts = rawget(retry, "attempts")
-        validateCount(attempts, methodName .. " retry.attempts", level + 1)
-      end
-      if type(rawget(retry, "backoffSeconds")) ~= "nil" then
-        backoff = rawget(retry, "backoffSeconds")
-        validateFinitePositive(backoff, methodName .. " retry.backoffSeconds", true, level + 1)
-      end
-      if type(rawget(retry, "multiplier")) ~= "nil" then
-        multiplier = rawget(retry, "multiplier")
-        validateFinitePositive(multiplier, methodName .. " retry.multiplier", false, level + 1)
-        if multiplier < 1 then
-          error(methodName .. " retry.multiplier must be at least 1", level)
-        end
-      end
-      if type(rawget(retry, "maxBackoffSeconds")) ~= "nil" then
-        maxBackoff = rawget(retry, "maxBackoffSeconds")
-        validateFinitePositive(
-          maxBackoff,
-          methodName .. " retry.maxBackoffSeconds",
-          true,
-          level + 1
-        )
-      end
-    end
-    return maxInFlight, minInterval, attempts, backoff, multiplier, maxBackoff, maxQueued
-  end
-
-  ---Return the shared lane called `name`, creating it on first request.
-  ---@param name any
-  ---@param options any
-  ---@param methodName string public method name, used in the argument errors
-  ---@return SchedulerKit.Lane
-  local function getOrCreateLane(name, options, methodName)
-    validateNonEmptyString(name, methodName .. " name", 4)
-    local maxInFlight, minInterval, attempts, backoff, multiplier, maxBackoff, maxQueued =
-      readLaneOptions(options, methodName, 4)
-
-    local lanes = rawget(state, "lanes")
-    local existing = rawget(lanes, name)
-    if existing ~= nil then
-      if
-        type(options) ~= "nil"
-        and (
-          rawget(existing, "_maxInFlight") ~= maxInFlight
-          or rawget(existing, "_minInterval") ~= minInterval
-          or rawget(existing, "_attempts") ~= attempts
-          or rawget(existing, "_backoff") ~= backoff
-          or rawget(existing, "_multiplier") ~= multiplier
-          or rawget(existing, "_maxBackoff") ~= maxBackoff
-          or rawget(existing, "_maxQueued") ~= maxQueued
-        )
-      then
-        error(methodName .. ' lane "' .. name .. '" already exists with different options', 3)
-      end
-      return existing
-    end
-
-    local maxLanes = rawget(sharedLimits, "maxLanes")
-    if maxLanes ~= UNBOUNDED and rawget(state, "laneCount") >= maxLanes then
-      error(
-        methodName
-          .. " refuses to create more than "
-          .. maxLanes
-          .. " open lanes; close unused lanes, share one by name, or raise"
-          .. " SchedulerKit:SetLimits{ maxLanes }",
-        3
-      )
-    end
-
-    local lane = setmetatable({
-      _kind = "lane",
-      _name = name,
-      _maxInFlight = maxInFlight,
-      _minInterval = minInterval,
-      _attempts = attempts,
-      _backoff = backoff,
-      _multiplier = multiplier,
-      _maxBackoff = maxBackoff,
-      _maxQueued = maxQueued,
-      _items = {},
-      _head = 1,
-      _tail = 0,
-      _queued = 0,
-      _inFlight = 0,
-      _completed = 0,
-      _failed = 0,
-      _retried = 0,
-      _cancelled = 0,
-      _refused = 0,
-      _lastStart = false,
-      _timer = false,
-      _closed = false,
-      _statsView = false,
-    }, LANE_METATABLE)
-    rawset(lanes, name, lane)
-    rawset(state, "laneCount", rawget(state, "laneCount") + 1)
-    return lane
-  end
-
-  ---Submit `callback` to run as a job under this lane's limits.
-  ---@param self SchedulerKit.Lane
-  ---@param callback SchedulerKit.Callback
-  ---@param options SchedulerKit.SubmitOptions?
-  ---@return SchedulerKit.Job|nil job
-  ---@return string|nil reason `"full"` or `"closed"` when refused
-  local function laneSubmit(self, callback, options)
-    validateMember(self, LANE_METATABLE, "SchedulerKit.Lane:Submit", "lane")
-    if type(callback) ~= "function" then
-      error("SchedulerKit.Lane:Submit callback must be a function", 2)
-    end
-    validateOptionTable(options, SUBMIT_OPTION_KEYS, "SchedulerKit.Lane:Submit", 3)
-
-    local priority, name, scope = PRIORITY_NORMAL, nil, nil
-    if type(options) ~= "nil" then
-      priority =
-        validatePriority(rawget(options, "priority"), "SchedulerKit.Lane:Submit priority", 3)
-      name = rawget(options, "name")
-      if type(name) ~= "nil" then
-        validateNonEmptyString(name, "SchedulerKit.Lane:Submit name", 3)
-      end
-      scope = rawget(options, "scope")
-      if type(scope) ~= "nil" and getmetatable(scope) ~= SCOPE_METATABLE then
-        error("SchedulerKit.Lane:Submit scope must be a SchedulerKit scope", 2)
-      end
-    end
-    if type(scope) == "nil" then
-      scope = getDefaultScope()
-    elseif rawget(scope, "_closed") == true then
-      error("SchedulerKit.Lane:Submit cannot schedule work in a closed scope", 2)
-    end
-
-    local job, reason = submitToLane(self, scope, callback, priority, name, false)
-    return job, reason
-  end
-
-  ---Return this lane's counters in a table reused by every call.
-  ---@param self SchedulerKit.Lane
-  ---@return SchedulerKit.LaneStats stats
-  local function laneGetStats(self)
-    validateMember(self, LANE_METATABLE, "SchedulerKit.Lane:GetStats", "lane")
-    local view = rawget(self, "_statsView")
-    if view == false then
-      view = {}
-      rawset(self, "_statsView", view)
-    end
-    view.queued = rawget(self, "_queued")
-    view.inFlight = rawget(self, "_inFlight")
-    view.completed = rawget(self, "_completed")
-    view.failed = rawget(self, "_failed")
-    view.retried = rawget(self, "_retried")
-    view.cancelled = rawget(self, "_cancelled")
-    view.refused = rawget(self, "_refused")
-    return view
-  end
-
-  ---Return the name this lane is shared under.
-  ---@param self SchedulerKit.Lane
-  ---@return string name
-  local function laneGetName(self)
-    validateMember(self, LANE_METATABLE, "SchedulerKit.Lane:GetName", "lane")
-    return rawget(self, "_name")
-  end
-
-  ---Whether this lane is closed.
-  ---@param self SchedulerKit.Lane
-  ---@return boolean closed
-  local function laneIsClosed(self)
-    validateMember(self, LANE_METATABLE, "SchedulerKit.Lane:IsClosed", "lane")
-    return rawget(self, "_closed") == true
-  end
-
-  ---Close the lane: refuse new submissions, cancel every waiting submission,
-  ---and let the admitted ones run to completion. The name is released at once,
-  ---so a later `Lane(name)` creates a fresh lane.
-  ---@param self SchedulerKit.Lane
-  ---@return boolean closed `false` when the lane was already closed.
-  local function laneClose(self)
-    validateMember(self, LANE_METATABLE, "SchedulerKit.Lane:Close", "lane")
-    if rawget(self, "_closed") == true then
-      return false
-    end
-    rawset(self, "_closed", true)
-
-    local lanes = rawget(state, "lanes")
-    if rawget(lanes, rawget(self, "_name")) == self then
-      rawset(lanes, rawget(self, "_name"), nil)
-      rawset(state, "laneCount", rawget(state, "laneCount") - 1)
-    end
-
-    local firstError = nil
-    local ok, value = pcall(cancelOwnerTimer, self)
-    if not ok then
-      firstError = { value = value }
-    end
-
-    local items = rawget(self, "_items")
-    for index = rawget(self, "_head"), rawget(self, "_tail") do
-      local job = items[index]
-      items[index] = nil
-      if isWaitingLaneJob(job) then
-        local cancelOk, cancelError = pcall(cancelJob, job)
-        if not cancelOk and firstError == nil then
-          firstError = { value = cancelError }
-        end
-      end
-    end
-    rawset(self, "_head", 1)
-    rawset(self, "_tail", 0)
-
-    -- An admitted job waiting out a retry backoff has not started its next
-    -- attempt yet; it is cancelled. Running attempts finish, and one that
-    -- raises now fails instead of retrying (see `retryLaneJob`).
-    for job in next, admittedJobs(self) do
-      if rawget(job, "_state") == "delayed" then
-        local cancelOk, cancelError = pcall(cancelJob, job)
-        if not cancelOk and firstError == nil then
-          firstError = { value = cancelError }
-        end
-      end
-    end
-
-    if firstError ~= nil then
-      error(firstError.value, 0)
-    end
-    return true
-  end
-
-  ---A lane's interval timer expired: admit what the interval was holding back.
-  ---@param lane SchedulerKit.Lane
-  local function laneWake(lane)
-    if pumpLane(lane) then
-      updateDriver()
-    end
-  end
-
-  -- Debounce ----------------------------------------------------------------
-  --
-  -- State machine, per handle:
-  --
-  --   idle ──call──> waiting (timer armed for `delay`; leading fires now)
-  --   waiting ──call──> waiting (arguments replaced, trailing fire owed)
-  --   waiting ──timer──> quiet long enough, or `maxWait` reached?
-  --                        yes: idle, and the owed trailing fire runs
-  --                        no:  re-arm for the remainder
-  --
-  -- A call inside the window only records its arguments and a clock reading:
-  -- the timer is not re-armed per call, it re-arms once when it wakes early.
-
-  ---Build the job callback a member hands to its lane. One closure per member,
-  ---made once; it resolves the delivery through shared dispatch.
-  ---@param member table
-  ---@return SchedulerKit.Callback
-  local function newDeliveryCallback(member)
+  local function newPartStub(label, part)
+    -- The message is built only when the stub raises, so an addon that never
+    -- calls a missing part holds no message text for it.
     return function()
-      return dispatchEntry("runDelivery")(member)
-    end
-  end
-
-  ---Clear the argument slot `args`: the eight staged positions, and every
-  ---wider position a call past eight arguments wrote (`width`).
-  ---@param args table
-  local function clearArguments(args)
-    local width = rawget(args, "width")
-    if type(width) ~= "number" or width < FAST_DEBOUNCE_ARGUMENTS then
-      width = FAST_DEBOUNCE_ARGUMENTS
-    end
-    for index = 1, width do
-      args[index] = nil
-    end
-    rawset(args, "width", 0)
-  end
-
-  ---Build the reused argument slot, pre-sized so recording up to eight
-  ---arguments never grows it. A wider call grows it once; `width` records the
-  ---highest position written so clearing stays bounded.
-  ---@return table
-  local function newArgumentSlot()
-    local slot = { false, false, false, false, false, false, false, false }
-    -- `width` is the one named field: the highest position a wide call
-    -- wrote, read only by `clearArguments`.
-    rawset(slot, "width", 0)
-    return slot
-  end
-
-  ---Record `count` (more than eight) arguments into `args`.
-  ---@param args table
-  ---@param count integer
-  ---@param ... any
-  local function recordWideArguments(args, count, ...)
-    for index = 1, count do
-      args[index] = (select(index, ...))
-    end
-    if count > (rawget(args, "width") or 0) then
-      rawset(args, "width", count)
-    end
-  end
-
-  ---Fire a debounce handle synchronously with its recorded arguments.
-  ---@param member SchedulerKit.DebounceHandle
-  local function fireDebounceDirect(member)
-    local args = rawget(member, "_args")
-    local count = rawget(member, "_argCount")
-    if count > FAST_DEBOUNCE_ARGUMENTS then
-      -- A wide call cannot be staged in upvalues. Its values are copied
-      -- out before the slot is cleared, which allocates one table and one
-      -- closure per fire; calls of eight arguments or fewer never do.
-      local values = { unpack(args, 1, count) }
-      local callback = rawget(member, "_callback")
-      clearArguments(args)
-      rawset(member, "_argCount", 0)
-      rawset(member, "_trailing", false)
-      rawset(member, "_firing", true)
-      local ok, failure = xpcall(function()
-        return callback(unpack(values, 1, count))
-      end, captureFailure)
-      rawset(member, "_firing", false)
-      if not ok then
-        reportError(failure)
-      end
-      return
-    end
-    local a1, a2, a3, a4 = args[1], args[2], args[3], args[4]
-    local a5, a6, a7, a8 = args[5], args[6], args[7], args[8]
-    clearArguments(args)
-    rawset(member, "_argCount", 0)
-    rawset(member, "_trailing", false)
-
-    rawset(member, "_firing", true)
-    callProtected(rawget(member, "_callback"), count, a1, a2, a3, a4, a5, a6, a7, a8)
-    rawset(member, "_firing", false)
-  end
-
-  ---Arm a member's timer, or report the failure and leave the member idle
-  ---with its owed fire intact, so the next call or `Flush` recovers it.
-  ---@param member table
-  ---@param seconds number
-  ---@return boolean armed
-  local function armMemberTimerOrReport(member, seconds)
-    local ok, value = pcall(armMemberTimer, member, seconds)
-    if not ok then
-      rawset(member, "_waiting", false)
-      reportError(value)
-      return false
-    end
-    return true
-  end
-
-  ---Hand the delivery slot to the lane as one job.
-  ---@param member SchedulerKit.DebounceHandle
-  ---@return "delivered"|"deferred"|"dropped" status
-  local function submitDebounceDelivery(member)
-    local lane = rawget(member, "_lane")
-    local job, reason = submitToLane(
-      lane,
-      rawget(member, "_scope"),
-      rawget(member, "_laneCallback"),
-      PRIORITY_NORMAL,
-      nil,
-      member
-    )
-    if job ~= nil then
-      rawset(member, "_deliveryJob", job)
-      return "delivered"
-    end
-
-    if reason == "full" and rawget(member, "_closed") ~= true then
-      -- A full lane defers a debounce fire; it never drops it.
-      if rawget(member, "_trailing") == true then
-        -- A newer burst is already owed. Its arguments supersede the
-        -- ones the lane refused, which are discarded.
-        clearArguments(rawget(member, "_deliveryArgs"))
-        rawset(member, "_deliveryCount", 0)
-      else
-        -- Take the arguments back as the owed call.
-        local args = rawget(member, "_args")
-        rawset(member, "_args", rawget(member, "_deliveryArgs"))
-        rawset(member, "_deliveryArgs", args)
-        rawset(member, "_argCount", rawget(member, "_deliveryCount"))
-        rawset(member, "_deliveryCount", 0)
-        rawset(member, "_trailing", true)
-        rawset(member, "_lastCall", nowSeconds())
-        rawset(member, "_burstStart", rawget(member, "_lastCall"))
-      end
-      -- Try again one delay later.
-      rawset(member, "_waiting", true)
-      if rawget(member, "_timer") == false then
-        armMemberTimerOrReport(member, rawget(member, "_delay"))
-      end
-      return "deferred"
-    end
-
-    clearArguments(rawget(member, "_deliveryArgs"))
-    rawset(member, "_deliveryCount", 0)
-    reportError(
-      'SchedulerKit debounce fire dropped: lane "' .. rawget(lane, "_name") .. '" is closed'
-    )
-    return "dropped"
-  end
-
-  ---Deliver the owed call: synchronously, or through the lane.
-  ---@param member SchedulerKit.DebounceHandle
-  ---@return "delivered"|"deferred"|"dropped" status
-  local function deliverDebounce(member)
-    if rawget(member, "_lane") == false then
-      fireDebounceDirect(member)
-      return "delivered"
-    end
-
-    -- Swap the owed arguments into the delivery slot. Arguments a delivery
-    -- still waiting in the lane carried are superseded: the last call wins.
-    local args = rawget(member, "_args")
-    local delivery = rawget(member, "_deliveryArgs")
-    clearArguments(delivery)
-    rawset(member, "_args", delivery)
-    rawset(member, "_deliveryArgs", args)
-    rawset(member, "_deliveryCount", rawget(member, "_argCount"))
-    rawset(member, "_argCount", 0)
-    rawset(member, "_trailing", false)
-
-    if rawget(member, "_deliveryJob") ~= false then
-      -- The job reads the delivery slot when it starts; if it has already
-      -- started, `_deliveryDirty` makes it deliver once more afterwards.
-      rawset(member, "_deliveryDirty", true)
-      return "delivered"
-    end
-    local status = submitDebounceDelivery(member)
-    return status
-  end
-
-  ---The debounce timer woke: fire if the burst is over, else re-arm.
-  ---@param member SchedulerKit.DebounceHandle
-  local function debounceWake(member)
-    if rawget(member, "_closed") == true or rawget(member, "_waiting") ~= true then
-      return
-    end
-
-    local due = rawget(member, "_lastCall") + rawget(member, "_delay")
-    local maxWait = rawget(member, "_maxWait")
-    if maxWait ~= false and rawget(member, "_trailing") == true then
-      local cap = rawget(member, "_burstStart") + maxWait
-      if cap < due then
-        due = cap
-      end
-    end
-
-    local remaining = due - nowSeconds()
-    -- A clock that stepped backwards cannot stretch the wait past one delay.
-    if remaining > rawget(member, "_delay") then
-      remaining = rawget(member, "_delay")
-    end
-    if remaining > DUE_TOLERANCE_SECONDS then
-      armMemberTimerOrReport(member, remaining)
-      return
-    end
-
-    rawset(member, "_waiting", false)
-    if rawget(member, "_trailing") == true then
-      deliverDebounce(member)
-    end
-  end
-
-  ---Record one call on a debounce handle. This is the handle's `__call`.
-  ---@param member SchedulerKit.DebounceHandle
-  ---@param ... any at most `maxDebounceArguments` arguments (8 by default)
-  ---@return boolean accepted `false` once the handle is closed.
-  local function debounceCall(member, ...)
-    if rawget(member, "_closed") == true then
-      return false
-    end
-    local count = select("#", ...)
-    local maxArguments = rawget(sharedLimits, "maxDebounceArguments")
-    if count > maxArguments then
       error(
-        "SchedulerKit debounce handle accepts at most "
-          .. maxArguments
-          .. " arguments; received "
-          .. count,
+        label
+          .. " is in SchedulerKit's "
+          .. part.name
+          .. " part, which is not loaded: add schedulerKit\\parts\\SchedulerKit-"
+          .. part.name
+          .. ".lua to embeds.xml after "
+          .. part.after,
         2
       )
     end
-
-    local args = rawget(member, "_args")
-    if count > FAST_DEBOUNCE_ARGUMENTS then
-      recordWideArguments(args, count, ...)
-    else
-      if (rawget(args, "width") or 0) > FAST_DEBOUNCE_ARGUMENTS then
-        -- A previous wide call left values past eight.
-        clearArguments(args)
-      end
-      args[1], args[2], args[3], args[4], args[5], args[6], args[7], args[8] = ...
-    end
-    rawset(member, "_argCount", count)
-    local reading = nowSeconds()
-    rawset(member, "_lastCall", reading)
-
-    if rawget(member, "_waiting") == true and rawget(member, "_timer") ~= false then
-      rawset(member, "_trailing", true)
-      return true
-    end
-
-    -- First call of a burst: open the window before any fire, so a callback
-    -- that calls the handle again finds it waiting.
-    rawset(member, "_waiting", true)
-    rawset(member, "_burstStart", reading)
-    local leading = rawget(member, "_leading") == true and rawget(member, "_firing") ~= true
-    rawset(member, "_trailing", not leading)
-
-    local ok, value = pcall(armMemberTimer, member, rawget(member, "_delay"))
-    if not ok then
-      rawset(member, "_waiting", false)
-      rawset(member, "_trailing", false)
-      clearArguments(args)
-      rawset(member, "_argCount", 0)
-      error(value, 0)
-    end
-
-    if leading then
-      deliverDebounce(member)
-    end
-    return true
   end
 
-  ---Run a lane delivery of a debounce handle. Raises propagate to the job, so
-  ---the lane's retry policy applies to the callback.
-  ---@param member SchedulerKit.DebounceHandle
-  ---@return any ...
-  local function runDebounceDelivery(member)
-    rawset(member, "_deliveryDirty", false)
-    local args = rawget(member, "_deliveryArgs")
-    local count = rawget(member, "_deliveryCount")
-    if count > FAST_DEBOUNCE_ARGUMENTS then
-      return rawget(member, "_callback")(unpack(args, 1, count))
-    end
-    return callWithCount(
-      rawget(member, "_callback"),
-      count,
-      args[1],
-      args[2],
-      args[3],
-      args[4],
-      args[5],
-      args[6],
-      args[7],
-      args[8]
-    )
-  end
-
-  ---Drop the owed call and any open window; the handle stays usable.
-  ---@param member SchedulerKit.DebounceHandle
-  ---@return boolean dropped whether a fire was owed
-  local function cancelDebounce(member)
-    local owed = rawget(member, "_trailing") == true
-    rawset(member, "_waiting", false)
-    rawset(member, "_trailing", false)
-    clearArguments(rawget(member, "_args"))
-    rawset(member, "_argCount", 0)
-    cancelOwnerTimer(member)
-    return owed
-  end
-
-  -- Coalesce ----------------------------------------------------------------
-  --
-  -- The first key of a burst arms one timer for the interval; every key
-  -- recorded before it expires lands in the same set, and the callback runs
-  -- once at the end of the interval with everything collected. The set is one
-  -- of two reused tables: the pair is swapped at delivery, so keys recorded by
-  -- the callback itself go into the other table and nothing is allocated.
-
-  ---Deliver the collected set synchronously, then wipe it for reuse.
-  ---@param member SchedulerKit.CoalesceHandle
-  local function fireCoalesceDirect(member)
-    local set = member._set
-    member._set = member._spare
-    member._spare = set
-    member._keyCount = 0
-    member._delivered = member._delivered + 1
-
-    member._firing = true
-    callProtected(member._callback, 1, set)
-    member._firing = false
-    wipe(set)
-  end
-
-  ---Deliver the collected set: synchronously, or through the lane.
-  ---@param member SchedulerKit.CoalesceHandle
-  ---@return "delivered"|"deferred"|"dropped" status
-  local function deliverCoalesce(member)
-    local lane = member._lane
-    if lane == false then
-      fireCoalesceDirect(member)
-      return "delivered"
-    end
-
-    local pendingJob = member._deliveryJob
-    if pendingJob ~= nil and pendingJob ~= false then
-      -- The previous set is still in the lane. Keep collecting into the
-      -- current one and try again one interval later.
-      member._deferred = (member._deferred or 0) + 1
-      if member._timer == false then
-        armMemberTimer(member, member._interval)
-      end
-      return "deferred"
-    end
-
-    local set = member._set
-    local count = member._keyCount
-    member._deliverySet = set
-    member._set = member._spare
-    member._spare = false
-    member._keyCount = 0
-
-    local job, reason =
-      submitToLane(lane, member._scope, member._laneCallback, PRIORITY_NORMAL, nil, member)
-    if job ~= nil then
-      member._deliveryJob = job
-      member._delivered = member._delivered + 1
-      return "delivered"
-    end
-
-    -- Refused: the set goes back to collecting.
-    member._spare = member._set
-    member._set = set
-    member._deliverySet = false
-    member._keyCount = count
-    if reason == "full" then
-      member._deferred = (member._deferred or 0) + 1
-      if member._timer == false then
-        armMemberTimer(member, member._interval)
-      end
-      return "deferred"
-    end
-
-    wipe(set)
-    member._keyCount = 0
-    member._dropped = (member._dropped or 0) + 1
-    reportError(
-      'SchedulerKit coalesce delivery dropped: lane "' .. rawget(lane, "_name") .. '" is closed'
-    )
-    return "dropped"
-  end
-
-  ---The coalesce timer woke: deliver whatever the interval collected.
-  ---@param member SchedulerKit.CoalesceHandle
-  local function coalesceWake(member)
-    if member._closed == true or member._keyCount == 0 then
-      return
-    end
-    deliverCoalesce(member)
-  end
-
-  ---Record one key on a coalesce handle. This is the handle's `__call`.
-  ---@param member SchedulerKit.CoalesceHandle
-  ---@param key any any value but `nil` or NaN
-  ---@param value any stored for `key`; `true` when omitted
-  ---@return boolean accepted `false` when the key was refused or the handle is closed.
-  local function coalesceCall(member, key, value)
-    -- One pass over the key: the probe, `nil` and NaN in one condition, so a
-    -- valid key costs no helper call and builds no message. The probe runs
-    -- first, because `key ~= key` raises on a secret. Only a refused key
-    -- reaches the statements that raise, each at the same level as before.
-    -- With no probe resolved at load (a test host), `isSecretValue` reads
-    -- the global as it stands, as every other check does.
-    local probe = loadedIsSecretValue
-    if
-      (probe ~= nil and probe(key) == true)
-      or (probe == nil and isSecretValue(key))
-      or type(key) == "nil"
-      or key ~= key
-    then
-      refuseSecretValue(key, "SchedulerKit coalesce handle key", 3)
-      error("SchedulerKit coalesce handle key must not be nil or NaN", 2)
-    end
-    if member._closed == true then
-      return false
-    end
-    -- The value is stored, never compared, so a secret one is accepted.
-    if type(value) == "nil" then
-      value = true
-    end
-
-    local set = member._set
-    if set[key] == nil then
-      local count = member._keyCount
-      if count >= member._maxKeys then
-        member._refused = (member._refused or 0) + 1
-        return false
-      end
-      member._keyCount = count + 1
-    end
-    set[key] = value
-
-    if member._timer == false then
-      armMemberTimer(member, member._interval)
-    end
-    return true
-  end
-
-  ---Run a lane delivery of a coalesce handle. Raises propagate to the job.
-  ---@param member SchedulerKit.CoalesceHandle
-  ---@return any ...
-  local function runCoalesceDelivery(member)
-    return rawget(member, "_callback")(rawget(member, "_deliverySet"))
-  end
-
-  ---Drop the collected keys; the handle stays usable.
-  ---@param member SchedulerKit.CoalesceHandle
-  ---@return boolean dropped whether any key was collected
-  local function cancelCoalesce(member)
-    local had = member._keyCount > 0
-    wipe(member._set)
-    member._keyCount = 0
-    cancelOwnerTimer(member)
-    return had
-  end
-
-  ---A member's lane delivery reached a terminal state.
+  ---Close one member of the coalescing family without its part's code: mark
+  ---it closed, leave its scope, cancel its timer and a lane delivery still
+  ---waiting for admission, and leave its watch group. Terminal, never raises.
   ---@param member table
-  ---@param job SchedulerKit.Job
-  ---@param terminalState "completed"|"cancelled"|"failed"
-  function memberDeliveryFinished(member, job, terminalState)
-    if rawget(member, "_deliveryJob") ~= job then
-      return
-    end
-    rawset(member, "_deliveryJob", false)
-
-    if rawget(member, "_kind") == "debounce" then
-      if
-        rawget(member, "_deliveryDirty") == true
-        and terminalState ~= "cancelled"
-        and rawget(member, "_closed") ~= true
-      then
-        -- A newer call arrived after the job had read its arguments.
-        rawset(member, "_deliveryDirty", false)
-        submitDebounceDelivery(member)
-        return
-      end
-      rawset(member, "_deliveryDirty", false)
-      clearArguments(rawget(member, "_deliveryArgs"))
-      rawset(member, "_deliveryCount", 0)
-      return
-    end
-
-    local set = rawget(member, "_deliverySet")
-    rawset(member, "_deliverySet", false)
-    if type(set) == "table" then
-      wipe(set)
-      rawset(member, "_spare", set)
-    end
-  end
-
-  -- Watch -------------------------------------------------------------------
-  --
-  -- Watchers are grouped by interval; each group owns one TimerKit ticker in
-  -- the package-internal timer scope, created with its first watcher and
-  -- cancelled with its last. A tick samples the group's watchers in creation
-  -- order. Watchers cancelled during a tick are compacted out after it, and
-  -- watchers added during a tick start with the next one.
-
-  ---Shared TimerKit ticker callback for every watch group.
-  ---@param timerHandle TimerKit.Timer
-  local function watchTickCallback(timerHandle)
-    if type(timerHandle) ~= "table" then
-      return
-    end
-    local group = timerHandle:GetUserData()
-    if type(group) ~= "table" then
-      return
-    end
-    local ok, value = pcall(dispatchEntry("watchTick"), group)
-    if not ok then
-      reportError(value)
-    end
-  end
-
-  ---Remove cancelled watchers from `group`, keeping creation order.
-  ---@param group table
-  local function compactWatchGroup(group)
-    local watchers = rawget(group, "watchers")
-    local count = #watchers
-    local write = 0
-    for read = 1, count do
-      local watcher = watchers[read]
-      watchers[read] = nil
-      if rawget(watcher, "_closed") ~= true then
-        write = write + 1
-        watchers[write] = watcher
-      end
-    end
-    rawset(group, "dirty", false)
-  end
-
-  ---Release `group` and its ticker once it has no live watcher.
-  ---@param group table
-  local function releaseWatchGroupIfEmpty(group)
-    if rawget(group, "live") > 0 or rawget(group, "released") == true then
-      return
-    end
-    rawset(group, "released", true)
-    local groups = rawget(state, "watchGroups")
-    if rawget(groups, rawget(group, "interval")) == group then
-      rawset(groups, rawget(group, "interval"), nil)
-      rawset(state, "watchGroupCount", rawget(state, "watchGroupCount") - 1)
-    end
-    local ticker = rawget(group, "ticker")
-    rawset(group, "ticker", false)
-    if ticker ~= false then
-      ticker:SetUserData(nil)
-      ticker:Cancel()
-    end
-  end
-
-  ---Cancel one watcher. Terminal and idempotent.
-  ---@param watcher SchedulerKit.WatchHandle
-  ---@return boolean cancelled `false` when it was already cancelled.
-  local function cancelWatcher(watcher)
-    if rawget(watcher, "_closed") == true then
+  ---@return boolean closed `false` when it was already closed
+  function retireMember(member)
+    if rawget(member, "_closed") == true then
       return false
     end
-    rawset(watcher, "_closed", true)
-    unlinkMember(watcher)
-    rawset(watcher, "_value", nil)
+    rawset(member, "_closed", true)
 
-    local group = rawget(watcher, "_group")
-    rawset(group, "live", rawget(group, "live") - 1)
-    if rawget(group, "ticking") == true then
-      rawset(group, "dirty", true)
-      return true
-    end
-    compactWatchGroup(group)
-    releaseWatchGroupIfEmpty(group)
-    return true
-  end
-
-  ---Whether two predicate results differ. Its own function so the comparison
-  ---can be protected without a closure: comparing a secret value, or two
-  ---tables whose `__eq` raises, is an error.
-  ---@param value any
-  ---@param previous any
-  ---@return boolean differs
-  local function resultsDiffer(value, previous)
-    return value ~= previous
-  end
-
-  ---Sample one watcher and call back on a change, or on every tick.
-  ---@param watcher SchedulerKit.WatchHandle
-  local function sampleWatcher(watcher)
-    local ok, value = xpcall(rawget(watcher, "_predicate"), captureFailure)
-    if not ok then
-      -- A predicate that raises would raise again on every tick; the
-      -- watcher is cancelled after the failure is reported once.
-      reportError(value)
-      cancelWatcher(watcher)
-      return
-    end
-
-    local previous = rawget(watcher, "_value")
-    local changed = rawget(watcher, "_sampled") ~= true or rawget(watcher, "_everyTick") == true
-    rawset(watcher, "_sampled", true)
-    rawset(watcher, "_value", value)
-    if not changed then
-      local compared, differs = pcall(resultsDiffer, value, previous)
-      if not compared then
-        -- A result that cannot be compared would fail again on every
-        -- tick, and escaping here would skip the rest of the group's
-        -- tick; it is treated like a raising predicate.
-        reportError(differs)
-        cancelWatcher(watcher)
-        return
-      end
-      changed = differs
-    end
-    if changed then
-      -- Reported with a traceback, like the predicate.
-      callProtected(rawget(watcher, "_callback"), 2, value, previous)
-    end
-  end
-
-  ---One tick of a watch group.
-  ---@param group table
-  local function watchTick(group)
-    if rawget(group, "released") == true then
-      return
-    end
-    rawset(group, "ticking", true)
-    local watchers = rawget(group, "watchers")
-    local count = #watchers
-    for index = 1, count do
-      local watcher = watchers[index]
-      if rawget(watcher, "_closed") ~= true then
-        sampleWatcher(watcher)
-      end
-    end
-    rawset(group, "ticking", false)
-    if rawget(group, "dirty") == true then
-      compactWatchGroup(group)
-    end
-    releaseWatchGroupIfEmpty(group)
-  end
-
-  ---Return the watch group for `interval`, creating it and its ticker.
-  ---@param interval number
-  ---@param methodName string public method name, used in the argument errors
-  ---@return table group
-  local function ensureWatchGroup(interval, methodName)
-    local groups = rawget(state, "watchGroups")
-    local group = rawget(groups, interval)
-    if group ~= nil then
-      local maxWatchers = rawget(sharedLimits, "maxWatchersPerInterval")
-      if maxWatchers ~= UNBOUNDED and rawget(group, "live") >= maxWatchers then
-        error(
-          methodName
-            .. " refuses more than "
-            .. maxWatchers
-            .. " watchers on one interval; cancel unused watchers or raise"
-            .. " SchedulerKit:SetLimits{ maxWatchersPerInterval }",
-          4
-        )
-      end
-      return group
-    end
-
-    local maxIntervals = rawget(sharedLimits, "maxWatchIntervals")
-    if rawget(state, "watchGroupCount") >= maxIntervals then
-      error(
-        methodName
-          .. " refuses more than "
-          .. maxIntervals
-          .. " distinct watch intervals; reuse an interval or raise"
-          .. " SchedulerKit:SetLimits{ maxWatchIntervals }",
-        4
-      )
-    end
-
-    group = {
-      interval = interval,
-      watchers = {},
-      live = 0,
-      ticker = false,
-      ticking = false,
-      dirty = false,
-      released = false,
-    }
-    local ticker = ensureFamilyTimerScope():Every(interval, watchTickCallback)
-    if type(ticker) ~= "table" then
-      error("MoltenCodes SchedulerKit TimerKit returned an invalid timer handle", 0)
-    end
-    ticker:SetUserData(group)
-    rawset(group, "ticker", ticker)
-    rawset(groups, interval, group)
-    rawset(state, "watchGroupCount", rawget(state, "watchGroupCount") + 1)
-    return group
-  end
-
-  -- Creation ----------------------------------------------------------------
-  --
-  -- Public methods call these without a tail call, so each one's frame stays on
-  -- the stack: `level` 4 inside a validator called from here is the line that
-  -- called the public method.
-
-  ---@param scope SchedulerKit.Scope
-  ---@param methodName string public method name, used in the argument errors
-  local function ensureScopeOpen(scope, methodName)
-    if rawget(scope, "_closed") == true then
-      error(methodName .. " cannot schedule work in a closed scope", 4)
-    end
-  end
-
-  ---Build a debounce handle in `scope`.
-  ---@param scope SchedulerKit.Scope
-  ---@param callback any
-  ---@param delay any
-  ---@param options any
-  ---@param methodName string public method name, used in the argument errors
-  ---@return SchedulerKit.DebounceHandle
-  local function createDebounce(scope, callback, delay, options, methodName)
-    ensureScopeOpen(scope, methodName)
-    if type(callback) ~= "function" then
-      error(methodName .. " callback must be a function", 3)
-    end
-    validateFinitePositive(delay, methodName .. " delaySeconds", true, 4)
-    validateOptionTable(options, DEBOUNCE_OPTION_KEYS, methodName, 4)
-
-    local leading, maxWait, lane = false, false, false
-    if type(options) ~= "nil" then
-      validateOptionalBoolean(rawget(options, "leading"), methodName .. " leading", 4)
-      leading = rawget(options, "leading") == true
-      if type(rawget(options, "maxWaitSeconds")) ~= "nil" then
-        maxWait = rawget(options, "maxWaitSeconds")
-        validateFinitePositive(maxWait, methodName .. " maxWaitSeconds", false, 4)
-        if maxWait < delay then
-          error(methodName .. " maxWaitSeconds must be at least delaySeconds", 3)
-        end
-      end
-      validateOptionalLane(rawget(options, "lane"), methodName .. " lane", 4)
-      lane = rawget(options, "lane") or false
-    end
-
-    local member = setmetatable({
-      _kind = "debounce",
-      _scope = scope,
-      _linked = false,
-      _familyPrev = false,
-      _familyNext = false,
-      _closed = false,
-      _callback = callback,
-      _delay = delay,
-      _maxWait = maxWait,
-      _leading = leading,
-      _lane = lane,
-      _args = newArgumentSlot(),
-      _argCount = 0,
-      _waiting = false,
-      _trailing = false,
-      _firing = false,
-      _timer = false,
-      _lastCall = 0,
-      _burstStart = 0,
-      _deliveryArgs = false,
-      _deliveryCount = 0,
-      _deliveryJob = false,
-      _deliveryDirty = false,
-      _laneCallback = false,
-    }, DEBOUNCE_METATABLE)
-    clearArguments(rawget(member, "_args"))
-    if lane ~= false then
-      local deliveryArgs = newArgumentSlot()
-      clearArguments(deliveryArgs)
-      rawset(member, "_deliveryArgs", deliveryArgs)
-      rawset(member, "_laneCallback", newDeliveryCallback(member))
-    end
-    linkMember(scope, member)
-    return member
-  end
-
-  ---Build a coalesce handle in `scope`.
-  ---@param scope SchedulerKit.Scope
-  ---@param callback any
-  ---@param interval any
-  ---@param options any
-  ---@param methodName string public method name, used in the argument errors
-  ---@return SchedulerKit.CoalesceHandle
-  local function createCoalesce(scope, callback, interval, options, methodName)
-    ensureScopeOpen(scope, methodName)
-    if type(callback) ~= "function" then
-      error(methodName .. " callback must be a function", 3)
-    end
-    -- The label is built only for a value the validator will refuse.
-    if
-      type(interval) ~= "number"
-      or isSecretValue(interval)
-      or interval ~= interval
-      or interval == math.huge
-      or interval < 0
-    then
-      validateFinitePositive(interval, methodName .. " intervalSeconds", true, 4)
-    end
-    validateOptionTable(options, COALESCE_OPTION_KEYS, methodName, 4)
-
-    local maxKeys, lane = DEFAULT_COALESCE_MAX_KEYS, false
-    if type(options) ~= "nil" then
-      if type(rawget(options, "maxKeys")) ~= "nil" then
-        maxKeys = rawget(options, "maxKeys")
-        validatePositiveInteger(maxKeys, methodName .. " maxKeys", 4)
-      end
-      validateOptionalLane(rawget(options, "lane"), methodName .. " lane", 4)
-      lane = rawget(options, "lane") or false
-    end
-
-    -- Sixteen fields, so the handle's hash part is 16 slots rather than 32.
-    -- The lane-only fields (`_laneCallback`, `_deliveryJob`, `_deliverySet`),
-    -- the rare counters (`_refused`, `_deferred`, `_dropped`) and the reused
-    -- `GetStats` view are written when first needed; an absent one reads as
-    -- `false` or `0` wherever it is read.
-    local member = setmetatable({
-      _kind = "coalesce",
-      _scope = scope,
-      _linked = false,
-      _familyPrev = false,
-      _familyNext = false,
-      _closed = false,
-      _callback = callback,
-      _interval = interval,
-      _maxKeys = maxKeys,
-      _lane = lane,
-      _set = {},
-      _spare = {},
-      _keyCount = 0,
-      _firing = false,
-      _timer = false,
-      _delivered = 0,
-    }, COALESCE_METATABLE)
-    if lane ~= false then
-      rawset(member, "_laneCallback", newDeliveryCallback(member))
-    end
-    linkMember(scope, member)
-    return member
-  end
-
-  local WATCH_OPTION_KEYS = { everyTick = true }
-
-  ---Build a watcher in `scope`, joining or creating its interval group.
-  ---@param scope SchedulerKit.Scope
-  ---@param predicate any
-  ---@param interval any
-  ---@param callback any
-  ---@param options any
-  ---@param methodName string public method name, used in the argument errors
-  ---@return SchedulerKit.WatchHandle
-  local function createWatch(scope, predicate, interval, callback, options, methodName)
-    ensureScopeOpen(scope, methodName)
-    if type(predicate) ~= "function" then
-      error(methodName .. " predicate must be a function", 3)
-    end
-    validateFinitePositive(interval, methodName .. " intervalSeconds", false, 4)
-    if type(callback) ~= "function" then
-      error(methodName .. " callback must be a function", 3)
-    end
-    validateOptionTable(options, WATCH_OPTION_KEYS, methodName, 4)
-    local everyTick = false
-    if type(options) ~= "nil" then
-      validateOptionalBoolean(rawget(options, "everyTick"), methodName .. " everyTick", 4)
-      everyTick = rawget(options, "everyTick") == true
-    end
-
-    local group = ensureWatchGroup(interval, methodName)
-    local watcher = setmetatable({
-      _kind = "watch",
-      _scope = scope,
-      _linked = false,
-      _familyPrev = false,
-      _familyNext = false,
-      _closed = false,
-      _predicate = predicate,
-      _callback = callback,
-      _everyTick = everyTick,
-      _group = group,
-      _sampled = false,
-      _value = nil,
-    }, WATCH_METATABLE)
-    local watchers = rawget(group, "watchers")
-    watchers[#watchers + 1] = watcher
-    rawset(group, "live", rawget(group, "live") + 1)
-    linkMember(scope, watcher)
-    return watcher
-  end
-
-  -- Member release ----------------------------------------------------------
-
-  ---Close one Debounce or Coalesce member: drop what it owes, cancel a lane
-  ---delivery still waiting for admission, and leave its scope. A delivery the
-  ---lane already admitted finishes, as the lane's own `Close` lets admitted
-  ---work drain. Terminal and idempotent.
-  ---@param member table
-  ---@return boolean closed `false` when it was already closed.
-  local function closeTimedMember(member)
-    if member._closed == true then
-      return false
-    end
-    member._closed = true
-    unlinkMember(member)
-
-    local firstError = nil
-    local cancel = member._kind == "debounce" and cancelDebounce or cancelCoalesce
-    local ok, value = pcall(cancel, member)
-    if not ok then
-      firstError = { value = value }
-    end
-
-    local deliveryJob = member._deliveryJob
-    if
-      deliveryJob ~= nil
-      and deliveryJob ~= false
-      and rawget(deliveryJob, "_laneAdmitted") ~= true
-    then
-      local cancelOk, cancelError = pcall(cancelJob, deliveryJob)
-      if not cancelOk and firstError == nil then
-        firstError = { value = cancelError }
-      end
-    end
-
-    if firstError ~= nil then
-      error(firstError.value, 0)
-    end
-    return true
-  end
-
-  ---Cancel what every member of `scope` owes, keeping Debounce and Coalesce
-  ---handles usable. A watcher has nothing owed but its polling, so it is
-  ---cancelled. Best effort; the first failure is returned, not raised.
-  ---@param scope SchedulerKit.Scope
-  ---@return SchedulerKit.ErrorRecord|nil firstError
-  function cancelFamilyMembers(scope)
-    local firstError = nil
-    local member = rawget(scope, "_familyHead") or false
-    while member ~= false do
+    local scope = rawget(member, "_scope")
+    if rawget(member, "_linked") == true and type(scope) == "table" then
+      local previous = rawget(member, "_familyPrev")
       local following = rawget(member, "_familyNext")
-      local kind = rawget(member, "_kind")
-      local ok, value
-      if kind == "debounce" then
-        ok, value = pcall(cancelDebounce, member)
-      elseif kind == "coalesce" then
-        ok, value = pcall(cancelCoalesce, member)
+      if type(previous) == "table" then
+        rawset(previous, "_familyNext", following)
       else
-        ok, value = pcall(cancelWatcher, member)
+        rawset(scope, "_familyHead", following)
       end
-      if not ok and firstError == nil then
-        firstError = { value = value }
+      if type(following) == "table" then
+        rawset(following, "_familyPrev", previous)
+      else
+        rawset(scope, "_familyTail", previous)
       end
+      rawset(member, "_familyPrev", false)
+      rawset(member, "_familyNext", false)
+      rawset(member, "_linked", false)
+    end
+
+    local timerHandle = rawget(member, "_timer")
+    if type(timerHandle) == "table" then
+      rawset(member, "_timer", false)
+      pcall(timerHandle.SetUserData, timerHandle, nil)
+      pcall(timerHandle.Cancel, timerHandle)
+    end
+
+    local deliveryJob = rawget(member, "_deliveryJob")
+    if type(deliveryJob) == "table" and rawget(deliveryJob, "_laneAdmitted") ~= true then
+      pcall(cancelJob, deliveryJob)
+    end
+
+    local group = rawget(member, "_group")
+    if type(group) == "table" and type(rawget(group, "live")) == "number" then
+      rawset(group, "live", rawget(group, "live") - 1)
+    end
+    return true
+  end
+
+  ---Retire every member on `scope`'s family list; the default of both scope
+  ---hooks while the Coalescing part is not loaded.
+  ---@param scope SchedulerKit.Scope
+  ---@return nil firstError retiring never fails
+  local function retireScopeMembers(scope)
+    local member = rawget(scope, "_familyHead") or false
+    while type(member) == "table" do
+      local following = rawget(member, "_familyNext") or false
+      retireMember(member)
       member = following
     end
-    return firstError
+    return nil
   end
 
-  ---Close every member of `scope`. Best effort; the first failure is returned.
-  ---@param scope SchedulerKit.Scope
-  ---@return SchedulerKit.ErrorRecord|nil firstError
-  function closeFamilyMembers(scope)
-    local firstError = nil
-    local member = rawget(scope, "_familyHead") or false
-    while member ~= false do
-      local close = rawget(member, "_kind") == "watch" and cancelWatcher or closeTimedMember
-      local ok, value = pcall(close, member)
-      if not ok and firstError == nil then
-        firstError = { value = value }
+  local NO_HANDLES = {}
+
+  ---What every hook does while its part is not loaded and no older whole
+  ---revision left members behind: nothing, because nothing can call for it.
+  ---A retry answers `nil`, which refuses it.
+  local function doNothing() end
+
+  -- What each hook does after a hand-over from a whole-file revision while its
+  -- part is not loaded: serve what that revision left behind. Only then are
+  -- these closures kept.
+  local HOOK_DEFAULTS = {
+    cancelFamilyMembers = retireScopeMembers,
+    closeFamilyMembers = retireScopeMembers,
+    -- A timer an older revision armed wakes a member nobody can serve.
+    familyWake = function(owner)
+      if type(owner) == "table" and rawget(owner, "_kind") ~= "lane" then
+        retireMember(owner)
       end
-      -- Every close unlinks before anything that can raise; a member that
-      -- somehow stayed linked is unlinked here so the loop terminates.
-      if rawget(member, "_linked") == true then
-        unlinkMember(member)
+    end,
+    runDelivery = function() end,
+    -- A lane job outlives its lane's part: the job finishes as an ordinary one.
+    laneJobFinished = function(job)
+      rawset(job, "_lane", false)
+    end,
+    retryLaneJob = function()
+      return false
+    end,
+    -- A ticker an older revision started stops at its next tick.
+    watchTick = function(group)
+      local ticker = type(group) == "table" and rawget(group, "ticker") or nil
+      if type(ticker) == "table" then
+        rawset(group, "ticker", false)
+        pcall(ticker.Cancel, ticker)
       end
-      member = rawget(scope, "_familyHead") or false
+    end,
+  }
+
+  ---Install the stubs and hook defaults of every part that is not loaded.
+  ---A loaded part, perhaps an older revision another addon embedded, keeps
+  ---its members: an upgraded core serves it.
+  ---@param handOver boolean whether this core takes over from a whole-file
+  ---revision: then the handle methods are stubbed too and the hooks retire
+  ---what that revision left. Otherwise no handle of an absent part can exist,
+  ---and nothing is spent on them.
+  function installPartStubs(handOver)
+    local parts = rawget(state, "parts")
+    local prototypes = rawget(state, "familyPrototypes")
+    local metatables = rawget(state, "familyMetatables")
+    local dispatch = rawget(state, "dispatch")
+    for index = 1, #PART_LAYOUT do
+      local part = PART_LAYOUT[index]
+      if type(rawget(parts, part.name)) ~= "table" then
+        for _, name in ipairs(part.facade) do
+          rawset(SchedulerKit, name, newPartStub("SchedulerKit:" .. name, part))
+        end
+        for _, name in ipairs(part.scope) do
+          rawset(Scope, name, newPartStub("SchedulerKit.Scope:" .. name, part))
+        end
+        for kind, methods in pairs(handOver and part.handles or NO_HANDLES) do
+          local prototype = rawget(prototypes, kind)
+          for _, name in ipairs(methods) do
+            rawset(prototype, name, newPartStub(HANDLE_LABELS[kind] .. ":" .. name, part))
+          end
+          if kind == "debounce" or kind == "coalesce" then
+            rawset(
+              rawget(metatables, kind),
+              "__call",
+              newPartStub("SchedulerKit " .. kind .. " handle", part)
+            )
+          end
+        end
+        for _, hook in ipairs(part.hooks) do
+          rawset(dispatch, hook, handOver and HOOK_DEFAULTS[hook] or doNothing)
+        end
+      end
     end
-    return firstError
   end
 
-  ---Route a TimerKit wake to the member or lane that armed the timer.
-  ---@param owner table
-  local function familyWake(owner)
-    local kind = owner._kind
-    if kind == "debounce" then
-      debounceWake(owner)
-    elseif kind == "coalesce" then
-      coalesceWake(owner)
-    elseif kind == "lane" then
-      laneWake(owner)
+  ---Close every lane without the Lanes part: refuse new work, cancel what
+  ---waits, and let admitted jobs finish as ordinary jobs.
+  ---@return integer closed
+  local function retireLanes()
+    local closed = 0
+    for name, lane in pairs(rawget(state, "lanes")) do
+      rawset(rawget(state, "lanes"), name, nil)
+      if type(lane) == "table" and rawget(lane, "_closed") ~= true then
+        rawset(lane, "_closed", true)
+        closed = closed + 1
+        local timerHandle = rawget(lane, "_timer")
+        if type(timerHandle) == "table" then
+          rawset(lane, "_timer", false)
+          pcall(timerHandle.Cancel, timerHandle)
+        end
+        local items = rawget(lane, "_items")
+        if type(items) == "table" then
+          for _, job in pairs(items) do
+            if type(job) == "table" and rawget(job, "_state") == "delayed" then
+              pcall(cancelJob, job)
+            end
+          end
+        end
+        local admitted = rawget(lane, "_admitted")
+        if type(admitted) == "table" then
+          for job in pairs(admitted) do
+            if rawget(job, "_state") == "delayed" then
+              pcall(cancelJob, job)
+            end
+          end
+        end
+      end
     end
+    rawset(state, "laneCount", 0)
+    return closed
   end
 
-  ---Route a lane delivery job to its member.
-  ---@param member table
-  ---@return any ...
-  local function runDelivery(member)
-    if rawget(member, "_kind") == "debounce" then
-      return runDebounceDelivery(member)
+  ---Stop every watch ticker and close every watcher without the Watch part.
+  ---@return integer closed
+  local function retireWatchers()
+    local closed = 0
+    for interval, group in pairs(rawget(state, "watchGroups")) do
+      rawset(rawget(state, "watchGroups"), interval, nil)
+      local ticker = rawget(group, "ticker")
+      if type(ticker) == "table" then
+        rawset(group, "ticker", false)
+        pcall(ticker.Cancel, ticker)
+      end
+      rawset(group, "released", true)
+      for _, watcher in ipairs(rawget(group, "watchers")) do
+        if retireMember(watcher) then
+          closed = closed + 1
+        end
+      end
     end
-    return runCoalesceDelivery(member)
+    rawset(state, "watchGroupCount", 0)
+    return closed
   end
 
-  -- Member public methods ----------------------------------------------------
+  ---Close the Debounce and Coalesce handles in every scope the state can
+  ---reach: the addon scopes and the package-level scope. A handle in a
+  ---manual scope is reached when it is called (the stub raises) or wakes.
+  ---@return integer closed
+  local function retireTimedMembers()
+    local closed = 0
+    local scopes = {}
+    for _, scope in pairs(rawget(state, "addonScopes")) do
+      scopes[#scopes + 1] = scope
+    end
+    if type(rawget(state, "defaultScope")) == "table" then
+      scopes[#scopes + 1] = rawget(state, "defaultScope")
+    end
+    for _, scope in ipairs(scopes) do
+      local member = type(scope) == "table" and rawget(scope, "_familyHead") or false
+      while type(member) == "table" do
+        local following = rawget(member, "_familyNext") or false
+        local kind = rawget(member, "_kind")
+        if (kind == "debounce" or kind == "coalesce") and retireMember(member) then
+          closed = closed + 1
+        end
+        member = following
+      end
+    end
+    return closed
+  end
 
-  ---Drop the owed fire, if any; the handle stays usable.
-  ---@param self SchedulerKit.DebounceHandle
-  ---@return boolean dropped whether a fire was owed
-  local function debounceHandleCancel(self)
-    validateMember(
-      self,
-      DEBOUNCE_METATABLE,
-      "SchedulerKit.DebounceHandle:Cancel",
-      "debounce handle"
+  ---Whether the state holds a lane, a watch group, or a member in an addon
+  ---scope or the package-level scope: what a hand-over would have to settle.
+  ---@return boolean
+  function hasReachableFamilyObjects()
+    if next(rawget(state, "lanes")) ~= nil or next(rawget(state, "watchGroups")) ~= nil then
+      return true
+    end
+    for _, scope in pairs(rawget(state, "addonScopes")) do
+      if type(scope) == "table" and type(rawget(scope, "_familyHead")) == "table" then
+        return true
+      end
+    end
+    local defaultScope = rawget(state, "defaultScope")
+    return type(defaultScope) == "table" and type(rawget(defaultScope, "_familyHead")) == "table"
+  end
+
+  ---After a hand-over from a whole-file revision: close the live objects of
+  ---every part that is still not loaded, and say once which files to embed.
+  ---@param inheritedRevision integer the whole-file revision taken over
+  function settleWholeRevision(inheritedRevision)
+    local parts = rawget(state, "parts")
+    local missing, closed = {}, 0
+    if type(rawget(parts, "Coalescing")) ~= "table" then
+      missing[#missing + 1] = "Coalescing"
+      closed = closed + retireTimedMembers()
+    end
+    if type(rawget(parts, "Lanes")) ~= "table" then
+      missing[#missing + 1] = "Lanes"
+      closed = closed + retireLanes()
+    end
+    if type(rawget(parts, "Watch")) ~= "table" then
+      missing[#missing + 1] = "Watch"
+      closed = closed + retireWatchers()
+    end
+    if closed == 0 then
+      return
+    end
+    local files = {}
+    for index = 1, #missing do
+      files[index] = "schedulerKit\\parts\\SchedulerKit-" .. missing[index] .. ".lua"
+    end
+    reportError(
+      "MoltenCodes SchedulerKit revision "
+        .. IMPLEMENTATION_REVISION
+        .. " took over from revision "
+        .. inheritedRevision
+        .. ", which carried the coalescing family in one file, and closed "
+        .. closed
+        .. " live handles and lanes whose part is not loaded. Embed "
+        .. table.concat(files, ", ")
+        .. " after schedulerKit\\SchedulerKit.lua to keep them"
     )
-    return cancelDebounce(self)
   end
-
-  ---Fire now if a fire is owed, ending the burst.
-  ---@param self SchedulerKit.DebounceHandle
-  ---@return boolean fired `false` when nothing was owed, during the handle's own fire, or when the lane deferred or dropped it.
-  ---@return "deferred"|"dropped"|nil reason why a lane did not take the fire
-  local function debounceHandleFlush(self)
-    validateMember(self, DEBOUNCE_METATABLE, "SchedulerKit.DebounceHandle:Flush", "debounce handle")
-    if rawget(self, "_firing") == true then
-      return false, nil
-    end
-    if rawget(self, "_waiting") == true then
-      cancelOwnerTimer(self)
-      rawset(self, "_waiting", false)
-    end
-    -- An owed fire is flushed even when no window is open, which is how a
-    -- handle whose timer could not be armed is recovered by hand.
-    if rawget(self, "_trailing") ~= true then
-      return false, nil
-    end
-    local status = deliverDebounce(self)
-    if status ~= "delivered" then
-      -- Narrowed by the test above.
-      return false, status --[[@as "deferred"|"dropped"]]
-    end
-    return true, nil
-  end
-
-  ---Whether a fire is owed and has not been handed off yet.
-  ---@param self SchedulerKit.DebounceHandle
-  ---@return boolean pending
-  local function debounceHandleIsPending(self)
-    validateMember(
-      self,
-      DEBOUNCE_METATABLE,
-      "SchedulerKit.DebounceHandle:IsPending",
-      "debounce handle"
-    )
-    return rawget(self, "_trailing") == true
-  end
-
-  ---Close the handle: drop what it owes and release it from its scope.
-  ---@param self SchedulerKit.DebounceHandle
-  ---@return boolean closed `false` when it was already closed.
-  local function debounceHandleClose(self)
-    validateMember(self, DEBOUNCE_METATABLE, "SchedulerKit.DebounceHandle:Close", "debounce handle")
-    return closeTimedMember(self)
-  end
-
-  ---Whether the handle is closed.
-  ---@param self SchedulerKit.DebounceHandle
-  ---@return boolean closed
-  local function debounceHandleIsClosed(self)
-    validateMember(
-      self,
-      DEBOUNCE_METATABLE,
-      "SchedulerKit.DebounceHandle:IsClosed",
-      "debounce handle"
-    )
-    return rawget(self, "_closed") == true
-  end
-
-  ---Drop the collected keys; the handle stays usable.
-  ---@param self SchedulerKit.CoalesceHandle
-  ---@return boolean dropped whether any key was collected
-  local function coalesceHandleCancel(self)
-    validateMember(
-      self,
-      COALESCE_METATABLE,
-      "SchedulerKit.CoalesceHandle:Cancel",
-      "coalesce handle"
-    )
-    return cancelCoalesce(self)
-  end
-
-  ---Deliver the collected keys now instead of at the end of the interval.
-  ---@param self SchedulerKit.CoalesceHandle
-  ---@return boolean delivered `false` when nothing was collected, during the handle's own delivery, or when the lane deferred or dropped it.
-  ---@return "deferred"|"dropped"|nil reason why a lane did not take the delivery
-  local function coalesceHandleFlush(self)
-    validateMember(self, COALESCE_METATABLE, "SchedulerKit.CoalesceHandle:Flush", "coalesce handle")
-    if rawget(self, "_keyCount") == 0 or rawget(self, "_firing") == true then
-      return false, nil
-    end
-    local pendingJob = rawget(self, "_deliveryJob")
-    if pendingJob ~= nil and pendingJob ~= false then
-      -- The previous set is still in the lane; the interval timer keeps
-      -- running and delivers once that set is done.
-      return false, "deferred"
-    end
-    cancelOwnerTimer(self)
-    local status = deliverCoalesce(self)
-    if status ~= "delivered" then
-      -- Narrowed by the test above.
-      return false, status --[[@as "deferred"|"dropped"]]
-    end
-    return true, nil
-  end
-
-  ---Whether keys are collected and waiting for delivery.
-  ---@param self SchedulerKit.CoalesceHandle
-  ---@return boolean pending
-  local function coalesceHandleIsPending(self)
-    validateMember(
-      self,
-      COALESCE_METATABLE,
-      "SchedulerKit.CoalesceHandle:IsPending",
-      "coalesce handle"
-    )
-    return rawget(self, "_keyCount") > 0
-  end
-
-  ---Return this handle's counters in a table reused by every call.
-  ---@param self SchedulerKit.CoalesceHandle
-  ---@return SchedulerKit.CoalesceStats stats
-  local function coalesceHandleGetStats(self)
-    validateMember(
-      self,
-      COALESCE_METATABLE,
-      "SchedulerKit.CoalesceHandle:GetStats",
-      "coalesce handle"
-    )
-    local view = rawget(self, "_statsView")
-    if type(view) ~= "table" then
-      view = {}
-      rawset(self, "_statsView", view)
-    end
-    view.keys = rawget(self, "_keyCount")
-    view.refused = rawget(self, "_refused") or 0
-    view.delivered = rawget(self, "_delivered")
-    view.deferred = rawget(self, "_deferred") or 0
-    view.dropped = rawget(self, "_dropped") or 0
-    return view
-  end
-
-  ---Close the handle: drop the collected keys and release it from its scope.
-  ---@param self SchedulerKit.CoalesceHandle
-  ---@return boolean closed `false` when it was already closed.
-  local function coalesceHandleClose(self)
-    validateMember(self, COALESCE_METATABLE, "SchedulerKit.CoalesceHandle:Close", "coalesce handle")
-    return closeTimedMember(self)
-  end
-
-  ---Whether the handle is closed.
-  ---@param self SchedulerKit.CoalesceHandle
-  ---@return boolean closed
-  local function coalesceHandleIsClosed(self)
-    validateMember(
-      self,
-      COALESCE_METATABLE,
-      "SchedulerKit.CoalesceHandle:IsClosed",
-      "coalesce handle"
-    )
-    return rawget(self, "_closed") == true
-  end
-
-  ---Stop polling. Terminal; releases the interval's ticker with its last watcher.
-  ---@param self SchedulerKit.WatchHandle
-  ---@return boolean cancelled `false` when it was already cancelled.
-  local function watchHandleCancel(self)
-    validateMember(self, WATCH_METATABLE, "SchedulerKit.WatchHandle:Cancel", "watch handle")
-    return cancelWatcher(self)
-  end
-
-  ---Whether the watcher is still polling.
-  ---@param self SchedulerKit.WatchHandle
-  ---@return boolean active
-  local function watchHandleIsActive(self)
-    validateMember(self, WATCH_METATABLE, "SchedulerKit.WatchHandle:IsActive", "watch handle")
-    return rawget(self, "_closed") ~= true
-  end
-
-  -- Family public methods ------------------------------------------------------
-
-  ---Debounce `callback` in this scope.
-  ---@param self SchedulerKit.Scope
-  ---@param callback function
-  ---@param delaySeconds number Finite seconds greater than or equal to zero.
-  ---@param options SchedulerKit.DebounceOptions?
-  ---@return SchedulerKit.DebounceHandle handle
-  local function scopeDebounce(self, callback, delaySeconds, options)
-    validateScope(self, "SchedulerKit.Scope:Debounce")
-    local handle =
-      createDebounce(self, callback, delaySeconds, options, "SchedulerKit.Scope:Debounce")
-    return handle
-  end
-
-  ---Coalesce keys for `callback` in this scope.
-  ---@param self SchedulerKit.Scope
-  ---@param callback SchedulerKit.CoalesceCallback
-  ---@param intervalSeconds number Finite seconds greater than or equal to zero.
-  ---@param options SchedulerKit.CoalesceOptions?
-  ---@return SchedulerKit.CoalesceHandle handle
-  local function scopeCoalesce(self, callback, intervalSeconds, options)
-    validateScope(self, "SchedulerKit.Scope:Coalesce")
-    local handle =
-      createCoalesce(self, callback, intervalSeconds, options, "SchedulerKit.Scope:Coalesce")
-    return handle
-  end
-
-  ---Poll `predicate` every `intervalSeconds` in this scope.
-  ---@param self SchedulerKit.Scope
-  ---@param predicate fun(): any
-  ---@param intervalSeconds number Finite seconds greater than zero.
-  ---@param callback SchedulerKit.WatchCallback
-  ---@param options SchedulerKit.WatchOptions?
-  ---@return SchedulerKit.WatchHandle handle
-  local function scopeWatch(self, predicate, intervalSeconds, callback, options)
-    validateScope(self, "SchedulerKit.Scope:Watch")
-    local handle =
-      createWatch(self, predicate, intervalSeconds, callback, options, "SchedulerKit.Scope:Watch")
-    return handle
-  end
-
-  ---Debounce `callback` in SchedulerKit's package-level scope.
-  ---@param _ SchedulerKit
-  ---@param callback function
-  ---@param delaySeconds number Finite seconds greater than or equal to zero.
-  ---@param options SchedulerKit.DebounceOptions?
-  ---@return SchedulerKit.DebounceHandle handle
-  local function packageDebounce(_, callback, delaySeconds, options)
-    local handle =
-      createDebounce(getDefaultScope(), callback, delaySeconds, options, "SchedulerKit:Debounce")
-    return handle
-  end
-
-  ---Coalesce keys for `callback` in SchedulerKit's package-level scope.
-  ---@param _ SchedulerKit
-  ---@param callback SchedulerKit.CoalesceCallback
-  ---@param intervalSeconds number Finite seconds greater than or equal to zero.
-  ---@param options SchedulerKit.CoalesceOptions?
-  ---@return SchedulerKit.CoalesceHandle handle
-  local function packageCoalesce(_, callback, intervalSeconds, options)
-    local handle =
-      createCoalesce(getDefaultScope(), callback, intervalSeconds, options, "SchedulerKit:Coalesce")
-    return handle
-  end
-
-  ---Poll `predicate` in SchedulerKit's package-level scope.
-  ---@param _ SchedulerKit
-  ---@param predicate fun(): any
-  ---@param intervalSeconds number Finite seconds greater than zero.
-  ---@param callback SchedulerKit.WatchCallback
-  ---@param options SchedulerKit.WatchOptions?
-  ---@return SchedulerKit.WatchHandle handle
-  local function packageWatch(_, predicate, intervalSeconds, callback, options)
-    local handle = createWatch(
-      getDefaultScope(),
-      predicate,
-      intervalSeconds,
-      callback,
-      options,
-      "SchedulerKit:Watch"
-    )
-    return handle
-  end
-
-  ---Return the shared lane called `name`, creating it with `options` first.
-  ---@param _ SchedulerKit
-  ---@param name string
-  ---@param options SchedulerKit.LaneOptions?
-  ---@return SchedulerKit.Lane lane
-  local function packageLane(_, name, options)
-    local lane = getOrCreateLane(name, options, "SchedulerKit:Lane")
-    return lane
-  end
-
-  -- Family commit ---------------------------------------------------------------
-
-  rawset(Scope, "Debounce", scopeDebounce)
-  rawset(Scope, "Coalesce", scopeCoalesce)
-  rawset(Scope, "Watch", scopeWatch)
-
-  local DEBOUNCE_PROTOTYPE = rawget(FAMILY_PROTOTYPES, "debounce")
-  rawset(DEBOUNCE_PROTOTYPE, "Cancel", debounceHandleCancel)
-  rawset(DEBOUNCE_PROTOTYPE, "Flush", debounceHandleFlush)
-  rawset(DEBOUNCE_PROTOTYPE, "IsPending", debounceHandleIsPending)
-  rawset(DEBOUNCE_PROTOTYPE, "Close", debounceHandleClose)
-  rawset(DEBOUNCE_PROTOTYPE, "IsClosed", debounceHandleIsClosed)
-  rawset(DEBOUNCE_METATABLE, "__call", debounceCall)
-
-  local COALESCE_PROTOTYPE = rawget(FAMILY_PROTOTYPES, "coalesce")
-  rawset(COALESCE_PROTOTYPE, "Cancel", coalesceHandleCancel)
-  rawset(COALESCE_PROTOTYPE, "Flush", coalesceHandleFlush)
-  rawset(COALESCE_PROTOTYPE, "IsPending", coalesceHandleIsPending)
-  rawset(COALESCE_PROTOTYPE, "GetStats", coalesceHandleGetStats)
-  rawset(COALESCE_PROTOTYPE, "Close", coalesceHandleClose)
-  rawset(COALESCE_PROTOTYPE, "IsClosed", coalesceHandleIsClosed)
-  rawset(COALESCE_METATABLE, "__call", coalesceCall)
-
-  local WATCH_PROTOTYPE = rawget(FAMILY_PROTOTYPES, "watch")
-  rawset(WATCH_PROTOTYPE, "Cancel", watchHandleCancel)
-  rawset(WATCH_PROTOTYPE, "IsActive", watchHandleIsActive)
-
-  local LANE_PROTOTYPE = rawget(FAMILY_PROTOTYPES, "lane")
-  rawset(LANE_PROTOTYPE, "Submit", laneSubmit)
-  rawset(LANE_PROTOTYPE, "GetStats", laneGetStats)
-  rawset(LANE_PROTOTYPE, "GetName", laneGetName)
-  rawset(LANE_PROTOTYPE, "Close", laneClose)
-  rawset(LANE_PROTOTYPE, "IsClosed", laneIsClosed)
-
-  rawset(SchedulerKit, "Debounce", packageDebounce)
-  rawset(SchedulerKit, "Coalesce", packageCoalesce)
-  rawset(SchedulerKit, "Watch", packageWatch)
-  rawset(SchedulerKit, "Lane", packageLane)
-
-  local familyDispatch = rawget(state, "dispatch")
-  rawset(familyDispatch, "familyWake", familyWake)
-  rawset(familyDispatch, "watchTick", watchTick)
-  rawset(familyDispatch, "runDelivery", runDelivery)
 end
 
-installCoalescingFamily()
+---Whether the named part of SchedulerKit is loaded.
+---@param self SchedulerKit
+---@param name string `"Coalescing"`, `"Lanes"` or `"Watch"`
+---@return boolean loaded
+local function hasPart(self, name)
+  if type(self) ~= "table" or self ~= SchedulerKit then
+    error(
+      "SchedulerKit:HasPart must be called on the SchedulerKit facade; "
+        .. "use SchedulerKit:HasPart(name)",
+      2
+    )
+  end
+  refuseSecretValue(name, "SchedulerKit:HasPart name", 3)
+  if type(name) ~= "string" then
+    error("SchedulerKit:HasPart name must be a string", 2)
+  end
+  return type(rawget(rawget(state, "parts"), name)) == "table"
+end
 
 -- Scope cleanup -------------------------------------------------------------
 
@@ -4612,7 +2747,7 @@ local function cancelAll(scope)
     job = following
   end
 
-  local familyError = cancelFamilyMembers(scope)
+  local familyError = state.dispatch.cancelFamilyMembers(scope)
   if firstError == nil then
     firstError = familyError
   end
@@ -4660,7 +2795,7 @@ local function closeScope(scope)
     firstError = { value = value }
   end
 
-  local familyError = closeFamilyMembers(scope)
+  local familyError = state.dispatch.closeFamilyMembers(scope)
   if firstError == nil then
     firstError = familyError
   end
@@ -5444,6 +3579,44 @@ rawset(SchedulerKit, "GetActiveCount", getActiveCount)
 rawset(SchedulerKit, "UNBOUNDED", UNBOUNDED)
 rawset(SchedulerKit, "SetLimits", setLimits)
 rawset(SchedulerKit, "GetLimits", getLimits)
+rawset(SchedulerKit, "HasPart", hasPart)
+
+-- The core functions the parts call, read through this table at every call.
+-- Only ever added to (see `PART_INTERFACE`).
+do
+  local helpers = rawget(state, "helpers")
+  rawset(helpers, "nowFromPreciseClock", nowFromPreciseClock)
+  rawset(helpers, "refuseSecretValue", refuseSecretValue)
+  rawset(helpers, "isSecretValue", isSecretValue)
+  rawset(helpers, "loadedIsSecretValue", loadedIsSecretValue or false)
+  -- `debug.traceback`, which the Retail client does not publish: `false` there.
+  if type(nativeTraceback) == "function" then
+    rawset(helpers, "nativeTraceback", nativeTraceback)
+  else
+    rawset(helpers, "nativeTraceback", false)
+  end
+  rawset(helpers, "describeKey", describeKey)
+  rawset(helpers, "reportError", reportError)
+  rawset(helpers, "ensureTimerScope", ensureTimerScope)
+  rawset(helpers, "queuePush", queuePush)
+  rawset(helpers, "newJob", newJob)
+  rawset(helpers, "updateDriver", updateDriver)
+  rawset(helpers, "armDelay", armDelay)
+  rawset(helpers, "markJobFailed", markJobFailed)
+  rawset(helpers, "cancelJob", cancelJob)
+  rawset(helpers, "getDefaultScope", getDefaultScope)
+  rawset(helpers, "validateScope", validateScope)
+  rawset(helpers, "validatePriority", validatePriority)
+  rawset(helpers, "validatePositiveInteger", validatePositiveInteger)
+  rawset(helpers, "validateFinitePositive", validateFinitePositive)
+  rawset(helpers, "validateNonEmptyString", validateNonEmptyString)
+  -- Only a hand-over from a whole-file revision can leave a member whose part
+  -- is not loaded; otherwise the retiring code is not kept.
+  if inheritedWholeRevision ~= nil then
+    rawset(helpers, "retireMember", retireMember)
+  end
+end
+installPartStubs(inheritedWholeRevision ~= nil)
 
 local defaultScope = rawget(state, "defaultScope")
 if defaultScope ~= false and getmetatable(defaultScope) ~= SCOPE_METATABLE then
@@ -5496,6 +3669,29 @@ end
 
 if type(previousRevision) ~= "nil" and previousRevision < IMPLEMENTATION_REVISION then
   routeInheritedAddonScopes()
+end
+
+-- A hand-over from a whole-file revision that left lanes, watchers or handles
+-- is settled on the next frame: the parts this addon embeds load right after
+-- this file and replace the stubs, and only what is still missing then is
+-- closed. A handle in a manual scope is not reachable from the state; its
+-- stubbed methods raise when called, and a timer it armed retires it.
+if
+  inheritedWholeRevision ~= nil
+  and inheritedWholeRevision <= LAST_WHOLE_REVISION
+  and hasReachableFamilyObjects()
+then
+  rawset(rawget(state, "dispatch"), "settleWholeRevision", settleWholeRevision)
+  local revision = inheritedWholeRevision
+  local ok, failure = pcall(TimerKit.After, TimerKit, 0, function()
+    local settle = rawget(rawget(state, "dispatch"), "settleWholeRevision")
+    if type(settle) == "function" then
+      settle(revision)
+    end
+  end)
+  if not ok then
+    reportError(failure)
+  end
 end
 
 return SchedulerKit

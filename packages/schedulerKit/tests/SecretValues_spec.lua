@@ -30,7 +30,9 @@ local function loadOnSecretHost()
   TestEnv.InstallWowApi()
   require("Registry")
   require("TimerKit")
-  return require("SchedulerKit")
+  local SchedulerKit = require("SchedulerKit")
+  TestEnv.LoadParts()
+  return SchedulerKit
 end
 
 describe("SchedulerKit and secret values", function()
@@ -270,6 +272,7 @@ describe("SchedulerKit and secret values", function()
     require("Registry")
     require("TimerKit")
     local stubbed = require("SchedulerKit")
+    TestEnv.LoadParts()
 
     local line
     local ok, value = pcall(function()

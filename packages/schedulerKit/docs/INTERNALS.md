@@ -2,11 +2,69 @@
 
 This document explains SchedulerKit's implementation invariants. It is not a public API contract; [`API.md`](API.md) is authoritative for consumer-visible behavior.
 
-## Why one runtime source file?
+## Why a core and three part files?
 
-SchedulerKit intentionally keeps its runtime bootstrap and implementation in `src/SchedulerKit.lua`.
+SchedulerKit's runtime is `src/SchedulerKit.lua`, the core, plus the coalescing
+family in `src/parts/SchedulerKit-Coalescing.lua`, `SchedulerKit-Lanes.lua` and
+`SchedulerKit-Watch.lua` (ADR 0001, `docs/decisions/0001-kit-core-and-parts.md`).
+The family was 54% of the Kit's resident code, and most addons that embed
+SchedulerKit (every CommKit user, through its driver) never run it. The files
+are composed by load order, never by `require()`: each part finds the core
+through Registry at file scope.
 
-MoltenCodes packages must remain portable to WoW clients without depending on a general-purpose module loader for internal source composition. The file is organized into explicit sections instead of introducing runtime `require()` coupling solely to make the repository look smaller.
+### The part interface
+
+The core keeps four fields in shared state for its parts:
+
+| Field | Holds | Written by |
+|---|---|---|
+| `parts` | part name to `{ revision = n }` | each part, last thing in its file |
+| `helpers` | the core functions a part calls (`queuePush`, `newJob`, `cancelJob`, `armDelay`, the validators, the clock, `reportError`, `retireMember`, ...) and two values the core resolved at load (`loadedIsSecretValue`, `nativeTraceback`, `false` when absent) | the core, at commit |
+| `familyHelpers` | what the parts share with each other: the clock, option checks, member links, the family timers, `callProtected`, `captureFailure` (Coalescing); `submitToLane`, `laneWake` (Lanes); `cancelWatcher` (Watch) | each part, at commit |
+| `partInterface` | `1`: the interface the parts are written against | the core |
+
+A part reads `helpers.X(...)` and `family.X(...)` at the call, never a copy, so
+an upgraded core or Coalescing part serves a part loaded before it. Those reads
+are direct calls, never tail calls, so every validator still raises at the
+level it did inside the whole file. Entries are only added; a core that must
+change one adds a new entry and raises `partInterface`, and a part checks it
+at load.
+
+The core reaches the parts only through `_state.dispatch`: `cancelFamilyMembers`
+and `closeFamilyMembers` (scope `CancelAll` and `Close`), `familyWake` and
+`runDelivery` (timer wakes and lane deliveries, Coalescing), `laneJobFinished`
+and `retryLaneJob` (job completion and failure, Lanes), `watchTick` (Watch).
+While a part is not loaded its hooks are the core's defaults
+(`installPartStubs`): retire a scope's members with `retireMember` (mark
+closed, unlink, cancel the timer and a lane delivery still waiting), clear a
+job's lane, refuse a retry, stop a watch ticker. They are exact then, because
+no member of an absent part can exist except one an older whole revision made.
+
+The same function installs the stubs: every facade, scope and handle member
+of an absent part, and the `__call` of the debounce and coalesce metatables,
+raise with the file to embed. A part that is already installed, even an older
+revision another addon embedded, keeps its members across a core upgrade.
+
+### Hand-over from a whole-file revision
+
+A state without `parts` was written by revision 21 or older. The core
+remembers that revision; the stubs go in at once, and the parts embedded with
+this core replace them before anything runs (the client loads an addon's
+files back to back). When the hand-over left anything reachable (a lane, a
+watch group, a member in an addon scope or the package-level scope,
+`hasReachableFamilyObjects`), one zero-delay TimerKit timer runs
+`dispatch.settleWholeRevision` on the next frame: for every part still
+missing it retires what the state reaches and reports once. Members in manual
+scopes are not reachable; their stubbed methods raise when called, and a
+timer they armed fires into the default `familyWake`, which retires them.
+
+### Main chunk locals
+
+Revision 22 holds 189 active locals in the core's main chunk (194 before):
+the installer, its four forward-declared hooks and the family-only constants
+left with the family; the part machinery added `PART_INTERFACE`,
+`LAST_WHOLE_REVISION`, three functions assigned in one `do` block and
+`hasPart`. The parts hold 109 (Coalescing), 49 (Lanes) and 35 (Watch).
 
 ## Shared embedded state
 
@@ -230,9 +288,11 @@ Internal/native failures that occur in direct API operations may still be re-rai
 
 ## Coalescing family
 
-`Debounce`, `Coalesce`, `Watch` and lanes live in one installer function,
+`Debounce`, `Coalesce`, `Watch` and lanes live in the three parts from revision
+22 on. Until revision 21 they lived in one installer function,
 `installCoalescingFamily`, rather than at the top level of the chunk: Lua 5.1
-allows 200 locals per function and the main chunk is close to that.
+allows 200 locals per function and the main chunk was close to that. The
+history below is that file's.
 
 Headroom at revision 17: the main chunk holds 191 top-level locals of the 200
 Lua 5.1 allows active at once (`luac -l -l` reports 213 declared, counting

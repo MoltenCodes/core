@@ -7,6 +7,56 @@ The package intentionally separates **when work becomes eligible** from **how mu
 - TimerKit owns time delays.
 - SchedulerKit owns priority, cooperative execution, frame budgeting, and cancellation.
 
+## Core and parts
+
+SchedulerKit is a core file plus three optional parts
+([ADR 0001](../../../docs/decisions/0001-kit-core-and-parts.md)). An addon embeds
+the core and only the parts it uses, each after the core:
+
+```text
+schedulerKit\SchedulerKit.lua                      core: jobs, scopes, priorities, the frame budget
+schedulerKit\parts\SchedulerKit-Coalescing.lua     Debounce and Coalesce (optional)
+schedulerKit\parts\SchedulerKit-Lanes.lua          Lane, and options.lane (optional; needs Coalescing)
+schedulerKit\parts\SchedulerKit-Watch.lua          Watch (optional; needs Coalescing)
+```
+
+`python3 -m tooling.package.embeds schedulerKit schedulerKit/Coalescing` prints
+the `embeds.xml` lines for a selection (`schedulerKit/*` for every part).
+
+| Part | Revision | Adds | Needs |
+|---|---:|---|---|
+| `Coalescing` | 1 | `Debounce`, `Coalesce` on the facade and on scopes, their handles, and the machinery the family shares (one clock, member links, the family timer scope, protected delivery) | the core |
+| `Lanes` | 1 | `Lane`, lane objects, and `options.lane` on `Debounce` and `Coalesce` | the core, `Coalescing` |
+| `Watch` | 1 | `Watch` on the facade and on scopes, and watch handles | the core, `Coalescing` |
+
+**Without a part** its members stay where they are, on the facade, on the
+scope prototype and on the handle prototypes, so a copy that checks for them
+with `type(...) == "function"` still finds them. Each raises at the caller's
+line with the file to embed:
+
+```text
+SchedulerKit:Debounce is in SchedulerKit's Coalescing part, which is not loaded: add schedulerKit\parts\SchedulerKit-Coalescing.lua to embeds.xml after schedulerKit\SchedulerKit.lua
+```
+
+`Debounce` or `Coalesce` given `options.lane` while `Lanes` is not loaded
+raises the same way, naming `SchedulerKit-Lanes`. The family's limits
+(`maxLanes`, `maxWatchIntervals`, `maxWatchersPerInterval`,
+`maxDebounceArguments`) stay in the core, so `SetLimits` and `GetLimits`
+accept and report them whichever parts are loaded. Scopes cancel and close
+their members through the core, with or without the parts.
+
+**Testing for a part.** `SchedulerKit:HasPart(name)` answers `true` when the
+part is loaded. A Kit or addon that uses a part only when it is there asks
+this, never `type(SchedulerKit.Debounce) == "function"`, which a stub
+satisfies.
+
+A part loaded before the core raises `MoltenCodes SchedulerKit part <Part>
+requires SchedulerKit API 1 to be loaded first`; `Lanes` or `Watch` before
+`Coalescing` raises `MoltenCodes SchedulerKit part <Part> requires
+SchedulerKit part Coalescing to be loaded first`. A part file of an equal or
+lower revision than the one installed changes nothing; a higher one upgrades
+the part in place, live handles included.
+
 ## Public surface
 
 ### Package facade
@@ -27,14 +77,15 @@ The package intentionally separates **when work becomes eligible** from **how mu
 | `SetMaxResumesPerFrame(count)` | Set the hard resume-count safety ceiling per frame. |
 | `GetMaxResumesPerFrame()` | Return the resume-count ceiling. |
 | `GetActiveCount()` | Return the number of non-terminal jobs across all scopes. |
-| `Debounce(callback, delaySeconds[, options])` | Return a callable handle that runs `callback` once a burst of calls goes quiet. See [Coalescing and lanes](#coalescing-and-lanes). |
-| `Coalesce(callback, intervalSeconds[, options])` | Return a callable handle that collects keys and delivers them at most once per interval. |
-| `Watch(predicate, intervalSeconds, callback[, options])` | Poll `predicate` on a ticker shared by every watch of that interval. |
-| `Lane(name[, options])` | Return the shared lane called `name`, which rations one scarce resource. |
+| `Debounce(callback, delaySeconds[, options])` | Return a callable handle that runs `callback` once a burst of calls goes quiet. See [Coalescing and lanes](#coalescing-and-lanes). Coalescing part. |
+| `Coalesce(callback, intervalSeconds[, options])` | Return a callable handle that collects keys and delivers them at most once per interval. Coalescing part. |
+| `Watch(predicate, intervalSeconds, callback[, options])` | Poll `predicate` on a ticker shared by every watch of that interval. Watch part. |
+| `Lane(name[, options])` | Return the shared lane called `name`, which rations one scarce resource. Lanes part. |
 | `SetLimits(limits)` / `GetLimits()` | Change or read the package-wide limits. See [Limits](#limits). |
+| `HasPart(name)` | `true` when the part `name` (`"Coalescing"`, `"Lanes"`, `"Watch"`) is loaded. See [Core and parts](#core-and-parts). |
 | `UNBOUNDED` | Sentinel a limit takes to be lifted, where that is allowed. |
 | `Priority` | The four priorities (`HIGH`, `NORMAL`, `LOW`, `IDLE`); see [Priorities](#priorities). |
-| `API`, `REVISION` | The API generation (`1`) and the implementation revision of the copy active in the session (`21` for this one); a newer embedded copy replaces `REVISION` when it upgrades the facade in place. |
+| `API`, `REVISION` | The API generation (`1`) and the implementation revision of the copy active in the session (`22` for this one); a newer embedded copy replaces `REVISION` when it upgrades the facade in place. |
 
 ### Job handles
 
@@ -438,6 +489,8 @@ the caller's code, never runs inside SchedulerKit.
 | `Lane` | `SchedulerKit:Lane name must be a non-empty string`; `SchedulerKit:Lane maxInFlight must be a finite positive integer`, likewise `maxQueued`; `SchedulerKit:Lane minIntervalSeconds must be a finite number greater than or equal to zero`; `SchedulerKit:Lane retry options must be a table` and `... retry options contains unknown field "<field>"`; `SchedulerKit:Lane retry.attempts must be a finite integer greater than or equal to zero`; `SchedulerKit:Lane retry.backoffSeconds` and `retry.maxBackoffSeconds must be a finite number greater than or equal to zero`; `SchedulerKit:Lane retry.multiplier must be a finite number greater than zero` and `... must be at least 1`; `SchedulerKit:Lane lane "<name>" already exists with different options`; `SchedulerKit:Lane refuses to create more than <n> open lanes; close unused lanes, share one by name, or raise SchedulerKit:SetLimits{ maxLanes }` |
 | `Lane:Submit` | `SchedulerKit.Lane:Submit callback must be a function`; `... options must be a table`, `... options contains unknown field "<field>"`; `SchedulerKit.Lane:Submit priority must be one of SchedulerKit.Priority values`; `SchedulerKit.Lane:Submit name must be a non-empty string`; `SchedulerKit.Lane:Submit scope must be a SchedulerKit scope`; `SchedulerKit.Lane:Submit cannot schedule work in a closed scope` |
 | a handle or lane method on something else | `<Method> must be called on a SchedulerKit debounce handle`, `... coalesce handle`, `... watch handle`, `... lane` |
+| a member of a part that is not loaded | `<Method> is in SchedulerKit's <Part> part, which is not loaded: add schedulerKit\parts\SchedulerKit-<Part>.lua to embeds.xml after <file>`, where `<file>` is `schedulerKit\SchedulerKit.lua` for `Coalescing` and `schedulerKit\parts\SchedulerKit-Coalescing.lua` for the other two; `<Method> lane is in SchedulerKit's Lanes part ...` for `options.lane` |
+| `HasPart` | `SchedulerKit:HasPart must be called on the SchedulerKit facade; use SchedulerKit:HasPart(name)`; `SchedulerKit:HasPart name must be a string` |
 | `SetLimits`, `GetLimits` | `SchedulerKit:SetLimits limits must be a table`; `SchedulerKit:SetLimits limits.<name> is not a recognised limit`; `SchedulerKit:SetLimits limits.<name> must be an integer from 1 to <ceiling>` (a limit with a ceiling) or `... must be a positive integer or SchedulerKit.UNBOUNDED` (one without); `SchedulerKit:SetLimits limits.<name> cannot be SchedulerKit.UNBOUNDED: <reason>`; `SchedulerKit:SetLimits must be called on the SchedulerKit facade; use SchedulerKit:SetLimits(limits)`, and the same for `GetLimits` |
 
 Failures of the host or of TimerKit carry no caller position:
@@ -459,7 +512,10 @@ API 2 to be loaded first`, `MoltenCodes SchedulerKit requires a valid Registry
 API 2 facade`, `MoltenCodes SchedulerKit requires a valid TimerKit API 1
 facade` (also when TimerKit is not loaded), `MoltenCodes SchedulerKit requires
 CreateFrame`, `MoltenCodes SchedulerKit requires GetTimePreciseSec`, or
-`MoltenCodes SchedulerKit package state is corrupted or incomplete`.
+`MoltenCodes SchedulerKit package state is corrupted or incomplete`. Loading
+a part raises the messages under [Core and parts](#core-and-parts), or
+`MoltenCodes SchedulerKit part Coalescing requires TimerKit API 1 to be loaded
+first`.
 
 ## Scopes
 
@@ -596,6 +652,9 @@ questions that every addon otherwise answers by hand:
 The two halves meet through `options.lane`: a `Debounce` or `Coalesce` given a
 lane hands every fire to that lane as a job instead of running it
 synchronously, so the whole family shares one throttling vocabulary.
+
+The family lives in the parts: `Debounce` and `Coalesce` in `Coalescing`,
+lanes in `Lanes`, `Watch` in `Watch` (see [Core and parts](#core-and-parts)).
 
 A *lane* here is a named ration of a resource. It is unrelated to the
 *priority lanes* (`HIGH`, `NORMAL`, `LOW`, `IDLE`) described under
@@ -923,6 +982,36 @@ The facade, Job/Scope/Context prototypes, metatables, ready queues, scopes, acti
 The installed OnUpdate trampoline does not permanently close over one implementation revision. It resolves the current shared dispatch function on every scheduler frame. TimerKit delay callbacks use the same dispatch indirection.
 
 A future compatible SchedulerKit revision can therefore update execution behavior while preserving existing facade, Job, Scope, Context, queue, and addon-scope identity.
+
+Revision 22 moves the coalescing family into three parts and adds `HasPart`.
+Package state gains `parts`, `helpers`, `familyHelpers` and `partInterface`,
+seeded into older state in place; every other field, the family's state
+included, keeps its layout. Parts another addon loaded are kept and served by
+an upgraded core.
+
+**Hand-over from the whole-file revision 21 (or older).** Those revisions
+carried the whole family in one file. A revision 22 core that takes over:
+
+- upgrades in place, as any revision does;
+- stubs the members of every part not loaded yet. The parts embedded with
+  this core load right after it and replace the stubs before any code runs,
+  so live handles, lanes and watchers keep working;
+- when the hand-over left lanes, watch groups or handles in addon scopes or
+  the package-level scope, arms one zero-delay TimerKit timer. On the next
+  frame it closes the live objects of every part still not loaded (lane
+  waiting jobs are cancelled; admitted ones finish as ordinary jobs) and
+  reports once through the host error handler: `MoltenCodes SchedulerKit
+  revision 22 took over from revision 21, which carried the coalescing family
+  in one file, and closed <n> live handles and lanes whose part is not
+  loaded. Embed schedulerKit\parts\SchedulerKit-<Part>.lua, ... after
+  schedulerKit\SchedulerKit.lua to keep them`. A handle in a manual scope
+  cannot be reached from the state: its methods raise the stub error when
+  called, and a timer it armed closes it when it fires.
+
+Revision 21 loaded after a revision 22 core is the lower revision and yields;
+its addon gets the stub errors for members of parts nobody loaded. Both cases
+need a whole revision beside a core without its parts; no revision of
+SchedulerKit has been published, so none can be in an addon in the wild.
 
 Revision 21 adds `Scope:Reopen` and changes no state: a revision-20 copy's
 jobs, scopes, workers, timers and handles carry over as they are, and a

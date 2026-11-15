@@ -68,7 +68,11 @@ local function loadWithoutDebugLibrary(debugStack)
   local ok, loaded = pcall(function()
     require("Registry")
     require("TimerKit")
-    return require("SchedulerKit")
+    local SchedulerKit = require("SchedulerKit")
+    -- The Coalescing part resolves `debugstack` when it loads, as the
+    -- whole file did.
+    TestEnv.LoadParts()
+    return SchedulerKit
   end)
   setGlobal("debug", HOST_DEBUG)
   assert(ok, loaded)

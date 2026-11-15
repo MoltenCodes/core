@@ -2,7 +2,7 @@ local TestEnv = require("SchedulerKitTestEnv")
 
 -- The implementation revision this suite was written against; Manifest_spec
 -- holds it to package.manifest.json.
-local CURRENT_REVISION = 21
+local CURRENT_REVISION = 22
 
 -- An addon scope closes at logout whenever the framework can observe logout,
 -- whatever LifecycleKit and EventKit revisions are paired with SchedulerKit.
@@ -278,6 +278,7 @@ describe("SchedulerKit logout routes across an upgrade", function()
     loadChainWithoutSchedulerKit()
     TestEnv.LoadEventKit()
     local old = TestEnv.LoadRevision(11)
+    TestEnv.LoadParts()
     local jobs = old:ForAddon("MyAddon")
     local job = jobs:Schedule(function() end)
     -- Revision 11 decided no route and kept no logout fields.
@@ -289,6 +290,8 @@ describe("SchedulerKit logout routes across an upgrade", function()
     rawset(oldState, "logoutEventScope", nil)
 
     local upgraded = require("SchedulerKit")
+
+    TestEnv.LoadParts()
 
     assert.are.equal(old, upgraded)
     assert.are.equal(CURRENT_REVISION, upgraded.REVISION)
@@ -303,10 +306,13 @@ describe("SchedulerKit logout routes across an upgrade", function()
     local LifecycleKit = TestEnv.LoadLifecycleKit()
     withoutCapability(LifecycleKit)
     local old = TestEnv.LoadRevision(11)
+    TestEnv.LoadParts()
     local jobs = old:ForAddon("MyAddon")
     local subscription = rawget(jobs, "_logoutSubscription")
 
     local upgraded = require("SchedulerKit")
+
+    TestEnv.LoadParts()
 
     assert.are.equal(subscription, rawget(jobs, "_logoutSubscription"))
     assert.is_true(subscription:IsConnected())
@@ -318,10 +324,13 @@ describe("SchedulerKit logout routes across an upgrade", function()
     loadChainWithoutSchedulerKit()
     TestEnv.LoadEventKit()
     local old = TestEnv.LoadRevision(11)
+    TestEnv.LoadParts()
     local jobs = old:ForAddon("MyAddon")
     local connection = privateState(old).logoutConnection
 
     local upgraded = require("SchedulerKit")
+
+    TestEnv.LoadParts()
     local later = upgraded:ForAddon("Later")
 
     assert.are.equal(connection, privateState(upgraded).logoutConnection)
