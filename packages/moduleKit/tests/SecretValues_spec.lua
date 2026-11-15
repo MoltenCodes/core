@@ -199,9 +199,21 @@ describe("ModuleKit and secret values", function()
     )
   end)
 
-  it("reads a secret scope key as no field", function()
+  -- The client raises on `scope[secret]` before the scope's `__index` runs
+  -- (docs/EMBEDDING.md), so ModuleKit no longer checks the key itself; the
+  -- host stand-in's secret simply names no field.
+  it("reads a key that names no field as nil", function()
     local module = addon:CreateModule("UI")
     assert.is_nil(module.scope[secret])
+  end)
+
+  it("refuses a secret missing-scope policy at the caller's line", function()
+    TestEnv.expectCallerError(
+      "ModuleKit.Addon:SetMissingScopePolicy policy must not be a secret value",
+      function()
+        addon:SetMissingScopePolicy(secret)
+      end
+    )
   end)
 
   it("accepts a secret provided value without comparing it", function()

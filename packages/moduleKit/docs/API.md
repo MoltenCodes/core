@@ -19,6 +19,8 @@ The addon container exposes:
 | `GetAddonName()` | Return the owning addon name. |
 | `GetDependencyPolicy()` | Return `automatic` or `strict`. |
 | `SetDependencyPolicy(policy)` | Change targeted dependency behavior and return the previous policy. |
+| `GetMissingScopePolicy()` | Return `"nil"` or `"raise"`: what reading a scope field whose Kit is not loaded answers. Revision 22. |
+| `SetMissingScopePolicy(policy)` | Choose `"nil"` (default) or `"raise"` and return the previous policy; see [Module scopes](#module-scopes). Revision 22. |
 | `CreateModule(name[, definition])` | Create a uniquely named module. |
 | `GetModule(name)` | Return a module or `nil`. |
 | `HasModule(name)` | Test module existence. |
@@ -261,12 +263,35 @@ The rules:
 - **Lazy.** Each field is created on its first read and cached; a module that
   never reads its scope creates nothing and pays nothing beyond the one scope
   table every module carries.
+- **The same object across enables.** When the Kit can reopen a closed scope
+  (`Scope:Reopen()`: TimerKit 0.9.0, EventKit 0.10.0, SignalKit 0.8.0 bus
+  scopes, HookKit 0.4.0 and SchedulerKit 0.9.0 and later), the scope a disable
+  closed is kept on the module and reopened by the first read in the next
+  enabled period, so `self.scope.Events` is the same, empty object every
+  time and no Registry lookup or construction is repeated. A field whose Kit
+  has no `Reopen` (CommKit and CommandKit today, or an older revision of any
+  Kit) gets a new scope as before. A reference kept from an earlier enabled
+  period raises when used while the module is disabled, because its scope is
+  closed, and works again once the module is re-enabled and has read the
+  field. A disabled module keeps up to seven such closed, empty scopes.
 - **Optional Kits.** ModuleKit has no required dependency on TimerKit, EventKit,
   SchedulerKit, HookKit, CommandKit or CommKit, and uses SignalKit only through LifecycleKit. Each
   is resolved through `Registry:Find` at first read, and a field reads as `nil`
   when its Kit is not loaded or is a revision without `CreateScope` (for
   `Messages`: without `Bus` and `ForAddon`). Test for `nil` when your addon
-  does not embed the Kit.
+  does not embed the Kit, or make the mistake loud with
+  `addon:SetMissingScopePolicy("raise")` (below).
+- **Missing Kits as an error, on request.** `addon:SetMissingScopePolicy(policy)`
+  takes `"nil"` (the default, as above) or `"raise"` and returns the previous
+  policy; `addon:GetMissingScopePolicy()` reads it. Under `"raise"`, reading a
+  field whose Kit is not loaded, or is a revision without owner scopes, raises
+  at the reading line and names the file to embed:
+  `ModuleKit module "Core" scope.Timers needs TimerKit API 1, which is not loaded; add timerKit\TimerKit.lua from MoltenCodes to your embeds.xml`.
+  A `Messages` bus that cannot be had (the session's bus bound is reached, or
+  the bus was closed) still reads as `nil`, because that is a runtime state,
+  not a missing file. The policy costs nothing until a field is missing: the
+  test sits on the branch that answers `nil` otherwise, and the default
+  stores no field on the container.
 - **`Messages` can be `nil` with SignalKit loaded.** It is a scope over the bus
   named after the module's addon, the one `SignalKit:ForAddon(addonName)`
   returns. That bus cannot be had when the session already holds SignalKit's
@@ -283,7 +308,8 @@ The rules:
   `OnDisable` has run, in the fixed order comm, commands, events, hooks,
   jobs, messages, timers; a failed `OnEnable` closes whatever it created before failing; at
   shutdown or halt a module whose `OnDisable` fails still has its scopes
-  closed. The next enable starts with fresh scopes.
+  closed. The next enable starts with empty scopes: the same objects where
+  the Kit can reopen them, new ones otherwise.
 - A module that stays enabled because its `OnDisable` failed outside shutdown
   keeps its scopes, like the rest of its state.
 
@@ -636,6 +662,8 @@ at the `CreateModule` line. Messages name the public method in full.
 |---|---|
 | `ForAddon` | `ModuleKit:ForAddon addonName must be a non-empty string` |
 | `SetDependencyPolicy` | `ModuleKit.Addon:SetDependencyPolicy policy must be "automatic" or "strict"` |
+| `SetMissingScopePolicy` | `ModuleKit.Addon:SetMissingScopePolicy policy must be "nil" or "raise"` |
+| reading `module.scope.<Field>` under the `"raise"` policy when its Kit is not loaded | `ModuleKit module "<name>" scope.<Field> needs <Facade> API 1, which is not loaded; add <packageId>\<Facade>.lua from MoltenCodes to your embeds.xml` |
 | `CreateModule`, `GetModule`, `HasModule` | `ModuleKit.Addon:<Method> name must be a non-empty string` |
 | `CreateModule` | `ModuleKit.Addon:CreateModule name "<name>" is already in use` (a module or a provider) |
 | `CreateModule` | `ModuleKit.Addon:CreateModule definition must be a table when provided` |
@@ -670,6 +698,7 @@ refused at the caller's line, before anything changes:
 | `CreateModule` | `ModuleKit module definition requiresAddons entries must not be secret values` |
 | `CreateModule`, `Provide*` | `<label>.implements entries must not be secret values`, for example `ModuleKit.Addon:ProvideValue options.implements entries must not be secret values` |
 | `SetDependencyPolicy` | `ModuleKit.Addon:SetDependencyPolicy policy must not be a secret value` (the policy is kept) |
+| `SetMissingScopePolicy` | `ModuleKit.Addon:SetMissingScopePolicy policy must not be a secret value` (the policy is kept) |
 | `SetLimits` | `ModuleKit:SetLimits limits.<name> must not be a secret value` (a value); `ModuleKit:SetLimits limit names must not be secret values` (a key) |
 | `CreateModule` | `ModuleKit module definition field names must not be secret values` (a key of the definition table) |
 | `CreateModule` | `ModuleKit module definition <field> must be a dense array` (a secret key of a definition list, which cannot be an index) |
@@ -678,8 +707,11 @@ refused at the caller's line, before anything changes:
 | `Resolve` | `ModuleKit.Addon:Resolve requestingModule must not be a secret value`; a table whose `_name` is secret is not a module of the container and is refused as `requestingModule must be a module owned by this addon` |
 
 Two reads accept a secret without refusing it, because neither is an argument
-error: `module.scope[<secret>]` reads as `nil`, like any key that names no
-scope field, and an `implements` table whose `__metatable` is secret is read
+error: `module.scope[<secret>]` never reaches ModuleKit on the client, which
+raises `attempted to index a table that cannot be indexed with secret keys`
+before the scope's `__index` runs (measured on Retail 12.1.0, see
+[`docs/EMBEDDING.md`](../../../docs/EMBEDDING.md)), so ModuleKit does not check
+the key itself; and an `implements` table whose `__metatable` is secret is read
 as a method list, since it cannot be a SchemaKit schema.
 
 A provided value, an injected value and a factory's result are never compared,
@@ -725,8 +757,12 @@ injection table, and `GetActivationOrder` returns a new array of names.
 A targeted `Enable` or `Initialize` under the `automatic` policy allocates one
 recursion guard when the module has hard dependencies, and a failure allocates
 what it records. What a module creates through `module.scope` is the Kit's own
-cost: a scope field is created on first read in each enable and closed when
-the module disables.
+cost: a scope field is created on its first read, closed when the module
+disables, and reopened rather than created again in the next enabled period
+when its Kit has `Reopen`. A targeted `Enable` skips its scan for blocked
+modules while the container knows that none can be blocked, and reads the
+addon's halt from the LifecycleKit instance's documented `_halted` field
+instead of calling `IsHalted` twice.
 
 A module that declares nothing beyond its hooks keeps only the fields it uses;
 constraint sets, injection aliases, `requiresAddons` and failure records are

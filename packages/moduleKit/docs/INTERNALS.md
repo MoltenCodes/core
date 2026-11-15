@@ -59,7 +59,11 @@ metatable is `_state.scopeMetatable`. Keeping that metatable in shared state and
 re-installing `__index` at every commit is what moves scopes created by an older
 copy onto the newer lookup, exactly as the prototypes do for methods.
 
-`__index` runs only for a missing field. It checks `_scopeOpen`, resolves the
+`__index` runs only for a missing field. It checks `_scopeOpen`, then looks in
+`_keptScopes` for the scope the module's last disable closed: when the Kit
+has `Reopen` and it answers `true`, that object is stored and returned, and the
+lookup and construction below are skipped; a `Reopen` that raises or refuses
+gives the kept scope up. Otherwise it resolves the
 Kit through `Registry:Find` (read from the facade on every call, because an
 embedded Registry upgrade replaces the method), creates the scope and stores
 the result with `rawset`, so every later read is a plain table hit. Every field
@@ -69,7 +73,13 @@ without `Bus` and `ForAddon` predates buses, `ForAddon` may answer
 `nil, "full"`, and a closed bus raises from `CreateScope` without offering a
 public query to ask first, so that one call runs under `pcall`. A missing Kit,
 one without `CreateScope`, or a bus that cannot be had yields `nil` and stores
-nothing, so a later read tries again.
+nothing, so a later read tries again; under the container's `"raise"` missing-
+scope policy (`_missingScopePolicy`, absent by default) the first two raise
+instead, at level 3 from `missingScopeKit`, which is the reading line, and the
+call is deliberately not a tail call so the level holds. `__index` does not
+check the key for a secret: the client raises on `scope[secret]` before any
+`__index` runs (`docs/EMBEDDING.md`). The helpers sit in a `do` block with
+`scopeIndex` to keep the main chunk under Lua 5.1's 200-local limit.
 
 `_scopeOpen` is set immediately before `OnEnable` is invoked and cleared by
 `closeModuleScope`, which runs after a successful `OnDisable`, after a failed
@@ -79,9 +89,21 @@ never enabled has none, which reads as closed. A scope whose only key is
 two `next` calls in that usual case. Otherwise closing walks the
 fields in a fixed, alphabetical order (comm, commands, events, hooks, jobs, messages, timers;
 they are independent, so any fixed order would do), closes each one even when an earlier
-`Close` raised, and hands back the first failure; `disableOne` re-raises it only
+`Close` raised, and hands back the first failure; a scope that closed cleanly
+and whose Kit has `Reopen` is kept in `_keptScopes[field]` (created on first
+use) for the next enable; `disableOne` re-raises it only
 after the module has become `disabled`, so a scope failure never leaves a module
 half-transitioned.
+
+## The blocked-module flag
+
+Every targeted `Enable` ends in `recoverBlockedDependents`, which used to scan
+every module for `_enableBlockedBy` and nearly always found nothing. Every
+write of a blocker goes through `markBlocked`, which also sets the container's
+`_mayHaveBlocked = true`; a scan that finds no blocked module sets it to
+`false`, and `false` skips the scan. A new container starts at `false`. A
+container an older revision created has no field, reads `nil`, and is scanned
+as before, so an in-place upgrade needs no migration.
 
 ## Intent versus fact
 
@@ -131,7 +153,10 @@ declaration order. A module that declares none has no such field;
 which is never written and which modules of revisions 8 to 18 may still carry.
 
 `haltBlocker(module)` is the single question every enable path asks: `"halted"`
-when the container's own lifecycle reports `IsHalted()`, else the first
+when the container's own LifecycleKit instance has `_halted == true` (read with
+`rawget`; LifecycleKit documents the field as stable for API 1 and sets it
+before it notifies anyone, and an instance of a revision older than halts has
+no field and never halts), else the first
 required addon whose `LifecycleKit:ForAddon(name):GetHaltReason()` is set, else
 `nil`. It is asked, not cached, because halted is terminal and LifecycleKit is
 the authority. Where it is asked:
@@ -295,14 +320,16 @@ anything; ModuleKit's own state keeps plain `== nil`. A value ModuleKit does com
 key (a name, a list entry, the dependency policy, a limit, a key of the
 caller's definition, options, alias-map, limits or `implements` table, the
 `requestingModule` of `Resolve`) is first passed to `isSecretValue`, which
-reads the `issecretvalue` captured at load and answers `false` on a host
-without it, and a secret is refused at the caller's line before the first
+reads the `issecretvalue` captured at load (or, when there was none at
+load, the global at each call, so a probe installed later is honoured) and
+answers `false` on a host without it, and a secret is refused at the caller's line before the first
 comparison or key use. A secret key of a dense list is refused with the list's
 density message, since it cannot be an index. `Resolve` decides ownership of
 `requestingModule` by identity with the module the container keeps under its
-`_name`, so it never compares a field read from the caller's table. Two reads
-do not refuse: `scopeIndex` answers `nil` for a secret key, and `isSchemaLike`
-answers `false` when `getmetatable` returns a secret. `SetLimits` and
+`_name`, so it never compares a field read from the caller's table. `scopeIndex`
+never sees a secret key (the client refuses `scope[secret]` before `__index`
+runs), and `isSchemaLike` answers `false`, without refusing, when
+`getmetatable` returns a secret. `SetLimits` and
 `GetLimits` check the receiver's type before comparing it with the facade.
 
 ## Hooks run under `pcall`
@@ -368,6 +395,7 @@ The per-module steady state is one module table, its resolved injection table an
 | `_requiredAddons` | the first `requiresAddons` entry | the shared `NO_REQUIRED_ADDONS` (`moduleRequiredAddons`) |
 | `_lastError`, `_hasLastError`, `_blockedBy`, `_enableBlockedBy` | a recorded failure or block | no failure, no block |
 | `_scopeOpen` | the first enable | closed |
+| `_keptScopes` | the first disable that closes a Kit scope that can be reopened | nothing kept |
 
 The shared tables are never written; a writer gives the module its own table first. `clearFailure` and the other clears remove a field only when it is set, because Lua 5.1 stores a key even when `nil` is assigned to it while absent. The module constructor lists the fields almost every module receives next (its scope, its three hooks, `_injections`, `_scopeOpen`) as `nil` entries: Lua 5.1 sizes a table's hash part from its constructor, so the module is built with the sixteen slots it keeps instead of being rehashed into them. Before revision 19 every module carried five empty tables and a thirty-two-slot hash part; the `addonModules` host benchmark's ten-module addon went from 28.7 KB to 16.8 KB retained, container and LifecycleKit instance included.
 

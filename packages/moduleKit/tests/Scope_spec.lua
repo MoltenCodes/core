@@ -255,7 +255,7 @@ describe("ModuleKit module scopes over the real HookKit", function()
     assert.is_nil(rawget(module.scope, "Hooks"))
   end)
 
-  it("hands a re-enabled module a fresh hook scope", function()
+  it("hands a re-enabled module an open hook scope that holds its new hooks", function()
     local ModuleKit = TestEnv.NewPackage()
     local module = ModuleKit:ForAddon("MyAddon"):CreateModule("Hooker")
     local target = newTarget()
@@ -270,9 +270,15 @@ describe("ModuleKit module scopes over the real HookKit", function()
     module:Enable()
 
     assert.are.equal(2, #scopes)
-    assert.is_true(scopes[1]:IsClosed())
     assert.is_false(scopes[2]:IsClosed())
     assert.is_true(scopes[2]:IsHooked(target, "Refresh"))
+    -- A HookKit that can reopen a scope hands back the same one; an older
+    -- one, a fresh one, and the first stays closed.
+    if type(scopes[2].Reopen) == "function" then
+      assert.are.equal(scopes[1], scopes[2])
+    else
+      assert.is_true(scopes[1]:IsClosed())
+    end
   end)
 
   it("undoes the hooks of a failed OnEnable and at shutdown", function()

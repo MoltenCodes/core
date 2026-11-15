@@ -35,7 +35,7 @@
 
 local PACKAGE_NAME = "moduleKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 21
+local IMPLEMENTATION_REVISION = 22
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_LIFECYCLE_API = 1
 local STATE_SCHEMA = 1
@@ -69,6 +69,10 @@ local OWN_ADDON_HALTED = "halted"
 
 ---How targeted operations treat unmet hard dependencies.
 ---@alias ModuleKit.DependencyPolicy "automatic"|"strict"
+
+---What reading a module scope field answers when the Kit behind it is not
+---loaded: `"nil"` (the default) or `"raise"`, an error at the reading line.
+---@alias ModuleKit.MissingScopePolicy "nil"|"raise"
 
 ---The atomic definition table `Addon:CreateModule` accepts.
 ---
@@ -143,12 +147,15 @@ local OWN_ADDON_HALTED = "halted"
 ---@field package _after table<string, boolean>|nil absent reads as none
 ---@field package _injectSpec table<string, string>|nil alias to provider name; absent reads as none
 ---@field package _hardDependencyList ModuleKit.Module[]|nil resolved `_hardDependencies`, oldest first; see `hardDependencies`
+---@field package _keptScopes table<string, table>|nil Kit scopes closed at the last disable, kept for `Reopen`; see `scopeIndex`
 
 ---One addon's module container, bound to that addon's LifecycleKit instance.
 ---@class ModuleKit.Addon
 ---@field GetAddonName fun(self: ModuleKit.Addon): string
 ---@field GetDependencyPolicy fun(self: ModuleKit.Addon): ModuleKit.DependencyPolicy
 ---@field SetDependencyPolicy fun(self: ModuleKit.Addon, policy: ModuleKit.DependencyPolicy): ModuleKit.DependencyPolicy
+---@field GetMissingScopePolicy fun(self: ModuleKit.Addon): ModuleKit.MissingScopePolicy
+---@field SetMissingScopePolicy fun(self: ModuleKit.Addon, policy: ModuleKit.MissingScopePolicy): ModuleKit.MissingScopePolicy
 ---@field CreateModule fun(self: ModuleKit.Addon, name: string, definition: ModuleKit.Definition?): ModuleKit.Module
 ---@field GetModule fun(self: ModuleKit.Addon, name: string): ModuleKit.Module|nil
 ---@field HasModule fun(self: ModuleKit.Addon, name: string): boolean
@@ -178,6 +185,8 @@ local OWN_ADDON_HALTED = "halted"
 ---@field package _flushingCatchUp boolean|nil
 ---@field package _graphOrder ModuleKit.Module[]|nil the cached, validated activation order; see `buildGraph`
 ---@field package _graphDependents table<ModuleKit.Module, ModuleKit.Module[]>|nil cached hard dependents, newest first
+---@field package _mayHaveBlocked boolean|nil `false` when no module can be blocked; absent (an older revision's container) means unknown
+---@field package _missingScopePolicy ModuleKit.MissingScopePolicy|nil absent reads as `"nil"`
 
 ---Per-module owner of framework registrations, released when the module is
 ---disabled. Each field is created on first read, only while the module is
@@ -339,6 +348,10 @@ end
 -- host without `issecretvalue` has no secret values.
 -- issecretvalue is a World of Warcraft client API reachable only through the global table.
 -- selene: allow(global_usage)
+-- The probe is resolved once, when this file loads: the client defines it
+-- before any addon runs, so every check then costs one upvalue read. Only
+-- when it was absent at load does a check read the global again, so a probe a
+-- test environment or a compatibility shim installs later is still honoured.
 local nativeIsSecretValue = rawget(_G, "issecretvalue")
 if type(nativeIsSecretValue) ~= "function" then
   nativeIsSecretValue = nil
@@ -348,10 +361,15 @@ end
 ---@param value any
 ---@return boolean
 local function isSecretValue(value)
-  if nativeIsSecretValue == nil then
-    return false
+  local probe = nativeIsSecretValue
+  if probe == nil then
+    -- selene: allow(global_usage)
+    probe = rawget(_G, "issecretvalue")
+    if type(probe) ~= "function" then
+      return false
+    end
   end
-  return nativeIsSecretValue(value) and true or false
+  return probe(value) and true or false
 end
 
 ---Name a caller's table key in a refusal without running its `__tostring`.
@@ -1721,98 +1739,187 @@ local SCOPE_PACKAGES = {
 -- are all API generation 1.
 local SCOPE_PACKAGE_API = 1
 
----Create an owner scope through the Kit's own `CreateScope()`.
----
----Used by every field but `Messages`.
----@param kit table the Kit's facade
----@return table|nil scope `nil` for a Kit revision without owner scopes
-local function createKitScope(kit)
-  local createScope = rawget(kit, "CreateScope")
-  if type(createScope) ~= "function" then
-    return nil
-  end
-  return createScope(kit)
-end
-
----Create a scope over the SignalKit bus of the module's addon.
----
----A SignalKit revision older than the one that introduced buses has neither
----`Bus` nor `ForAddon` and yields `nil`. So does a bus that cannot be had:
----`ForAddon` answers `nil, "full"` when the session already holds its bound
----of buses, and a bus that was closed refuses new scopes. The field then reads
----as `nil`, exactly as it does when the Kit is absent.
----@param kit table the SignalKit facade
----@param module ModuleKit.Module
----@return table|nil scope
-local function createMessagesScope(kit, module)
-  local forAddon = rawget(kit, "ForAddon")
-  if type(rawget(kit, "Bus")) ~= "function" or type(forAddon) ~= "function" then
-    return nil
+---Create the scope field `key` on first read; the module scope's `__index`.
+---Its helpers live in this block to keep the main chunk under Lua 5.1's
+---200-local limit.
+---@type fun(scope: ModuleKit.Scope, key: any): table|nil
+local scopeIndex
+do
+  ---Create an owner scope through the Kit's own `CreateScope()`.
+  ---
+  ---Used by every field but `Messages`.
+  ---@param kit table the Kit's facade
+  ---@return table|nil scope `nil` for a Kit revision without owner scopes
+  local function createKitScope(kit)
+    local createScope = rawget(kit, "CreateScope")
+    if type(createScope) ~= "function" then
+      return nil
+    end
+    return createScope(kit)
   end
 
-  local addonName = rawget(rawget(module, "_addon"), "_name")
-  local bus = forAddon(kit, addonName)
-  if type(bus) ~= "table" then
-    return nil
+  ---Create a scope over the SignalKit bus of the module's addon.
+  ---
+  ---A SignalKit revision older than the one that introduced buses has neither
+  ---`Bus` nor `ForAddon` and yields `nil`. So does a bus that cannot be had:
+  ---`ForAddon` answers `nil, "full"` when the session already holds its bound
+  ---of buses, and a bus that was closed refuses new scopes. The field then reads
+  ---as `nil`, exactly as it does when the Kit is absent.
+  ---@param kit table the SignalKit facade
+  ---@param module ModuleKit.Module
+  ---@return table|nil scope
+  local function createMessagesScope(kit, module)
+    local forAddon = rawget(kit, "ForAddon")
+    if type(rawget(kit, "Bus")) ~= "function" or type(forAddon) ~= "function" then
+      return nil
+    end
+
+    local addonName = rawget(rawget(module, "_addon"), "_name")
+    local bus = forAddon(kit, addonName)
+    if type(bus) ~= "table" then
+      return nil
+    end
+
+    -- A closed bus raises from `CreateScope`, and it offers no public query to
+    -- ask first; the refusal is the answer.
+    local ok, scope = pcall(bus.CreateScope, bus)
+    if not ok then
+      return nil
+    end
+    return scope
   end
 
-  -- A closed bus raises from `CreateScope`, and it offers no public query to
-  -- ask first; the refusal is the answer.
-  local ok, scope = pcall(bus.CreateScope, bus)
-  if not ok then
-    return nil
-  end
-  return scope
-end
+  -- The facade behind each scope field, for the missing-Kit error.
+  local SCOPE_FACADES = {
+    Comm = "CommKit",
+    Commands = "CommandKit",
+    Events = "EventKit",
+    Hooks = "HookKit",
+    Jobs = "SchedulerKit",
+    Messages = "SignalKit",
+    Timers = "TimerKit",
+  }
 
----Create the scope field `key` on first read.
----
----The field is written onto the scope with `rawset`, so every later read is a
----plain table hit and this function runs once per field per enable.
----@param scope ModuleKit.Scope
----@param key any
----@return table|nil
-local function scopeIndex(scope, key)
-  -- A secret key names no field, and using it as a key would raise here.
-  if isSecretValue(key) then
-    return nil
-  end
-  local packageName = SCOPE_PACKAGES[key]
-  if packageName == nil then
-    return nil
-  end
-
-  local module = rawget(scope, "_module")
-  if rawget(module, "_scopeOpen") ~= true then
+  ---Answer a scope field whose Kit is not loaded, or is a revision without
+  ---owner scopes: `nil`, or under the container's `"raise"` policy an error at
+  ---the line that read the field (`__index` is one frame below it).
+  ---@param module ModuleKit.Module
+  ---@param key string a scope field name
+  local function missingScopeKit(module, key)
+    if rawget(rawget(module, "_addon"), "_missingScopePolicy") ~= "raise" then
+      return
+    end
+    local facade = SCOPE_FACADES[key]
     error(
       'ModuleKit module "'
         .. tostring(rawget(module, "_name"))
         .. '" scope.'
         .. key
-        .. " is available only while the module is enabling or enabled",
-      2
+        .. " needs "
+        .. facade
+        .. " API "
+        .. SCOPE_PACKAGE_API
+        .. ", which is not loaded; add "
+        .. SCOPE_PACKAGES[key]
+        .. "\\"
+        .. facade
+        .. ".lua from MoltenCodes to your embeds.xml",
+      3
     )
   end
 
-  local kit = findOptionalPackage(packageName, SCOPE_PACKAGE_API)
-  if type(kit) == "nil" then
-    return nil
+  ---Reopen a scope the module kept from its last enabled period.
+  ---
+  ---Only a Kit scope with `Reopen` is ever kept (see `closeModuleScope`). A
+  ---reopen that raises or answers anything but `true` gives the scope up, and
+  ---the caller creates a new one as before; nothing reaches the module.
+  ---@param kept table the closed, empty Kit scope
+  ---@return boolean reopened
+  local function reopenKeptScope(kept)
+    local reopen = kept.Reopen
+    if type(reopen) ~= "function" then
+      return false
+    end
+    local ok, reopened = pcall(reopen, kept)
+    return ok and reopened == true
   end
 
-  local created
-  if key == "Messages" then
-    created = createMessagesScope(kit, module)
-  else
-    created = createKitScope(kit)
-  end
-  if type(created) == "nil" then
-    -- A Kit revision without owner scopes, or a bus that cannot be had.
-    -- Nothing is stored, so a later read tries again.
-    return nil
-  end
+  ---Create the scope field `key` on first read.
+  ---
+  ---The field is written onto the scope with `rawset`, so every later read is a
+  ---plain table hit and this function runs once per field per enable. The scope
+  ---closed at the module's last disable is reopened when its Kit can, so the
+  ---field is the same object across enable cycles and the Registry lookup and the
+  ---construction are skipped.
+  ---
+  ---`key` is never a secret: the client raises on `scope[secret]` before any
+  ---`__index` runs (docs/EMBEDDING.md, measured on Retail 12.1.0).
+  ---@param scope ModuleKit.Scope
+  ---@param key any
+  ---@return table|nil
+  function scopeIndex(scope, key)
+    local packageName = SCOPE_PACKAGES[key]
+    if packageName == nil then
+      return nil
+    end
 
-  rawset(scope, key, created)
-  return created
+    local module = rawget(scope, "_module")
+    if rawget(module, "_scopeOpen") ~= true then
+      error(
+        'ModuleKit module "'
+          .. tostring(rawget(module, "_name"))
+          .. '" scope.'
+          .. key
+          .. " is available only while the module is enabling or enabled",
+        2
+      )
+    end
+
+    local keptScopes = rawget(module, "_keptScopes")
+    if keptScopes ~= nil then
+      local kept = keptScopes[key]
+      if kept ~= nil then
+        keptScopes[key] = nil
+        if reopenKeptScope(kept) then
+          rawset(scope, key, kept)
+          return kept
+        end
+      end
+    end
+
+    local kit = findOptionalPackage(packageName, SCOPE_PACKAGE_API)
+    if type(kit) == "nil" then
+      -- Not a tail call, so the error level still counts this frame.
+      missingScopeKit(module, key)
+      return nil
+    end
+
+    local created
+    if key == "Messages" then
+      if type(rawget(kit, "Bus")) ~= "function" or type(rawget(kit, "ForAddon")) ~= "function" then
+        -- Not a tail call, so the error level still counts this frame.
+        missingScopeKit(module, key)
+        return nil
+      end
+      created = createMessagesScope(kit, module)
+    else
+      if type(rawget(kit, "CreateScope")) ~= "function" then
+        -- Not a tail call, so the error level still counts this frame.
+        missingScopeKit(module, key)
+        return nil
+      end
+      created = createKitScope(kit)
+    end
+    if type(created) == "nil" then
+      -- A bus that cannot be had: a runtime state, not a missing file, so it
+      -- reads as `nil` under either policy. Nothing is stored, so a later read
+      -- tries again.
+      return nil
+    end
+
+    rawset(scope, key, created)
+    return created
+  end
 end
 
 ---Create the scope object a module carries for its whole life.
@@ -1852,8 +1959,18 @@ local function closeModuleScope(module)
       local close = type(owned) == "table" and owned.Close or nil
       if type(close) == "function" then
         local ok, value = pcall(close, owned)
-        if not ok and firstError == nil then
-          firstError = { value = value }
+        if not ok then
+          if firstError == nil then
+            firstError = { value = value }
+          end
+        elseif type(owned.Reopen) == "function" then
+          -- Closed cleanly and can be reopened: kept for the next enable.
+          local keptScopes = module._keptScopes
+          if keptScopes == nil then
+            keptScopes = {}
+            module._keptScopes = keptScopes
+          end
+          keptScopes[key] = owned
         end
       end
     end
@@ -1974,6 +2091,20 @@ end
 -- taken down, and records what blocks it. Halted is terminal, so nothing ever
 -- recovers such a module; every enable path refuses it instead.
 
+---Record what keeps the wanted `module` off, and tell its container that a
+---blocked module may exist.
+---
+---`_mayHaveBlocked` lets `recoverBlockedDependents` skip its scan of every
+---module on the many enables where nothing is blocked. It is set here, at
+---every write of a blocker, and cleared only by a scan that found none; a
+---container an older revision made has no flag and is scanned as before.
+---@param module ModuleKit.Module
+---@param blocker string
+local function markBlocked(module, blocker)
+  module._enableBlockedBy = blocker
+  module._addon._mayHaveBlocked = true
+end
+
 ---Whether the addon that owns `addon` has halted.
 ---
 ---A LifecycleKit revision older than the halted state has no `IsHalted`; its
@@ -2013,13 +2144,13 @@ end
 ---@param module ModuleKit.Module
 ---@return string|nil blocker `"halted"` when its own addon halted, the first halted addon of `requiresAddons`, or `nil`
 local function haltBlocker(module)
-  -- `isContainerHalted` written out: every enable asks this twice, before
-  -- and after `OnEnable`, so it is kept to one call into LifecycleKit.
-  -- `_lifecycle` is always the instance `LifecycleKit:ForAddon` returned
-  -- (`installAddonSubscriptions` refuses a container without one).
-  local lifecycle = module._addon._lifecycle
-  local isHalted = lifecycle.IsHalted
-  if type(isHalted) == "function" and isHalted(lifecycle) == true then
+  -- Every enable asks this twice, before and after `OnEnable`, so the halt
+  -- is read from the instance's `_halted` field, which LifecycleKit documents
+  -- as a stable API 1 field and sets before it tells anyone of the halt. An
+  -- instance of a revision older than the halted state has no such field and
+  -- never halts. `_lifecycle` is always the instance `LifecycleKit:ForAddon`
+  -- returned (`installAddonSubscriptions` refuses a container without one).
+  if rawget(module._addon._lifecycle, "_halted") == true then
     return OWN_ADDON_HALTED
   end
 
@@ -2042,7 +2173,7 @@ end
 local function recordHaltRefusal(module, blocker)
   recordFailure(module, nil, blocker, false)
   if module._wantedEnabled == true then
-    module._enableBlockedBy = blocker
+    markBlocked(module, blocker)
   end
 end
 
@@ -2134,14 +2265,14 @@ local function enableOne(module, level)
   if blocker == OWN_ADDON_HALTED then
     -- Terminal cleanup, like the halt pass: the scope is released even
     -- when `OnDisable` fails.
-    module._enableBlockedBy = blocker
+    markBlocked(module, OWN_ADDON_HALTED)
     local disabled, failure = pcall(disableOne, module)
     if not disabled then
       closeModuleScope(module)
       error(failure, 0)
     end
   elseif blocker ~= nil then
-    module._enableBlockedBy = blocker
+    markBlocked(module, blocker)
     disableOne(module)
   end
   return module
@@ -2262,7 +2393,7 @@ local function enableWithPolicy(module, visiting, depth)
           -- Stays recorded if enabling the dependency raises, which is
           -- what lets the dependency's later recovery bring this module
           -- back; see `recoverBlockedDependents`.
-          module._enableBlockedBy = dependency._name
+          markBlocked(module, dependency._name)
         end
         enableWithPolicy(dependency, visiting, depth + 1)
         if dependency._state ~= "enabled" then
@@ -2274,7 +2405,7 @@ local function enableWithPolicy(module, visiting, depth)
           -- the `ready` pass would leave it.
           local blocker = haltBlocker(module) or dependency._name
           recordFailure(module, nil, blocker, false)
-          module._enableBlockedBy = blocker
+          markBlocked(module, blocker)
           visiting[module] = nil
           return module
         end
@@ -2290,7 +2421,7 @@ local function enableWithPolicy(module, visiting, depth)
       if dependency._state ~= "enabled" then
         local name = dependency._name
         recordFailure(module, nil, name, false)
-        module._enableBlockedBy = name
+        markBlocked(module, name)
         error(
           'ModuleKit strict policy: module "'
             .. module._name
@@ -2335,7 +2466,7 @@ local function disableWithPolicy(module)
       -- recovers when this module is enabled again.
       local dependent = dependents[index]
       disableWithPolicy(dependent)
-      dependent._enableBlockedBy = module._name
+      markBlocked(dependent, module._name)
     end
   end
 
@@ -2359,9 +2490,13 @@ local function recoverBlockedDependents(addon)
     return nil
   end
 
-  -- Every targeted `Enable` ends here, and almost always nothing is blocked:
-  -- a linear scan is enough to skip building the graph, and to skip asking
-  -- LifecycleKit about a halt.
+  -- Every targeted `Enable` ends here, and almost always nothing is blocked.
+  -- `false` means no blocker was written since a scan last found none (see
+  -- `markBlocked`); otherwise a linear scan is enough to skip building the
+  -- graph, and to skip asking LifecycleKit about a halt.
+  if addon._mayHaveBlocked == false then
+    return nil
+  end
   local modules = addon._moduleOrder
   local anyBlocked = false
   for index = 1, #modules do
@@ -2371,6 +2506,7 @@ local function recoverBlockedDependents(addon)
     end
   end
   if not anyBlocked then
+    addon._mayHaveBlocked = false
     return nil
   end
   if isContainerHalted(addon) then
@@ -2402,7 +2538,7 @@ local function recoverBlockedDependents(addon)
       -- A required addon that halted keeps the module blocked on it.
       local blocker = ready and haltBlocker(module) or nil
       if blocker ~= nil then
-        module._enableBlockedBy = blocker
+        markBlocked(module, blocker)
       elseif ready then
         -- From here a failure is the module's own, not its
         -- dependency's, so it is not retried by the next recovery.
@@ -2625,7 +2761,7 @@ local function runEnableAllPass(order, lifecycleDriven)
         failed = failed or {}
         failed[module] = true
         recordFailure(module, nil, blockedBy, false)
-        module._enableBlockedBy = blockedBy
+        markBlocked(module, blockedBy)
       else
         local ok, value = pcall(enableOne, module)
         if not ok then
@@ -2779,7 +2915,7 @@ local function haltAllInternal(addon)
   for index = 1, #modules do
     local module = modules[index]
     if rawget(module, "_wantedEnabled") == true then
-      rawset(module, "_enableBlockedBy", OWN_ADDON_HALTED)
+      markBlocked(module, OWN_ADDON_HALTED)
     end
   end
 
@@ -2801,7 +2937,7 @@ local function blockForHaltedAddon(module, blockedBy)
   end
 
   if rawget(module, "_wantedEnabled") == true then
-    rawset(module, "_enableBlockedBy", blockedBy)
+    markBlocked(module, blockedBy)
   end
   disableOne(module)
 end
@@ -3174,6 +3310,46 @@ local function addonSetDependencyPolicy(self, policy)
   return previous
 end
 
+-- The two missing-scope policy methods share one main-chunk local, because
+-- Lua 5.1 allows a chunk at most 200.
+local missingScopePolicyMethods = {}
+
+---Return what reading a scope field answers when its Kit is not loaded.
+---@param self ModuleKit.Addon
+---@return ModuleKit.MissingScopePolicy
+function missingScopePolicyMethods.Get(self)
+  if rawget(self, "_missingScopePolicy") == "raise" then
+    return "raise"
+  end
+  return "nil"
+end
+
+---Choose what reading a module scope field answers when the Kit behind it is
+---not loaded, or is a revision without owner scopes: `"nil"`, the default, or
+---`"raise"`, an error at the reading line that names the file to embed. A
+---secret policy is refused before it is compared with the policy names.
+---@param self ModuleKit.Addon
+---@param policy ModuleKit.MissingScopePolicy
+---@return ModuleKit.MissingScopePolicy previous
+function missingScopePolicyMethods.Set(self, policy)
+  ensureNotShutdown(self, "ModuleKit.Addon:SetMissingScopePolicy", 3)
+  if isSecretValue(policy) then
+    error("ModuleKit.Addon:SetMissingScopePolicy policy must not be a secret value", 2)
+  end
+  if policy ~= "nil" and policy ~= "raise" then
+    error('ModuleKit.Addon:SetMissingScopePolicy policy must be "nil" or "raise"', 2)
+  end
+  local previous = missingScopePolicyMethods.Get(self)
+  -- The default leaves no field behind, so a container that never chose a
+  -- policy carries none.
+  if policy == "raise" then
+    rawset(self, "_missingScopePolicy", "raise")
+  else
+    rawset(self, "_missingScopePolicy", nil)
+  end
+  return previous
+end
+
 local DEFINITION_FIELDS = {
   dependsOn = true,
   optionalDependencies = true,
@@ -3466,7 +3642,7 @@ local function addonCreateModule(self, name, definition)
   -- state shows it before anything tries to enable the module.
   local blocker = haltBlocker(module)
   if blocker ~= nil and module._wantedEnabled == true then
-    module._enableBlockedBy = blocker
+    markBlocked(module, blocker)
   end
 
   -- A fully specified late-created module can catch up immediately. For the
@@ -3978,6 +4154,8 @@ local function createAddon(addonName)
     _dispatched = {},
     _passDepth = 0,
     _pendingCatchUp = {},
+    -- Nothing is blocked yet; see `markBlocked`.
+    _mayHaveBlocked = false,
   }, ADDON_METATABLE)
 
   local addons = rawget(state, "addons")
@@ -4174,6 +4352,8 @@ rawset(Module, "Resolve", moduleResolve)
 rawset(Addon, "GetAddonName", addonGetAddonName)
 rawset(Addon, "GetDependencyPolicy", addonGetDependencyPolicy)
 rawset(Addon, "SetDependencyPolicy", addonSetDependencyPolicy)
+rawset(Addon, "GetMissingScopePolicy", missingScopePolicyMethods.Get)
+rawset(Addon, "SetMissingScopePolicy", missingScopePolicyMethods.Set)
 rawset(Addon, "CreateModule", addonCreateModule)
 rawset(Addon, "GetModule", addonGetModule)
 rawset(Addon, "HasModule", addonHasModule)

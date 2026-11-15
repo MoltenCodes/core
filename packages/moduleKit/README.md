@@ -30,7 +30,7 @@ Dependency policy is explicit:
 
 Whole-container `InitializeAll()` / `EnableAll()` operations always process the complete valid graph in deterministic topological order. `DisableAll()` uses reverse topological order and preserves hard-dependency state if a dependent fails to disable.
 
-Each module carries a `scope` whose `Timers`, `Events`, `Jobs`, `Hooks`, `Messages`, `Commands` and `Comm` fields are released automatically when the module is disabled, and records what it is meant to be (`wanted`) apart from what it is (`actual`), so a module blocked by a failed dependency comes back when that dependency is enabled. When the addon halts, or an addon a module lists in `requiresAddons` halts, the affected modules are taken down and stay blocked for the session. See [`docs/API.md`](docs/API.md).
+Each module carries a `scope` whose `Timers`, `Events`, `Jobs`, `Hooks`, `Messages`, `Commands` and `Comm` fields are released automatically when the module is disabled (and, where the Kit can reopen a scope, are the same objects again at the next enable), and records what it is meant to be (`wanted`) apart from what it is (`actual`), so a module blocked by a failed dependency comes back when that dependency is enabled. When the addon halts, or an addon a module lists in `requiresAddons` halts, the affected modules are taken down and stay blocked for the session. See [`docs/API.md`](docs/API.md).
 
 A provider or a module definition can state what its value must carry, and ModuleKit checks it once, at the caller's line for a value or a module and when the factory's result first arrives for a lazy provider: `addon:ProvideSingleton("Database", factory, { implements = { "Save", "Load" } })`. When SchemaKit is loaded, `implements` may be a SchemaKit schema instead (see [Implements](docs/API.md#implements)).
 
@@ -77,5 +77,7 @@ Minimum footprint: embed 5 files: `registry/Registry.lua`, `signalKit/SignalKit.
 Direct runtime dependencies: LifecycleKit API 1, Registry API 2.
 Every file above is required; omitting one makes this package raise at
 load. TimerKit, SchedulerKit, HookKit, CommandKit and CommKit are optional: `module.scope` uses
-each one the addon embeds. SchemaKit is optional too: the schema form of
+each one the addon embeds. A field whose Kit is not embedded reads as `nil`;
+`addon:SetMissingScopePolicy("raise")` turns that into an error at the reading
+line that names the file to add to `embeds.xml`. SchemaKit is optional too: the schema form of
 `implements` uses it when the addon embeds it.
