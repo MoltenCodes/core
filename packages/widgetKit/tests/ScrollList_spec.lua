@@ -81,8 +81,8 @@ describe("WidgetKit ScrollList", function()
   after_each(TestEnv.Reset)
 
   describe("construction", function()
-    it("is a base type at version 1 built on the ScrollBox framework", function()
-      assert.are.equal(1, WidgetKit:GetTypeVersion("ScrollList"))
+    it("is a base type at version 2 built on the ScrollBox framework", function()
+      assert.are.equal(2, WidgetKit:GetTypeVersion("ScrollList"))
       local list = newList()
       assert.are.equal("ScrollList", list:GetType())
       assert.are.equal("WowScrollBoxList", list.scrollBox.template)
@@ -204,6 +204,41 @@ describe("WidgetKit ScrollList", function()
         return index * 10
       end)
       assert.are.equal(10, shownRows(list)[1].text)
+    end)
+
+    -- Regression (revision 13): Blizzard's view keeps the row of an element
+    -- that stays on display when the data provider changes and only moves
+    -- its order index, without running the initializer, so a formatter that
+    -- shows the index kept the old one after an Insert or a Remove before it.
+    it("asks the formatter again with the new index after Insert and Remove", function()
+      local list = newList()
+      list:SetFormatter(function(element, index)
+        return element.name .. "#" .. index
+      end)
+      local first, second, third = { name = "a" }, { name = "b" }, { name = "c" }
+      list:SetElements({ first, second, third })
+      list:Insert({ name = "z" }, 1)
+      local texts = {}
+      for _, row in ipairs(shownRows(list)) do
+        texts[#texts + 1] = row.text
+      end
+      assert.are.same({ "z#1", "a#2", "b#3", "c#4" }, texts)
+      list:Remove(first)
+      texts = {}
+      for _, row in ipairs(shownRows(list)) do
+        texts[#texts + 1] = row.text
+      end
+      assert.are.same({ "z#1", "b#2", "c#3" }, texts)
+      -- Appending moves no index: the rows on display are not drawn again.
+      local reinitializations = list.scrollBox.reinitializations
+      list:Insert({ name = "d" })
+      assert.are.equal(reinitializations, list.scrollBox.reinitializations)
+      -- The default formatter shows no index: nothing is drawn again either.
+      list:SetFormatter(nil)
+      reinitializations = list.scrollBox.reinitializations
+      list:Insert({ text = "y" }, 1)
+      list:Remove(second)
+      assert.are.equal(reinitializations, list.scrollBox.reinitializations)
     end)
 
     it("reports a raising formatter and wrong results, showing an empty row", function()
@@ -829,10 +864,11 @@ describe("WidgetKit ScrollList", function()
   end)
 
   describe("upgrades", function()
-    -- The text revision 12 added to the source; without it the file models
-    -- revision 11, which had no `ScrollList` and no `maxListElements`.
+    -- The text revision 12 added to the source (the `ScrollList` version
+    -- line and the limit); without it the file models revision 11, which had
+    -- no `ScrollList` and no `maxListElements`.
     local REVISION_12_ONLY = {
-      ["  ScrollList = 1,\n"] = "",
+      ["  ScrollList = 2,\n"] = "",
       ['if rawget(rawget(state, "limits"), "maxListElements") == nil then\n' .. '  rawset(rawget(state, "limits"), "maxListElements", 16384)\n' .. "end\n"] = "",
     }
 
@@ -856,8 +892,8 @@ describe("WidgetKit ScrollList", function()
       local upgraded = require("WidgetKit")
       assert.are.equal(old, upgraded)
       assert.are.equal(state, upgraded._state)
-      assert.are.equal(12, upgraded.REVISION)
-      assert.are.equal(1, upgraded:GetTypeVersion("ScrollList"))
+      assert.are.equal(WidgetKit.REVISION, upgraded.REVISION)
+      assert.are.equal(2, upgraded:GetTypeVersion("ScrollList"))
       assert.are.same({
         maxCreatedCeiling = 4096,
         maxDropdownEntries = upgraded.UNBOUNDED,
@@ -873,6 +909,51 @@ describe("WidgetKit ScrollList", function()
       assert.are.equal(11, list.view.created)
     end)
 
+    it("upgrades a revision 12 copy, retiring its lists for the redraw of version 2", function()
+      TestEnv.Reset()
+      TestEnv.InstallWowApi()
+      TestEnv.InstallClientRules()
+      TestEnv.InstallScreen()
+      TestEnv.InstallScrollBox()
+      for _, name in ipairs({ "Registry", "SignalKit", "PoolKit", "SchemaKit", "OptionsKit" }) do
+        require(name)
+      end
+      -- Revision 12: `ScrollList` at version 1, whose `Insert` and `Remove`
+      -- never asked the formatter again.
+      local old = TestEnv.LoadRevision(12, {
+        ["  ScrollList = 2,\n"] = "  ScrollList = 1,\n",
+        ["    if widget._formatter ~= nil then\n      widget.scrollBox:ReinitializeFrames()"] = "    if false then\n      widget.scrollBox:ReinitializeFrames()",
+      })
+      assert.are.equal(12, old.REVISION)
+      assert.are.equal(1, old:GetTypeVersion("ScrollList"))
+      local borrowed = old:Create("ScrollList") ---@cast borrowed -nil
+      local pooled = old:Create("ScrollList") ---@cast pooled -nil
+      old:Release(pooled)
+      borrowed:SetElements(elementsOf(3))
+      local state = old._state
+
+      local upgraded = require("WidgetKit")
+      assert.are.equal(old, upgraded)
+      assert.are.equal(state, upgraded._state)
+      assert.are.equal(13, upgraded.REVISION)
+      assert.are.equal(2, upgraded:GetTypeVersion("ScrollList"))
+      -- The borrowed list keeps working until it is released, then retires.
+      assert.is_true(upgraded:IsWidget(borrowed))
+      assert.are.equal(3, borrowed:GetNumElements())
+      upgraded:Release(borrowed)
+      local fresh = upgraded:Create("ScrollList") ---@cast fresh -nil
+      assert.are_not.equal(pooled, fresh)
+      assert.are_not.equal(borrowed, fresh)
+      fresh:SetPoint("TOPLEFT", TestEnv.GetGlobal("UIParent"), "TOPLEFT", 0, 0)
+      fresh:SetFormatter(function(element, index)
+        return element.text .. "#" .. index
+      end)
+      local first = { text = "a" }
+      fresh:SetElements({ first })
+      fresh:Insert({ text = "z" }, 1)
+      assert.are.equal("a#2", fresh._rowParts[rowOf(fresh, first)].text:GetText())
+    end)
+
     it("hands a live list's rows to a newer revision through dispatch", function()
       local list = newList()
       local elements = elementsOf(40)
@@ -884,7 +965,7 @@ describe("WidgetKit ScrollList", function()
       })
       assert.are.equal(WidgetKit, upgraded)
       assert.is_true(upgraded:IsWidget(list))
-      assert.are.equal(1, upgraded:GetTypeVersion("ScrollList"))
+      assert.are.equal(2, upgraded:GetTypeVersion("ScrollList"))
       -- The newer copy's row drawing runs for a list the older one built.
       local secret = TestEnv.NewSecret()
       list:SetFormatter(function()

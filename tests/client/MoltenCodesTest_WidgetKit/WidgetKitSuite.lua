@@ -135,6 +135,8 @@ local BASE_TYPES = {
 --- raised `Frame` to 4 (its `BindPosition` takes a storage function).
 --- Revision 10 raised `CheckBox`, `Slider`, `EditBox`, `Dropdown` and
 --- `ColorPicker` to 4 (their label methods and `SetSliderValues` changed).
+--- Revision 13 raised `ScrollList` to 2 (its `Insert` and `Remove` redraw
+--- the rows on display for a custom formatter).
 local BASE_TYPE_VERSIONS = {
   Frame = 4,
   Group = 3,
@@ -148,7 +150,7 @@ local BASE_TYPE_VERSIONS = {
   ColorPicker = 4,
   Heading = 3,
   Spacer = 1,
-  ScrollList = 1,
+  ScrollList = 2,
 }
 
 --- How many elements the `ScrollList` tests hand the list: far more rows than
@@ -815,7 +817,7 @@ end
 local facade = newSuite("facade")
 
 facade:Test(
-  "Registry:Get('widgetKit', 1) is the WidgetKit facade with API 1, its sixteen methods, the four Anchor functions, the defaults 256/256/16 and UNBOUNDED, and the thirteen base types at their documented versions (Frame 4, five at 4, four at 3, ScrollFrame, Spacer and ScrollList 1)",
+  "Registry:Get('widgetKit', 1) is the WidgetKit facade with API 1, its sixteen methods, the four Anchor functions, the defaults 256/256/16 and UNBOUNDED, and the thirteen base types at their documented versions (Frame 4, five at 4, four at 3, ScrollList 2, ScrollFrame and Spacer 1)",
   function(ctx)
     ctx:Expect(rawget(WidgetKit, "API")):ToBe(WIDGET_KIT_API)
     for _, methodName in ipairs({

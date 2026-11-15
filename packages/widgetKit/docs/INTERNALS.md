@@ -341,7 +341,12 @@ draws the row: the formatter's text and icon through `pcall`, the text
 re-anchored only when the icon appears or goes, the colour for the disabled
 state, and the band for the selection. The element's index is the row's order
 index (`GetOrderIndex`), which the view keeps; `GetElementDataIndex` would
-search the list. Row frames are never freed and stay with the widget: the next
+search the list. A kept row's order index moves when an `Insert` or `Remove`
+before it shifts the elements, but the view does not call the initializer for
+it (`ValidateDataRange` in `ScrollBoxListView.lua` only calls `SetOrderIndex`
+on a kept row), so since revision 13 an `Insert` before the end and a `Remove`
+call `ReinitializeFrames` when a custom formatter is set (`redrawShiftedRows`);
+the default formatter shows no index and skips it. Row frames are never freed and stay with the widget: the next
 use of the widget is handed the same frames, so their parts are standard and
 never a consumer's.
 

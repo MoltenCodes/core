@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.1 — 2026-11-15
+
+- Fixed: a `ScrollList` formatter that shows the element's index kept showing the old one after an `Insert` before the end or a `Remove`. Blizzard's view keeps the row of an element that stays on display and only moves its order index, without running the initializer again (`ScrollBoxListView.lua`, `ValidateDataRange`, the same on `live`, `classic` and `classic_era`), so the formatter was never asked with the new index. Both now draw the rows on display again when a custom formatter is set; the default formatter shows no index and costs nothing more.
+- Base widget versions: `ScrollList` goes to version 2, because the `Insert` and `Remove` its constructor stores changed; every other base type keeps its version.
+- Implementation revision 13. No state changed: an in-place upgrade from revision 12 keeps every widget except `ScrollList`s, whose pooled widgets retire at once and borrowed ones on release.
+- Specs: 284 (282 before): the formatter asked again with the new index after `Insert` and `Remove` (and not after an append or with the default formatter), and an upgrade from revision 12 retiring its lists.
+
 ## 0.4.0 — 2026-11-15
 
 - Added: `ScrollList`, a virtualised list on the client's ScrollBox framework (`WowScrollBoxList`, `MinimalScrollBar`, `CreateScrollBoxListLinearView`, `ScrollUtil.InitScrollBoxListWithScrollBar`, `CreateDataProvider`; the same code on Retail, Mists of Pandaria Classic and Classic Era). Only the rows on display exist as frames, made by the view's own pool and reused as the list scrolls. `SetElements`, `Insert`, `Remove`, `Clear`, `GetNumElements`, `GetElement`, `Refresh`, `ScrollToElement`, `SetValue` / `GetValue`, `SetRowHeight`, `SetFormatter`, `SetDisabled`; callbacks `OnValueChanged(element)` and `OnClick(element, mouseButton)`. Single selection is kept by WidgetKit, not by `ScrollUtil.AddSelectionBehavior`. `docs/API.md`, *Base widgets*; recorded in `docs/ROADMAP.md`, "widgetKit virtualised lists".

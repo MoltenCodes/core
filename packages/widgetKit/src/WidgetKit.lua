@@ -57,7 +57,7 @@
 
 local PACKAGE_NAME = "widgetKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 12
+local IMPLEMENTATION_REVISION = 13
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_POOLKIT_API = 1
 local REQUIRED_SIGNALKIT_API = 1
@@ -170,6 +170,10 @@ local POINT_VERTICAL = {
 -- method (only their cost), so every version stays.
 --
 -- ScrollList version 1 (implementation revision 12): the virtualised list.
+--
+-- ScrollList version 2 (implementation revision 13): `Insert` before the end
+-- and `Remove`, stored on the widget by its constructor, ask a custom
+-- formatter again for the rows on display, whose indexes moved.
 local BASE_TYPE_VERSIONS = {
   Frame = 4,
   Group = 3,
@@ -183,7 +187,7 @@ local BASE_TYPE_VERSIONS = {
   ColorPicker = 4,
   Heading = 3,
   Spacer = 1,
-  ScrollList = 1,
+  ScrollList = 2,
 }
 
 -- The name of every built-in layout, the default one first.
@@ -6136,6 +6140,19 @@ do
     widget:Fire("OnClick", element, mouseButton)
   end
 
+  ---After an `Insert` before the end or a `Remove`: ask a custom formatter
+  ---again for the rows on display. Blizzard's view keeps the row of an
+  ---element that stays on display when the data provider changes and only
+  ---moves its order index (`ScrollBoxListView.lua`, `ValidateDataRange`),
+  ---without running the initializer, so the index a formatter was handed
+  ---would be stale. The default formatter shows no index and needs nothing.
+  ---@param widget table
+  local function redrawShiftedRows(widget)
+    if widget._formatter ~= nil then
+      widget.scrollBox:ReinitializeFrames()
+    end
+  end
+
   rawset(dispatch, "initializeScrollListRow", initializeRow)
   rawset(dispatch, "clickScrollListRow", clickRow)
 
@@ -6229,10 +6246,11 @@ do
       error("WidgetKit ScrollList:Insert element is already in the list", 2)
     end
     provider = scrollListProvider(self, "WidgetKit ScrollList:Insert", 3)
-    if type(index) == "nil" then
+    if type(index) == "nil" or index > size then
       provider:Insert(element)
     else
       provider:InsertAtIndex(element, index)
+      redrawShiftedRows(self)
     end
   end
 
@@ -6249,6 +6267,7 @@ do
     if element == self._value then
       self._value = nil
     end
+    redrawShiftedRows(self)
     return true
   end
 
@@ -7343,6 +7362,7 @@ do --
     ---A group widget without a title, for a row, a list or a page column.
     ---@param rendering table
     ---@param parent table
+    ---@param relativeWidth number? the share of the parent's width; full width without it
     ---@return table? group
     local function plainGroup(rendering, parent, relativeWidth)
       local group = renderCreate(rendering, "Group")
