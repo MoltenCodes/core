@@ -5,8 +5,9 @@
 > [`ROADMAP.md`](ROADMAP.md#package-n--bridgekit-migrating-from-ace3). The
 > owner answered the [open questions](#16-open-questions-for-the-owner) on
 > 2026-11-15, accepting every recommendation (decisions 9 to 13 below). Steps
-> N0 (the CommKit and SettingsKit prerequisites) and N1 (the AceSerializer
-> reader and writer, `packages/bridgeKit/`) are done; N2 to N5 follow
+> N0 (the CommKit and SettingsKit prerequisites), N1 (the AceSerializer
+> reader and writer, `packages/bridgeKit/`) and N2 (the AceConfig adapter)
+> are done; N3 to N5 follow
 > ([section 15](#15-delivery-sequence)).
 >
 > This document is the canonical design of `bridgeKit`, the MoltenCodes
@@ -507,7 +508,7 @@ original Ace keys, so an addon can translate paths it stored or prints.
 
 `evaluatedOnce`, `presentation`, `customControl`, `perInterfaceFlag`,
 `confirmOnValue`, `dynamicConfirm`, `cannotOverrideAncestor`, `noAccessor`,
-`missingMethod`, `unknownType`, `pluginShadowed`, `lineCount`,
+`missingMethod`, `unknownType`, `unknownField`, `pluginShadowed`, `lineCount`,
 `defaultBound`, `stepNotEnforced`, `valueKey`, `sortingKey`, `emptyValues`,
 `multiselectTristate`, `fontSize`, `identifier`, `boundToDatabase`,
 `replaced`, `sourceFunction`. Each is documented with its Ace citation in the
@@ -1062,8 +1063,9 @@ Each step ends with the gates green and a read-only review.
 - [x] **N1 — serializer**: `AceSerialize`, `AceDeserialize`, limits, fixtures
       (done 2026-11-15: bridgeKit 0.1.0, revision 1; 90 specs generated from
       Ace3's recorded output, decisions 14 and 15).
-- [ ] **N2 — AceConfig adapter**: `ConvertAceConfig`, `DefineAceConfig`,
-      reports, `FormatReport`.
+- [x] **N2 — AceConfig adapter**: `ConvertAceConfig`, `DefineAceConfig`,
+      reports, `FormatReport` (done 2026-11-15: bridgeKit 0.2.0, revision 2;
+      decision 16).
 - [ ] **N3 — AceDB importer**: `PreviewAceDB`, `ImportAceDB`,
       `AceDBMigration`, backup.
 - [ ] **N4 — AceComm channel**: `OpenAceComm`, reassembly, statistics.
@@ -1117,3 +1119,4 @@ were asked.
 | 13 | Licence reading confirmed: recorded Ace3 output as fixtures with provenance, no Ace3 source or tests in the repository, Ace3 fetched at run time and never redistributed for the benchmark and the client tests (2026-11-15). | 16.5, 3.2 |
 | 14 | Fixtures are recorded by `python3 -m tooling.fixtures.ace_serializer`, which runs the pinned Ace3 (fetched and checksummed by `tooling.bench.ace3`, outside the repository) under host Lua 5.1 over our own inputs and commits only its output, with provenance, as `packages/bridgeKit/tests/fixtures/AceSerializerFixtures.lua` (2026-11-15). | 3.2, 13.1 |
 | 15 | The reader computes `mantissa * 2^exponent` as Ace does, except where `2^exponent` alone underflows (an exponent below -1074): there it scales a finite mantissa with `ldexp`, so a subnormal number Ace's writer produces and Ace's own reader reads as `0` reads back exactly. An escape Ace cannot read (anything after a tilde but `@` to `}`, pinned by the fixtures) is the reason `"invalidEscape"`, added to the vocabulary of section 5.6 (2026-11-15; narrowed after the step's read-only review). | 5.6, 8.2 |
+| 16 | The AceConfig adapter as built in step N2: a field no kind knows is reported (`dropped`, `unknownField`, added to section 6.5), because Ace's validator refuses it and silently losing it would hide a typo; `missingMethod` is a `changed` entry, because the option is still converted and the wrapper raises Ace's message only if the method is still missing when called; a `disabled` or `hidden` a group defines stays on the group and is also resolved onto each option below it, so OptionsKit's ancestor rule and Ace's nearest-definition rule meet; a source function and an addon's `name` function that raise propagate unchanged (2026-11-15). | 5.3, 6.2, 6.5 |

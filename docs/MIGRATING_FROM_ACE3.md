@@ -5,9 +5,9 @@ library at a time. Each section shows the Ace3 code first, then the same
 thing with the Kits, then the differences that change behaviour. Every
 MoltenCodes sample uses the API as documented in the Kit's `docs/API.md`
 today. **BridgeKit** ships in parts: its AceSerializer-3.0 reader and writer
-are current (revision 1), and the samples that use its AceDB importer,
-AceConfig adapter or AceComm channel are marked *planned*, because those parts
-are designed but not implemented yet (see
+and its AceConfig-3.0 adapter are current (revision 2), and the samples that
+use its AceDB importer or AceComm channel are marked *planned*, because those
+parts are designed but not implemented yet (see
 [`BRIDGE_KIT_DESIGN.md`](BRIDGE_KIT_DESIGN.md)).
 
 The Ace3 behaviour described here was read from Ace3 at commit
@@ -84,7 +84,7 @@ show the addon form, which works without ModuleKit.
 | AceLocale-3.0 | LocaleKit | [AceLocale](#acelocale-30) |
 | AceDB-3.0 | SettingsKit (schema: SchemaKit); data import: BridgeKit (planned) | [AceDB](#acedb-30) |
 | AceDBOptions-3.0 | `OptionsKit:ProfileOptions` | [AceDBOptions](#acedboptions-30) |
-| AceConfig-3.0, AceConfigRegistry-3.0 | OptionsKit; table conversion: BridgeKit (planned) | [AceConfig](#aceconfig-30-aceconfigregistry-aceconfigdialog-aceconfigcmd) |
+| AceConfig-3.0, AceConfigRegistry-3.0 | OptionsKit; table conversion: BridgeKit (`DefineAceConfig`) | [AceConfig](#aceconfig-30-aceconfigregistry-aceconfigdialog-aceconfigcmd) |
 | AceConfigDialog-3.0 | WidgetKit `RenderOptions` | [AceConfig](#aceconfig-30-aceconfigregistry-aceconfigdialog-aceconfigcmd) |
 | AceConfigCmd-3.0 | CommandKit `BindOptions` | [AceConfig](#aceconfig-30-aceconfigregistry-aceconfigdialog-aceconfigcmd) |
 | AceGUI-3.0 | WidgetKit | [AceGUI](#acegui-30) |
@@ -765,7 +765,7 @@ rendering:Refresh()
   AceConfigCmd's is `/myaddon scale 1.25`.
 - **`AddToBlizOptions`** has no equivalent yet (the user-interface phase).
 - **Converting an existing table** instead of rewriting it is BridgeKit's
-  AceConfig adapter (planned): see
+  AceConfig adapter: see
   [below](#converting-an-aceconfig-table).
 
 ## AceGUI-3.0
@@ -907,10 +907,10 @@ local handle, refused = comm:Send({
 Three things cannot be rewritten by hand without risk: the saved variable
 your players' settings live in, a large options table, and a wire format
 peers still speak. BridgeKit is designed for exactly these three
-([`BRIDGE_KIT_DESIGN.md`](BRIDGE_KIT_DESIGN.md)). **Only the first recipe
-below runs today**, the AceSerializer one; the others show the planned API so
-an addon can plan its migration, and each is made current when its part
-ships.
+([`BRIDGE_KIT_DESIGN.md`](BRIDGE_KIT_DESIGN.md)). **The AceSerializer and
+AceConfig recipes below run today**; the AceDB and AceComm ones show the
+planned API so an addon can plan its migration, and each is made current when
+its part ships.
 
 ### Reading and writing AceSerializer text
 
@@ -986,22 +986,32 @@ end)
 
 ### Converting an AceConfig table
 
-*Planned API.*
+*Current API* (BridgeKit revision 2).
 
 ```lua
--- Planned API: BridgeKit does not exist yet.
+local OptionsKit = Registry:Get("optionsKit", 1)
+local BridgeKit = Registry:Get("bridgeKit", 1)
+
 local tree, report = BridgeKit:DefineAceConfig(ADDON_NAME, options, {
   db = db,
   bind = { scale = "profile.scale" },                          -- store this one in SettingsKit
   replace = { profiles = OptionsKit:ProfileOptions(db) },      -- instead of AceDBOptions
 })
+for _, line in ipairs(BridgeKit:FormatReport(report)) do
+  print(line)
+end
 ```
 
 - Your Ace3 `get`, `set`, `func` and `validate` handlers keep working: they
-  are called with an Ace3-shaped `info`, inheritance resolved.
+  are called with an Ace3-shaped `info`, inheritance resolved, and a method
+  name is looked up on its handler when it is called, as Ace3 does.
 - Every field that is dropped, renamed or changes meaning (presentation
   fields, `step` not being enforced, a `name` function evaluated once, ...)
   is in the report; `strict = true` turns any of them into an error.
+- `ConvertAceConfig` returns the plain tree and the report without defining
+  anything, which also works without OptionsKit loaded.
+- Keys that are not identifiers are renamed (`"my key"` becomes `my_key`);
+  `conversion.paths` maps every new path to the original keys.
 
 ### Talking to Ace3 peers during the move
 
