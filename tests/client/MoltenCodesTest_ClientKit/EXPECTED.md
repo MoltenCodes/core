@@ -29,8 +29,8 @@ allocation tests each run a full garbage collection first, which can make the
 client stutter for a moment:
 
 ```text
-MoltenCodes Test: running clientKit: 9 suites. Results follow when every test has finished.
-MoltenCodes Test: PASS clientKit.facade: Registry:Get('clientKit', 1) is the ClientKit facade with API 1 and the thirteen documented methods
+MoltenCodes Test: running clientKit: 10 suites. Results follow when every test has finished.
+MoltenCodes Test: PASS clientKit.facade: Registry:Get('clientKit', 1) is the ClientKit facade with API 1 and the nineteen documented methods
 MoltenCodes Test: PASS clientKit.facade: the installed ClientKit carries the revision of the committed manifest
 MoltenCodes Test: PASS clientKit.identity: GetFlavor maps the client's WOW_PROJECT_ID by the documented table, mainline for Retail's 1
 MoltenCodes Test: PASS clientKit.identity: every WOW_PROJECT_* constant the client defines has the number ClientKit's literal flavour map uses
@@ -67,11 +67,13 @@ MoltenCodes Test: PASS clientKit.errors: IsEventValid with nil names ClientKitSu
 MoltenCodes Test: PASS clientKit.errors: the four shims refuse an argument of the wrong type at the calling line before asking the client
 MoltenCodes Test: PASS clientKit.errors: GetManifest with an addon index names ClientKitSuite.lua at the calling line
 MoltenCodes Test: PASS clientKit.errors: manifest:Get refuses a number field, and a forged table carrying the manifest's name, at the calling line
+MoltenCodes Test: PASS clientKit.deprecations: the client's debugstack frame is logged, and a deprecated call is reported once, naming this addon and the calling line
+MoltenCodes Test: PASS clientKit.deprecations: in raise mode a deprecated call raises the report at the calling line, every time
 MoltenCodes Test: PASS clientKit.secrets: IsSecret answers true for a genuine secret made by secretwrap
 MoltenCodes Test: PASS clientKit.secrets: a secret capability name is refused by Has at the calling line
 MoltenCodes Test: PASS clientKit.secrets: a secret addon name is refused by GetManifest at the calling line
 MoltenCodes Test: PASS clientKit.secrets: a secret field name is refused by manifest:Get at the calling line
-MoltenCodes Test: clientKit: 40 passed, 0 failed, 1 skipped, 0 timed out (41 tests)
+MoltenCodes Test: clientKit: 42 passed, 0 failed, 1 skipped, 0 timed out (43 tests)
 MoltenCodes Test: results saved in MoltenCodesTestResults; /reload or log out to write them to disk.
 ```
 
@@ -85,7 +87,8 @@ session prints the same lines.
 
 None. Every call only reads the client: no Frame is created, no setting,
 CVar, global or saved variable is written, and the client's error handler is
-never replaced. No sound, no chat line other than the harness's.
+never replaced and never handed a deprecation report (the reporting test runs
+in `"silent"` mode). No sound, no chat line other than the harness's.
 
 ## What stays for the session
 
@@ -93,6 +96,10 @@ never replaced. No sound, no chat line other than the harness's.
   and `MoltenCodesTest`, as it does for every addon it is asked about and the
   client lists (docs/API.md, "Manifests"). The unknown name the tests ask for,
   `MoltenCodesTest_NoSuchAddon`, is not cached.
+- ClientKit holds two probe deprecations per run
+  (`MoltenCodesTest_ClientKit probe <n>`) and the one report the reporting
+  test records, which `ClientKit:GetDeprecationReports()` lists. The
+  deprecation mode is set only for the length of a test and put back.
 - The client may have loaded the Hearthstone (item 6948) into its item cache.
 
 Nothing else: ClientKit owns nothing that needs releasing, so the suites have
@@ -115,7 +122,7 @@ documentation (`FrameScriptDocumentation`, mirrored in
 `packages/apiKit/metadata/retail/namespaces.json`) lists it with no
 restriction, and it only converts the values handed to it. Retail 12.1 has
 both. A client without them prints these four lines instead, and the totals
-line reads `36 passed, 0 failed, 5 skipped, 0 timed out (41 tests)`:
+line reads `38 passed, 0 failed, 5 skipped, 0 timed out (43 tests)`:
 
 ```text
 MoltenCodes Test: SKIP clientKit.secrets: IsSecret answers true for a genuine secret made by secretwrap -- the client has no issecretvalue and secretwrap; the secret path was not exercised
@@ -130,7 +137,7 @@ The harness measures once, when this file loads, whether
 `issecretvalue(secretwrap(true))` is `true` (`Harness:CanMakeSecrets()`).
 When it is not, the four `clientKit.secrets` tests are registered as skipped
 with the harness's reason, and the totals line reads
-`36 passed, 0 failed, 5 skipped, 0 timed out (41 tests)`:
+`38 passed, 0 failed, 5 skipped, 0 timed out (43 tests)`:
 
 ```text
 MoltenCodes Test: SKIP clientKit.secrets: IsSecret answers true for a genuine secret made by secretwrap -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
@@ -180,9 +187,9 @@ documents for the three clients:
 
 | Client | Totals line | SKIP lines |
 |---|---|---|
-| Retail (`_retail_`) | `MoltenCodes Test: clientKit: 40 passed, 0 failed, 1 skipped, 0 timed out (41 tests)` | the forbidden-frame line |
-| Classic Era (`_classic_era_`) | secrets made: `MoltenCodes Test: clientKit: 40 passed, 0 failed, 1 skipped, 0 timed out (41 tests)`; no secrets made: `MoltenCodes Test: clientKit: 36 passed, 0 failed, 5 skipped, 0 timed out (41 tests)` | the forbidden-frame line, plus the four lines under "On a client that has both functions but makes no secrets" when it makes none |
-| Mists of Pandaria Classic (`_classic_`) | secrets made: `MoltenCodes Test: clientKit: 40 passed, 0 failed, 1 skipped, 0 timed out (41 tests)`; no secrets made: `MoltenCodes Test: clientKit: 36 passed, 0 failed, 5 skipped, 0 timed out (41 tests)` | the forbidden-frame line, plus the four lines under "On a client that has both functions but makes no secrets" when it makes none |
+| Retail (`_retail_`) | `MoltenCodes Test: clientKit: 42 passed, 0 failed, 1 skipped, 0 timed out (43 tests)` | the forbidden-frame line |
+| Classic Era (`_classic_era_`) | secrets made: `MoltenCodes Test: clientKit: 42 passed, 0 failed, 1 skipped, 0 timed out (43 tests)`; no secrets made: `MoltenCodes Test: clientKit: 38 passed, 0 failed, 5 skipped, 0 timed out (43 tests)` | the forbidden-frame line, plus the four lines under "On a client that has both functions but makes no secrets" when it makes none |
+| Mists of Pandaria Classic (`_classic_`) | secrets made: `MoltenCodes Test: clientKit: 42 passed, 0 failed, 1 skipped, 0 timed out (43 tests)`; no secrets made: `MoltenCodes Test: clientKit: 38 passed, 0 failed, 5 skipped, 0 timed out (43 tests)` | the forbidden-frame line, plus the four lines under "On a client that has both functions but makes no secrets" when it makes none |
 
 Whether the Classic clients make secrets cannot be read from the metadata:
 they document `issecretvalue` and `secretwrap`, and only the running client can
@@ -228,6 +235,8 @@ suite is run out of combat.
 | `5000 rounds of every identity, capability and taint probe ...` | After a full collection, 5000 rounds of every probe and `IsAddOnLoaded` move `collectgarbage("count")` by at most 1 KB. |
 | `5000 rounds of a cached GetManifest ...` | The same for a cached manifest in two spellings and remembered `Get` reads. |
 | `IsAtLeast with a string or NaN ...` and the other `clientKit.errors` tests | Each argument error names this file at the calling line, as the client names it, with the documented message. |
+| `the client's debugstack frame is logged ...` | The client has `debugstack`; the log gives its text for `debugstack(1, 1, 0)` and `debugstack(1)` on this flavour (only Retail's form was measured before: `[Interface/AddOns/<Addon>/<File>.lua]:<line>: in function <...>`). Three calls from one line make one report, whose addon is `MoltenCodesTest_ClientKit` and whose site ends `ClientKitSuite.lua:<line>` at that line. |
+| `in raise mode a deprecated call raises ...` | In `"raise"` mode each of two calls raises at this file's calling line, as the client names it, with the documented report text ending in this addon and the location. |
 | `IsSecret answers true for a genuine secret ...` | A real `secretwrap` secret is reported secret. |
 | `a secret capability name is refused ...`, `a secret addon name ...`, `a secret field name ...` | A genuine secret is refused at the calling line with the documented message before ClientKit compares it or uses it as a key; the log says what `type()` answers for a secret. |
 
@@ -235,7 +244,7 @@ suite is run out of combat.
 
 - Any `FAIL` or `TIMEOUT` line, a `SKIP` line other than the forbidden-frame
   one on Retail 12.1 out of combat, or a totals line other than
-  `40 passed, 0 failed, 1 skipped, 0 timed out (41 tests)`; on the Classic
+  `42 passed, 0 failed, 1 skipped, 0 timed out (43 tests)`; on the Classic
   clients, anything other than the outcomes listed under "Per flavour".
 - No login line, or `Expected.lua is missing`: the harness or the installer
   did not run as intended.
@@ -255,6 +264,10 @@ suite is run out of combat.
   spelling answered.
 - An allocation test failing: its log gives the measured delta. Say which
   other addons are enabled.
+- A `clientKit.deprecations` test failing on the addon or the site: the
+  client writes its `debugstack` frame in a form docs/API.md ("Call sites")
+  does not accept, or shortens the path. The logged `debugstack` text says
+  which; send it back.
 - `the installed ClientKit carries the revision ...` failing: another enabled
   addon embeds a different ClientKit copy.
 - A `clientKit.secrets` test failing with "must be a string": the client's
@@ -274,7 +287,8 @@ suite is run out of combat.
    It holds the full report, each test's logs (the capability table as
    ClientKit and the client answer it, the project constants, the build facts,
    the event validity answers, the metadata answers for exported and
-   unexported fields, every field of Regrowth's and the Hearthstone's info,
+   unexported fields, the client's `debugstack` text and the deprecation
+   report, every field of Regrowth's and the Hearthstone's info,
    whether the item cache was cold, the manifest fields and their spellings,
    the two measured memory deltas, the client's own error messages with their
    paths) and the client facts. Lua shortens a long file path from the left,

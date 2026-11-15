@@ -221,6 +221,95 @@ describe("ClientKit error levels", function()
     assertReportedAt(line, "ClientKit.Manifest:Get must be called on a manifest", ok, value)
   end)
 
+  it("points Deprecate, SetDeprecationMode and SetLimits errors at the caller", function()
+    local cases = {
+      {
+        function()
+          ClientKit:Deprecate({ name = "A" })
+        end,
+        "ClientKit:Deprecate spec.removal must be a non-empty string",
+      },
+      {
+        function()
+          ClientKit:Deprecate({ name = Env.NewSecretValue(), removal = "2" })
+        end,
+        "ClientKit:Deprecate spec.name must not be a secret value",
+      },
+      {
+        function()
+          ClientKit:Deprecate(false)
+        end,
+        "ClientKit:Deprecate spec must be a table",
+      },
+      {
+        function()
+          ClientKit:SetDeprecationMode("loud")
+        end,
+        'ClientKit:SetDeprecationMode mode must be "report", "silent" or "raise"',
+      },
+      {
+        function()
+          ClientKit:SetLimits({ maxReports = 0 })
+        end,
+        "ClientKit:SetLimits limits.maxReports must be an integer from 1 to 4096",
+      },
+      {
+        function()
+          ClientKit:SetLimits({ maxReports = Env.NewSecretValue() })
+        end,
+        "ClientKit:SetLimits limits.maxReports must not be a secret value",
+      },
+      {
+        function()
+          ClientKit:SetLimits({ maxCalls = 1 })
+        end,
+        'ClientKit:SetLimits does not know limit "maxCalls"',
+      },
+    }
+    for _, case in ipairs(cases) do
+      local raise = case[1]
+      local line = debug.getinfo(raise, "S").linedefined + 1
+      local ok, value = pcall(raise)
+      assertReportedAt(line, case[2], ok, value)
+    end
+  end)
+
+  it("points reporter Warn argument and receiver errors at the Kit's line", function()
+    local reporter = ClientKit:Deprecate({ name = "TimerKit:After", removal = "TimerKit API 2" })
+    local cases = {
+      {
+        function()
+          reporter:Warn(0)
+        end,
+        "ClientKit.DeprecationReporter:Warn level must be a positive integer or nil",
+      },
+      {
+        function()
+          reporter:Warn(nil, Env.NewSecretValue())
+        end,
+        "ClientKit.DeprecationReporter:Warn addonName must not be a secret value",
+      },
+      {
+        function()
+          reporter:Warn(nil, "")
+        end,
+        "ClientKit.DeprecationReporter:Warn addonName must be a non-empty string or nil",
+      },
+      {
+        function()
+          reporter.Warn({})
+        end,
+        "ClientKit.DeprecationReporter:Warn must be called on a reporter",
+      },
+    }
+    for _, case in ipairs(cases) do
+      local raise = case[1]
+      local line = debug.getinfo(raise, "S").linedefined + 1
+      local ok, value = pcall(raise)
+      assertReportedAt(line, case[2], ok, value)
+    end
+  end)
+
   it("points a write to a manifest at the line that wrote", function()
     Env.RegisterAddOn("MyAddon")
     Env.SetAddOnMetadata("MyAddon", "Title", "My Addon")

@@ -18,7 +18,7 @@ describe("ClientKit bootstrap", function()
     local ClientKit, Registry = Env.NewPackageFor("mainline")
     assert.are.equal(ClientKit, Registry:Get("clientKit", 1))
     assert.are.equal(1, ClientKit.API)
-    assert.are.equal(5, ClientKit.REVISION)
+    assert.are.equal(6, ClientKit.REVISION)
   end)
 
   it("reuses the shared facade and state on a duplicate load", function()
@@ -116,7 +116,7 @@ describe("ClientKit bootstrap", function()
     local upgraded = Env.ReloadPackage()
 
     assert.are.equal(ClientKit, upgraded)
-    assert.are.equal(5, ClientKit.REVISION)
+    assert.are.equal(6, ClientKit.REVISION)
     assert.are.equal(state, ClientKit._state)
     assert.are.equal(host, ClientKit._state.host)
     assert.is_table(state.manifests)
@@ -133,12 +133,14 @@ describe("ClientKit bootstrap", function()
     Env.SetAddOnMetadata("MyAddon", "Title", "My Addon")
     local manifest = ClientKit:GetManifest("MyAddon")
 
-    -- Revisions 3, 4 and 5 changed no state field, so the real file loads
-    -- over the revision 2 layout as a plain in-place upgrade.
+    -- Revisions 3, 4 and 5 changed no state field, and the copy loaded as
+    -- revision 2 is the working file, so it already carries the deprecation
+    -- state revision 6 adds: the real file loads over it as a plain in-place
+    -- upgrade. "upgrades a revision 5 layout" covers adding that state.
     local upgraded = Env.ReloadPackage()
 
     assert.are.equal(ClientKit, upgraded)
-    assert.are.equal(5, ClientKit.REVISION)
+    assert.are.equal(6, ClientKit.REVISION)
     assert.are.equal(state, ClientKit._state)
     assert.are.equal(manifest, ClientKit:GetManifest("MyAddon"))
     assert.are.equal("My Addon", manifest:Get("Title"))
@@ -156,14 +158,14 @@ describe("ClientKit bootstrap", function()
     local upgraded = Env.ReloadPackage()
 
     assert.are.equal(ClientKit, upgraded)
-    assert.are.equal(5, upgraded.REVISION)
+    assert.are.equal(6, upgraded.REVISION)
     assert.are.equal(state, upgraded._state)
     assert.are.equal(manifest, upgraded:GetManifest("MyAddon"))
     assert.are.equal(1, Env.MetadataReads("MyAddon", "Title"))
   end)
 
   it("upgrades the previous revision in place to the working file", function()
-    local previousRevision = 4
+    local previousRevision = 5
     Env.NewHostFor("mainline", { locale = "deDE" })
     local ClientKit = Env.LoadSourceAtRevision(previousRevision)
     local state = ClientKit._state
@@ -188,6 +190,101 @@ describe("ClientKit bootstrap", function()
       manifest.Get({ name = Env.NewSecretValue() }, "Title")
     end, "ClientKit.Manifest:Get must be called on a manifest")
   end)
+
+  it("upgrades a revision 5 layout in place and adds the deprecation state", function()
+    Env.NewHostFor("mainline", { debugStack = {} })
+    local ClientKit = Env.LoadSourceAtRevision(5)
+    local state = ClientKit._state
+    Env.RegisterAddOn("MyAddon")
+    Env.SetAddOnMetadata("MyAddon", "Title", "My Addon")
+    local manifest = ClientKit:GetManifest("MyAddon")
+    -- Strip what revision 5 never had: the deprecation state and the six
+    -- deprecation methods.
+    rawset(state, "deprecation", nil)
+    for _, methodName in ipairs({
+      "Deprecate",
+      "GetDeprecationReports",
+      "SetDeprecationMode",
+      "GetDeprecationMode",
+      "SetLimits",
+      "GetLimits",
+    }) do
+      rawset(ClientKit, methodName, nil)
+    end
+
+    local upgraded = Env.ReloadPackage()
+
+    assert.are.equal(ClientKit, upgraded)
+    assert.are.equal(6, upgraded.REVISION)
+    assert.are.equal(state, upgraded._state)
+    assert.are.equal(manifest, upgraded:GetManifest("MyAddon"))
+    assert.are.equal(1, Env.MetadataReads("MyAddon", "Title"))
+    assert.are.equal("report", upgraded:GetDeprecationMode())
+    assert.are.same({ maxDeprecations = 128, maxReports = 256 }, upgraded:GetLimits())
+
+    Env.InstallHostErrorHandler()
+    local reporter = upgraded:Deprecate({ name = "TimerKit:After", removal = "TimerKit API 2" })
+    reporter:Warn(1)
+    assert.are.equal(1, #upgraded:GetDeprecationReports())
+    assert.are.equal("MyAddon", upgraded:GetDeprecationReports()[1].addon)
+  end)
+
+  it("keeps reporters, their once-keys, reports and the mode across an upgrade", function()
+    local ClientKit = Env.NewPackageFor("mainline", { debugStack = {} })
+    ClientKit:SetDeprecationMode("silent")
+    ClientKit:SetLimits({ maxReports = 64 })
+    local reporter = ClientKit:Deprecate({ name = "TimerKit:After", removal = "TimerKit API 2" })
+    reporter:Warn(1, "MyAddon")
+    local Warn = reporter.Warn
+
+    local nextRevision = ClientKit.REVISION + 1
+    Env.LoadSourceAtRevision(nextRevision)
+
+    -- The same reporter is handed out again, its `Warn` is the one the newer
+    -- copy rewrote, and the addon it already reported stays reported.
+    assert.are.equal(
+      reporter,
+      ClientKit:Deprecate({ name = "TimerKit:After", removal = "TimerKit API 2" })
+    )
+    assert.are_not.equal(Warn, reporter.Warn)
+    reporter:Warn(1, "MyAddon")
+    assert.are.equal(1, #ClientKit:GetDeprecationReports())
+    assert.are.equal("silent", ClientKit:GetDeprecationMode())
+    assert.are.equal(64, ClientKit:GetLimits().maxReports)
+  end)
+
+  it("refuses to upgrade over deprecation state that is not the shape revision 6 made", function()
+    local ClientKit = Env.NewPackageFor("mainline")
+    rawset(ClientKit._state.deprecation, "mode", "loud")
+    local nextRevision = ClientKit.REVISION + 1
+    Env.expectErrorContaining(
+      "MoltenCodes ClientKit package state is corrupted or incomplete",
+      function()
+        Env.LoadSourceAtRevision(nextRevision)
+      end
+    )
+  end)
+
+  for _, case in ipairs({
+    { "the deprecation state", nil, nil },
+    { "a deprecation limit", "limits", "maxReports" },
+    { "the inert reporter", nil, "inert" },
+  }) do
+    it("rejects same-revision state that lost or broke " .. case[1], function()
+      local ClientKit = Env.NewPackageFor("mainline")
+      local deprecation = ClientKit._state.deprecation
+      if case[2] ~= nil then
+        rawset(deprecation[case[2]], case[3], "many")
+      elseif case[3] ~= nil then
+        rawset(deprecation, case[3], "none")
+      else
+        rawset(ClientKit._state, "deprecation", nil)
+      end
+      assert.has_error(function()
+        Env.ReloadPackage()
+      end)
+    end)
+  end
 
   it("keeps cached manifests and their Get across an upgrade", function()
     local ClientKit = Env.NewPackageFor("mainline")

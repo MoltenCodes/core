@@ -2,8 +2,9 @@
 
 ClientKit API generation **1** reports the client flavour, build and
 capabilities, probes secret values, restricted frames and event names, shims
-the host calls whose name or shape differs between flavours, and reads an
-addon's `.toc` into a read-only manifest.
+the host calls whose name or shape differs between flavours, reads an
+addon's `.toc` into a read-only manifest, and carries the framework's
+deprecation warnings.
 
 ```lua
 local ClientKit = MoltenCodes.Registries[2]:Get("clientKit", 1)
@@ -26,6 +27,12 @@ local ClientKit = MoltenCodes.Registries[2]:Get("clientKit", 1)
 | `GetSpellInfo(spell)` | `ClientKit.SpellInfo?` | One table shape on every flavour. |
 | `GetItemInfo(item)` | `...` | The host's item list, from whichever call the client has. |
 | `GetManifest(addonName)` | `ClientKit.Manifest?, reason?` | A read-only snapshot of an addon's `.toc`; see [Manifests](#manifests). |
+| `Deprecate(spec)` | `ClientKit.DeprecationReporter` | Declare something a Kit deprecates; see [Deprecations](#deprecations). |
+| `GetDeprecationReports()` | `ClientKit.DeprecationReport[]` | Every deprecation report recorded this session, as fresh rows. |
+| `SetDeprecationMode(mode)` | nothing | `"report"` (default), `"silent"` or `"raise"`, for the whole session. |
+| `GetDeprecationMode()` | `"report" \| "silent" \| "raise"` | The session's mode. |
+| `SetLimits(limits)` | nothing | Change `maxDeprecations` and `maxReports`; see [Limits](#limits). |
+| `GetLimits()` | `ClientKit.Limits` | The two limits, as a fresh table. |
 
 `API` and `REVISION` are published on the facade as integers.
 
@@ -34,8 +41,10 @@ package state, and read again in place when a newer compatible revision
 upgrades the package. After that every probe is a table read and every shim
 adds one call to the host function it wraps. Nothing allocates after
 bootstrap except `GetSpellInfo` on a client without `C_Spell.GetSpellInfo`,
-which builds the one table it returns, and the first `GetManifest` call for
-an addon, which builds the snapshot that every later call returns.
+which builds the one table it returns, the first `GetManifest` call for
+an addon, which builds the snapshot that every later call returns, and the
+deprecation methods, which build a reporter or a report the first time they
+need one.
 
 The values are fixed for the session. A client does not change flavour,
 build, locale or API surface without a restart, and an addon's `.toc` is
@@ -368,6 +377,167 @@ means "absent", so the field reads `nil` and nothing propagates. The
 `GetAddOnMetadata` shim above keeps its documented behaviour and lets host
 errors through unchanged.
 
+## Deprecations
+
+A Kit that deprecates one of its own things (an API generation, a facade
+method, an option) declares it once with `Deprecate` and calls the reporter
+on the deprecated path. The addon that still uses it is told once per call
+site, or once per addon when the Kit knows the addon, for the session; never
+once per call. Nothing is raised unless a developer switches the session to
+`"raise"`. Registry's line budget leaves no room for this, so it lives here,
+as `GetManifest` does. ClientKit itself deprecates nothing.
+
+### `ClientKit:Deprecate(spec)`
+
+```lua
+local reporter = ClientKit:Deprecate({
+  name = "TimerKit:After",        -- what is deprecated
+  replacement = "TimerKit:Delay", -- optional: what to use instead
+  removal = "TimerKit API 2",     -- required: when, or in what, it goes
+})
+```
+
+`name` and `removal` are non-empty strings; `replacement` is a non-empty
+string or `nil`. A name is anything a reader recognises: `"EventKit API 1"`,
+`"SettingsKit:Open option legacy"`. Declaring a name again returns the same
+reporter with the newer `removal` and `replacement`, so a Kit upgraded in
+place that declares its deprecations again at load adds nothing, and the
+newer text is what later reports carry.
+
+Past [`maxDeprecations`](#limits) distinct names, `Deprecate` returns one
+shared inert reporter whose `Warn` checks its arguments and does nothing, and
+reports the limit once a session (unless the mode is `"silent"`):
+
+```text
+MoltenCodes ClientKit: maxDeprecations (128) reached; "TimerKit:Every" and later deprecations report nothing (raise it with ClientKit:SetLimits).
+```
+
+It never raises for a full table, because a Kit declares its deprecations
+while it loads.
+
+### `reporter:Warn(level?, addonName?)`
+
+```lua
+function TimerKit:After(delay, callback)
+  reporter:Warn()            -- before anything changes, see "raise" below
+  return self:Delay(delay, callback)
+end
+```
+
+`level` counts as the Kit's own `error(message, level)` would: `1` is the
+Kit's method, `2` (the default) the consumer that called it. A Kit that warns
+from a helper passes one more per helper. `Warn` must not be tail-called
+(`return reporter:Warn()`), since a tail call removes the Kit's frame and the
+level then names the wrong caller.
+
+`addonName`, when the Kit knows the consuming addon (the owner of a scope,
+say), makes the addon the once-key: the first call from that addon is
+reported and every later one costs one table lookup. Without it the once-key
+is the call site, and every call reads it from the client (see below).
+
+A report reads:
+
+```text
+MoltenCodes: TimerKit:After is deprecated; use TimerKit:Delay. Removal: TimerKit API 2. Called from MyAddon (Interface/AddOns/MyAddon/Core.lua:42).
+```
+
+`; use …` is left out without a replacement, and ` (…)` when the client named
+no call site. The addon is the `addonName` given, else the folder after
+`Interface/AddOns/` in the call site, else `unknown`. In `"report"` mode the
+text goes to `geterrorhandler()`, read at every report because an
+error-capturing addon replaces the handler after ClientKit loads, or to
+`print` on a host without it. Both run under `pcall`: a handler that fails
+cannot break the deprecated call.
+
+### Call sites
+
+The call site comes from the client's `debugstack(start, 1, 0)`, the frame
+`level` above the Kit's method. The client has no `debug` library (the
+Retail client publishes no `debug` global, measured on 12.1.0 build 69933),
+and `debugstack` is a core client function on every flavour (Blizzard's own
+`Blizzard_ScriptErrors` calls it on Retail, Mists of Pandaria Classic and
+Classic Era). The Retail client writes a frame
+`[Interface/AddOns/MyAddon/Core.lua]:42: in function <...>`; ClientKit also
+accepts `[string "@Interface\AddOns\MyAddon\Core.lua"]:42:` and a bare path
+with either separator, and reports the location as
+`Interface/AddOns/MyAddon/Core.lua:42`. A frame outside `Interface/AddOns/`
+(a chunk loaded from a string) names no addon, and its text is the location.
+
+The raw frame text is the once-key, so a repeated call from a site already
+reported costs one `debugstack` call and one lookup, and no string is built
+before the lookup. A host without `debugstack`, or a frame the client
+answers empty or secret, gives no call site: the report is then made once
+per addon given, else once per deprecation.
+
+### Modes
+
+| Mode | What `Warn` does |
+|---|---|
+| `"report"` (default) | Records the report and hands its text to the host error handler. |
+| `"silent"` | Records the report only; `GetDeprecationReports` still lists it. |
+| `"raise"` | Raises the report's text at the consumer's line on every call, and records nothing. |
+
+`ClientKit:SetDeprecationMode(mode)` sets the mode for the whole session:
+there is one ClientKit, so every addon shares it. `"raise"` is a developer
+switch, to find every deprecated call in an addon under development; do not
+ship an addon that sets it, since it makes every other addon's deprecated
+call fail too. A Kit calls `Warn` before it changes any state, so a raised
+report leaves the Kit as it was. Any other value raises at the caller
+(`ClientKit:SetDeprecationMode mode must be "report", "silent" or "raise"`).
+
+### `ClientKit:GetDeprecationReports()`
+
+```lua
+for _, report in ipairs(ClientKit:GetDeprecationReports()) do
+  print(report.addon, report.name, report.removal, report.site)
+end
+```
+
+Returns a fresh array of fresh rows `{ name, replacement, removal, addon,
+site }`, oldest first; `replacement` and `site` may be `nil`. It is for an
+addon author listing what this session used, never for a hot path.
+
+### Optional for every Kit
+
+No Kit depends on ClientKit for this. A Kit finds it through
+`Registry:Find` at the first deprecated call and remembers the answer, so a
+session without ClientKit, or with a revision older than 6, reports nothing
+and fails nothing:
+
+```lua
+local afterReporter -- nil until looked up, false when ClientKit cannot report
+
+local function warnAfterDeprecated(addonName)
+  if afterReporter == nil then
+    afterReporter = false
+    local ClientKit = Registry:Find("clientKit", 1)
+    if type(ClientKit) == "table" and type(rawget(ClientKit, "Deprecate")) == "function" then
+      afterReporter = ClientKit:Deprecate({
+        name = "TimerKit:After",
+        replacement = "TimerKit:Delay",
+        removal = "TimerKit API 2",
+      })
+    end
+  end
+  if afterReporter then
+    afterReporter:Warn(3, addonName) -- 1 this helper, 2 the Kit's method, 3 its caller
+  end
+end
+```
+
+The answer is remembered for the session, so a ClientKit that loads only
+after the first deprecated call is not used for that deprecation.
+
+### Cost
+
+A Kit that deprecates nothing costs nothing: until `Deprecate` is called,
+the deprecation state is a handful of small tables created at load. `Warn`
+on a deprecated path checks its arguments, compares the mode, and then
+costs one table lookup with `addonName` (after the first report of that
+addon) or one `debugstack` call and one lookup without it. Past
+[`maxReports`](#limits) every reporter stops reading call sites and answers
+after that comparison. A repeated warning of a known addon allocates nothing.
+
 ## Errors
 
 Argument errors name the method, the parameter and the expected type, and
@@ -384,7 +554,15 @@ says it is not secret; a secret is described as `<secret value>`. A secret
 (`ClientKit:Has capability must not be a secret value`,
 `ClientKit:GetManifest addonName must not be a secret value`,
 `ClientKit.Manifest:Get field must not be a secret value`) before it is
-compared or used as a table key.
+compared or used as a table key. The same holds for every argument of the
+deprecation methods: `Deprecate`'s `spec` and its `name`, `removal` and
+`replacement`, `Warn`'s `level` and `addonName`, `SetDeprecationMode`'s
+`mode`, and `SetLimits`' table, its keys and its values. `Warn` raises at its
+own caller, the Kit, for a bad argument
+(`ClientKit.DeprecationReporter:Warn level must be a positive integer or nil`)
+and for a receiver that is not a reporter
+(`ClientKit.DeprecationReporter:Warn must be called on a reporter`); that is
+the Kit's mistake, not the consumer's.
 
 A value that may be secret is never tested as a boolean either (`if x`,
 `x and y`, `x or y`, `not x`), because on Retail 12.1.0 that raises inside
@@ -408,22 +586,43 @@ Bootstrap failures raise at the line that loaded the file:
 
 ## Limits
 
-ClientKit has no limits to open, so it has no `SetLimits` and no `UNBOUNDED`.
-It retains a fixed set of values probed at load (flavour, interface number,
-build, locale, a fixed list of capability flags, the bound host functions).
-The identity and capability methods read those values; the taint probes and
-the shims ask the host on every call and cache nothing.
+| Limit | Default | How to open | UNBOUNDED allowed? |
+|---|---|---|---|
+| `maxDeprecations`, deprecations declared under distinct names | 128 | `ClientKit:SetLimits({ maxDeprecations = n })`, `n` from 1 to 1024 | No: deprecations are declared by Kits, so a ceiling covers every real need |
+| `maxReports`, reports recorded for the session | 256 | `ClientKit:SetLimits({ maxReports = n })`, `n` from 1 to 4096 | No: each report holds a row and a once-key until the session ends |
 
-The one collection that grows is the manifest cache, and its bound is the
-host's: one record per addon asked for, keyed by the lower-cased name and
-stored only when the client lists that addon (`GetAddOnInfo` without the
-reason `"MISSING"`, or a readable `## Title` on a host without that call).
-The set of installed addons is fixed when the client starts and no caller
-can grow it, so a consumer cannot fill the cache with names, and a misspelt
-or foreign name is answered `nil, "unknown"` without being stored.
-Within a manifest, `Get` remembers only fields the `.toc` actually has, so
-that memo is bounded by the file's own content. A limit a consumer could
-open would therefore change nothing, which is why there is none.
+```lua
+ClientKit:SetLimits({ maxReports = 1024 })
+local limits = ClientKit:GetLimits() -- { maxDeprecations = 128, maxReports = 1024 }
+```
+
+`SetLimits` accepts any subset and returns nothing. It checks every entry
+before applying any, so a refused call changes nothing, and raises at the
+caller for a table it cannot use (`ClientKit:SetLimits limits must be a
+table`), an unknown name (`ClientKit:SetLimits does not know limit
+"maxCalls"`) and a value that is not an integer within the range
+(`ClientKit:SetLimits limits.maxReports must be an integer from 1 to 4096`).
+A limit lowered below what is already held keeps what is held: past
+`maxDeprecations` a new name gets the inert reporter, past `maxReports`
+nothing more is recorded. `GetLimits` returns a new table on every call. The
+limits are shared by the session and survive an in-place upgrade.
+
+Everything else ClientKit retains needs no limit. It keeps a fixed set of
+values probed at load (flavour, interface number, build, locale, a fixed
+list of capability flags, the bound host functions). The identity and
+capability methods read those values; the taint probes and the shims ask
+the host on every call and cache nothing.
+
+The manifest cache grows, and its bound is the host's: one record per addon
+asked for, keyed by the lower-cased name and stored only when the client
+lists that addon (`GetAddOnInfo` without the reason `"MISSING"`, or a
+readable `## Title` on a host without that call). The set of installed
+addons is fixed when the client starts and no caller can grow it, so a
+consumer cannot fill the cache with names, and a misspelt or foreign name
+is answered `nil, "unknown"` without being stored. Within a manifest, `Get`
+remembers only fields the `.toc` actually has, so that memo is bounded by
+the file's own content. A limit on either would change nothing, which is
+why there is none.
 
 ## Embedded identity and upgrades
 
@@ -443,5 +642,14 @@ empty and binds the four host functions the manifests use. Revisions 3, 4
 and 5 changed no state field, so an upgrade over revision 2, 3 or 4 keeps every
 cached manifest as it is. An inherited `manifests` or `manifestPrototype` that is present but not
 a table is refused as corrupted state rather than indexed.
+
+Revision 6 added the deprecation state (reporters, reports, the mode, the
+limits and the reporter prototype) without a schema change; an upgrade over
+revision 5 or older creates it with the defaults and keeps every cached
+manifest. A later upgrade keeps it as it is: a reporter a Kit holds is the
+same table afterwards, its `Warn` is resolved through the prototype the
+newer copy rewrote, and the call sites and addons it already reported stay
+reported. Inherited deprecation state that is not the shape revision 6
+creates is refused as corrupted.
 
 `_state` is private; its layout is not part of the contract.

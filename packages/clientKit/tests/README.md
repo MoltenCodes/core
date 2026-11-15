@@ -51,6 +51,28 @@ The suite covers:
   manifest keeping its identity and its rewritten `Get` across an upgrade,
   load-order failures, and corrupted-state refusal on a reload and on an
   upgrade, including a `manifests` or `manifestPrototype` that is not a table;
+  an upgrade over a revision 5 layout that adds the deprecation state and
+  keeps cached manifests, reporters, once-keys, reports, the mode and the
+  limits kept across an upgrade with `Warn` rewritten in place, and
+  deprecation state of the wrong shape refused on a reload and on an upgrade;
+- deprecation warnings: one report per call site through the host error
+  handler and none for a repeated call from the same site, two sites
+  reported twice, one report per addon named by the Kit with `debugstack`
+  read once per addon, a report without a replacement, an explicit level
+  from a helper, fresh report rows, a name declared again returning the
+  same reporter with the newer text, nothing held until a Kit deprecates
+  something, and no allocation for a repeated warning of a known addon;
+  the addon and location named from each frame form (bracketed, `[string
+  "@..."]`, bare path with backslashes, with the client's `...` line), a
+  frame outside `Interface/AddOns/`, an empty or blank answer, a host
+  without `debugstack`, and a secret frame line; `print` on a host without
+  `geterrorhandler` and a failing handler that never raises; the three
+  modes, `"raise"` at the consumer's line on every call with and without a
+  site; limits (defaults, subsets, ceilings, refusals that change nothing,
+  a secret limit name, the inert reporter and its one notice, silent mode,
+  `maxReports` stopping call-site reads); malformed and secret spec fields,
+  levels, addon names and receivers; the optional-Kit pattern with
+  ClientKit loaded, absent, and at revision 5 without the methods;
 - manifest/runtime API and revision consistency.
 
 | Spec | Covers |
@@ -60,6 +82,7 @@ The suite covers:
 | `Taint_spec.lua` | `IsSecret`, `CanAccessFrame`, `IsEventValid` |
 | `Shims_spec.lua` | `GetSpellInfo`, `GetItemInfo`, `GetAddOnMetadata`, `IsAddOnLoaded` |
 | `GetManifest_spec.lua` | `GetManifest`, the snapshot fields, locale fallback, `Get`, caching |
+| `Deprecation_spec.lua` | `Deprecate`, `Warn`, call sites, modes, reports, limits, the optional-Kit pattern |
 | `ErrorLevels_spec.lua` | argument errors reported at the caller's line |
 | `Bootstrap_spec.lua` | publication, duplicate loads, upgrades, load order, corrupted state |
 | `Manifest_spec.lua` | manifest and runtime `API` / `REVISION` agreement |
@@ -81,4 +104,11 @@ case-insensitively. The profile's metadata call is wrapped so
 `RefuseMetadataField(field)` models a client that raises for a field it does
 not export, and a registered addon is found under any spelling of its name.
 `{ secretStrings = { ... } }` makes the profile's `issecretvalue` report
-those strings secret.
+those strings secret. `{ debugStack = { addon, form, more, answer } }` installs a
+`debugstack` stand-in that answers the frame at the level asked, numbered as
+the client numbers it, from Busted's `debug.getinfo`, so a report names the
+spec's real line; `form` picks the bracketed form the Retail client writes,
+the `[string "@..."]` form or a bare path, `more` adds the client's `...`
+line, `answer` replaces the frame (a chunk outside `Interface/AddOns/`, a
+secret), and `DebugStackCalls()` counts the calls. Without the option the
+host has no `debugstack`.

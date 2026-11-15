@@ -1,8 +1,8 @@
 # ClientKit
 
-ClientKit answers "which client is this and what can it do" in one place, and
+ClientKit answers "which client is this and what can it do" in one place,
 normalises the few host calls whose name or shape differs between World of
-Warcraft flavours.
+Warcraft flavours, and carries the framework's deprecation warnings.
 
 ```lua
 local ClientKit = MoltenCodes.Registries[2]:Get("clientKit", 1)
@@ -29,6 +29,20 @@ if manifest then
   print(manifest.title, manifest.version, #manifest.savedVariables)
   print(manifest:Get("X-Website"))
 end
+
+-- In a Kit: declare once, warn on the deprecated path (told once per call site).
+local reporter = ClientKit:Deprecate({
+  name = "TimerKit:After",
+  replacement = "TimerKit:Delay",
+  removal = "TimerKit API 2",
+})
+reporter:Warn()
+
+-- In an addon under development: list what this session used, or fail loudly.
+for _, report in ipairs(ClientKit:GetDeprecationReports()) do
+  print(report.addon, report.name, report.site)
+end
+ClientKit:SetDeprecationMode("raise")
 ```
 
 What it offers:
@@ -48,6 +62,13 @@ What it offers:
   any other field (`X-…` included) through `manifest:Get(field)`. Read once
   per addon and kept for the session; an addon the client does not list
   answers `nil, "unknown"`.
+- **Deprecation warnings** — `Deprecate(spec)` returns a reporter a Kit calls
+  on its deprecated path; the consuming addon is told once per call site (or
+  once per addon) through the host error handler, with the replacement and
+  the removal plan, and nothing is raised. `GetDeprecationReports()` lists
+  what the session used, and `SetDeprecationMode` switches the session to
+  `"silent"` or, for development, `"raise"`. Kits find ClientKit through
+  `Registry:Find`, so none depends on it; `SetLimits` bounds what is kept.
 
 An absent `WOW_PROJECT_ID` never makes ClientKit report every flavour or every
 capability: it answers `"classic"`, the flavour that assumes the least, and the
@@ -56,14 +77,15 @@ capability flags still come from the host.
 Everything is read once when the file loads and re-read in place when a newer
 embedded copy upgrades it. After that every probe is a table read and every
 shim adds one call; a manifest is read on its first request and is a table
-read from then on. ClientKit owns nothing that needs tearing down.
+read from then on. A Kit that deprecates nothing costs nothing. ClientKit owns
+nothing that needs tearing down.
 
 It is not a polyfill: a missing facility is reported, not emulated, and game
 data, range and spell logic belong to the libraries that need them.
 
 See [`docs/API.md`](docs/API.md) for the capability table, the shim shapes,
-the manifest fields and what each answer means on a client that lacks the
-underlying call.
+the manifest fields, the deprecation reporter and its modes, and what each
+answer means on a client that lacks the underlying call.
 
 ## Embedding
 

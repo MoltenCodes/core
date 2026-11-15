@@ -25,7 +25,10 @@
 --   * that the probes and a cached manifest allocate nothing on the client's
 --     own collector;
 --   * argument errors, and the refusal of genuine secret values made by
---     `secretwrap`, pointing at this file as the client names it.
+--     `secretwrap`, pointing at this file as the client names it;
+--   * deprecation warnings: the client's own `debugstack` frame text logged,
+--     a deprecated call reported once naming this addon and the calling line,
+--     and the `"raise"` mode raising at the calling line.
 --
 -- Nothing here needs combat, a group or an instance, and nothing is visible or
 -- changed: every call only reads the client. The one wait is for the item
@@ -38,8 +41,12 @@
 -- asked about and the client lists, for the session, by design (docs/API.md,
 -- "Manifests"): after a run it holds the manifests of this addon and of
 -- `MoltenCodesTest`, and nothing for the unknown name the tests ask for. The
--- client may have loaded the Hearthstone into its item cache. Nothing is
--- written to a global, a saved variable, a CVar or the error handler.
+-- deprecation tests leave two probe reporters per run and the one report the
+-- silent run records (docs/API.md, "Deprecations"); they set the session's
+-- deprecation mode only for the length of a test and put the previous mode
+-- back. The client may have loaded the Hearthstone into its item cache.
+-- Nothing is written to a global, a saved variable, a CVar or the error
+-- handler.
 
 local addonName = ...
 
@@ -78,6 +85,12 @@ local PUBLIC_METHODS = {
   "GetSpellInfo",
   "GetItemInfo",
   "GetManifest",
+  "Deprecate",
+  "GetDeprecationReports",
+  "SetDeprecationMode",
+  "GetDeprecationMode",
+  "SetLimits",
+  "GetLimits",
 }
 
 --- The capability table of docs/API.md, in its order.
@@ -456,7 +469,7 @@ end
 local facade = newSuite("facade")
 
 facade:Test(
-  "Registry:Get('clientKit', 1) is the ClientKit facade with API 1 and the thirteen documented methods",
+  "Registry:Get('clientKit', 1) is the ClientKit facade with API 1 and the nineteen documented methods",
   function(ctx)
     ctx:Expect(type(ClientKit)):ToBe("table")
     ctx:Expect(rawget(ClientKit, "API")):ToBe(CLIENT_KIT_API)
@@ -1184,6 +1197,107 @@ allocation:Test(
 
     ctx:Log(("memory delta over %d rounds: %.3f KB"):format(ALLOCATION_ROUNDS, grownKilobytes))
     ctx:Expect(grownKilobytes <= ALLOCATION_TOLERANCE_KB):ToBe(true)
+  end
+)
+
+-- clientKit.deprecations ----------------------------------------------------------------------
+
+local deprecations = newSuite("deprecations")
+
+--- How many probe deprecations this session declared. Each test declares a
+--- fresh name, so a second run's first call is again a first report.
+local deprecationProbes = 0
+
+---Declare a fresh probe deprecation and return its reporter.
+---@return ClientKit.DeprecationReporter
+local function newProbeReporter()
+  deprecationProbes = deprecationProbes + 1
+  return ClientKit:Deprecate({
+    name = "MoltenCodesTest_ClientKit probe " .. deprecationProbes,
+    replacement = "nothing",
+    removal = "never",
+  })
+end
+
+---A stand-in for a Kit's deprecated method: it warns with the default level,
+---so the report names whoever called it. Callers call it as a statement,
+---never as a tail call, so their frame stays on the stack.
+---@param reporter ClientKit.DeprecationReporter
+local function callDeprecated(reporter)
+  reporter:Warn()
+end
+
+---Run `body` with the session's deprecation mode set to `mode`, and put the
+---previous mode back afterwards, also when `body` raises.
+---@param mode ClientKit.DeprecationMode
+---@param body fun()
+local function withDeprecationMode(mode, body)
+  local previous = ClientKit:GetDeprecationMode()
+  ClientKit:SetDeprecationMode(mode)
+  local succeeded, failure = pcall(body)
+  ClientKit:SetDeprecationMode(previous)
+  if not succeeded then
+    error(failure, 0)
+  end
+end
+
+deprecations:Test(
+  "the client's debugstack frame is logged, and a deprecated call is reported once, naming this addon and the calling line",
+  function(ctx)
+    local debugStack = readHost("debugstack")
+    ctx:Expect(type(debugStack)):ToBe("function")
+    if type(debugStack) ~= "function" then
+      return
+    end
+    ctx:Log("debugstack(1, 1, 0) is " .. describe(debugStack(1, 1, 0)))
+    ctx:Log("debugstack(1) is " .. describe(debugStack(1)))
+
+    withDeprecationMode("silent", function()
+      local reporter = newProbeReporter()
+      local before = #ClientKit:GetDeprecationReports()
+      local line = 0
+      for _ = 1, 3 do
+        line = currentLine() + 1
+        callDeprecated(reporter)
+      end
+
+      local reports = ClientKit:GetDeprecationReports()
+      ctx:Expect(#reports - before):ToBe(1)
+      local report = reports[#reports] or {}
+      ctx:Log("report addon " .. describe(report.addon) .. ", site " .. describe(report.site))
+      ctx:Expect(report.addon):ToBe(addonName)
+      local expectedEnd = "ClientKitSuite.lua:" .. line
+      ctx:Expect(type(report.site)):ToBe("string")
+      ctx:Expect(tostring(report.site):sub(-#expectedEnd)):ToBe(expectedEnd)
+    end)
+  end
+)
+
+deprecations:Test(
+  "in raise mode a deprecated call raises the report at the calling line, every time",
+  function(ctx)
+    withDeprecationMode("raise", function()
+      local reporter = newProbeReporter()
+      for _ = 1, 2 do
+        local lines = { start = 0 }
+        local succeeded, message = pcall(function()
+          lines.start = currentLine()
+          callDeprecated(reporter)
+        end)
+        ctx:Expect(succeeded):ToBe(false)
+        ctx:Log("client message: " .. tostring(message))
+        local line = expectThisFile(ctx, message)
+        ctx:Expect(line):ToBe(lines.start + 1)
+        local expectedEnd = "is deprecated; use nothing. Removal: never. Called from "
+          .. addonName
+          .. " (Interface/AddOns/"
+          .. addonName
+          .. "/ClientKitSuite.lua:"
+          .. (lines.start + 1)
+          .. ")."
+        ctx:Expect(tostring(message):sub(-#expectedEnd)):ToBe(expectedEnd)
+      end
+    end)
   end
 )
 

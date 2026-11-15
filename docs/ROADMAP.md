@@ -1272,7 +1272,8 @@ package M below.
       `C_Timer` handles instead, see "timerKit pausable timers"), **frameKit** (W14,
       folded into widgetKit's anchors, nothing further to build), Registry
       deprecation warnings (W13; Registry's line budget is spent, so they are
-      a ClientKit capability, see "clientKit deprecation warnings" in package M).
+      a ClientKit capability, see "clientKit deprecation warnings" in package
+      M; done 2026-11-15, clientKit 0.3.0, revision 6).
 
 #### Package J — brokerKit
 
@@ -1966,7 +1967,7 @@ Each record below was researched from Blizzard's UI source, the client API
 documentation and the libraries it replaces (ideas only), written before its
 code and treated as agreed as under decision 15.
 
-- [ ] **clientKit** deprecation warnings (W13).
+- [x] **clientKit** deprecation warnings (W13) (2026-11-15; client suite not run).
 - [ ] **settingsKit** spec profiles, with OptionsKit's `ProfileOptions` choice.
 - [ ] **widgetKit** virtualised lists (`ScrollList`).
 - [x] **rangeKit** — unit range estimates (2026-11-15; client suite not run).
@@ -2063,7 +2064,16 @@ code and treated as agreed as under decision 15.
    modes, the report text; Limits rewritten, since ClientKit gains
    `SetLimits`), CHANGELOG, README, tests/README; ARCHITECTURE's clientKit
    paragraph; package I's deferred item and the clientKit checkbox.
-9. Status: recorded 2026-11-15 under core decision 16; code follows.
+9. Status: implemented 2026-11-15 under core decision 16, 0.3.0, revision
+   6, 44 new specs (176 in all); the client suite addition
+   (`tests/client/MoltenCodesTest_ClientKit`, part `deprecations`) is
+   written and has not been run in a client. Deviations: `debugstack` is a
+   guarded local read at every load rather than kept in `state.host` (the
+   flavour gate cannot follow a value stored in a table); the deprecation
+   state is one `deprecation` table holding a few small tables; the
+   one-time `maxDeprecations` notice is not sent in `"silent"` mode; the
+   Kit-side pattern remembers a missing ClientKit, so one that loads after
+   a Kit's first deprecated call is not used for that deprecation.
 
 **settingsKit spec profiles** — an addition to facade `SettingsKit`
 

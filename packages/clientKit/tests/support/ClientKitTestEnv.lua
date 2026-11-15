@@ -7,8 +7,9 @@
 --- frame probe, the source loader the upgrade specs use, and the host functions
 --- only ClientKit reads: `GetLocale`, `GetAddOnInfo` and the two addon
 --- dependency lists, in the `C_AddOns` form when the profile has that table and
---- the legacy global form otherwise. This environment installs them and
---- removes them again on `Reset`.
+--- the legacy global form otherwise, and a `debugstack` stand-in for the
+--- deprecation specs. This environment installs them and removes them again
+--- on `Reset`.
 local FrameworkTestEnv = require("FrameworkTestEnv")
 
 local ClientKitTestEnv = FrameworkTestEnv.New({
@@ -29,7 +30,11 @@ local OWNED_GLOBALS = {
   "GetAddOnInfo",
   "GetAddOnDependencies",
   "GetAddOnOptionalDependencies",
+  "debugstack",
 }
+
+--- How many times the `debugstack` stand-in was called since the last reset.
+local debugStackCalls = 0
 
 --- Lower-cased addon folder name to `{ name, dependencies,
 --- optionalDependencies }` for every addon `RegisterAddOn` made the host list,
@@ -61,6 +66,14 @@ end
 ---@field locale (string|false)? What `GetLocale()` answers; `false` installs no `GetLocale`. Defaults to `DEFAULT_CLIENT_LOCALE`.
 ---@field addOnInfo boolean? Whether the host has `GetAddOnInfo` and the two dependency-list calls. Defaults to `true`.
 ---@field secretStrings string[]? Strings the host's `issecretvalue` reports secret, in addition to what the profile already reports. Needs a profile with `issecretvalue`.
+---@field debugStack ClientKitTestEnv.DebugStackOptions? Install the `debugstack` stand-in with these options; without it the host has no `debugstack`.
+
+---Options for the `debugstack` stand-in.
+---@class ClientKitTestEnv.DebugStackOptions
+---@field addon string? The addon folder every frame is placed in. Defaults to `"MyAddon"`.
+---@field form ("bracket"|"string"|"plain")? How a frame is written: `[Interface/AddOns/MyAddon/File.lua]:12: in function <...>` (what the Retail client writes, the default), `[string "@Interface\AddOns\MyAddon\File.lua"]:12: in function <...>`, or `Interface\AddOns\MyAddon\File.lua:12: in function <...>`.
+---@field more boolean? End the text with the `...` line the client adds when frames were left out.
+---@field answer (fun(start: integer): any)? Answer this instead of a frame, for a frame outside `Interface/AddOns/` or a secret one.
 
 ---Return the registered addon `addonName` names, matched case-insensitively
 ---as the host matches it, or `nil` when the host does not list it.
@@ -146,6 +159,55 @@ local function extendSecretProbe(secretStrings)
   end)
 end
 
+---Write the frame `info` describes in the form `options.form` names, as the
+---client's `debugstack` writes one frame line.
+---@param info table `debug.getinfo` result with `short_src` and `currentline`
+---@param options ClientKitTestEnv.DebugStackOptions
+---@return string
+local function writeFrame(info, options)
+  local addon = options.addon or "MyAddon"
+  local file = string.match(info.short_src, "[^/\\]+$")
+  local line = tostring(info.currentline)
+  local form = options.form or "bracket"
+  if form == "string" then
+    return '[string "@Interface\\AddOns\\'
+      .. addon
+      .. "\\"
+      .. file
+      .. '"]:'
+      .. line
+      .. ": in function <...>"
+  elseif form == "plain" then
+    return "Interface\\AddOns\\" .. addon .. "\\" .. file .. ":" .. line .. ": in function <...>"
+  end
+  return "[Interface/AddOns/" .. addon .. "/" .. file .. "]:" .. line .. ": in function <...>"
+end
+
+---Install a `debugstack(start, count1, count2)` stand-in that answers the one
+---frame at `start` the way the client numbers it (level 1 is the function
+---that calls `debugstack`), read from Busted's own `debug.getinfo`, so the
+---line is the real line of the spec that called. Every call is counted.
+---@param options ClientKitTestEnv.DebugStackOptions
+local function installDebugStack(options)
+  setGlobal("debugstack", function(start)
+    debugStackCalls = debugStackCalls + 1
+    if options.answer ~= nil then
+      return options.answer(start)
+    end
+    -- Level 1 of `debug.getinfo` is this stand-in, so the client's level
+    -- `start` is `start + 1` here.
+    local info = debug.getinfo(start + 1, "Sl")
+    if info == nil then
+      return ""
+    end
+    local text = writeFrame(info, options) .. "\n"
+    if options.more then
+      text = text .. "...\n"
+    end
+    return text
+  end)
+end
+
 ---Install this environment's own host functions on the form the current
 ---profile uses: into `C_AddOns` when that table exists, else as globals.
 ---@param hostOptions ClientKitTestEnv.HostOptions
@@ -187,6 +249,9 @@ local function installClientKitHost(hostOptions)
   if hostOptions.secretStrings ~= nil then
     extendSecretProbe(hostOptions.secretStrings)
   end
+  if hostOptions.debugStack ~= nil then
+    installDebugStack(hostOptions.debugStack)
+  end
 end
 
 ---Clear everything the shared fixture clears, plus this environment's own
@@ -199,6 +264,13 @@ function ClientKitTestEnv.Reset()
   knownAddOns = {}
   metadataReads = {}
   refusedFields = {}
+  debugStackCalls = 0
+end
+
+---How many times the `debugstack` stand-in was called since the last reset.
+---@return integer
+function ClientKitTestEnv.DebugStackCalls()
+  return debugStackCalls
 end
 
 ---Reset, install the host as `profileName` models it plus this environment's

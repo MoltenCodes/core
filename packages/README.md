@@ -16,7 +16,7 @@ Current packages:
 - [`timerKit`](timerKit/) — cancelable one-shot/repeating timers, ownership scopes, and addon scopes closed at logout through LifecycleKit or EventKit when present.
 - [`schedulerKit`](schedulerKit/) — cooperative frame-budgeted scheduling, priorities, cancellation scopes, and delayed work.
 - [`poolKit`](poolKit/) — allocation-conscious bounded object pooling with deterministic ownership and cleanup.
-- [`clientKit`](clientKit/) — client flavour, build floor, probed capability flags, secret-value and frame-access probes, shims with one shape per host call.
+- [`clientKit`](clientKit/) — client flavour, build floor, probed capability flags, secret-value and frame-access probes, shims with one shape per host call, addon manifests, deprecation warnings.
 - [`cacheKit`](cacheKit/) — bounded LRU and TTL caches with negative entries, memoisation, snapshots with diffs, lazy namespace trees, ring queues, clear-on-event.
 - [`profileKit`](profileKit/) — zero-cost-when-off performance sections with count, total, spike and a report.
 - [`readinessKit`](readinessKit/) — named readiness gates for late host data: polling, timeouts, negative caching, bounded waiters.
