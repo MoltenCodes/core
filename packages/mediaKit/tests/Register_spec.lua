@@ -143,6 +143,11 @@ describe("MediaKit:Register", function()
     TestEnv.expectErrorContaining('options contains unknown field "script"', function()
       MediaKit:Register("font", "Font", "path", { script = { "latin" } })
     end)
+    -- A key that is not a string is named by its type alone, as the
+    -- documentation promises: `<number>`, never `<number key>`.
+    TestEnv.expectErrorContaining('options contains unknown field "<number>"', function()
+      MediaKit:Register("font", "Font", "path", { [1] = true })
+    end)
     assert.is_nil(MediaKit:Fetch("font", "Font", { anyScript = true }))
   end)
 

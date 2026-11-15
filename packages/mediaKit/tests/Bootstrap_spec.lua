@@ -181,6 +181,35 @@ describe("MediaKit bootstrap", function()
     end)
   end)
 
+  it("upgrades revision 4 in place and names a non-string option key by its type", function()
+    TestEnv.Reset()
+    TestEnv.InstallWowApi()
+    TestEnv.SetClientLocale(TestEnv.DEFAULT_CLIENT_LOCALE)
+    require("Registry")
+    require("SignalKit")
+    local old = TestEnv.LoadRevision(4)
+    old:Register("statusbar", "Pack Bar", "Interface\\Pack\\Bar")
+    local defaults = old:Defaults("MyAddon")
+    defaults:Set("statusbar", "Pack Bar")
+    old:SetLimits({ maxEntriesPerType = 2048 })
+    local list = old:List("statusbar")
+
+    local upgraded = require("MediaKit")
+    assert.are.equal(old, upgraded)
+    assert.is_true(upgraded.REVISION > 4)
+    assert.are.equal(list, upgraded:List("statusbar"))
+    assert.are.equal(defaults, upgraded:Defaults("MyAddon"))
+    assert.are.equal("Pack Bar", defaults:Get("statusbar"))
+    assert.are.equal(2048, upgraded:GetLimits().maxEntriesPerType)
+    -- The corrected unknown-field description runs for the carried state.
+    TestEnv.expectErrorContaining(
+      'MediaKit:Has options contains unknown field "<number>"',
+      function()
+        upgraded:Has("statusbar", "Pack Bar", { [1] = true })
+      end
+    )
+  end)
+
   it("refuses shared state whose limits hold an invalid value", function()
     local MediaKit = TestEnv.NewPackage()
     rawset(MediaKit._state.limits, "maxEntriesPerType", MediaKit.UNBOUNDED)

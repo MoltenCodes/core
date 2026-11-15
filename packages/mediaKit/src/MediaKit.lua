@@ -38,7 +38,7 @@
 
 local PACKAGE_NAME = "mediaKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 4
+local IMPLEMENTATION_REVISION = 5
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_SIGNALKIT_API = 1
 local STATE_SCHEMA = 1
@@ -680,7 +680,7 @@ local function validateOptionKeys(options, allowedKeys, methodName, level)
   local firstUnknown = nil
   for key in next, options do
     if allowedKeys[key] ~= true then
-      local text = type(key) == "string" and key or "<" .. type(key) .. " key>"
+      local text = type(key) == "string" and key or "<" .. type(key) .. ">"
       if firstUnknown == nil or text < firstUnknown then
         firstUnknown = text
       end

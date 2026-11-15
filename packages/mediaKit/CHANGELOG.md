@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.5 — 2026-11-15
+
+- Fixed: an unknown option field whose key is not a string is named by its type alone, `options contains unknown field "<number>"`, as `docs/API.md` ("Error behaviour") documents and as the other key and script messages already read. It was `"<number key>"`.
+- Implementation revision 5, because the executed implementation changed. No state changed: an in-place upgrade from revision 4 keeps the entries, lists, signals and connections, defaults objects, the limits and the LibSharedMedia links, and replaces the methods only. `docs/INTERNALS.md` says revisions 2 to 5 changed no state.
+- Specs: `Register_spec.lua` covers a numeric unknown option key; `Bootstrap_spec.lua` upgrades a revision 4 copy with the current file and checks the corrected message.
+
 ## 0.1.4 — 2026-09-25
 
 - Documentation: `docs/API.md` "Built-in media" no longer calls every built-in a client file. The `border` `None` (`Interface\None`) and the `sound` `None` (`Interface\Quiet.ogg`) are LibSharedMedia's placeholders for "no media", and MediaKit makes no claim that the client ships either. The section records what the client's `GetFileIDFromPath` answered on Retail 12.1.0 (build 69933, 2026-09-25): every texture path resolves, while `Fonts\ARIALN.TTF`, three shipped interface sounds and both placeholders answer `nil`, so a `nil` there does not mean a font or sound is missing. The public surface table's `API`, `REVISION` row now reads `1`, `4`, matching the manifest. Documentation only: the implementation revision is unchanged.

@@ -2,7 +2,7 @@
 
 MediaKit API generation **1** provides a typed registry of named media: seven fixed media types, entries that are a path or a FileDataID, fonts that declare the scripts they render, cached sorted lists, registration signals, per-consumer defaults over the client's built-in media, and a two-way bridge to LibSharedMedia-3.0.
 
-Implementation revision: **4**.
+Implementation revision: **5**.
 
 ## Loading
 
@@ -51,7 +51,7 @@ MediaKit reads three host globals, each at call time rather than at load (the bu
 | `GetLimits()` | A fresh table of both limits; allocates. |
 | `MAX_ENTRIES_PER_TYPE` | `1024`, the default of `maxEntriesPerType`. |
 | `UNBOUNDED` | Sentinel that lifts `maxConsumers`; the same table for every revision. |
-| `API`, `REVISION` | `1`, `4`. |
+| `API`, `REVISION` | `1`, `5`. |
 
 ## Media types
 
