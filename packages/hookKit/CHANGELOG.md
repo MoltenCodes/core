@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.1 — 2026-11-15
+
+- Source comment: `scope:SecureHook` returns `nil, "full"` when the scope already holds its own `maxHooks` hooks, which is `MAX_HOOKS` unless the scope was opened and never for an `UNBOUNDED` scope (the comment named `MAX_HOOKS` as the limit of every scope). Comment only: the implementation revision is unchanged.
+
 ## 0.3.0 — 2026-09-25
 
 Documented-behaviour change, approved by the owner: **HookKit no longer uses ClientKit.** On a host without `issecretvalue` (every promised client flavour publishes it, Retail and both Classic flavours alike, per `tooling.validation.flavour_api`; the host benchmark and test environments do not), revision 6 still asked ClientKit through `Registry:Find("clientKit", 1)` for every validated name; such a client makes no secret values, so the check now answers "not secret" without a lookup. Where the probe exists, the check is exactly as before: the `issecretvalue` read at load, asked directly.

@@ -1570,7 +1570,8 @@ end
 ---Post-hook a method with `hooksecurefunc`: `SecureHook(object, method, handler)`
 ---or `SecureHook(globalName, handler)`. The handler runs after the original with
 ---the same arguments; the target stays secure. Returns `nil, "full"` when the
----scope holds `MAX_HOOKS` hooks.
+---scope already holds its `maxHooks` hooks (`MAX_HOOKS` unless opened; never
+---for an `UNBOUNDED` scope).
 ---@param self HookKit.ScopeRecord
 ---@param target table|string
 ---@param second string|function
