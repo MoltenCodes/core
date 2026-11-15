@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.0 — 2026-11-15
+
+- Added: pages in `RenderOptions`. A `group` with OptionsKit's `childGroups` hint (`"tab"`, `"tree"` or `"select"`, OptionsKit revision 10) shows its non-inline child groups one at a time behind a row of buttons, a column of buttons beside the page, or a dropdown; its options and inline groups render above as before. The chosen page is kept per group for as long as the rendering lives, and choosing one rebuilds the rendering. A group without the hint renders as before. `docs/API.md`, *Pages*.
+- Implementation revision 11. No state changed and no base widget version moved: an upgrade over revision 10 keeps every widget and rendering.
+- Specs: each layout, the choice kept through refreshes and rebuilds and falling back when its page is hidden, inline groups and options above the pages, the root with the hint, nested pages, a hidden page appearing, and a rendering made before the upgrade.
+
 ## 0.2.3 — 2026-11-15
 
 - Documentation: the public-surface table of `docs/API.md` gave `REVISION` as `9`; it is `10`, as the header says. Documentation only: the implementation revision is unchanged.

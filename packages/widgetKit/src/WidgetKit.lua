@@ -56,7 +56,7 @@
 
 local PACKAGE_NAME = "widgetKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 10
+local IMPLEMENTATION_REVISION = 11
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_POOLKIT_API = 1
 local REQUIRED_SIGNALKIT_API = 1
@@ -6392,6 +6392,9 @@ do --
   end
 
   local renderNodes
+  -- Renders a group's children: with its `childGroups` layout when it has
+  -- one, else as `renderNodes` does. Defined below.
+  local renderGroupChildren
 
   ---Configure a freshly created widget for its node.
   ---@param rendering table
@@ -6405,7 +6408,7 @@ do --
     if kind == "group" then
       widget:SetTitle(node.name)
       widget:PauseLayout()
-      local ok = renderNodes(rendering, node.children, widget)
+      local ok = renderGroupChildren(rendering, node, widget)
       widget:ResumeLayout()
       return ok
     elseif kind == "toggle" then
@@ -6580,6 +6583,175 @@ do --
     return true
   end
 
+  -- The `childGroups` renderer. A block of its own so its helpers do not
+  -- count against the main chunk's 200 locals.
+  do
+    -- The `childGroups` layouts the renderer draws (OptionsKit revision 10).
+    local PAGED_LAYOUTS = { tab = true, tree = true, select = true }
+
+    ---The page of `node` shown now: the one chosen last while this rendering
+    ---lives, else the first.
+    ---@param rendering table
+    ---@param node table
+    ---@param pages table[]
+    ---@return table page
+    local function selectedPage(rendering, node, pages)
+      local choices = rendering._selected
+      if choices == nil then
+        -- A rendering made by revision 10 or older has no selection table.
+        choices = {}
+        rendering._selected = choices
+      end
+      local chosen = choices[node.path]
+      for index = 1, #pages do
+        if pages[index].path == chosen then
+          return pages[index]
+        end
+      end
+      choices[node.path] = pages[1].path
+      return pages[1]
+    end
+
+    ---Show the page at `pagePath` of the group at `groupPath`: remember it and
+    ---build the rendering again.
+    ---@param rendering table
+    ---@param groupPath string
+    ---@param pagePath any
+    local function choosePage(rendering, groupPath, pagePath)
+      if rendering._selected[groupPath] ~= pagePath then
+        rendering._selected[groupPath] = pagePath
+        RenderingPrototype.Rebuild(rendering)
+      end
+    end
+
+    ---A button that shows `page` of the group at `groupPath`, disabled while
+    ---that page is the one shown.
+    ---@param rendering table
+    ---@param groupPath string
+    ---@param page table
+    ---@param shown boolean
+    ---@return table? button
+    local function pageButton(rendering, groupPath, page, shown)
+      local button = renderCreate(rendering, "Button")
+      if button == nil then
+        return nil
+      end
+      button:SetText(page.name)
+      button:SetDisabled(shown)
+      local pagePath = page.path
+      button:SetCallback("OnClick", function()
+        choosePage(rendering, groupPath, pagePath)
+      end)
+      return button
+    end
+
+    ---A group widget without a title, for a row, a list or a page column.
+    ---@param rendering table
+    ---@param parent table
+    ---@return table? group
+    local function plainGroup(rendering, parent, relativeWidth)
+      local group = renderCreate(rendering, "Group")
+      if group == nil then
+        return nil
+      end
+      group:SetTitle(nil)
+      if relativeWidth then
+        group:SetRelativeWidth(relativeWidth)
+      else
+        group:SetFullWidth(true)
+      end
+      if not renderAdd(rendering, parent, group) then
+        return nil
+      end
+      return group
+    end
+
+    ---Render a group's children. Without a `childGroups` layout they render
+    ---one after the other. With one, the options and inline groups render as
+    ---usual, then the other child groups as pages, one shown at a time behind
+    ---tabs, a list or a dropdown.
+    ---@param rendering table
+    ---@param node table a group node, or the description's root
+    ---@param parent table
+    ---@return boolean ok
+    function renderGroupChildren(rendering, node, parent)
+      local children = node.children
+      if not PAGED_LAYOUTS[node.childGroups] then
+        return renderNodes(rendering, children, parent)
+      end
+      if type(children) ~= "table" then
+        return true
+      end
+      local visited = rendering._nodes
+      local pages = {}
+      for index = 1, #children do
+        local child = children[index]
+        local hidden = isTrueFlag(child.hidden)
+        visited[#visited + 1] = { path = child.path, hidden = hidden }
+        if not hidden then
+          if child.kind == "group" and not isTrueFlag(child.inline) then
+            pages[#pages + 1] = child
+          elseif not renderNode(rendering, child, parent) then
+            return false
+          end
+        end
+      end
+      if #pages == 0 then
+        return true
+      end
+
+      local layout = node.childGroups
+      local shown = selectedPage(rendering, node, pages)
+      local groupPath = node.path
+      local pageParent = parent
+      if layout == "select" then
+        local dropdown = renderCreate(rendering, "Dropdown")
+        if dropdown == nil then
+          return false
+        end
+        local labels, order = {}, {}
+        for index = 1, #pages do
+          labels[pages[index].path] = pages[index].name
+          order[index] = pages[index].path
+        end
+        dropdown:SetFullWidth(true)
+        dropdown:SetList(labels, order)
+        dropdown:SetValue(shown.path)
+        dropdown:SetCallback("OnValueChanged", function(_, _, value)
+          choosePage(rendering, groupPath, value)
+        end)
+        if not renderAdd(rendering, parent, dropdown) then
+          return false
+        end
+      else
+        -- Tabs: a row of buttons above the page. Tree: a column of buttons
+        -- beside the page, the two side by side in one row.
+        local row = plainGroup(rendering, parent)
+        if row == nil then
+          return false
+        end
+        row:SetLayout("Flow")
+        local list = row
+        if layout == "tree" then
+          local column = plainGroup(rendering, row, 0.3)
+          local page = column and plainGroup(rendering, row, 0.7)
+          if column == nil or page == nil then
+            return false
+          end
+          list, pageParent = column, page
+        end
+        for index = 1, #pages do
+          local page = pages[index]
+          local button = pageButton(rendering, groupPath, page, page == shown)
+          if button == nil or not renderAdd(rendering, list, button) then
+            return false
+          end
+        end
+      end
+      return renderNode(rendering, shown, pageParent)
+    end
+  end
+
   ---Release everything the rendering created and forget it.
   ---@param rendering table
   local function releaseRendered(rendering)
@@ -6625,7 +6797,7 @@ do --
     containerRecord.layoutPaused = true
     rendering._failure = nil
     -- The container's pause state is restored even when building raises.
-    local called, ok = pcall(renderNodes, rendering, description.children, container)
+    local called, ok = pcall(renderGroupChildren, rendering, description, container)
     containerRecord.layoutPaused = wasPaused
     if not called then
       rendering._failure = ok
@@ -6707,6 +6879,9 @@ do --
       _byPath = {},
       _nodes = {},
       _widgets = {},
+      -- Group path -> the path of the `childGroups` page shown, kept across
+      -- rebuilds for as long as the rendering lives.
+      _selected = {},
       _busy = 0,
       _pending = false,
       _released = false,
