@@ -251,7 +251,13 @@ probe the hot validators use to build an error label only on refusal, and the
 worker helpers, which share one slot pair because `runWorker` and
 `MAX_IDLE_WORKERS` live in the `do` block that defines `acquireWorker` and
 `retainWorker` and `createCoroutine` is gone. The installer gains one upvalue
-(`isSecretValue`, 42 of 60). New top-level code belongs in the installer or in a
+(`isSecretValue`, 42 of 60). Revision 19 adds no local and no installer
+upvalue: its two fixes reuse `queueHasLive` and the job's own state field.
+Revision 20 adds one top-level slot (194 of 200 active; 218 declared in 197
+stack slots): `describeKey`, which the scheduling-option check, the
+installer's option-table check and `SetLimits` share to name an unknown key
+without running its `__tostring`. The installer gains one upvalue for it.
+New top-level code belongs in the installer or in a
 function of its own. The
 installer commits its own methods; only four hooks forward-declared above the
 job machinery (`laneJobFinished`, `retryLaneJob`, `cancelFamilyMembers`,

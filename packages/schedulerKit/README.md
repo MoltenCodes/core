@@ -52,6 +52,22 @@ local inspect = SchedulerKit:Lane("inspect", { maxInFlight = 1, minIntervalSecon
 inspect:Submit(queryNextUnit, { scope = work })
 ```
 
+## Moving from AceBucket-3.0 messages
+
+SchedulerKit replaces no Ace3 library as a whole: AceTimer-3.0 is TimerKit,
+and AceBucket-3.0's event buckets are EventKit `Coalesce`. Its message buckets
+are SchedulerKit `Coalesce`:
+
+| AceBucket-3.0 | SchedulerKit |
+|---|---|
+| `self:RegisterBucketMessage(message, interval, callback)` | `local changed = work:Coalesce(callback, interval)`, called with each key from the message's subscriber: `bus:Subscribe(topic, function(key) changed(key) end)` |
+| `self:UnregisterBucket(handle)` | `changed:Close()` |
+| `self:UnregisterAllBuckets()` | `work:Close()`, which also ends the scope's jobs; an addon scope closes at logout when LifecycleKit or EventKit is loaded |
+
+The set the callback receives is reused and its values are `true`, where
+AceBucket counts arrivals; see
+[`docs/MIGRATING_FROM_ACE3.md`](../../docs/MIGRATING_FROM_ACE3.md#acebucket-30).
+
 For the complete public contract, see [`docs/API.md`](docs/API.md), including
 [Coalescing and lanes](docs/API.md#coalescing-and-lanes). Maintainers can also read [`docs/INTERNALS.md`](docs/INTERNALS.md) for queue, driver, shared-state, and allocation invariants.
 

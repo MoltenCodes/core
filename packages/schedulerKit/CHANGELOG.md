@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.8.9 — 2026-11-15
+
+- Fixed: an unknown option field of `Schedule`, `NextFrame`, `After`, `Every` (and their scope forms), `Debounce`, `Coalesce`, `Watch`, `Lane` and `Lane:Submit`, or an unrecognised `SetLimits` key, that is a table (or any other value with a `__tostring` metamethod) was passed to `tostring` to build the refusal. That ran the caller's `__tostring` inside SchedulerKit: foreign code that could raise, or answer a secret value on Retail, and so replace the real refusal with its own error. A new `describeKey` names such a key by its type instead: `SchedulerKit:Schedule options contains unknown field "<table>"`, `SchedulerKit:SetLimits limits.<table> is not a recognised limit`. A string key is shown as written and a number or boolean as before, so every documented message for those is unchanged. `docs/API.md` *Error messages* states the form.
+- Implementation revision 20. No state changed: an upgrade over revision 19 replaces the functions and keeps every job, scope, lane, worker and handle; the previous-revision upgrade spec checks the new message on the upgraded facade. `docs/INTERNALS.md` records the extra top-level local (194 of 200 active).
+- Specs: 274 → 278. `ErrorLevels_spec.lua` gives `Schedule`, `Debounce` and `SetLimits` a table key whose `__tostring` raises and records that it ran, checks each refusal at the caller's line (also after the revision-15 upgrade) and that `__tostring` never ran.
+
+## 0.8.8 — 2026-11-15
+
+- `docs/API.md` gains "Error messages" under Error isolation. Apart from the secret-value refusals, the contract gave no argument message at all: the closed-scope, callback, option, priority, name, delay and interval checks of the scheduling methods, the budget setters, `ForAddon` and `CloseAddonScopes`, the wrong-receiver refusals, the `Context` guards, every `Debounce`, `Coalesce`, `Watch`, `Lane` and `Lane:Submit` check, the handle calls (debounce width, coalesce key), the lane, watcher and interval bounds and the `SetLimits`/`GetLimits` refusals. It also lists the host and TimerKit failures without a position, the swallowed-yield diagnostic and the six load-time errors, including the `CreateFrame` and `GetTimePreciseSec` host requirements.
+- `docs/API.md` lists `Priority`, `API` and `REVISION` in the package facade table; the last two were not documented.
+- `docs/INTERNALS.md` records that revision 19 adds no local and no installer upvalue; the headroom notes stopped at revision 18.
+- `README.md` gains a "Moving from AceBucket-3.0 messages" table (`RegisterBucketMessage`, `UnregisterBucket`, `UnregisterAllBuckets`) and says which Kits take AceTimer-3.0 and AceBucket's event buckets; it had no migration section.
+- Documentation only: the implementation revision stays 19.
+
 ## 0.8.7 — 2026-11-15
 
 - Fixed a job that cancels itself and then raises ending `failed`. The error branch of a resume retried or failed the job without looking at its state, so the raise overwrote the cancellation: the job reported `failed`, the error went to the host error handler, and a lane submission with attempts left was even re-armed for a retry. A cancelled job now stays `cancelled` and the raise is dropped. Regression specs in `Cooperative_spec.lua` and `Lane_spec.lua`.

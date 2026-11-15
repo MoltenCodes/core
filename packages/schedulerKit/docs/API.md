@@ -33,6 +33,8 @@ The package intentionally separates **when work becomes eligible** from **how mu
 | `Lane(name[, options])` | Return the shared lane called `name`, which rations one scarce resource. |
 | `SetLimits(limits)` / `GetLimits()` | Change or read the package-wide limits. See [Limits](#limits). |
 | `UNBOUNDED` | Sentinel a limit takes to be lifted, where that is allowed. |
+| `Priority` | The four priorities (`HIGH`, `NORMAL`, `LOW`, `IDLE`); see [Priorities](#priorities). |
+| `API`, `REVISION` | The API generation (`1`) and the implementation revision of the copy active in the session (`20` for this one); a newer embedded copy replaces `REVISION` when it upgrades the facade in place. |
 
 ### Job handles
 
@@ -407,6 +409,56 @@ Errors that do not come from the caller's arguments keep their own text without 
 A secret value (Retail 12.0.0 and later) raises when it is compared, so SchedulerKit refuses one before any check compares it, at the caller's line, with `<argument> must not be a secret value`. The refused arguments are those a check compares: a scope name (`SchedulerKit:ForAddon addonName must not be a secret value`, likewise `SchedulerKit:CloseAddonScopes addonName`), a lane name (`SchedulerKit:Lane name must not be a secret value`), the `priority` and `name` scheduling options (`SchedulerKit:Schedule priority must not be a secret value`), delays, intervals and budgets (`SchedulerKit:After delay must not be a secret value`, `SchedulerKit:SetFrameBudget milliseconds must not be a secret value`), every numeric and boolean option of `Lane`, `Debounce`, `Coalesce` and `Watch` (`SchedulerKit:Lane maxInFlight must not be a secret value`, `SchedulerKit:Debounce leading must not be a secret value`), a `SetLimits` value (`SchedulerKit:SetLimits limits.maxLanes must not be a secret value`), a field name of an option table, checked before it is looked up among the known fields (`SchedulerKit:Schedule options field name must not be a secret value`, likewise the options of `Lane`, its `retry` table (`SchedulerKit:Lane retry options field name`), `Lane:Submit`, `Debounce`, `Coalesce` and `Watch`) and a coalesce key (`SchedulerKit coalesce handle key must not be a secret value`). The refusal is raised at the level of the method's other argument errors, which is the caller's line. A coalesce value is only stored, so a secret one is accepted. An absent option is recognised by its type, never by comparing it with `nil`, and a value a callback hands to a raw `coroutine.yield` is type-checked before it is compared with the yield token. `issecretvalue` is read once at load; a host without it has no secret values.
 
 A failure is signalled **once**. An operation that raises to its direct caller, such as `SchedulerKit:After` failing to arm its TimerKit delay, is not additionally pushed to the error handler; a failure on the driver path, where nothing above SchedulerKit can observe a raise, is reported instead of raised.
+
+### Error messages
+
+`<Method>` is the qualified public method, for example `SchedulerKit:After` or
+`SchedulerKit.Scope:Debounce`; `<...>` marks a value filled in from the call.
+Every message below is raised at the caller's line. A secret argument is
+refused first, with the messages under [Secret values](#secret-values).
+An unknown option field or limit key is shown as written when it is a string,
+and as `tostring` gives it when it is a number or boolean; any other key is
+named by its type (`"<table>"`, `limits.<table>`), so a key's `__tostring`,
+the caller's code, never runs inside SchedulerKit.
+
+| Raised by | Message |
+|---|---|
+| `Schedule`, `NextFrame`, `After`, `Every` and their scope forms | `<Method> cannot schedule work in a closed scope`; `<Method> callback must be a function`; `<Method> options must be a table`; `<Method> options contains unknown field "<field>"` (the first unknown field in sorted order); `<Method> priority must be one of SchedulerKit.Priority values`; `<Method> name must be a non-empty string` |
+| `After`, `Every` | `<Method> delay must be a finite number greater than or equal to zero`; `<Method> interval must be a finite number greater than zero` |
+| `SetFrameBudget`, `SetRunawayThreshold`, `SetMaxResumesPerFrame` | `SchedulerKit:SetFrameBudget milliseconds must be a finite number greater than zero`, likewise `SchedulerKit:SetRunawayThreshold milliseconds`; `SchedulerKit:SetMaxResumesPerFrame count must be a finite positive integer` |
+| `ForAddon`, `CloseAddonScopes` | `SchedulerKit:ForAddon addonName must be a non-empty string`, likewise `SchedulerKit:CloseAddonScopes addonName`; `SchedulerKit:CloseAddonScopes must be called on the SchedulerKit facade; use SchedulerKit:CloseAddonScopes(addonName)` |
+| a scope, job or context method on something else | `<Method> must be called on a SchedulerKit scope`, `... on a SchedulerKit job`, `... on a SchedulerKit context` |
+| `Context:ShouldYield()`, `Context:Yield()` outside their job | `SchedulerKit.Context:ShouldYield may only be called while its job is running`, likewise `SchedulerKit.Context:Yield` |
+| `Debounce` | `<Method> callback must be a function`; `<Method> delaySeconds must be a finite number greater than or equal to zero`; `<Method> leading must be a boolean`; `<Method> maxWaitSeconds must be a finite number greater than zero`; `<Method> maxWaitSeconds must be at least delaySeconds`; `<Method> lane must be a SchedulerKit lane` |
+| calling a debounce handle | `SchedulerKit debounce handle accepts at most <maxDebounceArguments> arguments; received <count>` |
+| `Coalesce` | `<Method> callback must be a function`; `<Method> intervalSeconds must be a finite number greater than or equal to zero`; `<Method> maxKeys must be a finite positive integer`; `<Method> lane must be a SchedulerKit lane` |
+| calling a coalesce handle | `SchedulerKit coalesce handle key must not be nil or NaN` |
+| `Watch` | `<Method> predicate must be a function`; `<Method> intervalSeconds must be a finite number greater than zero`; `<Method> callback must be a function`; `<Method> everyTick must be a boolean`; `<Method> refuses more than <n> watchers on one interval; cancel unused watchers or raise SchedulerKit:SetLimits{ maxWatchersPerInterval }`; `<Method> refuses more than <n> distinct watch intervals; reuse an interval or raise SchedulerKit:SetLimits{ maxWatchIntervals }` |
+| `Lane` | `SchedulerKit:Lane name must be a non-empty string`; `SchedulerKit:Lane maxInFlight must be a finite positive integer`, likewise `maxQueued`; `SchedulerKit:Lane minIntervalSeconds must be a finite number greater than or equal to zero`; `SchedulerKit:Lane retry options must be a table` and `... retry options contains unknown field "<field>"`; `SchedulerKit:Lane retry.attempts must be a finite integer greater than or equal to zero`; `SchedulerKit:Lane retry.backoffSeconds` and `retry.maxBackoffSeconds must be a finite number greater than or equal to zero`; `SchedulerKit:Lane retry.multiplier must be a finite number greater than zero` and `... must be at least 1`; `SchedulerKit:Lane lane "<name>" already exists with different options`; `SchedulerKit:Lane refuses to create more than <n> open lanes; close unused lanes, share one by name, or raise SchedulerKit:SetLimits{ maxLanes }` |
+| `Lane:Submit` | `SchedulerKit.Lane:Submit callback must be a function`; `... options must be a table`, `... options contains unknown field "<field>"`; `SchedulerKit.Lane:Submit priority must be one of SchedulerKit.Priority values`; `SchedulerKit.Lane:Submit name must be a non-empty string`; `SchedulerKit.Lane:Submit scope must be a SchedulerKit scope`; `SchedulerKit.Lane:Submit cannot schedule work in a closed scope` |
+| a handle or lane method on something else | `<Method> must be called on a SchedulerKit debounce handle`, `... coalesce handle`, `... watch handle`, `... lane` |
+| `SetLimits`, `GetLimits` | `SchedulerKit:SetLimits limits must be a table`; `SchedulerKit:SetLimits limits.<name> is not a recognised limit`; `SchedulerKit:SetLimits limits.<name> must be an integer from 1 to <ceiling>` (a limit with a ceiling) or `... must be a positive integer or SchedulerKit.UNBOUNDED` (one without); `SchedulerKit:SetLimits limits.<name> cannot be SchedulerKit.UNBOUNDED: <reason>`; `SchedulerKit:SetLimits must be called on the SchedulerKit facade; use SchedulerKit:SetLimits(limits)`, and the same for `GetLimits` |
+
+Failures of the host or of TimerKit carry no caller position:
+`MoltenCodes SchedulerKit CreateFrame returned an invalid Frame`,
+`MoltenCodes SchedulerKit TimerKit returned an invalid scope`,
+`MoltenCodes SchedulerKit TimerKit returned an invalid timer handle`,
+`MoltenCodes SchedulerKit debugprofilestop returned an invalid value`,
+`MoltenCodes SchedulerKit GetTimePreciseSec returned an invalid value` and
+`MoltenCodes SchedulerKit runtime dispatch is corrupted`. A job that calls
+`Context:Yield()` where Lua 5.1 cannot yield is reported through the host error
+handler with a message that starts `SchedulerKit job <job> called
+Context:Yield() but the suspension never reached the scheduler` and names the
+C-call boundaries (`pcall`, `xpcall`, a metamethod, a `table.sort` comparator,
+a `string.gsub` callback); when that slice also outran the runaway threshold
+the job fails with the same message and the two durations appended. See [`Yield()` cannot cross a C-call boundary](#important-limitation-yield-cannot-cross-a-c-call-boundary).
+
+Loading `SchedulerKit.lua` raises `MoltenCodes SchedulerKit requires Registry
+API 2 to be loaded first`, `MoltenCodes SchedulerKit requires a valid Registry
+API 2 facade`, `MoltenCodes SchedulerKit requires a valid TimerKit API 1
+facade` (also when TimerKit is not loaded), `MoltenCodes SchedulerKit requires
+CreateFrame`, `MoltenCodes SchedulerKit requires GetTimePreciseSec`, or
+`MoltenCodes SchedulerKit package state is corrupted or incomplete`.
 
 ## Scopes
 
@@ -855,6 +907,11 @@ The facade, Job/Scope/Context prototypes, metatables, ready queues, scopes, acti
 The installed OnUpdate trampoline does not permanently close over one implementation revision. It resolves the current shared dispatch function on every scheduler frame. TimerKit delay callbacks use the same dispatch indirection.
 
 A future compatible SchedulerKit revision can therefore update execution behavior while preserving existing facade, Job, Scope, Context, queue, and addon-scope identity.
+
+Revision 20 changes messages only (an unknown option field or limit key that
+is not a string, number or boolean is named by its type instead of passed to
+`tostring`); package state is unchanged and a revision-19 copy's jobs,
+workers, timers and handles carry over as they are.
 
 Revision 19 changes behaviour only (a self-cancelled job that raises stays
 cancelled, and a cancelled IDLE entry no longer charges the starvation guard);

@@ -2,7 +2,7 @@ local TestEnv = require("SchedulerKitTestEnv")
 
 -- The implementation revision this suite was written against; Manifest_spec
 -- holds it to package.manifest.json.
-local CURRENT_REVISION = 19
+local CURRENT_REVISION = 20
 
 describe("SchedulerKit bootstrap", function()
   after_each(TestEnv.Reset)
@@ -422,6 +422,18 @@ describe("SchedulerKit bootstrap", function()
     assert.are.equal(state, upgraded._state)
     assert.are.equal(current, upgraded.REVISION)
     assert.are.equal(lane, upgraded:Lane("previous"))
+    -- Revision 20 names a table limit key by its type, never by `__tostring`.
+    local key = setmetatable({}, {
+      __tostring = function()
+        error("foreign __tostring ran", 0)
+      end,
+    })
+    TestEnv.expectErrorContaining(
+      "SchedulerKit:SetLimits limits.<table> is not a recognised limit",
+      function()
+        upgraded:SetLimits({ [key] = 1 })
+      end
+    )
 
     -- The coroutine the older copy started resumes where it yielded.
     TestEnv.Tick()

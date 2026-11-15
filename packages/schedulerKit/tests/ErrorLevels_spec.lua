@@ -120,10 +120,41 @@ describe("SchedulerKit error levels", function()
   -- client alike. Each case below pins the caller's line instead.
   local function noop() end
 
+  -- An unknown key whose `__tostring` raises and records that it ran: the
+  -- refusal must name it by its type and never run the caller's code.
+  local hostileKeyRan = false
+  local hostileKey = setmetatable({}, {
+    __tostring = function()
+      hostileKeyRan = true
+      error("foreign __tostring ran", 0)
+    end,
+  })
+
   ---Each case calls one public method wrongly and names the message expected
   ---at the caller's line. `call` receives the facade, a fresh manual scope
   ---and `mark`, which records the line after its own as the calling line.
   local callerCases = {
+    {
+      message = 'SchedulerKit:Schedule options contains unknown field "<table>"',
+      call = function(SchedulerKit, _, mark)
+        mark()
+        SchedulerKit:Schedule(noop, { [hostileKey] = true })
+      end,
+    },
+    {
+      message = 'SchedulerKit:Debounce options contains unknown field "<table>"',
+      call = function(SchedulerKit, _, mark)
+        mark()
+        SchedulerKit:Debounce(noop, 1, { [hostileKey] = true })
+      end,
+    },
+    {
+      message = "SchedulerKit:SetLimits limits.<table> is not a recognised limit",
+      call = function(SchedulerKit, _, mark)
+        mark()
+        SchedulerKit:SetLimits({ [hostileKey] = 1 })
+      end,
+    },
     {
       message = "SchedulerKit:Schedule callback must be a function",
       call = function(SchedulerKit, _, mark)
@@ -389,6 +420,14 @@ describe("SchedulerKit error levels", function()
       assertCaseAtCaller(TestEnv.NewPackage(), case)
     end)
   end
+
+  it("never runs an unknown key's __tostring", function()
+    for index = 1, 3 do
+      pcall(callerCases[index].call, TestEnv.NewPackage(), nil, noop)
+      TestEnv.Reset()
+    end
+    assert.is_false(hostileKeyRan)
+  end)
 
   it("reports every case at the caller's line after a revision-15 upgrade", function()
     TestEnv.Reset()
