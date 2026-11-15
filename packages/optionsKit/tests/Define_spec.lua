@@ -253,6 +253,10 @@ describe("OptionsKit:Define", function()
       "inline must be a boolean",
       rootWith({ type = "group", name = "g", inline = 1, args = {} })
     )
+    assertRefused(
+      'childGroups must be "tab", "tree" or "select"',
+      rootWith({ type = "group", name = "g", childGroups = "drop", args = {} })
+    )
   end)
 
   it("refuses a tree deeper than MAX_DEPTH, and a cyclic tree", function()

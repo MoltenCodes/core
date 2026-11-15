@@ -80,6 +80,26 @@ describe("OptionsKit tree Describe", function()
     assert.are.equal("run", root.children[3].key)
   end)
 
+  it("describes a group's childGroups hint, and publishes the accepted values", function()
+    local paged = OptionsKit:Define("Paged", {
+      type = "group",
+      childGroups = "tab",
+      args = {
+        first = { type = "group", name = "First", childGroups = "select", args = {} },
+        second = { type = "group", name = "Second", args = {} },
+      },
+    })
+    local description = paged:Describe()
+    assert.are.equal("tab", description.childGroups)
+    assert.are.equal("select", description.children[1].childGroups)
+    assert.is_nil(description.children[2].childGroups)
+    assert.are.same({ tab = true, tree = true, select = true }, OptionsKit.CHILD_GROUPS)
+    OptionsKit.CHILD_GROUPS.drop = true
+    TestEnv.expectErrorContaining('childGroups must be "tab", "tree" or "select"', function()
+      OptionsKit:Define("Other", { type = "group", childGroups = "drop", args = {} })
+    end)
+  end)
+
   it("describes a value option with its fields, value and schema", function()
     local display = tree:Describe().children[2]
     assert.is_true(display.inline)

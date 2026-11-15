@@ -2,7 +2,7 @@
 
 OptionsKit API generation **1** provides a typed, validated, introspectable options tree with no renderer: what an addon exposes as configurable, how each option is read and written, and what a dialog or a command line needs to present it.
 
-Implementation revision: **9**.
+Implementation revision: **10**.
 
 ## Loading
 
@@ -44,6 +44,7 @@ Package facade:
 | `Undefine(addonName)` | Forget the tree and disconnect its listeners. `true` when there was one. |
 | `ProfileOptions(db, options?)` | A ready-made `group` over a SettingsKit database's profiles, to place in a tree; one group per database and options, built on the first call (see [Profile options](#profile-options-optionskitprofileoptionsdb-options)). |
 | `MAX_OPTIONS` | `1024`: the default `maxOptions`, the most options one tree holds. |
+| `CHILD_GROUPS` | `{ tab = true, tree = true, select = true }`: the `childGroups` values `Define` accepts. A fresh table each revision: writing to it changes nothing. Revision 10. |
 | `MAX_DEPTH` | `8`: the default `maxDepth`, the most keys one option path has. |
 | `UNBOUNDED` | Sentinel `maxOptions` and `maxDynamicEntries` accept to lift the bound (see [Limits](#limits)). |
 | `Tree` | The shared prototype of tree handles. |
@@ -276,7 +277,7 @@ Value options are `toggle`, `range`, `select`, `multiselect`, `input`, `color` a
 
 | Kind | Own fields | Schema built at `Define` |
 |---|---|---|
-| `group` | `args` (table of key → option, required), `inline` (boolean: draw inside the parent) | none |
+| `group` | `args` (table of key → option, required), `inline` (boolean: draw inside the parent), `childGroups` (`"tab"`, `"tree"` or `"select"`: how a renderer shows the group's non-inline child groups, Ace3's three layouts) | none |
 | `toggle` | `tristate` (boolean: `nil` is a third state) | `SchemaKit.boolean()`, wrapped in `optional` when `tristate` |
 | `range` | `min`, `max` (required numbers, `min <= max`), `step`, `bigStep` (numbers `> 0`), `softMin`, `softMax` (between `min` and `max`, `softMin <= softMax`), `isPercent` (boolean) | `SchemaKit.number{ min = min, max = max }` |
 | `select` | `values` (table of key → label, or `fun(info): table`), `sorting` (array of keys: display order) | table: `SchemaKit.enum` of its keys; function: `SchemaKit.custom` accepting a string or number key of the table the function returns at check time |
@@ -290,7 +291,7 @@ Value options are `toggle`, `range`, `select`, `multiselect`, `input`, `color` a
 
 `values` tables have string or number keys and string labels, at least one entry and at most `maxDynamicEntries` (1024 by default). `sorting` entries must be keys of a `values` table.
 
-`step`, `bigStep`, `softMin`, `softMax`, `isPercent`, `multiline`, `usage`, `inline`, `confirm` and `fontSize` are hints for renderers: nothing in OptionsKit enforces them. In particular `step` is not part of the schema: a slider snaps to it, and a value typed on a command line only has to lie between `min` and `max`.
+`step`, `bigStep`, `softMin`, `softMax`, `isPercent`, `multiline`, `usage`, `inline`, `childGroups`, `confirm` and `fontSize` are hints for renderers: nothing in OptionsKit enforces them. In particular `step` is not part of the schema: a slider snaps to it, and a value typed on a command line only has to lie between `min` and `max`.
 
 ## `info`
 
@@ -394,6 +395,7 @@ A fresh plain table describing the whole tree, built on every call and safe to e
 | `addonName` | the root | |
 | `children` | `group` | Child nodes, sorted as `Walk` visits them. |
 | `inline` | `group` | When defined. |
+| `childGroups` | `group` | When defined. |
 | `value` | value kinds | The current value, as `Get` returns it, except that a table is copied: a bound value that SettingsKit returns as a view is copied through `db:Pairs`, defaults included, so the description never holds the getter's table or a view that writes through to the saved variable. A table nested deeper than 8 levels appears as the string `"<depth exceeded>"`, and a table that contains itself as `"<cycle>"`. A secret value is passed through without being copied (see [Secret values](#secret-values)). |
 | `schema` | value kinds | `schema:Describe()` of the option's SchemaKit schema. |
 | `bind` | bound options | The bind path. |
@@ -571,6 +573,6 @@ The nine-point plan in `docs/ROADMAP.md` is followed except where recorded here:
 
 ## Embedded copies and upgrades
 
-Several addons may embed OptionsKit; Registry selects the newest compatible revision and every copy shares one facade. An upgrade happens in place: trees defined under an older copy stay registered, keep their records, `info` tables, schemas and `OnChange` listeners, and gain the newer copy's methods through the shared `OptionsKit.Tree` prototype. Revision 2 added the profile group map to the package state and a link list to every tree; a tree built by revision 1 gets an empty one when a later revision loads over it. Revisions 3 to 6 changed no layout; a predicate recorded by an older revision is answered secret-aware as soon as revision 5 loads. Revision 7 builds lighter records (no prebuilt `Set` label, absent fields left out, `info` built on first use, shared schemas and hints) and reads an older record's layout as it is: its `info` table and schema stay the ones it was built with. A profile group defined before an upgrade keeps its database connections and the callbacks of the revision that built it: `ProfileOptions` builds them as closures, so a newer copy's fixes reach the groups built after it loads. Revision 8 adds the per-database group cache to the package state; groups built earlier are not in it, and the first call after the upgrade builds the one later calls return. Revision 9 keeps one group per database: it reduces a revision 8 cache to the last group built for each database, and lets the profile group map release groups nobody holds; groups built earlier keep working.
+Several addons may embed OptionsKit; Registry selects the newest compatible revision and every copy shares one facade. An upgrade happens in place: trees defined under an older copy stay registered, keep their records, `info` tables, schemas and `OnChange` listeners, and gain the newer copy's methods through the shared `OptionsKit.Tree` prototype. Revision 2 added the profile group map to the package state and a link list to every tree; a tree built by revision 1 gets an empty one when a later revision loads over it. Revisions 3 to 6 changed no layout; a predicate recorded by an older revision is answered secret-aware as soon as revision 5 loads. Revision 7 builds lighter records (no prebuilt `Set` label, absent fields left out, `info` built on first use, shared schemas and hints) and reads an older record's layout as it is: its `info` table and schema stay the ones it was built with. A profile group defined before an upgrade keeps its database connections and the callbacks of the revision that built it: `ProfileOptions` builds them as closures, so a newer copy's fixes reach the groups built after it loads. Revision 8 adds the per-database group cache to the package state; groups built earlier are not in it, and the first call after the upgrade builds the one later calls return. Revision 9 keeps one group per database: it reduces a revision 8 cache to the last group built for each database, and lets the profile group map release groups nobody holds; groups built earlier keep working. Revision 10 accepts the `childGroups` hint and publishes `CHILD_GROUPS`; it changes no layout, and trees defined earlier keep theirs.
 
 Nothing survives `/reload`: trees are defined again when the addon loads.

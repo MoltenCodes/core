@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.0 — 2026-11-15
+
+- Added: a `group` accepts the renderer hint `childGroups`, `"tab"`, `"tree"` or `"select"` (Ace3's three layouts for a group's non-inline child groups); `Define` refuses any other value at the caller, and `Describe` carries it. WidgetKit's renderer draws it from WidgetKit revision 11. The facade publishes `CHILD_GROUPS`, the accepted values, so another Kit can tell a revision that knows the hint.
+- Implementation revision 10. No state changed: an upgrade over revision 9 keeps every tree, and trees defined before keep rendering as they did.
+- Specs: the hint refused with another value, described, and the published table.
+
 ## 0.4.1 — 2026-11-15
 
 - Fixed: the `ProfileOptions` cache grew without bound. It kept one link per database and set of options, compared `localize` by identity, and never released an entry, so a consumer passing a `localize` closure made fresh for each call added a link and a group per call for the session (the weak keys never released: each link references its database and its group). The cache now keeps one link per database and a call with other options replaces it; the profile group map is weak in keys and values, so a replaced group nobody holds is released, and one still held keeps working and is still recognised by `Define`. Calls alternating two option sets now build a group each time (`docs/API.md`, *One group per database and options*).

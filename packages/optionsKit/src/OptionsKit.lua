@@ -46,7 +46,7 @@
 
 local PACKAGE_NAME = "optionsKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 9
+local IMPLEMENTATION_REVISION = 10
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_SCHEMAKIT_API = 1
 local REQUIRED_SIGNALKIT_API = 1
@@ -125,7 +125,7 @@ local VALUE_FIELDS = { get = true, set = true, bind = true, validate = true }
 -- fields. An unknown field is refused at Define: a misspelt `witdh` fails
 -- loudly instead of being silently ignored.
 local KIND_FIELDS = {
-  [KIND_GROUP] = { args = true, inline = true },
+  [KIND_GROUP] = { args = true, inline = true, childGroups = true },
   [KIND_TOGGLE] = { tristate = true },
   [KIND_RANGE] = {
     min = true,
@@ -152,6 +152,10 @@ local BIND_SCOPES =
 
 -- The accepted `description.fontSize` values.
 local FONT_SIZES = { small = true, medium = true, large = true }
+
+-- The accepted `group.childGroups` values, Ace3's names for how a renderer
+-- shows the group's non-inline child groups: tabs, a tree, or a dropdown.
+local CHILD_GROUPS = { tab = true, tree = true, select = true }
 
 -- The complete set of fields `Define` options accept.
 local DEFINE_OPTION_KEYS =
@@ -211,6 +215,7 @@ local TREE_METHODS = {
 ---@field hidden OptionsKit.Predicate? A hidden group hides everything below it.
 ---@field args table<string, OptionsKit.Option>? `group`: the children, by key.
 ---@field inline boolean? `group`: a renderer draws it inside its parent.
+---@field childGroups ("tab"|"tree"|"select")? `group`: how a renderer shows its non-inline child groups.
 ---@field get fun(info: OptionsKit.Info): any Value kinds: the reader, with `set`.
 ---@field set fun(info: OptionsKit.Info, value: any) Value kinds: the writer, with `get`.
 ---@field bind string? Value kinds: `"profile.path.to.value"` into `options.db`, instead of `get`/`set`.
@@ -266,6 +271,7 @@ local TREE_METHODS = {
 ---@field addonName string? Root only.
 ---@field children OptionsKit.Description[]? `group`: sorted.
 ---@field inline boolean? `group`
+---@field childGroups ("tab"|"tree"|"select")? `group`
 ---@field value any Value kinds: the current value.
 ---@field schema table? Value kinds: `schema:Describe()` of the option's schema.
 ---@field bind string? Value kinds bound to a database.
@@ -1350,6 +1356,12 @@ buildOption = function(context, spec, parent, key, label, level)
 
   if kind == KIND_GROUP then
     checkOptionalBoolean(spec.inline, label .. ".inline", level + 1)
+    if
+      type(spec.childGroups) ~= "nil"
+      and (isSecret(spec.childGroups) or CHILD_GROUPS[spec.childGroups] ~= true)
+    then
+      error(label .. '.childGroups must be "tab", "tree" or "select"', level)
+    end
     collectProfileLink(context, spec, path, label, level + 1)
     buildChildren(context, record, spec.args, label, level + 1)
   elseif VALUE_KINDS[kind] then
@@ -2884,6 +2896,10 @@ rawset(OptionsKit, "REVISION", IMPLEMENTATION_REVISION)
 rawset(OptionsKit, "MAX_OPTIONS", MAX_OPTIONS)
 rawset(OptionsKit, "MAX_DEPTH", MAX_DEPTH)
 rawset(OptionsKit, "UNBOUNDED", UNBOUNDED)
+-- A copy, so a consumer that writes to the published table cannot change
+-- what `Define` accepts. Its presence tells other Kits this revision knows
+-- the `childGroups` hint.
+rawset(OptionsKit, "CHILD_GROUPS", { tab = true, tree = true, select = true })
 rawset(OptionsKit, "Define", define)
 rawset(OptionsKit, "Get", getTree)
 rawset(OptionsKit, "Undefine", undefine)
