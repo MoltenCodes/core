@@ -352,8 +352,11 @@ elseif not Harness:CanMakeSecrets() then
 else
   secrets:Test(SECRET_TEST, function(ctx)
     local secret = secretWrap("hidden")
+    -- A local, not `return PanelKit:Register(secret)`: a tail call replaces
+    -- this function's frame, so the message would name no line at all.
     local succeeded, message = pcall(function()
-      return PanelKit:Register(secret)
+      local panel = PanelKit:Register(secret)
+      return panel
     end)
     ctx:Expect(succeeded):ToBe(false)
     ctx:Log("client message: " .. tostring(message))

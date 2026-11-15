@@ -126,6 +126,41 @@ describe("PanelKit pages", function()
     assert.are.equal(0, activeWidgets())
   end)
 
+  it("keeps the rendering through the refresh Blizzard sends right after the show", function()
+    local _, values = TestEnv.DefineTree(OptionsKit, "MyAddon")
+    local panel = PanelKit:Register("MyAddon")
+    local frame = settings.categories[1].frame
+    local refreshes = 0
+    local refresh = frame.OnRefresh
+    frame.OnRefresh = function(canvas)
+      refreshes = refreshes + 1
+      refresh(canvas)
+    end
+    values.enabled = false
+    panel:Open()
+    assert.are.equal(1, refreshes)
+    local drawn = activeWidgets()
+    local rendering = panel:GetRendering()
+    settings.Refresh()
+    assert.are.equal(rendering, panel:GetRendering())
+    assert.are.equal(drawn, activeWidgets())
+    assert.is_false(rendering:GetWidget("enabled"):GetValue())
+  end)
+
+  it("runs the default handler of a hidden page when every setting is reset", function()
+    TestEnv.DefineTree(OptionsKit, "MyAddon")
+    local panel = PanelKit:Register("MyAddon")
+    local other = PanelKit:Register("Other")
+    local calls = {}
+    panel:SetDefaultHandler(function(received)
+      calls[#calls + 1] = received
+    end)
+    other:Open()
+    settings.DefaultAll()
+    assert.are.same({ panel }, calls)
+    assert.is_nil(panel:GetRendering())
+  end)
+
   it("runs the default handler on the Defaults button, then refreshes", function()
     local _, values = TestEnv.DefineTree(OptionsKit, "MyAddon")
     local panel = PanelKit:Register("MyAddon")

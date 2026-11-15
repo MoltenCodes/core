@@ -47,8 +47,10 @@ whatever the client did; the log is the result. Totals then read
 ### Per flavour
 
 Classic Era and Mists of Pandaria Classic have no secret values: the
-`secrets` test is skipped there with the harness's reason, and the totals gain
-one skip. Those clients have not been run (no game time; see
+`secrets` test is skipped there, with `the client has no issecretvalue and
+secretwrap; the secret path was not exercised` when the client lacks those
+functions, or with the harness's `NO_SECRETS_REASON` when it has them but
+makes no secret, and the totals gain one skip. Those clients have not been run (no game time; see
 `tests/client/README.md`).
 
 ## What each test proves

@@ -91,8 +91,15 @@ Each panel owns one frame, created by `Register` without a parent and hidden: th
 | shows the canvas (`OnShow`) | Acquires a WidgetKit `ScrollFrame`, parents it to the canvas 8 pixels inside its edges, and renders `OptionsKit:Get(treeName)` into it with `WidgetKit:RenderOptions`. With no tree under that name, the scroll frame holds one `Label`: `No options are defined for MyAddon.` |
 | hides the canvas (`OnHide`) | Releases the scroll frame, which releases the rendering and every widget it drew back to their pools. |
 | calls `OnRefresh` on the shown canvas | When `OptionsKit:Get(treeName)` is still the tree drawn, `rendering:Refresh()`. When it is another tree, or none, the page is drawn again. |
-| calls `OnDefault` (the Defaults button) | Runs the default handler, if any, with the panel; then refreshes as above. |
+| calls `OnRefresh` on a hidden canvas | Nothing. |
+| calls `OnDefault` (the Defaults button) | Runs the default handler, if any, with the panel; then refreshes as above (nothing more on a hidden page). |
 | calls `OnCommit` | Nothing: a canvas without `OnCommit` is skipped, and OptionsKit writes every change at once. |
+
+When Blizzard calls these (`Blizzard_SettingsPanel.lua`, branches `live`, `classic` and `classic_era`, read 2026-11-15):
+
+- `SettingsPanelMixin:DisplayLayout` calls `OnRefresh` right after it shows a canvas, and the panel's `OnShow` calls it on every canvas, shown or not. So every show of a page is one render followed by one `rendering:Refresh()`; the refresh keeps the rendering and draws nothing new.
+- The Defaults button asks which settings to reset (`Blizzard_Dialogs.lua`, the buttons labelled with the client strings `CURRENT_SETTINGS` and `ALL_SETTINGS`). The current-settings choice (`SetCurrentCategorySettingsToDefaults`) calls `OnDefault` on the canvas of the page on screen; the all-settings choice (`SetAllSettingsToDefaults`) calls it on **every** canvas through `CallDefaultOnCanvases`, so the default handler of a page that is not on screen runs too. Write a handler that resets its addon's data whether or not its page is shown.
+- `OnCommit`, which `Close` calls on every canvas through `ExitWithCommit` and `CommitCanvases`, is skipped on a PanelKit canvas, because it has none.
 
 A page whose tree is undefined or redefined while it is shown keeps what it drew until the next refresh or show; the rendering itself follows `tree:OnChange` as WidgetKit documents.
 
@@ -117,6 +124,16 @@ Every argument is checked with `issecretvalue` before anything else touches it: 
 ## Error behaviour
 
 Argument errors raise at the caller's line. Facade methods called without the facade (`PanelKit.Register(nil, ...)`) raise `PanelKit:Register must be called on the PanelKit facade; use PanelKit:Register(...)`; panel methods called on anything but a panel raise `PanelKit.Panel:Open must be called on a PanelKit panel; use panel:Open(...)`. What Blizzard's panel calls is reported through `geterrorhandler`, as above.
+
+Every message an argument error carries, by method (`<name>` is the value passed, `<n>` the current limit):
+
+| Method | Messages |
+|---|---|
+| `Register` | `PanelKit:Register treeName must be a non-empty string`; `PanelKit:Register treeName must not be a secret value`; `PanelKit:Register options must be a table or nil`; `PanelKit:Register options holds an unknown field; it accepts name and parent`; `PanelKit:Register options.name must be a non-empty string`; `PanelKit:Register options.name must not be a secret value`; `PanelKit:Register options.parent must be a PanelKit panel`; `PanelKit:Register a panel named <name> is already registered there`; `PanelKit:Register holds at most <n> panels; raise maxPanels with PanelKit:SetLimits`; `PanelKit:Register needs the client's Settings API, which this host does not have` |
+| `Get` | `PanelKit:Get name must be a non-empty string`; `PanelKit:Get name must not be a secret value`; `PanelKit:Get parent must be a PanelKit panel or nil` |
+| `SetLimits` | `PanelKit:SetLimits limits must be a table`; `PanelKit:SetLimits limits holds an unknown field; it accepts maxPanels`; `PanelKit:SetLimits limits.maxPanels must not be a secret value`; `PanelKit:SetLimits limits.maxPanels must be an integer from 1 to 1024` |
+| `panel:SetDefaultHandler` | `PanelKit.Panel:SetDefaultHandler callback must be a function or nil` |
+| every method | the two receiver messages above |
 
 ## Performance
 

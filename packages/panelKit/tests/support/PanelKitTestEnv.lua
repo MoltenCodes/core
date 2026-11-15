@@ -72,13 +72,16 @@ end
 ---  top-level one in the AddOns list.
 ---* `OpenToCategory(id)` opens the panel on that category: the canvas shown
 ---  before is hidden, the new one is parented, sized and shown, which runs
----  its `OnShow`. An unknown ID opens the panel on nothing.
+---  its `OnShow`, and then given `OnRefresh`, as `DisplayLayout` does. An
+---  unknown ID opens the panel on nothing.
 ---
 ---Extra fields for the specs: `categories` (every registration, in order),
 ---`addOns` (what `RegisterAddOnCategory` received), `opened` (every ID
 ---`OpenToCategory` received), `Close()` (hides the panel and the shown
 ---canvas), `Refresh()` and `Default()` (call `OnRefresh` / `OnDefault` on
----the shown canvas, as the panel does), `Shown()` (the shown category).
+---the shown canvas, as the panel does), `DefaultAll()` (`OnDefault` on every
+---canvas, shown or not, as the panel's reset of all settings does through
+---`CallDefaultOnCanvases`), `Shown()` (the shown category).
 ---@return table settings
 function PanelKitTestEnv.InstallSettings()
   local settings = { categories = {}, addOns = {}, opened = {} }
@@ -139,6 +142,11 @@ function PanelKitTestEnv.InstallSettings()
     frame:SetSize(PanelKitTestEnv.CANVAS_WIDTH, PanelKitTestEnv.CANVAS_HEIGHT)
     shown = category
     frame:Show()
+    -- Blizzard's `SettingsPanelMixin:DisplayLayout` refreshes a canvas right
+    -- after showing it.
+    if frame.OnRefresh then
+      frame:OnRefresh()
+    end
   end
 
   function settings.Refresh()
@@ -150,6 +158,15 @@ function PanelKitTestEnv.InstallSettings()
   function settings.Default()
     if shown ~= nil and shown.frame.OnDefault then
       shown.frame:OnDefault()
+    end
+  end
+
+  function settings.DefaultAll()
+    for index = 1, #settings.categories do
+      local frame = settings.categories[index].frame
+      if frame.OnDefault then
+        frame:OnDefault()
+      end
     end
   end
 

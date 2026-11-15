@@ -551,7 +551,10 @@ function dispatch.refresh(frame)
 end
 
 ---Blizzard's `OnDefault`, from the Defaults button: run the panel's handler,
----reporting what it raises, then refresh what the page shows.
+---reporting what it raises, then refresh what the page shows. The handler
+---runs for a hidden page too: resetting all settings calls `OnDefault` on
+---every canvas, and the addon's data must be reset whether or not its page
+---is on screen.
 ---@param frame table
 function dispatch.default(frame)
   local record = frames[frame]
