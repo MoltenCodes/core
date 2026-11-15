@@ -75,6 +75,7 @@ SHARED_IN_CLIENT: tuple[str, ...] = (
     "hooks",
     "slashCommands",
     "locale",
+    "aceSerializer",
 )
 
 #: Host workloads the client does not run, with the reason and the replacement.

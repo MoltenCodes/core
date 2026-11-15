@@ -36,6 +36,7 @@ local WORKLOADS = {
   buckets = "workloads.Buckets",
   options = "workloads.Options",
   widgets = "workloads.Widgets",
+  aceSerializer = "workloads.AceSerializer",
 }
 
 local SIDES = { moltencodes = true, ace3 = true }

@@ -193,19 +193,12 @@ local function cases(adapter)
   return list
 end
 
----Build the workload for one side.
----@param side string `"moltencodes"` or `"ace3"`
----@param host table
----@param settings table
+---The suite for one side's adapter: the cases and checks every serialiser
+---comparison shares (also the `aceSerializer` workload's, with BridgeKit).
+---@param adapter table `{ encode(value) -> text, decode(text) -> ok, value }`
+---@param libraries table[]
 ---@return table suite `{ cases, checks, libraries }`
-function Codec.Build(side, host, settings)
-  local adapter, libraries
-  if side == "moltencodes" then
-    adapter, libraries = kitAdapter(host)
-  else
-    adapter, libraries = aceAdapter(host, settings.ace3)
-  end
-
+function Codec.Suite(adapter, libraries)
   local function checks()
     local results = {}
     for _, entry in ipairs(SIZES) do
@@ -244,6 +237,24 @@ function Codec.Build(side, host, settings)
   end
 
   return { libraries = libraries, cases = cases(adapter), checks = checks }
+end
+
+--- The Ace3 side, shared with the `aceSerializer` workload.
+Codec.AceAdapter = aceAdapter
+
+---Build the workload for one side.
+---@param side string `"moltencodes"` or `"ace3"`
+---@param host table
+---@param settings table
+---@return table suite `{ cases, checks, libraries }`
+function Codec.Build(side, host, settings)
+  local adapter, libraries
+  if side == "moltencodes" then
+    adapter, libraries = kitAdapter(host)
+  else
+    adapter, libraries = aceAdapter(host, settings.ace3)
+  end
+  return Codec.Suite(adapter, libraries)
 end
 
 return Codec

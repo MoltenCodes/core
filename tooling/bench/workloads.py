@@ -149,6 +149,13 @@ WORKLOADS: tuple[Workload, ...] = (
         compares="WidgetKit against AceGUI-3.0 on the shared fake client",
         packages=("registry", "poolKit", "signalKit", "widgetKit"),
     ),
+    Workload(
+        name="aceSerializer",
+        module="workloads.AceSerializer",
+        title="AceSerializer-3.0 text",
+        compares="BridgeKit against AceSerializer-3.0, the same format byte for byte",
+        packages=("registry", "bridgeKit"),
+    ),
 )
 
 #: Workloads by name.
