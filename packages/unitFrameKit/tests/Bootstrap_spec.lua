@@ -64,6 +64,32 @@ describe("UnitFrameKit bootstrap", function()
     end
   )
 
+  it("upgrades a revision 1 copy in place, keeping its cache and listeners", function()
+    local UnitFrameKit = TestEnv.NewPackageAtRevision(1)
+    assert.are.equal(1, UnitFrameKit.REVISION)
+    TestEnv.SetUnits({ party1 = "Ann", focustarget = "Ann" })
+    TestEnv.UnitButton("FocusFrameToT", "focustarget")
+    TestEnv.UnitButton("CompactPartyFrameMember2", "party1")
+    local seen = 0
+    local connection = UnitFrameKit:OnChange(function()
+      seen = seen + 1
+    end)
+    TestEnv.RunScan(UnitFrameKit)
+    assert.are.equal(2, seen)
+    local state = UnitFrameKit._state
+
+    local upgraded = TestEnv.ReloadPackage()
+    assert.are.equal(UnitFrameKit, upgraded)
+    assert.are.equal(2, upgraded.REVISION)
+    assert.are.equal(state, upgraded._state)
+    assert.is_true(connection:IsConnected())
+    -- Revision 2 changed no state field: the cache and the listener carry
+    -- over, and a scan of the same frames reports no change.
+    TestEnv.RunScan(upgraded)
+    assert.are.equal("CompactPartyFrameMember2", upgraded:GetUnitFrame("party1").name)
+    assert.are.equal(2, seen)
+  end)
+
   it("refuses shared state whose limit holds an invalid value", function()
     local UnitFrameKit = TestEnv.NewPackage()
     rawset(UnitFrameKit._state.limits, "maxFrames", 4097)

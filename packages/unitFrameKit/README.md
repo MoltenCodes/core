@@ -21,7 +21,7 @@ local plate = UnitFrameKit:GetNamePlate("nameplate3")
 
 What each piece promises:
 
-- **Every unit frame, by its unit attribute.** A scan keeps every visible, non-forbidden `Button` whose `unit` attribute is set, whatever addon made it. A query reads the attribute again and compares it with `UnitIsUnit`, so `"target"` finds the raid frame of the unit you target.
+- **Every unit frame, by its unit attribute.** A scan keeps every visible `Button` whose `unit` attribute is set and that the client lets addon code read (not forbidden, not refused by `CanBeAccessedInContext`), whatever addon made it. A query reads the attribute again and compares it with `UnitIsUnit`, so `"target"` finds the raid frame of the unit you target.
 - **Ranked, not guessed.** The caller's patterns come first, then the frames of other addons the Kit knows (ElvUI, Cell, Grid2, Shadowed Unit Frames), then those of addons it does not know, then Blizzard's own. A query answers raid, party and boss frames; `PlayerFrame`, `TargetFrame` and the other single-unit frames answer only for their own token. `options.kinds`, `priorities` and `ignore` change that.
 - **Bounded scans.** A scan walks the client's frames with `EnumerateFrames`, 400 per client frame by default, and keeps its place between frames. It runs one second after a roster change, a zone change, the start or end of combat, a boss appearing or a pet changing, with all such events in that second sharing one scan. Nothing runs per frame otherwise.
 - **Safe in combat.** Scans and queries only read frames.

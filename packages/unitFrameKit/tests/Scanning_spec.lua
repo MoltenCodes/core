@@ -224,6 +224,28 @@ describe("UnitFrameKit scanning", function()
     assert.is_false(UnitFrameKit:IsScanning())
   end)
 
+  it("skips a frame the client says this code may not access, and keeps scanning", function()
+    -- Retail's `CanBeAccessedInContext` answers false for an object tainted
+    -- code may not touch; the stand-in raises on every read of such a frame.
+    local restricted = TestEnv.UnitButton("RestrictedButton", "party1")
+    restricted.CanBeAccessedInContext = function()
+      return false
+    end
+    restricted.GetObjectType = function()
+      error("attempt to access a restricted object", 0)
+    end
+    local secretAnswer = TestEnv.UnitButton("SecretAccessButton", "party1")
+    TestEnv.InstallSecretProbe()
+    local secret = TestEnv.NewSecret()
+    secretAnswer.CanBeAccessedInContext = function()
+      return secret
+    end
+    local kept = TestEnv.UnitButton("Kept", "party1")
+    TestEnv.RunScan(UnitFrameKit)
+    assert.are.same({}, TestEnv.TakeReportedValues())
+    assert.are.same({ kept }, UnitFrameKit:GetUnitFrames("party1"))
+  end)
+
   it("drops a scan that raises, reports it, and scans afresh later", function()
     local frame = TestEnv.UnitButton("Kept", "party1")
     local enumerate = TestEnv.GetGlobal("EnumerateFrames")

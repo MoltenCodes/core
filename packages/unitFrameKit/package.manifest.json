@@ -2,10 +2,10 @@
   "name": "unitFrameKit",
   "displayName": "UnitFrameKit",
   "description": "The unit frame shown on screen for a World of Warcraft unit token: a sliced, bounded scan of the client's frames, ranked matches across Blizzard's and other addons' unit frames, change notifications and nameplates.",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "license": "MIT",
   "api": 1,
-  "revision": 1,
+  "revision": 2,
   "dependencies": {
     "registry": {
       "api": 2

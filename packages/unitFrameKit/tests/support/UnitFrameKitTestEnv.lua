@@ -16,7 +16,7 @@
 ---   nameplates      `C_NamePlate.GetNamePlateForUnit` over `SetNamePlate`;
 ---   scanning        `RunScan`, ticks until a scan is done;
 ---   secret values   `InstallSecretProbe` and `NewSecret`;
----   upgrades        `LoadRevision`.
+---   upgrades        `LoadRevision`, `NewPackageAtRevision`.
 local FrameworkTestEnv = require("FrameworkTestEnv")
 
 local UnitFrameKitTestEnv = FrameworkTestEnv.New({
@@ -170,6 +170,21 @@ function UnitFrameKitTestEnv.NewPackage()
   identities = { player = "Me", party1 = "Ann", party2 = "Bob", target = "Bob", focus = "Cid" }
   installHost()
   return UnitFrameKit, Registry
+end
+
+---Reset, install the host stubs and the stand-ins, load Registry, then load
+---the working UnitFrameKit file as `revision`: the starting point of an
+---upgrade spec, which then calls `ReloadPackage` to load the shipped revision.
+---@param revision integer
+---@return table UnitFrameKit
+function UnitFrameKitTestEnv.NewPackageAtRevision(revision)
+  UnitFrameKitTestEnv.Reset()
+  UnitFrameKitTestEnv.InstallWowApi()
+  frames, positions, namePlates, visits = {}, {}, {}, 0
+  identities = { player = "Me", party1 = "Ann", party2 = "Bob", target = "Bob", focus = "Cid" }
+  installHost()
+  require("Registry")
+  return UnitFrameKitTestEnv.LoadRevision(revision)
 end
 
 ---Tick the client until no scan is due or running; at most `limit` ticks.

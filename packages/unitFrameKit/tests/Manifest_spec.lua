@@ -23,7 +23,7 @@ describe("UnitFrameKit manifest metadata", function()
     assert.is_truthy(
       text:find('"dependencies"%s*:%s*{%s*"registry"%s*:%s*{%s*"api"%s*:%s*2%s*}%s*}')
     )
-    assert.is_truthy(text:find('"version"%s*:%s*"0%.1%.0"'))
+    assert.is_truthy(text:find('"version"%s*:%s*"0%.1%.1"'))
     assert.is_truthy(text:find('"license"%s*:%s*"MIT"'))
   end)
 end)

@@ -35,6 +35,31 @@ describe("UnitFrameKit ranking", function()
     assert.are.equal("CellRaidFrameHeader1UnitButton2", UnitFrameKit:GetUnitFrame("party1").name)
   end)
 
+  it("never ranks Blizzard's PetFrame or FocusFrameToT as another addon's frame", function()
+    -- The focus targets party1: FocusFrameToT shows `focustarget`, the same
+    -- unit. It is Blizzard's, so it must not rank before Blizzard's party frame.
+    TestEnv.SetUnits({ party1 = "Ann", focustarget = "Ann", pet = "Rex", partypet1 = "Rex" })
+    TestEnv.UnitButton("FocusFrameToT", "focustarget")
+    TestEnv.UnitButton("CompactPartyFrameMember2", "party1")
+    TestEnv.UnitButton("PetFrame", "pet")
+    TestEnv.UnitButton("MyOwnPetButton", "partypet1")
+    TestEnv.RunScan(UnitFrameKit)
+    assert.are.same({ "CompactPartyFrameMember2" }, namesOf(UnitFrameKit:GetUnitFrames("party1")))
+    -- Like a solo kind, each answers for its own token, after Blizzard's kinds.
+    assert.are.same(
+      { "CompactPartyFrameMember2", "FocusFrameToT" },
+      namesOf(UnitFrameKit:GetUnitFrames("focustarget"))
+    )
+    assert.are.same({ "MyOwnPetButton", "PetFrame" }, namesOf(UnitFrameKit:GetUnitFrames("pet")))
+    assert.are.same({ "MyOwnPetButton" }, namesOf(UnitFrameKit:GetUnitFrames("partypet1")))
+    -- With `kinds`, only `priorities` reach them.
+    assert.are.same({}, namesOf(UnitFrameKit:GetUnitFrames("focustarget", { kinds = { "focus" } })))
+    assert.are.equal(
+      "PetFrame",
+      UnitFrameKit:GetUnitFrame("partypet1", { priorities = { "^PetFrame$" } }).name
+    )
+  end)
+
   it("puts the caller's patterns first, in their order, whatever the kind", function()
     TestEnv.UnitButton("Grid2LayoutHeader1UnitButton1", "player")
     TestEnv.UnitButton("PlayerFrame", "player")

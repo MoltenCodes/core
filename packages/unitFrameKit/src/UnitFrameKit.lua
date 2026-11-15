@@ -4,14 +4,14 @@
 -- WeakAuras to anchor an aura or a glow to a party or raid member's frame.
 --
 -- A scan walks the client's frames with `EnumerateFrames`, a slice per client
--- frame, and keeps every visible `Button` whose `unit` attribute is set, under
--- its name or, for an unnamed frame, its parent's name and its parent key
--- (`PartyFrame.MemberFrame1`). Frames are never deleted and `EnumerateFrames`
--- walks them in creation order, so a scan keeps its place in the walk between
--- slices and sees the frames made while it runs. A query reads each kept
--- frame's `unit` attribute again, compares it with `UnitIsUnit`, drops hidden
--- frames and ranks what is left: the caller's patterns, then frames of other
--- addons, then Blizzard's frames. The design is the package's record in
+-- frame, and keeps every visible, accessible `Button` whose `unit` attribute
+-- is set, under its name or, for an unnamed frame, its parent's name and its
+-- parent key (`PartyFrame.MemberFrame1`). Frames are never deleted and
+-- `EnumerateFrames` walks them in creation order, so a scan keeps its place
+-- in the walk between slices and sees the frames made while it runs. A query
+-- reads each kept frame's `unit` attribute again, compares it with
+-- `UnitIsUnit`, drops hidden frames and ranks what is left: the caller's
+-- patterns, then frames of other addons, then Blizzard's frames. The design is the package's record in
 -- `docs/ROADMAP.md` (package unitFrameKit); `docs/API.md` cites where every
 -- frame name in the pattern table comes from.
 --
@@ -20,7 +20,8 @@
 --
 -- UnitFrameKit requires Registry API 2. It reads at call time `CreateFrame`,
 -- `EnumerateFrames`, `UnitIsUnit`, `UnitExists`, `C_NamePlate`,
--- `issecretvalue` and `geterrorhandler`.
+-- `issecretvalue` and `geterrorhandler`, and each frame's
+-- `CanBeAccessedInContext` (Retail) where the frame has it.
 --
 -- Contents
 -- --------
@@ -43,7 +44,7 @@
 
 local PACKAGE_NAME = "unitFrameKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 1
+local IMPLEMENTATION_REVISION = 2
 local REQUIRED_REGISTRY_API = 2
 local STATE_SCHEMA = 1
 
@@ -91,11 +92,16 @@ local SOLO_KIND_RANK = 4
 -- Rank bands: a caller's pattern ranks by its position (1 to MAX_PATTERNS);
 -- the bands below are above any position.
 local KNOWN_ADDON_BAND, UNKNOWN_ADDON_RANK, BLIZZARD_BAND = 100, 200, 300
+-- A Blizzard frame without a kind ranks after every Blizzard kind.
+local BLIZZARD_OWN_TOKEN_RANK = BLIZZARD_BAND + #KINDS + 1
 
 -- The frames the Kit can name a kind for: `{ pattern, kind, blizzard }`.
 -- Blizzard's names come from wow-ui-source (`live`, `classic`, `classic_era`);
 -- every other entry was checked in that addon's own source. `docs/API.md`
 -- cites each one. A frame no entry matches is still found, without a kind.
+-- The entries with the kind `false` are Blizzard's named unit buttons that
+-- show none of the kinds: without them they would rank as another addon's
+-- frames, ahead of Blizzard's own, and answer every token naming their unit.
 local KIND_PATTERNS = {
   { "^CompactRaidFrame%d+$", "raid", true },
   { "^CompactRaidGroup%dMember%d$", "raid", true },
@@ -106,6 +112,8 @@ local KIND_PATTERNS = {
   { "^TargetFrame$", "target", true },
   { "^TargetFrameToT$", "targettarget", true },
   { "^FocusFrame$", "focus", true },
+  { "^FocusFrameToT$", false, true },
+  { "^PetFrame$", false, true },
   -- ElvUI
   { "^ElvUF_Raid%dGroup%dUnitButton%d+$", "raid", false },
   { "^ElvUF_PartyGroup1UnitButton%d$", "party", false },
@@ -444,6 +452,26 @@ local function isTrue(value)
   return not isSecret(value) and value == true
 end
 
+---Whether this code may read `frame`: not forbidden, and not refused by
+---`CanBeAccessedInContext` (Retail: "False if access is denied, such as when
+---execution is tainted and the object is forbidden or enforcing access
+---restrictions"). A secret answer is a refusal. Clients without the method
+---answer through `IsForbidden` alone.
+---@param frame table
+---@return boolean
+local function isAccessible(frame)
+  if type(frame.IsForbidden) == "function" then
+    local forbidden = frame:IsForbidden()
+    if isSecret(forbidden) or forbidden == true then
+      return false
+    end
+  end
+  if type(frame.CanBeAccessedInContext) == "function" then
+    return isTrue(frame:CanBeAccessedInContext())
+  end
+  return true
+end
+
 -- Argument checks ------------------------------------------------------------
 --
 -- Argument validation raises with an explicit stack level so the reported
@@ -614,7 +642,7 @@ local function nameOf(frame)
   end
   local key = plainString(frame:GetParentKey())
   local parent = frame:GetParent()
-  if key == nil or isSecret(parent) or type(parent) ~= "table" then
+  if key == nil or isSecret(parent) or type(parent) ~= "table" or not isAccessible(parent) then
     return nil
   end
   local parentName = type(parent.GetName) == "function" and plainString(parent:GetName()) or nil
@@ -640,18 +668,12 @@ local function classify(name)
 end
 
 ---The unit `frame` shows when the scan keeps it, or `nil`: a visible,
----non-forbidden `Button` with a unit, which is no aura button.
+---accessible `Button` with a unit, which is no aura button.
 ---@param frame any
 ---@return string?
 local function keptUnit(frame)
-  if isSecret(frame) or type(frame) ~= "table" then
+  if isSecret(frame) or type(frame) ~= "table" or not isAccessible(frame) then
     return nil
-  end
-  if type(frame.IsForbidden) == "function" then
-    local forbidden = frame:IsForbidden()
-    if isSecret(forbidden) or forbidden == true then
-      return nil
-    end
   end
   if type(frame.GetObjectType) ~= "function" then
     return nil
@@ -989,7 +1011,18 @@ local function rankOf(cache, index, unit, options)
   end
   local kind = cache.kinds[index]
   if not kind then
-    return UNKNOWN_ADDON_RANK
+    if not cache.blizzard[index] then
+      return UNKNOWN_ADDON_RANK
+    end
+    -- A Blizzard frame without a kind answers, like a solo kind, only for the
+    -- token it shows and only without `kinds`.
+    if options and options.kinds then
+      return nil
+    end
+    if cache.units[cache.frames[index]] ~= unit then
+      return nil
+    end
+    return BLIZZARD_OWN_TOKEN_RANK
   end
   local rank = kindRank(kind, unit, options and options.kinds)
   if rank == nil then
@@ -1005,7 +1038,7 @@ end
 ---@param unitIsUnit function
 ---@return boolean
 local function showsUnit(frame, unit, unitIsUnit)
-  if not isVisible(frame) then
+  if not isAccessible(frame) or not isVisible(frame) then
     return false
   end
   local frameUnit = unitOf(frame)
@@ -1146,11 +1179,8 @@ local function packageGetNamePlate(self, unit)
   if not ok or isSecret(plate) or type(plate) ~= "table" then
     return nil
   end
-  if type(plate.IsForbidden) == "function" then
-    local forbidden = plate:IsForbidden()
-    if isSecret(forbidden) or forbidden == true then
-      return nil
-    end
+  if not isAccessible(plate) then
+    return nil
   end
   local unitFrame = rawget(plate, "UnitFrame")
   if not isSecret(unitFrame) and type(unitFrame) == "table" then
