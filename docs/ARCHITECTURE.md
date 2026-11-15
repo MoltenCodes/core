@@ -40,6 +40,7 @@ packages/
 ├── barKit/
 ├── dialogKit/
 ├── toastKit/
+├── bindingKit/
 ├── <future-package>/
 └── ...
 ```
@@ -48,7 +49,7 @@ Every visible directory directly under `packages/` is considered a publishable p
 
 ## Package naming
 
-Public framework capability packages use an Apple-style `Kit` suffix. The canonical machine-readable package ID is lowerCamelCase (`signalKit`, `eventKit`, `lifecycleKit`, `moduleKit`, `timerKit`, `schedulerKit`, `poolKit`, `clientKit`, `cacheKit`, `profileKit`, `readinessKit`, `schemaKit`, `localeKit`, `hookKit`, `settingsKit`, `optionsKit`, `commandKit`, `codecKit`, `interopKit`, `mediaKit`, `testKit`, `commKit`, `widgetKit`, `apiKit`, `brokerKit`, `logKit`, `compatKit`, `bridgeKit`, `panelKit`, `menuKit`, `launcherKit`, `tooltipKit`, `barKit`, `dialogKit`, `toastKit`), while the Lua facade/module name is PascalCase (`SignalKit`, `EventKit`, `LifecycleKit`, `ModuleKit`, `TimerKit`, `SchedulerKit`, `PoolKit`, `ClientKit`, `CacheKit`, `ProfileKit`, `ReadinessKit`, `SchemaKit`, `LocaleKit`, `HookKit`, `SettingsKit`, `OptionsKit`, `CommandKit`, `CodecKit`, `InteropKit`, `MediaKit`, `TestKit`, `CommKit`, `WidgetKit`, `ApiKit`, `BrokerKit`, `LogKit`, `CompatKit`, `BridgeKit`, `PanelKit`, `MenuKit`, `LauncherKit`, `TooltipKit`, `BarKit`, `DialogKit`, `ToastKit`).
+Public framework capability packages use an Apple-style `Kit` suffix. The canonical machine-readable package ID is lowerCamelCase (`signalKit`, `eventKit`, `lifecycleKit`, `moduleKit`, `timerKit`, `schedulerKit`, `poolKit`, `clientKit`, `cacheKit`, `profileKit`, `readinessKit`, `schemaKit`, `localeKit`, `hookKit`, `settingsKit`, `optionsKit`, `commandKit`, `codecKit`, `interopKit`, `mediaKit`, `testKit`, `commKit`, `widgetKit`, `apiKit`, `brokerKit`, `logKit`, `compatKit`, `bridgeKit`, `panelKit`, `menuKit`, `launcherKit`, `tooltipKit`, `barKit`, `dialogKit`, `toastKit`, `bindingKit`), while the Lua facade/module name is PascalCase (`SignalKit`, `EventKit`, `LifecycleKit`, `ModuleKit`, `TimerKit`, `SchedulerKit`, `PoolKit`, `ClientKit`, `CacheKit`, `ProfileKit`, `ReadinessKit`, `SchemaKit`, `LocaleKit`, `HookKit`, `SettingsKit`, `OptionsKit`, `CommandKit`, `CodecKit`, `InteropKit`, `MediaKit`, `TestKit`, `CommKit`, `WidgetKit`, `ApiKit`, `BrokerKit`, `LogKit`, `CompatKit`, `BridgeKit`, `PanelKit`, `MenuKit`, `LauncherKit`, `TooltipKit`, `BarKit`, `DialogKit`, `ToastKit`, `BindingKit`).
 
 `registry` / `Registry` is an infrastructure exception because it provides package identity and revision reconciliation rather than a framework capability surface.
 
@@ -296,3 +297,5 @@ The dependency layer directly above Registry holds the Kits that need nothing el
 `dialogKit` depends only on Registry API 2. It draws every dialog on one named frame of its own with the client's button and input-box templates, instead of adding entries to Blizzard's `StaticPopupDialogs`, and adds that frame's name to `UISpecialFrames` so Escape hides it. One dialog is shown at a time and the others wait in a bounded queue; each ends exactly once, through a protected callback. The frame's scripts call through a dispatch table in the shared state.
 
 `toastKit` depends on Registry API 2 and PoolKit API 1. Toasts are frames of its own from a PoolKit pool that keeps every released frame, stacked at one anchor of `UIParent`; Blizzard's `AlertFrame` is never touched. A shown toast runs one `OnUpdate` that counts its life (not while the cursor rests on it) and fades its last half second; the rest wait in a bounded queue. The pool's factory and reset and the frames' scripts call through a dispatch table in the shared state.
+
+`bindingKit` depends only on Registry API 2. It keeps an addon's key bindings as override bindings on an owner frame per named scope, so the player's saved bindings are never touched and an addon clears only its own. A key bound to a Lua function clicks a hidden named button of the package's own, reused from a free list. A change made in combat waits, and one event frame applies every waiting scope at `PLAYER_REGEN_ENABLED`; the buttons' and the event frame's scripts call through a dispatch table in the shared state.

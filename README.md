@@ -4,7 +4,7 @@
 [![Release](https://img.shields.io/github/v/release/MoltenCodes/core?include_prereleases&sort=semver)](https://github.com/MoltenCodes/core/releases)
 
 A modular Lua 5.1 framework for professional World of Warcraft addon
-development: 36 small packages, called Kits, each independently versioned,
+development: 37 small packages, called Kits, each independently versioned,
 tested and publishable, that an addon embeds one by one or loads together as the
 standalone addon `MoltenCodes`.
 
@@ -16,7 +16,7 @@ bounded by default and safe around the Retail secret-value and taint rules.
 
 ## Packages
 
-Thirty-five release packages and one development package. Each links to its
+Thirty-six release packages and one development package. Each links to its
 README; its full contract is the package's `docs/API.md`.
 
 | Package | Purpose |
@@ -48,6 +48,7 @@ README; its full contract is the package's `docs/API.md`.
 | [`compatKit`](packages/compatKit/) | Versioned shims with a host opt-out, provider registries with a fallback cascade, and the catalogue of taint-hostile subsystems as data. |
 | [`commKit`](packages/commKit/) | Addon messaging of any length: a chunk protocol with bounded reassembly, refusing priority queues, a session bandwidth budget and sync sets. |
 | [`widgetKit`](packages/widgetKit/) | Pooled, versioned widgets with explicit layouts, saveable anchors and an OptionsKit renderer. |
+| [`bindingKit`](packages/bindingKit/) | Override key bindings in named scopes (commands, button clicks, Lua functions) that never touch the player's own, applied after combat when set during it. |
 | [`toastKit`](packages/toastKit/) | Short notifications that stack at one anchor, hold under the cursor and fade out, with icons and click handlers, pooled and bounded. |
 | [`dialogKit`](packages/dialogKit/) | Confirmation and input dialogs without StaticPopupDialogs: one frame of their own, a bounded queue, Escape through UISpecialFrames, timeouts. |
 | [`barKit`](packages/barKit/) | Status and timer bars on the client's StatusBar, with secret values passed through and pausable countdowns, pooled and bounded. |
@@ -144,7 +145,7 @@ answers `--help`.
 ├── examples/                # a complete example addon, loaded by its own spec
 ├── lychee.toml              # Markdown link-check configuration
 ├── meta/                    # editor-only LuaCATS definitions, including the game API
-├── packages/                # the 36 Kits, one directory each (see packages/README.md)
+├── packages/                # the 37 Kits, one directory each (see packages/README.md)
 ├── pyproject.toml           # the supported Python floor for the tooling
 ├── selene.toml              # Selene configuration for runtime Lua
 ├── selene-tests.toml        # Selene configuration for test Lua

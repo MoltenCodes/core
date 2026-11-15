@@ -1,0 +1,14 @@
+{
+  "name": "bindingKit",
+  "displayName": "BindingKit",
+  "description": "Override key bindings for World of Warcraft addons in named scopes: commands, button clicks and Lua functions, applied after combat when set during it, never saved over the player's own.",
+  "version": "0.1.0",
+  "license": "MIT",
+  "api": 1,
+  "revision": 1,
+  "dependencies": {
+    "registry": {
+      "api": 2
+    }
+  }
+}

@@ -134,6 +134,7 @@ securehook
 serialiser
 strsplit
 strtrim
+TOGGLEWORLDMAP
 unregistration
 versionable
 worklist

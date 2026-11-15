@@ -50,6 +50,7 @@ body:
         - registry
         - apiKit
         - barKit
+        - bindingKit
         - bridgeKit
         - brokerKit
         - cacheKit
