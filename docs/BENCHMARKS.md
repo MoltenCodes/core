@@ -38,7 +38,7 @@ python3 -m tooling.bench.report tooling/bench/results/<date>-host.json
 `--workload NAME` (repeatable) runs a subset: `eventDispatch`,
 `messageDispatch`, `timers`, `settings`, `codec`, `comm`, `libraryRegistry`,
 `addonModules`, `hooks`, `slashCommands`, `locale`, `buckets`, `options`,
-`widgets`. `--rounds`,
+`widgets`, `aceSerializer`. `--rounds`,
 `--repeat` and `--warmup` change the batch counts below. The first run
 downloads Ace3 (about 1 MB) into the cache; a full run of the whole catalogue
 takes about five minutes.
@@ -161,6 +161,7 @@ unregister the event every time.
 | `buckets` | EventKit `Coalesce` (on SchedulerKit, TimerKit) | AceBucket-3.0 (on AceEvent-3.0, AceTimer-3.0) | one event into an open interval; a burst of 10 events and its delivery; create and remove a bucket over two events beside another; host timers pending after a delivery |
 | `options` | OptionsKit, with CommandKit's `BindOptions` and SettingsKit | AceConfigRegistry-3.0, AceConfigCmd-3.0, AceDBOptions-3.0 (with AceDB-3.0, AceConsole-3.0) | define and check a 50- and 200-option table; a typed command that sets a range, a toggle or a select, or is refused; build the profile group and choose a profile from the command line; `tree:Get` and `tree:Set` (OptionsKit only) |
 | `widgets` | WidgetKit (on PoolKit, SignalKit) | AceGUI-3.0 | **indicative, fake-client frames**: acquire, fill and release a pooled Label, Button, CheckBox, Slider and EditBox; a titled group (`Group` / `InlineGroup`) with 10 and 50 labels built, laid out once and released; a second layout pass over 50 labels; the stub's anchor cost in each library's style |
+| `aceSerializer` | BridgeKit's `AceSerialize` and `AceDeserialize` | AceSerializer-3.0 | the `codec` workload's payloads and cases over the same format: both sides write the same bytes, so the comparison is of two implementations of one format (BridgeKit keeps its secret probe and its bounds) |
 
 What each pairing leaves out, on purpose:
 
@@ -343,7 +344,8 @@ line, so error messages keep the committed file's line numbers
 ([`Loader.lua`](../tooling/bench/client/MoltenCodesBench/Loader.lua)).
 
 Shared workloads run in the client: `eventDispatch`, `messageDispatch`,
-`settings`, `codec`, `libraryRegistry`, `hooks`, `slashCommands`, `locale`.
+`settings`, `codec`, `libraryRegistry`, `hooks`, `slashCommands`, `locale`,
+`aceSerializer`.
 The others need the fake client and are replaced or left to the host
 ([`client_workloads.py`](../tooling/bench/client_workloads.py) holds the list
 and the reasons, and a unit test holds it to the host catalogue):

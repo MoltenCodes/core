@@ -10,7 +10,7 @@ tooling/
 ├── spell.py                        # runs the pinned cspell over the documentation
 ├── spell-words.txt                 # the project dictionary cspell reads
 ├── api/                            # apiKit metadata pipeline; see "API metadata tooling"
-├── bench/                          # Kits against Ace3: "Host benchmark" and "In-client benchmark"
+│   ├── flavours.py                # reads flavours.json
 │   ├── flavours.json              # the apiKit flavours: namespaces, mirror branches, detection facts
 │   ├── fetch.py                   # downloads one flavour's documentation tables at a pinned commit
 │   ├── lua_tables.py              # parses the tables
@@ -25,6 +25,14 @@ tooling/
 │   ├── render_reference.py        # the generated reference and search index
 │   ├── generate.py                # writes every output of a flavour
 │   └── heads.py                   # compares committed metadata builds with the mirror heads
+├── bench/                          # Kits against Ace3: "Host benchmark" and "In-client benchmark"
+│   ├── ace3.py                    # fetches the pinned Ace3 into a checksummed cache outside the repository
+│   ├── workloads.py / run.py      # the host workload catalogue and its runner
+│   ├── host.py / report.py        # the host Lua runner and the Markdown report
+│   ├── client_install.py          # installs the in-client benchmark addons
+│   ├── client_workloads.py / client_report.py # the in-client catalogue and its report
+│   ├── lua/, client/              # the Lua workloads, hosts and the in-client harness
+│   └── results/                   # committed results files
 ├── ci/
 │   └── check_commits.py           # checks commit subjects and pull request titles
 ├── fixtures/                      # third-party output recorded for the specs; see "Recorded fixtures"
@@ -57,7 +65,7 @@ tooling/
     ├── host_names.json            # Lua library, framework globals and undocumented client names, with evidence
     ├── interface_numbers.py       # reads the supported-client table, prints the .toc line
     ├── lua_references.py          # finds host references in Lua and decides whether each use is guarded
-    ├── lua_syntax.py              # Lua 5.1 lexer and parser
+    ├── lua_syntax.py              # Lua 5.1 lexer and parser; `python3 -m tooling.validation.lua_syntax FILE...` checks files
     ├── supported_clients.json     # the supported `## Interface` numbers, by flavour
     ├── validate_manifests.py      # manifest schema and dependency graph checks
     └── validate_repository.py     # layout, indexes, packaging, editor configuration, Interface and link checks
@@ -1120,7 +1128,4 @@ recording.
 
 Tooling is added only when implemented. Empty placeholder directories are intentionally avoided because they imply capabilities that do not yet exist.
 
-Likely future responsibilities include:
-
-- dependency-aware build ordering;
-- affected-package test selection.
+Likely future responsibilities include affected-package test selection.

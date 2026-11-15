@@ -655,7 +655,6 @@ default:
 in its loaded phase:
 
 ```lua
--- Planned API (this design); nothing below exists yet.
 if type(MyAddonSettings) == "nil" then
   local report, reason = BridgeKit:ImportAceDB("MyAddonDB", "MyAddonSettings", {
     schema = schema,
@@ -674,7 +673,6 @@ removes it from the TOC.
 MyAddonDB`, adds `MyAddonDB_Backup`, and opens with a migration:
 
 ```lua
--- Planned API (this design); nothing below exists yet.
 local db = SettingsKit:Open("MyAddonDB", schema, {
   version = 2,
   migrations = { [2] = BridgeKit:AceDBMigration({
@@ -884,8 +882,7 @@ CodecKit in three releases, with the two protocols on **different prefixes**
 
 For group and guild broadcasts v2 sends on both prefixes until the addon's
 own telemetry says v1 peers are gone; the extra bytes are charged to the same
-CommKit budget. The complete v2 code is in `MIGRATING_FROM_ACE3.md`, marked
-as planned API until BridgeKit ships.
+CommKit budget. The complete v2 code is in `MIGRATING_FROM_ACE3.md`.
 
 ## 9. Limits
 

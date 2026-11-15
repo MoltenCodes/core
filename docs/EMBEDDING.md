@@ -306,7 +306,7 @@ months, which libraries are bundled.
 
 ### `embeds.xml`
 
-The file follows the release artifact's `loadOrder` exactly. An addon keeps
+The file follows the release artifact's `loadOrder`, restricted to the Kits it embeds (every release package but BridgeKit). An addon keeps
 only what it uses plus dependencies; the Kits marked `optional here` are unused
 by the example and are listed so the file is a complete template.
 

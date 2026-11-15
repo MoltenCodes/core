@@ -1417,7 +1417,7 @@ starts only after the owner has answered the design's open questions (section
 3. Dependencies: registry API 2, nothing else required. Optional through
    `Registry:Find`: optionsKit API 1 (`DefineAceConfig`), schemaKit API 1
    (the importer's probe checks), commKit API 1 in a revision with raw addon
-   messages (`OpenAceComm`), timerKit API 1 (stream expiry). The serializer
+   messages (`OpenAceComm`). The serializer
    and the plain AceConfig conversion embed two files. Two prerequisites in
    other Kits, not made in this step: CommKit gains `RegisterRaw` and
    `SendRaw` (P1), and SettingsKit's saved-table layout becomes a documented
@@ -1454,8 +1454,8 @@ starts only after the owner has answered the design's open questions (section
    screen being no hot path); the serializer reuses its fragment array and
    allocates only its result and the values it decodes; a single-part AceComm
    message costs one table read beyond CommKit's raw delivery; reassembly
-   holds at most `maxAceSpoolBytes` (1 MB) with no polling (expiry through one
-   TimerKit timer). Costs are measured and recorded before the first release,
+   holds at most `maxAceSpoolBytes` (1 MB) with no polling (streams expire at the
+   next receive, design decision 20). Costs are measured and recorded before the first release,
    and the benchmark compares them with Ace3 fetched at run time, never
    redistributed.
 7. Tests: Busted specs for every row of the design's field, scope, defaults
