@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.6 — 2026-11-15
+
+- Documentation: the README had no migration table from the library MediaKit replaces. It now has *Moving from LibSharedMedia-3.0*, mapping `Register`, `Fetch` with and without `noDefault`, `IsValid`, `List`, `HashTable`, `SetDefault` and `GetDefault`, `SetGlobal` and `GetGlobal`, the `LibSharedMedia_Registered` callback and the `MediaType` constants to MediaKit, or saying there is no equivalent. The mapping was checked against LibSharedMedia-3.0's own source.
+- Documentation: `docs/API.md` ("Embedded copies and upgrades") said revisions 2, 3 and 4 keep the revision 1 state; revision 5 does too, and the sentence now says revisions 2 to 5. `docs/INTERNALS.md` ("Upgrades") named only the revision 1 and revision 2 upgrade specs; it now names the revision 1, 2, 3 and 4 ones.
+- Documentation: `tests/README.md` did not list the revision 3 and revision 4 upgrade specs, the secret `anyScript`, the secret answer of LibSharedMedia's `Register`, the secret `LOCALE_BIT_*` field, or the unknown option key that is not a string; it now does.
+- Documentation only: the implementation revision is unchanged (5).
+
 ## 0.1.5 — 2026-11-15
 
 - Fixed: an unknown option field whose key is not a string is named by its type alone, `options contains unknown field "<number>"`, as `docs/API.md` ("Error behaviour") documents and as the other key and script messages already read. It was `"<number key>"`.

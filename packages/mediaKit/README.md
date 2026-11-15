@@ -53,6 +53,25 @@ What each piece promises:
 
 Non-goals: shipping media files and global user overrides (a consumer's saved variables hold the player's choice).
 
+### Moving from LibSharedMedia-3.0
+
+MediaKit answers the same questions LibSharedMedia-3.0 does, with per-consumer defaults instead of one default per type for the whole session. `LSM` below is `LibStub("LibSharedMedia-3.0")`.
+
+| LibSharedMedia-3.0 | MediaKit |
+|---|---|
+| `LSM:Register(mediaType, key, data, langmask)` | `MediaKit:Register(type, name, data, { scripts = { ... } })`. A taken name answers `nil, "taken"`, and the same name with the same data `true`, instead of `false` for both. |
+| `LSM:Fetch(mediaType, key)`, which falls back to the type's default | `MediaKit:Fetch(type, defaults:Get(type))`: `Fetch` never substitutes; the fallback belongs to the consumer's defaults object. |
+| `LSM:Fetch(mediaType, key, true)` | `MediaKit:Fetch(type, name)` |
+| `LSM:IsValid(mediaType, key)` | `MediaKit:Has(type, name)` |
+| `LSM:List(mediaType)` | `MediaKit:List(type)`: shared and read-only, fonts filtered to the client's script. |
+| `LSM:HashTable(mediaType)` | No equivalent: walk `List(type)` and `Fetch` each name. |
+| `LSM:SetDefault(mediaType, key)`, `LSM:GetDefault(mediaType)` | `MediaKit:Defaults(consumerName)`, then `defaults:Set(type, name)` and `defaults:Get(type)`. |
+| `LSM:SetGlobal`, `LSM:GetGlobal`, `LibSharedMedia_SetGlobal` | No equivalent: global user overrides are a non-goal. |
+| `LSM.RegisterCallback(owner, "LibSharedMedia_Registered", handler)` | `MediaKit:OnRegistered(type, callback)`: one type per connection, called with `(type, name, data)`. |
+| `LSM.MediaType.STATUSBAR` and the other constants | The type names as strings (`"statusbar"`); MediaKit adds `icon` and `texture`. |
+
+Both registries can run side by side while an addon moves over: `AdoptLibSharedMedia` and `MirrorToLibSharedMedia` above.
+
 See [`docs/API.md`](docs/API.md) for the complete contract, including the script table, the built-in media and the mirroring rules, and [`docs/INTERNALS.md`](docs/INTERNALS.md) for the layout.
 
 ## Embedding

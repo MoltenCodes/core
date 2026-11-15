@@ -291,7 +291,7 @@ Argument failures report the line that called the public method, never a line in
 
 ## Embedded copies and upgrades
 
-Several addons may embed MediaKit; Registry selects the newest compatible revision and every copy shares one facade. An upgrade happens in place: entries, cached lists, signals and their connections, defaults objects, the limits a consumer set, the `UNBOUNDED` sentinel, and the LibSharedMedia adoption, subscription and mirroring all survive. The callback LibSharedMedia holds dispatches through package state, so a newer revision replaces its behaviour without subscribing again. Built-ins are registered by the first copy only. Revisions 2, 3 and 4 keep the revision 1 state as it is and replace the methods only.
+Several addons may embed MediaKit; Registry selects the newest compatible revision and every copy shares one facade. An upgrade happens in place: entries, cached lists, signals and their connections, defaults objects, the limits a consumer set, the `UNBOUNDED` sentinel, and the LibSharedMedia adoption, subscription and mirroring all survive. The callback LibSharedMedia holds dispatches through package state, so a newer revision replaces its behaviour without subscribing again. Built-ins are registered by the first copy only. Revisions 2 to 5 keep the revision 1 state as it is and replace the methods only.
 
 Nothing survives `/reload`: packs register again.
 
