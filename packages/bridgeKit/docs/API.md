@@ -5,11 +5,12 @@ without breaking what its players already have. Its canonical design is
 [`docs/BRIDGE_KIT_DESIGN.md`](../../../docs/BRIDGE_KIT_DESIGN.md); this
 document is the contract of what the current revision ships.
 
-**Revision 4 ships all four parts**: the AceSerializer-3.0 wire format
-(design step N1, revision 1), the AceConfig-3.0 adapter (step N2, revision 2),
-the AceDB-3.0 importer (step N3, revision 3) and the AceComm-3.0 channel
-(step N4, revision 4); revision 5 carries AceConfigDialog's `childGroups`
-layouts over to OptionsKit.
+**Revision 6 (version 0.5.1) ships all four parts**: the AceSerializer-3.0
+wire format (design step N1, revision 1), the AceConfig-3.0 adapter (step N2,
+revision 2), the AceDB-3.0 importer (step N3, revision 3) and the AceComm-3.0
+channel (step N4, revision 4); revision 5 carries AceConfigDialog's
+`childGroups` layouts over to OptionsKit, and revision 6 keeps only Ace's own
+three of them.
 
 Everything here reproduces Ace3 at commit
 `5e2e0d3b3fd125ef1518744c6a9dd21f68f6e773`, AceSerializer-3.0 `MINOR` 5. The
@@ -240,9 +241,12 @@ express are dropped and reported. A group's `plugins` are merged into its
 a `softMax`), as the dialog's slider assumes (`877`); its `step` is kept but
 not enforced by OptionsKit, where the dialog snaps to it (`880`). A group's `childGroups` (`"tab"`, `"tree"` or `"select"`) is kept when the
 OptionsKit registered at conversion time publishes `CHILD_GROUPS` (OptionsKit
-revision 10 and later), so WidgetKit's renderer shows those groups as pages;
-with an older OptionsKit or none, and for any other value, it is dropped and
-reported (`presentation`) as before, because an older `Define` would refuse it.
+revision 10 and later) and lists the value there, so WidgetKit's renderer shows
+those groups as pages; with an older OptionsKit or none, and for any other
+value, it is dropped and reported (`presentation`) as before, because an older
+`Define` would refuse it. A value a consumer wrote into OptionsKit's published
+`CHILD_GROUPS` is not one of Ace's three and is dropped too: that table is a
+copy, and `Define` keeps refusing anything but the three.
 
 **Keys.** OptionsKit accepts identifiers as keys (`[%a_][%w_]*`); Ace accepts
 any string without control characters (`AceConfigRegistry-3.0.lua:197-205`).
@@ -403,7 +407,7 @@ bounded by `maxImportEntries`, a table reached twice copied once.
 | `char[key]`, `realm[key]`, `class[key]`, `faction[key]` | the same | `char` keys through `renameCharacter`. |
 | `global` | `global` | |
 | `race`, `factionrealm`, `factionrealmregion`, `locale` | the map field `plan.scopes` names, or dropped | `unsupportedScope`. |
-| `namespaces[n]` | each section under `plan.namespaces[n].field`, or dropped | `unmappedNamespace`; a section whose scope does not declare the field is dropped (`undeclaredScope`). Where the field already holds an entry (from the main sections or another namespace), the entry already there is kept and the newcomer dropped (`keyCollision`); a map field stops at its `max` (`mapFull`). |
+| `namespaces[n]` | each section under `plan.namespaces[n].field`, or dropped | `unmappedNamespace`; a section whose scope does not declare the field is dropped (`undeclaredScope`). Where the field already holds an entry (from the main sections or another namespace), the entry already there is kept and the newcomer dropped (`keyCollision`); a map field stops at its `max` (`mapFull`). LibDualSpec-1.0's spec assignments are not imported (a later item of the roadmap's settingsKit spec profiles record): what that library saved is dropped like any unmapped namespace, and the addon assigns spec profiles again with SettingsKit's `db:SetSpecProfile` (SettingsKit 0.4.0). |
 | a scope the schema does not declare | dropped | `undeclaredScope`. |
 | any other top-level key | dropped | `unknownTopLevelKey`; the backup keeps it. |
 
@@ -696,6 +700,9 @@ new revision's methods and, through a trampoline in the state, its receive
 code. A newer compatible revision loaded over an older one keeps
 that state and replaces the methods; an older copy loaded later steps aside.
 A limit a later revision adds starts at its default over an inherited state.
+Revision 6 changes no state: an upgrade over revision 5 keeps every limit,
+channel and counter, and the next conversion checks `childGroups` against
+Ace's three layouts.
 
 ## Testing
 

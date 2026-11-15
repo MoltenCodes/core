@@ -6,7 +6,7 @@
 -- canonical design is `docs/BRIDGE_KIT_DESIGN.md`; this file is written from
 -- the format descriptions there, never from Ace3's source (section 3.2).
 --
--- This revision ships two parts:
+-- This revision ships four parts:
 --
 --   AceSerialize      the same text Ace's `Serialize` writes for the same
 --   AceDeserialize    values on the same client, and every text its
@@ -54,7 +54,7 @@
 
 local PACKAGE_NAME = "bridgeKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 5
+local IMPLEMENTATION_REVISION = 6
 local REQUIRED_REGISTRY_API = 2
 local STATE_SCHEMA = 1
 
@@ -100,7 +100,8 @@ local READ_REASON = {
 }
 
 -- The limits, their defaults, their ceilings and whether `UNBOUNDED` lifts
--- them (design section 9). Only the serializer's exist in this revision.
+-- them (design section 9): the serializer's, the reports' and the importer's,
+-- and the AceComm channel's.
 local LIMIT_NAMES = {
   "maxDepth",
   "maxValues",
@@ -1251,6 +1252,10 @@ local KEPT_TYPES = {
 
 local FONT_SIZES = { small = true, medium = true, large = true }
 
+-- AceConfigDialog's three layouts for a group's child groups, the only
+-- `childGroups` values a conversion carries over.
+local ACE_CHILD_GROUPS = { tab = true, tree = true, select = true }
+
 -- The identifier rule OptionsKit applies to every key of `args`.
 local IDENTIFIER_PATTERN = "^[%a_][%w_]*$"
 
@@ -2338,7 +2343,10 @@ function convertBody(work, aceOption, spec, target, context)
     end
     -- OptionsKit revision 10 and later take Ace3's three layouts as they
     -- are and publish them in `CHILD_GROUPS`; an older OptionsKit, or none,
-    -- would refuse the field, so it is dropped there as before.
+    -- would refuse the field, so it is dropped there as before. The published
+    -- table is a copy a consumer can write to, so a value is kept only when it
+    -- is one of Ace's own three as well: anything else would make `Define`
+    -- refuse the whole tree.
     local childGroups = readField(work, aceOption, "childGroups", context.where)
     if type(childGroups) ~= "nil" then
       local OptionsKit = Registry:Find("optionsKit", 1)
@@ -2346,7 +2354,8 @@ function convertBody(work, aceOption, spec, target, context)
       if
         type(accepted) == "table"
         and type(childGroups) == "string"
-        and accepted[childGroups] == true
+        and ACE_CHILD_GROUPS[childGroups] == true
+        and rawget(accepted, childGroups) == true
       then
         target.childGroups = childGroups
       else

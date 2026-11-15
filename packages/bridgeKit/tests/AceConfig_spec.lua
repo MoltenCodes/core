@@ -1377,4 +1377,52 @@ describe("BridgeKit DefineAceConfig", function()
       assert.are.equal("dropped (presentation)", noted(conversion.report, "", "childGroups"))
     end
   )
+
+  it("keeps only Ace's three layouts when a consumer writes to CHILD_GROUPS", function()
+    local BridgeKit, OptionsKit = Env.NewPackageWithOptionsKit()
+    -- The published table is OptionsKit's copy, which a consumer can write to
+    -- without changing what `Define` accepts; BridgeKit must not follow it.
+    rawget(OptionsKit, "CHILD_GROUPS").wizard = true
+    local tree, report = BridgeKit:DefineAceConfig("ChildGroupsWritten", {
+      type = "group",
+      childGroups = "wizard",
+      args = { tabs = { type = "group", name = "Tabs", childGroups = "tab", args = {} } },
+    })
+    assert.is_nil(tree:Describe().childGroups)
+    assert.are.equal("dropped (presentation)", noted(report, "", "childGroups"))
+    assert.are.equal("tab", tree:DescribeOption("tabs").childGroups)
+    OptionsKit:Undefine("ChildGroupsWritten")
+  end)
+
+  it(
+    "checks childGroups against Ace's layouts after an in-place upgrade from revision 5",
+    function()
+      Env.Reset()
+      for _, name in ipairs({ "SignalKit", "SchemaKit", "OptionsKit" }) do
+        package.loaded[name] = nil
+      end
+      Env.InstallWowApi()
+      require("Registry")
+      require("SignalKit")
+      require("SchemaKit")
+      local OptionsKit = require("OptionsKit")
+      -- Revision 5 trusted the published table alone.
+      local older = Env.LoadRevision(5, {
+        ["        and ACE_CHILD_GROUPS[childGroups] == true\n"] = "",
+      })
+      assert.are.equal(5, older.REVISION)
+      older:SetLimits({ maxReportEntries = 7 })
+      rawget(OptionsKit, "CHILD_GROUPS").wizard = true
+      local source = { type = "group", childGroups = "wizard", args = {} }
+      assert.are.equal("wizard", older:ConvertAceConfig("Older", source).tree.childGroups)
+
+      local upgraded = Env.LoadRevision(6)
+      assert.are.equal(older, upgraded)
+      assert.are.equal(6, upgraded.REVISION)
+      assert.are.equal(7, upgraded:GetLimits().maxReportEntries)
+      local conversion = upgraded:ConvertAceConfig("Upgraded", source)
+      assert.is_nil(conversion.tree.childGroups)
+      assert.are.equal("dropped (presentation)", noted(conversion.report, "", "childGroups"))
+    end
+  )
 end)

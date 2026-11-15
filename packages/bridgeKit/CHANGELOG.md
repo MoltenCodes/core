@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5.1 — 2026-11-15
+
+- Fixed: a `childGroups` value is carried over only when it is one of Ace's three layouts (`"tab"`, `"tree"`, `"select"`) as well as listed in OptionsKit's published `CHILD_GROUPS`. Revision 5 trusted the published table alone, which is a copy a consumer can write to: a value written there was kept, and `DefineAceConfig` then raised because `OptionsKit:Define` still refuses it. Such a value is now dropped and reported as `presentation`.
+- Implementation revision 6. No state changed: an upgrade over revision 5 keeps every limit, channel and counter.
+- Specs: `keeps only Ace's three layouts when a consumer writes to CHILD_GROUPS` and `checks childGroups against Ace's layouts after an in-place upgrade from revision 5`.
+- Docs: the source header and the limits comment named the parts and limits of revision 1; API.md gave revision 4 as the current one; the README gains the Ace3 migration table and the embedding block; API.md says LibDualSpec-1.0's assignments are not imported and points at SettingsKit's spec profiles.
+
 ## 0.5.0 — 2026-11-15
 
 - Added: `ConvertAceConfig` and `DefineAceConfig` keep a group's `childGroups` (`"tab"`, `"tree"` or `"select"`) when the registered OptionsKit publishes `CHILD_GROUPS` (OptionsKit revision 10 and later), so WidgetKit's renderer draws Ace's tabs, tree and drop-down groups as pages. With an older OptionsKit or none, and for any other value, the field is dropped and reported as `presentation`, as before. Design decision 23.
