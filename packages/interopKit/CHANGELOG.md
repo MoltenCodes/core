@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.3 — 2026-11-15
+
+- The README had no migration table from LibStub. It now maps the silent `GetLibrary(major, true)` (`AdoptFromLibStub`, then `Find`), the raising `LibStub(major)` (no equivalent: every lookup is silent), `NewLibrary` (`Registry:Bootstrap`, and `ExposeToLibStub` for LibStub consumers), `IterateLibraries` (`Adopted`, `Registry:Packages`) and a LibStub consumer reading an exposed Kit, and links the LibStub section of `docs/MIGRATING_FROM_ACE3.md`.
+- The README presented LibDataBroker and LibSharedMedia only as libraries to adopt through the bridge. BrokerKit and MediaKit now connect to those two libraries directly; the README names their methods and says the bridge is for the libraries no Kit covers.
+- `docs/API.md` did not state the implementation revision in its header; it now says 3.
+- Documentation only: implementation revision 3 is unchanged.
+
 ## 0.1.2 — 2026-09-25
 
 - `Find(major)` checks its argument inline (type, one `issecretvalue` probe, empty string) and calls the shared validator only to raise, with the same messages at the same caller line. `type`, `rawget` and the global table are read into locals once. Its `Registry:Find` calls benefit from Registry revision 14's lookup fast path.

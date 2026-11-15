@@ -4,6 +4,8 @@ InteropKit API generation **1** is the bridge between the MoltenCodes Registry
 and LibStub: it exposes Kits to LibStub consumers and adopts LibStub libraries
 as read-only foreign entries.
 
+Implementation revision: **3**.
+
 ```lua
 local InteropKit = MoltenCodes.Registries[2]:Get("interopKit", 1)
 ```

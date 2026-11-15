@@ -64,6 +64,25 @@ end
 A missing LibDataBroker leaves `broker` `nil` and the addon keeps working; no
 branch needs `LibStub` itself.
 
+Two libraries have a Kit of their own that connects to them directly:
+BrokerKit (`BrokerKit:ExposeToLibDataBroker`, `BrokerKit:AdoptFromLibDataBroker`)
+for LibDataBroker-1.1 data objects with checked attributes and change signals,
+and MediaKit (`MediaKit:AdoptLibSharedMedia`, `MediaKit:MirrorToLibSharedMedia`)
+for LibSharedMedia-3.0. Use those for that data; the bridge is for the
+libraries no Kit covers, and for making Kits reachable by LibStub consumers.
+
+### Moving from LibStub
+
+| LibStub | InteropKit or Registry |
+|---|---|
+| `LibStub("LibDataBroker-1.1", true)`, `LibStub:GetLibrary(major, true)` | `InteropKit:AdoptFromLibStub(major)` once, then `InteropKit:Find(major)` anywhere: `library, minor`, or `nil` and a reason, never an error |
+| `LibStub("SomeLib-1.0")`, which raises when the library is missing | No equivalent: every InteropKit lookup is silent. Check the first result. |
+| `LibStub:NewLibrary("MyLib-1.0", 3)` for your own library | A Kit bootstraps through `Registry:Bootstrap` (see `docs/ARCHITECTURE.md`); `InteropKit:ExposeToLibStub(packageName, api, major)` publishes it to LibStub consumers as well |
+| `LibStub:IterateLibraries()` | `InteropKit:Adopted()` for the libraries this addon adopted; `Registry:Packages()` for the Kits |
+| `LibStub("MoltenCodes-EventKit-1")` in a LibStub consumer | Works once a MoltenCodes addon called `InteropKit:ExposeToLibStub("eventKit", 1)` or `InteropKit:ExposeAll()` |
+
+[`docs/MIGRATING_FROM_ACE3.md`](../../docs/MIGRATING_FROM_ACE3.md#libstub) covers the move in a whole Ace3 addon.
+
 ## Embedding
 
 [`../../docs/EMBEDDING.md`](../../docs/EMBEDDING.md) is the addon author's guide:
