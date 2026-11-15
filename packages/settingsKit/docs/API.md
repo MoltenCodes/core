@@ -2,7 +2,7 @@
 
 SettingsKit API generation **1** opens a database over an addon's saved variable: scoped views whose reads fall back to schema defaults and whose writes are validated at the writer's line, profiles, change signals, versioned migrations and compaction.
 
-Implementation revision: **9**.
+Implementation revision: **10**.
 
 ## Loading
 
@@ -551,5 +551,7 @@ Revision 7 changes one documented behaviour, by the owner's decision: a direct e
 Revision 8 changes no documented behaviour: a getter's fast path compares the saved value with `nil` instead of calling `type` (see [`db:Getter`](#dbgettersource-key)). Getters made by revision 7 keep their own closure and keep working; getters made after the upgrade use the new one.
 
 Revision 9 fixes two faults and changes no other documented behaviour: a keyed-section view read with a NaN key reads `nil` instead of raising `table index is NaN`, and `Open` refuses a receiver other than the facade, as `SetLimits` and `GetLimits` do. An in-place upgrade from any revision builds the depth probes of the nested views an older copy built, so writes through them keep the fast path.
+
+Revision 10 fixes an in-place upgrade over revisions 1 to 6: a view of a deleted or reset-away profile stays detached even when the collector removed that profile's root view before the upgrade ran, so writes through it are still refused.
 
 Nothing survives `/reload` except the saved variable itself: open the database again in the loaded phase.

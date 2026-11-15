@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.4 — 2026-11-15
+
+- Fixed: an in-place upgrade over revisions 1 to 6 could make a view of a deleted or reset-away profile writable again. Revision 7 turned a detached root's `dead` flag into its `DETACHED` generation by walking the live views, a table weak-keyed by proxy; a root whose proxy nothing held any more had already been collected from it, although the views below still named it as their parent, so it was never converted and read as attached. The migration now walks each view's parents too, every node once. Found by a spec that failed only when a collection ran at that moment (under coverage).
+- Implementation revision 10, because the executed implementation changed. No state changed: an upgrade over revision 9 keeps every database and view.
+- Specs: one more, the same upgrade with a forced collection before it, which fails without the fix.
+
 ## 0.3.3 — 2026-11-15
 
 Fixes from an audit. API generation 1 and the saved-table layout are unchanged.

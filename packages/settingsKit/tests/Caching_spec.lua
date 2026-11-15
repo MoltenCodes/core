@@ -399,5 +399,49 @@ describe("SettingsKit view caches", function()
       db:Resync()
       assert.are.equal(8, frame.x)
     end)
+
+    it("keeps a detached root detached when its proxy was collected before the upgrade", function()
+      TestEnv.Reset()
+      TestEnv.InstallWowApi()
+      require("Registry")
+      require("SignalKit")
+      require("EventKit")
+      local SchemaKit = require("SchemaKit")
+      local previous = TestEnv.LoadRevision(6)
+      TestEnv.SetPlayer()
+      local state = rawget(previous, "_state")
+      local db = previous:Open("MyAddonDB", schemaFor(SchemaKit))
+      db:SetProfile("Doomed")
+      local doomedFrame = db.profile.frame
+      db:SetProfile("Default")
+      db:DeleteProfile("Doomed")
+
+      -- Revision 6's node layout, as in the spec above.
+      for _, node in pairs(state.views) do
+        node.kind = node.kinds ~= nil and "record" or "map"
+        if node.parent ~= false then
+          node.depth = #node.pathKeys + 1
+        else
+          node.dead = node.generation == false
+        end
+        node.cache, node.generation = nil, nil
+        node.layout = 2
+      end
+      rawset(db, "_generation", nil)
+      rawset(db, "_layout", 3)
+
+      -- Nothing holds the deleted profile's root proxy any more, so the
+      -- collector removes it from the weak-keyed views table; the frame's
+      -- node still names the root as its parent.
+      collectgarbage()
+      collectgarbage()
+
+      TestEnv.ReloadPackage()
+      assert.are.equal(0, doomedFrame.x)
+      TestEnv.expectErrorContaining("deleted or reset away", function()
+        doomedFrame.x = 1
+      end)
+      assert.is_nil(saved().profiles.Doomed)
+    end)
   end)
 end)

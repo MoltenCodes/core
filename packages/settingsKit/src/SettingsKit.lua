@@ -49,7 +49,7 @@
 
 local PACKAGE_NAME = "settingsKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 9
+local IMPLEMENTATION_REVISION = 10
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_SCHEMAKIT_API = 1
 local REQUIRED_SIGNALKIT_API = 1
@@ -4054,19 +4054,29 @@ if previousRevision ~= nil and previousRevision < 7 then
       end
       rawset(db, "_layout", DATABASE_SCHEMA)
     end
-    for _, node in next, views do
-      -- A layout 3 node (which has no `dead`) keeps a `DETACHED`
-      -- generation it already has.
-      if node.parent == false and (node.dead == true or node.generation == DETACHED) then
-        node.generation = DETACHED
-      else
-        node.generation = NEVER_RESOLVED
+    -- `views` is weak-keyed by proxy, so a root whose proxy was collected
+    -- is gone from it while the nodes below still name it as `parent`; a
+    -- detached root missed here would lose its `dead` flag and accept
+    -- writes again. Each node's ancestors are walked too, every node once.
+    local upgraded = {}
+    for _, live in next, views do
+      local node = live
+      while node and not upgraded[node] do
+        upgraded[node] = true
+        -- A layout 3 node (which has no `dead`) keeps a `DETACHED`
+        -- generation it already has.
+        if node.parent == false and (node.dead == true or node.generation == DETACHED) then
+          node.generation = DETACHED
+        else
+          node.generation = NEVER_RESOLVED
+        end
+        node.cache = false
+        node.dead = nil
+        node.kind = nil
+        node.depth = nil
+        node.layout = NODE_SCHEMA
+        node = node.parent
       end
-      node.cache = false
-      node.dead = nil
-      node.kind = nil
-      node.depth = nil
-      node.layout = NODE_SCHEMA
     end
   end
   upgradeCaches()
