@@ -25,6 +25,7 @@ describe("BridgeKit limits", function()
       maxStringLength = 65536,
       maxTextBytes = 1048576,
       maxListValues = 4096,
+      maxReportEntries = 1024,
     }, BridgeKit:GetLimits())
   end)
 

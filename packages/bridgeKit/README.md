@@ -12,6 +12,9 @@ local ok, kind, payload = BridgeKit:AceDeserialize(text)
 
 -- Write one an Ace3 version can read.
 local written, exportText = BridgeKit:AceSerialize("profile", settings)
+
+-- Keep an AceConfig options table working in OptionsKit.
+local tree, report = BridgeKit:DefineAceConfig("MyAddon", aceOptions, { db = db })
 ```
 
 ## What it ships
@@ -19,7 +22,7 @@ local written, exportText = BridgeKit:AceSerialize("profile", settings)
 | Part | Status | Files an addon embeds |
 |---|---|---|
 | **AceSerializer-3.0**: `AceSerialize` and `AceDeserialize`, byte for byte with Ace3 | revision 1 | 2: `Registry.lua`, `BridgeKit.lua` |
-| AceConfig-3.0 options tables to OptionsKit trees | planned (step N2) | |
+| **AceConfig-3.0**: options tables to OptionsKit trees, the Ace callbacks wrapped, with a report | revision 2 | 2 for `ConvertAceConfig`; 5 with OptionsKit for `DefineAceConfig` |
 | AceDB-3.0 saved variables to the SettingsKit layout | planned (step N3) | |
 | AceComm-3.0 messages through CommKit | planned (step N4) | |
 
@@ -39,6 +42,8 @@ recipes in [`docs/MIGRATING_FROM_ACE3.md`](../../docs/MIGRATING_FROM_ACE3.md).
 - **Refusals where Ace3 would break.** NaN, cycles and functions are refused
   with a reason instead of raising, overflowing the stack or writing undefined
   bytes.
+- **Nothing lost silently.** A conversion reports every field it drops,
+  changes or renames, and `strict` turns any of it into an error.
 - **No Ace3 code.** BridgeKit is written from the format description; Ace3 is
   only run, outside the repository, to record what it does.
 

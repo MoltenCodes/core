@@ -21,6 +21,27 @@ function BridgeKitTestEnv.AceSerializerFixtures()
   return dofile(FIXTURE_PATH)
 end
 
+---Load Registry, OptionsKit with what it requires, and BridgeKit, for the
+---specs that define a converted tree. The test runner puts OptionsKit, an
+---optional dependency, on the path.
+---@return table BridgeKit
+---@return table OptionsKit
+function BridgeKitTestEnv.NewPackageWithOptionsKit()
+  BridgeKitTestEnv.Reset()
+  -- `Reset` unloads this package's own module chain; OptionsKit's goes too,
+  -- so every spec gets fresh copies registered with a fresh Registry.
+  for _, name in ipairs({ "SignalKit", "SchemaKit", "OptionsKit" }) do
+    package.loaded[name] = nil
+  end
+  BridgeKitTestEnv.InstallWowApi()
+  require("Registry")
+  require("SignalKit")
+  require("SchemaKit")
+  local OptionsKit = require("OptionsKit")
+  local BridgeKit = require("BridgeKit")
+  return BridgeKit, OptionsKit
+end
+
 ---Make `issecretvalue` report exactly the given values as secret.
 ---@param ... any
 function BridgeKitTestEnv.MarkSecret(...)

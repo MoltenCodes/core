@@ -24,21 +24,23 @@ describe("BridgeKit bootstrap", function()
 
   it("lets an older copy that loads later step aside", function()
     local BridgeKit = Env.NewPackage()
-    local newer = Env.LoadRevision(BridgeKit.REVISION + 1)
+    local revision = BridgeKit.REVISION
+    local newer = Env.LoadRevision(revision + 1)
     assert.are.equal(BridgeKit, newer)
     local older = Env.LoadRevision(1)
     assert.are.equal(newer, older)
-    assert.are.equal(2, older.REVISION)
+    assert.are.equal(revision + 1, older.REVISION)
   end)
 
   it("upgrades in place and keeps the limits, the sentinel and the baseline", function()
     local BridgeKit = Env.NewPackage()
     local unbounded, baseline = BridgeKit.UNBOUNDED, BridgeKit.ACE_BASELINE
     BridgeKit:SetLimits({ maxDepth = 5, maxValues = unbounded })
+    local revision = BridgeKit.REVISION
     -- A newer revision loads over this one, as a newer embedded copy would.
-    local upgraded = Env.LoadRevision(BridgeKit.REVISION + 1)
+    local upgraded = Env.LoadRevision(revision + 1)
     assert.are.equal(BridgeKit, upgraded)
-    assert.are.equal(2, upgraded.REVISION)
+    assert.are.equal(revision + 1, upgraded.REVISION)
     assert.are.equal(unbounded, upgraded.UNBOUNDED)
     assert.are.equal(baseline, upgraded.ACE_BASELINE)
     assert.are.same(

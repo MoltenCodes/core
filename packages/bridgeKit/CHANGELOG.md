@@ -1,5 +1,33 @@
 # Changelog
 
+## 0.2.0 — 2026-11-15
+
+Delivery step N2 of `docs/BRIDGE_KIT_DESIGN.md`: the AceConfig-3.0 adapter.
+API generation 1, implementation revision 2. AceSerializer behaviour is
+unchanged.
+
+- `BridgeKit:ConvertAceConfig(appName, source[, options])` converts an
+  AceConfig-3.0 options table, or a function returning one, into a table for
+  `OptionsKit:Define`, with `paths` (converted path to original keys),
+  `maxDepth`, `optionCount` and a report. Inheritance of `get`, `set`, `func`,
+  `confirm`, `validate`, `disabled`, `hidden` and `handler` is resolved as
+  AceConfigDialog resolves it; every Ace callback is wrapped and called with
+  an Ace `info` in Ace's shape, method names looked up at call time; keys that
+  are not identifiers are renamed deterministically. Options: `uiType`,
+  `uiName`, `bind`, `replace`, `strict`, `maxOptions`, `maxDepth`.
+- `BridgeKit:DefineAceConfig(addonName, source[, options])` converts and
+  defines the tree in OptionsKit, found through `Registry:Find`; OptionsKit
+  becomes an optional dependency.
+- `BridgeKit:FormatReport(report[, maxLines])` and the report shape shared
+  with the coming AceDB importer; the `maxReportEntries` limit (1024,
+  `UNBOUNDED` allowed).
+- 187 specs (was 142): new `AceConfig_spec.lua`, every reason of the
+  vocabulary, inheritance, the callback shapes, renaming, `bind`, `replace`,
+  `strict`, the limits, the errors, and a converted tree defined in OptionsKit
+  and driven through `Get`, `Set`, `Validate`, `Execute` and `Describe`.
+- Implementation revision 2: no state changes; an in-place upgrade from
+  revision 1 adds the `maxReportEntries` default to the inherited limits.
+
 ## 0.1.0 — 2026-11-15
 
 The first revision, delivery step N1 of `docs/BRIDGE_KIT_DESIGN.md`: the
