@@ -65,7 +65,7 @@ end
 ---@class ClientKitTestEnv.HostOptions
 ---@field locale (string|false)? What `GetLocale()` answers; `false` installs no `GetLocale`. Defaults to `DEFAULT_CLIENT_LOCALE`.
 ---@field addOnInfo boolean? Whether the host has `GetAddOnInfo` and the two dependency-list calls. Defaults to `true`.
----@field secretStrings string[]? Strings the host's `issecretvalue` reports secret, in addition to what the profile already reports. Needs a profile with `issecretvalue`.
+---@field secretStrings (string|number)[]? Strings (or numbers) the host's `issecretvalue` reports secret, in addition to what the profile already reports. Needs a profile with `issecretvalue`.
 ---@field debugStack ClientKitTestEnv.DebugStackOptions? Install the `debugstack` stand-in with these options; without it the host has no `debugstack`.
 
 ---Options for the `debugstack` stand-in.
@@ -140,9 +140,10 @@ local function wrapMetadataCall(read, install)
   end)
 end
 
----Make the profile's `issecretvalue` also report every string in
----`secretStrings` as secret. A profile without the probe cannot be extended.
----@param secretStrings string[]
+---Make the profile's `issecretvalue` also report every value in
+---`secretStrings` as secret: strings, and numbers for the arguments that are
+---numbers. A profile without the probe cannot be extended.
+---@param secretStrings (string|number)[]
 local function extendSecretProbe(secretStrings)
   -- The stub stands in for a World of Warcraft client API that only exists in the global table.
   -- selene: allow(global_usage)

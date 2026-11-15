@@ -85,7 +85,7 @@ three build values are `nil` and the interface number is `0`, so
 `IsAtLeast(n)` answers `false` for every real `n`.
 
 `IsAtLeast(interfaceNumber)` is `GetInterfaceNumber() >= interfaceNumber`.
-A non-number `interfaceNumber`, and NaN, raise at the caller.
+A non-number `interfaceNumber`, NaN and a secret number raise at the caller.
 Interface numbers are ordered **within one flavour only**: Classic Era's
 `11509` is lower than Mists Classic's `50504` though both are current. When a
 floor depends on the flavour, test the flavour first:
@@ -549,12 +549,15 @@ MyAddon/Core.lua:12: ClientKit:IsAtLeast interfaceNumber must be a number
 
 A caller-supplied value is formatted into a message only when `IsSecret`
 says it is not secret; a secret is described as `<secret value>`. A secret
-`capability` passed to `Has`, and a secret `addonName` or `field` passed to
-`GetManifest` or `manifest:Get`, is refused at the caller
-(`ClientKit:Has capability must not be a secret value`,
+`interfaceNumber` passed to `IsAtLeast`, a secret `capability` passed to
+`Has`, and a secret `addonName` or `field` passed to `GetManifest` or
+`manifest:Get`, is refused at the caller
+(`ClientKit:IsAtLeast interfaceNumber must not be a secret value`,
+`ClientKit:Has capability must not be a secret value`,
 `ClientKit:GetManifest addonName must not be a secret value`,
 `ClientKit.Manifest:Get field must not be a secret value`) before it is
-compared or used as a table key. The same holds for every argument of the
+compared or used as a table key: insecure code that compares a secret raises
+at the comparison, which would name ClientKit's line instead of yours. The same holds for every argument of the
 deprecation methods: `Deprecate`'s `spec` and its `name`, `removal` and
 `replacement`, `Warn`'s `level` and `addonName`, `SetDeprecationMode`'s
 `mode`, and `SetLimits`' table, its keys and its values. `Warn` raises at its
@@ -651,5 +654,9 @@ same table afterwards, its `Warn` is resolved through the prototype the
 newer copy rewrote, and the call sites and addons it already reported stay
 reported. Inherited deprecation state that is not the shape revision 6
 creates is refused as corrupted.
+
+Revision 7 changed no state field (it refuses a secret `IsAtLeast` argument
+before comparing it), so an upgrade over revision 6 keeps the manifest cache
+and the whole deprecation state as they are.
 
 `_state` is private; its layout is not part of the contract.

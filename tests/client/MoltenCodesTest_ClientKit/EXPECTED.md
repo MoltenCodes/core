@@ -71,9 +71,10 @@ MoltenCodes Test: PASS clientKit.deprecations: the client's debugstack frame is 
 MoltenCodes Test: PASS clientKit.deprecations: in raise mode a deprecated call raises the report at the calling line, every time
 MoltenCodes Test: PASS clientKit.secrets: IsSecret answers true for a genuine secret made by secretwrap
 MoltenCodes Test: PASS clientKit.secrets: a secret capability name is refused by Has at the calling line
+MoltenCodes Test: PASS clientKit.secrets: a secret interface number is refused by IsAtLeast at the calling line
 MoltenCodes Test: PASS clientKit.secrets: a secret addon name is refused by GetManifest at the calling line
 MoltenCodes Test: PASS clientKit.secrets: a secret field name is refused by manifest:Get at the calling line
-MoltenCodes Test: clientKit: 42 passed, 0 failed, 1 skipped, 0 timed out (43 tests)
+MoltenCodes Test: clientKit: 43 passed, 0 failed, 1 skipped, 0 timed out (44 tests)
 MoltenCodes Test: results saved in MoltenCodesTestResults; /reload or log out to write them to disk.
 ```
 
@@ -115,18 +116,19 @@ The test before it logs what `UIParent:IsForbidden()` and
 
 ### On a client without secret values
 
-The four `clientKit.secrets` tests need the client's `issecretvalue` and
+The five `clientKit.secrets` tests need the client's `issecretvalue` and
 `secretwrap`. `secretwrap` is the one documented way to obtain a genuine
 secret out of combat without side effects: the client's own API
 documentation (`FrameScriptDocumentation`, mirrored in
 `packages/apiKit/metadata/retail/namespaces.json`) lists it with no
 restriction, and it only converts the values handed to it. Retail 12.1 has
-both. A client without them prints these four lines instead, and the totals
-line reads `38 passed, 0 failed, 5 skipped, 0 timed out (43 tests)`:
+both. A client without them prints these five lines instead, and the totals
+line reads `38 passed, 0 failed, 6 skipped, 0 timed out (44 tests)`:
 
 ```text
 MoltenCodes Test: SKIP clientKit.secrets: IsSecret answers true for a genuine secret made by secretwrap -- the client has no issecretvalue and secretwrap; the secret path was not exercised
 MoltenCodes Test: SKIP clientKit.secrets: a secret capability name is refused by Has at the calling line -- the client has no issecretvalue and secretwrap; the secret path was not exercised
+MoltenCodes Test: SKIP clientKit.secrets: a secret interface number is refused by IsAtLeast at the calling line -- the client has no issecretvalue and secretwrap; the secret path was not exercised
 MoltenCodes Test: SKIP clientKit.secrets: a secret addon name is refused by GetManifest at the calling line -- the client has no issecretvalue and secretwrap; the secret path was not exercised
 MoltenCodes Test: SKIP clientKit.secrets: a secret field name is refused by manifest:Get at the calling line -- the client has no issecretvalue and secretwrap; the secret path was not exercised
 ```
@@ -135,13 +137,14 @@ MoltenCodes Test: SKIP clientKit.secrets: a secret field name is refused by mani
 
 The harness measures once, when this file loads, whether
 `issecretvalue(secretwrap(true))` is `true` (`Harness:CanMakeSecrets()`).
-When it is not, the four `clientKit.secrets` tests are registered as skipped
+When it is not, the five `clientKit.secrets` tests are registered as skipped
 with the harness's reason, and the totals line reads
-`38 passed, 0 failed, 5 skipped, 0 timed out (43 tests)`:
+`38 passed, 0 failed, 6 skipped, 0 timed out (44 tests)`:
 
 ```text
 MoltenCodes Test: SKIP clientKit.secrets: IsSecret answers true for a genuine secret made by secretwrap -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
 MoltenCodes Test: SKIP clientKit.secrets: a secret capability name is refused by Has at the calling line -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
+MoltenCodes Test: SKIP clientKit.secrets: a secret interface number is refused by IsAtLeast at the calling line -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
 MoltenCodes Test: SKIP clientKit.secrets: a secret addon name is refused by GetManifest at the calling line -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
 MoltenCodes Test: SKIP clientKit.secrets: a secret field name is refused by manifest:Get at the calling line -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
 ```
@@ -187,9 +190,9 @@ documents for the three clients:
 
 | Client | Totals line | SKIP lines |
 |---|---|---|
-| Retail (`_retail_`) | `MoltenCodes Test: clientKit: 42 passed, 0 failed, 1 skipped, 0 timed out (43 tests)` | the forbidden-frame line |
-| Classic Era (`_classic_era_`) | secrets made: `MoltenCodes Test: clientKit: 42 passed, 0 failed, 1 skipped, 0 timed out (43 tests)`; no secrets made: `MoltenCodes Test: clientKit: 38 passed, 0 failed, 5 skipped, 0 timed out (43 tests)` | the forbidden-frame line, plus the four lines under "On a client that has both functions but makes no secrets" when it makes none |
-| Mists of Pandaria Classic (`_classic_`) | secrets made: `MoltenCodes Test: clientKit: 42 passed, 0 failed, 1 skipped, 0 timed out (43 tests)`; no secrets made: `MoltenCodes Test: clientKit: 38 passed, 0 failed, 5 skipped, 0 timed out (43 tests)` | the forbidden-frame line, plus the four lines under "On a client that has both functions but makes no secrets" when it makes none |
+| Retail (`_retail_`) | `MoltenCodes Test: clientKit: 43 passed, 0 failed, 1 skipped, 0 timed out (44 tests)` | the forbidden-frame line |
+| Classic Era (`_classic_era_`) | secrets made: `MoltenCodes Test: clientKit: 43 passed, 0 failed, 1 skipped, 0 timed out (44 tests)`; no secrets made: `MoltenCodes Test: clientKit: 38 passed, 0 failed, 6 skipped, 0 timed out (44 tests)` | the forbidden-frame line, plus the five lines under "On a client that has both functions but makes no secrets" when it makes none |
+| Mists of Pandaria Classic (`_classic_`) | secrets made: `MoltenCodes Test: clientKit: 43 passed, 0 failed, 1 skipped, 0 timed out (44 tests)`; no secrets made: `MoltenCodes Test: clientKit: 38 passed, 0 failed, 6 skipped, 0 timed out (44 tests)` | the forbidden-frame line, plus the five lines under "On a client that has both functions but makes no secrets" when it makes none |
 
 Whether the Classic clients make secrets cannot be read from the metadata:
 they document `issecretvalue` and `secretwrap`, and only the running client can
@@ -238,13 +241,13 @@ suite is run out of combat.
 | `the client's debugstack frame is logged ...` | The client has `debugstack`; the log gives its text for `debugstack(1, 1, 0)` and `debugstack(1)` on this flavour (only Retail's form was measured before: `[Interface/AddOns/<Addon>/<File>.lua]:<line>: in function <...>`). Three calls from one line make one report, whose addon is `MoltenCodesTest_ClientKit` and whose site ends `ClientKitSuite.lua:<line>` at that line. |
 | `in raise mode a deprecated call raises ...` | In `"raise"` mode each of two calls raises at this file's calling line, as the client names it, with the documented report text ending in this addon and the location. |
 | `IsSecret answers true for a genuine secret ...` | A real `secretwrap` secret is reported secret. |
-| `a secret capability name is refused ...`, `a secret addon name ...`, `a secret field name ...` | A genuine secret is refused at the calling line with the documented message before ClientKit compares it or uses it as a key; the log says what `type()` answers for a secret. |
+| `a secret capability name is refused ...`, `a secret interface number ...`, `a secret addon name ...`, `a secret field name ...` | A genuine secret is refused at the calling line with the documented message before ClientKit compares it or uses it as a key; the log says what `type()` answers for a secret. |
 
 ## What counts as unexpected
 
 - Any `FAIL` or `TIMEOUT` line, a `SKIP` line other than the forbidden-frame
   one on Retail 12.1 out of combat, or a totals line other than
-  `42 passed, 0 failed, 1 skipped, 0 timed out (43 tests)`; on the Classic
+  `43 passed, 0 failed, 1 skipped, 0 timed out (44 tests)`; on the Classic
   clients, anything other than the outcomes listed under "Per flavour".
 - No login line, or `Expected.lua is missing`: the harness or the installer
   did not run as intended.

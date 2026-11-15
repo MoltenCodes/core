@@ -333,6 +333,32 @@ describe("ClientKit deprecations", function()
       end)
       assert.are.equal(1, #ClientKit:GetDeprecationReports())
     end)
+    it("survives a handler that warns again from inside the report", function()
+      local ClientKit = Env.NewPackageFor("mainline", { debugStack = {} })
+      local reporter = ClientKit:Deprecate(AFTER_SPEC)
+      local other = ClientKit:Deprecate({ name = "TimerKit:Every", removal = "TimerKit API 2" })
+      local delivered = 0
+      -- The handler re-enters ClientKit for the same addon and for another
+      -- reporter. The once-key and the row are written before the handler
+      -- runs, so the first re-entry is answered as already reported and
+      -- only the second reporter adds one report of its own.
+      -- selene: allow(global_usage)
+      rawset(_G, "geterrorhandler", function()
+        return function()
+          delivered = delivered + 1
+          reporter:Warn(1, "MyAddon")
+          other:Warn(1, "MyAddon")
+        end
+      end)
+
+      reporter:Warn(1, "MyAddon")
+
+      assert.are.equal(2, delivered)
+      local reports = ClientKit:GetDeprecationReports()
+      assert.are.equal(2, #reports)
+      assert.are.equal("TimerKit:After", reports[1].name)
+      assert.are.equal("TimerKit:Every", reports[2].name)
+    end)
   end)
 
   describe("modes", function()

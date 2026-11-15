@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.1 — 2026-11-15
+
+- `IsAtLeast(interfaceNumber)` compared its argument before asking `issecretvalue`. A secret number passed the type check (`type` answers a secret's real type) and then reached the NaN test and the floor comparison, and comparing a secret from insecure code raises at the comparison (warcraft.wiki.gg, "Secret Values"), so the error named ClientKit's line instead of the caller's. `IsAtLeast` now refuses a secret first, at the caller: `ClientKit:IsAtLeast interfaceNumber must not be a secret value`. `ErrorLevels_spec.lua` ("refuses a secret IsAtLeast interfaceNumber at the caller before comparing it") is the regression spec; the client suite gains the same check with a value made by `secretwrap`.
+- Implementation revision 7. No state field changed: an in-place upgrade from revision 6 keeps the manifest cache, the deprecation reporters, their once-keys, the reports, the mode and the limits (`Bootstrap_spec.lua`, "upgrades the previous revision in place to the working file", now loads revision 6).
+- `Deprecation_spec.lua` covers a host error handler that warns again from inside a report: the once-key and the row are written before the handler runs, so the re-entry is answered as already reported.
+- Documentation: the README gains a migration table from the hand-written client checks ClientKit replaces; `docs/API.md` lists the `IsAtLeast` secret refusal under "Errors" and revision 7 under "Embedded identity and upgrades".
+- 178 specs (was 176).
+
 ## 0.3.0 — 2026-11-15
 
 - Added deprecation warnings (W13, the part Registry's spent line budget leaves to ClientKit). `ClientKit:Deprecate({ name, removal, replacement? })` declares something a Kit deprecates and returns a reporter; a name declared again returns the same reporter with the newer text. `reporter:Warn(level?, addonName?)` reports the consumer once per call site, or once per addon when the Kit names it, never once per call: `MoltenCodes: TimerKit:After is deprecated; use TimerKit:Delay. Removal: TimerKit API 2. Called from MyAddon (Interface/AddOns/MyAddon/Core.lua:42).` The call site is read with the client's `debugstack` (the client has no `debug` library); the addon is the one given, else the folder after `Interface/AddOns/`, else `unknown`. Reports go to `geterrorhandler()` (else `print`), both under `pcall`.

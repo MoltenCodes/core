@@ -87,6 +87,22 @@ See [`docs/API.md`](docs/API.md) for the capability table, the shim shapes,
 the manifest fields, the deprecation reporter and its modes, and what each
 answer means on a client that lacks the underlying call.
 
+## Migrating from hand-written client checks
+
+ClientKit replaces no single library; it replaces the checks most addons
+write at the top of their main file.
+
+| Hand-written | ClientKit |
+|---|---|
+| `WOW_PROJECT_ID == WOW_PROJECT_MAINLINE` (true on a host where both are `nil`) | `ClientKit:GetFlavor() == "mainline"` (an absent id answers `"classic"`) |
+| `select(4, GetBuildInfo()) >= 120000` | `ClientKit:IsAtLeast(120000)` (`false` on a host without `GetBuildInfo`) |
+| `if C_Timer then ... end`, `if issecretvalue then ... end` | `ClientKit:Has("C_Timer")`, `ClientKit:Has("secretValues")` (a typo raises) |
+| `issecretvalue and issecretvalue(value)` | `ClientKit:IsSecret(value)` |
+| `(C_AddOns and C_AddOns.GetAddOnMetadata or GetAddOnMetadata)(name, field)` | `ClientKit:GetAddOnMetadata(name, field)` (`nil` for an empty field) |
+| `C_Spell and C_Spell.GetSpellInfo(id)` else `GetSpellInfo(id)` with seven returns | `ClientKit:GetSpellInfo(id)`: one table shape on every flavour |
+| Several `GetAddOnMetadata` calls for title, version and `X-` fields | `ClientKit:GetManifest(name)`: one cached, read-only snapshot, `manifest:Get("X-Website")` |
+| `print("MyLib: Foo is deprecated")` on every call | `reporter = ClientKit:Deprecate({ name, removal, replacement })`, then `reporter:Warn()`: once per call site or addon |
+
 ## Embedding
 
 [`../../docs/EMBEDDING.md`](../../docs/EMBEDDING.md) is the addon author's guide:

@@ -37,7 +37,7 @@ The suite covers:
   metadata call answering `nil, "unavailable"`, secret names and fields
   refused, writes refused at the writer's line, a cache holding one record per
   listed addon, and zero allocation for a cached manifest;
-- `error` levels: every argument failure, secret refusal (`Has`,
+- `error` levels: every argument failure, secret refusal (`IsAtLeast`, `Has`,
   `GetManifest`, `Get`), receiver with a secret `name` refused by `Get`, and
   manifest write reports the caller's own line;
 - Registry publication, duplicate loads, a newer revision not being
@@ -45,9 +45,10 @@ The suite covers:
   tables (a copy of the source loaded with a higher revision), an upgrade
   over a revision 1 layout that adds the locale and the manifest tables, an
   upgrade over a revision 2 layout that keeps the manifest cache, an upgrade
-  from a revision 3 package and from the previous revision to the working file
+  from a revision 3 package and from the previous revision (6) to the working file
   that keeps state, capabilities and cached manifests (whose `Get` then refuses
-  a receiver with a secret `name`), a cached
+  a receiver with a secret `name`), the deprecation mode, reporter and
+  reports and an `IsAtLeast` that then refuses a secret, a cached
   manifest keeping its identity and its rewritten `Get` across an upgrade,
   load-order failures, and corrupted-state refusal on a reload and on an
   upgrade, including a `manifests` or `manifestPrototype` that is not a table;
@@ -66,7 +67,8 @@ The suite covers:
   "@..."]`, bare path with backslashes, with the client's `...` line), a
   frame outside `Interface/AddOns/`, an empty or blank answer, a host
   without `debugstack`, and a secret frame line; `print` on a host without
-  `geterrorhandler` and a failing handler that never raises; the three
+  `geterrorhandler`, a failing handler that never raises, and a handler that
+  warns again from inside a report; the three
   modes, `"raise"` at the consumer's line on every call with and without a
   site; limits (defaults, subsets, ceilings, refusals that change nothing,
   a secret limit name, the inert reporter and its one notice, silent mode,
@@ -104,7 +106,7 @@ case-insensitively. The profile's metadata call is wrapped so
 `RefuseMetadataField(field)` models a client that raises for a field it does
 not export, and a registered addon is found under any spelling of its name.
 `{ secretStrings = { ... } }` makes the profile's `issecretvalue` report
-those strings secret. `{ debugStack = { addon, form, more, answer } }` installs a
+those strings (or numbers) secret. `{ debugStack = { addon, form, more, answer } }` installs a
 `debugstack` stand-in that answers the frame at the level asked, numbered as
 the client numbers it, from Busted's `debug.getinfo`, so a report names the
 spec's real line; `form` picks the bracketed form the Retail client writes,

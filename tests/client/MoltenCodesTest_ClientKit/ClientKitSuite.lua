@@ -1480,6 +1480,17 @@ secretTest("a secret capability name is refused by Has at the calling line", fun
   end, lines, "ClientKit:Has capability must not be a secret value")
 end)
 
+secretTest("a secret interface number is refused by IsAtLeast at the calling line", function(ctx)
+  -- Comparing a secret from insecure code raises at the comparison, so the
+  -- refusal must come before IsAtLeast compares anything.
+  local secret = makeSecret(ctx, ClientKit:GetInterfaceNumber())
+  local lines = { start = 0 }
+  expectErrorAtCallingLine(ctx, function()
+    lines.start = currentLine()
+    ClientKit:IsAtLeast(secret)
+  end, lines, "ClientKit:IsAtLeast interfaceNumber must not be a secret value")
+end)
+
 secretTest("a secret addon name is refused by GetManifest at the calling line", function(ctx)
   local secret = makeSecret(ctx, addonName)
   local lines = { start = 0 }

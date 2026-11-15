@@ -44,7 +44,7 @@
 
 local PACKAGE_NAME = "clientKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 6
+local IMPLEMENTATION_REVISION = 7
 local REQUIRED_REGISTRY_API = 2
 local STATE_SCHEMA = 1
 
@@ -826,10 +826,15 @@ end
 ---Interface numbers are ordered within one flavour only: Classic Era's `11509`
 ---is lower than Mists Classic's `50504` although both are current. Combine
 ---this with `GetFlavor()` when the floor depends on the flavour.
+---
+---A secret `interfaceNumber` is refused first: the NaN test and the floor
+---comparison both compare it, and comparing a secret from insecure code
+---raises inside ClientKit rather than at the caller.
 ---@param _ ClientKit
 ---@param interfaceNumber number
 ---@return boolean
 local function packageIsAtLeast(_, interfaceNumber)
+  validateNotSecret(interfaceNumber, "ClientKit:IsAtLeast", "interfaceNumber", 3)
   if type(interfaceNumber) ~= "number" or interfaceNumber ~= interfaceNumber then
     error("ClientKit:IsAtLeast interfaceNumber must be a number", 2)
   end

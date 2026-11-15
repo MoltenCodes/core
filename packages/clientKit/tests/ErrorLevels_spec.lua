@@ -205,6 +205,26 @@ describe("ClientKit error levels", function()
     )
   end)
 
+  it("refuses a secret IsAtLeast interfaceNumber at the caller before comparing it", function()
+    -- On Retail 12.x insecure code that compares a secret number raises at
+    -- the comparison, which would be ClientKit's own line. The stand-in
+    -- reports this one number secret; the comparison itself cannot raise
+    -- here, so the spec asserts the refusal that has to come first.
+    ClientKit = Env.NewPackageFor("mainline", { secretStrings = { 120000 } })
+
+    local line
+    local ok, value = pcall(function()
+      line = currentLine() + 1
+      ClientKit:IsAtLeast(120000)
+    end)
+    assertReportedAt(
+      line,
+      "ClientKit:IsAtLeast interfaceNumber must not be a secret value",
+      ok,
+      value
+    )
+  end)
+
   it("refuses a receiver with a secret name as not a manifest, at the caller", function()
     ClientKit = Env.NewPackageFor("mainline", { secretStrings = { "Hidden" } })
     Env.RegisterAddOn("Hidden")
