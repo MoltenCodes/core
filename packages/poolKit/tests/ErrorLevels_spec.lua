@@ -258,4 +258,35 @@ describe("PoolKit error levels", function()
     assert.is_false(ok)
     assert.are.equal("PoolKit.Pool:Prewarm factory result must be a table or userdata", value)
   end)
+
+  it("names a table option field by its type and never runs its __tostring", function()
+    local PoolKit = Env.NewPackage()
+    local ran = 0
+    local key = setmetatable({}, {
+      __tostring = function()
+        ran = ran + 1
+        error("foreign __tostring ran", 0)
+      end,
+    })
+    local line
+    local ok, value = pcall(function()
+      line = currentLine() + 1
+      PoolKit:New({ create = newFactory(), [key] = 1 })
+    end)
+    assertReportedAt(line, 'PoolKit:New options contains unknown field "<table>"', ok, value)
+    assert.are.equal(0, ran)
+
+    -- A number or boolean key is still shown as written.
+    local numberLine
+    local numberOk, numberValue = pcall(function()
+      numberLine = currentLine() + 1
+      PoolKit:New({ create = newFactory(), [7] = 1 })
+    end)
+    assertReportedAt(
+      numberLine,
+      'PoolKit:New options contains unknown field "7"',
+      numberOk,
+      numberValue
+    )
+  end)
 end)

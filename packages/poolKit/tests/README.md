@@ -27,7 +27,7 @@ They also cover the contracts a caller is most likely to get wrong:
 | `Deferred_spec.lua` | `ReleaseAfter`: parking, one hook per group, early completion, close, live limit, reported failures; a Frame (`HookScript` without `IsPlaying`, `Play` and `Stop`), a group missing any of the four methods and an unreadable userdata refused at the caller's line; a userdata group accepted. |
 | `FastPath_spec.lua` | The `Acquire` and `Release` fast paths: LIFO reuse, counters, double release of retained and discarded objects, foreign objects and receivers, closed pools, full retention, superseded generations, the waiting queue, the leak warning, a release from inside `reset`, a failing `reset`'s rollback, children, and a table-pool clear that bypasses `__newindex`. |
 | `Allocation_spec.lua` | Zero allocation for steady-state acquire/release through generic, table and capped pools, and for attach-and-cascade. |
-| `Bootstrap_spec.lua` | Duplicate loads, newer-revision refusal, in-place upgrades from revisions 1, 3, 5, 7 and 8 and from the previous revision, sentinel drift. |
+| `Bootstrap_spec.lua` | Duplicate loads, newer-revision refusal, in-place upgrades from revisions 1, 3, 5, 7 and 8 and from the previous revision (which then names a table option field by its type), sentinel drift. |
 | `SecretValues_spec.lua` | Secret options and pool-method arguments refused at the caller's line on the `mainline` host; ordinary and absent ones still accepted. |
 | `Manifest_spec.lua` | Manifest API and revision agree with the runtime. |
 

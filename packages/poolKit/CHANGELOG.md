@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.4.9 — 2026-11-15
+
+- Fixed: `New` and `NewTablePool` named an unknown option field by passing the caller's key to `tostring`. `tostring` on a table or userdata runs its `__tostring`, foreign code that could raise (or answer a secret on Retail) inside PoolKit, so the caller saw that error instead of the real refusal. A string key is still shown as written and a number or boolean through `tostring`, which runs no foreign code, so `unknown field "aaa"` is unchanged; any other key is named by its type: `PoolKit:New options contains unknown field "<table>"`. Documented in `docs/API.md`.
+- Implementation revision 11. No state or pool shape changed: an upgrade over revision 10 replaces the methods and keeps every pool and object.
+- Specs: a table option field whose `__tostring` raises is named by its type at the caller's line and its `__tostring` never runs (`ErrorLevels_spec.lua`); the previous-revision upgrade spec checks the new message on the upgraded facade. 123 → 124 specs.
+
+## 0.4.8 — 2026-11-15
+
+- `docs/API.md` lists the facade constants `PoolKit.API` and `PoolKit.REVISION` in the public surface table, which the public-surface check requires but the contract never named, and the three load-time errors after "Argument errors point at the caller".
+- Documentation only: the implementation revision stays 10.
+
 ## 0.4.7 — 2026-11-15
 
 - Fixed `Prewarm` stranding the objects it had built when the factory raised partway. The available count was written only after the loop, so the objects already built sat on the free list uncounted: `Acquire` never handed them out, and they still counted against `maxCreated`. The count is now written with each object. Regression spec in `Capacity_spec.lua`.

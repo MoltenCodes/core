@@ -220,6 +220,20 @@ describe("PoolKit bootstrap", function()
     assert.is_true(pool:IsActive(borrowed))
     pool:Release(borrowed)
     assert.are.equal(1, pool:GetAvailableCount())
+
+    -- The working revision names a table option field by its type.
+    local ran = false
+    local key = setmetatable({}, {
+      __tostring = function()
+        ran = true
+        return "custom"
+      end,
+    })
+    local ok, message = pcall(PoolKit.NewTablePool, PoolKit, { [key] = 1 })
+    assert.is_false(ok)
+    local expected = 'PoolKit:NewTablePool options contains unknown field "<table>"'
+    assert.is_truthy(string.find(message, expected, 1, true))
+    assert.is_false(ran)
   end)
 
   it("upgrades revision 7, whose parked release completes, and then refuses a Frame", function()

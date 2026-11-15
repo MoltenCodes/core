@@ -12,6 +12,7 @@ Package facade:
 | `NewTablePool(options?)` | Create a shallow-clearing Lua table pool. |
 | `UNBOUNDED` | Explicit sentinel for unbounded retention. |
 | `DEFAULT_MAX_RETAINED` | Default retained-object limit (`128`). |
+| `API`, `REVISION` | The API generation (`1`) and the implementation revision of the copy active in the session (`11` for this one); a newer embedded copy replaces `REVISION` when it upgrades the facade in place. |
 
 Pool handles:
 
@@ -67,7 +68,7 @@ Errors of `New`; `NewTablePool` raises the ones for the options it accepts, name
 
 - `PoolKit:New options must be a table`
 - `PoolKit:New create must be a function`, `PoolKit:New reset must be a function`, `PoolKit:New destroy must be a function`
-- `PoolKit:New options contains unknown field "<name>"`
+- `PoolKit:New options contains unknown field "<name>"`; a field name that is not a string, number or boolean is named by its type (`"<table>"`), so a key's `__tostring` never runs
 - `PoolKit:New maxRetained must be a non-negative integer or PoolKit.UNBOUNDED`
 - `PoolKit:New strict must be a boolean`, `PoolKit:New strictReset must be a boolean`
 - `PoolKit:New strictReset requires a reset callback`
@@ -344,6 +345,8 @@ A secret value (Retail 12.0.0 and later) raises when it is compared, so a numeri
 An absent option or argument is recognised by its type, never by comparing it with `nil`. A host without `issecretvalue` has no secret values. Pooled objects are tables or userdata, which the type check already requires, so they are never compared as secrets.
 
 Errors that are re-raised after best-effort cleanup keep the original error object unchanged and therefore carry no added position. Constructor-time `prewarm` failures are re-raised the same way.
+
+Loading `PoolKit.lua` raises `MoltenCodes PoolKit requires Registry API 2 to be loaded first`, `MoltenCodes PoolKit requires a valid Registry API 2 facade`, or `MoltenCodes PoolKit package state is corrupted or incomplete`.
 
 ## Strict diagnostics
 
@@ -634,7 +637,9 @@ PoolKit is registered as `poolKit`, API generation `1`, through Registry API 2. 
 Revision 9 changes no state and no pool shape: its `Acquire` and `Release` fast
 paths read the fields every pool of the current shape carries (every pool
 revisions 4 to 8 built has it), and a pool built by revisions 1 to 3 takes the
-general path once, which upgrades it as before.
+general path once, which upgrades it as before. Revisions 10 and 11 change no
+state and no pool shape either; revision 11 only names a table option field by
+its type instead of passing it to `tostring`.
 
 The shared state carries schema `2`; loading over schema-`1` state left by
 revisions 1 to 3 adds the deferred-release tables in place. Pools are not
