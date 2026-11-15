@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.0 — 2026-11-15
+
+Smaller schemas and a non-allocating limit read (roadmap package O, "schemaKit sparse compiled nodes and GetLimit", core decision 18). API generation 1, additive.
+
+- Changed: a compiled node holds only `layout`, `kind`, `expected` and the fields its kind uses (node layout 2); every other field is absent instead of `false`. The seven `~= false` tests became truthiness tests, which read both layouts; `Describe` answers `integer = false` and `open = false` for an absent flag, so its output is unchanged. A 4-field schema holds 4 723 B instead of 13 523 B (−65%), the benchmark schema's 38 nodes 15.2 KB instead of 49.0 KB, measured on host Lua 5.1 (2026-11-15). Checks cost the same.
+- Added: `SchemaKit:GetLimit(name)`, one shared limit's current value without allocating, for a consumer that reads a limit on a hot path (SettingsKit's nested writes). It raises at the caller's line on a dot call, a secret name and any name but the four limits.
+- Implementation revision 6. An in-place upgrade from revision 5 or earlier copies every node built before it into a layout 2 node and re-points every reference (proxies, schema records, child fields), so schemas built before the upgrade give their memory back and keep checking, applying and describing as before.
+- Specs: 133 → 139. `NodeLayout_spec.lua` (three: node sizes, `Describe` unchanged, the upgrade from layout 1), `GetLimit` in `Limits_spec.lua` (three, one an allocation guard).
+
 ## 0.1.6 — 2026-11-15
 
 - Fixed: `SetLimits` built its unknown-limit message with `tostring(key)`, so a key that is a table or userdata with a `__tostring` metamethod ran that foreign code inside SchemaKit. The metamethod could raise or answer a secret value, and the caller then saw its error instead of the real refusal. A string key is still shown as written and a number or boolean key through `tostring` (no foreign code runs for those, so `limits.1` is unchanged); any other key is named by its type: `SchemaKit:SetLimits limits.<table> is not a recognised limit`, at the caller's line, with no limit changed. `docs/API.md` documents the form under *Limits*.

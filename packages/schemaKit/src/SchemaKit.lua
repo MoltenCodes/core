@@ -26,7 +26,8 @@
 --   Argument checks ....... specs, children, bounds and receivers
 --   Builders .............. the functions that create schema nodes
 --   Schema methods ........ Check, Assert, Apply, Describe
---   Package public API .... Seal, SetLimits, GetLimits
+--   Package public API .... Seal, SetLimits, GetLimits, GetLimit
+--   Node layout upgrade ... rebuilding layout 1 nodes as layout 2
 --   Commit ................ prototype/facade assignment and self-check
 --
 -- The compiled form is described in `docs/INTERNALS.md`.
@@ -35,14 +36,16 @@
 
 local PACKAGE_NAME = "schemaKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 5
+local IMPLEMENTATION_REVISION = 6
 local REQUIRED_REGISTRY_API = 2
 local STATE_SCHEMA = 1
 
 -- Every compiled node and every schema record carries the layout it was built
 -- with, so a later revision that changes a layout can recognise and upgrade
--- old ones instead of guessing from which fields exist.
-local NODE_LAYOUT = 1
+-- old ones instead of guessing from which fields exist. Layout 2 (revision 6)
+-- holds only the fields a node uses; layout 1 held every field, `false` when
+-- unused. The checker tests fields for truth, so it reads both.
+local NODE_LAYOUT = 2
 local RECORD_LAYOUT = 1
 
 -- The defaults of the four shared limits (see `SetLimits` and docs/API.md
@@ -162,6 +165,7 @@ local FACADE_FUNCTIONS = {
   "Seal",
   "SetLimits",
   "GetLimits",
+  "GetLimit",
 }
 local SCHEMA_METHODS = { "Check", "Assert", "Apply", "Describe" }
 
@@ -295,34 +299,35 @@ local HUGE = math.huge
 ---@field defaultArrayMax (integer|table)? Element bound of an array built without `max`: a positive integer or `SchemaKit.UNBOUNDED`, default `1024`.
 
 ---The private compiled form of one node. Fields a kind does not use are
----`false`. See `docs/INTERNALS.md`.
+---absent (layout 2) or `false` (layout 1, built before revision 6 and
+---rebuilt by its upgrade). See `docs/INTERNALS.md`.
 ---@class SchemaKit.CompiledNode
 ---@field layout integer
 ---@field kind string
 ---@field expected string
----@field min number|false
----@field max number|false
----@field expectedMin string|false
----@field expectedMax string|false
----@field foundMax string|false
----@field pattern string|false
----@field expectedPattern string|false
----@field valueSet table|false
----@field valueList any[]|false
----@field expectedEnum string|false
----@field integer boolean
----@field fieldNames string[]|false
----@field fieldNodes SchemaKit.CompiledNode[]|false
----@field fieldSet table<string, true>|false
----@field open boolean
----@field of SchemaKit.CompiledNode|false
----@field keys SchemaKit.CompiledNode|false
----@field values SchemaKit.CompiledNode|false
----@field inner SchemaKit.CompiledNode|false
----@field hasDefault boolean
+---@field min number?
+---@field max number?
+---@field expectedMin string?
+---@field expectedMax string?
+---@field foundMax string?
+---@field pattern string?
+---@field expectedPattern string?
+---@field valueSet table?
+---@field valueList any[]?
+---@field expectedEnum string?
+---@field integer boolean?
+---@field fieldNames string[]?
+---@field fieldNodes SchemaKit.CompiledNode[]?
+---@field fieldSet table<string, true>?
+---@field open boolean?
+---@field of SchemaKit.CompiledNode?
+---@field keys SchemaKit.CompiledNode?
+---@field values SchemaKit.CompiledNode?
+---@field inner SchemaKit.CompiledNode?
+---@field hasDefault boolean?
 ---@field default any
----@field alternatives SchemaKit.CompiledNode[]|false
----@field check function|false
+---@field alternatives SchemaKit.CompiledNode[]?
+---@field check function?
 
 ---The private per-schema record behind one sealed schema.
 ---@class SchemaKit.Record
@@ -754,22 +759,22 @@ local function checkString(record, node, value)
   end
 
   local valueSet = node.valueSet
-  if valueSet ~= false and valueSet[value] == nil then
+  if valueSet and valueSet[value] == nil then
     return fail(record, RULE_ENUM, node.expectedEnum --[[@as string]], FOUND_UNLISTED.string)
   end
 
   local length = #value
   local min = node.min
-  if min ~= false and length < min then
+  if min and length < min then
     return fail(record, RULE_MIN, node.expectedMin --[[@as string]], "string of length " .. length)
   end
   local max = node.max
-  if max ~= false and length > max then
+  if max and length > max then
     return fail(record, RULE_MAX, node.expectedMax --[[@as string]], "string of length " .. length)
   end
 
   local pattern = node.pattern
-  if pattern ~= false and type(find(value, pattern)) == "nil" then
+  if pattern and type(find(value, pattern)) == "nil" then
     return fail(record, RULE_PATTERN, node.expectedPattern --[[@as string]], FOUND_NON_MATCHING)
   end
   return true
@@ -797,11 +802,11 @@ local function checkNumber(record, node, value)
   end
 
   local min = node.min
-  if min ~= false and value < min then
+  if min and value < min then
     return fail(record, RULE_MIN, node.expectedMin --[[@as string]], FOUND_SMALLER)
   end
   local max = node.max
-  if max ~= false and value > max then
+  if max and value > max then
     return fail(record, RULE_MAX, node.expectedMax --[[@as string]], FOUND_LARGER)
   end
   return true
@@ -1286,13 +1291,13 @@ describeNode = function(node)
     description.min = node.min or nil
     description.max = node.max or nil
     description.pattern = node.pattern or nil
-    if node.valueList ~= false then
+    if node.valueList then
       description.oneOf = copyList(node.valueList --[[@as any[] ]])
     end
   elseif kind == KIND_NUMBER then
     description.min = node.min or nil
     description.max = node.max or nil
-    description.integer = node.integer
+    description.integer = node.integer == true
   elseif kind == KIND_ENUM then
     description.values = copyList(node.valueList --[[@as any[] ]])
   elseif kind == KIND_TABLE then
@@ -1304,7 +1309,7 @@ describeNode = function(node)
     end
     description.fields = fields
     description.fieldNames = copyList(names)
-    description.open = node.open
+    description.open = node.open == true
   elseif kind == KIND_ARRAY then
     description.of = describeNode(node.of --[[@as SchemaKit.CompiledNode]])
     description.min = node.min or nil
@@ -1471,40 +1476,16 @@ local function publishNode(compiled)
   return proxy
 end
 
----Return a compiled node of `kind` with every field present, so each node
----has the same fixed shape.
+---Return a compiled node of `kind` holding only its layout, kind and
+---expected phrase. The builder sets the fields its kind uses; every other
+---field stays absent. A fixed shape with `false` placeholders buys nothing in
+---Lua 5.1 (a missing key reads as fast as a `false` one) and cost a 32-slot
+---hash part per node (1 344 B) where most nodes use 3 to 7 fields.
 ---@param kind string
 ---@param expected string
 ---@return SchemaKit.CompiledNode
 local function newCompiledNode(kind, expected)
-  return {
-    layout = NODE_LAYOUT,
-    kind = kind,
-    expected = expected,
-    min = false,
-    max = false,
-    expectedMin = false,
-    expectedMax = false,
-    foundMax = false,
-    pattern = false,
-    expectedPattern = false,
-    valueSet = false,
-    valueList = false,
-    expectedEnum = false,
-    integer = false,
-    fieldNames = false,
-    fieldNodes = false,
-    fieldSet = false,
-    open = false,
-    of = false,
-    keys = false,
-    values = false,
-    inner = false,
-    hasDefault = false,
-    default = false,
-    alternatives = false,
-    check = false,
-  }
+  return { layout = NODE_LAYOUT, kind = kind, expected = expected }
 end
 
 ---Build the "one of ..." phrase and the lookup set for a list of literals.
@@ -1745,8 +1726,11 @@ local function buildNumber(spec)
   if type(integer) ~= "nil" and (type(integer) ~= "boolean" or isSecretValue(integer)) then
     error("SchemaKit.number integer must be a boolean", 2)
   end
-  node.integer = integer == true
-  local noun = node.integer and "integer" or "number"
+  -- Stored only when set, so a plain number node keeps to its three fields.
+  if integer == true then
+    node.integer = true
+  end
+  local noun = integer == true and "integer" or "number"
   node.expected = noun
 
   local min, max = rawget(spec, "min"), rawget(spec, "max")
@@ -1836,7 +1820,9 @@ local function buildTable(spec)
   node.fieldNames = names
   node.fieldNodes = nodes
   node.fieldSet = fieldSet
-  node.open = open == true
+  if open == true then
+    node.open = true
+  end
   return publishNode(node)
 end
 
@@ -2206,6 +2192,30 @@ local function packageSetLimits(facade, limits)
   loadLimits()
 end
 
+---Return the current value of one shared limit without allocating, for a
+---consumer that reads a limit on a hot path (SettingsKit reads `maxDepth` on
+---every nested write). `defaultArrayMax` may answer `SchemaKit.UNBOUNDED`.
+---@param facade SchemaKit
+---@param name string `"maxDepth"`, `"maxPatternCaptures"`, `"pathKeyLimit"` or `"defaultArrayMax"`
+---@return integer|table value
+local function packageGetLimit(facade, name)
+  if not rawequal(facade, SchemaKit) then
+    error("SchemaKit:GetLimit is called with a colon, not a dot", 2)
+  end
+  local isSecret = currentSecretProbe()
+  if isSecret ~= nil and isSecret(name) == true then
+    error("SchemaKit:GetLimit name must not be a secret value", 2)
+  end
+  local value = type(name) == "string" and rawget(sharedLimits, name) or nil
+  if type(value) == "nil" then
+    error(
+      "SchemaKit:GetLimit name must be maxDepth, maxPatternCaptures, pathKeyLimit or defaultArrayMax",
+      2
+    )
+  end
+  return value
+end
+
 ---Return a fresh copy of the shared limits; `defaultArrayMax` may be
 ---`SchemaKit.UNBOUNDED`.
 ---@param facade SchemaKit
@@ -2220,6 +2230,83 @@ local function packageGetLimits(facade)
     pathKeyLimit = rawget(sharedLimits, "pathKeyLimit"),
     defaultArrayMax = rawget(sharedLimits, "defaultArrayMax"),
   }
+end
+
+-- Node layout upgrade --------------------------------------------------------
+--
+-- Revision 6 builds sparse nodes (layout 2). Nodes an older revision built
+-- hold every field, `false` when unused, in a 32-slot hash part. The checker
+-- reads both layouts, so the old nodes would keep working; they are rebuilt
+-- anyway, because Lua 5.1 never shrinks a hash part in place and those nodes
+-- are most of what a schema holds. Every reference is re-pointed through one
+-- old-to-new map: the proxy table, the schema records and the nodes' own
+-- child fields.
+
+if previousRevision ~= nil and previousRevision < 6 then
+  -- The child fields that hold one compiled node, and those that hold a list.
+  local SINGLE_CHILD_FIELDS = { "of", "keys", "values", "inner" }
+  local LIST_CHILD_FIELDS = { "fieldNodes", "alternatives" }
+
+  ---Return the sparse copy of `node`: every field that is not `false`, and
+  ---`default` whenever `hasDefault` is set (a declared default may be `false`).
+  ---@param node table
+  ---@return table
+  local function sparseCopy(node)
+    local copy = {}
+    for field, value in next, node do
+      if value ~= false or (field == "default" and node.hasDefault == true) then
+        copy[field] = value
+      end
+    end
+    copy.layout = NODE_LAYOUT
+    return copy
+  end
+
+  ---Rebuild every layout 1 node reachable from `node`, filling `rebuilt`
+  ---(old node to new node), and return the node to reference instead.
+  ---@param node table
+  ---@param rebuilt table<table, table>
+  ---@return table
+  local function rebuildNode(node, rebuilt)
+    local done = rebuilt[node]
+    if done ~= nil then
+      return done
+    end
+    if node.layout ~= 1 then
+      rebuilt[node] = node
+      return node
+    end
+    local copy = sparseCopy(node)
+    rebuilt[node] = copy
+    for index = 1, #SINGLE_CHILD_FIELDS do
+      local field = SINGLE_CHILD_FIELDS[index]
+      local child = copy[field]
+      if type(child) == "table" then
+        copy[field] = rebuildNode(child, rebuilt)
+      end
+    end
+    for index = 1, #LIST_CHILD_FIELDS do
+      local list = copy[LIST_CHILD_FIELDS[index]]
+      if type(list) == "table" then
+        for position = 1, #list do
+          list[position] = rebuildNode(list[position], rebuilt)
+        end
+      end
+    end
+    return copy
+  end
+
+  ---Rebuild the nodes behind every live proxy and schema record.
+  local function upgradeNodeLayouts()
+    local rebuilt = {}
+    for proxy, node in next, compiledNodes do
+      compiledNodes[proxy] = rebuildNode(node, rebuilt)
+    end
+    for _, record in next, schemaRecords do
+      record.root = rebuildNode(record.root, rebuilt)
+    end
+  end
+  upgradeNodeLayouts()
 end
 
 -- Commit ---------------------------------------------------------------------
@@ -2257,6 +2344,7 @@ rawset(SchemaKit, "custom", buildCustom)
 rawset(SchemaKit, "Seal", packageSeal)
 rawset(SchemaKit, "SetLimits", packageSetLimits)
 rawset(SchemaKit, "GetLimits", packageGetLimits)
+rawset(SchemaKit, "GetLimit", packageGetLimit)
 rawset(state, "runtimeRevision", IMPLEMENTATION_REVISION)
 
 if not validatePublicSurface(SchemaKit) or not validateCurrentState(SchemaKit) then

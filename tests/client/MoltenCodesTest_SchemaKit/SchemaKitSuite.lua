@@ -334,7 +334,7 @@ local SpellInfo = SchemaKit:Seal(S.table({ fields = SPELL_INFO_FIELDS, open = tr
 local facade = newSuite("facade")
 
 facade:Test(
-  "Registry:Get('schemaKit', 1) is the SchemaKit facade with API 1, its eleven builders, Seal, SetLimits, GetLimits, UNBOUNDED and the Schema prototype's four methods",
+  "Registry:Get('schemaKit', 1) is the SchemaKit facade with API 1, its eleven builders, Seal, SetLimits, GetLimits, GetLimit, UNBOUNDED and the Schema prototype's four methods",
   function(ctx)
     ctx:Expect(type(SchemaKit)):ToBe("table")
     ctx:Expect(rawget(SchemaKit, "API")):ToBe(SCHEMA_KIT_API)
@@ -353,6 +353,7 @@ facade:Test(
       "Seal",
       "SetLimits",
       "GetLimits",
+      "GetLimit",
     }) do
       ctx:Expect(type(rawget(SchemaKit, functionName))):ToBe("function")
     end
@@ -386,7 +387,7 @@ facade:Test("the installed SchemaKit carries the revision of the committed manif
 end)
 
 facade:Test(
-  "GetLimits answers a fresh table holding the session's four limits at their defaults, which MAX_DEPTH and DEFAULT_ARRAY_MAX publish",
+  "GetLimits answers a fresh table holding the session's four limits at their defaults, which MAX_DEPTH and DEFAULT_ARRAY_MAX publish, and GetLimit answers each of them",
   function(ctx)
     local first = SchemaKit:GetLimits()
     local second = SchemaKit:GetLimits()
@@ -405,6 +406,9 @@ facade:Test(
     ctx:Expect(first.maxPatternCaptures):ToBe(MAX_PATTERN_CAPTURES)
     ctx:Expect(first.pathKeyLimit):ToBe(32)
     ctx:Expect(first.defaultArrayMax):ToBe(1024)
+    for _, name in ipairs({ "maxDepth", "maxPatternCaptures", "pathKeyLimit", "defaultArrayMax" }) do
+      ctx:Expect(SchemaKit:GetLimit(name)):ToBe(first[name])
+    end
   end
 )
 

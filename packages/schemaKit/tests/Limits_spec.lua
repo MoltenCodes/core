@@ -305,4 +305,69 @@ describe("SchemaKit limits", function()
     end
     assert.is_true(upgraded:Seal(upgraded.array({ of = upgraded.number() })):Check(value))
   end)
+  it("reads one limit with GetLimit, following SetLimits", function()
+    assert.are.equal(16, S:GetLimit("maxDepth"))
+    assert.are.equal(32, S:GetLimit("maxPatternCaptures"))
+    assert.are.equal(32, S:GetLimit("pathKeyLimit"))
+    assert.are.equal(1024, S:GetLimit("defaultArrayMax"))
+
+    S:SetLimits({ maxDepth = 5, defaultArrayMax = S.UNBOUNDED })
+    assert.are.equal(5, S:GetLimit("maxDepth"))
+    assert.are.equal(S.UNBOUNDED, S:GetLimit("defaultArrayMax"))
+  end)
+
+  it("reads one limit with GetLimit without allocating #allocation", function()
+    S:GetLimit("maxDepth")
+    local kilobytes = TestEnv.AllocatedKilobytes(function()
+      for _ = 1, 1000 do
+        S:GetLimit("maxDepth")
+      end
+    end)
+    assert.are.equal(0, kilobytes)
+  end)
+
+  it("refuses GetLimit arguments at the caller's line", function()
+    local message =
+      "SchemaKit:GetLimit name must be maxDepth, maxPatternCaptures, pathKeyLimit or defaultArrayMax"
+
+    local dotLine
+    local dotOk, dotValue = pcall(function()
+      dotLine = currentLine() + 1
+      S.GetLimit("maxDepth")
+    end)
+    assertReportedAt(
+      dotLine,
+      "SchemaKit:GetLimit is called with a colon, not a dot",
+      dotOk,
+      dotValue
+    )
+
+    local numberLine
+    local numberOk, numberValue = pcall(function()
+      numberLine = currentLine() + 1
+      S:GetLimit(1)
+    end)
+    assertReportedAt(numberLine, message, numberOk, numberValue)
+
+    local unknownLine
+    local unknownOk, unknownValue = pcall(function()
+      unknownLine = currentLine() + 1
+      S:GetLimit("depth")
+    end)
+    assertReportedAt(unknownLine, message, unknownOk, unknownValue)
+
+    local secret = TestEnv.NewSecret()
+    TestEnv.InstallSecretProbe({ [secret] = true })
+    local secretLine
+    local secretOk, secretValue = pcall(function()
+      secretLine = currentLine() + 1
+      S:GetLimit(secret)
+    end)
+    assertReportedAt(
+      secretLine,
+      "SchemaKit:GetLimit name must not be a secret value",
+      secretOk,
+      secretValue
+    )
+  end)
 end)

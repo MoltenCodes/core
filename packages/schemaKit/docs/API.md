@@ -49,6 +49,7 @@ Package facade:
 | `Seal(node, options?)` | Seal a node (or re-seal a schema) into a schema. |
 | `SetLimits(limits)` | Change any subset of the shared limits (see [Limits](#limits)). |
 | `GetLimits()` | Return the four limits in a fresh table. |
+| `GetLimit(name)` | Revision 6: return one limit's current value without allocating. |
 | `MAX_DEPTH` | `16`: the default of the `maxDepth` limit. |
 | `DEFAULT_ARRAY_MAX` | `1024`: the default of the `defaultArrayMax` limit. |
 | `UNBOUNDED` | Sentinel `SetLimits{ defaultArrayMax }` accepts to lift the default array bound. |
@@ -246,9 +247,10 @@ Four limits are package-wide and set through `SetLimits`; the bounds a schema au
 ```lua
 SchemaKit:SetLimits({ maxDepth = 24, defaultArrayMax = SchemaKit.UNBOUNDED })
 local limits = SchemaKit:GetLimits() -- a fresh table
+local maxDepth = SchemaKit:GetLimit("maxDepth") -- one value, no allocation
 ```
 
-`SetLimits` accepts any subset and checks every entry before it changes anything, so a refused call changes no limit. It raises at the caller's line on a non-table, an unknown name (`SchemaKit:SetLimits limits.maxWidth is not a recognised limit`; a key that is not a string, number or boolean is named by its type, as `limits.<table>`, so its `__tostring` never runs), a value outside 1 to the ceiling (`SchemaKit:SetLimits limits.maxDepth must be an integer from 1 to 64`, with `: <reason>` appended when the value is an integer above the ceiling), a `defaultArrayMax` that is neither a positive integer nor the sentinel (`SchemaKit:SetLimits limits.defaultArrayMax must be a positive integer or SchemaKit.UNBOUNDED`), `SchemaKit.UNBOUNDED` where the table says no (`SchemaKit:SetLimits limits.maxDepth cannot be SchemaKit.UNBOUNDED: <reason>`), and a dot call. A secret value (Retail 12.x) is refused before it is compared with anything, with the message an invalid value of that limit gets: `SchemaKit:SetLimits limits.maxDepth must be an integer from 1 to 64` for a limit with a ceiling, `SchemaKit:SetLimits limits.defaultArrayMax must be a positive integer or SchemaKit.UNBOUNDED` otherwise. `GetLimits` returns a new table on every call; `defaultArrayMax` reads back as `SchemaKit.UNBOUNDED` when it was set to it.
+`SetLimits` accepts any subset and checks every entry before it changes anything, so a refused call changes no limit. It raises at the caller's line on a non-table, an unknown name (`SchemaKit:SetLimits limits.maxWidth is not a recognised limit`; a key that is not a string, number or boolean is named by its type, as `limits.<table>`, so its `__tostring` never runs), a value outside 1 to the ceiling (`SchemaKit:SetLimits limits.maxDepth must be an integer from 1 to 64`, with `: <reason>` appended when the value is an integer above the ceiling), a `defaultArrayMax` that is neither a positive integer nor the sentinel (`SchemaKit:SetLimits limits.defaultArrayMax must be a positive integer or SchemaKit.UNBOUNDED`), `SchemaKit.UNBOUNDED` where the table says no (`SchemaKit:SetLimits limits.maxDepth cannot be SchemaKit.UNBOUNDED: <reason>`), and a dot call. A secret value (Retail 12.x) is refused before it is compared with anything, with the message an invalid value of that limit gets: `SchemaKit:SetLimits limits.maxDepth must be an integer from 1 to 64` for a limit with a ceiling, `SchemaKit:SetLimits limits.defaultArrayMax must be a positive integer or SchemaKit.UNBOUNDED` otherwise. `GetLimits` returns a new table on every call; `defaultArrayMax` reads back as `SchemaKit.UNBOUNDED` when it was set to it. `GetLimit(name)` (revision 6) answers one limit, as `GetLimits()[name]` would, without allocating, for a consumer that reads a limit on a hot path (SettingsKit reads `maxDepth` on every nested write); it raises at the caller's line on a dot call (`SchemaKit:GetLimit is called with a colon, not a dot`), a secret name (`SchemaKit:GetLimit name must not be a secret value`) and anything but the four names (`SchemaKit:GetLimit name must be maxDepth, maxPatternCaptures, pathKeyLimit or defaultArrayMax`).
 
 **The limits are shared by every consumer in the session**: every embedded copy and every addon uses one set. A library should rely on the defaults; an addon that changes a limit changes it for everybody. `maxDepth` and `pathKeyLimit` apply from the next check, to every schema. `maxPatternCaptures` and `defaultArrayMax` apply to nodes built after the change; a node keeps what it was built with. A pattern refused by a lowered `maxPatternCaptures` raises `SchemaKit.string pattern is not a valid Lua pattern`.
 
@@ -393,13 +395,14 @@ Builder, `Seal` and method argument failures report the line that called them, n
 | `Seal` | `SchemaKit:Seal is called with a colon, not a dot`; `SchemaKit:Seal node must be a SchemaKit schema node or sealed schema`; `SchemaKit:Seal options must be a table`; `SchemaKit:Seal options contains unknown field "<field>"`; `SchemaKit:Seal freshFailures must be a boolean` |
 | Schema methods | `SchemaKit.Schema:<Method> must be called on a sealed SchemaKit schema`; `SchemaKit.Schema:Assert argumentName must be a non-empty string`; `SchemaKit.Schema:Assert level must be a positive integer` |
 | Writes | `SchemaKit schemas are sealed and cannot be modified`; `SchemaKit schema nodes are immutable` (raised at the writing line) |
-| `SetLimits`, `GetLimits` | `SchemaKit:SetLimits limits must be a table`; `SchemaKit:SetLimits is called with a colon, not a dot` (and `GetLimits`); the value messages listed under [Limits](#limits) |
+| `SetLimits`, `GetLimits`, `GetLimit` | `SchemaKit:SetLimits limits must be a table`; `SchemaKit:SetLimits is called with a colon, not a dot` (and `GetLimits`, `GetLimit`); the value messages listed under [Limits](#limits) |
 
 ## Performance
 
 | Operation | Cost |
 |---|---|
-| Building a node, sealing | Load time; allocates the node. |
+| Building a node, sealing | Load time; allocates the node: a table holding only the fields its kind uses (revision 6), so a 4-field schema holds about 4.7 KB where revision 5 held 13.5 KB (host Lua 5.1, 2026-11-15). |
+| `GetLimit(name)` | One validated lookup; no allocation. |
 | `Check`, `Assert` on a valid value | O(size of the value as the schema describes it); no allocation. |
 | `Check` failing at the root | The failure table is reused; only a `string of length N` or `array of N elements` phrase is built. |
 | `Check` failing below the root | Also builds the path string, and `key <expected>` for a failing map key. |
@@ -414,10 +417,12 @@ The nine-point plan in `docs/ROADMAP.md` is followed except where recorded here:
 - **Nodes are immutable from birth** rather than frozen by `Seal`; see [Nodes and sealing](#nodes-and-sealing).
 - **`Apply` returns `true, copy` or `false, failure`** rather than the copy alone. An `optional` root without a default legitimately applies to `nil`, so a bare return value could not tell a valid `nil` from a failure; the pair has the same shape as `Check`.
 - **The depth bound is enforced on values, not on schemas.** `Seal` does not refuse a schema that describes more nested tables than the `maxDepth` limit (16 by default); a value is simply never followed past `maxDepth`, and the deeper levels of such a schema can never accept anything.
-- **Additions:** `SchemaKit.MAX_DEPTH` and `SchemaKit.DEFAULT_ARRAY_MAX` publish the two defaults, `SetLimits`, `GetLimits` and `UNBOUNDED` open the limits (principle 4a), and `Assert` returns the value it checked so it can be used inline.
+- **Additions:** `SchemaKit.MAX_DEPTH` and `SchemaKit.DEFAULT_ARRAY_MAX` publish the two defaults, `SetLimits`, `GetLimits`, `GetLimit` (revision 6) and `UNBOUNDED` open the limits (principle 4a), and `Assert` returns the value it checked so it can be used inline.
 
 ## Embedded copies and upgrades
 
 Several addons may embed SchemaKit; Registry selects the newest compatible revision and every copy shares one facade. An upgrade happens in place: nodes and schemas built by an older copy keep their compiled form and failure tables, compose with nodes built by the newer copy, and run the newer checker. The shared limits and the `UNBOUNDED` sentinel live in the package state, so a newer revision inherits the limits a consumer set.
 
 Nothing survives `/reload`: schemas are rebuilt when the addon loads.
+
+Revision 6 changes no documented behaviour and adds `GetLimit`. Compiled nodes hold only the fields their kind uses (node layout 2). An in-place upgrade from an earlier revision copies every node built before it into a node of layout 2 and points every reference at the copy (the proxies, the schema records and the child fields of other nodes), so schemas built before the upgrade give their memory back; they check, apply and describe as before.

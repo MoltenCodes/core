@@ -20,11 +20,11 @@ Both maps have weak keys: a proxy nobody holds can be collected, while the compi
 
 ## Compiled nodes
 
-A builder validates its spec and compiles it at once into a flat table of fixed shape. Every field exists on every node; a field a kind does not use is `false`, so a node is never rehashed and every check reads fields the same way:
+A builder validates its spec and compiles it at once into a flat table holding `layout`, `kind` and `expected` and the fields its kind uses (node layout 2, revision 6); every other field is absent. Revisions 1 to 5 gave every node every field, `false` when unused (layout 1), which cost a 32-slot hash part (1 344 B) per node where most nodes use 3 to 7 fields: Lua 5.1 has no hidden classes, so a fixed shape bought nothing and a missing field reads as fast as a `false` one. The checker tests fields for truth (`if min and ...`), so it reads both layouts. `integer` and `open` are stored only when `true`; `Describe` answers `integer = false` and `open = false` for an absent one, as before.
 
 | Field | Used by |
 |---|---|
-| `layout` | Every node: the node layout number (`1`), so a later revision can recognise old nodes. |
+| `layout` | Every node: the node layout number (`2`), so a later revision can recognise old nodes. |
 | `kind` | Every node: `string`, `number`, `boolean`, `enum`, `table`, `array`, `map`, `optional`, `oneOf`, `any`, `custom`. |
 | `expected` | Every node: the phrase a type or required failure reports. |
 | `min`, `max`, `expectedMin`, `expectedMax` | `string`, `number`, `array`, `map` (`max` only). |
@@ -96,7 +96,7 @@ A failing map key rewrites `expected` to `key <expected>`: the one string built 
 
 ## Closures and upgrades
 
-SchemaKit hands out no closures: nodes and schemas are proxies whose behaviour comes from the prototype and the metatables, all kept in `_state` and on the facade. A newer revision rewrites `Schema`'s methods and both metatables' `__newindex` in place, and reads the existing compiled nodes and records, which carry `layout` so a revision that changes a layout can upgrade them lazily. The upgrade spec loads the same source a second time with `IMPLEMENTATION_REVISION` raised to the shipped revision plus one and checks that nodes, schemas and failure tables built before the upgrade keep working and compose with nodes built after it.
+SchemaKit hands out no closures: nodes and schemas are proxies whose behaviour comes from the prototype and the metatables, all kept in `_state` and on the facade. A newer revision rewrites `Schema`'s methods and both metatables' `__newindex` in place, and reads the existing compiled nodes and records, which carry `layout` so a revision that changes a layout can upgrade them. Revision 6 does: an upgrade from revision 5 or earlier copies every layout 1 node into a sparse one (every field that is not `false`, and `default` whenever `hasDefault` is set, since a declared default may be `false`) and points every reference at the copy through one old-to-new map: `state.nodes` (proxy to node), every record's `root`, and the `of`, `keys`, `values`, `inner`, `fieldNodes` and `alternatives` fields of other nodes. Lua 5.1 never shrinks a hash part in place, so only the copies give the memory back; a node the walk missed still works, since the checker reads both layouts. `NodeLayout_spec.lua` lays layout 1 over a schema built by the working file, upgrades, and checks the copies, the re-pointed children, a `false` default, and that the schema checks, fails, applies and describes as before. The upgrade spec loads the same source a second time with `IMPLEMENTATION_REVISION` raised to the shipped revision plus one and checks that nodes, schemas and failure tables built before the upgrade keep working and compose with nodes built after it.
 
 ## Error levels
 

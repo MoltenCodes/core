@@ -12,7 +12,8 @@ The SchemaKit suite covers:
 - `Describe` output for every kind, freshness, and an optional root;
 - duplicate embedded loading, Registry publication, yielding to a newer revision, missing Registry, an incomplete facade, an in-place upgrade (the source patched to the shipped revision plus one) that keeps nodes, schemas and failure tables, and upgrades from revision 1 and from the previous revision to the working file, after which a table `SetLimits` key is still named by its type;
 - `error` levels: builder, `Seal`, receiver, `Assert` (default level and level 2) and sealed-write errors report the caller's own line;
-- limits: the defaults in a fresh table, partial updates, `maxDepth` up to its ceiling of 64, a lowered `maxPatternCaptures`, `pathKeyLimit` in failure paths, `defaultArrayMax` read when a node is built, `UNBOUNDED` lifting the default array bound and refused (with its reason, at the caller's line) by the other three, values past a ceiling and invalid values refused without changing anything, a table key named by its type without running its `__tostring`, dot calls, and the limits and the sentinel kept across an in-place upgrade;
+- limits: the defaults in a fresh table, `GetLimit` for each limit and after `SetLimits` without allocating and its refusals at the caller's line (dot call, a number, an unknown name, a secret), partial updates, `maxDepth` up to its ceiling of 64, a lowered `maxPatternCaptures`, `pathKeyLimit` in failure paths, `defaultArrayMax` read when a node is built, `UNBOUNDED` lifting the default array bound and refused (with its reason, at the caller's line) by the other three, values past a ceiling and invalid values refused without changing anything, a table key named by its type without running its `__tostring`, dot calls, and the limits and the sentinel kept across an in-place upgrade;
+- compiled node layout 2 (revision 6, `NodeLayout_spec.lua`): nodes holding only the fields their kind uses, `Describe` unchanged, and the upgrade from revision 5 rebuilding layout 1 nodes as sparse ones with every reference re-pointed and a `false` default kept;
 - the three cookbook schemas from `docs/API.md`, run as written;
 - manifest/runtime API and revision consistency, and the dependency list.
 
@@ -28,6 +29,7 @@ SchemaKit is pure Lua, so `support/SchemaKitTestEnv.lua` builds its environment 
 | `Limits_spec.lua` | `SetLimits`, `GetLimits`, `UNBOUNDED`, ceilings, limits across upgrades |
 | `SecretValues_spec.lua` | secret values refused before any use |
 | `Allocation_spec.lua` | allocation guards |
+| `NodeLayout_spec.lua` | sparse compiled nodes and their upgrade from layout 1 |
 | `Describe_spec.lua` | `Describe` output |
 | `Cookbook_spec.lua` | the `docs/API.md` cookbook, run as written |
 | `ErrorLevels_spec.lua` | errors reported at the caller's line |

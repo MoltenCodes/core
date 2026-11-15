@@ -27,9 +27,9 @@ for a moment:
 
 ```text
 MoltenCodes Test: running schemaKit: 6 suites. Results follow when every test has finished.
-MoltenCodes Test: PASS schemaKit.facade: Registry:Get('schemaKit', 1) is the SchemaKit facade with API 1, its eleven builders, Seal, SetLimits, GetLimits, UNBOUNDED and the Schema prototype's four methods
+MoltenCodes Test: PASS schemaKit.facade: Registry:Get('schemaKit', 1) is the SchemaKit facade with API 1, its eleven builders, Seal, SetLimits, GetLimits, GetLimit, UNBOUNDED and the Schema prototype's four methods
 MoltenCodes Test: PASS schemaKit.facade: the installed SchemaKit carries the revision of the committed manifest
-MoltenCodes Test: PASS schemaKit.facade: GetLimits answers a fresh table holding the session's four limits at their defaults, which MAX_DEPTH and DEFAULT_ARRAY_MAX publish
+MoltenCodes Test: PASS schemaKit.facade: GetLimits answers a fresh table holding the session's four limits at their defaults, which MAX_DEPTH and DEFAULT_ARRAY_MAX publish, and GetLimit answers each of them
 MoltenCodes Test: PASS schemaKit.clientLua: for 17 accepted patterns, the pattern rule agrees with the client's own string.find on 11 subjects each, and no Check raises
 MoltenCodes Test: PASS schemaKit.clientLua: 7 malformed patterns that the client's string.find answers on one subject but raises on another are each refused by SchemaKit.string at the calling line
 MoltenCodes Test: PASS schemaKit.clientLua: a pattern of 32 captures is accepted and checks without raising, and one of 33, which the client's string.find refuses with too many captures, is refused at the calling line
@@ -172,9 +172,9 @@ MoltenCodes Test: SKIP schemaKit.secrets: a Check of a secret at the root alloca
 
 | Test | Proves in the real client |
 |---|---|
-| `Registry:Get('schemaKit', 1) is the SchemaKit facade ...` | The facade the client loaded is API 1 with the eleven builders, `Seal`, `SetLimits`, `GetLimits`, `UNBOUNDED` and a `Schema` prototype carrying `Check`, `Assert`, `Apply` and `Describe`; `getmetatable` answers the names `SchemaKit.Schema` and `SchemaKit.Node`. |
+| `Registry:Get('schemaKit', 1) is the SchemaKit facade ...` | The facade the client loaded is API 1 with the eleven builders, `Seal`, `SetLimits`, `GetLimits`, `GetLimit` (revision 6), `UNBOUNDED` and a `Schema` prototype carrying `Check`, `Assert`, `Apply` and `Describe`; `getmetatable` answers the names `SchemaKit.Schema` and `SchemaKit.Node`. |
 | `the installed SchemaKit carries the revision ...` | Registry's selected revision and the facade's `REVISION` are both the committed manifest's, not an older or newer embedded copy. |
-| `GetLimits answers a fresh table ...` | `GetLimits` returns a new table per call, holding the defaults 16, 32, 32 and 1024, and `MAX_DEPTH` and `DEFAULT_ARRAY_MAX` publish 16 and 1024. The log gives the session's limits; a difference means another addon changed them. |
+| `GetLimits answers a fresh table ...` | `GetLimits` returns a new table per call, holding the defaults 16, 32, 32 and 1024, `MAX_DEPTH` and `DEFAULT_ARRAY_MAX` publish 16 and 1024, and `GetLimit` answers the same value for each of the four names. The log gives the session's limits; a difference means another addon changed them. |
 | `for 17 accepted patterns ...` | For every accepted pattern (anchors, sets holding `]` and `-`, `%f`, `%b`, a back-reference, lazy repetition, `%c`, a colour escape, and plain text such as `a)`), the `pattern` rule answers exactly what the client's own `string.find` answers on each of 11 subjects (empty, ASCII, a version, parentheses, UTF-8, control bytes), and no `Check` raises. The log gives one line of answers per pattern. |
 | `7 malformed patterns ...` | For `a[`, `a(b`, `a%`, `x%1`, `%a)`, `a%b` and `1%f[a`, the client's `string.find` answers a subject that never reaches the broken part and raises on one that does, which is why SchemaKit walks the pattern when the node is built: each is refused at this file's calling line. The log holds the client's own matcher messages. |
 | `a pattern of 32 captures ...` | The client's matcher has Lua 5.1's limit of 32 captures: a 32-capture pattern checks without raising, the client refuses 33 with `too many captures`, and SchemaKit refuses that pattern at the calling line. |
