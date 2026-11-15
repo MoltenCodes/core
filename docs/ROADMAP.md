@@ -4341,6 +4341,529 @@ Client facts used, read 2026-11-15 from Gethe/wow-ui-source
    scopes are new per enable.
 9. Status: recorded 2026-11-15 under core decisions 18 and 19; code follows.
 
+**commKit send fast path and cheaper checks** — an internal change to facade `CommKit`
+
+1. Package `commKit`, facade `CommKit`, API generation 1 (unchanged),
+   version 0.5.3, implementation revision 10 (from 0.5.2, revision 9).
+   Patch: no public surface is added or removed.
+2. Purpose: bring a send down towards AceComm-3.0 with ChatThrottleLib
+   without dropping a documented guarantee, following the runtime
+   performance diagnosis of 2026-11-15 (commKit, fixes F1 to F4, R1) and the
+   memory diagnosis (fix 8).
+   - F1. The forbidden-byte refusal (`CommKit.lua:4004`, pattern
+     `"[%z\n\r|]"` at `:144`) becomes four plain `string.find(text, byte,
+     1, true)` calls. Same refusal set, same reason code. Lua 5.1 tries a
+     character class at every start position; plain finds do not.
+   - F2. Send at once: a message of one chunk with no `onProgress` or
+     `onComplete`, sent while the driver is not running, no deferred flush
+     is under way, no driver job is scheduled and nothing is queued, is
+     handed to the client straight away. One bucket check (refill and cost
+     with one mode reading), then one client call under `pcall` with
+     `sendingOwnTraffic` set. No record, pipe, ring entry or driver run is
+     created, and the handle comes back already `sent`. When the bucket
+     cannot pay, the message takes the queue path as today. When the client
+     refuses or raises, the message is enqueued and then set aside
+     (throttled) or completed as failed, exactly as the driver would, so a
+     refusal never causes a second attempt within the same call.
+   - F3. Host reads: `SendAddonMessage` and `SendAddonMessageLogged` are
+     read once per driver run (not once per send and again per chunk), the
+     `Enum.SendAddonMessageResult.Success` value once at load (the client's
+     `Enum` is fixed for the session; the built-in fallback stays for a
+     client without it). A function another addon replaces between two runs
+     is used from the next run. One replaced from inside a hook on the send
+     function itself takes effect from the next run, not the next chunk.
+   - F4. Driver loop: the mode and rate are computed once per run, the
+     rotation walk is skipped while exactly one message is queued and its
+     pipe is still at the ring index served last (the guard that keeps the
+     throttle specs passing), and `assignStreamId` runs for a message's
+     first chunk only.
+   - R1, by the secret-probe rule (one rule for every Kit):
+     `issecretvalue` and `securecallfunction` are resolved once at load. A
+     function absent at load is looked up again on each call, so a probe
+     installed later is still honoured. That covers the three specs that
+     install the probe after load and that pure load-time caching broke.
+   - F5. Send handles drop `_schema`, which nothing reads (the handle
+     layout is 1 and has never changed). Absent means layout 1 to any
+     future migration. A fast-path handle has four fields and fits a
+     four-slot hash.
+   - Memory fix 8: the reassembly key-suffix tables (`WIRE.plain.keySuffix`,
+     `WIRE.logged.keySuffix`, 128 and 75 strings, `:162-168`) are built on
+     first use. Correction to the memory diagnosis, which says "first send": they are
+     read only by the receive path (`:3161`), so they are built on the
+     first chunk of a multi-chunk message received.
+   Kept, by the owner's decision: "nothing armed when idle". The reassembly
+   expiry timer is still cancelled when the last stream closes (R2, lazy
+   disarm, is not taken). Not in this record: R3 (a no-wipe stream-pool
+   reset, one isolation layer on receive), and anything that changes the
+   wire format or the request-table API.
+3. Dependencies: unchanged (registry API 2, signalKit, eventKit, poolKit,
+   timerKit as today). Host functions as today: `C_ChatInfo.SendAddonMessage`
+   and `SendAddonMessageLogged` (or the legacy globals), `Enum`,
+   `issecretvalue`, `securecallfunction`; no new client API.
+4. Surface: unchanged. Same errors at the same caller lines, same reasons,
+   handle states, statistics, limits and throttle behaviour. One observable
+   difference: a fast-path send is already `sent` when `Send` returns (today
+   the inline driver run gives the same state before `Send` returns, so
+   callers already see it). `SendHandle` fields are private; `_schema` was
+   never documented.
+5. Ownership: unchanged. The fast path counts `messagesQueued`,
+   `chunksSent`, `bytesSent` and the terminal statistic as the queued path
+   does. The suffix tables and the load-time host values are file-local and
+   rebuilt by each revision's load; nothing new goes into `_state`, so an
+   in-place upgrade from revision 9 takes over queues, pipes, streams and
+   timers as before. The main chunk holds 198 of 200 locals: the new
+   load-time values are fields of an existing file-local table, not new
+   locals.
+6. Performance and memory, host bench (`comm` workload), MoltenCodes ÷ Ace3
+   in the same run. Before: the unmodified tree. After: the diagnosis
+   prototype (F1 to F5, R1) with the expiry disarm restored, rerun
+   2026-11-15:
+
+   | Case | Before | After (expected) | B/op before → after (Ace3) |
+   |---|---:|---:|---|
+   | send-200 | 7.37× | 2.85× | 834 → 674 (104) |
+   | send-1000 | 5.50× | 2.59× | 2,493 → 2,493 (2,086) |
+   | send-8000 | 4.68× | 1.41× | 19,276 → 19,276 (21,679) |
+   | receive-200 | 3.20× | 2.98× | 225 (0) |
+   | receive-1000 | 3.53× | 3.47× | 2,014 (1,703) |
+   | receive-8000 | 2.52× | 2.39× | 30,188 (29,848) |
+
+   Calls per send-200: 121 → 63; per send-8000: 1,320 → 571 (Ace3: 647).
+   Resident memory: −19.2 KB (memory diagnosis, exact drop) for a session that
+   never receives a multi-chunk message.
+   The target "at or below ChatThrottleLib/AceComm cost" is met on calls
+   for large sends and on allocation for send-8000, not on time. What is
+   left on send-200 is the request validation (about 186 instructions:
+   unknown-key refusal and secret checks), the handle object and the
+   one-byte control header (wire format). Each buys a documented
+   guarantee. Receive stays above 2× without R2: the expiry timer cancel and
+   restart per multi-chunk message (about 130 instructions, 20 calls) is
+   the price of "nothing armed when idle".
+7. Tests, failing first where a spec can observe the change:
+   - the forbidden bytes NUL, LF, CR and `|` each refused with the same
+     reason, at the start, the middle and the last byte, and a 255-byte
+     clean message accepted;
+   - fast path: one-chunk send while idle sends once and returns a `sent`
+     handle with no record, pipe or driver run left behind; the same send
+     with a queued message, a running driver, a scheduled job, a deferred
+     flush, callbacks or two chunks takes the queue; an empty bucket takes
+     the queue; a client refusal enqueues and sets the pipe aside without a
+     second attempt; a raising client completes the handle as failed and
+     reports through the error handler once; statistics match the queued
+     path;
+   - host functions read once per run: a `C_ChatInfo` function replaced
+     between runs is used by the next run;
+   - the probe rule: a probe present at load is used, a probe installed
+     after load is honoured (the three existing specs keep passing),
+     `securecallfunction` likewise;
+   - the suffix tables absent after load and built by the first multi-chunk
+     receive, keys unchanged;
+   - the expiry timer still disarms when the last stream closes (existing
+     spec kept);
+   - `Bootstrap_spec:322` (one spare record) is rewritten for the fast path,
+     which leaves no spare record;
+   - in-place upgrade from revision 9 with a message queued and a stream
+     open: both finish under revision 10.
+   Client suite (`tests/client/MoltenCodesTest_CommKit/`, never run here):
+   a fast-path send on the real channel reports `sent`, and a three-chunk
+   message to the player still arrives whole.
+8. Docs: `docs/API.md` (the send path and when a message is sent at once,
+   cost notes), `INTERNALS.md` (the fast path, per-run host reads, the lazy
+   suffix tables, the handle without `_schema`), `CHANGELOG.md` 0.5.3,
+   `README.md` performance note, `tests/README.md`, the client suite's
+   `EXPECTED.md`.
+9. Status: recorded 2026-11-15 under core decisions 18 and 19; code follows.
+
+**localeKit fast unneeded-locale path** — an internal change to facade `LocaleKit`
+
+1. Package `localeKit`, facade `LocaleKit`, API generation 1 (unchanged),
+   version 0.1.7, implementation revision 5 (from 0.1.6, revision 4).
+   Patch.
+2. Purpose: make `NewLocale` for a locale the client does not need cost
+   what AceLocale-3.0's does, and win back the revision 4 regression
+   (123 → 180 ns), following the runtime performance diagnosis of
+   2026-11-15 (localeKit).
+   - Fast path: when `options` is `nil`, `NewLocale` asks the probe about
+     `addonName` and `locale`, then looks up `addons[addonName]` and
+     `CLIENT_LOCALE_CODES[locale]`. When both hit and the locale is not the
+     record's, it returns `nil` at once. `addons` holds only validated
+     non-empty names and `CLIENT_LOCALE_CODES` only valid codes, so the two
+     hits prove what the `type` checks proved. Everything else (a first
+     call for an addon, options given, a miss, a secret) takes today's full
+     path with its messages and levels.
+   - The secret-probe rule: `issecretvalue` resolved once at load, looked
+     up per call only when it was absent at load, in `refuseSecret`,
+     `validateLimit`, `NewLocale` and `Format`
+     (`LocaleKit.lua:294`, `:372`, `:819`, `:1014`).
+   - Decision 19b: `readMissing` (`:626-640`) drops its probe check on the
+     key. The client refuses a secret key at the index, before `__index`
+     runs (measured on Retail 12.1.0 b69933, docs/EMBEDDING.md), so
+     `L[secretKey]` raises at the caller's line and the branch never runs
+     in the client.
+3. Dependencies: unchanged (registry API 2).
+4. Surface: unchanged. Same messages and levels on every path. On a host
+   that lets a secret key reach `__index` (none in the client), the key is
+   now treated like any other key.
+5. Ownership: unchanged; the load-time probe is file-local. An in-place
+   upgrade from revision 4 keeps every addon record.
+6. Performance and memory, host bench `locale` workload, MoltenCodes ÷
+   AceLocale-3.0 in the same run (the diagnosis prototype):
+
+   | Case | Before | After (expected) |
+   |---|---:|---:|
+   | unneeded-locale | 190 / 52 ns = 3.64× | 82 / 53 ns = 1.56× |
+   | direct timing | 152 ns | 54 ns |
+   | with a probe present at load (the client case) | | 35 ns |
+
+   `lookup` is already at parity (1.02×). Not changed: first-miss (2.4×,
+   the missing-key set `MissingKeys` needs) and register (1.35×, per-string
+   validation). No memory change.
+7. Tests: the fast path returns `nil` for an unneeded locale of a known
+   addon; a first call, options, an unknown locale code, a non-string or
+   empty name, and a secret name or locale each take the full path with
+   today's messages at the caller's line; the probe rule (present at load,
+   installed after load: `SecretValues_spec:26` keeps passing); the
+   `SecretValues_spec:60` case for the defensive `readMissing` branch is
+   replaced by a client suite assertion; in-place upgrade from revision 4.
+   Client suite (`tests/client/MoltenCodesTest_LocaleKit/`, never run
+   here): `L[secretwrap("x")]` raises at the reading line, and nothing is
+   recorded as missing.
+8. Docs: `docs/API.md` (cost note, the secret-key read), `INTERNALS.md`,
+   `CHANGELOG.md` 0.1.7, `tests/README.md`, the client suite's
+   `EXPECTED.md`.
+9. Status: recorded 2026-11-15 under core decisions 18 and 19; code follows.
+
+**registry cheaper lookups** — an internal change to facade `Registry`
+
+1. Package `registry`, facade `Registry`, API generation 2 (unchanged),
+   version 0.6.11, implementation revision 16 (from 0.6.10, revision 15).
+   Patch. The file stays within its 1000-line budget.
+2. Purpose: bring `Get`, `Find` and `Register` lookups closer to LibStub's,
+   following the runtime performance diagnosis of 2026-11-15 (registry).
+   - The secret-probe rule: `issecretvalue` resolved once at load, looked
+     up per call only when it was absent at load, in `isSecret`
+     (`Registry.lua:74`) and `lookUp` (`:250`).
+   - Owner decision needed: plain indexing on the hit path. `lookUp` reads
+     the package bucket, the entry and its two fields with `rawget` and
+     checks each with `type`. Indexing them plainly is where the gain is
+     (item 6), but `docs/API.md` ("Lookup cost") promises that a hit "reads
+     the state with raw access". Plain indexing keeps every shape check
+     (the corruption checks stay, and `Corruption_spec` and `FastPath_spec`
+     pass). It drops that promise, though: a metatable that foreign code
+     puts on the shared state could then answer a missing bucket or field.
+     No form of plain indexing keeps the promise for less: a `getmetatable`
+     test on the three tables costs what the `rawget`s cost. Unless the
+     owner drops the sentence, the hit keeps raw reads and takes only the
+     probe rule.
+   - Decision 19b: none applies. The secret checks in Registry guard
+     arguments before they are compared or used as keys, so the error is
+     raised at the caller's line; the client's own refusal would raise
+     inside Registry. The sealed facade's `__newindex` (`:712`) asks about
+     the key it describes. Whether the client refuses a secret key on
+     assignment before `__newindex` runs has not been measured, so that
+     check stays.
+3. Dependencies: none (Registry is the root).
+4. Surface: unchanged. With plain indexing, the "Lookup cost" paragraph
+   loses "reads the state with raw access" on the hit. The bootstrap and
+   facade checks keep raw access in either case.
+5. Ownership: unchanged. The load-time probe is file-local to each
+   embedded copy. An in-place upgrade from revision 15 keeps every entry.
+6. Performance and memory, host bench `libraryRegistry` workload,
+   MoltenCodes ÷ LibStub in the same run (two runs on 2026-11-15, the
+   unmodified file against each variant):
+
+   | Case | Before | Probe rule only | Probe rule and plain indexing |
+   |---|---:|---:|---:|
+   | lookup | 3.54× | 3.35-3.38× | 2.53-2.60× |
+   | silent-miss | 5.00-5.05× | 4.84-4.97× | 4.02-4.09× |
+   | stale-copy | 1.77-1.83× | 1.74× | 1.44-1.45× |
+   | upgrade | 1.18-1.20× | 1.20× | 0.96-1.01× |
+   | new-library | 1.91-2.12× | 1.93-2.08× | 1.56-1.81× |
+
+   The target "Ace3/LibStub level" is not reached by either form: a hit
+   still runs the probe and the shape check, and a miss runs the name
+   pattern. No memory change. Registry lookups happen mostly at load. The
+   hot-path cost is the call-time lookups other Kits make, which those
+   Kits should resolve once.
+7. Tests: the probe rule (present at load, installed after load); a hit
+   with a malformed entry still raises the corruption error at the caller;
+   a secret name or API still refused before use as a key. With plain
+   indexing: the rewritten "Lookup cost" claim, and a spec that a bucket
+   carrying a foreign metatable is refused, not read through. In-place
+   upgrade from revision 15. Line budget: the file stays at or under 1000
+   lines. Client suite (`tests/client/MoltenCodesTest_Registry/`, never run
+   here): unchanged.
+8. Docs: `docs/API.md` ("Lookup cost"), `CHANGELOG.md` 0.6.11,
+   `tests/README.md`.
+9. Status: recorded 2026-11-15 under core decisions 18 and 19; code follows.
+
+**codecKit key descriptions, lazy tables and cheaper scans** — a fix and an internal change to facade `CodecKit`
+
+1. Package `codecKit`, facade `CodecKit`, API generation 1 (unchanged),
+   version 0.2.2, implementation revision 9 (from 0.2.1, revision 8).
+   Patch: a defect fix and internal changes, no public surface added.
+2. Purpose: fix the last live `tostring(key)` refusals, cut the memory held
+   by tables a session may never use, and bring encode and decode down to
+   AceSerializer-3.0's cost, following the architecture plan (item 3), the
+   memory diagnosis (fix 2) and the runtime performance diagnosis of
+   2026-11-15 (codecKit).
+   - Defect: `validateOptionKeys` (`CodecKit.lua:3530`) and
+     `validateLimitUpdate` (`:3672`) build their refusal with
+     `tostring(key)`. A table key with `__tostring` therefore runs the
+     caller's code inside CodecKit. Both take a `describeKey` that names a
+     string as itself, a number or boolean through `tostring`, a secret as
+     `<secret>` and anything else by type (`<table>`), the convention of
+     ApiKit, CacheKit, CompatKit and EventKit. A secret key is refused
+     first ("must not have a secret key"), before `known[key]` would raise
+     inside CodecKit, as BridgeKit's `SetLimits` does.
+   - Lazy tables: the DEFLATE tables (`:1523-1859`: length and distance
+     bases and extras, the fixed codes and decoders) are built on the
+     first Lua compression or decompression, never when the client's
+     native path serves it. The print tables `PRINT_CODES` and
+     `PRINT_DIGITS` (`:3033`) are built on the first print-safe encode or
+     decode. `BYTE_TEXT` and `ADDON_BYTE_TEXT` (`:739-746`) are built on
+     the first encode. After the first call the hot paths allocate nothing,
+     as today.
+   - A bounded clean-string cache: up to 256 strings of at most 32 bytes
+     that the addon-channel escape scan found clean, filled once and never
+     wiped. The secret check in `writeValue` (`:1069`) still runs before
+     the lookup.
+   - Plain finds: the escape and forbidden-byte scans over a whole frame
+     (`:3000` in `decodeForAddon`, `:3360` in the frame reader) and over a
+     string the cache does not hold (`:1101`) use one plain
+     `string.find(text, byte, start, true)` per byte (four for the
+     forbidden set, five with the escape byte) instead of a character
+     class, which Lua 5.1 tries at every start position. This one was not
+     in the diagnosis: it was measured for this record (item 6).
+   - Options in one pass: `readEncodeOptions` checks unknown keys,
+     `compress`, `channel` and `level` inline, in the same order and with
+     the same messages and levels, reading the probe once. That probe is
+     passed to `openWork`, which no longer reads it again. A handoff to a
+     raising helper is never a tail call, so errors stay at the caller's
+     line. The prototype's second copy of this reader for clients without
+     a probe is not taken: one reader is easier to keep right.
+   - The secret-probe rule: `readSecretProbe` (`:325`, read on every call
+     today) answers the probe resolved at load, and looks it up again only
+     when it was absent at load.
+3. Dependencies: unchanged (registry API 2, poolKit API 1, schedulerKit
+   API 1 for the asynchronous calls).
+4. Surface: unchanged methods, reasons and limits. Messages change only
+   for a non-string key: `options.<table> is not a recognised option` and
+   `limits.<table> is not a recognised limit`, not the address `tostring`
+   printed. A secret key is refused at the caller's line.
+5. Ownership: the lazily built tables and the cache are file-local and
+   built by each revision on first use. They hold constant data derived
+   from code, so a copy in `_state` would need validation for nothing, and
+   an upgraded revision builds its own once. Nothing is saved. The cache
+   holds up to about 14 KB of caller strings for the session. The main
+   chunk holds 180 of 200 locals; the lazy tables become fields of one
+   table each.
+6. Performance and memory, host bench `codec` workload (compression off,
+   addon channel), MoltenCodes ÷ AceSerializer-3.0 in the same run, rerun
+   2026-11-15. "Prototype" is the diagnosis prototype (cache, one-pass
+   options); "this record" adds the plain finds:
+
+   | Case | Before | Prototype | This record (expected) |
+   |---|---:|---:|---:|
+   | encode small | 1.59× | 1.28× | 1.28× |
+   | encode medium | 1.53× | 1.25× | 1.25× |
+   | encode large | 1.22× | 1.05× | 1.10× (noise) |
+   | decode small | 1.26× | 1.28× | 1.08× |
+   | decode medium | 1.15× | 1.12× | 0.95× |
+   | decode large | 0.87× | 0.87× | 0.76× |
+
+   The scan alone, clean text, best of 7: 32 B 237 → 96 ns, 200 B
+   1,383 → 113 ns, 2,000 B 14,269 → 296 ns, 20,000 B 134,965 → 1,565 ns.
+   Resident memory: −86.8 KB until used (memory diagnosis, exact drop:
+   DEFLATE 59.0 KB, byte text 18.5 KB, print 9.3 KB), up to +14 KB for the
+   cache. Decode reaches the target "below AceSerializer" on medium and
+   large, and small comes within 8%. Encode does not: the remaining fixed
+   cost per call is the facade check, the work record and the counting pass
+   the wire format needs (the count comes before the entries). Two more
+   items will be tried and kept only if they measure faster: a flat
+   `Encode` for the synchronous uncompressed case, and an inline common
+   path in `appendNumber`.
+7. Tests, failing first for the defect:
+   - a table key with a `__tostring` that counts its calls, given to
+     `Encode` options and to `SetLimits`: refused, the message names
+     `<table>`, the metamethod never ran; a function key likewise; a
+     secret key refused at the caller's line;
+   - lazy tables: absent after load, built by the first Lua compression,
+     decompression or print-safe call, not built when the native path
+     serves the call; round trips unchanged;
+   - output byte for byte equal to revision 8 on the bench payloads and on
+     strings holding each forbidden and escape byte at the first, middle
+     and last position;
+   - frames with a forbidden byte or a bad escape after the header refused
+     with the same reasons;
+   - the cache: as BridgeKit's, the cap respected, a secret refused before
+     the lookup;
+   - option errors in the same order, messages and levels (the ErrorLevels
+     specs);
+   - the probe rule: present at load, installed after load;
+   - in-place upgrade from revision 8, with an asynchronous job running.
+   Client suite (`tests/client/MoltenCodesTest_CodecKit/`, never run here):
+   a `SetLimits` with a table key carrying `__tostring` is refused without
+   running it.
+8. Docs: `docs/API.md` (key descriptions in the refusals, cost notes),
+   `INTERNALS.md` (lazy tables, the cache, plain finds, one-pass options),
+   `CHANGELOG.md` 0.2.2, `README.md` performance and memory notes,
+   `tests/README.md`, the client suite's `EXPECTED.md`.
+9. Status: recorded 2026-11-15 under core decisions 18 and 19; code follows.
+
+**bridgeKit AceSerializer speed and SettingsKit's character key** — an internal change to facade `BridgeKit`
+
+1. Package `bridgeKit`, facade `BridgeKit`, API generation 1 (unchanged),
+   version 0.5.2, implementation revision 7 (from 0.5.1, revision 6).
+   Patch: no public method is added or removed.
+2. Purpose: bring the AceSerializer-3.0 format closer to AceSerializer's
+   own cost, byte for byte the same output, following the runtime
+   performance diagnosis of 2026-11-15 (codecKit and bridgeKit, causes 1
+   and 4), and key the current character the way SettingsKit does.
+   - Writer: `append` (`BridgeKit.lua:648`) inlined on the string and
+     number paths, one bound check for the tag and its text together.
+   - Limits read as numbers once per call: `UNBOUNDED` becomes `math.huge`
+     in `serialize` and the reader's entry point, so `exceeds()` (`:616`)
+     is no longer called per value on either side.
+   - Reader: `nextToken()` (`:841`) inlined, one Lua call less per token.
+   - `unescape` (`:846`) without a closure per escaped string: one
+     replacement function for every call, its refusal flag an upvalue reset
+     per string (`string.gsub` cannot re-enter it).
+   - The open-table set `onPath` (`:701`) becomes a stack indexed by depth,
+     compared with `rawequal`, so it no longer rehashes as tables open and
+     close. The walk is bounded by `maxDepth`.
+   - A bounded clean-string cache: up to 256 strings of at most 32 bytes,
+     recorded only when the escape scan finds nothing to escape, filled
+     once and never wiped (a wipe-when-full version thrashed on the large
+     payload). The secret check still runs before the lookup.
+   - The secret-probe rule: `issecretvalue` resolved once at load (`:381`
+     reads it on every call today), looked up per call only when it was
+     absent at load.
+   - Character key: SettingsKit gains `SettingsKit:GetCharacterKey()`
+     (`UnitNameUnmodified("player")` first, then `UnitName("player")`, with
+     the realm) in its next revision. `noteCharacterKeys` (`:3694-3735`)
+     asks it through the SettingsKit facade that `Registry:Find("settingsKit",
+     1)` returns (as `:4258` already does for the profile-name limit) when
+     the method is present, and otherwise applies the same rule itself.
+     The `characterKeyMismatch` entry for "`UnitNameUnmodified` differs
+     from `UnitName`" then goes away: AceDB and SettingsKit key that
+     character alike. The report for clients whose interface lies between
+     16000 and 19999 (`char` and `realm` keyed by name and ruleset) stays.
+   Not in this record: plain finds for the escape scan (the pattern
+   `"[%c \094\126\127]"` covers 35 bytes, space among them), and the checks
+   that refuse a secret key met while walking a caller's table (`:576`,
+   `:1493`, `:1762`, `:2450`, `:2933`, `:4155`, `:4946`, `:5091`). Decision
+   19b covers a secret used to index a table, which the client refuses at
+   the read. It has not been measured that the client also refuses to store
+   a secret key, or never hands out a table holding one, so those checks
+   stay until a client suite shows it.
+3. Dependencies: unchanged. SettingsKit stays optional:
+   `GetCharacterKey` is used when the loaded SettingsKit has it.
+   `UnitNameUnmodified`, `UnitName` and `GetRealmName` are read as today
+   through `askClient`.
+4. Surface: unchanged methods, errors, limits and reasons. The preview
+   report no longer carries `characterKeyMismatch` for a character whose
+   unmodified name differs from its name. It still reports
+   `currentCharacterMissing` when the key SettingsKit will use is absent
+   from `char`, and keeps the ruleset `characterKeyMismatch` and
+   `realmKeyMismatch` entries.
+5. Ownership: the clean-string cache, the replacement function and the
+   depth stack are file-local and rebuilt by each revision's load; nothing
+   is saved and nothing new goes into `_state`. The cache holds up to about
+   14 KB of caller strings for the session (Lua 5.1 never collects strings
+   from weak tables, so the size cap is the bound). An in-place upgrade from
+   revision 6 needs no migration.
+6. Performance and memory, host bench, MoltenCodes ÷ Ace3 in the same run
+   (the diagnosis prototype, `aceSerializer` workload; output compared
+   byte for byte with `cmp`):
+
+   | Case | Before | After (expected) |
+   |---|---:|---:|
+   | encode small / medium / large | 1.78 / 1.75 / 1.73× | 1.37 / 1.27 / 1.37× |
+   | decode small / medium / large | 1.50 / 1.40 / 1.37× | 1.28 / 1.16 / 1.15× |
+
+   Decode allocation: small 832 → 720 B, medium 26,110 → 20,510 B, large
+   93,919 → 71,459 B (Ace3: 600, 20,384, 71,050 B). Held memory: up to
+   +14 KB for the cache. The target "below AceSerializer" is not reached by
+   any measured change. What remains is the documented work AceSerializer
+   does not do: limits, cycle refusal, secret checks and the re-entrancy
+   guard.
+7. Tests:
+   - byte-identical output against the current revision for payloads with
+     escapes, floats, negatives, 2^40, `math.huge` and nested tables;
+   - each limit at its bound and one past it, bounded and `UNBOUNDED`, on
+     both sides;
+   - a cycle refused at every depth up to `maxDepth`, and a table met twice
+     on different branches accepted;
+   - every escape and every refused escape through the closure-free
+     `unescape`, including a refused one followed by a valid string (the
+     flag resets);
+   - the cache: a clean short string written twice, a string that needs
+     escaping never recorded, strings over 32 bytes never recorded, the
+     cap respected, a secret refused before the lookup;
+   - the probe rule: present at load, installed after load;
+   - character key: `GetCharacterKey` used when SettingsKit has it; the
+     same key without it; no `characterKeyMismatch` for an unmodified name
+     that differs; the ruleset entries unchanged; `currentCharacterMissing`
+     against the new key;
+   - in-place upgrade from revision 6.
+   Client suite (`tests/client/MoltenCodesTest_BridgeKit/`, never run
+   here): the preview names the current character under the key
+   `UnitNameUnmodified` gives.
+8. Docs: `docs/API.md` (the preview's character-key paragraph, the
+   AceSerializer cost notes), `INTERNALS.md` (the inlined writer and
+   reader, the cache, the depth stack), `CHANGELOG.md` 0.5.2, `README.md`
+   performance note, `tests/README.md`, the client suite's `EXPECTED.md`.
+   `docs/BRIDGE_KIT_DESIGN.md` section 7.3 ("Scope by scope", the `char`
+   row) follows the new rule; that file is outside the package, so its text
+   is supplied for the owner to apply.
+9. Status: recorded 2026-11-15 under core decisions 18 and 19; code follows.
+
+**clientKit probe fallback and value descriptions** — a fix to facade `ClientKit`
+
+1. Package `clientKit`, facade `ClientKit`, API generation 1 (unchanged),
+   version 0.3.2, implementation revision 8 (from 0.3.1, revision 7).
+   Patch.
+2. Purpose: bring ClientKit to the secret-probe rule every Kit follows, and
+   fix a `tostring` on caller values.
+   - The secret-probe rule: `bindHostFunctions` (`ClientKit.lua:703`)
+     already resolves `issecretvalue` at load, but without a fallback. When
+     it was absent at load, `IsSecret`, `validateNotSecret` and
+     `describeValue` (`:751`, `:779`, `:874`) now look it up on each call,
+     so a probe installed later is honoured. `Has("secretValues")` stays
+     the load-time answer it documents.
+   - Defect: `describeValue` (`:750`) ends in `tostring(value)`, so a table
+     with `__tostring` given as a capability name (`Has`), a limit key
+     (`SetLimits`, `:1716`) or a key written to a manifest snapshot
+     (`:1067`) runs the caller's code inside ClientKit. It now names a
+     table, function, thread or userdata by type (`<table>`), and keeps
+     `%q` for strings and `tostring` for numbers, booleans and `nil`.
+   - Decision 19b: none applies. ClientKit's secret checks guard arguments
+     and the client's own answers. The manifest snapshot's `__newindex`
+     describes the key it refuses, and that check stays until a client
+     suite shows that a secret key is refused on assignment before
+     `__newindex` runs.
+3. Dependencies: unchanged (registry API 2).
+4. Surface: unchanged methods. Messages that named a table by its address
+   now name it `<table>`. `IsSecret` honours a probe installed after load.
+5. Ownership: unchanged; the host table in state keeps the load-time
+   binding. An in-place upgrade from revision 7 rebinds as today.
+6. Performance and memory: with the probe present at load (every client
+   with secret values), nothing changes. Without it, each check makes one
+   `rawget(_G)` more, about 14 ns. No memory change.
+7. Tests, failing first for the defect: a `__tostring` table given to
+   `Has`, as a `SetLimits` key and as a manifest field name, each refused
+   naming `<table>` with the metamethod never run; the probe installed
+   after load honoured by `IsSecret`; in-place upgrade from revision 7.
+   Client suite (`tests/client/MoltenCodesTest_ClientKit/`, never run
+   here): assigning `manifest[secretwrap("x")] = 1` either raises at the
+   assigning line before `__newindex` runs or is refused with
+   `<secret>` (the suite records which, for decision 19b).
+8. Docs: `docs/API.md` (value descriptions in errors, the probe rule),
+   `CHANGELOG.md` 0.3.2, `tests/README.md`, the client suite's
+   `EXPECTED.md`.
+9. Status: recorded 2026-11-15 under core decisions 18 and 19; code follows.
+
 #### Package N — bridgeKit, migrating from Ace3
 
 Decided 2026-09-25 with the project owner, from the external review that
