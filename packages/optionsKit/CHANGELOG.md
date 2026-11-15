@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.6.1 — 2026-11-15
+
+- Fixed: `ProfileOptions` kept returning a group without the spec-profile selects after SettingsKit gained spec profiles. A group built while SettingsKit (or its database) had no spec-profile methods was cached for the database and returned by every later call, so an in-place upgrade of SettingsKit to revision 11 or later in the same session (a newer copy embedded by an addon that loads afterwards) never reached the options screen. The cache now replaces such a link once the database and the facade offer the methods; the older group keeps working wherever it is held.
+- Implementation revision 12. No state changed: an upgrade over revision 11 keeps every tree and cached group.
+- Docs: the client suite's facade test checks `CHILD_GROUPS` and names the Tree prototype's eleven methods (it said ten and checked eleven); `EXPECTED.md` no longer gives revision 8 as the committed one.
+- Specs: one more (`SpecProfileOptions_spec.lua`, 203 in all), failing without the fix.
+
 ## 0.6.0 — 2026-11-15
 
 - Added: `ProfileOptions` carries one profile choice per specialization, LibDualSpec-1.0's `EnhanceOptions` counterpart over SettingsKit's spec profiles (SettingsKit 0.4.0, revision 11): a `specs` description and the selects `spec1` to `spec8`, each shown while the character has more than one spec index and at least that many, labelled with the specialization's name (or `talent group <n>` on clients without specializations), offering every profile and `None`, and calling `db:SetSpecProfile` / `db:GetSpecProfile`. They are added only when the database and the SettingsKit facade offer those methods and `GetSpecIndex`; an older SettingsKit gets the group as before. Six new `localize` keys (`specs.intro`, `spec.name`, `spec.desc`, `spec.none`, `spec.specialization`, `spec.talentGroup`).

@@ -88,6 +88,22 @@ What each piece promises:
 
 See [`docs/API.md`](docs/API.md) for every kind's fields and schema, the `Describe` shape and how a renderer consumes it, and [`docs/INTERNALS.md`](docs/INTERNALS.md) for the index, the sorted arrays, the shared schemas and the reused `info` tables.
 
+## Migrating from AceConfig-3.0 and AceDBOptions-3.0
+
+| Ace3 | OptionsKit |
+|---|---|
+| `AceConfig:RegisterOptionsTable(name, options)` | `OptionsKit:Define(addonName, tree, { db = db })`: the tree is checked and copied at your line. |
+| `AceConfigRegistry:GetOptionsTable(name)` | `OptionsKit:Get(addonName)` returns the tree; `tree:Describe()` gives a renderer its plain description. |
+| `AceConfigRegistry:NotifyChange(name)` | `tree:OnChange` fires on every `Set` and `Reset` and on profile changes; a WidgetKit rendering redraws with `rendering:Refresh()`. |
+| `AceConfigDialog:Open(name)`, `AddToBlizOptions` | WidgetKit's `RenderOptions` and PanelKit, which read the tree. |
+| `AceConfigCmd` | CommandKit's `BindOptions`. |
+| `get = "Method"`, `handler`, inherited `get`/`set` | A function or `bind = "profile.path"` on each value option; `disabled` and `hidden` on a group still apply below it. |
+| `childGroups = "tab"`, `"tree"`, `"select"` | The same hint on a `group` (revision 10); WidgetKit draws it. |
+| `AceDBOptions:GetOptionsTable(db)` | `OptionsKit:ProfileOptions(db)`, one cached group per database and options. |
+| Converting an existing AceConfig table | BridgeKit's `DefineAceConfig`. |
+
+The full guide, with every difference, is in [`docs/MIGRATING_FROM_ACE3.md`](../../docs/MIGRATING_FROM_ACE3.md).
+
 ## Migrating from LibDualSpec-1.0's options
 
 | LibDualSpec-1.0 | OptionsKit |

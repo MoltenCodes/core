@@ -47,7 +47,7 @@
 
 local PACKAGE_NAME = "optionsKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 11
+local IMPLEMENTATION_REVISION = 12
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_SCHEMAKIT_API = 1
 local REQUIRED_SIGNALKIT_API = 1
@@ -2710,6 +2710,9 @@ local function findCachedProfileLink(db, name, order, description, localize)
     -- A link an older revision built has no `specProfiles` field and no spec
     -- selects; it is replaced, as a link with other options is.
     and type(link.specProfiles) == "boolean"
+    -- A link built while SettingsKit had no spec profiles is replaced once
+    -- an in-place upgrade of SettingsKit added them (revision 12).
+    and (link.specProfiles or not supportsSpecProfiles(link))
   then
     return link
   end

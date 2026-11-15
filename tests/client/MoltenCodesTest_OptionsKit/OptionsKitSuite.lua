@@ -572,7 +572,7 @@ end
 local facade = newSuite("facade")
 
 facade:Test(
-  "Registry:Get('optionsKit', 1) is the OptionsKit facade with API 1, Define, Get, Undefine, ProfileOptions, MAX_OPTIONS 1024, MAX_DEPTH 8, UNBOUNDED and a Tree prototype with its ten methods",
+  "Registry:Get('optionsKit', 1) is the OptionsKit facade with API 1, Define, Get, Undefine, ProfileOptions, MAX_OPTIONS 1024, MAX_DEPTH 8, UNBOUNDED, CHILD_GROUPS and a Tree prototype with its eleven methods",
   function(ctx)
     ctx:Expect(type(OptionsKit)):ToBe("table")
     ctx:Expect(rawget(OptionsKit, "API")):ToBe(OPTIONS_KIT_API)
@@ -582,6 +582,11 @@ facade:Test(
     ctx:Expect(rawget(OptionsKit, "MAX_OPTIONS")):ToBe(1024)
     ctx:Expect(rawget(OptionsKit, "MAX_DEPTH")):ToBe(8)
     ctx:Expect(type(rawget(OptionsKit, "UNBOUNDED"))):ToBe("table")
+    local childGroups = rawget(OptionsKit, "CHILD_GROUPS")
+    ctx:Expect(type(childGroups)):ToBe("table")
+    for _, layout in ipairs({ "tab", "tree", "select" }) do
+      ctx:Expect(rawget(childGroups, layout)):ToBe(true)
+    end
     local prototype = rawget(OptionsKit, "Tree")
     ctx:Expect(type(prototype)):ToBe("table")
     for _, methodName in ipairs({

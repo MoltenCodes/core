@@ -276,6 +276,26 @@ describe("OptionsKit ProfileOptions spec profiles", function()
     assert.is_not_nil(group.args.current)
   end)
 
+  it("adds the selects once SettingsKit gains spec profiles after the group was cached", function()
+    local OptionsKit, db, SettingsKit = openDatabase({
+      projectId = 1,
+      specialization = 1,
+      classCount = 3,
+    })
+    -- SettingsKit revision 10, before an in-place upgrade to revision 11:
+    -- neither the facade nor the database offers spec profiles.
+    local getSpecIndex = rawget(SettingsKit, "GetSpecIndex")
+    rawset(SettingsKit, "GetSpecIndex", nil)
+    local first = OptionsKit:ProfileOptions(db)
+    assert.is_nil(first.args.spec1)
+    rawset(SettingsKit, "GetSpecIndex", getSpecIndex)
+
+    local second = OptionsKit:ProfileOptions(db)
+    assert.are_not.equal(first, second)
+    assert.is_table(second.args.spec1)
+    assert.are.equal(second, OptionsKit:ProfileOptions(db))
+  end)
+
   it("replaces a cached group an older revision built", function()
     local OptionsKit, db = openDatabase({ projectId = 1, specialization = 1, classCount = 3 })
     local first = OptionsKit:ProfileOptions(db)
