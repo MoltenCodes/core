@@ -148,6 +148,85 @@ function BridgeKitTestEnv.Snapshot(value)
   return copy
 end
 
+---Register a stand-in for CommKit API 1 with raw addon messages (design
+---section 13.1: the channel specs run against a P1 stand-in): its scopes
+---record every raw send and hand delivered messages to their raw
+---registrations in registration order. Call after `NewPackage`.
+---@param revision integer? the stand-in's revision; 8 by default
+---@return table commKit `{ NewScope, Deliver, sent, Registry }`
+function BridgeKitTestEnv.InstallCommKitStandIn(revision)
+  -- selene: allow(global_usage)
+  local Registry = rawget(_G, "MoltenCodes").Registries[2]
+  local CommKit = assert(Registry:Register("commKit", 1, revision or 8))
+  local stand = { sent = {}, registrations = {} }
+  local Scope = {}
+  rawset(CommKit, "API", 1)
+  rawset(CommKit, "REVISION", revision or 8)
+  rawset(CommKit, "Priority", { ALERT = "ALERT", NORMAL = "NORMAL", BULK = "BULK" })
+  rawset(CommKit, "Scope", Scope)
+
+  function Scope.RegisterRaw(scope, prefix, callback)
+    if scope.closed then
+      return nil, "closed"
+    end
+    local connection = { connected = true, prefix = prefix, callback = callback }
+    function connection.IsConnected(self)
+      return self.connected and not scope.closed
+    end
+    function connection.Disconnect(self)
+      local was = self.connected
+      self.connected = false
+      return was
+    end
+    stand.registrations[#stand.registrations + 1] = connection
+    return connection
+  end
+
+  function Scope.SendRaw(scope, request)
+    if type(request.distribution) ~= "string" then
+      error("CommKit.Scope:SendRaw request.distribution must be a string", 2)
+    end
+    if scope.closed then
+      return nil, "closed"
+    end
+    local handle = { request = request }
+    stand.sent[#stand.sent + 1] = request
+    return handle
+  end
+
+  ---A new open scope.
+  function stand.NewScope()
+    local scope = setmetatable({ closed = false }, { __index = Scope })
+    function scope.Close(self)
+      self.closed = true
+    end
+    return scope
+  end
+
+  ---Deliver one addon message to every live raw registration on its prefix.
+  function stand.Deliver(prefix, text, distribution, sender)
+    for _, connection in ipairs(stand.registrations) do
+      if connection.prefix == prefix and connection:IsConnected() then
+        connection.callback(prefix, text, distribution, sender)
+      end
+    end
+  end
+
+  ---Every part sent, flattened, in order.
+  function stand.SentParts()
+    local parts = {}
+    for _, request in ipairs(stand.sent) do
+      for _, part in ipairs(request.parts) do
+        parts[#parts + 1] = part
+      end
+    end
+    return parts
+  end
+
+  stand.Registry = Registry
+  return stand
+end
+
 ---Make `issecretvalue` report exactly the given values as secret.
 ---@param ... any
 function BridgeKitTestEnv.MarkSecret(...)

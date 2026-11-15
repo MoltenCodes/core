@@ -27,6 +27,12 @@ describe("BridgeKit limits", function()
       maxListValues = 4096,
       maxReportEntries = 1024,
       maxImportEntries = 65536,
+      maxAceStreams = 64,
+      maxAceStreamsPerSender = 4,
+      maxAceStreamBytes = 65536,
+      maxAceSpoolBytes = 1048576,
+      aceStreamTimeout = 30,
+      maxDropReportSenders = 64,
     }, BridgeKit:GetLimits())
   end)
 
