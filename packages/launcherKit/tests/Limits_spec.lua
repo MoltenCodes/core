@@ -56,4 +56,12 @@ describe("LauncherKit limits", function()
     end)
     assert.are.equal(256, LauncherKit:GetLimits().maxLaunchers)
   end)
+
+  it("reads only the fields of the limits table itself, never through its metatable", function()
+    -- `pairs` sees no field on this table, so a value its `__index` hands out
+    -- must not be taken either: it was never checked against the ceiling.
+    local inherited = setmetatable({}, { __index = { maxLaunchers = 100000 } })
+    LauncherKit:SetLimits(inherited)
+    assert.are.equal(64, LauncherKit:GetLimits().maxLaunchers)
+  end)
 end)

@@ -157,11 +157,15 @@ facade:Test(
     ctx:Expect(type(readHost("Minimap"))):ToBe("table")
     ctx:Expect(type(readHost("GameTooltip"))):ToBe("table")
     ctx:Expect(type(readHost("GetCursorPosition"))):ToBe("function")
+    -- Another addon defines `GetMinimapShape`, so it is called protected, as
+    -- LauncherKit calls it.
     local getShape = readHost("GetMinimapShape")
-    ctx:Log(
-      "GetMinimapShape: "
-        .. (type(getShape) == "function" and tostring(getShape()) or "absent (round)")
-    )
+    local shape = "absent (round)"
+    if type(getShape) == "function" then
+      local answered, answer = pcall(getShape)
+      shape = answered and tostring(answer) or ("raised: " .. tostring(answer))
+    end
+    ctx:Log("GetMinimapShape: " .. shape)
     ctx:Log("AddonCompartmentFrame: " .. type(readHost("AddonCompartmentFrame")))
   end
 )
@@ -249,8 +253,12 @@ elseif not Harness:CanMakeSecrets() then
 else
   secrets:Test(SECRET_TEST, function(ctx)
     local secret = secretWrap("hidden")
+    -- Not a tail call: `return LauncherKit:Register(...)` would drop this
+    -- function's frame in Lua 5.1, and the error, raised at the caller's
+    -- level, would then carry no file and line to look for below.
     local succeeded, message = pcall(function()
-      return LauncherKit:Register(secret, {})
+      local launcher = LauncherKit:Register(secret, {})
+      return launcher
     end)
     ctx:Expect(succeeded):ToBe(false)
     ctx:Log("client message: " .. tostring(message))

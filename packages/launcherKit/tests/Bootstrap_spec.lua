@@ -71,6 +71,35 @@ describe("LauncherKit bootstrap", function()
     end
   )
 
+  it("upgrades a revision 1 copy in place to this revision", function()
+    -- Revision 2 changed only how SetLimits reads its argument; the state
+    -- schema is the same, so a revision 1 state is taken over as it is.
+    TestEnv.Reset()
+    TestEnv.InstallWowApi()
+    local Registry = require("Registry")
+    require("SignalKit")
+    local BrokerKit = require("BrokerKit")
+    local createFrame = TestEnv.GetGlobal("CreateFrame")
+    local minimap = createFrame("Frame", "Minimap", createFrame("Frame", "UIParent"))
+    minimap:SetSize(TestEnv.MINIMAP_SIZE, TestEnv.MINIMAP_SIZE)
+    local old = TestEnv.LoadRevision(1)
+    assert.are.equal(1, old.REVISION)
+    BrokerKit:New("MyAddon", { icon = 1 })
+    local storage = { minimapPos = 0 }
+    local launcher = old:Register("MyAddon", storage)
+
+    package.loaded["LauncherKit"] = nil
+    local current = require("LauncherKit")
+    assert.are.equal(old, current)
+    assert.are.equal(2, current.REVISION)
+    assert.are.equal(2, select(2, Registry:Get("launcherKit", 1)))
+    assert.are.equal(launcher, current:Get("MyAddon"))
+    launcher:Hide()
+    assert.is_true(storage.hide)
+    current:SetLimits(setmetatable({}, { __index = { maxLaunchers = 100000 } }))
+    assert.are.equal(64, current:GetLimits().maxLaunchers)
+  end)
+
   it("refuses shared state whose limit holds an invalid value", function()
     local LauncherKit = TestEnv.NewPackage()
     rawset(LauncherKit._state.limits, "maxLaunchers", 257)

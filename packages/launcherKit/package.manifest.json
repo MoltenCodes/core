@@ -2,10 +2,10 @@
   "name": "launcherKit",
   "displayName": "LauncherKit",
   "description": "Minimap buttons for BrokerKit objects in World of Warcraft addons: dragged round the minimap's edge in any shape, state in LibDBIcon's field names, and Retail's AddonCompartment.",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "license": "MIT",
   "api": 1,
-  "revision": 1,
+  "revision": 2,
   "dependencies": {
     "registry": {
       "api": 2

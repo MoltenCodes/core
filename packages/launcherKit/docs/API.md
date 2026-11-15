@@ -2,7 +2,7 @@
 
 LauncherKit API generation **1** puts BrokerKit objects on the minimap as buttons, keeps their position, hidden and locked state in a table the addon owns, in LibDBIcon-1.0's field names, and lists them in Retail's addon compartment on request.
 
-Implementation revision: **1**.
+Implementation revision: **2**.
 
 ## Loading
 
@@ -48,7 +48,7 @@ LauncherKit reads these host globals at call time, never at load:
 | `AddToCompartment(objectName)` | List the object in Retail's addon compartment: `true`, or `nil, "unavailable"` / `nil, "already"`. |
 | `SetLimits(limits)` / `GetLimits()` | Change or read `maxLaunchers`; `GetLimits` returns a fresh table. |
 | `MAX_LAUNCHERS`, `LAUNCHERS_CEILING`, `DEFAULT_ANGLE` | `64`, `256`, `225`. |
-| `API`, `REVISION` | `1`, `1`. |
+| `API`, `REVISION` | `1`, `2`. |
 
 A launcher:
 
@@ -77,7 +77,16 @@ LauncherKit never writes any other field and never writes these on its own. A st
 
 `Register` creates one `Button` on `Minimap`: 31 by 31 pixels, strata `MEDIUM`, level 8, the client's tracking-button border and highlight, the object's icon 20 pixels wide, and the scripts below. The button exists until logout, because the client never frees a frame. It is placed at `minimapPos` and shown unless `hide` is `true`.
 
-`Register` raises at the caller, and creates nothing, when `objectName` is not a non-empty string or is a secret, when BrokerKit has no object of that name (`LauncherKit:Register has no BrokerKit object named Missing; create it with BrokerKit:New first`), when `storage` is neither a table nor a function, when the object already has a launcher, when `maxLaunchers` launchers exist, and without `Minimap` or `CreateFrame`.
+`Register` raises at the caller, and creates nothing, when:
+
+- `objectName` is a secret (`LauncherKit:Register objectName must not be a secret value`) or not a non-empty string (`LauncherKit:Register objectName must be a non-empty string`);
+- BrokerKit has no object of that name: `LauncherKit:Register has no BrokerKit object named Missing; create it with BrokerKit:New first`;
+- `storage` is a secret, or neither a table nor a function: `LauncherKit:Register storage must be a table or a function returning one`;
+- the object already has a launcher: `LauncherKit:Register MyAddon already has a launcher`;
+- `maxLaunchers` launchers exist: `LauncherKit:Register holds at most 64 launchers; raise maxLaunchers with LauncherKit:SetLimits`;
+- the host has no `Minimap` or `CreateFrame`.
+
+`LauncherKit:Get(objectName)` refuses the same two kinds of name with `LauncherKit:Get objectName ...`; it answers `nil` for an object without a launcher, existing or not.
 
 ## Placement
 
@@ -101,13 +110,13 @@ On a round quarter the button follows the circle (an ellipse on a minimap that i
 | `OnEnter` | With `OnTooltipShow`: `GameTooltip:SetOwner(button, "ANCHOR_LEFT")`, `OnTooltipShow(GameTooltip)`, `GameTooltip:Show()`. Otherwise the object's `OnEnter(button)`. Nothing while the button is dragged. |
 | `OnLeave` | Hides `GameTooltip` when this button owns it, then the object's `OnLeave(button)`. |
 | `OnDragStart` (left button) | Unless the storage says `lock = true`: hides its tooltip and follows the cursor every frame (`OnUpdate`). |
-| `OnDragStop` | Stops following the cursor and writes the angle the cursor reached to `minimapPos`. |
+| `OnDragStop` | Stops following the cursor and writes the angle the cursor reached to `minimapPos`; a drag the cursor never moved writes nothing. |
 
 Every object callback runs protected: one that raises is reported through `geterrorhandler`, never raised into the client. A cursor position or minimap centre the client answers as a secret is ignored for that frame. A change to the object's `icon`, `iconCoords`, `iconR`, `iconG` or `iconB` redraws the icon at once: the texture, the texture coordinates (all four, default `0, 1, 0, 1`) and the vertex colour (all three, default white).
 
 ## `LauncherKit:AddToCompartment(objectName)`
 
-Calls `AddonCompartmentFrame:RegisterAddon` with the object's `label` (its name when it has none), its `icon` when it is a string or a number, a click that calls the object's `OnClick(AddonCompartmentFrame, mouseButton)`, and a hover that shows its `OnTooltipShow` in `GameTooltip`. The entry draws the label and the icon as they were at that call. Blizzard has no way to remove an entry, so it stays until logout, and a second call for the same object answers `nil, "already"`. `objectName` is checked as in `Register`.
+Calls `AddonCompartmentFrame:RegisterAddon` with the table Blizzard documents for a custom entry: `text`, the object's `label` (its name when it has none); `icon`, the object's `icon` when it is a string or a number; `func`, a click that calls the object's `OnClick(AddonCompartmentFrame, mouseButton)`; and `funcOnEnter` / `funcOnLeave`, a hover that shows its `OnTooltipShow` in `GameTooltip`, anchored `ANCHOR_RIGHT` to the entry, and hides it again. Blizzard calls `func(data, menuInputData, menu)` and reads the mouse button from `menuInputData.buttonName` (Blizzard_Minimap/Mainline/AddonCompartment.lua, branch `live`, read 2026-11-15); LauncherKit passes that on, or `"LeftButton"` when the input table is missing. Blizzard sorts the entries by their text and shows an icon string that names an atlas as that atlas, any other as a texture. The entry draws the label and the icon as they were at that call. Blizzard has no way to remove an entry, so it stays until logout, and a second call for the same object answers `nil, "already"`. `objectName` is checked as in `Register`.
 
 ## Secret values
 
@@ -119,7 +128,7 @@ Every argument is checked with `issecretvalue` before anything else touches it a
 |---|---|---|---|---|
 | `maxLaunchers`, launchers in the session | `64` | `LauncherKit:SetLimits({ maxLaunchers = n })` | no | `256`: each launcher is a button frame the session keeps until logout |
 
-`SetLimits` accepts `maxLaunchers` alone and raises at the caller for any other field, a secret, or a value that is not an integer from 1 to 256, before changing anything. Lowering it keeps every launcher and refuses the next `Register`. The limit is shared by every addon in the session.
+`SetLimits` accepts `maxLaunchers` alone and raises at the caller, before changing anything, for a limits value that is not a table (`LauncherKit:SetLimits limits must be a table`), any other field (`LauncherKit:SetLimits limits holds an unknown field; it accepts maxLaunchers`), a secret (`LauncherKit:SetLimits limits.maxLaunchers must not be a secret value`), or a value that is not an integer from 1 to 256 (`LauncherKit:SetLimits limits.maxLaunchers must be an integer from 1 to 256`). Only the table's own fields are read: a value its metatable's `__index` would answer is ignored (revision 2). Lowering it keeps every launcher and refuses the next `Register`. The limit is shared by every addon in the session.
 
 ## Error behaviour
 

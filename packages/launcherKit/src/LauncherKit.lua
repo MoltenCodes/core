@@ -49,7 +49,7 @@
 
 local PACKAGE_NAME = "launcherKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 1
+local IMPLEMENTATION_REVISION = 2
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_BROKERKIT_API = 1
 local STATE_SCHEMA = 1
@@ -1008,8 +1008,11 @@ local function packageSetLimits(self, limits)
       )
     end
   end
-  if type(limits.maxLaunchers) ~= "nil" then
-    rawset(sharedLimits, "maxLaunchers", limits.maxLaunchers)
+  -- `rawget`, as the loop above read the fields: a value a metatable's
+  -- `__index` hands out was never checked and must not become the limit.
+  local maxLaunchers = rawget(limits, "maxLaunchers")
+  if type(maxLaunchers) ~= "nil" then
+    rawset(sharedLimits, "maxLaunchers", maxLaunchers)
   end
 end
 
