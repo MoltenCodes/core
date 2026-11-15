@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.6.6 — 2026-11-15
+
+- Fixed the bootstrap catch-up running `OnReady` before it re-read the combat state. When a later embedded copy found that `PLAYER_LOGIN` had passed while the login watcher was missing, it promoted the loaded addons to `ready` first and reconciled combat afterwards, so their `OnReady` callbacks saw the stale `IsInCombat()` that 0.6.5 fixed for `PLAYER_LOGIN` itself; and when an `OnReady` raised, the reconciliation was skipped altogether, leaving the combat flag wrong until the next combat transition. The catch-up now follows the login handler's order: combat is reconciled first and always, and a failure there is re-raised ahead of a ready-callback failure. Two regression specs in `Bootstrap_spec.lua`.
+- Removed a `type(state) == "table"` test in front of the revision-12 limit seeding that could not fail (the state was validated just before); its body runs unchanged.
+- `docs/API.md` lists revisions 14 and 15 among those whose host watchers an upgrade replaces, and the source comment on the schema-3 upgrade names revisions 7 to 15 instead of 7 to 11.
+- Implementation revision 16. The state schema stays 3, and an in-place upgrade from revision 15 keeps facade, state and instances (`Bootstrap_spec.lua`, `OwnedScopes_spec.lua`). `LifecycleKit` API generation 1 is unchanged.
+
 ## 0.6.5 — 2026-09-25
 
 - Fixed `IsInCombat()` answering the state from load time inside `OnReady` at `PLAYER_LOGIN`. The login handler promoted every loaded addon to `ready`, running its `OnReady` callbacks and, through ModuleKit, every module `OnEnable`, before it re-read `InCombatLockdown()`, so an addon loaded out of combat that logged in during combat (a `/reload` in combat) was told it was not in combat, and a `WhenOutOfCombat` call made there ran at once; the reverse held for a combat that ended unobserved. The combat state is now reconciled first. The `OnCombatStart` / `OnCombatEnd` notices and queued calls the reconciliation implies therefore run before the `OnReady` callbacks, and a failure among them is re-raised ahead of a ready-callback failure. Reported by a consumer addon. Three regression specs in `CombatGate_spec.lua` fail against 0.6.4.

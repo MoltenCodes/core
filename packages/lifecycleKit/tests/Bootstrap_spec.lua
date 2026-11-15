@@ -4,7 +4,7 @@ local expectErrorContaining = TestEnv.expectErrorContaining
 
 ---The implementation revision `src/LifecycleKit.lua` carries; `Manifest_spec.lua`
 ---pins the same number against `package.manifest.json`.
-local CURRENT_REVISION = 15
+local CURRENT_REVISION = 16
 
 -- Lua 5.1 leaves a sentinel in `package.loaded` when a `require` raises, so a
 -- second `require` of the same module reports "loop or previous error loading
@@ -501,5 +501,55 @@ describe("LifecycleKit package bootstrap", function()
     assert.are.equal(1, starts)
     TestEnv.LeaveCombat()
     assert.is_false(LifecycleKit:IsInCombat())
+  end)
+
+  ---Load a package whose login and combat watchers missed `PLAYER_LOGIN` and
+  ---the start of combat, with one loaded addon whose `OnReady` records what
+  ---`IsInCombat()` answers and, when `readyRaises` is set, then raises.
+  local function packageThatMissedLoginInCombat(readyRaises)
+    local LifecycleKit = TestEnv.NewPackage()
+    local life = LifecycleKit:ForAddon("MyAddon")
+    TestEnv.LoadAddon("MyAddon")
+    local seen = {}
+    life:OnReady(function()
+      seen.inCombat = LifecycleKit:IsInCombat()
+      if readyRaises then
+        error("ready failed", 0)
+      end
+    end)
+
+    local watchers = LifecycleKit._state.globalWatchers
+    for _, key in ipairs({ "playerLogin", "combatStart", "combatEnd" }) do
+      watchers[key]:Disconnect()
+      watchers[key] = nil
+    end
+    TestEnv.SetCombatLockdown(true)
+    TestEnv.Login()
+    return LifecycleKit, life, seen
+  end
+
+  it("reconciles combat before a bootstrap catch-up runs OnReady", function()
+    local LifecycleKit, life, seen = packageThatMissedLoginInCombat(false)
+    assert.is_false(life:IsReady())
+
+    package.loaded["LifecycleKit"] = nil
+    assert.are.equal(LifecycleKit, require("LifecycleKit"))
+
+    assert.is_true(life:IsReady())
+    assert.is_true(seen.inCombat)
+    assert.is_true(LifecycleKit:IsInCombat())
+  end)
+
+  it("reconciles combat at bootstrap when a catch-up OnReady raises", function()
+    local LifecycleKit, life, seen = packageThatMissedLoginInCombat(true)
+
+    package.loaded["LifecycleKit"] = nil
+    expectErrorContaining("ready failed", function()
+      require("LifecycleKit")
+    end)
+
+    assert.is_true(life:IsReady())
+    assert.is_true(seen.inCombat)
+    assert.is_true(LifecycleKit:IsInCombat())
   end)
 end)

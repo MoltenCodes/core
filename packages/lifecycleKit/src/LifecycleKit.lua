@@ -35,7 +35,7 @@
 
 local PACKAGE_NAME = "lifecycleKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 15
+local IMPLEMENTATION_REVISION = 16
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_SIGNAL_API = 1
 local REQUIRED_EVENT_KIT_API = 1
@@ -534,16 +534,14 @@ end
 -- without changing the schema. State an older revision wrote is seeded with
 -- the defaults those revisions enforced as constants, so behaviour carries
 -- over unchanged until a consumer calls `SetLimits`.
-if type(state) == "table" then
-  if rawget(state, "unbounded") == nil then
-    rawset(state, "unbounded", {})
-  end
-  if rawget(state, "limits") == nil then
-    rawset(state, "limits", {
-      maxDependencies = DEFAULT_MAX_DEPENDENCIES,
-      defaultCombatQueueLimit = DEFAULT_COMBAT_QUEUE_LIMIT,
-    })
-  end
+if rawget(state, "unbounded") == nil then
+  rawset(state, "unbounded", {})
+end
+if rawget(state, "limits") == nil then
+  rawset(state, "limits", {
+    maxDependencies = DEFAULT_MAX_DEPENDENCIES,
+    defaultCombatQueueLimit = DEFAULT_COMBAT_QUEUE_LIMIT,
+  })
 end
 local UNBOUNDED = rawget(state, "unbounded")
 local sharedLimits = rawget(state, "limits")
@@ -721,7 +719,7 @@ end
 ---10's and 11's watchers are replaced for the same reason, so the running
 ---handlers are always the newest copy's. The bootstrap tail installs this
 ---revision's watchers again and reconciles any one-shot phase that passed in
----between. Revisions 7 to 11 already wrote schema 3, so that is all their
+---between. Revisions 7 to 15 already wrote schema 3, so that is all their
 ---state needs.
 ---
 ---Schema 2 (revisions 4 to 6) lacks the combat flag, the instance list and
@@ -2378,15 +2376,20 @@ if type(previousRevision) ~= "nil" and next(rawget(state, "addons")) ~= nil then
       return markShutdown(instance)
     end)
   else
+    -- Same order as `onPlayerLogin`: the combat flag is reconciled before any
+    -- `OnReady` callback can read it, and always, even when a ready callback
+    -- raises. A combat failure is re-raised ahead of a ready failure.
+    local combatError = reconcileCombatState()
+    local readyError
     if rawget(state, "loginSeen") == true then
-      firstError = runForAllAddons(function(instance)
+      readyError = runForAllAddons(function(instance)
         if rawget(instance, "_loaded") == true then
           return markReady(instance)
         end
         return nil
       end)
     end
-    firstError = firstError or reconcileCombatState()
+    firstError = combatError or readyError
   end
 
   raisePhaseError(firstError)
