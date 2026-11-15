@@ -862,6 +862,19 @@ starts only after the owner has answered the design's open questions (section
 | [bridgeKit](records/bridgeKit.md#bridgekit) | `bridgeKit` | delivered (2026-11-15) |
 
 
+#### Package P — minimal cores (2026-11-16)
+
+Decided 2026-11-16 with the project owner: measure what each Kit's core
+holds, keep in the core only what every user of the Kit needs, at Ace3's size
+or below where the documented guarantees allow, move the rest into parts
+([ADR 0001](decisions/0001-kit-core-and-parts.md)), bind the helper copies
+to their single source in `tooling/shared/lua/`, then run every test.
+Records are written before their code.
+
+| Record | Package | Status |
+|---|---|---|
+| [Shared helper blocks in 27 Kits](records/shared-helpers.md#shared-helper-blocks-in-27-kits) | 27 packages | recorded 2026-11-16; code follows |
+
 ### Standing obligations
 
 These apply to every phase rather than being completed once.
