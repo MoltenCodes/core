@@ -27,8 +27,9 @@
 ---                  never for its children;
 ---   regions        `CreateFontString` and `CreateTexture`, with text,
 ---                  texture and colour state a spec can read back;
----   frame types    `Button`, `CheckButton`, `Slider`, `EditBox` and
----                  `ScrollFrame` with the state and scripts they carry;
+---   frame types    `Button`, `CheckButton`, `Slider`, `EditBox`,
+---                  `ScrollFrame` and `StatusBar` with the state and scripts
+---                  they carry;
 ---   interaction    mouse, keyboard, movable and resizable flags, drag
 ---                  registration, `StartMoving` / `StopMovingOrSizing`, and
 ---                  one focused `EditBox` at a time with its
@@ -974,6 +975,59 @@ function CheckButtonMethods:Click(button)
   end
 end
 
+-- StatusBar --------------------------------------------------------------------
+
+local StatusBarMethods = extend(FrameMethods)
+
+---Store the range as given: the client's status bar takes any numbers, a
+---secret included, and draws the fill itself.
+function StatusBarMethods:SetMinMaxValues(minimum, maximum)
+  self.minimum, self.maximum = minimum, maximum
+end
+
+function StatusBarMethods:GetMinMaxValues()
+  return self.minimum or 0, self.maximum or 0
+end
+
+---Store the value as given, without clamping or comparing: on Retail 12.x
+---the value may be a secret, which the client's status bar accepts.
+function StatusBarMethods:SetValue(value)
+  self.value = value
+end
+
+function StatusBarMethods:GetValue()
+  return self.value or 0
+end
+
+function StatusBarMethods:SetStatusBarTexture(texture)
+  if type(texture) == "table" then
+    self.statusBarTexture = texture
+    return
+  end
+  self.statusBarTexture = self.statusBarTexture or self:CreateTexture(nil, "ARTWORK")
+  self.statusBarTexture:SetTexture(texture)
+end
+
+function StatusBarMethods:GetStatusBarTexture()
+  return self.statusBarTexture
+end
+
+function StatusBarMethods:SetStatusBarColor(red, green, blue, alpha)
+  self.barRed, self.barGreen, self.barBlue, self.barAlpha = red, green, blue, alpha or 1
+end
+
+function StatusBarMethods:GetStatusBarColor()
+  return self.barRed or 1, self.barGreen or 1, self.barBlue or 1, self.barAlpha or 1
+end
+
+function StatusBarMethods:SetReverseFill(reverse)
+  self.reverseFill = reverse
+end
+
+function StatusBarMethods:GetReverseFill()
+  return self.reverseFill == true
+end
+
 -- Slider -----------------------------------------------------------------------
 
 local SliderMethods = extend(FrameMethods)
@@ -1225,10 +1279,11 @@ local FRAME_METATABLES = {
   Slider = { __index = SliderMethods },
   EditBox = { __index = EditBoxMethods },
   ScrollFrame = { __index = ScrollFrameMethods },
+  StatusBar = { __index = StatusBarMethods },
 }
 
 --- The frame type names, in the order an error message lists them.
-local FRAME_TYPE_NAMES = '"Frame", "Button", "CheckButton", "Slider", "EditBox" or "ScrollFrame"'
+local FRAME_TYPE_NAMES = '"Frame", "Button", "CheckButton", "Slider", "EditBox", "ScrollFrame" or "StatusBar"'
 
 ---Build one Frame and record it in creation order.
 ---@param state table shared stub state
