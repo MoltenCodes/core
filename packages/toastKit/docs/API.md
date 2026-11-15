@@ -69,7 +69,7 @@ Any other field is refused at the caller. A toast is a 260 by 48 frame at the `H
 
 ## A toast's life
 
-Each frame on screen, a toast adds the frame's `elapsed` to its age, unless the cursor rests on it (`IsMouseOver`), which holds it fully opaque. In its last half second its alpha falls to 0; at its `duration` it ends. A click ends it and then runs `onClick(data)`, protected. When a toast ends, its frame goes back to the pool (hidden, opaque, no texts, no icon, no anchor) and the first waiting toast takes the free place.
+Each frame on screen, a toast adds the frame's `elapsed` to its age, unless the cursor rests on it (`IsMouseOver`), which holds it fully opaque. In its last half second its alpha falls to 0; at its `duration` it ends. A click ends it and then runs `onClick(data)`, protected. Toasts are children of `UIParent`, so while the player hides the interface (Alt+Z) they are hidden too, their `OnUpdate` does not run and their time stands still. When a toast ends, its frame goes back to the pool (hidden, opaque, no texts, no icon, no anchor) and the first waiting toast takes the free place.
 
 ## Secret values
 
@@ -87,6 +87,36 @@ Raising `maxVisible` shows waiting toasts at once; lowering a limit keeps every 
 ## Error behaviour
 
 Argument errors raise at the caller's line: `ToastKit:Show options.duration must be a number above 0`; methods called on anything but a toast raise `ToastKit.Toast:Dismiss must be called on a ToastKit toast; use toast:Dismiss(...)`. What the client calls (the frames' updates and clicks) never raises.
+
+Every message, raised at the caller's line. `<method>` is the public name called, such as `ToastKit:Show` or `ToastKit.Toast:Dismiss`.
+
+| Message | Raised by |
+|---|---|
+| `<method> must be called on the ToastKit facade; use <method>(...)` | a facade method called on anything but `ToastKit` |
+| `<method> must be called on a ToastKit toast; use toast:<name>(...)` | a toast method called on anything but a toast handle |
+| `ToastKit:Show options must be a table` | |
+| `ToastKit:Show options holds an unknown field; it accepts title, text, icon, duration, onClick, data, key and allowSecret` | |
+| `ToastKit:Show options.allowSecret must be a boolean` | |
+| `ToastKit:Show options.<title or text> must not be a secret value; pass allowSecret = true to draw one` | |
+| `ToastKit:Show options.<title or text> must be a non-empty string or a number` | a missing `title`, or a text that is neither |
+| `ToastKit:Show options.icon must be a texture path, a FileDataID or nil` | also a secret icon |
+| `ToastKit:Show options.duration must be a number above 0` | also NaN and infinity |
+| `ToastKit:Show options.onClick must be a function or nil` | |
+| `ToastKit:Show options.key must be a non-empty string` | |
+| `ToastKit:Show needs the client's CreateFrame and UIParent, which this host does not have` | |
+| `ToastKit:Show holds at most <n> waiting toasts; raise maxQueued with ToastKit:SetLimits` | a full screen and a full queue |
+| `ToastKit:SetAnchor point must be an anchor point such as "TOP" or "BOTTOMRIGHT"` | a point other than the nine anchor points |
+| `ToastKit:SetAnchor <x or y> must be a finite number` | |
+| `ToastKit:SetAnchor direction must be "UP", "DOWN" or nil` | |
+| `ToastKit:SetLimits limits must be a table` | |
+| `ToastKit:SetLimits limits holds an unknown field; it accepts maxVisible and maxQueued` | |
+| `ToastKit:SetLimits limits.<name> must not be a secret value` | |
+| `ToastKit:SetLimits limits.maxVisible must be an integer from 1 to 20` | |
+| `ToastKit:SetLimits limits.maxQueued must be a positive integer or ToastKit.UNBOUNDED` | |
+
+`ToastKit needs the client's UIParent` is raised without a position only by a host that removed `UIParent` after `Show` checked it.
+
+Loading raises `MoltenCodes ToastKit requires Registry API 2 to be loaded first`, `MoltenCodes ToastKit requires a valid Registry API 2 facade`, `MoltenCodes ToastKit requires PoolKit API 1 to be loaded first` or `MoltenCodes ToastKit package state is corrupted or incomplete`.
 
 ## Performance
 

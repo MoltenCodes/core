@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.1 — 2026-11-15
+
+- Documentation: `docs/API.md` lists every error message, and says that a toast counts no time while the interface is hidden. Documentation only; the implementation revision stays 1.
+
 ## 0.1.0 — 2026-11-15
 
 - Added ToastKit API generation 1, implementation revision 1: short notifications, as recorded in `docs/ROADMAP.md` (package M).
