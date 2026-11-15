@@ -418,11 +418,15 @@ other is dropped (`keyCollision`). Which entry survives never depends on the
 order the client saved them in.
 
 The preview also reports the current character's SettingsKit key missing from
-`char` (`currentCharacterMissing`), a character whose `UnitNameUnmodified`
-differs from its `UnitName`, as AceDB and SettingsKit key it apart
-(`characterKeyMismatch`), and, on a client whose interface lies between 16000
-and 19999, where AceDB keys characters and realms by name and ruleset, the
-`char` and `realm` sections (`characterKeyMismatch`, `realmKeyMismatch`).
+`char` (`currentCharacterMissing`), and, on a client whose interface lies
+between 16000 and 19999, where AceDB keys characters and realms by name and
+ruleset, the `char` and `realm` sections (`characterKeyMismatch`,
+`realmKeyMismatch`). The current character's key is the one SettingsKit uses:
+`SettingsKit:GetCharacterKey()` when the loaded SettingsKit has it, otherwise
+the same rule (`UnitNameUnmodified("player")`, then `UnitName("player")` when
+that is absent or unusable, `" - "`, `GetRealmName()`). AceDB keys characters
+by `UnitNameUnmodified` too, so a character under a name-changing effect is no
+longer reported as keyed apart (revision 7 and later).
 
 ### Values and defaults
 
@@ -648,7 +652,7 @@ are.
 
 ## Secret values
 
-`issecretvalue` is read at every call. A secret argument, a secret value or
+`issecretvalue` is resolved once when BridgeKit loads (the client defines it before any addon runs) and, when it was absent then, read at every call, so a probe installed later is still honoured. A secret argument, a secret value or
 key inside the values given to `AceSerialize`, a secret `text`, a secret
 `SetLimits` key or value, a secret option field, key or option of an AceConfig
 source, and a secret result of a `name`, `order` or `hasAlpha` evaluated at
@@ -667,18 +671,24 @@ token and its data as separate pieces) and allocates only the result:
 198 bytes for a small record, where AceSerializer-3.0 allocates 201.
 `AceDeserialize` first copies the text without its control bytes and spaces,
 as Ace does, then cuts each token with one pattern match and allocates the
-tables and strings it returns. Both are linear in the text and recurse once
-per table level.
+tables and strings it returns, and no closure: one replacement function
+serves every escaped string. Both are linear in the text and recurse once
+per table level. The writer appends a token and its data with one bound
+check, reads a lifted limit as `math.huge` once per call, keeps the open
+tables as a stack by depth for the cycle check, and remembers up to 256
+short strings (32 bytes or less) it found clean, so a repeated key skips the
+escape scan; they are recorded once and never dropped, so the writer holds up
+to about 14 KB of strings it has seen.
 
 Measured on host Lua 5.1 against AceSerializer-3.0 itself
-([`docs/BENCHMARKS.md`](../../../docs/BENCHMARKS.md), "AceSerializer-3.0
-text", the run of 2026-11-15 on a machine that was not idle), over the
-`codec` workload's payloads:
+(`python3 -m tooling.bench.run --workload aceSerializer`, revision 7, the run
+of 2026-11-15 on a machine that was not idle), over the `codec` workload's
+payloads:
 
-| Operation | BridgeKit ÷ Ace3 | Bytes per operation (BridgeKit against Ace3) |
+| Operation | BridgeKit ÷ Ace3 (revision 6 → 7) | Bytes per operation (BridgeKit against Ace3) |
 |---|---|---|
-| encode a small, medium and large payload | 1.71×–1.79× | 198 / 201, 4.8 KB / 4.8 KB, 28 KB / 28 KB |
-| decode them | 1.36×–1.58× | 832 / 600, 26 KB / 20 KB, 94 KB / 71 KB |
+| encode a small, medium and large payload | 1.86 / 1.80 / 1.82× → 1.39 / 1.36 / 1.39× | 198 / 201, 4.8 KB / 4.8 KB, 28 KB / 28 KB |
+| decode them | 1.48 / 1.38 / 1.38× → 1.26 / 1.13 / 1.12× | 720 / 600, 20.5 KB / 20.4 KB, 71.5 KB / 71.1 KB |
 
 The gap is the work Ace3 does not do: the secret probe of every value and the
 value-count, string-length and depth bounds on both sides, cycle detection on
@@ -702,7 +712,10 @@ that state and replaces the methods; an older copy loaded later steps aside.
 A limit a later revision adds starts at its default over an inherited state.
 Revision 6 changes no state: an upgrade over revision 5 keeps every limit,
 channel and counter, and the next conversion checks `childGroups` against
-Ace's three layouts.
+Ace's three layouts. Revision 7 changes no state either: the writer's
+clean-string cache and the reader's replacement function are file-local, so
+each revision builds its own; an upgrade over revision 6 writes and reads the
+same text.
 
 ## Testing
 

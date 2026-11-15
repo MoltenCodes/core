@@ -569,6 +569,65 @@ aceDB:Skip(
   "not run: it needs an AceDB saved variable from an earlier session; packages/bridgeKit/tests/AceDB_spec.lua covers the import through SettingsKit itself on the host"
 )
 
+---Whether a BridgeKit report holds an entry for `path` with `reason`.
+---@param report table
+---@param path string
+---@param reason string
+---@return boolean
+local function reportHolds(report, path, reason)
+  for _, entry in ipairs(report.entries) do
+    if entry.path == path and entry.reason == reason then
+      return true
+    end
+  end
+  return false
+end
+
+aceDB:Test(
+  "the AceDB preview names the current character under the key UnitNameUnmodified gives, the key AceDB saved and SettingsKit opens",
+  function(ctx)
+    local SchemaKit = Registry:Find("schemaKit", 1)
+    if type(SchemaKit) == "nil" then
+      Harness:SkipTest(ctx, "SchemaKit is not loaded, so no schema could declare the char scope")
+      return
+    end
+    local unmodified, unitName = readHost("UnitNameUnmodified"), readHost("UnitName")
+    local realmName = readHost("GetRealmName")
+    local name = type(unmodified) == "function" and unmodified("player") or nil
+    if type(name) ~= "string" or isSecret(name) or name == "" then
+      name = type(unitName) == "function" and unitName("player") or nil
+    end
+    local realm = type(realmName) == "function" and realmName() or nil
+    if
+      type(name) ~= "string"
+      or isSecret(name)
+      or name == ""
+      or type(realm) ~= "string"
+      or isSecret(realm)
+    then
+      Harness:SkipTest(ctx, "the client gave no plain player name or realm")
+      return
+    end
+    local key = name .. " - " .. realm
+    local path = 'char["' .. key .. '"]'
+    ctx:Log("current character key: " .. key)
+    local schema = { char = SchemaKit.table({ fields = {}, open = true }) }
+
+    local missing = BridgeKit:PreviewAceDB(
+      { char = { ["Nobody - Nowhere"] = { seen = true } } },
+      { schema = schema, aceDefaults = {} }
+    )
+    ctx:Expect(reportHolds(missing, path, "currentCharacterMissing")):ToBe(true)
+
+    local present = BridgeKit:PreviewAceDB(
+      { char = { [key] = { seen = true } } },
+      { schema = schema, aceDefaults = {} }
+    )
+    ctx:Expect(reportHolds(present, path, "currentCharacterMissing")):ToBe(false)
+    ctx:Expect(reportHolds(present, path, "characterKeyMismatch")):ToBe(false)
+  end
+)
+
 -- bridgeKit.aceConfig --------------------------------------------------------
 
 local aceConfig = newSuite("aceConfig")

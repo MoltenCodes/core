@@ -45,9 +45,10 @@ MoltenCodes Test: PASS bridgeKit.aceComm: a channel whispers texts at every fram
 MoltenCodes Test: PASS bridgeKit.aceComm: a text holding every byte 01-FF (| LF CR and 80-FF included) is sent without a refusal and reassembled at most once; what the client carries back is logged, not judged
 MoltenCodes Test: PASS bridgeKit.aceComm: with Ace3 loaded, AceComm-3.0 receives what a BridgeKit channel sends, and a BridgeKit channel receives what AceComm-3.0 sends, multipart and escaped
 MoltenCodes Test: SKIP bridgeKit.aceDB: an AceDB saved variable written by a first session imports after /reload in both modes, with its backup in WTF and every field read as before -- not run: it needs an AceDB saved variable from an earlier session; packages/bridgeKit/tests/AceDB_spec.lua covers the import through SettingsKit itself on the host
+MoltenCodes Test: PASS bridgeKit.aceDB: the AceDB preview names the current character under the key UnitNameUnmodified gives, the key AceDB saved and SettingsKit opens
 MoltenCodes Test: PASS bridgeKit.aceConfig: an AceConfig table converted by DefineAceConfig is rendered by WidgetKit, and a write through the tree reaches the Ace handler with the Ace info shape
 MoltenCodes Test: PASS bridgeKit.secrets: AceSerialize refuses a secret value and OpenAceComm a secret prefix, each at this file's line
-MoltenCodes Test: bridgeKit: 9 passed, 0 failed, 1 skipped, 0 timed out (10 tests)
+MoltenCodes Test: bridgeKit: 10 passed, 0 failed, 1 skipped, 0 timed out (11 tests)
 MoltenCodes Test: results saved in MoltenCodesTestResults; /reload or log out to write them to disk.
 ```
 
@@ -61,7 +62,7 @@ every field back before and after compaction.
 The two `with Ace3 loaded` tests print `SKIP` instead, with the reason
 `MoltenCodesBench_Ace3 is not installed (...); install it with python3 -m
 tooling.bench.client_install to compare with real Ace3`, and the totals line
-reads `7 passed, 0 failed, 3 skipped, 0 timed out (10 tests)`.
+reads `8 passed, 0 failed, 3 skipped, 0 timed out (11 tests)`.
 
 ### Per flavour
 
@@ -81,6 +82,7 @@ gain one skip. Those clients have not been run (no game time; see
 | `a channel whispers texts at every framing boundary ...` | Through the real CommKit raw messages and the server: 10 bytes (one message), 254 bytes starting with `01` (escaped by `04`), 255 bytes starting with `01` and 256 bytes (two parts), 509 bytes (three parts, a one-byte last part) each come back whole, byte-identical and in order; no stream stays open. Nine addon messages. |
 | `a text holding every byte 01-FF ...` | Design 13.2, item 2: whether addon messages carry `\|`, LF, CR and 80-FF unchanged. The send must be accepted and at most one message reassembled; the log says whether the text came back unchanged, changed (with the first difference) or not at all. Two addon messages. CommKit's suite already proves 01-FF but 0A, 0D and 7C cross unchanged. |
 | `with Ace3 loaded, AceComm-3.0 receives ...` | A BridgeKit channel's escaped short text and 594-byte multipart text arrive whole in an AceComm-3.0 `RegisterComm` callback, and the same two texts sent with `SendCommMessage` arrive whole in a BridgeKit channel. Eight addon messages. |
+| `the AceDB preview names the current character under the key UnitNameUnmodified gives ...` | BridgeKit 0.5.2 keys the current character as SettingsKit does (`UnitNameUnmodified`, then `UnitName`, with `GetRealmName`): a preview of a `char` section without that key reports it missing under exactly that path, and one holding it reports nothing about it. The log gives the key. Skipped when SchemaKit is not loaded or the client gives no plain name. |
 | `an AceConfig table converted by DefineAceConfig ...` | The converted tree defines in OptionsKit and renders with `WidgetKit:RenderOptions`; `tree:Set("scale", 1.5)` calls the Ace handler's `Set` with an `info` whose `appName`, `option` and last path entry are Ace's. |
 | `AceSerialize refuses a secret value ...` | A `secretwrap` value is refused at this file's line by `AceSerialize` and by `OpenAceComm` as the prefix. |
 

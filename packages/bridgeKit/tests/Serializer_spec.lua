@@ -40,6 +40,35 @@ local function nestedText(depth)
   return "^1" .. string.rep("^T^N1", depth - 1) .. "^T^t" .. string.rep("^t", depth - 1) .. "^^"
 end
 
+---Find a named upvalue reachable from `root` through the upvalues of nested
+---functions: the writer's cache lives in file-local functions.
+---@param root function
+---@param wanted string
+---@return any value
+local function findUpvalue(root, wanted)
+  local queue, seen, head = { root }, { [root] = true }, 1
+  while queue[head] ~= nil do
+    local fn = queue[head]
+    head = head + 1
+    local index = 1
+    while true do
+      local name, value = debug.getupvalue(fn, index)
+      if name == nil then
+        break
+      end
+      if name == wanted then
+        return value
+      end
+      if type(value) == "function" and not seen[value] then
+        seen[value] = true
+        queue[#queue + 1] = value
+      end
+      index = index + 1
+    end
+  end
+  error(wanted .. " is not reachable")
+end
+
 describe("BridgeKit AceSerializer", function()
   local BridgeKit
   before_each(function()
@@ -435,6 +464,80 @@ describe("BridgeKit AceSerializer", function()
       -- selene: allow(global_usage)
       rawset(_G, "issecretvalue", nil)
       assert.are.same({ true, "^1^Sx^^" }, { BridgeKit:AceSerialize("x") })
+    end)
+  end)
+
+  describe("revision 7 writer and reader", function()
+    it("records clean short strings once and writes them exactly as before", function()
+      local value = { plain = "short", ["with space"] = "x^y", long = string.rep("z", 33) }
+      local ok, text = BridgeKit:AceSerialize(value)
+      assert.is_true(ok)
+      local cache = findUpvalue(BridgeKit.AceSerialize, "cleanText")
+      assert.is_true(cache.plain)
+      assert.is_true(cache.short)
+      assert.is_nil(cache["with space"])
+      assert.is_nil(cache["x^y"])
+      assert.is_nil(cache[string.rep("z", 33)])
+      assert.are.same({ true, text }, { BridgeKit:AceSerialize(value) })
+      assert.are.same(value, roundTrip(BridgeKit, value)[1])
+    end)
+
+    it("stops recording at 256 strings", function()
+      local many = {}
+      for index = 1, 300 do
+        many[index] = "s" .. index
+      end
+      assert.is_true((BridgeKit:AceSerialize(many)))
+      assert.are.equal(256, findUpvalue(BridgeKit.AceSerialize, "cleanTextCount"))
+    end)
+
+    it("refuses a secret string before the cache is asked about it", function()
+      Env.MarkSecret("hidden")
+      local ok, failure = pcall(BridgeKit.AceSerialize, BridgeKit, { "hidden" })
+      assert.is_false(ok)
+      assert.is_truthy(tostring(failure):find("secret", 1, true))
+    end)
+
+    it("refuses a cycle at every depth and accepts a table met on two branches", function()
+      for depth = 2, 6 do
+        local root = nested(depth)
+        local deepest = root
+        while deepest[1] ~= nil do
+          deepest = deepest[1]
+        end
+        deepest[1] = root
+        assert.are.same({ false, "cycle" }, { BridgeKit:AceSerialize(root) })
+      end
+      local shared = { 1 }
+      assert.is_true((BridgeKit:AceSerialize({ { shared }, { { shared } } })))
+      -- The open-table stack is empty again after a refusal.
+      assert.are.same({ true, "^1^T^N1^T^N1^N1^t^t^^" }, { BridgeKit:AceSerialize({ { 1 } }) })
+    end)
+
+    it("resets the refused-escape flag for every string", function()
+      assert.are.same({ false, "invalidEscape" }, { BridgeKit:AceDeserialize("^1^Sa~0^^") })
+      assert.are.same({ true, "a b" }, { BridgeKit:AceDeserialize("^1^Sa~`b^^") })
+      assert.are.same({ true, "plain" }, { BridgeKit:AceDeserialize("^1^Splain^^") })
+    end)
+
+    it("keeps the probe it resolved at load", function()
+      Env.Reset()
+      Env.MarkSecret("hidden")
+      package.loaded["Registry"] = nil
+      package.loaded["BridgeKit"] = nil
+      require("Registry")
+      local loaded = require("BridgeKit")
+      -- selene: allow(global_usage)
+      rawset(_G, "issecretvalue", nil)
+      local ok = pcall(loaded.AceSerialize, loaded, "hidden")
+      assert.is_false(ok)
+    end)
+
+    it("honours a probe installed after load when none existed then", function()
+      assert.is_true((BridgeKit:AceSerialize("hidden")))
+      Env.MarkSecret("hidden")
+      local ok = pcall(BridgeKit.AceSerialize, BridgeKit, "hidden")
+      assert.is_false(ok)
     end)
   end)
 end)

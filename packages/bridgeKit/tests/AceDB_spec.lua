@@ -403,14 +403,50 @@ describe("BridgeKit AceDB importer", function()
       assert.is_true(hasEntry(report, 'char["Gone - Realm"]', "renamedCharacter"))
     end)
 
-    it("report the current character missing, and a name the two clients spell apart", function()
-      Env.SetPlayer("Tèster")
+    it("report the current character missing under the key SettingsKit uses", function()
       local report = BridgeKit:PreviewAceDB(
         { char = { ["Someone - Silvermoon"] = { level = 2 } } },
         { schema = schema, aceDefaults = {} }
       )
       assert.is_true(hasEntry(report, 'char["' .. CHARACTER .. '"]', "currentCharacterMissing"))
-      assert.is_true(hasEntry(report, 'char["Tèster - Silvermoon"]', "characterKeyMismatch"))
+    end)
+
+    it("key the current character by its unmodified name, as AceDB and SettingsKit do", function()
+      -- UnitName answers "Tester" (a name-changing effect, say); the unmodified
+      -- name is the key AceDB saved and the key SettingsKit opens.
+      Env.SetPlayer("Tèster")
+      local report = BridgeKit:PreviewAceDB(
+        { char = { ["Tèster - Silvermoon"] = { level = 2 } } },
+        { schema = schema, aceDefaults = {} }
+      )
+      assert.is_false(hasEntry(report, 'char["Tèster - Silvermoon"]', "currentCharacterMissing"))
+      assert.is_false(hasEntry(report, 'char["Tèster - Silvermoon"]', "characterKeyMismatch"))
+      assert.is_false(hasEntry(report, 'char["' .. CHARACTER .. '"]', "currentCharacterMissing"))
+    end)
+
+    it("fall back to UnitName when the unmodified name is unusable", function()
+      Env.SetPlayer("")
+      local report = BridgeKit:PreviewAceDB(
+        { char = { ["Someone - Silvermoon"] = { level = 2 } } },
+        { schema = schema, aceDefaults = {} }
+      )
+      assert.is_true(hasEntry(report, 'char["' .. CHARACTER .. '"]', "currentCharacterMissing"))
+    end)
+
+    it("ask SettingsKit:GetCharacterKey when the loaded SettingsKit has it", function()
+      Env.SetPlayer("Tèster")
+      local asked = 0
+      rawset(SettingsKit, "GetCharacterKey", function()
+        asked = asked + 1
+        return "Chosen - Realm"
+      end)
+      local report = BridgeKit:PreviewAceDB(
+        { char = { ["Tèster - Silvermoon"] = { level = 2 } } },
+        { schema = schema, aceDefaults = {} }
+      )
+      rawset(SettingsKit, "GetCharacterKey", nil)
+      assert.are.equal(1, asked)
+      assert.is_true(hasEntry(report, 'char["Chosen - Realm"]', "currentCharacterMissing"))
     end)
   end)
 

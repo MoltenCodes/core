@@ -54,7 +54,7 @@
 
 local PACKAGE_NAME = "bridgeKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 6
+local IMPLEMENTATION_REVISION = 7
 local REQUIRED_REGISTRY_API = 2
 local STATE_SCHEMA = 1
 
@@ -378,10 +378,23 @@ if type(bootstrapPackage) ~= "function" then
   error("MoltenCodes BridgeKit requires a valid Registry API 2 facade", 2)
 end
 
----The client's `issecretvalue`, read at every call because a client can gain
----it after BridgeKit loads; `nil` on a client without secret values.
+-- The client defines `issecretvalue` before any addon loads, so it is resolved
+-- once, here. When it is absent at load, `readSecretProbe` looks the global up
+-- on every call instead, so a probe installed later is still honoured.
+-- issecretvalue is a World of Warcraft client API reachable only through the global table.
+-- selene: allow(global_usage)
+local loadedSecretProbe = rawget(_G, "issecretvalue")
+if type(loadedSecretProbe) ~= "function" then
+  loadedSecretProbe = nil
+end
+
+---The client's `issecretvalue`: the one resolved at load, else the global's
+---current value; `nil` on a client without secret values.
 ---@return (fun(value: any): boolean)|nil
 local function readSecretProbe()
+  if loadedSecretProbe ~= nil then
+    return loadedSecretProbe
+  end
   -- issecretvalue is a World of Warcraft client API reachable only through the global table.
   -- selene: allow(global_usage)
   local probe = rawget(_G, "issecretvalue")
@@ -635,6 +648,17 @@ end
 
 local serialize
 do
+  -- Short strings known to need no escape: whether a string needs escaping
+  -- depends only on its bytes, and a payload repeats its keys, so one hash
+  -- lookup replaces the pattern scan for them. Bounded: at most
+  -- `CLEAN_TEXT_LIMIT` strings of at most `CLEAN_TEXT_MAX_LENGTH` bytes,
+  -- recorded once and never wiped (a version that emptied itself when full
+  -- thrashed on large payloads); up to about 14 KB held for the session. A
+  -- secret never reaches it: `writeValue` asks the probe first.
+  local CLEAN_TEXT_LIMIT, CLEAN_TEXT_MAX_LENGTH = 256, 32
+  local cleanText, cleanTextCount = {}, 0
+  -- `onPath` is the stack of tables open on the current path, indexed by
+  -- depth: a set keyed by table rehashes as tables come and go.
   local pieces, onPath = {}, {}
   local writing = false
   local pieceCount, byteCount, valueCount = 0, 0, 0
@@ -665,7 +689,16 @@ do
     -- numbers people store; the rest are written as a mantissa and an
     -- exponent.
     if tonumber(text) == value then
-      return append("^N") and append(text)
+      -- `append("^N") and append(text)`, inline: one bound check for both.
+      local bytes = byteCount + 2 + #text
+      if bytes > maxTextBytes then
+        return false
+      end
+      byteCount = bytes
+      pieces[pieceCount + 1] = "^N"
+      pieces[pieceCount + 2] = text
+      pieceCount = pieceCount + 2
+      return true
     end
     if value == math.huge then
       return append("^N1.#INF")
@@ -689,13 +722,16 @@ do
     if depth > maxDepth then
       return false, WRITE_REASON.maxDepth
     end
-    if onPath[value] then
-      return false, WRITE_REASON.cycle
+    -- The open tables, compared raw; at most `maxDepth` of them.
+    for index = 1, depth - 1 do
+      if rawequal(onPath[index], value) then
+        return false, WRITE_REASON.cycle
+      end
     end
     if not append("^T") then
       return false, WRITE_REASON.maxTextBytes
     end
-    onPath[value] = true
+    onPath[depth] = value
     for key, entry in next, value do
       local ok, reason = writeValue(key, depth)
       if ok then
@@ -705,7 +741,7 @@ do
         return false, reason
       end
     end
-    onPath[value] = nil
+    onPath[depth] = nil
     if not append("^t") then
       return false, WRITE_REASON.maxTextBytes
     end
@@ -723,20 +759,38 @@ do
       return false, "secret"
     end
     valueCount = valueCount + 1
-    if exceeds(valueCount, maxValues) then
+    -- The limits are numbers for the whole call (`serialize` reads
+    -- `UNBOUNDED` as `math.huge`), so no sentinel test per value.
+    if valueCount > maxValues then
       return false, WRITE_REASON.maxValues
     end
 
     local valueType = type(value)
     local written
     if valueType == "string" then
-      if exceeds(#value, maxStringLength) then
+      local length = #value
+      if length > maxStringLength then
         return false, WRITE_REASON.maxStringLength
       end
-      if stringFind(value, ESCAPE_PATTERN) ~= nil then
-        value = string.gsub(value, ESCAPE_PATTERN, ESCAPE_FOR)
+      if cleanText[value] == nil then
+        if stringFind(value, ESCAPE_PATTERN) ~= nil then
+          value = string.gsub(value, ESCAPE_PATTERN, ESCAPE_FOR)
+          length = #value
+        elseif length <= CLEAN_TEXT_MAX_LENGTH and cleanTextCount < CLEAN_TEXT_LIMIT then
+          cleanText[value] = true
+          cleanTextCount = cleanTextCount + 1
+        end
       end
-      written = append("^S") and append(value)
+      -- `append("^S") and append(value)`, inline: one bound check for both.
+      local bytes = byteCount + 2 + length
+      if bytes > maxTextBytes then
+        return false, WRITE_REASON.maxTextBytes
+      end
+      byteCount = bytes
+      pieces[pieceCount + 1] = "^S"
+      pieces[pieceCount + 2] = value
+      pieceCount = pieceCount + 2
+      return true, nil
     elseif valueType == "number" then
       if value ~= value then
         return false, WRITE_REASON.nan
@@ -791,13 +845,24 @@ do
     probe = secretProbe
     maxDepth, maxValues = limits.maxDepth, limits.maxValues
     maxStringLength, maxTextBytes = limits.maxStringLength, limits.maxTextBytes
+    -- A lifted limit becomes `math.huge` for the call, so the writer compares
+    -- numbers only.
+    if maxValues == UNBOUNDED then
+      maxValues = math.huge
+    end
+    if maxStringLength == UNBOUNDED then
+      maxStringLength = math.huge
+    end
+    if maxTextBytes == UNBOUNDED then
+      maxTextBytes = math.huge
+    end
     local called, ok, reason = pcall(writeValues, ...)
     local text = called and ok and table.concat(pieces, "", 1, pieceCount) or nil
     for index = 1, pieceCount do
       pieces[index] = nil
     end
-    for key in next, onPath do
-      onPath[key] = nil
+    for index = #onPath, 1, -1 do
+      onPath[index] = nil
     end
     probe = nil
     writing = false
@@ -835,12 +900,30 @@ do
   local tokens, code, data
   local valueCount, maxDepth, maxValues, maxStringLength
 
-  ---Move to the next token. Returns `false` when there is none: no caret
-  ---left, or a caret that ends the text with no code after it.
-  ---@return boolean found
-  local function nextToken()
-    code, data = tokens()
-    return code ~= nil
+  -- Moving to the next token is `code, data = tokens()`, written inline where
+  -- it is needed (one Lua call less per token); `code` is `nil` when there is
+  -- none: no caret left, or a caret that ends the text with no code after it.
+
+  -- Set by `unescapeCharacter` when an escape is one Ace refuses; reset by
+  -- `unescape` before each string. `string.gsub` never re-enters it.
+  local invalidEscape = false
+
+  ---The character one `~x` escape stands for, or `""` with `invalidEscape`
+  ---set for one Ace refuses. One function serves every call, so unescaping
+  ---allocates no closure.
+  ---@param character string
+  ---@return string
+  local function unescapeCharacter(character)
+    local special = UNESCAPE_SPECIAL[character]
+    if special ~= nil then
+      return special
+    end
+    local byte = string.byte(character)
+    if byte < UNESCAPE_LOWEST or byte > UNESCAPE_HIGHEST then
+      invalidEscape = true
+      return ""
+    end
+    return string.char(byte - 64)
   end
 
   ---Undo AceSerializer's string escaping, or `nil` for an escape Ace refuses.
@@ -850,20 +933,9 @@ do
     if stringFind(escaped, "~", 1, true) == nil then
       return escaped
     end
-    local invalid = false
-    local text = string.gsub(escaped, "~(.)", function(character)
-      local special = UNESCAPE_SPECIAL[character]
-      if special ~= nil then
-        return special
-      end
-      local byte = string.byte(character)
-      if byte < UNESCAPE_LOWEST or byte > UNESCAPE_HIGHEST then
-        invalid = true
-        return ""
-      end
-      return string.char(byte - 64)
-    end)
-    if invalid then
+    invalidEscape = false
+    local text = string.gsub(escaped, "~(.)", unescapeCharacter)
+    if invalidEscape then
       return nil
     end
     return text
@@ -906,7 +978,8 @@ do
     end
     local result = {}
     while true do
-      if not nextToken() then
+      code, data = tokens()
+      if code == nil then
         return false, READ_REASON.missingTerminator
       end
       if code == "t" then
@@ -922,7 +995,8 @@ do
       if key ~= key then
         return false, READ_REASON.invalidKey
       end
-      if not nextToken() then
+      code, data = tokens()
+      if code == nil then
         return false, READ_REASON.missingTerminator
       end
       if code == "t" then
@@ -951,7 +1025,7 @@ do
       return true, END
     end
     valueCount = valueCount + 1
-    if exceeds(valueCount, maxValues) then
+    if valueCount > maxValues then
       return false, READ_REASON.maxValues
     end
 
@@ -960,7 +1034,7 @@ do
       if text == nil then
         return false, READ_REASON.invalidEscape
       end
-      if exceeds(#text, maxStringLength) then
+      if #text > maxStringLength then
         return false, READ_REASON.maxStringLength
       end
       return true, text
@@ -972,7 +1046,8 @@ do
       return true, number
     elseif code == "F" then
       local mantissa = tonumber(data)
-      if not nextToken() or code ~= "f" then
+      code, data = tokens()
+      if code ~= "f" then
         return false, READ_REASON.invalidFloat
       end
       local exponent = tonumber(data)
@@ -997,13 +1072,15 @@ do
   ---@return boolean ok
   ---@return string|nil reason
   local function readValues(values)
-    if not nextToken() or code ~= "1" then
+    code, data = tokens()
+    if code ~= "1" then
       return false, READ_REASON.notAceSerializer
     end
     local maxListValues = limits.maxListValues
     local listed = 0
     while true do
-      if not nextToken() then
+      code, data = tokens()
+      if code == nil then
         return false, READ_REASON.missingTerminator
       end
       local ok, value = readValue(0)
@@ -1036,6 +1113,13 @@ do
     valueCount = 0
     maxDepth, maxValues = limits.maxDepth, limits.maxValues
     maxStringLength = limits.maxStringLength
+    -- A lifted limit becomes `math.huge` for the call, as in the writer.
+    if maxValues == UNBOUNDED then
+      maxValues = math.huge
+    end
+    if maxStringLength == UNBOUNDED then
+      maxStringLength = math.huge
+    end
     local ok, reason = readValues(values)
     -- Release the text and the last token, so no input is kept alive.
     tokens, code, data = nil, nil, nil
@@ -3687,9 +3771,40 @@ do
     return first, second, third, fourth
   end
 
+  ---The current character's `char` key, as SettingsKit keys it: what
+  ---`SettingsKit:GetCharacterKey()` answers when the loaded SettingsKit has
+  ---it, else the same rule applied here (`UnitNameUnmodified("player")`, then
+  ---`UnitName("player")` when that is absent or unusable, then `" - "` and
+  ---`GetRealmName()`). AceDB keys characters by `UnitNameUnmodified` too, so
+  ---outside the ruleset clients the two keys match. `nil` when the client
+  ---gives no usable name or realm.
+  ---@param ctx table
+  ---@return string|nil
+  local function currentCharacterKey(ctx)
+    local findPackage = rawget(Registry, "Find")
+    local SettingsKit = type(findPackage) == "function" and findPackage(Registry, "settingsKit", 1)
+      or nil
+    if type(SettingsKit) == "table" and type(SettingsKit.GetCharacterKey) == "function" then
+      local key = SettingsKit:GetCharacterKey()
+      if type(key) ~= "string" or (ctx.probe ~= nil and ctx.probe(key) == true) then
+        return nil
+      end
+      return key
+    end
+    local name = askClient(ctx, "UnitNameUnmodified", "player")
+    if type(name) ~= "string" or name == "" then
+      name = askClient(ctx, "UnitName", "player")
+    end
+    local realm = askClient(ctx, "GetRealmName")
+    if type(name) ~= "string" or name == "" or type(realm) ~= "string" then
+      return nil
+    end
+    return name .. " - " .. realm
+  end
+
   ---Report what the current character's keys say about the import: its
-  ---SettingsKit key missing from `char`, and keys that will not line up
-  ---(design section 7.3).
+  ---SettingsKit key missing from `char`, and, on the ruleset clients, the
+  ---sections whose keys will not line up (design section 7.3).
   ---@param ctx table
   ---@param source table
   ---@param layout table
@@ -3710,21 +3825,9 @@ do
     if not ctx.declared.char or not holdsEntries(chars) then
       return
     end
-    local name = askClient(ctx, "UnitName", "player")
-    local realm = askClient(ctx, "GetRealmName")
-    if type(name) ~= "string" or type(realm) ~= "string" then
+    local settingsKey = currentCharacterKey(ctx)
+    if settingsKey == nil then
       return
-    end
-    local settingsKey = name .. " - " .. realm
-    local unmodified = askClient(ctx, "UnitNameUnmodified", "player")
-    if type(unmodified) == "string" and unmodified ~= name then
-      noteEntry(
-        ctx.report,
-        joinPath("char", unmodified .. " - " .. realm),
-        nil,
-        "changed",
-        "characterKeyMismatch"
-      )
     end
     if type(layout.char) ~= "table" or type(rawget(layout.char, settingsKey)) == "nil" then
       noteEntry(

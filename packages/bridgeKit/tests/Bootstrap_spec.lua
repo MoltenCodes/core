@@ -49,6 +49,24 @@ describe("BridgeKit bootstrap", function()
     )
   end)
 
+  it("upgrades a revision 6 copy in place and writes and reads the same text", function()
+    Env.Reset()
+    require("Registry")
+    local older = Env.LoadRevision(6)
+    assert.are.equal(6, older.REVISION)
+    older:SetLimits({ maxDepth = 6 })
+    local value = { name = "kept", list = { 1, 2.5, true }, ["a b"] = "x^y" }
+    local _, text = older:AceSerialize(value)
+
+    package.loaded["BridgeKit"] = nil
+    local upgraded = require("BridgeKit")
+    assert.are.equal(older, upgraded)
+    assert.are.equal(7, upgraded.REVISION)
+    assert.are.equal(6, upgraded:GetLimits().maxDepth)
+    assert.are.same({ true, text }, { upgraded:AceSerialize(value) })
+    assert.are.same({ true, value }, { upgraded:AceDeserialize(text) })
+  end)
+
   it("lets a newer revision publish a new baseline through the same table", function()
     local BridgeKit = Env.NewPackage()
     local baseline = BridgeKit.ACE_BASELINE

@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.2 — 2026-11-15
+
+- Character keys: the AceDB preview and import key the current character the way SettingsKit does. BridgeKit asks `SettingsKit:GetCharacterKey()` when the loaded SettingsKit has it, and otherwise applies the same rule: `UnitNameUnmodified("player")`, then `UnitName("player")` when that is absent or unusable, `" - "`, `GetRealmName()`. AceDB keys characters by `UnitNameUnmodified` too, so the `characterKeyMismatch` entry for a character whose unmodified name differs from its name is gone; `currentCharacterMissing` is checked against that key, and the reports for clients whose interface lies between 16000 and 19999 are unchanged. `docs/API.md` (*Section by section*) and the design's section 7.3 follow.
+- Performance of the AceSerializer-3.0 format, byte for byte the same text: the writer appends a token and its data with one bound check, reads a lifted limit as `math.huge` once per call instead of testing for the sentinel per value, keeps the open tables as a stack by depth for the cycle check, and remembers up to 256 short strings (32 bytes or less, recorded once, up to about 14 KB held) it found clean; the reader moves to the next token inline and unescapes without a closure per string. Host benchmark against AceSerializer-3.0, same session (2026-11-15): encode 1.86, 1.80, 1.82× → 1.39, 1.36, 1.39× (small, medium, large); decode 1.48, 1.38, 1.38× → 1.26, 1.13, 1.12×, allocating 720 B, 20.5 KB and 71.5 KB instead of 832 B, 26.1 KB and 93.9 KB (Ace3: 600 B, 20.4 KB, 71.1 KB).
+- The secret probe follows the rule every Kit follows: `issecretvalue` is resolved once when the file loads, and read at every call only when it was absent then.
+- Implementation revision 7. No state changed: an upgrade over revision 6 keeps every limit, channel and counter (`Bootstrap_spec.lua`, "upgrades a revision 6 copy in place ...").
+- Specs: 291 → 302. `Serializer_spec.lua` ("revision 7 writer and reader"): the clean-string cache and its cap, a secret refused first, cycles at every depth and a table met on two branches, the refused-escape flag reset per string, the probe rule. `AceDB_spec.lua`: the unmodified-name key, the `UnitName` fallback, `GetCharacterKey` asked when present.
+
 ## 0.5.1 — 2026-11-15
 
 - Fixed: a `childGroups` value is carried over only when it is one of Ace's three layouts (`"tab"`, `"tree"`, `"select"`) as well as listed in OptionsKit's published `CHILD_GROUPS`. Revision 5 trusted the published table alone, which is a copy a consumer can write to: a value written there was kept, and `DefineAceConfig` then raised because `OptionsKit:Define` still refuses it. Such a value is now dropped and reported as `presentation`.
