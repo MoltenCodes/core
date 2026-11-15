@@ -1,14 +1,16 @@
 # BridgeKit design baseline
 
-> **Status:** design baseline, written 2026-09-25 for review; **in
-> delivery**. Package N in
+> **Status:** design baseline, written 2026-09-25 for review; **delivered**
+> (2026-11-15). Package N in
 > [`ROADMAP.md`](ROADMAP.md#package-n--bridgekit-migrating-from-ace3). The
 > owner answered the [open questions](#16-open-questions-for-the-owner) on
 > 2026-11-15, accepting every recommendation (decisions 9 to 13 below). Steps
 > N0 (the CommKit and SettingsKit prerequisites), N1 (the AceSerializer
 > reader and writer, `packages/bridgeKit/`), N2 (the AceConfig adapter), N3
-> (the AceDB importer) and N4 (the AceComm channel) are done; N5 follows
-> ([section 15](#15-delivery-sequence)).
+> (the AceDB importer), N4 (the AceComm channel) and N5 (client suites,
+> benchmark rows, documentation, the acceptance review) are done
+> ([section 15](#15-delivery-sequence)); package N is closed. The real-client
+> suites are written and have not been run in a client yet.
 >
 > This document is the canonical design of `bridgeKit`, the MoltenCodes
 > package that makes migrating an addon from Ace3 a product feature: an
@@ -1070,8 +1072,12 @@ Each step ends with the gates green and a read-only review.
       decision 18).
 - [x] **N4 — AceComm channel**: `OpenAceComm`, reassembly, statistics
       (done 2026-11-15: bridgeKit 0.4.0, revision 4; decisions 20 and 21).
-- [ ] **N5 — client suites, benchmark rows, documentation**, then the
-      acceptance review; package N closes.
+- [x] **N5 — client suites, benchmark rows, documentation**, then the
+      acceptance review; package N closes (done 2026-11-15: the client
+      suites in `tests/client/MoltenCodesTest_BridgeKit`, decision 22, not
+      yet run in a client; the `aceSerializer` benchmark workload and its
+      measured costs in API.md; the acceptance review accepted after fixes,
+      whose findings were fixed).
 
 ## 16. Open questions for the owner
 

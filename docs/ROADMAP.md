@@ -49,6 +49,7 @@ those defaults when they are documented and observable.
 - [x] `brokerKit`
 - [x] `logKit`
 - [x] `compatKit`
+- [x] `bridgeKit`
 
 These entries describe packages present in this repository snapshot. A checked
 item means its implementation is part of the repository; it does not mean the
@@ -1474,7 +1475,7 @@ starts only after the owner has answered the design's open questions (section
    planned to current API; EMBEDDING footprint and host-requirements rows;
    ARCHITECTURE, `docs/README.md` and `README.md` list the package; the design
    document kept current.
-9. Status: planned (2026-09-25). Design and migration guide written. The
+9. Status: delivered (2026-11-15). Design and migration guide written. The
    owner answered the design's five open questions on 2026-11-15, accepting
    every recommendation (design decisions 9 to 13). Delivery sequence N0
    (prerequisites P1, P2) to N5 in the design, section 15. N0 is done
@@ -1486,7 +1487,10 @@ starts only after the owner has answered the design's open questions (section
    bridgeKit 0.3.0 imports AceDB-3.0 saved variables into the SettingsKit
    layout. N4 is done (2026-11-15): bridgeKit 0.4.0 speaks AceComm-3.0
    through CommKit's raw addon messages; streams expire lazily instead of on
-   a TimerKit timer (design decision 20).
+   a TimerKit timer (design decision 20). N5 is done (2026-11-15): the
+   real-client suites (written, not yet run in a client), the
+   `aceSerializer` benchmark workload, the measured costs and the
+   acceptance review, accepted after fixes; package N is closed.
 
 ### Standing obligations
 
@@ -1550,7 +1554,7 @@ duplicating those specifications.
 
 Last roadmap baseline update: 2026-11-15 (phases 0 through 4 and packages F,
 G and H complete; phase 5 packages I, J, K and L complete; package N, bridgeKit,
-in delivery: steps N0 to N3 done, so 29 packages, 28 of them release
+delivered: steps N0 to N5 done, so 29 packages, 28 of them release
 packages, every gate green; the user-interface phase (package M) follows
 package N by the owner's decision; the standing obligations continue).
 Previous baseline: 2026-09-25.

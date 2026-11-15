@@ -19,6 +19,10 @@ generation 1, implementation revision 4.
   expire at the next message received, design decision 20) and
   `maxDropReportSenders`; drops are reported through the error handler at
   most once per sender per minute.
+- Step N5: real-client suites (`tests/client/MoltenCodesTest_BridgeKit`,
+  not yet run in a client), the `aceSerializer` benchmark workload against
+  AceSerializer-3.0 and the measured costs in API.md; the package's
+  acceptance review closes package N.
 - `BridgeKit:GetStatistics()`: the AceComm counters, open streams and spool
   bytes. CommKit joins the optional dependencies.
 - Implementation revision 4: the AceComm state lives in `_state`, and the

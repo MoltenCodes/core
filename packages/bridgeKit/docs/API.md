@@ -675,8 +675,8 @@ The gap is the work Ace3 does not do: the secret probe of every value and the
 value-count, string-length and depth bounds on both sides, cycle detection on
 write, and on read the refusal of every input Ace would raise on.
 
-`ConvertAceConfig`, the importer and the channel are measured by the specs'
-shape, not timed: a conversion and an import run once per load or install,
+`ConvertAceConfig`, the importer and the channel are not timed: a conversion
+and an import run once per load or install,
 and a channel's per-message cost is CommKit's (`docs/BENCHMARKS.md`,
 "Multipart addon messages") plus one table read per message and one
 `table.concat` per reassembled stream.
