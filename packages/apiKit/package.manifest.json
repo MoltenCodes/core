@@ -2,10 +2,10 @@
   "name": "apiKit",
   "displayName": "ApiKit",
   "description": "Flavour-aware, typed, documented wrapper over the public World of Warcraft addon API, generated from the client's own documentation tables.",
-  "version": "0.2.0",
+  "version": "0.2.2",
   "license": "MIT",
   "api": 1,
-  "revision": 5,
+  "revision": 6,
   "dependencies": {
     "registry": {
       "api": 2

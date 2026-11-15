@@ -188,7 +188,7 @@ describe("ApiKit bootstrap", function()
       local upgraded = TestEnv.requireAfterFailedLoad("ApiKit")
 
       assert.are.equal(old, upgraded)
-      assert.are.equal(5, upgraded.REVISION)
+      assert.are.equal(6, upgraded.REVISION)
       assert.are.equal(state, upgraded._state)
       assert.are.same({ "12.1.0", 69933 }, { upgraded:GetMetadataBuild("retail") })
       assert.is_false(upgraded:RegisterFlavor("retail", function()
@@ -239,6 +239,71 @@ describe("ApiKit bootstrap", function()
     assert.has_error(function()
       ApiKit.SUPPORTED_FLAVORS[6] = "wrath"
     end, 'ApiKit.SUPPORTED_FLAVORS is read-only; index "6" cannot be written')
+  end)
+
+  it("names a table index by its type without running its __tostring", function()
+    local ApiKit = TestEnv.NewPackageFor("retail")
+    local converted = false
+    local key = setmetatable({}, {
+      __tostring = function()
+        converted = true
+        error("a caller's __tostring ran inside ApiKit", 0)
+      end,
+    })
+    assert.has_error(function()
+      ApiKit.SUPPORTED_FLAVORS[key] = "wrath"
+    end, 'ApiKit.SUPPORTED_FLAVORS is read-only; index "<table>" cannot be written')
+    assert.is_false(converted)
+  end)
+
+  it("names a secret index by a placeholder without formatting it", function()
+    local ApiKit = TestEnv.NewPackageFor("retail")
+    local secret = setmetatable({}, {
+      __tostring = function()
+        error("a secret was converted inside ApiKit", 0)
+      end,
+    })
+    -- selene: allow(global_usage)
+    rawset(_G, "issecretvalue", function(value)
+      return rawequal(value, secret)
+    end)
+    assert.has_error(function()
+      ApiKit.SUPPORTED_FLAVORS[secret] = "wrath"
+    end, 'ApiKit.SUPPORTED_FLAVORS is read-only; index "<secret>" cannot be written')
+  end)
+
+  it("upgrades the previous revision in place and names a table index by its type", function()
+    local workingRevision = TestEnv.NewPackageFor("retail").REVISION
+    TestEnv.Reset()
+    TestEnv.InstallWowApi()
+    TestEnv.SetClient({ projectId = 1, testBuild = false, betaBuild = false })
+    require("Registry")
+    local old = TestEnv.LoadRevision(workingRevision - 1)
+    local state = old._state
+    local olderView = old.SUPPORTED_FLAVORS
+
+    local upgraded = TestEnv.requireAfterFailedLoad("ApiKit")
+
+    assert.are.equal(old, upgraded)
+    assert.are.equal(workingRevision, upgraded.REVISION)
+    assert.are.equal(state, upgraded._state)
+    -- The protected metatable of the older view cannot be replaced, so the
+    -- upgrade publishes a fresh view over the same list.
+    local flavors = upgraded.SUPPORTED_FLAVORS
+    assert.are_not.equal(olderView, flavors)
+    assert.are.equal(state.supportedFlavorsView, flavors)
+    assert.are.equal(olderView[1], flavors[1])
+    local converted = false
+    local key = setmetatable({}, {
+      __tostring = function()
+        converted = true
+        return "converted"
+      end,
+    })
+    assert.has_error(function()
+      flavors[key] = "wrath"
+    end, 'ApiKit.SUPPORTED_FLAVORS is read-only; index "<table>" cannot be written')
+    assert.is_false(converted)
   end)
 
   it("refuses a same-revision copy whose state is incomplete", function()

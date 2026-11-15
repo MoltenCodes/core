@@ -27,7 +27,7 @@
 
 local PACKAGE_NAME = "apiKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 5
+local IMPLEMENTATION_REVISION = 6
 local REQUIRED_REGISTRY_API = 2
 local STATE_SCHEMA = 1
 
@@ -269,14 +269,54 @@ local function buildNamespaceRoot()
   return root, apis
 end
 
+---Name a caller's table key in a refusal without running its `__tostring`.
+---Converting a table or userdata key runs that metamethod, foreign code that
+---can raise or answer a secret and so replace the refusal it was meant to
+---describe. A secret is named by a placeholder before anything else is asked
+---of it: whether the client hands `__newindex` a secret key at all is not
+---documented, so the check is defensive. A string is shown as written and a
+---number or boolean through `tostring`, which runs no foreign code for them;
+---anything else is named by its type in angle brackets, such as `<table>`.
+---@param key any
+---@return string
+local function describeKey(key)
+  local probe = readGlobal("issecretvalue")
+  if type(probe) == "function" and probe(key) == true then
+    return "<secret>"
+  end
+  local kind = type(key)
+  if kind == "string" then
+    return key
+  end
+  if kind == "number" or kind == "boolean" then
+    return tostring(key)
+  end
+  return "<" .. kind .. ">"
+end
+
 ---Refuse every write to `ApiKit.SUPPORTED_FLAVORS`.
 ---@param _ table
 ---@param key any
 local function refuseSupportedFlavorsWrite(_, key)
   error(
-    'ApiKit.SUPPORTED_FLAVORS is read-only; index "' .. tostring(key) .. '" cannot be written',
+    'ApiKit.SUPPORTED_FLAVORS is read-only; index "' .. describeKey(key) .. '" cannot be written',
     2
   )
+end
+
+---Build the read-only view published as `ApiKit.SUPPORTED_FLAVORS`.
+---
+---The view's metatable is protected, so a newer revision cannot replace the
+---refusal an older one installed on its view; it builds a fresh view instead
+---(see the upgrade branch below).
+---@param supportedFlavors string[]
+---@return table view
+local function newSupportedFlavorsView(supportedFlavors)
+  return setmetatable({}, {
+    __index = supportedFlavors,
+    __newindex = refuseSupportedFlavorsWrite,
+    __metatable = false,
+  })
 end
 
 ---Publish `root` as the short global when nothing else owns that name.
@@ -333,17 +373,18 @@ if previousRevision == nil then
     -- Per flavour id: the `info` its registration carried (`false` for none).
     info = {},
     supportedFlavors = supportedFlavors,
-    supportedFlavorsView = setmetatable({}, {
-      __index = supportedFlavors,
-      __newindex = refuseSupportedFlavorsWrite,
-      __metatable = false,
-    }),
+    supportedFlavorsView = newSupportedFlavorsView(supportedFlavors),
   }
   rawset(ApiKit, "_state", state)
   publishShortGlobal(root)
   publishNamespaceRoot(root)
 elseif not validateStateBase(state) then
   error("MoltenCodes ApiKit package state is corrupted or incomplete", 2)
+else
+  -- An upgrade publishes a fresh view so `ApiKit.SUPPORTED_FLAVORS` refuses
+  -- writes with this revision's message. A reference to the older view taken
+  -- before the upgrade keeps the older refusal; the list it reads is the same.
+  rawset(state, "supportedFlavorsView", newSupportedFlavorsView(rawget(state, "supportedFlavors")))
 end
 
 -- The flavour is probed on every bootstrap, first load and upgrade alike, as

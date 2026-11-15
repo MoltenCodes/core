@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.2.2 — 2026-11-15
+
+- Fixed: a write to `ApiKit.SUPPORTED_FLAVORS` built its refusal with `tostring(key)`. For a table or userdata key that runs the key's `__tostring`, foreign code that can raise or answer a secret, so the writer saw that code's error (or a message it chose) instead of the refusal. A string key is still shown as written and a number or boolean as its text (`index "6"` is unchanged); any other key is named by its type, `ApiKit.SUPPORTED_FLAVORS is read-only; index "<table>" cannot be written`, and a key `issecretvalue` reports secret by `<secret>`, asked first. Whether the client hands `__newindex` a secret key at all is not documented, so that check is defensive. Documented under *Errors* in `docs/API.md`.
+- Implementation revision 6. No state changed: an upgrade over revision 5 keeps the state, the namespace and every installed flavour. The view's metatable is protected, so the upgrade publishes a fresh view over the same flavour list as `SUPPORTED_FLAVORS`; a reference to the older view taken before the upgrade keeps the older message.
+- Specs: 79 → 82. A table key whose `__tostring` records that it ran and raises, and a secret key, are refused without running it; the in-place upgrade from the previous revision checks the fresh view and the new message. The revision 4 upgrade spec expects revision 6.
+
+## 0.2.1 — 2026-11-15
+
+- Documentation: `docs/API.md` ("Load cost") still gave the Retail counts of the 12.1.0 b69933 capture as the current ones: 6,338 documented functions, 4,900 bound in 312 namespaces, 1,438 methods of 79 script object types. The committed metadata (12.1.5 b70783) has 6,440, 4,970 in 316, and 1,470 methods of 81 types, and the section now says so. It also says which file each measurement came from: the installer time is the 12.1.0 measurement, and the parse was measured again on the current file (9,895 lines, 514 KB, still about 3 ms). The `RegisterFlavor` example's `info` names the current Retail build.
+- Documentation: `tests/README.md` listed the in-place upgrades of revision 1 and 2 copies but not those of revision 3 and 4 copies, which `Bootstrap_spec.lua` has had since 0.1.4 and 0.2.0; it lists them now.
+- Documentation only: the implementation revision is unchanged (5), and no generated file changed.
+
 ## 0.2.0 — 2026-11-15
 
 A metadata refresh to the client builds the mirror carried on 2026-11-14

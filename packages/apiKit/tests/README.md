@@ -18,7 +18,12 @@ documented function and nothing else is `tooling/tests/test_api_committed_flavou
 - duplicate embedded loading, Registry publication, refusal of state owned by
   a newer revision, corrupted state, the read-only flavour list, revision 1
   and revision 2 copies upgraded in place by the current file (namespace,
-  installed flavour and `info` kept), and the flavour probed again when the
+  installed flavour and `info` kept), revision 3 and revision 4 copies
+  upgraded in place with the surface their flavour file installed kept, the
+  previous revision upgraded in place with a fresh flavour list view that
+  names a table key by its type, a table or secret key written to the
+  flavour list named without running its `__tostring`, and the flavour
+  probed again when the
   next revision upgrades in place;
 - secret values: a secret flavour id and a secret `info.build` refused at the
   caller's line before the key use and the integer test, a secret

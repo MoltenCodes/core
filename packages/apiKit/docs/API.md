@@ -62,7 +62,7 @@ the two together.
 ```lua
 ApiKit:RegisterFlavor("retail", function(api, host)
   -- generated: api.addOnProfiler.measureCall = host.C_AddOnProfiler.MeasureCall ...
-end, { version = "12.1.0", build = 69933 })
+end, { version = "12.1.5", build = 70783 })
 ```
 
 `flavor` is a supported flavour id, `install` a function receiving the
@@ -116,7 +116,7 @@ Argument and receiver failures are raised at the caller's line:
 | `ApiKit:RegisterFlavor info.build must be an integer when given` | |
 | `ApiKit:<Method> flavor must not be a secret value` | A flavour id `issecretvalue` reports secret; see [Secret values](#secret-values). |
 | `ApiKit:RegisterFlavor info.build must not be a secret value` | See [Secret values](#secret-values). |
-| `ApiKit.SUPPORTED_FLAVORS is read-only; index "<key>" cannot be written` | |
+| `ApiKit.SUPPORTED_FLAVORS is read-only; index "<key>" cannot be written` | `<key>` is a string as written and a number or boolean as its text (`index "6"`); any other key is named by its type (`index "<table>"`), and a key `issecretvalue` reports secret by `<secret>`, so a key's `__tostring` never runs (revision 6). |
 
 Load-time failures: `MoltenCodes ApiKit requires Registry API 2 to be loaded
 first`, `MoltenCodes ApiKit requires a valid Registry API 2 facade`,
@@ -155,20 +155,24 @@ flavour. Nothing grows with use.
 
 ## Load cost
 
-Measured on the committed Retail file (client 12.1.0, build 69933; about
-9,800 lines, 560 KB) with Lua 5.1.5 on a 2026 desktop, so the numbers are an
-order of magnitude, not a promise. The other documents quote this table.
+The installer was measured on the Retail file generated for client 12.1.0,
+build 69933 (about 9,800 lines, 560 KB, 312 namespaces and 4,900 bindings),
+with Lua 5.1.5 on a 2026 desktop, so the numbers are an order of magnitude,
+not a promise. The parse was measured again on the file committed now (client
+12.1.5, build 70783: 9,895 lines, 514 KB, 316 namespaces and 4,970 bindings)
+and still takes about 3 ms. The other documents quote this table.
 
 | Step | Cost |
 |---|---|
 | Parsing the flavour file | about 3 ms |
-| Running the installer (312 namespaces, 4,900 bindings) | under 0.5 ms |
-| Retained by the installed surface | 312 tables (one per bound namespace; an alias such as `api.profiler` reuses its namespace's table) holding 4,900 function references, plus the event, enumeration and constants tables |
+| Running the installer (about 300 namespaces, about 5,000 bindings) | under 0.5 ms |
+| Retained by the installed surface | one table per bound namespace (316 on Retail 12.1.5; an alias such as `api.profiler` reuses its namespace's table) holding one function reference per binding (4,970), plus the event, enumeration and constants tables |
 | A flavour file on a client of another flavour | its parse and one registration call; the installer is dropped |
 
-The Retail tables document 6,338 functions; 4,900 of them are bound. The other
-1,438 are methods of 79 script object types (frames, textures, animation
-groups), which are called on host objects and are described in the types only.
+The Retail tables at build 70783 document 6,440 functions; 4,970 of them are
+bound. The other 1,470 are methods of 81 script object types (frames,
+textures, animation groups), which are called on host objects and are
+described in the types only. The README gives the counts of every flavour.
 
 A call through the wrapper is one table index more than the raw call and
 allocates nothing. Nothing in the package grows with use.
@@ -194,3 +198,9 @@ Revision 5 keeps the revision 4 state and methods the same way: it ships the
 flavour files generated from the 2026-11-14 captures (changelog, 0.2.0), and
 the same first-registration rule decides which build's surface a session
 gets.
+Revision 6 keeps the revision 5 state; it names a written key without
+`tostring` (see [Errors](#errors)). The view's metatable is protected, so an
+upgrade cannot change the refusal an older view carries: it publishes a fresh
+view over the same `supportedFlavors` list as `SUPPORTED_FLAVORS`. A reference
+to the older view taken before the upgrade reads the same ids and keeps the
+older message.
