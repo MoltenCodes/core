@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.2 — 2026-11-15
+
+- Changed: PanelKit's WidgetKit contract names WidgetKit's `Renderer` part (`"widgetKit": { "api": 1, "parts": ["Renderer"] }`), so the embeds generator and the builder load the renderer and the type parts it draws with. WidgetKit 0.5.0 split into a core and parts, and its core holds a raising stand-in for `RenderOptions` until the part loads, so the load check now asks `WidgetKit:GetPartRevision("Renderer")` instead of the type of `RenderOptions`; with an older, single-file WidgetKit it still checks `RenderOptions`. Without the part, loading raises `MoltenCodes PanelKit requires WidgetKit API 1 with its Renderer part to be loaded first`.
+- Implementation revision 2. No state changed: an in-place upgrade from revision 1 keeps every panel, the limit and the shown rendering.
+- Specs: 51 (50 before): loading without the `Renderer` part. The test chain loads WidgetKit's parts and no longer PoolKit.
+
 ## 0.1.1 — 2026-11-15
 
 Documentation and tests only; implementation revision 1 is unchanged.

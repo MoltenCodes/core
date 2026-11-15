@@ -1,34 +1,108 @@
 {
   "name": "widgetKit",
   "displayName": "WidgetKit",
-  "description": "Pooled, versioned widgets with explicit layouts, a virtualised list over the client's ScrollBox framework, a normalised anchor value type with position persistence, and a renderer for OptionsKit trees, for World of Warcraft addons.",
-  "version": "0.4.1",
+  "description": "Pooled, versioned widgets with explicit layouts in a small core, and parts for each group of widget types, a virtualised list over the client's ScrollBox framework, a normalised anchor value type with position persistence, and a renderer for OptionsKit trees, for World of Warcraft addons.",
+  "summary": "Pooled, versioned widgets with explicit layouts, saveable anchors and an OptionsKit renderer.",
+  "version": "0.5.0",
   "license": "MIT",
   "api": 1,
-  "revision": 13,
+  "revision": 14,
   "dependencies": {
     "registry": {
       "api": 2
-    },
-    "poolKit": {
-      "api": 1
-    },
-    "signalKit": {
-      "api": 1
     }
   },
   "optionalDependencies": {
-    "optionsKit": {
+    "poolKit": {
       "api": 1
+    }
+  },
+  "parts": {
+    "Containers": {
+      "description": "The container types Frame (a movable, resizable window), Group and ScrollFrame.",
+      "revision": 1
     },
-    "settingsKit": {
-      "api": 1
+    "Text": {
+      "description": "The display types Label, Heading and Spacer.",
+      "revision": 1
     },
-    "schedulerKit": {
-      "api": 1
+    "Button": {
+      "description": "The Button type, key capture included.",
+      "revision": 1
     },
-    "mediaKit": {
-      "api": 1
+    "CheckBox": {
+      "description": "The CheckBox type, two- or three-state.",
+      "revision": 1
+    },
+    "Slider": {
+      "description": "The Slider type, a slider with a value box.",
+      "revision": 1
+    },
+    "EditBox": {
+      "description": "The EditBox type, single- and multi-line text entry.",
+      "revision": 1
+    },
+    "Dropdown": {
+      "description": "The Dropdown type and CreateMediaPicker, a Dropdown over a MediaKit list.",
+      "revision": 1,
+      "optionalDependencies": {
+        "mediaKit": {
+          "api": 1
+        }
+      }
+    },
+    "ColorPicker": {
+      "description": "The ColorPicker type, a swatch over the client colour picker.",
+      "revision": 1
+    },
+    "ScrollList": {
+      "description": "The ScrollList type, a virtualised list over the client's ScrollBox framework.",
+      "revision": 1
+    },
+    "Position": {
+      "description": "WidgetKit.Anchor, the normalised anchor value type, and BindPosition, a frame's position kept in a storage table.",
+      "revision": 1,
+      "dependencies": {
+        "signalKit": {
+          "api": 1
+        }
+      },
+      "optionalDependencies": {
+        "schedulerKit": {
+          "api": 1,
+          "parts": [
+            "Coalescing"
+          ]
+        },
+        "settingsKit": {
+          "api": 1
+        }
+      }
+    },
+    "Renderer": {
+      "description": "RenderOptions: OptionsKit trees rendered into WidgetKit containers, with childGroups pages and extension points for later parts.",
+      "revision": 1,
+      "optionalDependencies": {
+        "optionsKit": {
+          "api": 1
+        },
+        "schedulerKit": {
+          "api": 1
+        },
+        "mediaKit": {
+          "api": 1
+        }
+      },
+      "parts": [
+        "Containers",
+        "Text",
+        "Button",
+        "CheckBox",
+        "Slider",
+        "EditBox",
+        "Dropdown",
+        "ColorPicker"
+      ]
     }
   }
 }

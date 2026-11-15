@@ -22,10 +22,20 @@ local PanelKitTestEnv = FrameworkTestEnv.New({
   modules = {
     "Registry",
     "SignalKit",
-    "PoolKit",
     "SchemaKit",
     "OptionsKit",
     "WidgetKit",
+    -- The WidgetKit parts PanelKit's contract names: the Renderer and the
+    -- type parts it draws with, which hold the `ScrollFrame` and the `Label`.
+    "WidgetKit-Containers",
+    "WidgetKit-Text",
+    "WidgetKit-Button",
+    "WidgetKit-CheckBox",
+    "WidgetKit-Slider",
+    "WidgetKit-EditBox",
+    "WidgetKit-Dropdown",
+    "WidgetKit-ColorPicker",
+    "WidgetKit-Renderer",
     "PanelKit",
   },
 })
@@ -186,7 +196,7 @@ end
 ---@return table OptionsKit
 ---@return table Registry
 function PanelKitTestEnv.NewPackage()
-  local PanelKit, Registry, _, _, _, OptionsKit, WidgetKit = sharedNewPackage()
+  local PanelKit, Registry, _, _, OptionsKit, WidgetKit = sharedNewPackage()
   local uiParent = PanelKitTestEnv.GetGlobal("CreateFrame")("Frame", "UIParent")
   uiParent:SetSize(1920, 1080)
   local settings = PanelKitTestEnv.InstallSettings()

@@ -28,7 +28,8 @@ end)
 
 What each piece promises:
 
-- **Pooled and bounded.** Each widget type has one PoolKit pool. The client never frees a frame, so a type builds at most 256 frames for the session (`nil, "exhausted"` beyond), and every released widget is kept for reuse.
+- **Pay for the widgets you use.** WidgetKit is a small core (the widget base, containers, layouts and pooling) and parts, one per group of widget types plus the anchors and the options renderer, as Ace3 gives each AceGUI widget a file. An addon embeds the core and the parts it uses; a missing part is named, with the file to add, at the line that needed it.
+- **Pooled and bounded.** Each widget type keeps the widgets it built on a free list, made by its first `Create`. The client never frees a frame, so a type builds at most 256 frames for the session (`nil, "exhausted"` beyond), and every released widget is kept for reuse.
 - **Versioned.** `RegisterType(name, constructor, version)` ignores a lower version and, for a higher one, retires every pooled widget the older constructor built, so a widget is never reused with a shape its type no longer has.
 - **A released widget is clean.** `Release` fires `OnRelease`, releases children last first, clears callbacks, user data, size requests and anchors, hides the frame and re-parents it. Releasing twice, or releasing something that is not a widget, is refused at your line. `IsReleasing()` sees a release anywhere above the widget.
 - **Explicit layout.** `List`, `Fill` and `Flow` run when a child is added or when you call `PerformLayout`, never from `OnSizeChanged`; a layout pass inside a pass of the same container is refused rather than looped. Containers hold at most 256 children.
@@ -44,19 +45,46 @@ See [`docs/API.md`](docs/API.md) for the complete contract, including the rules 
 
 [`../../docs/EMBEDDING.md`](../../docs/EMBEDDING.md) is the addon author's guide:
 directory layout, supported Interface numbers, taint, `/reload` semantics and
-troubleshooting. This package's load order inside a consuming addon is:
+troubleshooting. The core needs Registry alone; the parts load after it. The
+embeds generator writes the list for the parts you choose, in a valid order:
 
-```toc
-Libs\MoltenCodes\registry\Registry.lua
-Libs\MoltenCodes\poolKit\PoolKit.lua
-Libs\MoltenCodes\signalKit\SignalKit.lua
-Libs\MoltenCodes\widgetKit\WidgetKit.lua
+```sh
+# A window with labels, buttons, check boxes and an edit box:
+python3 -m tooling.package.embeds widgetKit widgetKit/Containers widgetKit/Text widgetKit/Button widgetKit/CheckBox widgetKit/EditBox
+# Rendering OptionsKit trees (the Renderer brings the type parts it draws with):
+python3 -m tooling.package.embeds optionsKit widgetKit/Renderer
+# Everything, as before revision 14:
+python3 -m tooling.package.embeds 'widgetKit/*'
 ```
 
-Minimum footprint: embed 4 files: `registry/Registry.lua`, `poolKit/PoolKit.lua`, `signalKit/SignalKit.lua`, `widgetKit/WidgetKit.lua`.
+The first one writes:
 
-Direct runtime dependencies: Registry API 2, PoolKit API 1 and SignalKit API 1.
-All four files above are required; omitting one makes WidgetKit raise at load.
+```toc
+Libs\MoltenCodes-Custom\registry\Registry.lua
+Libs\MoltenCodes-Custom\widgetKit\WidgetKit.lua
+Libs\MoltenCodes-Custom\widgetKit\parts\WidgetKit-Containers.lua
+Libs\MoltenCodes-Custom\widgetKit\parts\WidgetKit-Text.lua
+Libs\MoltenCodes-Custom\widgetKit\parts\WidgetKit-Button.lua
+Libs\MoltenCodes-Custom\widgetKit\parts\WidgetKit-CheckBox.lua
+Libs\MoltenCodes-Custom\widgetKit\parts\WidgetKit-EditBox.lua
+```
+
+| Part | Holds | Needs beyond the core |
+|---|---|---|
+| `Containers` | `Frame`, `Group`, `ScrollFrame` | |
+| `Text` | `Label`, `Heading`, `Spacer` | |
+| `Button` | `Button` (key capture included) | |
+| `CheckBox` | `CheckBox` | |
+| `Slider` | `Slider` | |
+| `EditBox` | `EditBox` (single and multi-line) | |
+| `Dropdown` | `Dropdown`, `CreateMediaPicker` | MediaKit when registered |
+| `ColorPicker` | `ColorPicker` | |
+| `ScrollList` | `ScrollList` | the client's ScrollBox framework |
+| `Position` | `WidgetKit.Anchor`, `BindPosition` (and `Frame:BindPosition`) | SignalKit API 1 |
+| `Renderer` | `RenderOptions`, `childGroups` pages | the type parts above but `ScrollList`; OptionsKit when rendering |
+
+Direct runtime dependencies of the core: Registry API 2. The `Position` part
+needs SignalKit API 1.
 
 Optional, found with `Registry:Find` when they are used, so they may load in any
 order:
@@ -64,9 +92,28 @@ order:
 | Kit | Used by | Without it |
 |---|---|---|
 | OptionsKit API 1 | `RenderOptions` | `RenderOptions` raises at the caller. |
-| SchedulerKit API 1 | `BindPosition` | Every captured position is saved at once instead of debounced. |
+| SchedulerKit API 1 with its `Coalescing` part | `BindPosition` | Every captured position is saved at once instead of debounced. |
 | MediaKit API 1 | `CreateMediaPicker`, `RenderOptions` with `options.media` | `CreateMediaPicker` raises at the caller; the renderer shows the option's own `values`. |
 | SettingsKit API 1 | nothing directly: a scope view, or a function returning one, is a valid `BindPosition` storage | Any plain table works. |
+
+### Coming from AceGUI-3.0
+
+| AceGUI-3.0 file | WidgetKit part |
+|---|---|
+| `AceGUI-3.0.lua` | the core, `WidgetKit.lua` |
+| `AceGUIContainer-Frame.lua`, `-InlineGroup.lua`, `-SimpleGroup.lua`, `-ScrollFrame.lua` | `Containers` (`Frame`, `Group`, `ScrollFrame`) |
+| `AceGUIWidget-Label.lua`, `-Heading.lua` | `Text` (`Label`, `Heading`, `Spacer`) |
+| `AceGUIWidget-Button.lua`, `-Keybinding.lua` | `Button` (`SetKeyCapture`) |
+| `AceGUIWidget-CheckBox.lua` | `CheckBox` |
+| `AceGUIWidget-Slider.lua` | `Slider` |
+| `AceGUIWidget-EditBox.lua`, `-MultiLineEditBox.lua` | `EditBox` (`SetMultiLine`) |
+| `AceGUIWidget-DropDown.lua`, `-DropDown-Items.lua` | `Dropdown` |
+| `AceGUIWidget-ColorPicker.lua` | `ColorPicker` |
+| `AceConfigDialog-3.0` (drawing an options table) | `Renderer` |
+| `AceGUIContainer-TabGroup.lua`, `-TreeGroup.lua`, `-DropDownGroup.lua` | the `Renderer`'s pages for `childGroups`; no container of their own yet |
+
+AceGUI-3.0.xml loads every widget file; an addon embedding WidgetKit loads
+only the parts it lists.
 
 `ScrollList` also needs the client's ScrollBox framework (`Blizzard_SharedXML`,
 on every supported client); without it `Create("ScrollList")` raises at the

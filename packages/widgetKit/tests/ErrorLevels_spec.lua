@@ -46,7 +46,10 @@ describe("WidgetKit error levels", function()
       mark()
       WidgetKit.Create({}, "Label")
     end)
-    assertReportedAtCaller("WidgetKit:Create name must not be a secret value", function(mark)
+    -- A secret name is not probed (ADR 0002): it indexes the types, which the
+    -- client refuses itself; the fixture's secret is a table, refused here
+    -- as not a name.
+    assertReportedAtCaller("WidgetKit:Create name must be a non-empty string", function(mark)
       local secret = TestEnv.NewSecret()
       mark()
       WidgetKit:Create(secret)

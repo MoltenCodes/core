@@ -2,7 +2,7 @@
 
 PanelKit API generation **1** puts an OptionsKit tree in Blizzard's settings panel, as a category in the AddOns list or a subcategory under one, through the client's Settings API, and draws it with WidgetKit's renderer only while its page is shown.
 
-Implementation revision: **1**.
+Implementation revision: **2**.
 
 ## Loading
 
@@ -10,13 +10,23 @@ Runtime files must be loaded in dependency order:
 
 ```text
 Registry.lua
-SignalKit.lua
-PoolKit.lua
 SchemaKit.lua
+SignalKit.lua
 OptionsKit.lua
 WidgetKit.lua
+WidgetKit-Containers.lua
+WidgetKit-Text.lua
+WidgetKit-Button.lua
+WidgetKit-CheckBox.lua
+WidgetKit-Slider.lua
+WidgetKit-EditBox.lua
+WidgetKit-Dropdown.lua
+WidgetKit-ColorPicker.lua
+WidgetKit-Renderer.lua
 PanelKit.lua
 ```
+
+WidgetKit's `Renderer` part and the type parts it draws with (`Containers`, `Text`, `Button`, `CheckBox`, `Slider`, `EditBox`, `Dropdown`, `ColorPicker`) are part of PanelKit's contract: `python3 -m tooling.package.embeds panelKit` writes this list. Loading PanelKit without the `Renderer` part raises `MoltenCodes PanelKit requires WidgetKit API 1 with its Renderer part to be loaded first`.
 
 Portable WoW code resolves the package through Registry:
 
@@ -49,7 +59,7 @@ Retail, Mists of Pandaria Classic and Classic Era ship the four `Settings` funct
 | `SetLimits(limits)` / `GetLimits()` | Change or read `maxPanels`; `GetLimits` returns a fresh table. |
 | `MAX_PANELS` | `64`, the default `maxPanels`. |
 | `PANELS_CEILING` | `1024`, the highest `maxPanels` accepts. |
-| `API`, `REVISION` | `1`, `1`. |
+| `API`, `REVISION` | `1`, `2`. |
 
 A panel:
 

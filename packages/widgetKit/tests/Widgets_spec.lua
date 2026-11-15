@@ -523,7 +523,10 @@ describe("WidgetKit secret values", function()
     TestEnv.expectErrorContaining("label must not be a secret value", function()
       dropdown:SetList({ a = secret })
     end)
-    TestEnv.expectErrorContaining("name must not be a secret value", function()
+    -- A type name is only a key: a secret one meets the client's own refusal
+    -- at the index (ADR 0002). The fixture's secret is a table, so here it is
+    -- refused as not being a name.
+    TestEnv.expectErrorContaining("name must be a non-empty string", function()
       WidgetKit:Create(secret)
     end)
   end)
@@ -576,12 +579,11 @@ describe("WidgetKit secret values", function()
         label:SetJustifyH(secret)
       end
     )
-    TestEnv.expectErrorContaining("SetUserData key must not be a secret value", function()
-      label:SetUserData(secret, true)
-    end)
-    TestEnv.expectErrorContaining("GetUserData key must not be a secret value", function()
-      label:GetUserData(secret)
-    end)
+    -- A user-data key only indexes the widget's table: the client refuses a
+    -- secret key there itself (ADR 0002), so WidgetKit does not probe it. The
+    -- fixture does not model that refusal, so the key is stored here.
+    label:SetUserData(secret, true)
+    assert.is_true(label:GetUserData(secret))
     TestEnv.expectErrorContaining("fraction must not be a secret value", function()
       label:SetRelativeWidth(secret)
     end)

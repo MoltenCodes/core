@@ -353,3 +353,83 @@ describe("WidgetKit fast paths", function()
     end)
   end)
 end)
+
+-- Revision 14: the probe rule, and slider texts written only when they change.
+describe("WidgetKit revision 14 fast paths", function()
+  after_each(TestEnv.Reset)
+
+  it("keeps the probe it found at load when the global goes away", function()
+    TestEnv.Reset()
+    TestEnv.InstallWowApi()
+    TestEnv.InstallSecretProbe()
+    for _, name in ipairs({
+      "Registry",
+      "SignalKit",
+      "PoolKit",
+      "SchemaKit",
+      "OptionsKit",
+      "WidgetKit",
+    }) do
+      require(name)
+    end
+    local WidgetKit = TestEnv.LoadParts()
+    TestEnv.InstallClientRules()
+    TestEnv.InstallScreen()
+    TestEnv.SetGlobal("issecretvalue", nil)
+    local label = WidgetKit:Create("Label") ---@cast label -nil
+    TestEnv.expectErrorContaining("text must not be a secret value", function()
+      label:SetText(TestEnv.NewSecret())
+    end)
+  end)
+
+  it("honours a probe installed after load", function()
+    local WidgetKit = TestEnv.NewPackage()
+    local label = WidgetKit:Create("Label") ---@cast label -nil
+    local secret = TestEnv.NewSecret()
+    TestEnv.expectErrorContaining("text must be a string, a number or nil", function()
+      label:SetText(secret)
+    end)
+    TestEnv.InstallSecretProbe()
+    TestEnv.expectErrorContaining("text must not be a secret value", function()
+      label:SetText(secret)
+    end)
+  end)
+
+  it("writes the slider's range labels and formats its value only on change", function()
+    local WidgetKit = TestEnv.NewPackage()
+    local slider = WidgetKit:Create("Slider") ---@cast slider -nil
+    local writes = { low = 0, high = 0, box = 0, minimum = 0 }
+    local function counting(region, key, method)
+      local original = region[method]
+      region[method] = function(self, ...)
+        writes[key] = writes[key] + 1
+        return original(self, ...)
+      end
+    end
+    counting(slider.lowText, "low", "SetText")
+    counting(slider.highText, "high", "SetText")
+    counting(slider.valueBox, "box", "SetText")
+    counting(slider.slider, "minimum", "SetMinMaxValues")
+
+    slider:SetSliderValues(0, 100, 1)
+    assert.are.same({ low = 0, high = 0, box = 1, minimum = 0 }, writes)
+    slider:SetSliderValues(0, 50, 1)
+    assert.are.same({ low = 0, high = 1, box = 2, minimum = 1 }, writes)
+    assert.are.equal("50", slider.highText:GetText())
+    slider:SetValue(20)
+    slider:SetValue(20)
+    -- The box is written at every store: the user may have typed into it.
+    assert.are.equal(4, writes.box)
+    assert.are.equal("20", slider.valueBox:GetText())
+    slider:SetIsPercent(true)
+    assert.are.equal("2000%", slider.valueBox:GetText())
+    slider:SetDisabled(true)
+    WidgetKit:Release(slider)
+    local reused = WidgetKit:Create("Slider") ---@cast reused -nil
+    assert.are.equal(slider, reused)
+    assert.are.equal("0", reused.lowText:GetText())
+    assert.are.equal("100", reused.highText:GetText())
+    assert.are.equal("0", reused.valueBox:GetText())
+    assert.is_true(reused.slider:IsEnabled())
+  end)
+end)

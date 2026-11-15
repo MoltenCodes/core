@@ -817,7 +817,7 @@ end
 local facade = newSuite("facade")
 
 facade:Test(
-  "Registry:Get('widgetKit', 1) is the WidgetKit facade with API 1, its sixteen methods, the four Anchor functions, the defaults 256/256/16 and UNBOUNDED, and the thirteen base types at their documented versions (Frame 4, five at 4, four at 3, ScrollList 2, ScrollFrame and Spacer 1)",
+  "Registry:Get('widgetKit', 1) is the WidgetKit facade with API 1, its seventeen methods, the four Anchor functions, the defaults 256/256/16 and UNBOUNDED, its eleven parts at revision 1, and the thirteen base types at their documented versions (Frame 4, five at 4, four at 3, ScrollList 2, ScrollFrame and Spacer 1)",
   function(ctx)
     ctx:Expect(rawget(WidgetKit, "API")):ToBe(WIDGET_KIT_API)
     for _, methodName in ipairs({
@@ -835,10 +835,28 @@ facade:Test(
       "BindPosition",
       "RenderOptions",
       "CreateMediaPicker",
+      "GetPartRevision",
       "SetLimits",
       "GetLimits",
     }) do
       ctx:Expect(type(WidgetKit[methodName])):ToBe("function")
+    end
+    -- The installed MoltenCodes addon embeds every part (the standalone
+    -- bundle), so each one answers its revision.
+    for _, partName in ipairs({
+      "Containers",
+      "Text",
+      "Button",
+      "CheckBox",
+      "Slider",
+      "EditBox",
+      "Dropdown",
+      "ColorPicker",
+      "ScrollList",
+      "Position",
+      "Renderer",
+    }) do
+      ctx:Expect(WidgetKit:GetPartRevision(partName)):ToBe(1)
     end
     for _, functionName in ipairs({ "FromRect", "Normalize", "Apply", "Read" }) do
       ctx:Expect(type(WidgetKit.Anchor[functionName])):ToBe("function")
@@ -2903,7 +2921,7 @@ secretTest(
 )
 
 secretTest(
-  "secret values WidgetKit would compare or use as a key are refused at the calling line (CheckBox and Dropdown values, a SetList order key and label, a user-data key, sizes, an index, a letter count, a justification, a type name), while a secret user-data value is kept",
+  "secret values WidgetKit would compare are refused at the calling line (CheckBox and Dropdown values, a SetList order key and label, sizes, an index, a letter count, a justification), a secret user-data key and type name meet the client's own refusal at the index, and a secret user-data value is kept",
   function(ctx)
     local secretTrue = makeSecret(ctx, true)
     local secretKey = makeSecret(ctx, "a")
@@ -2937,10 +2955,6 @@ secretTest(
     end, lines, "WidgetKit Dropdown:PickIndex index must not be a secret value")
     expectErrorAtCallingLine(ctx, function()
       lines.start = currentLine()
-      label:SetUserData(secretKey, 1)
-    end, lines, "WidgetKit.Widget:SetUserData key must not be a secret value")
-    expectErrorAtCallingLine(ctx, function()
-      lines.start = currentLine()
       label:SetRelativeWidth(secretNumber)
     end, lines, "WidgetKit.Widget:SetRelativeWidth fraction must not be a secret value")
     expectErrorAtCallingLine(ctx, function()
@@ -2959,10 +2973,25 @@ secretTest(
       lines.start = currentLine()
       group:SetMaxChildren(secretNumber)
     end, lines, "WidgetKit.Container:SetMaxChildren limit must not be a secret value")
-    expectErrorAtCallingLine(ctx, function()
-      lines.start = currentLine()
-      WidgetKit:Create(secretKey)
-    end, lines, "WidgetKit:Create name must not be a secret value")
+    -- A user-data key and a type name only index WidgetKit's own tables:
+    -- WidgetKit no longer asks issecretvalue about them, and the client
+    -- refuses a secret table key itself (ADR 0002). Its message names the
+    -- indexing line inside WidgetKit, not this file.
+    for _, refused in ipairs({
+      function()
+        label:SetUserData(secretKey, 1)
+      end,
+      function()
+        WidgetKit:Create(secretKey)
+      end,
+    }) do
+      local succeeded, message = pcall(refused)
+      ctx:Expect(succeeded):ToBe(false)
+      ctx:Log("client message: " .. tostring(message))
+      ctx
+        :Expect(tostring(message):find("cannot be indexed with secret keys", 1, true) ~= nil)
+        :ToBe(true)
+    end
 
     ctx:Expect(dropdown:GetNumEntries()):ToBe(1)
     ctx:Expect(box:GetValue()):ToBe(false)

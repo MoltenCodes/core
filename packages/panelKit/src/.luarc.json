@@ -9,7 +9,6 @@
       "../../schemaKit/src",
       "../../signalKit/src",
       "../../optionsKit/src",
-      "../../poolKit/src",
       "../../widgetKit/src"
     ],
     "checkThirdParty": false

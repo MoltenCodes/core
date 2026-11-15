@@ -18,12 +18,19 @@ describe("PanelKit manifest metadata", function()
     assert.are.equal(PanelKit.REVISION, tonumber(text:match('"revision"%s*:%s*(%d+)')))
   end)
 
-  it("declares Registry API 2, WidgetKit API 1 and OptionsKit API 1 as its dependencies", function()
-    local text = readManifest()
-    assert.is_truthy(text:find('"registry"%s*:%s*{%s*"api"%s*:%s*2%s*}'))
-    assert.is_truthy(text:find('"widgetKit"%s*:%s*{%s*"api"%s*:%s*1%s*}'))
-    assert.is_truthy(text:find('"optionsKit"%s*:%s*{%s*"api"%s*:%s*1%s*}'))
-    assert.is_truthy(text:find('"version"%s*:%s*"%d+%.%d+%.%d+"'))
-    assert.is_truthy(text:find('"license"%s*:%s*"MIT"'))
-  end)
+  it(
+    "declares Registry API 2, WidgetKit API 1 with its Renderer part and OptionsKit API 1",
+    function()
+      local text = readManifest()
+      assert.is_truthy(text:find('"registry"%s*:%s*{%s*"api"%s*:%s*2%s*}'))
+      assert.is_truthy(
+        text:find(
+          '"widgetKit"%s*:%s*{%s*"api"%s*:%s*1%s*,%s*"parts"%s*:%s*%[%s*"Renderer"%s*%]%s*}'
+        )
+      )
+      assert.is_truthy(text:find('"optionsKit"%s*:%s*{%s*"api"%s*:%s*1%s*}'))
+      assert.is_truthy(text:find('"version"%s*:%s*"%d+%.%d+%.%d+"'))
+      assert.is_truthy(text:find('"license"%s*:%s*"MIT"'))
+    end
+  )
 end)

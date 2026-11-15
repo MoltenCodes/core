@@ -1,26 +1,31 @@
 -- MoltenCodes WidgetKit
 --
 -- Pooled, versioned widgets for World of Warcraft addons: a registry of widget
--- types built on frames WidgetKit creates itself, acquired from and released
--- to one bounded PoolKit pool per type; a small base contract every widget
--- shares; containers whose layout is an explicit operation, never a reaction
--- to `OnSizeChanged`; a normalised anchor value type with position
--- persistence; and a renderer that turns an OptionsKit tree into widgets.
+-- types built on frames WidgetKit creates itself, each type with one bounded
+-- free list of idle widgets made on its first use; a small base contract every
+-- widget shares; and containers whose layout is an explicit operation, never a
+-- reaction to `OnSizeChanged`.
 --
--- WidgetKit needs Registry API 2, PoolKit API 1 and SignalKit API 1. It uses
--- OptionsKit, SettingsKit (through the storage table a caller hands it),
--- SchedulerKit and MediaKit API 1 when they are registered, found through
--- `Registry:Find` at call time.
+-- This file is the core. The widget types, the anchor value type with position
+-- persistence, and the renderer that turns an OptionsKit tree into widgets are
+-- parts, one file each under `parts/` (`docs/decisions/0001-kit-core-and-parts.md`),
+-- so an addon loads only the widgets it uses:
 --
--- The whole package is one file, because a package ships one runtime file
--- (see `docs/PACKAGE_MANIFEST.md`). Widget sets beyond the base set belong in
--- sibling packages; see `docs/API.md`, "Deviations".
+--   Containers   Frame, Group, ScrollFrame     Dropdown     Dropdown, media pickers
+--   Text         Label, Heading, Spacer        ColorPicker  ColorPicker
+--   Button       Button                        ScrollList   ScrollList
+--   CheckBox     CheckBox                      Position     Anchor, BindPosition
+--   Slider       Slider                        Renderer     RenderOptions, pages
+--   EditBox      EditBox
+--
+-- The core needs Registry API 2 and nothing else. A member of a part that is
+-- not loaded raises at the caller's line with the file to embed.
 --
 -- Contents
 -- --------
---   Constants ............. identity, bounds, points, built-in versions
+--   Constants ............. identity, bounds, layouts, parts
 --   Public types .......... LuaCATS declarations for the published surface
---   Dependencies .......... Registry, PoolKit, SignalKit and host facilities
+--   Dependencies .......... Registry and host facilities
 --   Validation ............ public-surface and shared-state predicates
 --   Bootstrap ............. Registry registration and inherited state
 --   Host helpers .......... error reporting, secrets, globals, frames
@@ -29,41 +34,20 @@
 --   Widget base ........... the prototype every widget falls back to
 --   Container base ........ children, layout state and PerformLayout
 --   Layouts ............... List, Fill and Flow
---   Type registry ......... RegisterType, pools, Create, Release, focus
---   Anchors ............... FromRect, Normalize, Apply, Read
---   Position binding ...... BindPosition and the binding handle
+--   Type registry ......... RegisterType, free lists, Create, Release, focus
 --   Widget helpers ........ text checks and shared construction code
---   Widget: Frame ......... a movable, resizable window with a title
---   Widget: Group ......... an inline group with a title
---   Widget: ScrollFrame ... a scroll child with a scrollbar
---   Widget: Label ......... one FontString
---   Widget: Button ........ a push button that can capture a key
---   Widget: CheckBox ...... a two- or three-state check box
---   Widget: Slider ........ a slider with a value box
---   Widget: EditBox ....... single- and multi-line text entry
---   Widget: Dropdown ...... a keyboard-free list of buttons
---   Widget: ColorPicker ... a swatch over the client colour picker
---   Widget: Heading ....... a centred title between two lines
---   Widget: Spacer ........ empty space
---   Widget: ScrollList .... a virtualised list over Blizzard's ScrollBox
---   Media pickers ......... dropdowns over MediaKit lists
---   Renderer .............. OptionsKit trees rendered into containers
+--   Parts ................. part registration, helpers and stand-ins
 --   Commit ................ prototype/facade assignment and self-check
 --
--- Layout algorithms, the renderer and pooling are described in
+-- Layout algorithms, pooling and the part machinery are described in
 -- `docs/INTERNALS.md`.
 
 -- Constants ------------------------------------------------------------------
 
 local PACKAGE_NAME = "widgetKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 13
+local IMPLEMENTATION_REVISION = 14
 local REQUIRED_REGISTRY_API = 2
-local REQUIRED_POOLKIT_API = 1
-local REQUIRED_SIGNALKIT_API = 1
-local OPTIONAL_OPTIONSKIT_API = 1
-local OPTIONAL_SCHEDULERKIT_API = 1
-local OPTIONAL_MEDIAKIT_API = 1
 local STATE_SCHEMA = 1
 
 -- The most frames one widget type builds over the session unless its
@@ -102,182 +86,112 @@ local MAX_CALLBACKS = 16
 -- one scratch table per level is retained.
 local MAX_LAYOUT_DEPTH = 32
 
--- Retained scratch tables for layouts. Layouts nest at most
--- `MAX_LAYOUT_DEPTH` deep, so one table per level is retained.
-local SCRATCH_RETAINED = MAX_LAYOUT_DEPTH
-
--- Default debounce of a position save, in seconds.
-local DEFAULT_SAVE_DELAY = 0.2
-
--- The nine anchor points in election order. `FromRect` keeps the first of
--- equally near points, so this order is the tie-break: the centre, then the
--- edge midpoints, then the corners.
-local POINTS = {
-  "CENTER",
-  "TOP",
-  "BOTTOM",
-  "LEFT",
-  "RIGHT",
-  "TOPLEFT",
-  "TOPRIGHT",
-  "BOTTOMLEFT",
-  "BOTTOMRIGHT",
+-- Which part holds each widget type WidgetKit ships, so `Create` can name the
+-- file to embed when that part is not loaded.
+local BASE_TYPE_PARTS = {
+  Frame = "Containers",
+  Group = "Containers",
+  ScrollFrame = "Containers",
+  Label = "Text",
+  Heading = "Text",
+  Spacer = "Text",
+  Button = "Button",
+  CheckBox = "CheckBox",
+  Slider = "Slider",
+  EditBox = "EditBox",
+  Dropdown = "Dropdown",
+  ColorPicker = "ColorPicker",
+  ScrollList = "ScrollList",
 }
 
--- Where each point sits on a rect, as fractions of its width and height from
--- the bottom-left corner.
-local POINT_HORIZONTAL = {
-  CENTER = 0.5,
-  TOP = 0.5,
-  BOTTOM = 0.5,
-  LEFT = 0,
-  RIGHT = 1,
-  TOPLEFT = 0,
-  TOPRIGHT = 1,
-  BOTTOMLEFT = 0,
-  BOTTOMRIGHT = 1,
-}
-local POINT_VERTICAL = {
-  CENTER = 0.5,
-  TOP = 1,
-  BOTTOM = 0,
-  LEFT = 0.5,
-  RIGHT = 0.5,
-  TOPLEFT = 1,
-  TOPRIGHT = 1,
-  BOTTOMLEFT = 0,
-  BOTTOMRIGHT = 0,
-}
-
--- The version each base widget type is registered with. A later revision of
--- this file that changes a base widget's constructor raises that widget's
--- version, so pooled widgets built by the older constructor are discarded.
---
--- Version 2 (implementation revision 6): text getters answer `""` for the
--- client's `nil`, releases remove a secret aspect with `ClearText`, the
--- `Frame` window keeps its strata under any parent, the `Label` wraps at a
--- width of its own and never sizes itself from a secret measurement, and
--- `EditBox:SetText` refuses a secret. `ScrollFrame` and `Spacer` are unchanged.
---
--- Version 3 (implementation revision 7): every text a text setter may give a
--- secret shows a secret on a font string of its own (`showText`), so a font
--- string whose measurements stay secret never shows a plain text again.
---
--- Frame version 4 (implementation revision 8): the window's `BindPosition`,
--- stored on the widget by its constructor, accepts a storage function.
---
--- Implementation revision 9 changed no constructor and no behaviour of a type
--- method (only their cost), so every version stays.
---
--- ScrollList version 1 (implementation revision 12): the virtualised list.
---
--- ScrollList version 2 (implementation revision 13): `Insert` before the end
--- and `Remove`, stored on the widget by its constructor, ask a custom
--- formatter again for the rows on display, whose indexes moved.
-local BASE_TYPE_VERSIONS = {
-  Frame = 4,
-  Group = 3,
-  ScrollFrame = 1,
-  Label = 3,
-  Button = 3,
-  CheckBox = 4,
-  Slider = 4,
-  EditBox = 4,
-  Dropdown = 4,
-  ColorPicker = 4,
-  Heading = 3,
-  Spacer = 1,
-  ScrollList = 2,
-}
-
--- The name of every built-in layout, the default one first.
+-- The default layout; `Fill` and `Flow` are the other built-in ones.
 local LAYOUT_LIST = "List"
-local LAYOUT_FILL = "Fill"
-local LAYOUT_FLOW = "Flow"
 
 -- Accepted option fields, as sets, so option validation allocates nothing.
 local TYPE_OPTION_KEYS = { maxCreated = true, maxCallbacks = true }
 local TEXT_OPTION_KEYS = { allowSecret = true }
-local BINDING_OPTION_KEYS = { key = true, delay = true, restore = true }
-local RENDER_OPTION_KEYS = { allowSecret = true, media = true, confirmText = true }
 
 -- The published surface, listed once so the public-surface predicate reads as
--- a checklist.
-local FACADE_METHODS = {
-  "RegisterType",
-  "GetTypeVersion",
-  "Create",
-  "Release",
-  "IsWidget",
-  "RegisterLayout",
-  "GetLayout",
-  "SetFocus",
-  "ClearFocus",
-  "GetFocus",
-  "GetStatistics",
-  "BindPosition",
-  "RenderOptions",
-  "CreateMediaPicker",
-  "SetLimits",
-  "GetLimits",
-}
-local WIDGET_METHODS = {
-  "SetCallback",
-  "Fire",
-  "SetUserData",
-  "GetUserData",
-  "SetWidth",
-  "SetHeight",
-  "GetWidth",
-  "GetHeight",
-  "SetFullWidth",
-  "IsFullWidth",
-  "SetFullHeight",
-  "IsFullHeight",
-  "SetRelativeWidth",
-  "GetRelativeWidth",
-  "SetPoint",
-  "ClearAllPoints",
-  "GetPoint",
-  "GetNumPoints",
-  "SetParent",
-  "Show",
-  "Hide",
-  "IsShown",
-  "IsVisible",
-  "IsReleasing",
-  "GetType",
-  "GetFrame",
-  "GetParentContainer",
-  "SetDisabled",
-  "Release",
-}
-local CONTAINER_METHODS = {
-  "AddChild",
-  "AddChildren",
-  "ReleaseChildren",
-  "GetChildren",
-  "GetNumChildren",
-  "GetContent",
-  "SetLayout",
-  "GetLayoutName",
-  "PauseLayout",
-  "ResumeLayout",
-  "IsLayoutPaused",
-  "PerformLayout",
-  "LayoutFinished",
-  "SetMaxChildren",
-  "GetMaxChildren",
-}
-local ANCHOR_FUNCTIONS = { "FromRect", "Normalize", "Apply", "Read" }
-local BINDING_METHODS = { "Capture", "Restore", "Flush", "OnMoved", "Release", "IsReleased" }
-local RENDERING_METHODS = {
-  "Refresh",
-  "Rebuild",
-  "Release",
-  "IsReleased",
-  "GetWidget",
-  "GetMessage",
+-- a checklist. One table rather than a local per list, to spare main-chunk
+-- locals.
+local SURFACE = {
+  facade = {
+    "RegisterType",
+    "GetTypeVersion",
+    "Create",
+    "Release",
+    "IsWidget",
+    "RegisterLayout",
+    "GetLayout",
+    "SetFocus",
+    "ClearFocus",
+    "GetFocus",
+    "GetStatistics",
+    "BindPosition",
+    "RenderOptions",
+    "CreateMediaPicker",
+    "GetPartRevision",
+    "SetLimits",
+    "GetLimits",
+  },
+  widget = {
+    "SetCallback",
+    "Fire",
+    "SetUserData",
+    "GetUserData",
+    "SetWidth",
+    "SetHeight",
+    "GetWidth",
+    "GetHeight",
+    "SetFullWidth",
+    "IsFullWidth",
+    "SetFullHeight",
+    "IsFullHeight",
+    "SetRelativeWidth",
+    "GetRelativeWidth",
+    "SetPoint",
+    "ClearAllPoints",
+    "GetPoint",
+    "GetNumPoints",
+    "SetParent",
+    "Show",
+    "Hide",
+    "IsShown",
+    "IsVisible",
+    "IsReleasing",
+    "GetType",
+    "GetFrame",
+    "GetParentContainer",
+    "SetDisabled",
+    "Release",
+  },
+  container = {
+    "AddChild",
+    "AddChildren",
+    "ReleaseChildren",
+    "GetChildren",
+    "GetNumChildren",
+    "GetContent",
+    "SetLayout",
+    "GetLayoutName",
+    "PauseLayout",
+    "ResumeLayout",
+    "IsLayoutPaused",
+    "PerformLayout",
+    "LayoutFinished",
+    "SetMaxChildren",
+    "GetMaxChildren",
+  },
+  anchor = { "FromRect", "Normalize", "Apply", "Read" },
+  binding = { "Capture", "Restore", "Flush", "OnMoved", "Release", "IsReleased" },
+  rendering = {
+    "Refresh",
+    "Rebuild",
+    "Release",
+    "IsReleased",
+    "GetWidget",
+    "GetMessage",
+  },
 }
 
 -- Weak keys for every table keyed by a widget or a frame, so WidgetKit never
@@ -588,56 +502,36 @@ local WEAK_KEYS = { __mode = "k" }
 ---@field BindPosition fun(self: WidgetKit, frame: WidgetKit.Frame, storage: table|(fun(): table), options: WidgetKit.BindingOptions?): WidgetKit.Binding
 ---@field RenderOptions fun(self: WidgetKit, tree: table, container: WidgetKit.Container, options: WidgetKit.RenderOptions?): WidgetKit.Rendering
 ---@field CreateMediaPicker fun(self: WidgetKit, mediaType: string): WidgetKit.Widget|nil, string?
+---@field GetPartRevision fun(self: WidgetKit, partName: string): integer?
 
 -- Dependencies ---------------------------------------------------------------
-
--- The shared MoltenCodes namespace is the one documented global handoff point between independently embedded copies.
--- selene: allow(global_usage)
-local namespace = rawget(_G, "MoltenCodes")
-local generations = type(namespace) == "table" and rawget(namespace, "Registries") or nil
 
 -- Ask for Registry by generation and fall back to the alias. A future Registry
 -- API generation takes over `MoltenCodes.Registry`, so reading the alias first
 -- would hand this file a facade whose contract it was not written against.
-local Registry = type(generations) == "table" and rawget(generations, REQUIRED_REGISTRY_API) or nil
-if type(Registry) == "nil" and type(namespace) == "table" then
-  Registry = rawget(namespace, "Registry")
+local Registry
+do
+  -- The shared MoltenCodes namespace is the one documented global handoff point between independently embedded copies.
+  -- selene: allow(global_usage)
+  local namespace = rawget(_G, "MoltenCodes")
+  local generations = type(namespace) == "table" and rawget(namespace, "Registries") or nil
+  Registry = type(generations) == "table" and rawget(generations, REQUIRED_REGISTRY_API) or nil
+  if type(Registry) == "nil" and type(namespace) == "table" then
+    Registry = rawget(namespace, "Registry")
+  end
 end
 if type(Registry) ~= "table" or rawget(Registry, "API") ~= REQUIRED_REGISTRY_API then
   error("MoltenCodes WidgetKit requires Registry API 2 to be loaded first", 2)
 end
 
 local bootstrapPackage = rawget(Registry, "Bootstrap")
-local getPackage = rawget(Registry, "Get")
 local findPackage = rawget(Registry, "Find")
 if
   type(bootstrapPackage) ~= "function"
-  or type(getPackage) ~= "function"
+  or type(rawget(Registry, "Get")) ~= "function"
   or type(findPackage) ~= "function"
 then
   error("MoltenCodes WidgetKit requires a valid Registry API 2 facade", 2)
-end
-
--- PoolKit owns every widget: one capped pool per type, and the scratch tables
--- layouts borrow.
-local PoolKit = getPackage(Registry, "poolKit", REQUIRED_POOLKIT_API)
-if
-  type(PoolKit) ~= "table"
-  or rawget(PoolKit, "API") ~= REQUIRED_POOLKIT_API
-  or type(rawget(PoolKit, "New")) ~= "function"
-  or type(rawget(PoolKit, "NewTablePool")) ~= "function"
-then
-  error("MoltenCodes WidgetKit requires PoolKit API 1 to be loaded first", 2)
-end
-
--- SignalKit carries a binding's `OnMoved` listeners.
-local SignalKit = getPackage(Registry, "signalKit", REQUIRED_SIGNALKIT_API)
-if
-  type(SignalKit) ~= "table"
-  or rawget(SignalKit, "API") ~= REQUIRED_SIGNALKIT_API
-  or type(rawget(SignalKit, "New")) ~= "function"
-then
-  error("MoltenCodes WidgetKit requires SignalKit API 1 to be loaded first", 2)
 end
 
 ---Read a global from the host at call time, or `nil`.
@@ -687,12 +581,12 @@ local function validatePublicSurface(implementation)
     return false
   end
 
-  return hasMethods(implementation, FACADE_METHODS)
-    and hasMethods(rawget(implementation, "Widget"), WIDGET_METHODS)
-    and hasMethods(rawget(implementation, "Container"), CONTAINER_METHODS)
-    and hasMethods(rawget(implementation, "Anchor"), ANCHOR_FUNCTIONS)
-    and hasMethods(rawget(implementation, "Binding"), BINDING_METHODS)
-    and hasMethods(rawget(implementation, "Rendering"), RENDERING_METHODS)
+  return hasMethods(implementation, SURFACE.facade)
+    and hasMethods(rawget(implementation, "Widget"), SURFACE.widget)
+    and hasMethods(rawget(implementation, "Container"), SURFACE.container)
+    and hasMethods(rawget(implementation, "Anchor"), SURFACE.anchor)
+    and hasMethods(rawget(implementation, "Binding"), SURFACE.binding)
+    and hasMethods(rawget(implementation, "Rendering"), SURFACE.rendering)
 end
 
 ---Whether `currentState` has the fields every API 1 revision shares.
@@ -710,7 +604,6 @@ local function validateStateBase(currentState)
     and type(rawget(currentState, "containerMetatable")) == "table"
     and type(rawget(currentState, "bindingMetatable")) == "table"
     and type(rawget(currentState, "renderingMetatable")) == "table"
-    and type(rawget(currentState, "scratch")) == "table"
     and type(rawget(currentState, "unbounded")) == "table"
     and type(rawget(currentState, "limits")) == "table"
     and type(rawget(rawget(currentState, "limits"), "maxCreatedCeiling")) == "number"
@@ -724,6 +617,9 @@ end
 local function validateCurrentState(implementation)
   local currentState = rawget(implementation, "_state")
   return validateStateBase(currentState)
+    and type(rawget(currentState, "helpers")) == "table"
+    and type(rawget(currentState, "parts")) == "table"
+    and type(rawget(currentState, "scratchFree")) == "table"
     and rawget(implementation, "UNBOUNDED") == rawget(currentState, "unbounded")
 end
 
@@ -773,22 +669,26 @@ if previousRevision == nil then
   state = {
     schema = STATE_SCHEMA,
     runtimeRevision = 0,
-    -- Pool callbacks call through this table, so a newer revision
-    -- replaces what pools created by an older one do when they build or
-    -- retire a widget.
+    -- Frame scripts and long-lived callbacks call through this table, so
+    -- a newer revision replaces what they do for frames an older one made.
     dispatch = {},
-    -- Type name to its record: version, constructor, pool, cap.
+    -- Type name to its record: version, constructor, free list, cap.
     types = {},
     -- Layout name to layout function.
     layouts = {},
-    -- Widget to its private record. Weak-keyed: a widget a pool
+    -- Widget to its private record. Weak-keyed: a widget WidgetKit
     -- discarded is not kept alive for its record.
     records = setmetatable({}, WEAK_KEYS),
     widgetMetatable = { __index = WidgetBase },
     containerMetatable = { __index = ContainerBase },
     bindingMetatable = { __index = BindingPrototype },
     renderingMetatable = { __index = RenderingPrototype },
-    scratch = PoolKit:NewTablePool({ maxRetained = SCRATCH_RETAINED }),
+    -- Idle layout scratch tables, at most one per layout depth.
+    scratchFree = {},
+    -- Core functions and shared tables the parts bind to; see "Parts".
+    helpers = {},
+    -- Part name to `{ revision, bind, ... }` for every part loaded.
+    parts = {},
     layoutDepth = 0,
     focus = false,
     holder = false,
@@ -836,6 +736,22 @@ if rawget(rawget(state, "limits"), "maxListElements") == nil then
   rawset(rawget(state, "limits"), "maxListElements", 16384)
 end
 
+-- Revision 14 split the package into a core and parts, and replaced the
+-- PoolKit pools by free lists of its own. A state an older revision made gains
+-- the tables the parts use; its PoolKit table pool for layout scratch tables
+-- is dropped (the pools of the widget types are adopted in "Commit", once the
+-- functions that adopt them exist).
+if rawget(state, "helpers") == nil then
+  rawset(state, "helpers", {})
+end
+if rawget(state, "parts") == nil then
+  rawset(state, "parts", {})
+end
+if rawget(state, "scratchFree") == nil then
+  rawset(state, "scratchFree", {})
+end
+rawset(state, "scratch", nil)
+
 -- The prototypes, metatables and records are kept across upgrades, so widgets
 -- built by an older copy keep their records and gain this copy's base methods
 -- without being replaced.
@@ -843,7 +759,9 @@ local dispatch = rawget(state, "dispatch")
 local types = rawget(state, "types")
 local layouts = rawget(state, "layouts")
 local records = rawget(state, "records")
-local scratchPool = rawget(state, "scratch")
+local scratchFree = rawget(state, "scratchFree")
+local helpers = rawget(state, "helpers")
+local parts = rawget(state, "parts")
 local WIDGET_METATABLE = rawget(state, "widgetMetatable")
 local CONTAINER_METATABLE = rawget(state, "containerMetatable")
 local BINDING_METATABLE = rawget(state, "bindingMetatable")
@@ -873,32 +791,46 @@ local function reportError(failure)
   print(failure)
 end
 
----Whether `value` is a secret value, asking the host's `issecretvalue` at every
----call. Clients without secret values do not publish the probe, and nothing
----is secret there.
+-- The probe rule: `issecretvalue` is read once, when this file loads (the
+-- client defines it before any addon runs). When it was absent at load, each
+-- check reads the global again and accepts it only as a function, so a probe a
+-- host installs later is still honoured. Hot checks inline the rule rather
+-- than calling a helper, because a call costs as much as the probe itself.
+-- selene: allow(global_usage)
+local loadedProbe = rawget(_G, "issecretvalue")
+if type(loadedProbe) ~= "function" then
+  loadedProbe = nil
+end
+
+---The secret probe under the probe rule, or `nil` when there is none: for a
+---setter that checks several values, so it resolves the probe once.
+---@return function? probe
+local function secretProbe()
+  if loadedProbe ~= nil then
+    return loadedProbe
+  end
+  -- selene: allow(global_usage)
+  local probe = rawget(_G, "issecretvalue")
+  if probe ~= nil and type(probe) == "function" then
+    return probe
+  end
+  return nil
+end
+
+---Whether `value` is a secret value. Clients without secret values do not
+---publish the probe, and nothing is secret there.
 ---@param value any
 ---@return boolean
 local function isSecret(value)
-  -- `readGlobal`, inlined: this runs for every text and every compared value,
-  -- and the extra Lua call was a measurable share of a text setter.
-  -- selene: allow(global_usage)
-  local probe = rawget(_G, "issecretvalue")
-  if type(probe) == "function" then
-    return probe(value) == true
+  local probe = loadedProbe
+  if probe == nil then
+    -- selene: allow(global_usage)
+    probe = rawget(_G, "issecretvalue")
+    if probe == nil or type(probe) ~= "function" then
+      return false
+    end
   end
-  return false
-end
-
----A global string the client localises, or `fallback` outside the client.
----@param name string
----@param fallback string
----@return string
-local function clientText(name, fallback)
-  local value = readGlobal(name)
-  if type(value) == "string" and not isSecret(value) then
-    return value
-  end
-  return fallback
+  return probe(value) == true
 end
 
 ---Whether a frame WidgetKit did not create may be touched from this code, as
@@ -981,11 +913,16 @@ end
 ---@param label string argument description, used in the argument error
 ---@param level integer stack level the failure is reported at
 local function validateName(value, label, level)
-  -- `isSecret`, inlined as in `validateNumber`: names are checked on every
-  -- `SetCallback`.
-  -- selene: allow(global_usage)
-  local probe = rawget(_G, "issecretvalue")
-  if type(probe) == "function" and probe(value) == true then
+  -- The probe rule, inlined (see `isSecret`).
+  local probe = loadedProbe
+  if probe == nil then
+    -- selene: allow(global_usage)
+    probe = rawget(_G, "issecretvalue")
+    if probe ~= nil and type(probe) ~= "function" then
+      probe = nil
+    end
+  end
+  if probe ~= nil and probe(value) == true then
     error(label .. " must not be a secret value", level)
   end
   if type(value) ~= "string" or value == "" then
@@ -997,11 +934,16 @@ end
 ---@param label string argument description, used in the argument error
 ---@param level integer stack level the failure is reported at
 local function validateNumber(value, label, level)
-  -- `isSecret`, inlined: numbers are checked on every slider, size and
-  -- colour setter, and the extra call showed in their cost.
-  -- selene: allow(global_usage)
-  local probe = rawget(_G, "issecretvalue")
-  if type(probe) == "function" and probe(value) == true then
+  -- The probe rule, inlined (see `isSecret`).
+  local probe = loadedProbe
+  if probe == nil then
+    -- selene: allow(global_usage)
+    probe = rawget(_G, "issecretvalue")
+    if probe ~= nil and type(probe) ~= "function" then
+      probe = nil
+    end
+  end
+  if probe ~= nil and probe(value) == true then
     error(label .. " must not be a secret value", level)
   end
   -- `value ~= value` is true only for NaN.
@@ -1093,10 +1035,16 @@ end
 ---@param label string argument description, used in the argument error
 ---@param level integer stack level the failure is reported at
 local function refuseSecret(value, label, level)
-  -- `isSecret`, inlined, as in `validateNumber`.
-  -- selene: allow(global_usage)
-  local probe = rawget(_G, "issecretvalue")
-  if type(probe) == "function" and probe(value) == true then
+  -- The probe rule, inlined (see `isSecret`).
+  local probe = loadedProbe
+  if probe == nil then
+    -- selene: allow(global_usage)
+    probe = rawget(_G, "issecretvalue")
+    if probe ~= nil and type(probe) ~= "function" then
+      probe = nil
+    end
+  end
+  if probe ~= nil and probe(value) == true then
     error(label .. " must not be a secret value", level)
   end
 end
@@ -1131,7 +1079,7 @@ end
 ---@param level integer stack level the failure is reported at
 ---@return table record
 local function activeRecord(widget, methodName, level)
-  local record = type(widget) == "table" and records[widget] or nil
+  local record = records[widget]
   if record == nil then
     error(methodName .. " must be called on a WidgetKit widget", level)
   end
@@ -1174,6 +1122,29 @@ end
 local function wipe(target)
   for key in next, target do
     target[key] = nil
+  end
+end
+
+---Borrow an empty scratch table: an idle one when there is one.
+---@return table scratch
+local function acquireScratch()
+  local count = #scratchFree
+  if count > 0 then
+    local scratch = scratchFree[count]
+    scratchFree[count] = nil
+    return scratch
+  end
+  return {}
+end
+
+---Give a scratch table back, emptied. At most `MAX_LAYOUT_DEPTH` are kept:
+---layouts nest at most `MAX_LAYOUT_DEPTH` deep, so that many are ever in use.
+---@param scratch table
+local function releaseScratch(scratch)
+  wipe(scratch)
+  local count = #scratchFree
+  if count < MAX_LAYOUT_DEPTH then
+    scratchFree[count + 1] = scratch
   end
 end
 
@@ -1277,7 +1248,7 @@ end
 ---@param name string
 ---@return boolean called `true` when a callback ran without raising
 function WidgetBase:Fire(name, ...)
-  local record = type(self) == "table" and records[self] or nil
+  local record = records[self]
   if record == nil then
     error("WidgetKit.Widget:Fire must be called on a WidgetKit widget", 2)
   end
@@ -1298,8 +1269,8 @@ end
 ---@param value any
 function WidgetBase:SetUserData(key, value)
   local record = activeRecord(self, "WidgetKit.Widget:SetUserData", 3)
-  -- Refused first: the key indexes `userData`, and a secret key raises.
-  refuseSecret(key, "WidgetKit.Widget:SetUserData key", 3)
+  -- A secret key is not probed: it only indexes `userData`, and the client
+  -- refuses a secret table key itself (`docs/decisions/0002-secret-checks-only-where-the-client-answers.md`).
   if type(key) == "nil" then
     error("WidgetKit.Widget:SetUserData key must not be nil", 2)
   end
@@ -1318,8 +1289,7 @@ end
 ---@return any
 function WidgetBase:GetUserData(key)
   local record = activeRecord(self, "WidgetKit.Widget:GetUserData", 3)
-  -- Refused first: the key indexes `userData`, and a secret key raises.
-  refuseSecret(key, "WidgetKit.Widget:GetUserData key", 3)
+  -- A secret key meets the client's own refusal at the index (ADR 0002).
   if type(key) == "nil" then
     return nil
   end
@@ -1481,7 +1451,7 @@ end
 ---Whether this widget, or any container above it, is being released.
 ---@return boolean
 function WidgetBase:IsReleasing()
-  local record = type(self) == "table" and records[self] or nil
+  local record = records[self]
   if record == nil then
     error("WidgetKit.Widget:IsReleasing must be called on a WidgetKit widget", 2)
   end
@@ -1490,7 +1460,7 @@ end
 
 ---@return string
 function WidgetBase:GetType()
-  local record = type(self) == "table" and records[self] or nil
+  local record = records[self]
   if record == nil then
     error("WidgetKit.Widget:GetType must be called on a WidgetKit widget", 2)
   end
@@ -1546,7 +1516,7 @@ end
 ---@param level integer stack level the failure is reported at
 ---@return table childRecord
 local function validateChild(container, child, methodName, level)
-  local childRecord = type(child) == "table" and records[child] or nil
+  local childRecord = records[child]
   if childRecord == nil or not childRecord.active then
     error(methodName .. " child must be an active WidgetKit widget", level)
   end
@@ -1609,7 +1579,7 @@ function ContainerBase:AddChild(child, beforeWidget)
   end
   local childRecord = validateChild(self, child, "WidgetKit.Container:AddChild", 3)
   if type(beforeWidget) ~= "nil" then
-    local beforeRecord = type(beforeWidget) == "table" and records[beforeWidget] or nil
+    local beforeRecord = records[beforeWidget]
     if beforeRecord == nil or beforeRecord.parent ~= self then
       error("WidgetKit.Container:AddChild beforeWidget must be a child of this container", 2)
     end
@@ -1825,10 +1795,10 @@ do
     record.layingOut = true
     state.layoutDepth = depth + 1
     callHook(container, "OnLayoutStart")
-    local scratch = scratchPool:Acquire()
+    local scratch = acquireScratch()
     local ok, width, height =
       pcall(layout, rawget(container, "content"), record.children, container, scratch)
-    scratchPool:Release(scratch)
+    releaseScratch(scratch)
     state.layoutDepth = depth
     record.layingOut = false
 
@@ -1890,13 +1860,16 @@ end
 ---
 ---`List` is the default layout and runs once per child per pass, so it does
 ---inline what `notifySized` and `callHook` would do for the one hook it calls,
----and reads the host's `issecretvalue` once per pass, not once per size: a
----pass is one call of the layout, and the probe is still read at every call.
+---and resolves the probe once per pass, not once per size (the probe rule,
+---see `isSecret`).
 ---@type WidgetKit.Layout
 local function listLayout(content, children)
-  -- selene: allow(global_usage)
-  local probe = rawget(_G, "issecretvalue")
-  local probeSecrets = type(probe) == "function"
+  local probe = loadedProbe
+  if probe == nil then
+    -- selene: allow(global_usage)
+    probe = rawget(_G, "issecretvalue")
+  end
+  local probeSecrets = probe ~= nil and type(probe) == "function"
   -- Insets larger than the container leave the content a negative width;
   -- no child is ever sized below zero. A secret width is unknown (`nil`).
   local width = content:GetWidth()
@@ -2074,13 +2047,30 @@ end
 
 -- Type registry --------------------------------------------------------------
 --
--- One PoolKit pool per type, created by the first registration. The pool is
--- capped (`maxCreated`), retains every widget it ever built (the retention
--- bound follows the cap), and is generation-stamped with the type version, so
--- raising the version retires every pooled widget the older constructor built.
+-- Each type keeps its own free list: an array of the idle widgets it built,
+-- created by the type's first `Create`, never at load or at registration, so a
+-- type nobody creates costs only its record. The type is capped (`maxCreated`
+-- counts every frame it ever built, since the client never frees one), every
+-- released widget is kept for reuse, and the type version is the generation:
+-- raising it retires the idle widgets the older constructor built at once and
+-- the borrowed ones when they come back. Revision 13 and older kept the same
+-- bookkeeping in one PoolKit pool per type; an upgrade adopts those pools (see
+-- `adoptPool`).
+--
+-- The type record:
+--
+--   name, version, constructor
+--   maxCallbacks      the callback bound of its widgets
+--   maxCreated        the cap
+--   created           frames built over the session
+--   discarded         widgets retired: stale versions
+--   borrowed          version -> widgets of that version currently borrowed
+--   free              the idle widgets, or `nil` before the first `Create`
+--   trusted           `true` for WidgetKit's own types, whose hooks run
+--                     without `pcall`
+--   pool              a PoolKit pool an older revision made, until adopted
 
----Build one widget of `typeRecord`'s type. Runs as the pool's `create`, through
----`dispatch`, so a newer copy's build runs for pools an older copy created.
+---Build one widget of `typeRecord`'s type.
 ---
 ---A constructor that returns something unusable is a caller error; the
 ---message is left in `state.buildProblem` for `Create` to raise at its caller.
@@ -2155,7 +2145,7 @@ local function buildWidget(typeRecord)
   return widget
 end
 
----Retire a widget its pool let go of: a stale generation, or a closed pool.
+---Retire a widget of a stale version: it is never reused.
 ---The client never frees the frame, so it is parked, hidden, on the holder.
 ---@param widget table
 local function retireWidget(widget)
@@ -2168,8 +2158,23 @@ local function retireWidget(widget)
   end
 end
 
--- Defined with the renderer, below.
-local releaseContainerRenderings
+---Release every rendering drawn into a container that is being released.
+---A rendering exists only where a renderer made it, so its prototype's
+---`Release` is that renderer's (the `Renderer` part, or an older revision's).
+---@param renderings table[] the container record's list, emptied by the releases
+local function releaseContainerRenderings(renderings)
+  local releaseRendering = rawget(RenderingPrototype, "Release")
+  for index = #renderings, 1, -1 do
+    local rendering = renderings[index]
+    if rendering ~= nil then
+      if rendering._released then
+        table.remove(renderings, index)
+      else
+        releaseRendering(rendering)
+      end
+    end
+  end
+end
 
 ---Release `widget` and everything below it. The caller has checked that it is
 ---active and not already releasing.
@@ -2177,7 +2182,8 @@ local releaseContainerRenderings
 ---In order: the `OnRelease` callback, children from last to first, the type's
 ---`OnRelease` hook, then the record is cleared (callbacks, user data, size
 ---requests, layout), the frame loses its anchors, is hidden and re-parented,
----the widget leaves its container, and the pool takes it back.
+---the widget leaves its container, and its type keeps it for reuse (or
+---retires it when a higher version replaced its constructor).
 ---@param widget table
 ---@param record table
 local function releaseWidget(widget, record)
@@ -2224,12 +2230,18 @@ local function releaseWidget(widget, record)
     end
   end
 
-  -- The type's `OnRelease` hook, as `callHook` calls it.
+  -- The type's `OnRelease` hook, as `callHook` calls it. WidgetKit's own
+  -- types are trusted: their hook is WidgetKit's code and runs unprotected.
+  local typeRecord = record.typeRecord
   local hook = rawget(widget, "OnRelease")
-  if type(hook) == "function" then
-    local ok, failure = pcall(hook, widget)
-    if not ok then
-      reportError(failure)
+  if hook ~= nil then
+    if typeRecord.trusted then
+      hook(widget)
+    elseif type(hook) == "function" then
+      local ok, failure = pcall(hook, widget)
+      if not ok then
+        reportError(failure)
+      end
     end
   end
 
@@ -2271,11 +2283,120 @@ local function releaseWidget(widget, record)
   end
   record.releasing = false
   record.active = false
-  local typeRecord = record.typeRecord
   local borrowed = typeRecord.borrowed
   local version = record.version
   borrowed[version] = borrowed[version] - 1
-  typeRecord.pool:Release(widget)
+  if version == typeRecord.version then
+    local free = typeRecord.free
+    free[#free + 1] = widget
+  else
+    -- Built by a constructor a higher version replaced: retired, not reused.
+    typeRecord.discarded = typeRecord.discarded + 1
+    retireWidget(widget)
+  end
+end
+
+---Retire every idle widget of `typeRecord`: their version was replaced.
+---@param typeRecord table
+---@return integer retired
+local function retireIdle(typeRecord)
+  local free = typeRecord.free
+  if free == nil then
+    return 0
+  end
+  local retired = #free
+  for index = retired, 1, -1 do
+    retireWidget(free[index])
+    free[index] = nil
+  end
+  typeRecord.discarded = typeRecord.discarded + retired
+  return retired
+end
+
+---Give `typeRecord` a higher version and its constructor.
+---
+---Idle widgets of older versions are retired now and borrowed ones when they
+---are released. Retired frames still count against the cap, so the cap grows
+---by what this upgrade uses up: the idle widgets it retires and the borrowed
+---widgets of the generation it replaces. Borrowed widgets of generations
+---before that one were counted by the upgrade that replaced them. The cap
+---never passes the `maxCreatedCeiling` limit in force.
+---@param typeRecord table
+---@param constructor function
+---@param version integer
+---@param maxCreated integer the cap the registration asked for
+---@param maxCallbacks number
+local function raiseTypeVersion(typeRecord, constructor, version, maxCreated, maxCallbacks)
+  local ceiling = rawget(rawget(state, "limits"), "maxCreatedCeiling")
+  local previousVersion = typeRecord.version
+  typeRecord.constructor = constructor
+  typeRecord.version = version
+  typeRecord.maxCallbacks = maxCallbacks
+  local stale = typeRecord.borrowed[previousVersion] or 0
+  local retired = retireIdle(typeRecord)
+  local cap = typeRecord.maxCreated
+  local wanted = cap + retired + stale
+  if maxCreated > wanted then
+    wanted = maxCreated
+  end
+  if wanted > ceiling then
+    wanted = ceiling
+  end
+  if wanted > cap then
+    typeRecord.maxCreated = wanted
+  end
+end
+
+---A new type record. Its free list is made by the first `Create`.
+---@param name string
+---@param constructor function
+---@param version integer
+---@param maxCreated integer
+---@param maxCallbacks number
+---@return table typeRecord
+local function newTypeRecord(name, constructor, version, maxCreated, maxCallbacks)
+  return {
+    name = name,
+    version = version,
+    constructor = constructor,
+    -- `math.huge` when registered with `maxCallbacks = WidgetKit.UNBOUNDED`.
+    maxCallbacks = maxCallbacks,
+    maxCreated = maxCreated,
+    created = 0,
+    discarded = 0,
+    -- Type version -> widgets of that version currently borrowed.
+    borrowed = {},
+    free = nil,
+    trusted = false,
+  }
+end
+
+---Take over the PoolKit pool a revision 13 or older copy made for a type:
+---its idle widgets move onto the type's free list (`Acquire` hands out a
+---retained widget while one is available and never builds then), its counts
+---are copied, and the pool is dropped. Widgets borrowed from it come back to
+---the free list when they are released.
+---@param typeRecord table
+local function adoptPool(typeRecord)
+  local pool = typeRecord.pool
+  if pool == nil then
+    return
+  end
+  local free = typeRecord.free or {}
+  for _ = 1, pool:GetAvailableCount() do
+    local widget = pool:Acquire()
+    if widget == nil then
+      break
+    end
+    free[#free + 1] = widget
+  end
+  typeRecord.free = free
+  local cap = pool:GetMaxCreated()
+  typeRecord.maxCreated = type(cap) == "number" and cap or DEFAULT_MAX_CREATED
+  typeRecord.created = pool:GetCreatedCount()
+  typeRecord.discarded = pool:GetDiscardedCount()
+  typeRecord.trusted = typeRecord.trusted == true
+  typeRecord.pool = nil
 end
 
 ---Register a widget type, or replace an older version of it.
@@ -2317,7 +2438,7 @@ local function registerType(self, name, constructor, version, options)
           2
         )
       end
-      maxCreated = options.maxCreated
+      maxCreated = options.maxCreated --[[@as integer]]
     end
     if type(options.maxCallbacks) ~= "nil" then
       validateLimitOrUnbounded(
@@ -2337,66 +2458,99 @@ local function registerType(self, name, constructor, version, options)
     if version == typeRecord.version then
       return false, "current"
     end
-
-    -- A newer constructor: pooled widgets of older versions are retired
-    -- now and borrowed ones when they are released. Retired frames still
-    -- count against the cap, so the cap grows by what this upgrade uses
-    -- up: the pooled widgets it retires and the borrowed widgets of the
-    -- generation it replaces. Borrowed widgets of generations before that
-    -- one were counted by the upgrade that replaced them. The cap never
-    -- passes the `maxCreatedCeiling` limit in force.
-    local previousVersion = typeRecord.version
-    typeRecord.constructor = constructor
-    typeRecord.version = version
-    typeRecord.maxCallbacks = maxCallbacks
-    local stale = typeRecord.borrowed[previousVersion] or 0
-    local pool = typeRecord.pool ---@type table
-    local retired = pool:SetGeneration(version)
-    local cap = pool:GetMaxCreated()
-    local wanted = cap + retired + stale
-    if maxCreated > wanted then
-      wanted = maxCreated
-    end
-    if wanted > ceiling then
-      wanted = ceiling
-    end
-    if wanted > cap then
-      pool:SetMaxCreated(wanted)
-    end
+    -- A custom constructor replacing WidgetKit's own is not trusted.
+    typeRecord.trusted = false
+    raiseTypeVersion(typeRecord, constructor, version, maxCreated, maxCallbacks)
     return true
   end
 
-  typeRecord = {
-    name = name,
-    version = version,
-    constructor = constructor,
-    -- `math.huge` when registered with `maxCallbacks = WidgetKit.UNBOUNDED`.
-    maxCallbacks = maxCallbacks,
-    pool = nil,
-    -- Type version -> widgets of that version currently borrowed.
-    borrowed = {},
-  }
-  typeRecord.pool = PoolKit:New({
-    create = function()
-      return dispatch.build(typeRecord)
-    end,
-    destroy = function(widget)
-      dispatch.retire(widget)
-    end,
-    maxCreated = maxCreated,
-    generation = version,
-  })
-  types[name] = typeRecord
+  types[name] = newTypeRecord(name, constructor, version, maxCreated, maxCallbacks)
   return true
+end
+
+---Register one of WidgetKit's own types for the part that ships it. Unlike
+---`RegisterType`, an equal version takes this constructor, so the older copy
+---of the part that registered it is no longer referenced (no upgrade residue);
+---the widgets that copy built keep its methods, which behave the same at the
+---same version. A higher version registered by anyone else is kept. The type
+---is trusted: its `OnAcquire` and `OnRelease` run without `pcall`.
+---@param name string
+---@param constructor function
+---@param version integer
+local function registerBuiltInType(name, constructor, version)
+  local typeRecord = types[name]
+  if typeRecord == nil then
+    typeRecord = newTypeRecord(name, constructor, version, DEFAULT_MAX_CREATED, MAX_CALLBACKS)
+    typeRecord.trusted = true
+    types[name] = typeRecord
+    return
+  end
+  if version < typeRecord.version then
+    return
+  end
+  typeRecord.trusted = true
+  if version == typeRecord.version then
+    typeRecord.constructor = constructor
+    return
+  end
+  raiseTypeVersion(
+    typeRecord,
+    constructor,
+    version,
+    DEFAULT_MAX_CREATED,
+    typeRecord.maxCallbacks or MAX_CALLBACKS
+  )
 end
 
 ---@param name string
 ---@return integer? version
 local function getTypeVersion(self, name)
   validateFacade(self, "WidgetKit:GetTypeVersion", 3)
-  validateName(name, "WidgetKit:GetTypeVersion name", 3)
+  -- Indexed before the name is checked: a secret name meets the client's own
+  -- refusal at the index (ADR 0002), and a registered name needs no check.
   local typeRecord = types[name]
-  return typeRecord ~= nil and typeRecord.version or nil
+  if typeRecord ~= nil then
+    return typeRecord.version
+  end
+  validateName(name, "WidgetKit:GetTypeVersion name", 3)
+  return nil
+end
+
+---The message of a member whose part is not loaded.
+---@param memberText string what the caller used, such as `WidgetKit:RenderOptions`
+---@param partName string
+---@return string
+local function missingPartMessage(memberText, partName)
+  return memberText
+    .. " is in WidgetKit's "
+    .. partName
+    .. " part, which is not loaded: add widgetKit\\parts\\WidgetKit-"
+    .. partName
+    .. ".lua to embeds.xml (or rebuild it with python3 -m tooling.package.embeds)"
+end
+
+---Build a new widget for `Create`: `nil` when the type is at its cap.
+---@param typeRecord table
+---@return table|nil widget
+local function buildForCreate(typeRecord)
+  if typeRecord.free == nil then
+    typeRecord.free = {}
+  end
+  if typeRecord.created >= typeRecord.maxCreated then
+    return nil
+  end
+  local ok, widget = pcall(buildWidget, typeRecord)
+  if not ok then
+    local problem = state.buildProblem
+    state.buildProblem = nil
+    if problem ~= nil then
+      error("WidgetKit:Create " .. problem, 3)
+    end
+    -- The constructor itself raised: its error is passed on unchanged.
+    error(widget, 0)
+  end
+  typeRecord.created = typeRecord.created + 1
+  return widget
 end
 
 ---Acquire a widget of type `name`.
@@ -2405,37 +2559,37 @@ end
 ---@return string? reason `"unknownType"` or `"exhausted"`
 local function create(self, name)
   -- `validateFacade` and `validateName`, inlined: this is the hot half of
-  -- every widget's use. The secret check still comes first, before the name
-  -- is compared or used as a key.
+  -- every widget's use. The name is indexed before it is checked: a secret
+  -- name meets the client's own refusal at the index (ADR 0002), and a
+  -- registered name needs no further check.
   if self ~= WidgetKit then
     error("WidgetKit:Create must be called on the WidgetKit facade", 2)
   end
-  -- selene: allow(global_usage)
-  local probe = rawget(_G, "issecretvalue")
-  if type(probe) == "function" and probe(name) == true then
-    error("WidgetKit:Create name must not be a secret value", 2)
-  end
-  if type(name) ~= "string" or name == "" then
-    error("WidgetKit:Create name must be a non-empty string", 2)
-  end
   local typeRecord = types[name]
   if typeRecord == nil then
+    if type(name) ~= "string" or name == "" then
+      error("WidgetKit:Create name must be a non-empty string", 2)
+    end
+    local partName = BASE_TYPE_PARTS[name]
+    if partName ~= nil then
+      error(missingPartMessage("WidgetKit:Create " .. name, partName), 2)
+    end
     return nil, "unknownType"
   end
 
-  local pool = typeRecord.pool
-  local ok, widget, reason = pcall(pool.Acquire, pool)
-  if not ok then
-    local problem = state.buildProblem
-    state.buildProblem = nil
-    if problem ~= nil then
-      error("WidgetKit:Create " .. problem, 2)
+  -- An idle widget when there is one; a new one otherwise. Only building
+  -- runs protected: taking an idle widget calls nothing.
+  local free = typeRecord.free
+  local count = free ~= nil and #free or 0
+  local widget
+  if count > 0 then
+    widget = free[count]
+    free[count] = nil
+  else
+    widget = buildForCreate(typeRecord)
+    if widget == nil then
+      return nil, "exhausted"
     end
-    -- The constructor itself raised: its error is passed on unchanged.
-    error(widget, 0)
-  end
-  if widget == nil then
-    return nil, reason
   end
 
   -- `buildWidget` and `releaseWidget` leave every other field of the record
@@ -2451,12 +2605,18 @@ local function create(self, name)
   local version = record.version
   borrowed[version] = (borrowed[version] or 0) + 1
 
+  -- The constructor checked that `OnAcquire` is a function or absent. A
+  -- trusted type's hook is WidgetKit's own and runs unprotected.
   local onAcquire = rawget(widget, "OnAcquire")
-  if type(onAcquire) ~= "nil" then
-    local acquired, failure = pcall(onAcquire, widget)
-    if not acquired then
-      releaseWidget(widget, record)
-      error(failure, 0)
+  if onAcquire ~= nil then
+    if typeRecord.trusted then
+      onAcquire(widget)
+    else
+      local acquired, failure = pcall(onAcquire, widget)
+      if not acquired then
+        releaseWidget(widget, record)
+        error(failure, 0)
+      end
     end
   end
   widget.frame:Show()
@@ -2470,7 +2630,7 @@ local function release(self, widget)
   if self ~= WidgetKit then
     error("WidgetKit:Release must be called on the WidgetKit facade", 2)
   end
-  local record = type(widget) == "table" and records[widget] or nil
+  local record = records[widget]
   if record == nil then
     error("WidgetKit:Release widget must be a WidgetKit widget", 2)
   end
@@ -2487,7 +2647,7 @@ end
 ---Release this widget; the same as `WidgetKit:Release(widget)`.
 ---@return true
 function WidgetBase:Release()
-  local record = type(self) == "table" and records[self] or nil
+  local record = records[self]
   if record == nil then
     error("WidgetKit.Widget:Release must be called on a WidgetKit widget", 2)
   end
@@ -2525,7 +2685,7 @@ end
 ---@return boolean
 local function isWidget(self, value)
   validateFacade(self, "WidgetKit:IsWidget", 3)
-  local record = type(value) == "table" and records[value] or nil
+  local record = records[value]
   return record ~= nil and record.active == true
 end
 
@@ -2563,7 +2723,7 @@ local function setFocus(self, widget)
   validateFacade(self, "WidgetKit:SetFocus", 3)
   -- The widget is an argument here, not the receiver: worded as `Release`
   -- words it.
-  local record = type(widget) == "table" and records[widget] or nil
+  local record = records[widget]
   if record == nil then
     error("WidgetKit:SetFocus widget must be a WidgetKit widget", 2)
   end
@@ -2615,14 +2775,18 @@ local function getStatistics(self)
     byType = {},
   }
   for name, typeRecord in next, types do
-    local pool = typeRecord.pool
+    local active = 0
+    for _, count in next, typeRecord.borrowed do
+      active = active + count
+    end
+    local free = typeRecord.free
     local row = {
       version = typeRecord.version,
-      maxCreated = pool:GetMaxCreated(),
-      created = pool:GetCreatedCount(),
-      active = pool:GetActiveCount(),
-      available = pool:GetAvailableCount(),
-      discarded = pool:GetDiscardedCount(),
+      maxCreated = typeRecord.maxCreated,
+      created = typeRecord.created,
+      active = active,
+      available = free ~= nil and #free or 0,
+      discarded = typeRecord.discarded,
     }
     statistics.byType[name] = row
     statistics.types = statistics.types + 1
@@ -2725,678 +2889,6 @@ local function getLimits(self)
   }
 end
 
--- Anchors --------------------------------------------------------------------
---
--- An anchor is a plain table `{ point, relativeTo, relativePoint, x, y, scale }`
--- that `SetPoint` can consume and a saved variable can hold. `relativeTo` is a
--- global frame name whenever the frame has one.
-
----Validate a rect and return its four numbers.
----@param rect any
----@param label string argument description, used in the argument error
----@param level integer stack level the failure is reported at
----@return number left, number bottom, number width, number height
-local function readRect(rect, label, level)
-  if type(rect) ~= "table" then
-    error(label .. " must be a table with left, bottom, width and height", level)
-  end
-  local left, bottom, width, height = rect.left, rect.bottom, rect.width, rect.height
-  if
-    type(left) ~= "number"
-    or type(bottom) ~= "number"
-    or type(width) ~= "number"
-    or type(height) ~= "number"
-  then
-    error(label .. " must be a table with left, bottom, width and height", level)
-  end
-  return left, bottom, width, height
-end
-
----Elect the point of the parent nearest to the same point of the rect and
----return the anchor that keeps the rect where it is.
----
----The distance compared is between a point of the rect and the same point of
----the parent, squared, so the centre, the four edge midpoints and the four
----corners compete on one scale. Equally near points go to the earlier one in
----`POINTS`. Pure: it reads only its arguments and allocates only the anchor,
----or nothing when `into` is given.
----@param rect WidgetKit.Rect
----@param parentRect WidgetKit.Rect
----@param into table? filled in place and returned
----@return WidgetKit.Anchor
-local function anchorFromRect(rect, parentRect, into)
-  local left, bottom, width, height = readRect(rect, "WidgetKit.Anchor.FromRect rect", 3)
-  local parentLeft, parentBottom, parentWidth, parentHeight =
-    readRect(parentRect, "WidgetKit.Anchor.FromRect parentRect", 3)
-  if type(into) ~= "nil" and type(into) ~= "table" then
-    error("WidgetKit.Anchor.FromRect into must be a table or nil", 2)
-  end
-
-  local bestPoint, bestDistance, bestX, bestY = nil, nil, 0, 0
-  for index = 1, #POINTS do
-    local point = POINTS[index]
-    local horizontal = POINT_HORIZONTAL[point]
-    local vertical = POINT_VERTICAL[point]
-    local offsetX = (left + width * horizontal) - (parentLeft + parentWidth * horizontal)
-    local offsetY = (bottom + height * vertical) - (parentBottom + parentHeight * vertical)
-    local distance = offsetX * offsetX + offsetY * offsetY
-    if bestDistance == nil or distance < bestDistance then
-      bestPoint, bestDistance, bestX, bestY = point, distance, offsetX, offsetY
-    end
-  end
-
-  local anchor = into or {}
-  anchor.point = bestPoint
-  anchor.relativeTo = nil
-  anchor.relativePoint = bestPoint
-  anchor.x = bestX
-  anchor.y = bestY
-  anchor.scale = nil
-  return anchor
-end
-
----Validate a point name.
----@param point any
----@param label string argument description, used in the argument error
----@param level integer stack level the failure is reported at
-local function validatePoint(point, label, level)
-  if isSecret(point) or type(point) ~= "string" or POINT_HORIZONTAL[point] == nil then
-    error(label .. " must be one of the nine anchor points", level)
-  end
-end
-
----Validate a frame argument: a table with the methods an anchor needs.
----@param frame any
----@param label string argument description, used in the argument error
----@param level integer stack level the failure is reported at
-local function validateAnchorFrame(frame, label, level)
-  if
-    type(frame) ~= "table"
-    or type(frame.SetPoint) ~= "function"
-    or type(frame.ClearAllPoints) ~= "function"
-    or type(frame.GetPoint) ~= "function"
-  then
-    error(label .. " must be a frame", level)
-  end
-end
-
----The name to store for a relative frame, or the frame itself when unnamed.
----@param relative any
----@return string|table|nil
-local function relativeName(relative)
-  if type(relative) == "table" and type(relative.GetName) == "function" then
-    local name = relative:GetName()
-    if type(name) == "string" and not isSecret(name) and name ~= "" then
-      return name
-    end
-  end
-  return relative
-end
-
----Turn any of the five `SetPoint` argument forms into an anchor, with the
----relative frame as its global name when it has one. `nil` as the relative
----frame means the frame's parent, as for `SetPoint`, and is resolved to it.
----@param frame WidgetKit.Frame
----@param point string
----@return WidgetKit.Anchor
-local function anchorNormalize(frame, point, first, second, third, fourth)
-  validateAnchorFrame(frame, "WidgetKit.Anchor.Normalize frame", 3)
-  validatePoint(point, "WidgetKit.Anchor.Normalize point", 3)
-
-  local relativeTo, relativePoint, x, y
-  if type(first) == "nil" then
-    -- `(point)`, or the full form with the parent written as `nil`.
-    if type(second) == "string" then
-      relativeTo, relativePoint, x, y = nil, second, third, fourth
-    else
-      relativeTo, relativePoint, x, y = nil, point, 0, 0
-    end
-  elseif type(first) == "number" then
-    relativeTo, relativePoint, x, y = nil, point, first, second
-  elseif type(second) == "number" then
-    relativeTo, relativePoint, x, y = first, point, second, third
-  else
-    relativeTo, relativePoint, x, y = first, second, third, fourth
-    if not isSecret(relativePoint) and not relativePoint then
-      relativePoint = point
-    end
-  end
-  -- A missing offset is 0, as for `SetPoint`. The secret check comes first:
-  -- `x or 0` would test a secret as a boolean and raise here; validation
-  -- below refuses it at the caller's line instead.
-  if not isSecret(x) and not x then
-    x = 0
-  end
-  if not isSecret(y) and not y then
-    y = 0
-  end
-
-  validatePoint(relativePoint, "WidgetKit.Anchor.Normalize relativePoint", 3)
-  validateNumber(x, "WidgetKit.Anchor.Normalize x", 3)
-  validateNumber(y, "WidgetKit.Anchor.Normalize y", 3)
-  if type(relativeTo) ~= "nil" and type(relativeTo) ~= "table" and type(relativeTo) ~= "string" then
-    error("WidgetKit.Anchor.Normalize relativeTo must be a frame, a frame name or nil", 2)
-  end
-  if type(relativeTo) == "nil" and type(frame.GetParent) == "function" then
-    relativeTo = frame:GetParent()
-  end
-
-  local scale = 1
-  if type(frame.GetScale) == "function" then
-    scale = frame:GetScale()
-  end
-
-  return {
-    point = point,
-    relativeTo = relativeName(relativeTo),
-    relativePoint = relativePoint,
-    x = x,
-    y = y,
-    scale = scale,
-  }
-end
-
----Read the fields of an anchor, which may be a saved-variable view.
----@param anchor any
----@param label string argument description, used in the argument error
----@param level integer stack level the failure is reported at
----@return string point, any relativeTo, string relativePoint, number x, number y, number? scale
-local function readAnchor(anchor, label, level)
-  if type(anchor) ~= "table" then
-    error(label .. " must be an anchor table", level)
-  end
-  local point = anchor.point
-  validatePoint(point, label .. ".point", level + 1)
-  local relativePoint = anchor.relativePoint
-  if type(relativePoint) == "nil" then
-    relativePoint = point
-  end
-  validatePoint(relativePoint, label .. ".relativePoint", level + 1)
-  -- Not `anchor.x or 0`: a secret offset is refused by validation, not
-  -- tested as a boolean.
-  local x, y = anchor.x, anchor.y
-  if not isSecret(x) and not x then
-    x = 0
-  end
-  if not isSecret(y) and not y then
-    y = 0
-  end
-  validateNumber(x, label .. ".x", level + 1)
-  validateNumber(y, label .. ".y", level + 1)
-  local relativeTo = anchor.relativeTo
-  if isSecret(relativeTo) then
-    error(label .. ".relativeTo must not be a secret value", level)
-  end
-  if type(relativeTo) ~= "nil" and type(relativeTo) ~= "string" and type(relativeTo) ~= "table" then
-    error(label .. ".relativeTo must be a frame, a frame name or nil", level)
-  end
-  local scale = anchor.scale
-  if type(scale) ~= "nil" then
-    validateNumber(scale, label .. ".scale", level + 1)
-    if scale <= 0 then
-      error(label .. ".scale must be above 0", level)
-    end
-  end
-  return point, relativeTo, relativePoint, x, y, scale
-end
-
----Anchor `frame` at `anchor`, replacing its anchors and applying its scale.
----A frame `IsForbidden` or `CanBeAccessedInContext` refuses is left alone, and
----so is one whose anchor the client refuses: the frame keeps its points and
----scale.
----@param frame WidgetKit.Frame
----@param anchor WidgetKit.Anchor
----@return boolean applied
----@return string? reason `"forbidden"`, `"unknownRelative"` when `relativeTo` names no frame, or `"refused"` when the client refuses the anchor
-local function anchorApply(frame, anchor)
-  validateAnchorFrame(frame, "WidgetKit.Anchor.Apply frame", 3)
-  local point, relativeTo, relativePoint, x, y, scale =
-    readAnchor(anchor, "WidgetKit.Anchor.Apply anchor", 3)
-  if not canTouchFrame(frame) then
-    return false, "forbidden"
-  end
-  if type(relativeTo) == "string" then
-    local resolved = readGlobal(relativeTo)
-    if type(resolved) ~= "table" then
-      return false, "unknownRelative"
-    end
-    relativeTo = resolved
-  end
-  -- The client refuses a frame anchored to itself (`Cannot anchor to
-  -- itself`); a saved anchor naming the frame is refused before anything
-  -- changes. `readAnchor` refused a secret `relativeTo`, so this compares a
-  -- plain value.
-  if rawequal(relativeTo, frame) then
-    return false, "refused"
-  end
-
-  -- An anchor into a frame that depends on this one (an anchor cycle) is
-  -- refused by `SetPoint` only after `ClearAllPoints` ran, which would leave
-  -- the frame with no point at all: not drawn, and never draggable back.
-  -- The current points and scale are kept in a scratch table first, so a
-  -- refusal puts them back. The count and the scale are plain numbers in the
-  -- client's documentation; `GetPoint` answers are secret while the frame's
-  -- anchoring is, and then cannot be set again from addon code, so each
-  -- point is put back under `pcall` and a secret one stays lost.
-  local count = 0
-  if type(frame.GetNumPoints) == "function" then
-    count = frame:GetNumPoints()
-  end
-  if type(count) ~= "number" or isSecret(count) then
-    count = 0
-  end
-  local canScale = type(scale) ~= "nil" and type(frame.SetScale) == "function"
-  local kept = scratchPool:Acquire()
-  for index = 1, count do
-    local base = (index - 1) * 5
-    kept[base + 1], kept[base + 2], kept[base + 3], kept[base + 4], kept[base + 5] =
-      frame:GetPoint(index)
-  end
-  if canScale and type(frame.GetScale) == "function" then
-    kept.scale = frame:GetScale()
-  end
-
-  if canScale then
-    frame:SetScale(scale)
-  end
-  frame:ClearAllPoints()
-  local applied = pcall(frame.SetPoint, frame, point, relativeTo, relativePoint, x, y)
-  if not applied then
-    frame:ClearAllPoints()
-    for index = 1, count do
-      local base = (index - 1) * 5
-      pcall(
-        frame.SetPoint,
-        frame,
-        kept[base + 1],
-        kept[base + 2],
-        kept[base + 3],
-        kept[base + 4],
-        kept[base + 5]
-      )
-    end
-    local previousScale = kept.scale
-    if type(previousScale) == "number" and not isSecret(previousScale) then
-      frame:SetScale(previousScale)
-    end
-  end
-  scratchPool:Release(kept)
-  if not applied then
-    return false, "refused"
-  end
-  return true
-end
-
----The frame's first anchor, normalised; `nil` when it has none, or when the
----client answers it with secret values (`GetPoint` is secret while the frame's
----anchoring is secret), which can be neither inspected nor saved.
----@param frame WidgetKit.Frame
----@return WidgetKit.Anchor?
-local function anchorRead(frame)
-  validateAnchorFrame(frame, "WidgetKit.Anchor.Read frame", 3)
-  local point, relativeTo, relativePoint, x, y = frame:GetPoint(1)
-  if
-    isSecret(point)
-    or isSecret(relativeTo)
-    or isSecret(relativePoint)
-    or isSecret(x)
-    or isSecret(y)
-  then
-    return nil
-  end
-  if type(point) == "nil" then
-    return nil
-  end
-  return anchorNormalize(frame, point, relativeTo, relativePoint, x or 0, y or 0)
-end
-
--- Position binding -----------------------------------------------------------
-
----A frame's rect in screen coordinates: its own rect times its effective
----scale. `nil` when the frame is not positioned.
----@param frame WidgetKit.Frame
----@return number? left, number bottom, number width, number height
-local function screenRect(frame)
-  local left, bottom, width, height = frame:GetRect()
-  -- `GetRect` is secret while the frame's anchoring is secret: such a rect
-  -- cannot be measured, so the frame counts as not positioned.
-  if
-    type(left) == "nil"
-    or isSecret(left)
-    or isSecret(bottom)
-    or isSecret(width)
-    or isSecret(height)
-  then
-    return nil, 0, 0, 0
-  end
-  local scale = 1
-  if type(frame.GetEffectiveScale) == "function" then
-    scale = frame:GetEffectiveScale()
-  end
-  return left * scale, bottom * scale, width * scale, height * scale
-end
-
----@param binding any
----@param methodName string qualified public method name, used in the argument error
----@param level integer stack level the failure is reported at
-local function validateBinding(binding, methodName, level)
-  if type(binding) ~= "table" or getmetatable(binding) ~= BINDING_METATABLE then
-    error(methodName .. " must be called on a WidgetKit binding", level)
-  end
-end
-
--- The storage a binding saves into is resolved at every save and restore: a
--- storage function (`function() return db.profile end`) follows a SettingsKit
--- profile switch, where a view captured once would keep writing into the
--- profile it was made for, and turn detached once that profile is deleted or
--- reset away. A save runs from a drag handler or a SchedulerKit debounce,
--- after the frame already moved, so a storage that fails is reported through
--- the host error handler, never raised: the frame stays where the user put
--- it. The helpers live in this block because the main chunk is close to Lua
--- 5.1's limit of 200 active locals.
-local saveBinding
-do
-  ---The binding's storage table, or `nil` and the failure to report.
-  ---@param binding table
-  ---@return table? storage
-  ---@return any failure
-  local function resolveStorage(binding)
-    local storage = binding._storage
-    if type(storage) == "function" then
-      local ok, resolved = pcall(storage)
-      if not ok then
-        return nil, resolved
-      end
-      if type(resolved) ~= "table" then
-        return nil,
-          "WidgetKit.Binding storage function must return a table; it returned a " .. type(resolved)
-      end
-      return resolved
-    end
-    return storage
-  end
-
-  ---`storage[key] = value`, as a function `pcall` can call without a closure.
-  ---@param storage table
-  ---@param key string
-  ---@param value table
-  local function store(storage, key, value)
-    storage[key] = value
-  end
-
-  ---`storage[key]`, likewise: a storage table's `__index` may raise.
-  ---@param storage table
-  ---@param key string
-  ---@return any
-  local function fetch(storage, key)
-    return storage[key]
-  end
-
-  ---Write the binding's current anchor into its storage as a fresh plain
-  ---table, so a SettingsKit view validates and stores it like any record. A
-  ---storage that cannot be resolved or refuses the write is reported.
-  ---@param binding table
-  function saveBinding(binding)
-    local anchor = binding._anchor
-    if type(anchor.point) == "nil" then
-      return
-    end
-    local storage, failure = resolveStorage(binding)
-    if type(storage) == "nil" then
-      reportError(failure)
-      return
-    end
-    local relativeTo = anchor.relativeTo
-    if type(relativeTo) ~= "string" then
-      relativeTo = nil
-    end
-    local ok, refusal = pcall(store, storage, binding._key, {
-      point = anchor.point,
-      relativeTo = relativeTo,
-      relativePoint = anchor.relativePoint,
-      x = anchor.x,
-      y = anchor.y,
-      scale = anchor.scale,
-    })
-    if not ok then
-      reportError(refusal)
-    end
-  end
-
-  ---Apply the saved anchor, when the storage holds a valid one. A storage
-  ---that cannot be resolved, or an anchor that cannot be read, is reported;
-  ---an anchor the client refuses is not applied. Either way the frame keeps
-  ---its place.
-  ---@return boolean restored
-  function BindingPrototype:Restore()
-    validateBinding(self, "WidgetKit.Binding:Restore", 3)
-    if self._released then
-      return false
-    end
-    local storage, failure = resolveStorage(self)
-    if type(storage) == "nil" then
-      reportError(failure)
-      return false
-    end
-    local ok, saved = pcall(fetch, storage, self._key)
-    if not ok then
-      reportError(saved)
-      return false
-    end
-    if type(saved) ~= "table" or not canTouchFrame(self._frame) then
-      return false
-    end
-    local applied
-    ok, applied = pcall(anchorApply, self._frame, saved)
-    if not ok then
-      -- A saved anchor this copy cannot read is reported, never raised:
-      -- the frame keeps the position it had.
-      reportError(applied)
-      return false
-    end
-    if applied then
-      local anchor = self._anchor
-      anchor.point = saved.point
-      anchor.relativeTo = saved.relativeTo
-      anchor.relativePoint = saved.relativePoint or saved.point
-      anchor.x = saved.x or 0
-      anchor.y = saved.y or 0
-      anchor.scale = saved.scale
-    end
-    return applied == true
-  end
-end
-
----Build a binding. Shared by `WidgetKit:BindPosition` and the `Frame`
----widget's `BindPosition`, so both report argument errors at their caller.
----@param frame WidgetKit.Frame
----@param storage any a table, or a function returning the table at each save and restore
----@param options any
----@param methodName string qualified public method name, used in the argument errors
----@param level integer stack level the failures are reported at
----@return WidgetKit.Binding
-local function newBinding(frame, storage, options, methodName, level)
-  validateAnchorFrame(frame, methodName .. " frame", level + 1)
-  if type(frame.GetRect) ~= "function" then
-    error(methodName .. " frame must be a frame", level)
-  end
-  if type(storage) ~= "table" and type(storage) ~= "function" then
-    error(methodName .. " storage must be a table or a function that returns one", level)
-  end
-
-  local key, delay, restore = "anchor", DEFAULT_SAVE_DELAY, true
-  if type(options) ~= "nil" then
-    validateOptionKeys(options, BINDING_OPTION_KEYS, methodName .. " options", level + 1)
-    if type(options.key) ~= "nil" then
-      validateName(options.key, methodName .. " options.key", level + 1)
-      key = options.key
-    end
-    if type(options.delay) ~= "nil" then
-      validateNumber(options.delay, methodName .. " options.delay", level + 1)
-      if options.delay < 0 then
-        error(methodName .. " options.delay must not be negative", level)
-      end
-      delay = options.delay
-    end
-    if type(options.restore) ~= "nil" then
-      -- `type` answers "boolean" for a secret; `if restore` would raise.
-      refuseSecret(options.restore, methodName .. " options.restore", level + 1)
-      if type(options.restore) ~= "boolean" then
-        error(methodName .. " options.restore must be a boolean", level)
-      end
-      restore = options.restore
-    end
-  end
-
-  local binding = setmetatable({
-    _frame = frame,
-    _storage = storage,
-    _key = key,
-    _anchor = {},
-    _signal = SignalKit:New(),
-    _debounce = nil,
-    _released = false,
-  }, BINDING_METATABLE)
-
-  -- SchedulerKit, when an addon embeds it, coalesces a burst of moves into
-  -- one save. Without it every capture saves at once. The debounced save
-  -- calls through `dispatch`, so a newer revision replaces how a pending
-  -- save of this binding is written.
-  local SchedulerKit = findPackage(Registry, "schedulerKit", OPTIONAL_SCHEDULERKIT_API)
-  if type(SchedulerKit) == "table" and type(SchedulerKit.Debounce) == "function" then
-    binding._debounce = SchedulerKit:Debounce(function()
-      dispatch.saveBinding(binding)
-    end, delay)
-  end
-
-  if restore then
-    BindingPrototype.Restore(binding)
-  end
-  return binding
-end
-
----Bind `frame`'s position to `storage[options.key or "anchor"]`.
----@param frame WidgetKit.Frame
----@param storage table|(fun(): table) a plain table or a SettingsKit scope view, or a function returning one at each save and restore (`function() return db.profile end`)
----@param options WidgetKit.BindingOptions?
----@return WidgetKit.Binding
-local function bindPosition(self, frame, storage, options)
-  validateFacade(self, "WidgetKit:BindPosition", 3)
-  return newBinding(frame, storage, options, "WidgetKit:BindPosition", 3)
-end
-
----Read the frame's position, re-anchor it at the nearest point of its parent,
----save that anchor (debounced when SchedulerKit is present) and fire
----`OnMoved(binding, anchor)`.
----@return WidgetKit.Anchor|nil anchor the binding's own anchor table; copy what you keep
----@return string? reason `"released"`, `"forbidden"` or `"notPositioned"`
-function BindingPrototype:Capture()
-  validateBinding(self, "WidgetKit.Binding:Capture", 3)
-  if self._released then
-    return nil, "released"
-  end
-
-  local frame = self._frame
-  if not canTouchFrame(frame) then
-    return nil, "forbidden"
-  end
-  local left, bottom, width, height = screenRect(frame)
-  if type(left) == "nil" then
-    return nil, "notPositioned"
-  end
-  local parent = type(frame.GetParent) == "function" and frame:GetParent() or nil
-  if type(parent) == "nil" then
-    parent = restingParent()
-  end
-  if type(parent) ~= "table" or type(parent.GetRect) ~= "function" then
-    return nil, "notPositioned"
-  end
-  local parentLeft, parentBottom, parentWidth, parentHeight = screenRect(parent)
-  if type(parentLeft) == "nil" then
-    return nil, "notPositioned"
-  end
-
-  -- `FromRect` reads plain rect fields; reuse two tables kept on the binding.
-  local rect = self._rect
-  if rect == nil then
-    rect = {}
-    self._rect = rect
-    self._parentRect = {}
-  end
-  local parentRect = self._parentRect
-  rect.left, rect.bottom, rect.width, rect.height = left, bottom, width, height
-  parentRect.left, parentRect.bottom = parentLeft, parentBottom
-  parentRect.width, parentRect.height = parentWidth, parentHeight
-
-  local anchor = anchorFromRect(rect, parentRect, self._anchor)
-  local scale = type(frame.GetEffectiveScale) == "function" and frame:GetEffectiveScale() or 1
-  anchor.x = anchor.x / scale
-  anchor.y = anchor.y / scale
-  anchor.relativeTo = relativeName(parent)
-  anchor.scale = type(frame.GetScale) == "function" and frame:GetScale() or 1
-
-  frame:ClearAllPoints()
-  frame:SetPoint(anchor.point, parent, anchor.relativePoint, anchor.x, anchor.y)
-
-  local debounce = self._debounce
-  if debounce ~= nil then
-    debounce()
-  else
-    saveBinding(self)
-  end
-  self._signal:Fire(self, anchor)
-  return anchor
-end
-
----Save a debounced anchor now.
----@return boolean saved `false` when nothing was pending
-function BindingPrototype:Flush()
-  validateBinding(self, "WidgetKit.Binding:Flush", 3)
-  local debounce = self._debounce
-  if debounce == nil or self._released then
-    return false
-  end
-  return debounce:Flush() == true
-end
-
----Connect `callback(binding, anchor)` to every capture.
----@param callback fun(binding: WidgetKit.Binding, anchor: WidgetKit.Anchor)
----@return table connection a SignalKit connection
-function BindingPrototype:OnMoved(callback)
-  validateBinding(self, "WidgetKit.Binding:OnMoved", 3)
-  if type(callback) ~= "function" then
-    error("WidgetKit.Binding:OnMoved callback must be a function", 2)
-  end
-  if self._released then
-    error("WidgetKit.Binding:OnMoved cannot be called on a released binding", 2)
-  end
-  return self._signal:Connect(callback)
-end
-
----Save what is pending and stop listening.
----@return boolean released `false` when it was already released
-function BindingPrototype:Release()
-  validateBinding(self, "WidgetKit.Binding:Release", 3)
-  if self._released then
-    return false
-  end
-  local debounce = self._debounce
-  if debounce ~= nil then
-    debounce:Flush()
-    debounce:Close()
-    self._debounce = nil
-  end
-  self._signal:DisconnectAll()
-  self._released = true
-  return true
-end
-
----@return boolean
-function BindingPrototype:IsReleased()
-  validateBinding(self, "WidgetKit.Binding:IsReleased", 3)
-  return self._released == true
-end
-
 -- Widget helpers -------------------------------------------------------------
 --
 -- The base widgets below follow the author contract in `docs/API.md` like any
@@ -3422,9 +2914,13 @@ end
 --     shows secrets on a font string of its own and never a plain text there.
 
 -- Colours a widget draws its text and chrome in.
-local LABEL_RED, LABEL_GREEN, LABEL_BLUE = 1, 0.82, 0
-local TEXT_RED, TEXT_GREEN, TEXT_BLUE = 1, 1, 1
-local DISABLED_RED, DISABLED_GREEN, DISABLED_BLUE = 0.5, 0.5, 0.5
+-- One table rather than nine locals, to spare main-chunk locals; the parts
+-- bind the numbers to locals of their own.
+local COLOURS = {
+  label = { 1, 0.82, 0 },
+  text = { 1, 1, 1 },
+  disabled = { 0.5, 0.5, 0.5 },
+}
 
 ---Check that `widget` is active and the text it is asked to display.
 ---
@@ -3443,7 +2939,7 @@ local DISABLED_RED, DISABLED_GREEN, DISABLED_BLUE = 0.5, 0.5, 0.5
 ---@return string|number text
 ---@return boolean secret
 local function checkText(widget, text, options, methodName, level)
-  local record = type(widget) == "table" and records[widget] or nil
+  local record = records[widget]
   if record == nil then
     error(methodName .. " must be called on a WidgetKit widget", level)
   end
@@ -3457,10 +2953,16 @@ local function checkText(widget, text, options, methodName, level)
     refuseSecret(options.allowSecret, methodName .. " options.allowSecret", level + 1)
     allowSecret = options.allowSecret == true
   end
-  -- `isSecret`, inlined as in `validateNumber`.
-  -- selene: allow(global_usage)
-  local probe = rawget(_G, "issecretvalue")
-  if type(probe) == "function" and probe(text) == true then
+  -- The probe rule, inlined (see `isSecret`).
+  local probe = loadedProbe
+  if probe == nil then
+    -- selene: allow(global_usage)
+    probe = rawget(_G, "issecretvalue")
+    if probe ~= nil and type(probe) ~= "function" then
+      probe = nil
+    end
+  end
+  if probe ~= nil and probe(text) == true then
     if not allowSecret then
       error(
         methodName .. " text must not be a secret value unless options.allowSecret is true",
@@ -3601,9 +3103,11 @@ end
 ---@param disabled boolean
 local function colourLabel(fontString, disabled)
   if disabled then
-    fontString:SetTextColor(DISABLED_RED, DISABLED_GREEN, DISABLED_BLUE)
+    local colour = COLOURS.disabled
+    fontString:SetTextColor(colour[1], colour[2], colour[3])
   else
-    fontString:SetTextColor(LABEL_RED, LABEL_GREEN, LABEL_BLUE)
+    local colour = COLOURS.label
+    fontString:SetTextColor(colour[1], colour[2], colour[3])
   end
 end
 
@@ -3650,4139 +3154,93 @@ local function newLabelMethods(typeName)
   return setLabel, getLabel
 end
 
--- The base widget constructors by type name, each defined in its own `do`
--- block below so that the helpers of one widget are not visible to the
--- others. One table rather than a local per constructor: the main chunk is at
--- Lua 5.1's limit of 200 local variables.
-local BASE_CONSTRUCTORS = {}
-
--- Widget: Frame --------------------------------------------------------------
-
-do
-  local WINDOW_WIDTH, WINDOW_HEIGHT = 700, 500
-  local WINDOW_TITLE_HEIGHT = 24
-  local WINDOW_INSET = 12
-
-  ---@param text any
-  ---@param options WidgetKit.TextOptions?
-  local function windowSetTitle(self, text, options)
-    local value, secret = checkText(self, text, options, "WidgetKit Frame:SetTitle", 3)
-    showText(self, "titleText", value, secret)
-  end
-
-  ---@return any
-  local function windowGetTitle(self)
-    activeRecord(self, "WidgetKit Frame:GetTitle", 3)
-    local text = self.titleText:GetText()
-    if type(text) == "nil" then
-      return ""
-    end
-    return text
-  end
-
-  ---@param resizable boolean
-  local function windowSetResizable(self, resizable)
-    activeRecord(self, "WidgetKit Frame:SetResizable", 3)
-    refuseSecret(resizable, "WidgetKit Frame:SetResizable resizable", 3)
-    if type(resizable) ~= "boolean" then
-      error("WidgetKit Frame:SetResizable resizable must be a boolean", 2)
-    end
-    self.frame:SetResizable(resizable)
-    self.sizer:SetShown(resizable)
-  end
-
-  ---@param movable boolean
-  local function windowSetMovable(self, movable)
-    activeRecord(self, "WidgetKit Frame:SetMovable", 3)
-    refuseSecret(movable, "WidgetKit Frame:SetMovable movable", 3)
-    if type(movable) ~= "boolean" then
-      error("WidgetKit Frame:SetMovable movable must be a boolean", 2)
-    end
-    self.frame:SetMovable(movable)
-  end
-
-  ---Bind the window's position, replacing a binding it already had. The binding
-  ---is released with the window.
-  ---@param storage table|(fun(): table) a table, or a function returning one at each save and restore
-  ---@param options WidgetKit.BindingOptions?
-  ---@return WidgetKit.Binding
-  local function windowBindPosition(self, storage, options)
-    activeRecord(self, "WidgetKit Frame:BindPosition", 3)
-    local binding = newBinding(self.frame, storage, options, "WidgetKit Frame:BindPosition", 3)
-    local previous = self._binding
-    if previous ~= nil then
-      previous:Release()
-    end
-    self._binding = binding
-    return binding
-  end
-
-  ---@return WidgetKit.Binding?
-  local function windowGetBinding(self)
-    activeRecord(self, "WidgetKit Frame:GetBinding", 3)
-    return self._binding
-  end
-
-  local function windowOnAcquire(self)
-    local frame = self.frame
-    -- A restored anchor applies its saved scale to the frame; the next
-    -- use of the window starts at the default one.
-    frame:SetScale(1)
-    frame:SetFrameStrata("DIALOG")
-    frame:SetSize(WINDOW_WIDTH, WINDOW_HEIGHT)
-    frame:ClearAllPoints()
-    frame:SetPoint("CENTER")
-    frame:SetMovable(true)
-    frame:SetResizable(true)
-    self.sizer:Show()
-    self.titleText:SetText("")
-  end
-
-  local function windowOnRelease(self)
-    local binding = self._binding
-    if binding ~= nil then
-      binding:Release()
-      self._binding = nil
-    end
-    showText(self, "titleText", "", false)
-    local frame = self.frame
-    frame:StopMovingOrSizing()
-  end
-
-  ---@return table widget
-  function BASE_CONSTRUCTORS.Frame()
-    local frame = createFrame("Frame", releaseParent())
-    frame:SetFrameStrata("DIALOG")
-    -- `SetParent` gives a frame its new parent's strata (measured on Retail
-    -- 12.1.0 b69933: a window put on a MEDIUM frame answered MEDIUM), so the
-    -- window keeps its own strata wherever a consumer parents it.
-    if type(frame.SetFixedFrameStrata) == "function" then
-      frame:SetFixedFrameStrata(true)
-    end
-    frame:SetToplevel(true)
-    frame:SetClampedToScreen(true)
-    frame:EnableMouse(true)
-    if type(frame.SetResizeBounds) == "function" then
-      frame:SetResizeBounds(240, 160)
-    end
-
-    local background = frame:CreateTexture(nil, "BACKGROUND")
-    background:SetAllPoints(frame)
-    background:SetColorTexture(0.05, 0.05, 0.05, 0.92)
-
-    local titleBar = createFrame("Frame", frame)
-    titleBar:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, 0)
-    titleBar:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -WINDOW_TITLE_HEIGHT, 0)
-    titleBar:SetHeight(WINDOW_TITLE_HEIGHT)
-    titleBar:EnableMouse(true)
-    titleBar:RegisterForDrag("LeftButton")
-
-    local titleText = titleBar:CreateFontString(nil, "OVERLAY")
-    titleText:SetFontObject("GameFontNormal")
-    titleText:SetJustifyH("LEFT")
-    titleText:SetPoint("LEFT", titleBar, "LEFT", 8, 0)
-    titleText:SetPoint("RIGHT", titleBar, "RIGHT", -8, 0)
-
-    local close = createFrame("Button", frame, "UIPanelCloseButton")
-    close:SetSize(WINDOW_TITLE_HEIGHT, WINDOW_TITLE_HEIGHT)
-    close:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, 0)
-
-    local sizer = createFrame("Button", frame)
-    sizer:SetSize(16, 16)
-    sizer:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", 0, 0)
-    sizer:EnableMouse(true)
-    local grip = sizer:CreateTexture(nil, "OVERLAY")
-    grip:SetAllPoints(sizer)
-    grip:SetColorTexture(0.6, 0.6, 0.6, 0.5)
-
-    local content = createFrame("Frame", frame)
-    content:SetPoint("TOPLEFT", frame, "TOPLEFT", WINDOW_INSET, -(WINDOW_TITLE_HEIGHT + 8))
-    content:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -WINDOW_INSET, WINDOW_INSET)
-
-    local widget = {
-      frame = frame,
-      content = content,
-      titleBar = titleBar,
-      titleText = titleText,
-      closeButton = close,
-      sizer = sizer,
-      OnAcquire = windowOnAcquire,
-      OnRelease = windowOnRelease,
-      SetTitle = windowSetTitle,
-      GetTitle = windowGetTitle,
-      SetResizable = windowSetResizable,
-      SetMovable = windowSetMovable,
-      BindPosition = windowBindPosition,
-      GetBinding = windowGetBinding,
-    }
-
-    titleBar:SetScript("OnDragStart", function()
-      if isActive(widget) and frame:IsMovable() then
-        frame:StartMoving()
-      end
-    end)
-    titleBar:SetScript("OnDragStop", function()
-      frame:StopMovingOrSizing()
-      if not isActive(widget) then
-        return
-      end
-      local binding = widget._binding
-      if binding ~= nil then
-        binding:Capture()
-      end
-      widget:Fire("OnMoved")
-    end)
-    close:SetScript("OnClick", function()
-      if not isActive(widget) then
-        return
-      end
-      frame:Hide()
-      widget:Fire("OnClose")
-    end)
-    sizer:SetScript("OnMouseDown", function()
-      if isActive(widget) and frame:IsResizable() then
-        frame:StartSizing("BOTTOMRIGHT")
-      end
-    end)
-    sizer:SetScript("OnMouseUp", function()
-      frame:StopMovingOrSizing()
-      if not isActive(widget) then
-        return
-      end
-      -- Layout is explicit: a finished resize is the moment to run it.
-      widget:PerformLayout()
-      widget:Fire("OnResize", frame:GetWidth(), frame:GetHeight())
-    end)
-    return widget
-  end
-end
-
--- Widget: Group --------------------------------------------------------------
-
-do
-  local GROUP_INSET = 8
-  local GROUP_TITLE_HEIGHT = 18
-
-  ---Anchor the content frame below the title, or at the top without one.
-  ---@param widget table
-  local function groupPlaceContent(widget)
-    local title = widget.titleText:GetText()
-    local hasTitle = type(title) ~= "nil" and (isSecret(title) or title ~= "")
-    local top = hasTitle and (GROUP_TITLE_HEIGHT + GROUP_INSET) or GROUP_INSET
-    widget._topInset = top
-    local content = widget.content
-    content:ClearAllPoints()
-    content:SetPoint("TOPLEFT", widget.frame, "TOPLEFT", GROUP_INSET, -top)
-    content:SetPoint("BOTTOMRIGHT", widget.frame, "BOTTOMRIGHT", -GROUP_INSET, GROUP_INSET)
-  end
-
-  ---@param text any
-  ---@param options WidgetKit.TextOptions?
-  local function groupSetTitle(self, text, options)
-    local value, secret = checkText(self, text, options, "WidgetKit Group:SetTitle", 3)
-    showText(self, "titleText", value, secret)
-    groupPlaceContent(self)
-  end
-
-  ---@return any
-  local function groupGetTitle(self)
-    activeRecord(self, "WidgetKit Group:GetTitle", 3)
-    local text = self.titleText:GetText()
-    if type(text) == "nil" then
-      return ""
-    end
-    return text
-  end
-
-  ---@param disabled boolean? `true` greys the text out; the widget takes no input
-  local function groupSetDisabled(self, disabled)
-    colourLabel(self.titleText, readDisabled(self, disabled, "WidgetKit Group:SetDisabled", 3))
-  end
-
-  ---A group grows to its content unless it is full height.
-  local function groupOnLayoutFinished(self, _, height)
-    local record = records[self]
-    if record.fullHeight then
-      return
-    end
-    self.frame:SetHeight((height or 0) + self._topInset + GROUP_INSET)
-  end
-
-  local function groupOnAcquire(self)
-    self.frame:SetSize(300, 2 * GROUP_INSET)
-    self.titleText:SetText("")
-    colourLabel(self.titleText, false)
-    groupPlaceContent(self)
-  end
-
-  local function groupOnRelease(self)
-    showText(self, "titleText", "", false)
-  end
-
-  ---@return table widget
-  function BASE_CONSTRUCTORS.Group()
-    local frame = createFrame("Frame", releaseParent())
-    local background = frame:CreateTexture(nil, "BACKGROUND")
-    background:SetAllPoints(frame)
-    background:SetColorTexture(0.1, 0.1, 0.1, 0.5)
-
-    local titleText = frame:CreateFontString(nil, "OVERLAY")
-    titleText:SetFontObject("GameFontNormal")
-    titleText:SetJustifyH("LEFT")
-    titleText:SetPoint("TOPLEFT", frame, "TOPLEFT", GROUP_INSET, -4)
-    titleText:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -GROUP_INSET, -4)
-    titleText:SetHeight(GROUP_TITLE_HEIGHT)
-
-    local content = createFrame("Frame", frame)
-
-    return {
-      frame = frame,
-      content = content,
-      titleText = titleText,
-      _topInset = GROUP_INSET,
-      OnAcquire = groupOnAcquire,
-      OnRelease = groupOnRelease,
-      OnLayoutFinished = groupOnLayoutFinished,
-      SetTitle = groupSetTitle,
-      GetTitle = groupGetTitle,
-      SetDisabled = groupSetDisabled,
-    }
-  end
-end
-
--- Widget: ScrollFrame --------------------------------------------------------
-
-do
-  local SCROLLBAR_WIDTH = 16
-  local SCROLL_STEP = 40
-
-  ---@return number
-  local function scrollGetContentHeight(self)
-    activeRecord(self, "WidgetKit ScrollFrame:GetContentHeight", 3)
-    return self._contentHeight
-  end
-
-  ---@return number
-  local function scrollGetScrollRange(self)
-    activeRecord(self, "WidgetKit ScrollFrame:GetScrollRange", 3)
-    return self._range
-  end
-
-  ---@return number
-  local function scrollGetScroll(self)
-    activeRecord(self, "WidgetKit ScrollFrame:GetScroll", 3)
-    return self.scroll:GetVerticalScroll()
-  end
-
-  ---Scroll to `offset`, clamped to the range.
-  ---@param offset number
-  local function scrollSetScroll(self, offset)
-    activeRecord(self, "WidgetKit ScrollFrame:SetScroll", 3)
-    validateNumber(offset, "WidgetKit ScrollFrame:SetScroll offset", 3)
-    if offset < 0 then
-      offset = 0
-    elseif offset > self._range then
-      offset = self._range
-    end
-    self.scroll:SetVerticalScroll(offset)
-    self.scrollbar:SetValue(offset)
-  end
-
-  ---The scroll child has no anchors, so its width is set before each pass.
-  local function scrollOnLayoutStart(self)
-    -- `SetWidth` takes a secret argument only from untainted code, so a
-    -- secret viewport width is unknown and the content keeps its width.
-    local viewportWidth = self.scroll:GetWidth()
-    if not isSecret(viewportWidth) then
-      self.content:SetWidth(viewportWidth)
-    end
-  end
-
-  ---Size the scroll child to what the layout used and update the scrollbar.
-  local function scrollOnLayoutFinished(self, _, height)
-    height = height or 0
-    self._contentHeight = height
-    self.content:SetHeight(height)
-    -- A secret viewport height is unknown and counts as 0: every pixel of
-    -- the content is then scrollable.
-    local viewportHeight = self.scroll:GetHeight()
-    if isSecret(viewportHeight) then
-      viewportHeight = 0
-    end
-    local range = height - viewportHeight
-    if range < 0 then
-      range = 0
-    end
-    self._range = range
-    local scrollbar = self.scrollbar
-    scrollbar:SetMinMaxValues(0, range)
-    scrollbar:SetShown(range > 0)
-    local offset = self.scroll:GetVerticalScroll()
-    if offset > range then
-      self.scroll:SetVerticalScroll(range)
-    end
-  end
-
-  local function scrollOnAcquire(self)
-    self.frame:SetSize(300, 200)
-    self._contentHeight = 0
-    self._range = 0
-    self.scroll:SetVerticalScroll(0)
-    self.scrollbar:SetMinMaxValues(0, 0)
-    self.scrollbar:SetValue(0)
-    self.scrollbar:Hide()
-  end
-
-  ---@return table widget
-  function BASE_CONSTRUCTORS.ScrollFrame()
-    local frame = createFrame("Frame", releaseParent())
-
-    local scroll = createFrame("ScrollFrame", frame)
-    scroll:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, 0)
-    scroll:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -(SCROLLBAR_WIDTH + 4), 0)
-    scroll:EnableMouseWheel(true)
-
-    local content = createFrame("Frame", scroll)
-    scroll:SetScrollChild(content)
-
-    local scrollbar = createFrame("Slider", frame)
-    scrollbar:SetOrientation("VERTICAL")
-    scrollbar:SetWidth(SCROLLBAR_WIDTH)
-    scrollbar:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, 0)
-    scrollbar:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", 0, 0)
-    scrollbar:SetValueStep(1)
-    local track = scrollbar:CreateTexture(nil, "BACKGROUND")
-    track:SetAllPoints(scrollbar)
-    track:SetColorTexture(0, 0, 0, 0.4)
-    local thumb = scrollbar:CreateTexture(nil, "OVERLAY")
-    thumb:SetColorTexture(0.5, 0.5, 0.5, 0.9)
-    thumb:SetSize(SCROLLBAR_WIDTH - 4, 24)
-    scrollbar:SetThumbTexture(thumb)
-
-    local widget = {
-      frame = frame,
-      content = content,
-      scroll = scroll,
-      scrollbar = scrollbar,
-      _contentHeight = 0,
-      _range = 0,
-      OnAcquire = scrollOnAcquire,
-      OnLayoutStart = scrollOnLayoutStart,
-      OnLayoutFinished = scrollOnLayoutFinished,
-      GetContentHeight = scrollGetContentHeight,
-      GetScrollRange = scrollGetScrollRange,
-      GetScroll = scrollGetScroll,
-      SetScroll = scrollSetScroll,
-    }
-
-    scrollbar:SetScript("OnValueChanged", function(_, value)
-      scroll:SetVerticalScroll(value)
-    end)
-    scroll:SetScript("OnMouseWheel", function(_, delta)
-      if isActive(widget) then
-        widget:SetScroll(scroll:GetVerticalScroll() - delta * SCROLL_STEP)
-      end
-    end)
-    return widget
-  end
-end
-
--- Widget: Label --------------------------------------------------------------
-
-do
-  -- One line of the default fonts, used where a text height cannot be measured.
-  local LINE_HEIGHT = 12
-
-  -- The width a label has from `Create` on, until `SetWidth` or a layout
-  -- gives it another.
-  local LABEL_WIDTH = 200
-
-  ---Size the label to its text. A secret text is not measured, and a
-  ---measurement the client answers as a secret is not used: `SetHeight`
-  ---takes a secret only from untainted code (Retail 12.1.0 b69933). A plain
-  ---text is shown by a font string that never showed a secret (`showText`),
-  ---so its measurement is plain; the check stays as the last guard. Either
-  ---way a label whose height cannot be measured is one line high.
-  ---@param widget table
-  local function labelUpdateHeight(widget)
-    local height = LINE_HEIGHT
-    if not widget._secret then
-      local measured = widget.text:GetStringHeight()
-      if not isSecret(measured) then
-        height = measured
-      end
-    end
-    widget.frame:SetHeight(height)
-  end
-
-  ---Give the font string the label's width and size the label again.
-  ---
-  ---The font string wraps at a width of its own rather than at its anchors:
-  ---the client measures a wrapped text only against a width it has already
-  ---resolved, and a label laid out before it was ever drawn (measured on
-  ---Retail 12.1.0 b69933) still measured one unwrapped line after its anchors
-  ---spanned the content. `width` is a plain number: `SetWidth` refuses a
-  ---secret, and a layout tells a child no width it could not read. It is
-  ---kept, so the font string `showText` switches to wraps at it too.
-  ---@param widget table
-  ---@param width number
-  local function labelSetWrapWidth(widget, width)
-    widget._wrapWidth = width
-    widget.text:SetWidth(width)
-    labelUpdateHeight(widget)
-  end
-
-  ---@param text any
-  ---@param options WidgetKit.TextOptions?
-  local function labelSetText(self, text, options)
-    local value, secret = checkText(self, text, options, "WidgetKit Label:SetText", 3)
-    self._secret = secret
-    showText(self, "text", value, secret)
-    -- The font string showing the text may have changed.
-    labelSetWrapWidth(self, self._wrapWidth)
-  end
-
-  ---@return any
-  local function labelGetText(self)
-    activeRecord(self, "WidgetKit Label:GetText", 3)
-    -- The client's font string answers `nil` for an empty text.
-    local text = self.text:GetText()
-    if type(text) == "nil" then
-      return ""
-    end
-    return text
-  end
-
-  ---@param fontObject any a font object or its global name
-  local function labelSetFontObject(self, fontObject)
-    activeRecord(self, "WidgetKit Label:SetFontObject", 3)
-    if type(fontObject) ~= "string" and type(fontObject) ~= "table" then
-      error("WidgetKit Label:SetFontObject fontObject must be a font object or its name", 2)
-    end
-    self.text:SetFontObject(fontObject)
-    labelUpdateHeight(self)
-  end
-
-  ---@param red number
-  ---@param green number
-  ---@param blue number
-  ---@param alpha number?
-  local function labelSetColor(self, red, green, blue, alpha)
-    activeRecord(self, "WidgetKit Label:SetColor", 3)
-    validateNumber(red, "WidgetKit Label:SetColor red", 3)
-    validateNumber(green, "WidgetKit Label:SetColor green", 3)
-    validateNumber(blue, "WidgetKit Label:SetColor blue", 3)
-    if type(alpha) ~= "nil" then
-      validateNumber(alpha, "WidgetKit Label:SetColor alpha", 3)
-    end
-    self._red, self._green, self._blue, self._alpha = red, green, blue, alpha or 1
-    if not self._disabled then
-      self.text:SetTextColor(red, green, blue, alpha or 1)
-    end
-  end
-
-  ---@param justify string `"LEFT"`, `"CENTER"` or `"RIGHT"`
-  local function labelSetJustifyH(self, justify)
-    activeRecord(self, "WidgetKit Label:SetJustifyH", 3)
-    refuseSecret(justify, "WidgetKit Label:SetJustifyH justify", 3)
-    if justify ~= "LEFT" and justify ~= "CENTER" and justify ~= "RIGHT" then
-      error('WidgetKit Label:SetJustifyH justify must be "LEFT", "CENTER" or "RIGHT"', 2)
-    end
-    self.text:SetJustifyH(justify)
-  end
-
-  ---@param disabled boolean? `true` greys the text out; the widget takes no input
-  local function labelSetDisabled(self, disabled)
-    disabled = readDisabled(self, disabled, "WidgetKit Label:SetDisabled", 3)
-    self._disabled = disabled
-    if disabled then
-      self.text:SetTextColor(DISABLED_RED, DISABLED_GREEN, DISABLED_BLUE, 1)
-    else
-      self.text:SetTextColor(self._red, self._green, self._blue, self._alpha)
-    end
-  end
-
-  ---@param width number
-  local function labelOnWidthSet(self, width)
-    labelSetWrapWidth(self, width)
-  end
-
-  local function labelOnAcquire(self)
-    self.frame:SetWidth(LABEL_WIDTH)
-    self._secret = false
-    self._disabled = false
-    self._red, self._green, self._blue, self._alpha = TEXT_RED, TEXT_GREEN, TEXT_BLUE, 1
-    self.text:SetFontObject("GameFontHighlightSmall")
-    self.text:SetJustifyH("LEFT")
-    self.text:SetTextColor(TEXT_RED, TEXT_GREEN, TEXT_BLUE, 1)
-    self.text:SetText("")
-    labelSetWrapWidth(self, LABEL_WIDTH)
-  end
-
-  ---Clear the text and go back to the font string that never showed a
-  ---secret, so the next use measures its texts (`showText`).
-  local function labelOnRelease(self)
-    showText(self, "text", "", false)
-    self._secret = false
-  end
-
-  ---@return table widget
-  function BASE_CONSTRUCTORS.Label()
-    local frame = createFrame("Frame", releaseParent())
-    local text = frame:CreateFontString(nil, "OVERLAY")
-    -- One anchor: the width is the font string's own (`labelSetWrapWidth`).
-    text:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, 0)
-    text:SetWordWrap(true)
-    return {
-      frame = frame,
-      text = text,
-      _secret = false,
-      _wrapWidth = LABEL_WIDTH,
-      _disabled = false,
-      _red = TEXT_RED,
-      _green = TEXT_GREEN,
-      _blue = TEXT_BLUE,
-      _alpha = 1,
-      OnAcquire = labelOnAcquire,
-      OnRelease = labelOnRelease,
-      OnWidthSet = labelOnWidthSet,
-      SetText = labelSetText,
-      GetText = labelGetText,
-      SetFontObject = labelSetFontObject,
-      SetColor = labelSetColor,
-      SetJustifyH = labelSetJustifyH,
-      SetDisabled = labelSetDisabled,
-    }
-  end
-end
-
--- Widget: Button -------------------------------------------------------------
-
-do
-  -- Keys the client reports while a modifier alone is held; a key capture waits
-  -- for the key that comes with them.
-  local MODIFIER_KEYS = {
-    LSHIFT = true,
-    RSHIFT = true,
-    LCTRL = true,
-    RCTRL = true,
-    LALT = true,
-    RALT = true,
-    LMETA = true,
-    RMETA = true,
-    UNKNOWN = true,
-  }
-
-  ---@param text any
-  ---@param options WidgetKit.TextOptions?
-  local function buttonSetText(self, text, options)
-    local value, secret = checkText(self, text, options, "WidgetKit Button:SetText", 3)
-    showText(self, "text", value, secret)
-  end
-
-  ---@return any
-  local function buttonGetText(self)
-    activeRecord(self, "WidgetKit Button:GetText", 3)
-    local text = self.text:GetText()
-    if type(text) == "nil" then
-      return ""
-    end
-    return text
-  end
-
-  ---Leave key-capture mode without firing anything.
-  ---@param widget table
-  local function buttonStopCapture(widget)
-    if widget._capturing then
-      widget._capturing = false
-      widget.frame:EnableKeyboard(false)
-      widget.frame:UnlockHighlight()
-    end
-  end
-
-  ---@param disabled boolean? `true` greys the widget out and ignores input
-  local function buttonSetDisabled(self, disabled)
-    disabled = readDisabled(self, disabled, "WidgetKit Button:SetDisabled", 3)
-    if disabled then
-      buttonStopCapture(self)
-    end
-    self.frame:SetEnabled(not disabled)
-    -- A secret text is on a font string of its own (`showText`), which the
-    -- button does not style: it takes the font the button's text has now.
-    if self.text ~= self.frame then
-      local fontObject = self.frame:GetFontString():GetFontObject()
-      if type(fontObject) ~= "nil" then
-        self.text:SetFontObject(fontObject)
-      end
-    end
-  end
-
-  ---Turn key capture on or off. With it on, a left click starts listening for
-  ---one key (with its modifiers), `ESCAPE` cancels, and a right click fires
-  ---`OnKeyCaptured` with `""` to unbind.
-  ---@param enabled boolean
-  local function buttonSetKeyCapture(self, enabled)
-    activeRecord(self, "WidgetKit Button:SetKeyCapture", 3)
-    refuseSecret(enabled, "WidgetKit Button:SetKeyCapture enabled", 3)
-    if type(enabled) ~= "boolean" then
-      error("WidgetKit Button:SetKeyCapture enabled must be a boolean", 2)
-    end
-    self._captureEnabled = enabled
-    if not enabled then
-      buttonStopCapture(self)
-    end
-  end
-
-  ---@return boolean
-  local function buttonIsCapturing(self)
-    activeRecord(self, "WidgetKit Button:IsCapturing", 3)
-    return self._capturing == true
-  end
-
-  ---The binding string for `key` with the modifiers held now.
-  ---@param key string
-  ---@return string
-  local function keyWithModifiers(key)
-    local prefix = ""
-    local isAltKeyDown = readGlobal("IsAltKeyDown")
-    local isControlKeyDown = readGlobal("IsControlKeyDown")
-    local isShiftKeyDown = readGlobal("IsShiftKeyDown")
-    if type(isAltKeyDown) == "function" and isAltKeyDown() then
-      prefix = prefix .. "ALT-"
-    end
-    if type(isControlKeyDown) == "function" and isControlKeyDown() then
-      prefix = prefix .. "CTRL-"
-    end
-    if type(isShiftKeyDown) == "function" and isShiftKeyDown() then
-      prefix = prefix .. "SHIFT-"
-    end
-    return prefix .. key
-  end
-
-  local function buttonOnAcquire(self)
-    local frame = self.frame
-    frame:SetSize(200, 24)
-    frame:SetText("")
-    frame:SetEnabled(true)
-    self._captureEnabled = false
-    self._capturing = false
-    frame:EnableKeyboard(false)
-  end
-
-  local function buttonOnRelease(self)
-    buttonStopCapture(self)
-    self._captureEnabled = false
-    showText(self, "text", "", false)
-  end
-
-  ---@return table widget
-  function BASE_CONSTRUCTORS.Button()
-    local frame = createFrame("Button", releaseParent(), "UIPanelButtonTemplate")
-    frame:RegisterForClicks("LeftButtonUp", "RightButtonUp")
-    local widget = {
-      frame = frame,
-      -- The region showing the text: the button itself, or the font string
-      -- `showText` shows a secret text on.
-      text = frame,
-      _captureEnabled = false,
-      _capturing = false,
-      OnAcquire = buttonOnAcquire,
-      OnRelease = buttonOnRelease,
-      SetText = buttonSetText,
-      GetText = buttonGetText,
-      SetDisabled = buttonSetDisabled,
-      SetKeyCapture = buttonSetKeyCapture,
-      IsCapturing = buttonIsCapturing,
-    }
-
-    frame:SetScript("OnClick", function(_, mouseButton)
-      if not isActive(widget) then
-        return
-      end
-      if widget._captureEnabled then
-        if mouseButton == "RightButton" then
-          buttonStopCapture(widget)
-          widget:Fire("OnKeyCaptured", "")
-          return
-        end
-        if not widget._capturing then
-          widget._capturing = true
-          frame:EnableKeyboard(true)
-          frame:LockHighlight()
-        end
-        return
-      end
-      widget:Fire("OnClick", mouseButton)
-    end)
-    frame:SetScript("OnKeyDown", function(_, key)
-      if not widget._capturing or not isActive(widget) then
-        return
-      end
-      if MODIFIER_KEYS[key] then
-        return
-      end
-      buttonStopCapture(widget)
-      if key == "ESCAPE" then
-        widget:Fire("OnKeyCaptureCancelled")
-        return
-      end
-      widget:Fire("OnKeyCaptured", keyWithModifiers(key))
-    end)
-    return widget
-  end
-end
-
--- Widget: CheckBox -----------------------------------------------------------
-
-do
-  local checkBoxSetLabel, checkBoxGetLabel = newLabelMethods("CheckBox")
-
-  ---Show `value` on the check button: checked, unchecked, or the third state.
-  ---@param widget table
-  local function checkBoxShowValue(widget)
-    local value = widget._value
-    widget.button:SetChecked(value == true)
-    widget.indeterminate:SetShown(value == nil and widget._triState)
-  end
-
-  ---@param value boolean? `nil` is the third state, and means `false` without it
-  local function checkBoxSetValue(self, value)
-    activeRecord(self, "WidgetKit CheckBox:SetValue", 3)
-    refuseSecret(value, "WidgetKit CheckBox:SetValue value", 3)
-    if type(value) ~= "nil" and type(value) ~= "boolean" then
-      error("WidgetKit CheckBox:SetValue value must be a boolean or nil", 2)
-    end
-    if type(value) == "nil" and not self._triState then
-      value = false
-    end
-    self._value = value
-    checkBoxShowValue(self)
-  end
-
-  ---@return boolean?
-  local function checkBoxGetValue(self)
-    activeRecord(self, "WidgetKit CheckBox:GetValue", 3)
-    return self._value
-  end
-
-  ---@param enabled boolean
-  local function checkBoxSetTriState(self, enabled)
-    activeRecord(self, "WidgetKit CheckBox:SetTriState", 3)
-    refuseSecret(enabled, "WidgetKit CheckBox:SetTriState enabled", 3)
-    if type(enabled) ~= "boolean" then
-      error("WidgetKit CheckBox:SetTriState enabled must be a boolean", 2)
-    end
-    self._triState = enabled
-    if not enabled and self._value == nil then
-      self._value = false
-    end
-    checkBoxShowValue(self)
-  end
-
-  ---@param disabled boolean? `true` greys the widget out and ignores input
-  local function checkBoxSetDisabled(self, disabled)
-    disabled = readDisabled(self, disabled, "WidgetKit CheckBox:SetDisabled", 3)
-    self.button:SetEnabled(not disabled)
-    if disabled then
-      self.labelText:SetTextColor(DISABLED_RED, DISABLED_GREEN, DISABLED_BLUE)
-    else
-      self.labelText:SetTextColor(TEXT_RED, TEXT_GREEN, TEXT_BLUE)
-    end
-  end
-
-  local function checkBoxOnAcquire(self)
-    self.frame:SetSize(200, 24)
-    self._value = false
-    self._triState = false
-    self.button:SetEnabled(true)
-    self.labelText:SetText("")
-    self.labelText:SetTextColor(TEXT_RED, TEXT_GREEN, TEXT_BLUE)
-    checkBoxShowValue(self)
-  end
-
-  local function checkBoxOnRelease(self)
-    showText(self, "labelText", "", false)
-    self._value = false
-  end
-
-  ---@return table widget
-  function BASE_CONSTRUCTORS.CheckBox()
-    local frame = createFrame("Frame", releaseParent())
-    local button = createFrame("CheckButton", frame, "UICheckButtonTemplate")
-    button:SetSize(24, 24)
-    button:SetPoint("LEFT", frame, "LEFT", 0, 0)
-
-    local indeterminate = button:CreateTexture(nil, "OVERLAY")
-    indeterminate:SetSize(10, 10)
-    indeterminate:SetPoint("CENTER", button, "CENTER", 0, 0)
-    indeterminate:SetColorTexture(LABEL_RED, LABEL_GREEN, LABEL_BLUE, 1)
-    indeterminate:Hide()
-
-    local labelText = frame:CreateFontString(nil, "OVERLAY")
-    labelText:SetFontObject("GameFontHighlight")
-    labelText:SetJustifyH("LEFT")
-    labelText:SetPoint("LEFT", button, "RIGHT", 4, 0)
-    labelText:SetPoint("RIGHT", frame, "RIGHT", 0, 0)
-
-    local widget = {
-      frame = frame,
-      button = button,
-      indeterminate = indeterminate,
-      labelText = labelText,
-      _value = false,
-      _triState = false,
-      OnAcquire = checkBoxOnAcquire,
-      OnRelease = checkBoxOnRelease,
-      SetValue = checkBoxSetValue,
-      GetValue = checkBoxGetValue,
-      SetTriState = checkBoxSetTriState,
-      SetLabel = checkBoxSetLabel,
-      GetLabel = checkBoxGetLabel,
-      SetDisabled = checkBoxSetDisabled,
-    }
-
-    button:SetScript("OnClick", function()
-      if not isActive(widget) then
-        return
-      end
-      -- The cycle is unchecked, checked, then (with three states) the third.
-      local value = widget._value
-      if value == false then
-        value = true
-      elseif value == true and widget._triState then
-        value = nil
-      else
-        value = false
-      end
-      widget._value = value
-      checkBoxShowValue(widget)
-      widget:Fire("OnValueChanged", value)
-    end)
-    return widget
-  end
-end
-
--- Widget: Slider -------------------------------------------------------------
-
-do
-  local sliderSetLabel, sliderGetLabel = newLabelMethods("Slider")
-
-  ---Snap `value` to the widget's step and clamp it to its range.
-  ---@param widget table
-  ---@param value number
-  ---@return number
-  local function sliderSnap(widget, value)
-    local minimum, maximum, step = widget._minimum, widget._maximum, widget._step
-    if step > 0 then
-      value = minimum + math.floor((value - minimum) / step + 0.5) * step
-    end
-    if value < minimum then
-      value = minimum
-    elseif value > maximum then
-      value = maximum
-    end
-    return value
-  end
-
-  ---Show the value in the edit box: a percentage for percent sliders.
-  ---@param widget table
-  local function sliderShowValue(widget)
-    local value = widget._value
-    local text
-    if widget._isPercent then
-      text = string.format("%d%%", math.floor(value * 100 + 0.5))
-    else
-      text = string.format("%.10g", value)
-    end
-    widget.valueBox:SetText(text)
-  end
-
-  ---Store `value` and move the slider without firing `OnValueChanged`.
-  ---@param widget table
-  ---@param value number
-  local function sliderStore(widget, value)
-    widget._value = value
-    widget._updating = true
-    widget.slider:SetValue(value)
-    widget._updating = false
-    sliderShowValue(widget)
-  end
-
-  ---@param minimum number
-  ---@param maximum number
-  ---@param step number? `0` or `nil` for no snapping
-  local function sliderSetSliderValues(self, minimum, maximum, step)
-    activeRecord(self, "WidgetKit Slider:SetSliderValues", 3)
-    validateNumber(minimum, "WidgetKit Slider:SetSliderValues minimum", 3)
-    validateNumber(maximum, "WidgetKit Slider:SetSliderValues maximum", 3)
-    if minimum > maximum then
-      error("WidgetKit Slider:SetSliderValues minimum must not be greater than maximum", 2)
-    end
-    -- Tested with `type`, not `step or 0`: a truth test of a secret raises
-    -- here, inside WidgetKit, before `validateNumber` can refuse it.
-    if type(step) == "nil" then
-      step = 0
-    end
-    validateNumber(step, "WidgetKit Slider:SetSliderValues step", 3)
-    if step < 0 then
-      error("WidgetKit Slider:SetSliderValues step must not be negative", 2)
-    end
-    self._minimum, self._maximum, self._step = minimum, maximum, step
-    self._updating = true
-    self.slider:SetMinMaxValues(minimum, maximum)
-    self.slider:SetValueStep(step > 0 and step or 0)
-    self._updating = false
-    self.lowText:SetText(string.format("%.10g", minimum))
-    self.highText:SetText(string.format("%.10g", maximum))
-    sliderStore(self, sliderSnap(self, self._value))
-  end
-
-  ---@param value number
-  local function sliderSetValue(self, value)
-    activeRecord(self, "WidgetKit Slider:SetValue", 3)
-    validateNumber(value, "WidgetKit Slider:SetValue value", 3)
-    sliderStore(self, sliderSnap(self, value))
-  end
-
-  ---@return number
-  local function sliderGetValue(self)
-    activeRecord(self, "WidgetKit Slider:GetValue", 3)
-    return self._value
-  end
-
-  ---@param isPercent boolean
-  local function sliderSetIsPercent(self, isPercent)
-    activeRecord(self, "WidgetKit Slider:SetIsPercent", 3)
-    refuseSecret(isPercent, "WidgetKit Slider:SetIsPercent isPercent", 3)
-    if type(isPercent) ~= "boolean" then
-      error("WidgetKit Slider:SetIsPercent isPercent must be a boolean", 2)
-    end
-    self._isPercent = isPercent
-    sliderShowValue(self)
-  end
-
-  ---@param disabled boolean? `true` greys the widget out and ignores input
-  local function sliderSetDisabled(self, disabled)
-    disabled = readDisabled(self, disabled, "WidgetKit Slider:SetDisabled", 3)
-    self.slider:SetEnabled(not disabled)
-    self.valueBox:SetEnabled(not disabled)
-    colourLabel(self.labelText, disabled)
-  end
-
-  ---Accept a user change: snap, store, and fire when it moved.
-  ---@param widget table
-  ---@param value number
-  local function sliderAccept(widget, value)
-    value = sliderSnap(widget, value)
-    local changed = value ~= widget._value
-    sliderStore(widget, value)
-    if changed then
-      widget:Fire("OnValueChanged", value)
-    end
-  end
-
-  local function sliderOnAcquire(self)
-    self.frame:SetSize(200, 50)
-    self._minimum, self._maximum, self._step = 0, 100, 1
-    self._value = 0
-    self._isPercent = false
-    self._updating = true
-    self.slider:SetMinMaxValues(0, 100)
-    self.slider:SetValueStep(1)
-    self._updating = false
-    self.slider:SetEnabled(true)
-    self.valueBox:SetEnabled(true)
-    self.labelText:SetText("")
-    colourLabel(self.labelText, false)
-    self.lowText:SetText("0")
-    self.highText:SetText("100")
-    -- `sliderStore(self, 0)` with the text `sliderShowValue` would format for
-    -- 0 on a slider that is not a percent one, written out: acquire is hot.
-    self._value = 0
-    self._updating = true
-    self.slider:SetValue(0)
-    self._updating = false
-    self.valueBox:SetText("0")
-  end
-
-  local function sliderOnRelease(self)
-    showText(self, "labelText", "", false)
-    self.valueBox:ClearFocus()
-  end
-
-  ---@return table widget
-  function BASE_CONSTRUCTORS.Slider()
-    local frame = createFrame("Frame", releaseParent())
-    local labelText = newTopLabel(frame)
-
-    local slider = createFrame("Slider", frame)
-    slider:SetOrientation("HORIZONTAL")
-    slider:SetHeight(16)
-    slider:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, -18)
-    slider:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, -18)
-    if type(slider.SetObeyStepOnDrag) == "function" then
-      slider:SetObeyStepOnDrag(true)
-    end
-    slider:EnableMouseWheel(false)
-    local track = slider:CreateTexture(nil, "BACKGROUND")
-    track:SetAllPoints(slider)
-    track:SetColorTexture(0, 0, 0, 0.5)
-    local thumb = slider:CreateTexture(nil, "OVERLAY")
-    thumb:SetColorTexture(0.8, 0.8, 0.8, 1)
-    thumb:SetSize(10, 16)
-    slider:SetThumbTexture(thumb)
-
-    local lowText = frame:CreateFontString(nil, "OVERLAY")
-    lowText:SetFontObject("GameFontHighlightSmall")
-    lowText:SetPoint("TOPLEFT", slider, "BOTTOMLEFT", 0, -2)
-    local highText = frame:CreateFontString(nil, "OVERLAY")
-    highText:SetFontObject("GameFontHighlightSmall")
-    highText:SetPoint("TOPRIGHT", slider, "BOTTOMRIGHT", 0, -2)
-
-    local valueBox = createFrame("EditBox", frame, "InputBoxTemplate")
-    valueBox:SetSize(70, 14)
-    valueBox:SetPoint("TOP", slider, "BOTTOM", 0, -2)
-    valueBox:SetAutoFocus(false)
-    valueBox:SetFontObject("GameFontHighlightSmall")
-    valueBox:SetJustifyH("CENTER")
-
-    local widget = {
-      frame = frame,
-      labelText = labelText,
-      slider = slider,
-      valueBox = valueBox,
-      lowText = lowText,
-      highText = highText,
-      _minimum = 0,
-      _maximum = 100,
-      _step = 1,
-      _value = 0,
-      _isPercent = false,
-      _updating = false,
-      OnAcquire = sliderOnAcquire,
-      OnRelease = sliderOnRelease,
-      SetSliderValues = sliderSetSliderValues,
-      SetValue = sliderSetValue,
-      GetValue = sliderGetValue,
-      SetIsPercent = sliderSetIsPercent,
-      SetLabel = sliderSetLabel,
-      GetLabel = sliderGetLabel,
-      SetDisabled = sliderSetDisabled,
-    }
-
-    slider:SetScript("OnValueChanged", function(_, value)
-      if widget._updating or not isActive(widget) then
-        return
-      end
-      sliderAccept(widget, value)
-    end)
-    valueBox:SetScript("OnEnterPressed", function()
-      valueBox:ClearFocus()
-      if not isActive(widget) then
-        return
-      end
-      local text = valueBox:GetText()
-      if isSecret(text) then
-        sliderShowValue(widget)
-        return
-      end
-      local number = tonumber((text:gsub("%%", "")))
-      if number == nil then
-        sliderShowValue(widget)
-        return
-      end
-      if widget._isPercent then
-        number = number / 100
-      end
-      sliderAccept(widget, number)
-    end)
-    valueBox:SetScript("OnEscapePressed", function()
-      valueBox:ClearFocus()
-      if isActive(widget) then
-        sliderShowValue(widget)
-      end
-    end)
-    return widget
-  end
-end
-
--- Widget: EditBox ------------------------------------------------------------
-
-do
-  local editBoxSetLabel, editBoxGetLabel = newLabelMethods("EditBox")
-
-  local EDIT_LINE_HEIGHT = 14
-
-  ---The edit box currently in use: the multi-line one or the single-line one.
-  ---@param widget table
-  ---@return WidgetKit.Frame
-  local function activeEditBox(widget)
-    if widget._multiLine then
-      return widget.multiBox
-    end
-    return widget.singleBox
-  end
-
-  ---Size the widget for its mode and line count.
-  ---@param widget table
-  local function editBoxUpdateHeight(widget)
-    if widget._multiLine then
-      local boxHeight = widget._lines * EDIT_LINE_HEIGHT + 8
-      widget.multiBox:SetHeight(boxHeight)
-      widget.frame:SetHeight(18 + boxHeight + 28)
-    else
-      widget.frame:SetHeight(44)
-    end
-  end
-
-  ---@param text any
-  ---@param options WidgetKit.TextOptions?
-  local function editBoxSetText(self, text, options)
-    activeRecord(self, "WidgetKit EditBox:SetText", 3)
-    -- The client's edit box refuses a secret from addon code, `allowSecret`
-    -- or not: `SetText` takes one only during untainted execution (measured
-    -- on Retail 12.1.0 b69933). It is refused here, at the caller's line.
-    if isSecret(text) then
-      error(
-        "WidgetKit EditBox:SetText text must not be a secret value:"
-          .. " the client's edit box takes one only from untainted code",
-        2
-      )
-    end
-    local value = checkText(self, text, options, "WidgetKit EditBox:SetText", 3)
-    self._settingText = true
-    activeEditBox(self):SetText(value)
-    self._settingText = false
-  end
-
-  ---@return any
-  local function editBoxGetText(self)
-    activeRecord(self, "WidgetKit EditBox:GetText", 3)
-    -- The client's edit box answers `""` when empty (measured on Retail
-    -- 12.1.0 b69933); a client that answers `nil` gets the same promise.
-    local text = activeEditBox(self):GetText()
-    if type(text) == "nil" then
-      return ""
-    end
-    return text
-  end
-
-  ---@param multiLine boolean
-  ---@param lines integer? visible lines of a multi-line box; default 4
-  local function editBoxSetMultiLine(self, multiLine, lines)
-    activeRecord(self, "WidgetKit EditBox:SetMultiLine", 3)
-    refuseSecret(multiLine, "WidgetKit EditBox:SetMultiLine multiLine", 3)
-    if type(multiLine) ~= "boolean" then
-      error("WidgetKit EditBox:SetMultiLine multiLine must be a boolean", 2)
-    end
-    if type(lines) ~= "nil" then
-      validatePositiveInteger(lines, "WidgetKit EditBox:SetMultiLine lines", 3)
-    end
-    local text = activeEditBox(self):GetText()
-    self._multiLine = multiLine
-    self._lines = lines or 4
-    self.singleBox:SetShown(not multiLine)
-    self.multiBox:SetShown(multiLine)
-    self.acceptButton:SetShown(multiLine)
-    self._settingText = true
-    activeEditBox(self):SetText(text)
-    self._settingText = false
-    editBoxUpdateHeight(self)
-  end
-
-  ---@return boolean
-  local function editBoxIsMultiLine(self)
-    activeRecord(self, "WidgetKit EditBox:IsMultiLine", 3)
-    return self._multiLine == true
-  end
-
-  ---@param letters integer `0` for no limit
-  local function editBoxSetMaxLetters(self, letters)
-    activeRecord(self, "WidgetKit EditBox:SetMaxLetters", 3)
-    refuseSecret(letters, "WidgetKit EditBox:SetMaxLetters letters", 3)
-    if letters ~= 0 then
-      validatePositiveInteger(letters, "WidgetKit EditBox:SetMaxLetters letters", 3)
-    end
-    self.singleBox:SetMaxLetters(letters)
-    self.multiBox:SetMaxLetters(letters)
-  end
-
-  ---@param disabled boolean? `true` greys the widget out and ignores input
-  local function editBoxSetDisabled(self, disabled)
-    disabled = readDisabled(self, disabled, "WidgetKit EditBox:SetDisabled", 3)
-    self.singleBox:SetEnabled(not disabled)
-    self.multiBox:SetEnabled(not disabled)
-    self.acceptButton:SetEnabled(not disabled)
-    colourLabel(self.labelText, disabled)
-    if disabled then
-      activeEditBox(self):ClearFocus()
-    end
-  end
-
-  ---Give the edit box keyboard focus and make it WidgetKit's focused widget.
-  local function editBoxSetFocus(self)
-    activeRecord(self, "WidgetKit EditBox:SetFocus", 3)
-    WidgetKit:SetFocus(self)
-    activeEditBox(self):SetFocus()
-  end
-
-  ---Called by `WidgetKit:ClearFocus` when another widget takes the focus.
-  local function editBoxOnFocusLost(self)
-    self.singleBox:ClearFocus()
-    self.multiBox:ClearFocus()
-  end
-
-  ---Fire `OnEnterPressed` with the current text.
-  ---@param widget table
-  local function editBoxSubmit(widget)
-    if not isActive(widget) then
-      return
-    end
-    widget:Fire("OnEnterPressed", activeEditBox(widget):GetText())
-  end
-
-  local function editBoxOnAcquire(self)
-    self.frame:SetWidth(200)
-    self._multiLine = false
-    self._lines = 4
-    self._settingText = true
-    self.singleBox:SetText("")
-    self.multiBox:SetText("")
-    self._settingText = false
-    self.singleBox:SetMaxLetters(0)
-    self.multiBox:SetMaxLetters(0)
-    self.singleBox:SetEnabled(true)
-    self.multiBox:SetEnabled(true)
-    self.acceptButton:SetEnabled(true)
-    self.singleBox:Show()
-    self.multiBox:Hide()
-    self.acceptButton:Hide()
-    self.labelText:SetText("")
-    colourLabel(self.labelText, false)
-    editBoxUpdateHeight(self)
-  end
-
-  ---Clear both boxes, so a pooled edit box never carries a secret into its next
-  ---use.
-  local function editBoxOnRelease(self)
-    self._settingText = true
-    self.singleBox:SetText("")
-    self.multiBox:SetText("")
-    self._settingText = false
-    self.singleBox:ClearFocus()
-    self.multiBox:ClearFocus()
-    showText(self, "labelText", "", false)
-  end
-
-  ---@return table widget
-  function BASE_CONSTRUCTORS.EditBox()
-    local frame = createFrame("Frame", releaseParent())
-    local labelText = newTopLabel(frame)
-
-    local singleBox = createFrame("EditBox", frame, "InputBoxTemplate")
-    singleBox:SetAutoFocus(false)
-    singleBox:SetFontObject("ChatFontNormal")
-    singleBox:SetHeight(20)
-    singleBox:SetPoint("TOPLEFT", frame, "TOPLEFT", 6, -20)
-    singleBox:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, -20)
-
-    local multiBox = createFrame("EditBox", frame)
-    multiBox:SetMultiLine(true)
-    multiBox:SetAutoFocus(false)
-    multiBox:SetFontObject("ChatFontNormal")
-    multiBox:SetTextInsets(4, 4, 4, 4)
-    multiBox:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, -18)
-    multiBox:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, -18)
-    local multiBackground = multiBox:CreateTexture(nil, "BACKGROUND")
-    multiBackground:SetAllPoints(multiBox)
-    multiBackground:SetColorTexture(0, 0, 0, 0.5)
-    multiBox:Hide()
-
-    local acceptButton = createFrame("Button", frame, "UIPanelButtonTemplate")
-    acceptButton:SetSize(80, 22)
-    acceptButton:SetPoint("TOPLEFT", multiBox, "BOTTOMLEFT", 0, -3)
-    acceptButton:SetText(clientText("ACCEPT", "Accept"))
-    acceptButton:Hide()
-
-    local widget = {
-      frame = frame,
-      labelText = labelText,
-      singleBox = singleBox,
-      multiBox = multiBox,
-      acceptButton = acceptButton,
-      _multiLine = false,
-      _lines = 4,
-      _settingText = false,
-      OnAcquire = editBoxOnAcquire,
-      OnRelease = editBoxOnRelease,
-      OnFocusLost = editBoxOnFocusLost,
-      SetText = editBoxSetText,
-      GetText = editBoxGetText,
-      SetMultiLine = editBoxSetMultiLine,
-      IsMultiLine = editBoxIsMultiLine,
-      SetMaxLetters = editBoxSetMaxLetters,
-      SetLabel = editBoxSetLabel,
-      GetLabel = editBoxGetLabel,
-      SetDisabled = editBoxSetDisabled,
-      SetFocus = editBoxSetFocus,
-    }
-
-    local function onTextChanged(box, userInput)
-      if widget._settingText or not userInput or not isActive(widget) then
-        return
-      end
-      widget:Fire("OnTextChanged", box:GetText())
-    end
-    local function onEscapePressed(box)
-      box:ClearFocus()
-      if isActive(widget) then
-        widget:Fire("OnEscapePressed")
-      end
-    end
-    local function onFocusGained()
-      if isActive(widget) then
-        WidgetKit:SetFocus(widget)
-      end
-    end
-    local function onFocusLost()
-      if rawget(state, "focus") == widget then
-        rawset(state, "focus", false)
-      end
-    end
-
-    singleBox:SetScript("OnEnterPressed", function(box)
-      box:ClearFocus()
-      editBoxSubmit(widget)
-    end)
-    for _, box in ipairs({ singleBox, multiBox }) do
-      box:SetScript("OnTextChanged", onTextChanged)
-      box:SetScript("OnEscapePressed", onEscapePressed)
-      box:SetScript("OnEditFocusGained", onFocusGained)
-      box:SetScript("OnEditFocusLost", onFocusLost)
-    end
-    acceptButton:SetScript("OnClick", function()
-      multiBox:ClearFocus()
-      editBoxSubmit(widget)
-    end)
-    return widget
-  end
-end
-
--- Dropdown list catcher ------------------------------------------------------
+-- Parts ----------------------------------------------------------------------
 --
--- While a dropdown list is open, one invisible full-screen frame owned by the
--- Kit sits just below it and closes it on a click anywhere else. One catcher
--- serves the whole session; its script calls through `dispatch`, so a newer
--- copy's code runs for a catcher an older copy created.
-
----The session's catcher frame, created on first use.
----@return WidgetKit.Frame
-local function dropdownCatcher()
-  local catcher = rawget(state, "dropdownCatcher")
-  if catcher == nil or catcher == false then
-    local uiParent = restingParent()
-    catcher = createFrame("Frame", uiParent)
-    catcher:SetFrameStrata("FULLSCREEN")
-    catcher:ClearAllPoints()
-    catcher:SetPoint("TOPLEFT", uiParent, "TOPLEFT", 0, 0)
-    catcher:SetPoint("BOTTOMRIGHT", uiParent, "BOTTOMRIGHT", 0, 0)
-    catcher:EnableMouse(true)
-    catcher:SetScript("OnMouseDown", function()
-      dispatch.closeOpenDropdown()
-    end)
-    catcher:Hide()
-    rawset(state, "dropdownCatcher", catcher)
-  end
-  return catcher
-end
-
----Close `widget`'s list, and hide the catcher when it was the open one.
----@param widget table
-local function closeDropdownList(widget)
-  widget.list:Hide()
-  if rawget(state, "openDropdown") == widget then
-    rawset(state, "openDropdown", false)
-    local catcher = rawget(state, "dropdownCatcher")
-    if catcher ~= nil and catcher ~= false then
-      catcher:Hide()
-    end
-  end
-end
-
----Close whichever dropdown list is open.
-local function closeOpenDropdown()
-  local open = rawget(state, "openDropdown")
-  if open ~= nil and open ~= false then
-    closeDropdownList(open)
-  end
-end
-
----Show `widget`'s list above the catcher, closing any other open list.
----@param widget table
-local function openDropdownList(widget)
-  local open = rawget(state, "openDropdown")
-  if open ~= nil and open ~= false and open ~= widget then
-    closeDropdownList(open)
-  end
-  rawset(state, "openDropdown", widget)
-  dropdownCatcher():Show()
-  widget.list:Show()
-end
-
--- Widget: Dropdown -----------------------------------------------------------
-
-do --
-  local dropdownSetLabel, dropdownGetLabel = newLabelMethods("Dropdown")
-
-  -- A button showing the selected entry, and a list frame of row buttons below
-  -- it. Nothing takes the keyboard. The list keeps a fixed number of rows,
-  -- created on first open and reused for the widget's whole life; entries past
-  -- them are reached with the mouse wheel, which moves the window of entries the
-  -- rows show.
-
-  local DROPDOWN_ROW_HEIGHT = 18
-
-  -- Rows a dropdown list shows at once; the rest is reached with the wheel.
-  local DROPDOWN_VISIBLE_ROWS = 16
-
-  ---The label shown for the selected key, or an empty string.
-  ---@param widget table
-  ---@return string
-  local function dropdownSelectedLabel(widget)
-    local value = widget._value
-    if value == nil then
-      return ""
-    end
-    local keys, labels = widget._keys, widget._labels
-    for index = 1, widget._count do
-      if keys[index] == value then
-        return labels[index]
-      end
-    end
-    return ""
-  end
-
-  ---Point every row at the entries from `_offset` on.
-  ---@param widget table
-  local function dropdownRenderRows(widget)
-    local rows = widget._rows
-    local keys, labels = widget._keys, widget._labels
-    for index = 1, #rows do
-      local entry = widget._offset + index
-      local row = rows[index]
-      if entry <= widget._count then
-        row:SetText(labels[entry])
-        if keys[entry] == widget._value then
-          row:LockHighlight()
-        else
-          row:UnlockHighlight()
-        end
-        row:Show()
-      else
-        row:SetText("")
-        row:Hide()
-      end
-    end
-  end
-
-  ---Select the entry a row shows, close the list and fire.
-  ---@param widget table
-  ---@param rowIndex integer
-  local function dropdownPick(widget, rowIndex)
-    if not isActive(widget) or widget._disabled then
-      return
-    end
-    local entry = widget._offset + rowIndex
-    if entry > widget._count then
-      return
-    end
-    local key = widget._keys[entry]
-    widget._value = key
-    widget.button:SetText(widget._labels[entry])
-    closeDropdownList(widget)
-    widget:Fire("OnValueChanged", key)
-  end
-
-  ---Create the list's rows on first open.
-  ---@param widget table
-  local function dropdownEnsureRows(widget)
-    local rows = widget._rows
-    if #rows > 0 then
-      return
-    end
-    local list = widget.list
-    for index = 1, DROPDOWN_VISIBLE_ROWS do
-      local row = createFrame("Button", list)
-      row:SetHeight(DROPDOWN_ROW_HEIGHT)
-      row:SetPoint("TOPLEFT", list, "TOPLEFT", 4, -4 - (index - 1) * DROPDOWN_ROW_HEIGHT)
-      row:SetPoint("TOPRIGHT", list, "TOPRIGHT", -4, -4 - (index - 1) * DROPDOWN_ROW_HEIGHT)
-      row:SetNormalFontObject("GameFontHighlightSmall")
-      local highlight = row:CreateTexture(nil, "HIGHLIGHT")
-      highlight:SetAllPoints(row)
-      highlight:SetColorTexture(1, 1, 1, 0.15)
-      row:SetScript("OnClick", function()
-        dropdownPick(widget, index)
-      end)
-      rows[index] = row
-    end
-  end
-
-  ---Replace the entries.
-  ---
-  ---`values` maps keys (strings or numbers) to labels; `order` lists the keys in
-  ---display order. Without `order`, entries are sorted by label, then by key.
-  ---@param values table
-  ---@param order any[]?
-  local function dropdownSetList(self, values, order)
-    activeRecord(self, "WidgetKit Dropdown:SetList", 3)
-    if type(values) ~= "table" then
-      error("WidgetKit Dropdown:SetList values must be a table", 2)
-    end
-    if type(order) ~= "nil" and type(order) ~= "table" then
-      error("WidgetKit Dropdown:SetList order must be an array or nil", 2)
-    end
-
-    -- Every entry is checked into staging arrays first; the widget's own
-    -- entries change only once the whole list was accepted, so a refused
-    -- entry leaves the dropdown as it was.
-    local keys, labels = {}, {}
-    local count = 0
-    -- Read when the list is set, so `SetLimits` applies to the next list.
-    local maxEntries = rawget(rawget(state, "limits"), "maxDropdownEntries")
-    if maxEntries == UNBOUNDED then
-      maxEntries = math.huge
-    end
-    local function add(key, label)
-      -- `add` runs one call below `SetList`, so its caller is level 3.
-      refuseSecret(key, "WidgetKit Dropdown:SetList key", 4)
-      refuseSecret(label, "WidgetKit Dropdown:SetList label", 4)
-      if type(key) ~= "string" and type(key) ~= "number" then
-        error("WidgetKit Dropdown:SetList keys must be strings or numbers", 3)
-      end
-      if type(label) ~= "string" then
-        error("WidgetKit Dropdown:SetList labels must be strings", 3)
-      end
-      if count >= maxEntries then
-        error(
-          "WidgetKit Dropdown:SetList holds at most "
-            .. maxEntries
-            .. " entries (WidgetKit:SetLimits maxDropdownEntries)",
-          3
-        )
-      end
-      count = count + 1
-      keys[count] = key
-      labels[count] = label
-    end
-
-    -- The staged position of each displayed entry, when sorting reorders them.
-    local displayOrder = nil
-    if type(order) ~= "nil" then
-      for index = 1, #order do
-        local key = order[index]
-        -- Before the key indexes `values`: a secret used as a key raises.
-        refuseSecret(key, "WidgetKit Dropdown:SetList key", 3)
-        local label = values[key]
-        if type(label) ~= "nil" then
-          add(key, label)
-        end
-      end
-    else
-      for key, label in next, values do
-        add(key, label)
-      end
-      -- Sort by label, then key, through an index array over the staged
-      -- entries; the widget's arrays are then filled in that order.
-      displayOrder = {}
-      for index = 1, count do
-        displayOrder[index] = index
-      end
-      table.sort(displayOrder, function(first, second)
-        local firstLabel, secondLabel = labels[first], labels[second]
-        if firstLabel ~= secondLabel then
-          return firstLabel < secondLabel
-        end
-        local firstKey, secondKey = keys[first], keys[second]
-        if type(firstKey) ~= type(secondKey) then
-          return type(firstKey) == "number"
-        end
-        return firstKey < secondKey
-      end)
-    end
-
-    local ownKeys, ownLabels = self._keys, self._labels
-    for index = 1, count do
-      local staged = index
-      if displayOrder ~= nil then
-        staged = displayOrder[index]
-      end
-      ownKeys[index] = keys[staged]
-      ownLabels[index] = labels[staged]
-    end
-    for index = count + 1, self._count do
-      ownKeys[index] = nil
-      ownLabels[index] = nil
-    end
-    self._count = count
-    self._offset = 0
-    self.button:SetText(dropdownSelectedLabel(self))
-    if self.list:IsShown() then
-      dropdownRenderRows(self)
-    end
-  end
-
-  ---@param key string|number|nil
-  local function dropdownSetValue(self, key)
-    activeRecord(self, "WidgetKit Dropdown:SetValue", 3)
-    refuseSecret(key, "WidgetKit Dropdown:SetValue key", 3)
-    self._value = key
-    self.button:SetText(dropdownSelectedLabel(self))
-    if self.list:IsShown() then
-      dropdownRenderRows(self)
-    end
-  end
-
-  ---@return string|number|nil
-  local function dropdownGetValue(self)
-    activeRecord(self, "WidgetKit Dropdown:GetValue", 3)
-    return self._value
-  end
-
-  ---@return integer
-  local function dropdownGetNumEntries(self)
-    activeRecord(self, "WidgetKit Dropdown:GetNumEntries", 3)
-    return self._count
-  end
-
-  ---Open the list, scrolled so that the selected entry is visible.
-  ---@return boolean opened `false` when disabled or empty
-  local function dropdownOpen(self)
-    activeRecord(self, "WidgetKit Dropdown:Open", 3)
-    if self._disabled or self._count == 0 then
-      return false
-    end
-    dropdownEnsureRows(self)
-    local visible = self._count < DROPDOWN_VISIBLE_ROWS and self._count or DROPDOWN_VISIBLE_ROWS
-    self.list:SetHeight(visible * DROPDOWN_ROW_HEIGHT + 8)
-    self._offset = 0
-    local value = self._value
-    for index = 1, self._count do
-      if self._keys[index] == value and index > DROPDOWN_VISIBLE_ROWS then
-        self._offset = index - DROPDOWN_VISIBLE_ROWS
-      end
-    end
-    dropdownRenderRows(self)
-    openDropdownList(self)
-    return true
-  end
-
-  local function dropdownClose(self)
-    activeRecord(self, "WidgetKit Dropdown:Close", 3)
-    closeDropdownList(self)
-  end
-
-  ---@return boolean
-  local function dropdownIsOpen(self)
-    activeRecord(self, "WidgetKit Dropdown:IsOpen", 3)
-    return self.list:IsShown() == true
-  end
-
-  ---Choose the entry at `index` in display order, as a click on its row does.
-  ---@param index integer
-  ---@return boolean picked
-  local function dropdownPickIndex(self, index)
-    activeRecord(self, "WidgetKit Dropdown:PickIndex", 3)
-    validatePositiveInteger(index, "WidgetKit Dropdown:PickIndex index", 3)
-    if index > self._count or self._disabled then
-      return false
-    end
-    local previousOffset = self._offset
-    self._offset = index - 1
-    dropdownPick(self, 1)
-    self._offset = previousOffset
-    return true
-  end
-
-  ---@param disabled boolean? `true` greys the widget out and ignores input
-  local function dropdownSetDisabled(self, disabled)
-    disabled = readDisabled(self, disabled, "WidgetKit Dropdown:SetDisabled", 3)
-    self._disabled = disabled
-    self.button:SetEnabled(not disabled)
-    colourLabel(self.labelText, disabled)
-    if disabled then
-      closeDropdownList(self)
-    end
-  end
-
-  local function dropdownOnAcquire(self)
-    self.frame:SetSize(200, 44)
-    self._value = nil
-    self._offset = 0
-    self._disabled = false
-    self.button:SetEnabled(true)
-    self.button:SetText("")
-    self.labelText:SetText("")
-    colourLabel(self.labelText, false)
-    closeDropdownList(self)
-  end
-
-  local function dropdownOnRelease(self)
-    closeDropdownList(self)
-    local keys, labels = self._keys, self._labels
-    for index = 1, self._count do
-      keys[index] = nil
-      labels[index] = nil
-    end
-    self._count = 0
-    self._value = nil
-    self.button:SetText("")
-    showText(self, "labelText", "", false)
-    local rows = self._rows
-    for index = 1, #rows do
-      rows[index]:SetText("")
-    end
-  end
-
-  ---@return table widget
-  function BASE_CONSTRUCTORS.Dropdown()
-    local frame = createFrame("Frame", releaseParent())
-    local labelText = newTopLabel(frame)
-
-    local button = createFrame("Button", frame, "UIPanelButtonTemplate")
-    button:SetHeight(24)
-    button:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, -18)
-    button:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, -18)
-
-    -- The list lives on UIParent, above everything, so a ScrollFrame or any
-    -- other clipping parent of the dropdown cannot cut it off.
-    local list = createFrame("Frame", restingParent() or frame)
-    list:SetFrameStrata("FULLSCREEN_DIALOG")
-    list:SetToplevel(true)
-    list:SetPoint("TOPLEFT", button, "BOTTOMLEFT", 0, 0)
-    list:SetPoint("TOPRIGHT", button, "BOTTOMRIGHT", 0, 0)
-    list:EnableMouse(true)
-    list:EnableMouseWheel(true)
-    local background = list:CreateTexture(nil, "BACKGROUND")
-    background:SetAllPoints(list)
-    background:SetColorTexture(0.05, 0.05, 0.05, 0.95)
-    list:Hide()
-
-    local widget = {
-      frame = frame,
-      labelText = labelText,
-      button = button,
-      list = list,
-      _keys = {},
-      _labels = {},
-      _rows = {},
-      _count = 0,
-      _offset = 0,
-      _value = nil,
-      _disabled = false,
-      OnAcquire = dropdownOnAcquire,
-      OnRelease = dropdownOnRelease,
-      SetList = dropdownSetList,
-      SetValue = dropdownSetValue,
-      GetValue = dropdownGetValue,
-      GetNumEntries = dropdownGetNumEntries,
-      Open = dropdownOpen,
-      Close = dropdownClose,
-      IsOpen = dropdownIsOpen,
-      PickIndex = dropdownPickIndex,
-      SetLabel = dropdownSetLabel,
-      GetLabel = dropdownGetLabel,
-      SetDisabled = dropdownSetDisabled,
-    }
-
-    button:SetScript("OnClick", function()
-      if not isActive(widget) then
-        return
-      end
-      if list:IsShown() then
-        closeDropdownList(widget)
-      else
-        widget:Open()
-      end
-    end)
-    -- The list is not a child of the widget's frame, so it is closed when
-    -- that frame hides.
-    frame:SetScript("OnHide", function()
-      closeDropdownList(widget)
-    end)
-    list:SetScript("OnMouseWheel", function(_, delta)
-      if not isActive(widget) then
-        return
-      end
-      local maximumOffset = widget._count - DROPDOWN_VISIBLE_ROWS
-      if maximumOffset < 0 then
-        maximumOffset = 0
-      end
-      local offset = widget._offset - delta
-      if offset < 0 then
-        offset = 0
-      elseif offset > maximumOffset then
-        offset = maximumOffset
-      end
-      widget._offset = offset
-      dropdownRenderRows(widget)
-    end)
-    return widget
-  end
-end
-
--- Widget: ColorPicker --------------------------------------------------------
-
-do --
-  local colorPickerSetLabel, colorPickerGetLabel = newLabelMethods("ColorPicker")
-
-  -- A swatch. A click opens the client's `ColorPickerFrame` through its
-  -- `SetupColorPickerAndShow` method when the client has one and the frame may
-  -- be touched; WidgetKit writes no field onto that frame. Without it, a click
-  -- fires `OnValueChanged` with the current colour.
-
-  ---Show the stored colour on the swatch.
-  ---@param widget table
-  local function colorShow(widget)
-    widget.swatch:SetColorTexture(widget._red, widget._green, widget._blue, widget._alpha)
-  end
-
-  ---@param red number
-  ---@param green number
-  ---@param blue number
-  ---@param alpha number?
-  local function colorSetColor(self, red, green, blue, alpha)
-    activeRecord(self, "WidgetKit ColorPicker:SetColor", 3)
-    validateNumber(red, "WidgetKit ColorPicker:SetColor red", 3)
-    validateNumber(green, "WidgetKit ColorPicker:SetColor green", 3)
-    validateNumber(blue, "WidgetKit ColorPicker:SetColor blue", 3)
-    if type(alpha) ~= "nil" then
-      validateNumber(alpha, "WidgetKit ColorPicker:SetColor alpha", 3)
-    end
-    self._red, self._green, self._blue, self._alpha = red, green, blue, alpha or 1
-    colorShow(self)
-  end
-
-  ---@return number red, number green, number blue, number alpha
-  local function colorGetColor(self)
-    activeRecord(self, "WidgetKit ColorPicker:GetColor", 3)
-    return self._red, self._green, self._blue, self._alpha
-  end
-
-  ---@param hasAlpha boolean
-  local function colorSetHasAlpha(self, hasAlpha)
-    activeRecord(self, "WidgetKit ColorPicker:SetHasAlpha", 3)
-    refuseSecret(hasAlpha, "WidgetKit ColorPicker:SetHasAlpha hasAlpha", 3)
-    if type(hasAlpha) ~= "boolean" then
-      error("WidgetKit ColorPicker:SetHasAlpha hasAlpha must be a boolean", 2)
-    end
-    self._hasAlpha = hasAlpha
-  end
-
-  ---@param disabled boolean? `true` greys the widget out and ignores input
-  local function colorSetDisabled(self, disabled)
-    disabled = readDisabled(self, disabled, "WidgetKit ColorPicker:SetDisabled", 3)
-    self._disabled = disabled
-    self.button:SetEnabled(not disabled)
-    if disabled then
-      self.labelText:SetTextColor(DISABLED_RED, DISABLED_GREEN, DISABLED_BLUE)
-    else
-      self.labelText:SetTextColor(TEXT_RED, TEXT_GREEN, TEXT_BLUE)
-    end
-  end
-
-  ---Store a colour chosen in the client picker and fire.
-  ---@param widget table
-  ---@param red number
-  ---@param green number
-  ---@param blue number
-  ---@param alpha number
-  local function colorChosen(widget, red, green, blue, alpha)
-    if not isActive(widget) then
-      return
-    end
-    if isSecret(red) or isSecret(green) or isSecret(blue) or isSecret(alpha) then
-      return
-    end
-    widget._red, widget._green, widget._blue, widget._alpha = red, green, blue, alpha
-    colorShow(widget)
-    widget:Fire("OnValueChanged", red, green, blue, alpha)
-  end
-
-  ---Open the client colour picker, or fire with the current colour without one.
-  ---@return boolean opened `true` when the client picker was opened
-  local function colorOpenPicker(self)
-    activeRecord(self, "WidgetKit ColorPicker:OpenPicker", 3)
-    if self._disabled then
-      return false
-    end
-    local picker = readGlobal("ColorPickerFrame")
-    local setup = type(picker) == "table" and picker.SetupColorPickerAndShow or nil
-    if type(setup) ~= "function" or not canTouchFrame(picker) then
-      self:Fire("OnValueChanged", self._red, self._green, self._blue, self._alpha)
-      return false
-    end
-    local info = self._pickerInfo
-    info.r, info.g, info.b = self._red, self._green, self._blue
-    info.opacity = self._alpha
-    info.hasOpacity = self._hasAlpha
-    self._previousRed, self._previousGreen = self._red, self._green
-    self._previousBlue, self._previousAlpha = self._blue, self._alpha
-    -- The client picker calls back later; it only reaches this use of the
-    -- widget, never a later one after a release.
-    self._pickerSession = self._session
-    setup(picker, info)
-    return true
-  end
-
-  local function colorOnAcquire(self)
-    self.frame:SetSize(200, 24)
-    self._red, self._green, self._blue, self._alpha = 1, 1, 1, 1
-    self._hasAlpha = false
-    self._disabled = false
-    self.button:SetEnabled(true)
-    self.labelText:SetText("")
-    self.labelText:SetTextColor(TEXT_RED, TEXT_GREEN, TEXT_BLUE)
-    colorShow(self)
-  end
-
-  local function colorOnRelease(self)
-    showText(self, "labelText", "", false)
-    -- Disarm the client picker's callbacks for this use of the widget.
-    self._session = self._session + 1
-  end
-
-  ---@return table widget
-  function BASE_CONSTRUCTORS.ColorPicker()
-    local frame = createFrame("Frame", releaseParent())
-    local button = createFrame("Button", frame)
-    button:SetSize(20, 20)
-    button:SetPoint("LEFT", frame, "LEFT", 2, 0)
-    local border = button:CreateTexture(nil, "BACKGROUND")
-    border:SetAllPoints(button)
-    border:SetColorTexture(0.8, 0.8, 0.8, 1)
-    local swatch = button:CreateTexture(nil, "OVERLAY")
-    swatch:SetPoint("TOPLEFT", button, "TOPLEFT", 2, -2)
-    swatch:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", -2, 2)
-
-    local labelText = frame:CreateFontString(nil, "OVERLAY")
-    labelText:SetFontObject("GameFontHighlight")
-    labelText:SetJustifyH("LEFT")
-    labelText:SetPoint("LEFT", button, "RIGHT", 6, 0)
-    labelText:SetPoint("RIGHT", frame, "RIGHT", 0, 0)
-
-    local widget = {
-      frame = frame,
-      button = button,
-      swatch = swatch,
-      labelText = labelText,
-      _red = 1,
-      _green = 1,
-      _blue = 1,
-      _alpha = 1,
-      _hasAlpha = false,
-      _session = 0,
-      _pickerSession = -1,
-      _disabled = false,
-      OnAcquire = colorOnAcquire,
-      OnRelease = colorOnRelease,
-      SetColor = colorSetColor,
-      GetColor = colorGetColor,
-      SetHasAlpha = colorSetHasAlpha,
-      OpenPicker = colorOpenPicker,
-      SetLabel = colorPickerSetLabel,
-      GetLabel = colorPickerGetLabel,
-      SetDisabled = colorSetDisabled,
-    }
-
-    ---Whether the client picker was opened by the current use of the widget.
-    local function pickerIsCurrent()
-      return isActive(widget) and widget._pickerSession == widget._session
-    end
-
-    ---Read the colour the client picker shows now. Without alpha, the
-    ---stored alpha is kept.
-    local function readPicker()
-      if not pickerIsCurrent() then
-        return
-      end
-      local picker = readGlobal("ColorPickerFrame")
-      if type(picker) ~= "table" or type(picker.GetColorRGB) ~= "function" then
-        return
-      end
-      local red, green, blue = picker:GetColorRGB()
-      local alpha = widget._alpha
-      if widget._hasAlpha and type(picker.GetColorAlpha) == "function" then
-        alpha = picker:GetColorAlpha()
-      end
-      colorChosen(widget, red, green, blue, alpha)
-    end
-
-    -- One info table per widget, built once: `SetupColorPickerAndShow` reads
-    -- it, and opening the picker again only rewrites its fields.
-    widget._pickerInfo = {
-      swatchFunc = readPicker,
-      opacityFunc = readPicker,
-      cancelFunc = function()
-        if not pickerIsCurrent() then
-          return
-        end
-        colorChosen(
-          widget,
-          widget._previousRed,
-          widget._previousGreen,
-          widget._previousBlue,
-          widget._previousAlpha
-        )
-      end,
-    }
-
-    button:SetScript("OnClick", function()
-      if isActive(widget) then
-        widget:OpenPicker()
-      end
-    end)
-    return widget
-  end
-end
-
--- Widget: Heading ------------------------------------------------------------
-
-do
-  ---@param text any
-  ---@param options WidgetKit.TextOptions?
-  local function headingSetText(self, text, options)
-    local value, secret = checkText(self, text, options, "WidgetKit Heading:SetText", 3)
-    showText(self, "text", value, secret)
-    -- The lines meet in the middle when there is no text.
-    local empty = not secret and value == ""
-    self.leftLine:ClearAllPoints()
-    self.rightLine:ClearAllPoints()
-    self.leftLine:SetPoint("LEFT", self.frame, "LEFT", 0, 0)
-    self.rightLine:SetPoint("RIGHT", self.frame, "RIGHT", 0, 0)
-    if empty then
-      self.leftLine:SetPoint("RIGHT", self.frame, "CENTER", 0, 0)
-      self.rightLine:SetPoint("LEFT", self.frame, "CENTER", 0, 0)
-    else
-      self.leftLine:SetPoint("RIGHT", self.text, "LEFT", -6, 0)
-      self.rightLine:SetPoint("LEFT", self.text, "RIGHT", 6, 0)
-    end
-  end
-
-  ---@return any
-  local function headingGetText(self)
-    activeRecord(self, "WidgetKit Heading:GetText", 3)
-    local text = self.text:GetText()
-    if type(text) == "nil" then
-      return ""
-    end
-    return text
-  end
-
-  ---@param disabled boolean? `true` greys the text out; the widget takes no input
-  local function headingSetDisabled(self, disabled)
-    colourLabel(self.text, readDisabled(self, disabled, "WidgetKit Heading:SetDisabled", 3))
-  end
-
-  local function headingOnAcquire(self)
-    self.frame:SetSize(200, 18)
-    self:SetFullWidth(true)
-    colourLabel(self.text, false)
-    headingSetText(self, "")
-  end
-
-  local function headingOnRelease(self)
-    showText(self, "text", "", false)
-  end
-
-  ---@return table widget
-  function BASE_CONSTRUCTORS.Heading()
-    local frame = createFrame("Frame", releaseParent())
-    local text = frame:CreateFontString(nil, "OVERLAY")
-    text:SetFontObject("GameFontNormal")
-    text:SetPoint("CENTER", frame, "CENTER", 0, 0)
-    local leftLine = frame:CreateTexture(nil, "BACKGROUND")
-    leftLine:SetHeight(1)
-    leftLine:SetColorTexture(0.6, 0.6, 0.6, 0.6)
-    local rightLine = frame:CreateTexture(nil, "BACKGROUND")
-    rightLine:SetHeight(1)
-    rightLine:SetColorTexture(0.6, 0.6, 0.6, 0.6)
-    return {
-      frame = frame,
-      text = text,
-      leftLine = leftLine,
-      rightLine = rightLine,
-      OnAcquire = headingOnAcquire,
-      OnRelease = headingOnRelease,
-      SetText = headingSetText,
-      GetText = headingGetText,
-      SetDisabled = headingSetDisabled,
-    }
-  end
-end
-
--- Widget: Spacer -------------------------------------------------------------
-
-do
-  local function spacerOnAcquire(self)
-    self.frame:SetSize(10, 8)
-  end
-
-  ---@return table widget
-  function BASE_CONSTRUCTORS.Spacer()
-    return {
-      frame = createFrame("Frame", releaseParent()),
-      OnAcquire = spacerOnAcquire,
-    }
-  end
-end
-
--- Widget: ScrollList ---------------------------------------------------------
---
--- A virtualised list over Blizzard's ScrollBox framework
--- (`Blizzard_SharedXML/Shared/Scroll` and `DataProvider.lua`, the same code on
--- Retail, Mists of Pandaria Classic and Classic Era; see `docs/INTERNALS.md`,
--- "ScrollList"). Only the rows the list shows exist as frames: the view makes
--- them from its own frame pool, parented to the scroll box's scroll target,
--- and points them at other elements as the list scrolls. WidgetKit builds each
--- row's parts (text, icon, highlight, selected texture) the first time the
--- view hands it that frame, and keeps them in `_rowParts`, never on the frame.
---
--- Rows are standard rows on purpose: the widget is pooled, so its rows go to
--- the next consumer of the widget, and a row an addon built itself would carry
--- its children into another addon's list.
---
--- Selection is one field, `_value`, rather than Blizzard's
--- `ScrollUtil.AddSelectionBehavior`: a select there walks the whole data
--- provider and allocates, and it reads an element's own `selected` field as
--- selected.
-
-do
-  -- `MinimalScrollBar`'s own width (`MinimalScrollBar.xml`) and the gap
-  -- between it and the rows.
-  local SCROLL_LIST_BAR_WIDTH = 8
-  local SCROLL_LIST_BAR_GAP = 4
-
-  local DEFAULT_ROW_HEIGHT = 20
-
-  -- Rows below 8 pixels are unreadable, and the bound keeps the rows one
-  -- list holds near its height divided by 8: the view makes a frame for
-  -- every row the list shows, and the client never frees one.
-  local MINIMUM_ROW_HEIGHT = 8
-
-  -- The view's frame type for rows. A native type has no template info, so
-  -- the row height must be given with `SetElementExtent`.
-  local ROW_FRAME_TYPE = "Button"
-
-  -- The space between a row's edge, its icon and its text.
-  local ROW_INSET = 4
-
-  -- `ScrollBoxConstants.AlignBegin`, `AlignCenter`, `AlignEnd` and
-  -- `AlignNearest` (`ScrollBox.lua`, the same on every promised client).
-  local ALIGNMENTS = { begin = 0, center = 0.5, ["end"] = 1, nearest = -1 }
-
-  local NO_FRAMEWORK = " needs the client's ScrollBox framework (Blizzard_SharedXML),"
-    .. " which this host does not have"
-
-  ---The ScrollBox framework's entry points, or `nil` on a host without them.
-  ---@return function? createView `CreateScrollBoxListLinearView`
-  ---@return table? scrollUtil `ScrollUtil`
-  local function scrollBoxFramework()
-    local createView = readGlobal("CreateScrollBoxListLinearView")
-    local scrollUtil = readGlobal("ScrollUtil")
-    local createDataProvider = readGlobal("CreateDataProvider")
-    if
-      type(createView) ~= "function"
-      or type(scrollUtil) ~= "table"
-      or type(scrollUtil.InitScrollBoxListWithScrollBar) ~= "function"
-      or type(createDataProvider) ~= "function"
-    then
-      return nil, nil
-    end
-    return createView, scrollUtil
-  end
-
-  ---A new Blizzard data provider over a copy of `elements`, or an error at
-  ---the caller of the public method `methodName`.
-  ---@param elements table?
-  ---@param methodName string
-  ---@param level integer stack level the failure is reported at
-  ---@return table provider
-  local function newProvider(elements, methodName, level)
-    local createDataProvider = readGlobal("CreateDataProvider")
-    if type(createDataProvider) ~= "function" then
-      error(methodName .. NO_FRAMEWORK, level)
-    end
-    -- `CreateDataProvider` copies the array through `InsertTable`, so the
-    -- caller's array stays the caller's.
-    return createDataProvider(elements)
-  end
-
-  ---The list's data provider, made and handed to the scroll box on first
-  ---use, so an empty list costs nothing.
-  ---@param widget table
-  ---@param methodName string
-  ---@param level integer stack level the failure is reported at
-  ---@return table provider
-  local function scrollListProvider(widget, methodName, level)
-    local provider = widget._provider
-    if provider == nil then
-      provider = newProvider(nil, methodName, level + 1)
-      widget._provider = provider
-      widget.scrollBox:SetDataProvider(provider)
-    end
-    return provider
-  end
-
-  ---Refuse anything but a non-secret table as an element.
-  ---@param element any
-  ---@param label string argument description, used in the argument error
-  ---@param level integer stack level the failure is reported at
-  local function checkElement(element, label, level)
-    refuseSecret(element, label, level + 1)
-    if type(element) ~= "table" then
-      error(label .. " must be a table", level)
-    end
-  end
-
-  ---The most elements one list holds now, as a number.
-  ---@return number
-  local function maximumElements()
-    return capacityOf(rawget(rawget(state, "limits"), "maxListElements"))
-  end
-
-  ---The formatter used without `SetFormatter`.
-  ---@param element table
-  ---@return any text
-  ---@return any icon
-  local function defaultFormatter(element)
-    return element.text, element.icon
-  end
-
-  ---The text a row shows for what a formatter returned: a string or number,
-  ---or `""` for `nil`. Anything else, a secret included, is reported and
-  ---shown as `""`: the formatter runs inside Blizzard's update, where raising
-  ---would break the list.
-  ---@param text any
-  ---@return string|number
-  local function rowText(text)
-    if isSecret(text) then
-      reportError("WidgetKit ScrollList formatter text must not be a secret value")
-      return ""
-    end
-    local kind = type(text)
-    if kind == "string" or kind == "number" then
-      return text
-    end
-    if kind ~= "nil" then
-      reportError("WidgetKit ScrollList formatter text must be a string or nil; it was a " .. kind)
-    end
-    return ""
-  end
-
-  ---The icon a row shows for what a formatter returned: a texture path or
-  ---file ID, or `nil`. Anything else is reported and shows no icon.
-  ---@param icon any
-  ---@return string|number|nil
-  local function rowIcon(icon)
-    if isSecret(icon) then
-      reportError("WidgetKit ScrollList formatter icon must not be a secret value")
-      return nil
-    end
-    local kind = type(icon)
-    if kind == "string" or kind == "number" then
-      return icon
-    end
-    if kind ~= "nil" then
-      reportError(
-        "WidgetKit ScrollList formatter icon must be a string, a number or nil; it was a " .. kind
-      )
-    end
+-- A part (`parts/WidgetKit-<Part>.lua`) registers its widget types through
+-- `registerBuiltInType`, installs the facade and prototype members it
+-- provides, and records itself in `state.parts` as `{ revision, bind }`. It
+-- reaches the core through `state.helpers`: `bind(helpers)` assigns the
+-- part's own locals from that table, and every newer core calls each loaded
+-- part's `bind` again, so a part always runs the newest core's helpers with
+-- no lookup per call and no older helper kept alive. `state.helpers` only
+-- grows inside API 1: a helper's arguments and meaning never change, and a
+-- change is a new name. See `docs/INTERNALS.md`, "Parts".
+
+---The installed revision of a part, or `nil` when it is not loaded.
+---@param partName string
+---@return integer? revision
+local function getPartRevision(self, partName)
+  validateFacade(self, "WidgetKit:GetPartRevision", 3)
+  validateName(partName, "WidgetKit:GetPartRevision partName", 3)
+  local part = parts[partName]
+  if type(part) ~= "table" then
     return nil
   end
-
-  ---Colour a row's text for the list's enabled or disabled state.
-  ---@param text WidgetKit.Frame
-  ---@param disabled boolean
-  local function colourRowText(text, disabled)
-    if disabled then
-      text:SetTextColor(DISABLED_RED, DISABLED_GREEN, DISABLED_BLUE)
-    else
-      text:SetTextColor(TEXT_RED, TEXT_GREEN, TEXT_BLUE)
-    end
-  end
-
-  ---Build the parts of a row frame the view handed this list for the first
-  ---time. Runs once per row frame for the widget's whole life.
-  ---@param widget table
-  ---@param row WidgetKit.Frame
-  ---@return table parts
-  local function buildRowParts(widget, row)
-    local highlight = row:CreateTexture(nil, "HIGHLIGHT")
-    highlight:SetAllPoints(row)
-    highlight:SetColorTexture(1, 1, 1, 0.15)
-
-    local selectedTexture = row:CreateTexture(nil, "BACKGROUND")
-    selectedTexture:SetAllPoints(row)
-    selectedTexture:SetColorTexture(LABEL_RED, LABEL_GREEN, LABEL_BLUE, 0.25)
-    selectedTexture:Hide()
-
-    local icon = row:CreateTexture(nil, "ARTWORK")
-    icon:SetPoint("LEFT", row, "LEFT", ROW_INSET, 0)
-    icon:Hide()
-
-    local text = row:CreateFontString(nil, "OVERLAY")
-    text:SetFontObject("GameFontHighlightSmall")
-    text:SetJustifyH("LEFT")
-    text:SetWordWrap(false)
-
-    row:RegisterForClicks("LeftButtonUp", "RightButtonUp")
-    -- Through `dispatch`, so a newer revision's click handling takes over a
-    -- row this one built.
-    row:SetScript("OnClick", function(_, mouseButton)
-      dispatch.clickScrollListRow(widget, row, mouseButton)
-    end)
-
-    -- `inset` is the text's left offset now, `-1` until it is first set.
-    local parts = { text = text, icon = icon, selected = selectedTexture, inset = -1 }
-    widget._rowParts[row] = parts
-    return parts
-  end
-
-  ---Draw `row` for `element`: the view calls this, through the initializer,
-  ---for every row it acquires and on `ReinitializeFrames`.
-  ---@param widget table
-  ---@param row WidgetKit.Frame
-  ---@param element table
-  local function initializeRow(widget, row, element)
-    if not isActive(widget) then
-      return
-    end
-    local parts = widget._rowParts[row] or buildRowParts(widget, row)
-
-    -- The view keeps the element's index as the row's order index, so the
-    -- index costs nothing; `GetElementDataIndex` would search the list.
-    local index = 0
-    if type(row.GetOrderIndex) == "function" then
-      index = row:GetOrderIndex()
-    end
-    local ok, text, icon = pcall(widget._formatter or defaultFormatter, element, index)
-    if not ok then
-      reportError(text)
-      text, icon = "", nil
-    end
-    text = rowText(text)
-    icon = rowIcon(icon)
-
-    local rowHeight = widget._rowHeight
-    local inset = ROW_INSET
-    local iconTexture = parts.icon
-    if icon ~= nil then
-      iconTexture:SetTexture(icon)
-      iconTexture:SetSize(rowHeight - 2, rowHeight - 2)
-      iconTexture:Show()
-      inset = ROW_INSET + rowHeight - 2 + ROW_INSET
-    else
-      iconTexture:SetTexture(nil)
-      iconTexture:Hide()
-    end
-    local textString = parts.text
-    if parts.inset ~= inset then
-      parts.inset = inset
-      textString:ClearAllPoints()
-      textString:SetPoint("LEFT", row, "LEFT", inset, 0)
-      textString:SetPoint("RIGHT", row, "RIGHT", -ROW_INSET, 0)
-    end
-    textString:SetText(text)
-    colourRowText(textString, widget._disabled)
-    parts.selected:SetShown(element == widget._value)
-  end
-
-  ---Show the selection and the enabled state on every row on display,
-  ---without asking the formatter again.
-  ---@param widget table
-  local function refreshRowStates(widget)
-    local value, disabled = widget._value, widget._disabled
-    for row, parts in next, widget._rowParts do
-      -- A row back in the view's pool has lost its accessors.
-      if type(row.GetElementData) == "function" and row:IsShown() then
-        local element = row:GetElementData()
-        parts.selected:SetShown(element ~= nil and element == value)
-        colourRowText(parts.text, disabled)
-      end
-    end
-  end
-
-  ---A click on a row: a left click selects its element, firing
-  ---`OnValueChanged` when the selection changed; every click fires `OnClick`.
-  ---@param widget table
-  ---@param row WidgetKit.Frame
-  ---@param mouseButton string
-  local function clickRow(widget, row, mouseButton)
-    if not isActive(widget) or widget._disabled then
-      return
-    end
-    if type(row.GetElementData) ~= "function" then
-      return
-    end
-    local element = row:GetElementData()
-    if element == nil then
-      return
-    end
-    if mouseButton == "LeftButton" and element ~= widget._value then
-      widget._value = element
-      refreshRowStates(widget)
-      widget:Fire("OnValueChanged", element)
-      -- The callback may have released the list.
-      if not isActive(widget) then
-        return
-      end
-    end
-    widget:Fire("OnClick", element, mouseButton)
-  end
-
-  ---After an `Insert` before the end or a `Remove`: ask a custom formatter
-  ---again for the rows on display. Blizzard's view keeps the row of an
-  ---element that stays on display when the data provider changes and only
-  ---moves its order index (`ScrollBoxListView.lua`, `ValidateDataRange`),
-  ---without running the initializer, so the index a formatter was handed
-  ---would be stale. The default formatter shows no index and needs nothing.
-  ---@param widget table
-  local function redrawShiftedRows(widget)
-    if widget._formatter ~= nil then
-      widget.scrollBox:ReinitializeFrames()
-    end
-  end
-
-  rawset(dispatch, "initializeScrollListRow", initializeRow)
-  rawset(dispatch, "clickScrollListRow", clickRow)
-
-  ---Replace the elements with a copy of the array `elements`.
-  ---
-  ---Every element is checked first: a table, not secret, at most once, and
-  ---no more than `maxListElements` of them; a refused array leaves the list
-  ---as it was. The selection is kept when its element is in the new list.
-  ---@param elements table[]
-  ---@param retainScroll boolean? keep the scroll offset; default `false`, back to the top
-  local function scrollListSetElements(self, elements, retainScroll)
-    activeRecord(self, "WidgetKit ScrollList:SetElements", 3)
-    refuseSecret(elements, "WidgetKit ScrollList:SetElements elements", 3)
-    if type(elements) ~= "table" then
-      error("WidgetKit ScrollList:SetElements elements must be an array of tables", 2)
-    end
-    refuseSecret(retainScroll, "WidgetKit ScrollList:SetElements retainScroll", 3)
-    if type(retainScroll) ~= "nil" and type(retainScroll) ~= "boolean" then
-      error("WidgetKit ScrollList:SetElements retainScroll must be a boolean", 2)
-    end
-    local count = #elements
-    local maximum = maximumElements()
-    if count > maximum then
-      error(
-        "WidgetKit ScrollList:SetElements holds at most "
-          .. maximum
-          .. " elements (WidgetKit:SetLimits maxListElements)",
-        2
-      )
-    end
-
-    -- A set rather than a pooled scratch table: a wiped table keeps its
-    -- size, and a pool would hold one as large as the longest list.
-    local seen = {}
-    local keepsValue = false
-    local value = self._value
-    for index = 1, count do
-      local element = elements[index]
-      if isSecret(element) then
-        error(
-          "WidgetKit ScrollList:SetElements elements[" .. index .. "] must not be a secret value",
-          2
-        )
-      end
-      if type(element) ~= "table" then
-        error("WidgetKit ScrollList:SetElements elements[" .. index .. "] must be a table", 2)
-      end
-      -- The view tells rows apart by their element, so one element twice
-      -- would leave a row behind on screen.
-      if seen[element] then
-        error("WidgetKit ScrollList:SetElements elements[" .. index .. "] appears twice", 2)
-      end
-      seen[element] = true
-      if element == value then
-        keepsValue = true
-      end
-    end
-
-    local provider = newProvider(elements, "WidgetKit ScrollList:SetElements", 3)
-    self._provider = provider
-    if not keepsValue then
-      self._value = nil
-    end
-    self.scrollBox:SetDataProvider(provider, retainScroll == true)
-  end
-
-  ---Add `element` at `index` (default: the end).
-  ---@param element table
-  ---@param index integer?
-  local function scrollListInsert(self, element, index)
-    activeRecord(self, "WidgetKit ScrollList:Insert", 3)
-    checkElement(element, "WidgetKit ScrollList:Insert element", 3)
-    local provider = self._provider
-    local size = provider ~= nil and provider:GetSize() or 0
-    if type(index) ~= "nil" then
-      validatePositiveInteger(index, "WidgetKit ScrollList:Insert index", 3)
-      if index > size + 1 then
-        error("WidgetKit ScrollList:Insert index must be at most the element count plus one", 2)
-      end
-    end
-    local maximum = maximumElements()
-    if size >= maximum then
-      error(
-        "WidgetKit ScrollList:Insert holds at most "
-          .. maximum
-          .. " elements (WidgetKit:SetLimits maxListElements)",
-        2
-      )
-    end
-    if provider ~= nil and provider:FindIndex(element) ~= nil then
-      error("WidgetKit ScrollList:Insert element is already in the list", 2)
-    end
-    provider = scrollListProvider(self, "WidgetKit ScrollList:Insert", 3)
-    if type(index) == "nil" or index > size then
-      provider:Insert(element)
-    else
-      provider:InsertAtIndex(element, index)
-      redrawShiftedRows(self)
-    end
-  end
-
-  ---Remove `element`.
-  ---@param element table
-  ---@return boolean removed `false` when it was not in the list
-  local function scrollListRemove(self, element)
-    activeRecord(self, "WidgetKit ScrollList:Remove", 3)
-    checkElement(element, "WidgetKit ScrollList:Remove element", 3)
-    local provider = self._provider
-    if provider == nil or provider:Remove(element) == nil then
-      return false
-    end
-    if element == self._value then
-      self._value = nil
-    end
-    redrawShiftedRows(self)
-    return true
-  end
-
-  ---Remove every element and the selection.
-  local function scrollListClear(self)
-    activeRecord(self, "WidgetKit ScrollList:Clear", 3)
-    self._value = nil
-    local provider = self._provider
-    if provider ~= nil then
-      provider:Flush()
-    end
-  end
-
-  ---@return integer
-  local function scrollListGetNumElements(self)
-    activeRecord(self, "WidgetKit ScrollList:GetNumElements", 3)
-    local provider = self._provider
-    if provider == nil then
-      return 0
-    end
-    return provider:GetSize()
-  end
-
-  ---@param index integer
-  ---@return table? element `nil` past the last element
-  local function scrollListGetElement(self, index)
-    activeRecord(self, "WidgetKit ScrollList:GetElement", 3)
-    validatePositiveInteger(index, "WidgetKit ScrollList:GetElement index", 3)
-    local provider = self._provider
-    if provider == nil then
-      return nil
-    end
-    return provider:Find(index)
-  end
-
-  ---Draw the rows on display again, asking the formatter: for elements that
-  ---changed in place.
-  local function scrollListRefresh(self)
-    activeRecord(self, "WidgetKit ScrollList:Refresh", 3)
-    if self._provider ~= nil then
-      self.scrollBox:ReinitializeFrames()
-    end
-  end
-
-  ---Scroll so that `element` is on display.
-  ---@param element table
-  ---@param alignment ("begin"|"center"|"end"|"nearest")? default `"center"`
-  ---@return boolean scrolled `false` when the element is not in the list
-  local function scrollListScrollToElement(self, element, alignment)
-    activeRecord(self, "WidgetKit ScrollList:ScrollToElement", 3)
-    checkElement(element, "WidgetKit ScrollList:ScrollToElement element", 3)
-    -- Before the lookup: indexing with a secret raises.
-    refuseSecret(alignment, "WidgetKit ScrollList:ScrollToElement alignment", 3)
-    local alignmentValue = ALIGNMENTS.center ---@type number?
-    if type(alignment) ~= "nil" then
-      alignmentValue = type(alignment) == "string" and ALIGNMENTS[alignment] or nil
-      if alignmentValue == nil then
-        error(
-          'WidgetKit ScrollList:ScrollToElement alignment must be "begin", "center", "end" or "nearest"',
-          2
-        )
-      end
-    end
-    local provider = self._provider
-    local index = provider ~= nil and provider:FindIndex(element) or nil
-    if index == nil then
-      return false
-    end
-    -- By index: `ScrollToElementData` would search the list a second time,
-    -- and answers nothing for an element already in view.
-    self.scrollBox:ScrollToElementDataIndex(index, alignmentValue, 0, true)
-    return true
-  end
-
-  ---Select `element`, or nothing with `nil`. Fires no callback.
-  ---@param element table?
-  local function scrollListSetValue(self, element)
-    activeRecord(self, "WidgetKit ScrollList:SetValue", 3)
-    refuseSecret(element, "WidgetKit ScrollList:SetValue element", 3)
-    if type(element) ~= "nil" and type(element) ~= "table" then
-      error("WidgetKit ScrollList:SetValue element must be a table or nil", 2)
-    end
-    self._value = element
-    refreshRowStates(self)
-  end
-
-  ---@return table?
-  local function scrollListGetValue(self)
-    activeRecord(self, "WidgetKit ScrollList:GetValue", 3)
-    return self._value
-  end
-
-  ---Set every row's height, in pixels: at least 8.
-  ---@param pixels number
-  local function scrollListSetRowHeight(self, pixels)
-    activeRecord(self, "WidgetKit ScrollList:SetRowHeight", 3)
-    validateNumber(pixels, "WidgetKit ScrollList:SetRowHeight pixels", 3)
-    if pixels < MINIMUM_ROW_HEIGHT or pixels == math.huge then
-      error(
-        "WidgetKit ScrollList:SetRowHeight pixels must be a finite number of at least "
-          .. MINIMUM_ROW_HEIGHT,
-        2
-      )
-    end
-    if pixels == self._rowHeight then
-      return
-    end
-    self._rowHeight = pixels
-    self.view:SetElementExtent(pixels)
-    -- The view sizes a row when it acquires it, so the rows on display are
-    -- acquired again at the new height.
-    if self._provider ~= nil then
-      self.scrollBox:Rebuild(true)
-    end
-  end
-
-  ---Set the formatter, `callback(element, index)` → text, icon?; `nil`
-  ---restores the default, `element.text` and `element.icon`.
-  ---@param callback (fun(element: table, index: integer): any, any)?
-  local function scrollListSetFormatter(self, callback)
-    activeRecord(self, "WidgetKit ScrollList:SetFormatter", 3)
-    refuseSecret(callback, "WidgetKit ScrollList:SetFormatter callback", 3)
-    if type(callback) ~= "nil" and type(callback) ~= "function" then
-      error("WidgetKit ScrollList:SetFormatter callback must be a function or nil", 2)
-    end
-    self._formatter = callback
-    if self._provider ~= nil then
-      self.scrollBox:ReinitializeFrames()
-    end
-  end
-
-  ---@param disabled boolean? `true` greys the rows and ignores clicks
-  local function scrollListSetDisabled(self, disabled)
-    self._disabled = readDisabled(self, disabled, "WidgetKit ScrollList:SetDisabled", 3)
-    refreshRowStates(self)
-  end
-
-  local function scrollListOnAcquire(self)
-    self.frame:SetSize(300, 200)
-    self._provider = nil
-    self._value = nil
-    self._formatter = nil
-    self._disabled = false
-    if self._rowHeight ~= DEFAULT_ROW_HEIGHT then
-      self._rowHeight = DEFAULT_ROW_HEIGHT
-      self.view:SetElementExtent(DEFAULT_ROW_HEIGHT)
-    end
-  end
-
-  local function scrollListOnRelease(self)
-    -- Every row goes back to the view's pool and the data provider is
-    -- removed, so the list keeps no element of the consumer's.
-    self.scrollBox:Flush()
-    self._provider = nil
-    self._value = nil
-    self._formatter = nil
-    for _, parts in next, self._rowParts do
-      parts.text:SetText("")
-      parts.icon:SetTexture(nil)
-      parts.icon:Hide()
-      parts.selected:Hide()
-    end
-  end
-
-  ---@return table widget
-  function BASE_CONSTRUCTORS.ScrollList()
-    -- Checked before any frame exists: a constructor that raises after
-    -- `CreateFrame` would leave that frame behind outside the cap.
-    local createView, scrollUtil = scrollBoxFramework()
-    if createView == nil or scrollUtil == nil then
-      local message = "ScrollList" .. NO_FRAMEWORK
-      rawset(state, "buildProblem", message)
-      error(message, 0)
-    end
-
-    local frame = createFrame("Frame", releaseParent())
-    local scrollBox = createFrame("Frame", frame, "WowScrollBoxList")
-    scrollBox:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, 0)
-    scrollBox:SetPoint(
-      "BOTTOMRIGHT",
-      frame,
-      "BOTTOMRIGHT",
-      -(SCROLL_LIST_BAR_WIDTH + SCROLL_LIST_BAR_GAP),
-      0
-    )
-    local scrollBar = createFrame("EventFrame", frame, "MinimalScrollBar")
-    scrollBar:SetPoint("TOPLEFT", scrollBox, "TOPRIGHT", SCROLL_LIST_BAR_GAP, 0)
-    scrollBar:SetPoint("BOTTOMLEFT", scrollBox, "BOTTOMRIGHT", SCROLL_LIST_BAR_GAP, 0)
-    if type(scrollBar.SetHideIfUnscrollable) == "function" then
-      scrollBar:SetHideIfUnscrollable(true)
-    end
-
-    local view = createView()
-    view:SetElementExtent(DEFAULT_ROW_HEIGHT)
-
-    local widget = {
-      frame = frame,
-      scrollBox = scrollBox,
-      scrollBar = scrollBar,
-      view = view,
-      -- Row frame to its parts; the frames are this view's for the session.
-      _rowParts = {},
-      _provider = nil,
-      _value = nil,
-      _formatter = nil,
-      _disabled = false,
-      _rowHeight = DEFAULT_ROW_HEIGHT,
-      OnAcquire = scrollListOnAcquire,
-      OnRelease = scrollListOnRelease,
-      SetElements = scrollListSetElements,
-      Insert = scrollListInsert,
-      Remove = scrollListRemove,
-      Clear = scrollListClear,
-      GetNumElements = scrollListGetNumElements,
-      GetElement = scrollListGetElement,
-      Refresh = scrollListRefresh,
-      ScrollToElement = scrollListScrollToElement,
-      SetValue = scrollListSetValue,
-      GetValue = scrollListGetValue,
-      SetRowHeight = scrollListSetRowHeight,
-      SetFormatter = scrollListSetFormatter,
-      SetDisabled = scrollListSetDisabled,
-    }
-
-    -- Through `dispatch`, so a newer revision draws rows for a list this
-    -- one built.
-    view:SetElementInitializer(ROW_FRAME_TYPE, function(row, element)
-      dispatch.initializeScrollListRow(widget, row, element)
-    end)
-    scrollUtil.InitScrollBoxListWithScrollBar(scrollBox, scrollBar, view)
-    return widget
-  end
-end
-
--- Media pickers --------------------------------------------------------------
-
----Fill `dropdown` with the names MediaKit lists for `mediaType`.
----@param MediaKit table
----@param dropdown table
----@param mediaType string
----@return boolean filled `false` when MediaKit refused the type
-local function fillMediaDropdown(MediaKit, dropdown, mediaType)
-  local ok, names = pcall(MediaKit.List, MediaKit, mediaType)
-  if not ok or type(names) ~= "table" then
-    return false
-  end
-  local values = {}
-  for index = 1, #names do
-    values[names[index]] = names[index]
-  end
-  dropdown:SetList(values, names)
-  return true
-end
-
----A Dropdown listing MediaKit's names for `mediaType`, in MediaKit's order.
----@param mediaType string one of MediaKit's media types, such as `"font"` or `"statusbar"`
----@return WidgetKit.Widget|nil dropdown
----@return string? reason `"exhausted"` when no Dropdown can be created
-local function createMediaPicker(self, mediaType)
-  validateFacade(self, "WidgetKit:CreateMediaPicker", 3)
-  validateName(mediaType, "WidgetKit:CreateMediaPicker mediaType", 3)
-  local MediaKit = findPackage(Registry, "mediaKit", OPTIONAL_MEDIAKIT_API)
-  if type(MediaKit) ~= "table" or type(MediaKit.List) ~= "function" then
-    error("WidgetKit:CreateMediaPicker requires MediaKit API 1", 2)
-  end
-  local probe, names = pcall(MediaKit.List, MediaKit, mediaType)
-  if not probe or type(names) ~= "table" then
-    error("WidgetKit:CreateMediaPicker mediaType must be a MediaKit media type", 2)
-  end
-  -- Checked before a Dropdown is acquired: a list `SetList` would refuse must
-  -- not leave a borrowed widget behind.
-  local maxEntries = rawget(rawget(state, "limits"), "maxDropdownEntries")
-  if maxEntries ~= UNBOUNDED and #names > maxEntries then
-    error(
-      "WidgetKit:CreateMediaPicker MediaKit lists more "
-        .. mediaType
-        .. " names than a Dropdown holds ("
-        .. maxEntries
-        .. "; WidgetKit:SetLimits maxDropdownEntries)",
-      2
-    )
-  end
-
-  local dropdown, reason = WidgetKit:Create("Dropdown")
-  if dropdown == nil then
-    return nil, reason
-  end
-  fillMediaDropdown(MediaKit, dropdown, mediaType)
-  return dropdown
-end
-
--- The renderer lives in its own block; only its entry point is visible below.
-local renderOptions
-
--- Renderer -------------------------------------------------------------------
-
-do --
-  -- `RenderOptions` walks `tree:Describe()` once and creates one widget per
-  -- visible node in display order. Every read afterwards goes through
-  -- `tree:Get`, `tree:IsDisabled` and `tree:IsHidden`, which allocate nothing;
-  -- every write goes through `tree:Validate` then `tree:Set`. A refusal is shown
-  -- in a Label inserted right below the widget. `tree:OnChange` refreshes the
-  -- widgets in place, and rebuilds them only when a node was shown or hidden.
-
-  -- Which widget type draws each option kind.
-  local NODE_WIDGET_TYPES = {
-    group = "Group",
-    toggle = "CheckBox",
-    range = "Slider",
-    select = "Dropdown",
-    multiselect = "Group",
-    input = "EditBox",
-    color = "ColorPicker",
-    keybinding = "Button",
-    execute = "Button",
-    header = "Heading",
-    description = "Label",
-  }
-
-  -- The option kinds that carry a value `tree:Get` reads.
-  local VALUE_KINDS = {
-    toggle = true,
-    range = true,
-    select = true,
-    multiselect = true,
-    input = true,
-    color = true,
-    keybinding = true,
-  }
-
-  -- What a widget shows instead of a secret value it was not allowed to show.
-  local SECRET_PLACEHOLDER = "<secret value>"
-
-  ---Whether a flag read from the tree or its description is exactly `true`.
-  ---The tree is the consumer's (its `disabled` and `hidden` functions, its
-  ---renderer hints), so a flag may be secret; a secret one is never compared
-  ---and counts as not set.
-  ---@param value any
-  ---@return boolean
-  local function isTrueFlag(value)
-    return not isSecret(value) and value == true
-  end
-
-  -- Font objects for `description` options by `fontSize`.
-  local DESCRIPTION_FONTS = {
-    small = "GameFontHighlightSmall",
-    medium = "GameFontHighlight",
-    large = "GameFontHighlightLarge",
-  }
-
-  -- Seconds an armed `execute` confirmation waits for its second click.
-  local CONFIRM_SECONDS = 5
-
-  -- The question an `execute` option with `confirm = true` asks.
-  local DEFAULT_CONFIRM_TEXT = "Click again to confirm."
-
-  -- The colour of an inline refusal: red, green, blue. One table rather than
-  -- three locals, because the file is at Lua's 200-local limit.
-  local MESSAGE_COLOR = { 1, 0.3, 0.3 }
-
-  ---@param rendering any
-  ---@param methodName string qualified public method name, used in the argument error
-  ---@param level integer stack level the failure is reported at
-  local function validateRendering(rendering, methodName, level)
-    if type(rendering) ~= "table" or getmetatable(rendering) ~= RENDERING_METATABLE then
-      error(methodName .. " must be called on a WidgetKit rendering", level)
-    end
-  end
-
-  ---Remember the acquire serial `widget` has now, so the rendering can tell
-  ---its own use of the widget from a later one after the widget went back to
-  ---its pool and was acquired by someone else.
-  ---@param rendering table
-  ---@param widget table
-  local function stamp(rendering, widget)
-    rendering._serials[widget] = records[widget].serial
-  end
-
-  ---Whether `widget` is still the active widget this rendering acquired (or,
-  ---for the container, was given).
-  ---@param rendering table
-  ---@param widget table?
-  ---@return boolean
-  local function owns(rendering, widget)
-    if widget == nil then
-      return false
-    end
-    local record = records[widget]
-    return record ~= nil and record.active == true and record.serial == rendering._serials[widget]
-  end
-
-  ---Create a widget for the renderer, remembering the first failure.
-  ---@param rendering table
-  ---@param typeName string
-  ---@return table? widget
-  local function renderCreate(rendering, typeName)
-    local widget, reason = WidgetKit:Create(typeName)
-    if widget == nil then
-      if rendering._failure == nil then
-        rendering._failure = "could not create a " .. typeName .. " widget: " .. tostring(reason)
-      end
-      return nil
-    end
-    stamp(rendering, widget)
-    return widget
-  end
-
-  ---Whether the rendering may still act: not released, and its container still
-  ---the one it was given. A rendering whose container went away is released
-  ---on the spot, so it never touches widgets it no longer owns.
-  ---@param rendering table
-  ---@return boolean
-  local function renderingAlive(rendering)
-    if rendering._released then
-      return false
-    end
-    if not owns(rendering, rendering._container) then
-      RenderingPrototype.Release(rendering)
-      return false
-    end
-    return true
-  end
-
-  ---Add a rendered widget to `parent`, remembering the ones added to the
-  ---container the rendering was given, which it releases itself.
-  ---@param rendering table
-  ---@param parent table
-  ---@param widget table
-  ---@param beforeWidget table?
-  ---@return boolean added
-  local function renderAdd(rendering, parent, widget, beforeWidget)
-    local added, reason = parent:AddChild(widget, beforeWidget)
-    if not added then
-      WidgetKit:Release(widget)
-      if rendering._failure == nil then
-        rendering._failure = "could not add a widget to its container: " .. tostring(reason)
-      end
-      return false
-    end
-    if parent == rendering._container then
-      local widgets = rendering._widgets
-      widgets[#widgets + 1] = widget
-    end
-    return true
-  end
-
-  ---Forget `widget` in the list of widgets the rendering added to its container.
-  ---@param rendering table
-  ---@param widget table
-  local function renderForget(rendering, widget)
-    local widgets = rendering._widgets
-    for index = #widgets, 1, -1 do
-      if widgets[index] == widget then
-        table.remove(widgets, index)
-        return
-      end
-    end
-  end
-
-  ---Text that can be shown for a message, which may be any error value.
-  ---@param message any
-  ---@return string|number
-  local function messageText(message)
-    if isSecret(message) then
-      return SECRET_PLACEHOLDER
-    end
-    if type(message) == "string" or type(message) == "number" then
-      return message
-    end
-    return tostring(message)
-  end
-
-  ---Show `message` in a Label right below the record's widget.
-  ---@param rendering table
-  ---@param record table
-  ---@param message any
-  local function showMessage(rendering, record, message)
-    local text = messageText(message)
-    local label = record.messageLabel
-    if owns(rendering, label) then
-      label:SetText(text)
-      local parent = record.parent
-      if owns(rendering, parent) then
-        parent:PerformLayout()
-      end
-      return
-    end
-    record.messageLabel = nil
-
-    local parent = record.parent
-    if not owns(rendering, parent) or not owns(rendering, record.widget) then
-      return
-    end
-    label = WidgetKit:Create("Label")
-    if label == nil then
-      -- Nowhere to show it: the user still learns through the error frame.
-      reportError(message)
-      return
-    end
-    stamp(rendering, label)
-    label:SetFullWidth(true)
-    label:SetColor(MESSAGE_COLOR[1], MESSAGE_COLOR[2], MESSAGE_COLOR[3])
-    label:SetText(text)
-
-    local siblings = parent:GetChildren()
-    local beforeWidget = nil
-    for index = 1, #siblings do
-      if siblings[index] == record.widget then
-        beforeWidget = siblings[index + 1]
-        break
-      end
-    end
-    if not renderAdd(rendering, parent, label, beforeWidget) then
-      rendering._failure = nil
-      reportError(message)
-      return
-    end
-    record.messageLabel = label
-  end
-
-  ---Remove the record's inline message, if it has one.
-  ---@param rendering table
-  ---@param record table
-  local function clearMessage(rendering, record)
-    local label = record.messageLabel
-    if label == nil then
-      return
-    end
-    record.messageLabel = nil
-    if owns(rendering, label) then
-      renderForget(rendering, label)
-      WidgetKit:Release(label)
-      local parent = record.parent
-      if owns(rendering, parent) then
-        parent:PerformLayout()
-      end
-    end
-  end
-
-  ---Whether a value read back from the tree is a table that may be indexed.
-  ---@param value any
-  ---@return boolean
-  local function isReadableTable(value)
-    return type(value) == "table" and not isSecret(value)
-  end
-
-  ---Show `value` and the disabled state on the record's widgets.
-  ---
-  ---A secret value is never inspected or handed to a widget: every kind shows
-  ---a placeholder or its default and is disabled, since the user cannot edit
-  ---what cannot be read. An `input` option shows the placeholder whatever
-  ---`allowSecret` says, because the client's edit box refuses a secret from
-  ---addon code (measured on Retail 12.1.0 b69933).
-  ---@param record table
-  ---@param value any
-  ---@param disabled boolean
-  local function applyState(record, value, disabled)
-    local kind = record.kind
-    local widget = record.widget
-    record.disabled = disabled
-
-    if not VALUE_KINDS[kind] then
-      widget:SetDisabled(disabled)
-      return
-    end
-
-    local secret = isSecret(value)
-    if kind == "multiselect" then
-      widget:SetDisabled(disabled)
-      local readable = not secret and isReadableTable(value)
-      local keys, boxes = record.keys, record.checkBoxes
-      for index = 1, #keys do
-        local checked = false
-        if readable then
-          local entry = value[keys[index]]
-          checked = not isSecret(entry) and entry == true
-        end
-        boxes[index]:SetValue(checked)
-        boxes[index]:SetDisabled(disabled or secret)
-      end
-      return
-    end
-
-    if secret then
-      if kind == "input" then
-        widget:SetText(SECRET_PLACEHOLDER)
-      elseif kind == "keybinding" then
-        widget:SetText(record.name .. ": " .. SECRET_PLACEHOLDER)
-      end
-      widget:SetDisabled(true)
-      return
-    end
-
-    if kind == "toggle" then
-      if type(value) == "nil" and record.triState then
-        widget:SetValue(nil)
-      else
-        widget:SetValue(value == true)
-      end
-    elseif kind == "range" then
-      if type(value) == "number" and value == value then
-        widget:SetValue(value)
-      end
-    elseif kind == "select" then
-      if type(value) == "string" or type(value) == "number" then
-        widget:SetValue(value)
-      else
-        widget:SetValue(nil)
-      end
-    elseif kind == "input" then
-      if type(value) == "string" or type(value) == "number" then
-        widget:SetText(value)
-      else
-        widget:SetText("")
-      end
-    elseif kind == "color" then
-      if isReadableTable(value) then
-        local red, green, blue, alpha = value.r, value.g, value.b, value.a
-        if
-          type(red) == "number"
-          and type(green) == "number"
-          and type(blue) == "number"
-          and not isSecret(red)
-          and not isSecret(green)
-          and not isSecret(blue)
-        then
-          if type(alpha) ~= "number" or isSecret(alpha) then
-            alpha = 1
-          end
-          widget:SetColor(red, green, blue, alpha)
-        end
-      end
-    elseif kind == "keybinding" then
-      local key = clientText("NOT_BOUND", "Not bound")
-      if type(value) == "string" and value ~= "" then
-        key = value
-      end
-      widget:SetText(record.name .. ": " .. key)
-    end
-    widget:SetDisabled(disabled)
-  end
-
-  ---Read one record's value and state back from the tree.
-  ---@param rendering table
-  ---@param record table
-  local function refreshRecord(rendering, record)
-    if not owns(rendering, record.widget) then
-      return
-    end
-    local tree = rendering._tree
-    local value = nil
-    if VALUE_KINDS[record.kind] then
-      value = tree:Get(record.path)
-    end
-    -- A secret `disabled` answer greys the option out: the user cannot be
-    -- offered what the tree will not say is enabled.
-    local disabled = tree:IsDisabled(record.path)
-    applyState(record, value, isSecret(disabled) or disabled == true)
-  end
-
-  ---Run a refresh that `OnChange` asked for while a write was in progress.
-  ---@param rendering table
-  local function runPendingRefresh(rendering)
-    if rendering._pending and rendering._busy == 0 and not rendering._released then
-      rendering._pending = false
-      RenderingPrototype.Refresh(rendering)
-    end
-  end
-
-  ---Write `value` through the tree: `Validate`, then `Set`. A refusal becomes an
-  ---inline message and the widget shows the stored value again.
-  ---@param rendering table
-  ---@param record table
-  ---@param value any
-  local function writeValue(rendering, record, value)
-    if not renderingAlive(rendering) or not owns(rendering, record.widget) then
-      return
-    end
-    local tree = rendering._tree
-    rendering._busy = rendering._busy + 1
-    -- A raising Validate or Set is shown and reported, never raised into the
-    -- widget's script, and never leaves the rendering busy.
-    local validated, ok, message = pcall(tree.Validate, tree, record.path, value)
-    if not validated then
-      ok, message = false, ok
-      reportError(message)
-    end
-    -- `isTrueFlag`: a secret answer from `Validate` or `Set` is a refusal,
-    -- never compared. The verdict is taken once and kept as a plain boolean.
-    local accepted = isTrueFlag(ok)
-    if accepted then
-      local called, result, setMessage = pcall(tree.Set, tree, record.path, value)
-      if not called then
-        accepted, message = false, result
-        reportError(result)
-      elseif not isTrueFlag(result) then
-        accepted, message = false, setMessage
-      end
-    end
-    rendering._busy = rendering._busy - 1
-
-    if accepted then
-      clearMessage(rendering, record)
-    else
-      -- Not `message or "refused"`: a secret message is shown as the
-      -- placeholder by `showMessage`, never tested as a boolean.
-      if not isSecret(message) and not message then
-        message = "refused"
-      end
-      showMessage(rendering, record, message)
-      refreshRecord(rendering, record)
-    end
-    runPendingRefresh(rendering)
-  end
-
-  ---Write a `multiselect` option after one of its boxes changed: a new map of
-  ---the checked keys.
-  ---@param rendering table
-  ---@param record table
-  ---@param key any
-  ---@param checked boolean?
-  local function writeMultiselect(rendering, record, key, checked)
-    if not renderingAlive(rendering) or not owns(rendering, record.widget) then
-      return
-    end
-    local current = rendering._tree:Get(record.path)
-    local readable = isReadableTable(current)
-    local map = {}
-    local keys = record.keys
-    for index = 1, #keys do
-      local entryKey = keys[index]
-      local on
-      if entryKey == key then
-        on = checked == true
-      elseif readable then
-        local entry = current[entryKey]
-        on = not isSecret(entry) and entry == true
-      else
-        on = false
-      end
-      if on then
-        map[entryKey] = true
-      end
-    end
-    writeValue(rendering, record, map)
-  end
-
-  ---Disarm an armed `execute` confirmation: cancel its timer and remove the
-  ---question.
-  ---@param rendering table
-  ---@param record table
-  local function disarmRecord(rendering, record)
-    local job = record.disarmJob
-    record.disarmJob = nil
-    if job ~= nil and type(job.Cancel) == "function" then
-      pcall(job.Cancel, job)
-    end
-    if record.armed then
-      record.armed = false
-      clearMessage(rendering, record)
-    end
-  end
-
-  ---Run an `execute` option. With `confirm`, the first click arms it and shows
-  ---the question below the button; the second click runs it. An armed
-  ---confirmation disarms itself after `CONFIRM_SECONDS` through SchedulerKit
-  ---when it is registered, otherwise at the next `Refresh`.
-  ---@param rendering table
-  ---@param record table
-  local function executeRecord(rendering, record)
-    if not renderingAlive(rendering) or not owns(rendering, record.widget) then
-      return
-    end
-    local confirm = record.confirm
-    if type(confirm) ~= "nil" and confirm ~= false and not record.armed then
-      record.armed = true
-      local question = type(confirm) == "string" and confirm or rendering._confirmText
-      showMessage(rendering, record, question)
-      local SchedulerKit = findPackage(Registry, "schedulerKit", OPTIONAL_SCHEDULERKIT_API)
-      if type(SchedulerKit) == "table" and type(SchedulerKit.After) == "function" then
-        record.disarmJob = SchedulerKit:After(CONFIRM_SECONDS, function()
-          record.disarmJob = nil
-          if not rendering._released and record.armed then
-            disarmRecord(rendering, record)
-          end
-        end)
-      end
-      return
-    end
-    disarmRecord(rendering, record)
-
-    local tree = rendering._tree
-    rendering._busy = rendering._busy + 1
-    local ok, failure = pcall(tree.Execute, tree, record.path)
-    rendering._busy = rendering._busy - 1
-    if not ok then
-      reportError(failure)
-      showMessage(rendering, record, failure)
-    end
-    runPendingRefresh(rendering)
-  end
-
-  ---The keys of a `select` or `multiselect` node in display order: `sorting`
-  ---when it has one, otherwise by label, then key.
-  ---@param node table
-  ---@return any[]
-  local function orderedKeys(node)
-    local values = node.values
-    if type(values) ~= "table" then
-      return {}
-    end
-    local sorting = node.sorting
-    local keys = {}
-    if type(sorting) == "table" then
-      for index = 1, #sorting do
-        if type(values[sorting[index]]) ~= "nil" then
-          keys[#keys + 1] = sorting[index]
-        end
-      end
-      return keys
-    end
-    for key in next, values do
-      keys[#keys + 1] = key
-    end
-    table.sort(keys, function(first, second)
-      local firstLabel, secondLabel = tostring(values[first]), tostring(values[second])
-      if firstLabel ~= secondLabel then
-        return firstLabel < secondLabel
-      end
-      if type(first) ~= type(second) then
-        return type(first) == "number"
-      end
-      return first < second
-    end)
-    return keys
-  end
-
-  local renderNodes
-  -- Renders a group's children: with its `childGroups` layout when it has
-  -- one, else as `renderNodes` does. Defined below.
-  local renderGroupChildren
-
-  ---Configure a freshly created widget for its node.
-  ---@param rendering table
-  ---@param record table
-  ---@param node table
-  ---@return boolean ok
-  local function configureNode(rendering, record, node)
-    local kind = record.kind
-    local widget = record.widget
-
-    if kind == "group" then
-      widget:SetTitle(node.name)
-      widget:PauseLayout()
-      local ok = renderGroupChildren(rendering, node, widget)
-      widget:ResumeLayout()
-      return ok
-    elseif kind == "toggle" then
-      widget:SetLabel(node.name)
-      widget:SetTriState(record.triState)
-      widget:SetCallback("OnValueChanged", function(_, _, value)
-        writeValue(rendering, record, value)
-      end)
-    elseif kind == "range" then
-      widget:SetLabel(node.name)
-      -- Not `node.step or 0`: a secret step reaches `SetSliderValues`,
-      -- which refuses it, instead of raising in a boolean test here.
-      local step = node.step
-      if not isSecret(step) and not step then
-        step = 0
-      end
-      widget:SetSliderValues(node.min, node.max, step)
-      widget:SetIsPercent(isTrueFlag(node.isPercent))
-      widget:SetCallback("OnValueChanged", function(_, _, value)
-        writeValue(rendering, record, value)
-      end)
-    elseif kind == "select" then
-      widget:SetLabel(node.name)
-      local mediaType = rendering._media ~= nil and rendering._media[record.path] or nil
-      local MediaKit = mediaType ~= nil and findPackage(Registry, "mediaKit", OPTIONAL_MEDIAKIT_API)
-        or nil
-      if
-        mediaType == nil
-        or type(MediaKit) ~= "table"
-        or type(MediaKit.List) ~= "function"
-        or not fillMediaDropdown(MediaKit, widget, mediaType)
-      then
-        widget:SetList(type(node.values) == "table" and node.values or {}, node.sorting)
-      end
-      widget:SetCallback("OnValueChanged", function(_, _, value)
-        writeValue(rendering, record, value)
-      end)
-    elseif kind == "multiselect" then
-      widget:SetTitle(node.name)
-      widget:PauseLayout()
-      local keys = orderedKeys(node)
-      record.keys = keys
-      record.checkBoxes = {}
-      for index = 1, #keys do
-        local key = keys[index]
-        local box = renderCreate(rendering, "CheckBox")
-        if box == nil then
-          widget:ResumeLayout()
-          return false
-        end
-        box:SetFullWidth(true)
-        box:SetLabel(node.values[key])
-        if not renderAdd(rendering, widget, box) then
-          widget:ResumeLayout()
-          return false
-        end
-        box:SetCallback("OnValueChanged", function(_, _, checked)
-          writeMultiselect(rendering, record, key, checked)
-        end)
-        record.checkBoxes[index] = box
-      end
-      widget:ResumeLayout()
-    elseif kind == "input" then
-      widget:SetLabel(node.name)
-      widget:SetMultiLine(isTrueFlag(node.multiline))
-      widget:SetCallback("OnEnterPressed", function(_, _, text)
-        writeValue(rendering, record, text)
-      end)
-    elseif kind == "color" then
-      widget:SetLabel(node.name)
-      local hasAlpha = isTrueFlag(node.hasAlpha)
-      widget:SetHasAlpha(hasAlpha)
-      widget:SetCallback("OnValueChanged", function(_, _, red, green, blue, alpha)
-        writeValue(rendering, record, {
-          r = red,
-          g = green,
-          b = blue,
-          a = hasAlpha and alpha or nil,
-        })
-      end)
-    elseif kind == "keybinding" then
-      widget:SetKeyCapture(true)
-      widget:SetCallback("OnKeyCaptured", function(_, _, key)
-        writeValue(rendering, record, key)
-      end)
-    elseif kind == "execute" then
-      widget:SetText(node.name)
-      widget:SetCallback("OnClick", function()
-        executeRecord(rendering, record)
-      end)
-    elseif kind == "header" then
-      widget:SetText(node.name)
-    elseif kind == "description" then
-      -- A secret size cannot index the table; it gets the default font.
-      local fontSize = node.fontSize
-      local font = not isSecret(fontSize) and DESCRIPTION_FONTS[fontSize] or nil
-      widget:SetFontObject(font or DESCRIPTION_FONTS.medium)
-      widget:SetText(node.name)
-    end
-    return true
-  end
-
-  ---Create, add and configure the widget for one visible node.
-  ---@param rendering table
-  ---@param node table
-  ---@param parent table
-  ---@return boolean ok
-  local function renderNode(rendering, node, parent)
-    local kind = node.kind
-    local typeName = NODE_WIDGET_TYPES[kind]
-    if typeName == nil then
-      -- A kind this generation does not know is skipped, not refused.
-      return true
-    end
-
-    local widget = renderCreate(rendering, typeName)
-    if widget == nil then
-      return false
-    end
-    widget:SetFullWidth(true)
-    if not renderAdd(rendering, parent, widget) then
-      return false
-    end
-
-    local record = {
-      path = node.path,
-      kind = kind,
-      name = node.name,
-      widget = widget,
-      parent = parent,
-      triState = isTrueFlag(node.tristate),
-      -- A secret `confirm` cannot be read, so the option asks with the
-      -- default question rather than run on a single click.
-      confirm = isSecret(node.confirm) and true or node.confirm,
-      armed = false,
-      disabled = false,
-      messageLabel = nil,
-    }
-    local recordList = rendering._records
-    recordList[#recordList + 1] = record
-    rendering._byPath[node.path] = record
-
-    if not configureNode(rendering, record, node) then
-      return false
-    end
-    -- The value is read with `Get`, not taken from the description:
-    -- `Describe` hands out a copy of a table value, and a copy no longer
-    -- answers `issecretvalue` as the original did.
-    refreshRecord(rendering, record)
-    return true
-  end
-
-  ---Render every node of `nodes` into `parent`, remembering each one's hidden
-  ---state so a refresh can tell when one was shown or hidden.
-  ---@param rendering table
-  ---@param nodes any
-  ---@param parent table
-  ---@return boolean ok
-  function renderNodes(rendering, nodes, parent)
-    if type(nodes) ~= "table" then
-      return true
-    end
-    local visited = rendering._nodes
-    for index = 1, #nodes do
-      local node = nodes[index]
-      local hidden = isTrueFlag(node.hidden)
-      visited[#visited + 1] = { path = node.path, hidden = hidden }
-      if not hidden and not renderNode(rendering, node, parent) then
-        return false
-      end
-    end
-    return true
-  end
-
-  -- The `childGroups` renderer. A block of its own so its helpers do not
-  -- count against the main chunk's 200 locals.
-  do
-    -- The `childGroups` layouts the renderer draws (OptionsKit revision 10).
-    local PAGED_LAYOUTS = { tab = true, tree = true, select = true }
-
-    ---The page of `node` shown now: the one chosen last while this rendering
-    ---lives, else the first.
-    ---@param rendering table
-    ---@param node table
-    ---@param pages table[]
-    ---@return table page
-    local function selectedPage(rendering, node, pages)
-      local choices = rendering._selected
-      if choices == nil then
-        -- A rendering made by revision 10 or older has no selection table.
-        choices = {}
-        rendering._selected = choices
-      end
-      local chosen = choices[node.path]
-      for index = 1, #pages do
-        if pages[index].path == chosen then
-          return pages[index]
-        end
-      end
-      choices[node.path] = pages[1].path
-      return pages[1]
-    end
-
-    ---Show the page at `pagePath` of the group at `groupPath`: remember it and
-    ---build the rendering again.
-    ---@param rendering table
-    ---@param groupPath string
-    ---@param pagePath any
-    local function choosePage(rendering, groupPath, pagePath)
-      if rendering._selected[groupPath] ~= pagePath then
-        rendering._selected[groupPath] = pagePath
-        RenderingPrototype.Rebuild(rendering)
-      end
-    end
-
-    ---A button that shows `page` of the group at `groupPath`, disabled while
-    ---that page is the one shown.
-    ---@param rendering table
-    ---@param groupPath string
-    ---@param page table
-    ---@param shown boolean
-    ---@return table? button
-    local function pageButton(rendering, groupPath, page, shown)
-      local button = renderCreate(rendering, "Button")
-      if button == nil then
-        return nil
-      end
-      button:SetText(page.name)
-      button:SetDisabled(shown)
-      local pagePath = page.path
-      button:SetCallback("OnClick", function()
-        choosePage(rendering, groupPath, pagePath)
-      end)
-      return button
-    end
-
-    ---A group widget without a title, for a row, a list or a page column.
-    ---@param rendering table
-    ---@param parent table
-    ---@param relativeWidth number? the share of the parent's width; full width without it
-    ---@return table? group
-    local function plainGroup(rendering, parent, relativeWidth)
-      local group = renderCreate(rendering, "Group")
-      if group == nil then
-        return nil
-      end
-      group:SetTitle(nil)
-      if relativeWidth then
-        group:SetRelativeWidth(relativeWidth)
-      else
-        group:SetFullWidth(true)
-      end
-      if not renderAdd(rendering, parent, group) then
-        return nil
-      end
-      return group
-    end
-
-    ---Render a group's children. Without a `childGroups` layout they render
-    ---one after the other. With one, the options and inline groups render as
-    ---usual, then the other child groups as pages, one shown at a time behind
-    ---tabs, a list or a dropdown.
-    ---@param rendering table
-    ---@param node table a group node, or the description's root
-    ---@param parent table
-    ---@return boolean ok
-    function renderGroupChildren(rendering, node, parent)
-      local children = node.children
-      if not PAGED_LAYOUTS[node.childGroups] then
-        return renderNodes(rendering, children, parent)
-      end
-      if type(children) ~= "table" then
-        return true
-      end
-      local visited = rendering._nodes
-      local pages = {}
-      for index = 1, #children do
-        local child = children[index]
-        local hidden = isTrueFlag(child.hidden)
-        visited[#visited + 1] = { path = child.path, hidden = hidden }
-        if not hidden then
-          if child.kind == "group" and not isTrueFlag(child.inline) then
-            pages[#pages + 1] = child
-          elseif not renderNode(rendering, child, parent) then
-            return false
-          end
-        end
-      end
-      if #pages == 0 then
-        return true
-      end
-
-      local layout = node.childGroups
-      local shown = selectedPage(rendering, node, pages)
-      local groupPath = node.path
-      local pageParent = parent
-      if layout == "select" then
-        local dropdown = renderCreate(rendering, "Dropdown")
-        if dropdown == nil then
-          return false
-        end
-        local labels, order = {}, {}
-        for index = 1, #pages do
-          labels[pages[index].path] = pages[index].name
-          order[index] = pages[index].path
-        end
-        dropdown:SetFullWidth(true)
-        dropdown:SetList(labels, order)
-        dropdown:SetValue(shown.path)
-        dropdown:SetCallback("OnValueChanged", function(_, _, value)
-          choosePage(rendering, groupPath, value)
-        end)
-        if not renderAdd(rendering, parent, dropdown) then
-          return false
-        end
-      else
-        -- Tabs: a row of buttons above the page. Tree: a column of buttons
-        -- beside the page, the two side by side in one row.
-        local row = plainGroup(rendering, parent)
-        if row == nil then
-          return false
-        end
-        row:SetLayout("Flow")
-        local list = row
-        if layout == "tree" then
-          local column = plainGroup(rendering, row, 0.3)
-          local page = column and plainGroup(rendering, row, 0.7)
-          if column == nil or page == nil then
-            return false
-          end
-          list, pageParent = column, page
-        end
-        for index = 1, #pages do
-          local page = pages[index]
-          local button = pageButton(rendering, groupPath, page, page == shown)
-          if button == nil or not renderAdd(rendering, list, button) then
-            return false
-          end
-        end
-      end
-      return renderNode(rendering, shown, pageParent)
-    end
-  end
-
-  ---Release everything the rendering created and forget it.
-  ---@param rendering table
-  local function releaseRendered(rendering)
-    local recordList = rendering._records
-    for index = #recordList, 1, -1 do
-      local record = recordList[index]
-      local job = record.disarmJob
-      record.disarmJob = nil
-      if job ~= nil and type(job.Cancel) == "function" then
-        pcall(job.Cancel, job)
-      end
-      local label = record.messageLabel
-      if owns(rendering, label) and not WidgetBase.IsReleasing(label) then
-        renderForget(rendering, label)
-        WidgetKit:Release(label)
-      end
-    end
-    -- Only widgets this rendering still owns are released: a widget that went
-    -- back to its pool and was acquired by someone else is left alone, and one
-    -- whose container is being released goes with that container.
-    local widgets = rendering._widgets
-    for index = #widgets, 1, -1 do
-      local widget = widgets[index]
-      if owns(rendering, widget) and not WidgetBase.IsReleasing(widget) then
-        WidgetKit:Release(widget)
-      end
-    end
-    rendering._records = {}
-    rendering._byPath = {}
-    rendering._nodes = {}
-    rendering._widgets = {}
-  end
-
-  ---Build the widgets from a fresh description and lay the container out once.
-  ---@param rendering table
-  ---@return boolean ok
-  local function buildRendering(rendering)
-    local container = rendering._container
-    local containerRecord = records[container]
-    local description = rendering._tree:Describe()
-
-    local wasPaused = containerRecord.layoutPaused
-    containerRecord.layoutPaused = true
-    rendering._failure = nil
-    -- The container's pause state is restored even when building raises.
-    local called, ok = pcall(renderGroupChildren, rendering, description, container)
-    containerRecord.layoutPaused = wasPaused
-    if not called then
-      rendering._failure = ok
-      return false
-    end
-    if not ok then
-      return false
-    end
-    if not wasPaused then
-      performLayout(container, containerRecord)
-    end
-    return true
-  end
-
-  ---Render `tree` into `container`.
-  ---@param tree table an OptionsKit tree
-  ---@param container WidgetKit.Container
-  ---@param options WidgetKit.RenderOptions?
-  ---@return WidgetKit.Rendering
-  function renderOptions(self, tree, container, options)
-    validateFacade(self, "WidgetKit:RenderOptions", 3)
-    local OptionsKit = findPackage(Registry, "optionsKit", OPTIONAL_OPTIONSKIT_API)
-    if type(OptionsKit) ~= "table" then
-      error("WidgetKit:RenderOptions requires OptionsKit API 1", 2)
-    end
-    if
-      type(tree) ~= "table"
-      or type(tree.Describe) ~= "function"
-      or type(tree.Get) ~= "function"
-      or type(tree.Set) ~= "function"
-      or type(tree.Validate) ~= "function"
-      or type(tree.Execute) ~= "function"
-      or type(tree.IsDisabled) ~= "function"
-      or type(tree.IsHidden) ~= "function"
-      or type(tree.OnChange) ~= "function"
-    then
-      error("WidgetKit:RenderOptions tree must be an OptionsKit tree", 2)
-    end
-    local containerRecord = type(container) == "table" and records[container] or nil
-    if containerRecord == nil or not containerRecord.active or not containerRecord.isContainer then
-      error("WidgetKit:RenderOptions container must be an active WidgetKit container", 2)
-    end
-
-    local media, confirmText = nil, DEFAULT_CONFIRM_TEXT
-    if type(options) ~= "nil" then
-      validateOptionKeys(options, RENDER_OPTION_KEYS, "WidgetKit:RenderOptions options", 3)
-      -- Still checked, though no kind shows a secret any more: see
-      -- `applyState` and docs/API.md ("Secret values").
-      refuseSecret(options.allowSecret, "WidgetKit:RenderOptions options.allowSecret", 3)
-      if type(options.allowSecret) ~= "nil" and type(options.allowSecret) ~= "boolean" then
-        error("WidgetKit:RenderOptions options.allowSecret must be a boolean", 2)
-      end
-      if type(options.confirmText) ~= "nil" then
-        validateName(options.confirmText, "WidgetKit:RenderOptions options.confirmText", 3)
-        confirmText = options.confirmText
-      end
-      if type(options.media) ~= "nil" then
-        if type(options.media) ~= "table" then
-          error("WidgetKit:RenderOptions options.media must be a table", 2)
-        end
-        media = {}
-        for path, mediaType in next, options.media do
-          if type(path) ~= "string" or type(mediaType) ~= "string" then
-            error("WidgetKit:RenderOptions options.media must map option paths to media types", 2)
-          end
-          media[path] = mediaType
-        end
-      end
-    end
-
-    local rendering = setmetatable({
-      _tree = tree,
-      _container = container,
-      _media = media,
-      _confirmText = confirmText,
-      -- Widget -> the acquire serial it had when this rendering took it.
-      _serials = setmetatable({}, WEAK_KEYS),
-      _records = {},
-      _byPath = {},
-      _nodes = {},
-      _widgets = {},
-      -- Group path -> the path of the `childGroups` page shown, kept across
-      -- rebuilds for as long as the rendering lives.
-      _selected = {},
-      _busy = 0,
-      _pending = false,
-      _released = false,
-      _failure = nil,
-      _connection = nil,
-    }, RENDERING_METATABLE)
-
-    stamp(rendering, container)
-    if not buildRendering(rendering) then
-      local failure = rendering._failure
-      releaseRendered(rendering)
-      rendering._released = true
-      error("WidgetKit:RenderOptions " .. tostring(failure), 2)
-    end
-
-    -- The container releases its renderings first when it is released.
-    local renderings = containerRecord.renderings
-    if renderings == nil then
-      renderings = {}
-      containerRecord.renderings = renderings
-    end
-    renderings[#renderings + 1] = rendering
-
-    rendering._connection = tree:OnChange(function()
-      rendering:Refresh()
-    end)
-    return rendering
-  end
-
-  ---Show the tree's current values and states. Rebuilds instead when a node was
-  ---shown or hidden since the last build.
-  ---@return boolean refreshed `false` once released or when a rebuild failed
-  function RenderingPrototype:Refresh()
-    validateRendering(self, "WidgetKit.Rendering:Refresh", 3)
-    if not renderingAlive(self) then
-      return false
-    end
-    if self._busy > 0 then
-      -- A write is in progress; refresh once it is done.
-      self._pending = true
-      return true
-    end
-
-    local tree = self._tree
-    local visited = self._nodes
-    for index = 1, #visited do
-      local entry = visited[index]
-      if isTrueFlag(tree:IsHidden(entry.path)) ~= entry.hidden then
-        return RenderingPrototype.Rebuild(self)
-      end
-    end
-
-    local recordList = self._records
-    local scheduled = findPackage(Registry, "schedulerKit", OPTIONAL_SCHEDULERKIT_API) ~= nil
-    for index = 1, #recordList do
-      local record = recordList[index]
-      -- Without SchedulerKit an armed confirmation lasts until the next
-      -- refresh.
-      if record.armed and not scheduled then
-        disarmRecord(self, record)
-      end
-      refreshRecord(self, record)
-    end
-    return true
-  end
-
-  ---Release every rendered widget and build them again from a fresh description.
-  ---@return boolean rebuilt `false` once released, or when widgets ran out (reported)
-  function RenderingPrototype:Rebuild()
-    validateRendering(self, "WidgetKit.Rendering:Rebuild", 3)
-    if not renderingAlive(self) then
-      return false
-    end
-    releaseRendered(self)
-    if not buildRendering(self) then
-      reportError("WidgetKit.Rendering:Rebuild " .. tostring(self._failure))
-      releaseRendered(self)
-      return false
-    end
-    return true
-  end
-
-  ---Release every widget the rendering created, together, and stop listening.
-  ---@return boolean released `false` when it was already released
-  function RenderingPrototype:Release()
-    validateRendering(self, "WidgetKit.Rendering:Release", 3)
-    if self._released then
-      return false
-    end
-    self._released = true
-    local connection = self._connection
-    if connection ~= nil then
-      connection:Disconnect()
-      self._connection = nil
-    end
-    releaseRendered(self)
-    local container = self._container
-    local containerRecord = records[container]
-    if containerRecord ~= nil then
-      local renderings = containerRecord.renderings
-      if renderings ~= nil then
-        for index = #renderings, 1, -1 do
-          if renderings[index] == self then
-            table.remove(renderings, index)
-          end
-        end
-      end
-    end
-    if
-      containerRecord ~= nil
-      and owns(self, container)
-      and not isReleasingRecord(containerRecord)
-    then
-      performLayout(container, containerRecord)
-    end
-    return true
-  end
-
-  ---Release every rendering drawn into a container that is being released.
-  ---@param renderings table[] the container record's list, emptied by the releases
-  function releaseContainerRenderings(renderings)
-    for index = #renderings, 1, -1 do
-      local rendering = renderings[index]
-      if rendering ~= nil then
-        if rendering._released then
-          table.remove(renderings, index)
-        else
-          RenderingPrototype.Release(rendering)
-        end
-      end
-    end
-  end
-
-  ---@return boolean
-  function RenderingPrototype:IsReleased()
-    validateRendering(self, "WidgetKit.Rendering:IsReleased", 3)
-    return self._released == true
-  end
-
-  ---The widget drawing the option at `path`, or `nil` when it is hidden or the
-  ---rendering was released. A `multiselect` option is drawn by a Group.
-  ---@param path string
-  ---@return WidgetKit.Widget?
-  function RenderingPrototype:GetWidget(path)
-    validateRendering(self, "WidgetKit.Rendering:GetWidget", 3)
-    validateName(path, "WidgetKit.Rendering:GetWidget path", 3)
-    local record = self._byPath[path]
-    if record == nil or not owns(self, record.widget) then
-      return nil
-    end
-    return record.widget
-  end
-
-  ---The inline message shown below the option at `path`, or `nil`.
-  ---@param path string
-  ---@return any
-  function RenderingPrototype:GetMessage(path)
-    validateRendering(self, "WidgetKit.Rendering:GetMessage", 3)
-    validateName(path, "WidgetKit.Rendering:GetMessage path", 3)
-    local record = self._byPath[path]
-    local label = record ~= nil and record.messageLabel or nil
-    if label == nil or not owns(self, label) then
-      return nil
-    end
-    return label.text:GetText()
-  end
+  return part.revision
 end
 
 -- Commit ---------------------------------------------------------------------
 
-rawset(dispatch, "build", buildWidget)
-rawset(dispatch, "retire", retireWidget)
-rawset(dispatch, "closeOpenDropdown", closeOpenDropdown)
-rawset(dispatch, "saveBinding", saveBinding)
+-- What every part binds to. Functions and shared tables only; see "Parts".
+rawset(helpers, "WidgetKit", WidgetKit)
+rawset(helpers, "Registry", Registry)
+rawset(helpers, "findPackage", findPackage)
+rawset(helpers, "state", state)
+rawset(helpers, "dispatch", dispatch)
+rawset(helpers, "records", records)
+rawset(helpers, "parts", parts)
+rawset(helpers, "UNBOUNDED", UNBOUNDED)
+rawset(helpers, "WEAK_KEYS", WEAK_KEYS)
+rawset(helpers, "WidgetBase", WidgetBase)
+rawset(helpers, "AnchorFunctions", AnchorFunctions)
+rawset(helpers, "BindingPrototype", BindingPrototype)
+rawset(helpers, "RenderingPrototype", RenderingPrototype)
+rawset(helpers, "BINDING_METATABLE", BINDING_METATABLE)
+rawset(helpers, "RENDERING_METATABLE", RENDERING_METATABLE)
+rawset(helpers, "colours", COLOURS)
+rawset(helpers, "reportError", reportError)
+rawset(helpers, "isSecret", isSecret)
+rawset(helpers, "secretProbe", secretProbe)
+rawset(helpers, "canTouchFrame", canTouchFrame)
+rawset(helpers, "createFrame", createFrame)
+rawset(helpers, "restingParent", restingParent)
+rawset(helpers, "releaseParent", releaseParent)
+rawset(helpers, "validateFacade", validateFacade)
+rawset(helpers, "validateName", validateName)
+rawset(helpers, "validateNumber", validateNumber)
+rawset(helpers, "validatePositiveInteger", validatePositiveInteger)
+rawset(helpers, "validateOptionKeys", validateOptionKeys)
+rawset(helpers, "capacityOf", capacityOf)
+rawset(helpers, "refuseSecret", refuseSecret)
+rawset(helpers, "activeRecord", activeRecord)
+rawset(helpers, "isReleasingRecord", isReleasingRecord)
+rawset(helpers, "performLayout", performLayout)
+rawset(helpers, "acquireScratch", acquireScratch)
+rawset(helpers, "releaseScratch", releaseScratch)
+rawset(helpers, "checkText", checkText)
+rawset(helpers, "showText", showText)
+rawset(helpers, "isActive", isActive)
+rawset(helpers, "readDisabled", readDisabled)
+rawset(helpers, "colourLabel", colourLabel)
+rawset(helpers, "newTopLabel", newTopLabel)
+rawset(helpers, "newLabelMethods", newLabelMethods)
+rawset(helpers, "registerBuiltInType", registerBuiltInType)
+rawset(helpers, "missingPartMessage", missingPartMessage)
+
+-- Revision 13 and older built and retired widgets through PoolKit pool
+-- callbacks that called these entries. The pools are adopted below, so the
+-- entries go, and the older copy's functions with them.
+rawset(dispatch, "build", nil)
+rawset(dispatch, "retire", nil)
+for _, typeRecord in next, types do
+  adoptPool(typeRecord)
+end
 
 -- Built-in layouts are this package's own, so each copy installs its own
 -- functions over whatever an older copy registered under the same names.
 layouts[LAYOUT_LIST] = listLayout
-layouts[LAYOUT_FILL] = fillLayout
-layouts[LAYOUT_FLOW] = flowLayout
-
-rawset(AnchorFunctions, "POINTS", POINTS)
-rawset(AnchorFunctions, "FromRect", anchorFromRect)
-rawset(AnchorFunctions, "Normalize", anchorNormalize)
-rawset(AnchorFunctions, "Apply", anchorApply)
-rawset(AnchorFunctions, "Read", anchorRead)
+layouts.Fill = fillLayout
+layouts.Flow = flowLayout
 
 rawset(WidgetKit, "API", API_GENERATION)
 rawset(WidgetKit, "REVISION", IMPLEMENTATION_REVISION)
@@ -7803,15 +3261,77 @@ rawset(WidgetKit, "SetFocus", setFocus)
 rawset(WidgetKit, "ClearFocus", clearFocus)
 rawset(WidgetKit, "GetFocus", getFocus)
 rawset(WidgetKit, "GetStatistics", getStatistics)
-rawset(WidgetKit, "BindPosition", bindPosition)
-rawset(WidgetKit, "RenderOptions", renderOptions)
-rawset(WidgetKit, "CreateMediaPicker", createMediaPicker)
+rawset(WidgetKit, "GetPartRevision", getPartRevision)
 
--- The base widget types, registered with the versions in `BASE_TYPE_VERSIONS`.
--- A type already registered at the same or a newer version, by an earlier copy
--- of this file, keeps its constructor.
-for typeName, version in next, BASE_TYPE_VERSIONS do
-  registerType(WidgetKit, typeName, BASE_CONSTRUCTORS[typeName], version)
+---Install a stand-in for every part member no part or older revision
+---provides, replacing earlier stand-ins.
+local function installStandIns()
+  -- Every member a part provides, as `{ table, key, part, label }`. Until the
+  -- part loads, the member is a stand-in that raises at the caller's line with
+  -- the file to embed, so the facade and the shared prototypes always expose
+  -- the whole API 1 surface (an older copy that yields to this one checks it).
+  local PART_MEMBERS = {
+    { WidgetKit, "RenderOptions", "Renderer", "WidgetKit:RenderOptions" },
+    { WidgetKit, "CreateMediaPicker", "Dropdown", "WidgetKit:CreateMediaPicker" },
+    { WidgetKit, "BindPosition", "Position", "WidgetKit:BindPosition" },
+    { AnchorFunctions, "FromRect", "Position", "WidgetKit.Anchor.FromRect" },
+    { AnchorFunctions, "Normalize", "Position", "WidgetKit.Anchor.Normalize" },
+    { AnchorFunctions, "Apply", "Position", "WidgetKit.Anchor.Apply" },
+    { AnchorFunctions, "Read", "Position", "WidgetKit.Anchor.Read" },
+    { BindingPrototype, "Capture", "Position", "WidgetKit.Binding:Capture" },
+    { BindingPrototype, "Restore", "Position", "WidgetKit.Binding:Restore" },
+    { BindingPrototype, "Flush", "Position", "WidgetKit.Binding:Flush" },
+    { BindingPrototype, "OnMoved", "Position", "WidgetKit.Binding:OnMoved" },
+    { BindingPrototype, "Release", "Position", "WidgetKit.Binding:Release" },
+    { BindingPrototype, "IsReleased", "Position", "WidgetKit.Binding:IsReleased" },
+    { RenderingPrototype, "Refresh", "Renderer", "WidgetKit.Rendering:Refresh" },
+    { RenderingPrototype, "Rebuild", "Renderer", "WidgetKit.Rendering:Rebuild" },
+    { RenderingPrototype, "Release", "Renderer", "WidgetKit.Rendering:Release" },
+    { RenderingPrototype, "IsReleased", "Renderer", "WidgetKit.Rendering:IsReleased" },
+    { RenderingPrototype, "GetWidget", "Renderer", "WidgetKit.Rendering:GetWidget" },
+    { RenderingPrototype, "GetMessage", "Renderer", "WidgetKit.Rendering:GetMessage" },
+  }
+
+  -- Stand-ins this or an earlier core installed, so a newer core replaces them
+  -- (an older stand-in would keep the older core alive) and never mistakes one
+  -- for a part's member. Weak-keyed: a stand-in a part replaced is not kept.
+  local standIns = rawget(state, "standIns")
+  if standIns == nil then
+    standIns = setmetatable({}, WEAK_KEYS)
+    rawset(state, "standIns", standIns)
+  end
+
+  ---A function that raises the not-loaded message at its caller's line.
+  ---@param label string
+  ---@param partName string
+  ---@return function standIn
+  local function newStandIn(label, partName)
+    local message = missingPartMessage(label, partName)
+    local function standIn()
+      error(message, 2)
+    end
+    standIns[standIn] = true
+    return standIn
+  end
+
+  -- A part's member, or one an older single-file revision installed, is kept;
+  -- an empty slot or an earlier stand-in gets this core's stand-in.
+  for index = 1, #PART_MEMBERS do
+    local row = PART_MEMBERS[index]
+    local current = rawget(row[1], row[2])
+    if current == nil or standIns[current] then
+      rawset(row[1], row[2], newStandIn(row[4], row[3]))
+    end
+  end
+end
+
+installStandIns()
+
+-- Parts loaded before this core run its helpers from now on.
+for _, part in next, parts do
+  if type(part) == "table" and type(part.bind) == "function" then
+    part.bind(helpers)
+  end
 end
 
 rawset(state, "runtimeRevision", IMPLEMENTATION_REVISION)

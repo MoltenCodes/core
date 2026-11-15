@@ -1,5 +1,8 @@
 local TestEnv = require("WidgetKitTestEnv")
 
+-- The implementation revision of the files under test.
+local CURRENT_REVISION = 14
+
 -- The base widget versions in the current file (revision 10), which the
 -- upgrade specs patch down to model an older revision's registrations.
 local CURRENT_VERSIONS = {
@@ -38,28 +41,21 @@ describe("WidgetKit bootstrap", function()
     assert.are.equal(16, WidgetKit.MAX_CALLBACKS)
   end)
 
-  it("requires Registry, PoolKit and SignalKit", function()
+  it("requires Registry alone for its core", function()
     TestEnv.Reset()
     TestEnv.InstallWowApi()
     local ok, failure = pcall(require, "WidgetKit")
     assert.is_false(ok)
     assert.is_true(tostring(failure):find("requires Registry API 2", 1, true) ~= nil)
 
+    -- Neither PoolKit nor SignalKit is loaded: the core needs neither.
     TestEnv.Reset()
     TestEnv.InstallWowApi()
     require("Registry")
-    require("SignalKit")
-    ok, failure = pcall(TestEnv.requireAfterFailedLoad, "WidgetKit")
-    assert.is_false(ok)
-    assert.is_true(tostring(failure):find("requires PoolKit API 1", 1, true) ~= nil)
-
-    TestEnv.Reset()
-    TestEnv.InstallWowApi()
-    require("Registry")
-    require("PoolKit")
-    ok, failure = pcall(TestEnv.requireAfterFailedLoad, "WidgetKit")
-    assert.is_false(ok)
-    assert.is_true(tostring(failure):find("requires SignalKit API 1", 1, true) ~= nil)
+    local WidgetKit = TestEnv.requireAfterFailedLoad("WidgetKit")
+    assert.are.equal(WidgetKit.REVISION, CURRENT_REVISION)
+    assert.is_nil(package.loaded["PoolKit"])
+    assert.is_nil(package.loaded["SignalKit"])
   end)
 
   it("refuses an incomplete facade left by an earlier failed load", function()
@@ -134,6 +130,7 @@ describe("WidgetKit bootstrap", function()
     old:SetLimits({ maxDropdownEntries = old.UNBOUNDED })
 
     local upgraded = require("WidgetKit")
+    TestEnv.LoadParts()
     assert.are.equal(old, upgraded)
     assert.is_true(upgraded.REVISION > 1)
     assert.is_true(upgraded:IsWidget(label))
@@ -168,6 +165,7 @@ describe("WidgetKit bootstrap", function()
     old:SetLimits({ maxDropdownEntries = old.UNBOUNDED })
 
     local upgraded = require("WidgetKit")
+    TestEnv.LoadParts()
     assert.are.equal(old, upgraded)
     assert.is_true(upgraded.REVISION > 2)
     assert.is_true(upgraded:IsWidget(label))
@@ -199,6 +197,7 @@ describe("WidgetKit bootstrap", function()
     old:SetLimits({ maxDropdownEntries = old.UNBOUNDED })
 
     local upgraded = require("WidgetKit")
+    TestEnv.LoadParts()
     assert.are.equal(old, upgraded)
     assert.is_true(upgraded.REVISION > 3)
     assert.is_true(upgraded:IsWidget(slider))
@@ -243,6 +242,7 @@ describe("WidgetKit bootstrap", function()
     assert.are.equal(100, half:GetWidth())
 
     local upgraded = require("WidgetKit")
+    TestEnv.LoadParts()
     assert.are.equal(old, upgraded)
     assert.are.equal(state, upgraded._state)
     assert.is_true(upgraded.REVISION > 4)
@@ -287,7 +287,7 @@ describe("WidgetKit bootstrap", function()
       "Heading",
     }) do
       local current = CURRENT_VERSIONS[typeName]
-      versionOne["  " .. typeName .. " = " .. current .. ","] = "  " .. typeName .. " = 1,"
+      versionOne[TestEnv.VersionLine(typeName, current)] = TestEnv.VersionLine(typeName, 1)
     end
     local old = TestEnv.LoadRevision(5, versionOne)
     local state = old._state
@@ -303,9 +303,10 @@ describe("WidgetKit bootstrap", function()
     old:SetLimits({ maxDropdownEntries = old.UNBOUNDED })
 
     local upgraded = require("WidgetKit")
+    TestEnv.LoadParts()
     assert.are.equal(old, upgraded)
     assert.are.equal(state, upgraded._state)
-    assert.are.equal(13, upgraded.REVISION)
+    assert.are.equal(CURRENT_REVISION, upgraded.REVISION)
     assert.are.equal(3, upgraded:GetTypeVersion("Label"))
     assert.are.equal(4, upgraded:GetTypeVersion("Frame"))
     assert.are.equal(1, upgraded:GetTypeVersion("ScrollFrame"))
@@ -353,7 +354,7 @@ describe("WidgetKit bootstrap", function()
       "Heading",
     }) do
       local current = CURRENT_VERSIONS[typeName]
-      versionTwo["  " .. typeName .. " = " .. current .. ","] = "  " .. typeName .. " = 2,"
+      versionTwo[TestEnv.VersionLine(typeName, current)] = TestEnv.VersionLine(typeName, 2)
     end
     local old = TestEnv.LoadRevision(6, versionTwo)
     local state = old._state
@@ -370,9 +371,10 @@ describe("WidgetKit bootstrap", function()
     borrowed:SetUserData("kept", true)
 
     local upgraded = require("WidgetKit")
+    TestEnv.LoadParts()
     assert.are.equal(old, upgraded)
     assert.are.equal(state, upgraded._state)
-    assert.are.equal(13, upgraded.REVISION)
+    assert.are.equal(CURRENT_REVISION, upgraded.REVISION)
     assert.are.equal(3, upgraded:GetTypeVersion("Label"))
     assert.are.equal(3, upgraded:GetTypeVersion("Button"))
     assert.are.equal(1, upgraded:GetTypeVersion("Spacer"))
@@ -401,7 +403,7 @@ describe("WidgetKit bootstrap", function()
     -- Revision 7 registered `Frame` at version 3 and took only a storage
     -- table: its window's `BindPosition` is stored on each widget.
     local old = TestEnv.LoadRevision(7, {
-      ["  Frame = 4,"] = "  Frame = 3,",
+      [TestEnv.VersionLine("Frame", 4)] = TestEnv.VersionLine("Frame", 3),
       ['if type(storage) ~= "table" and type(storage) ~= "function" then'] = 'if type(storage) ~= "table" then',
     })
     local state = old._state
@@ -416,9 +418,10 @@ describe("WidgetKit bootstrap", function()
     end))
 
     local upgraded = require("WidgetKit")
+    TestEnv.LoadParts()
     assert.are.equal(old, upgraded)
     assert.are.equal(state, upgraded._state)
-    assert.are.equal(13, upgraded.REVISION)
+    assert.are.equal(CURRENT_REVISION, upgraded.REVISION)
     assert.are.equal(4, upgraded:GetTypeVersion("Frame"))
     assert.are.equal(3, upgraded:GetTypeVersion("Label"))
 
@@ -455,7 +458,7 @@ describe("WidgetKit bootstrap", function()
     -- `SetSliderValues` changed) and changes no state.
     local versionThree = {}
     for _, typeName in ipairs({ "CheckBox", "Slider", "EditBox", "Dropdown", "ColorPicker" }) do
-      versionThree["  " .. typeName .. " = 4,"] = "  " .. typeName .. " = 3,"
+      versionThree[TestEnv.VersionLine(typeName, 4)] = TestEnv.VersionLine(typeName, 3)
     end
     local old = TestEnv.LoadRevision(9, versionThree)
     local state = old._state
@@ -481,9 +484,10 @@ describe("WidgetKit bootstrap", function()
     local serial = state.serial
 
     local upgraded = require("WidgetKit")
+    TestEnv.LoadParts()
     assert.are.equal(old, upgraded)
     assert.are.equal(state, upgraded._state)
-    assert.are.equal(13, upgraded.REVISION)
+    assert.are.equal(CURRENT_REVISION, upgraded.REVISION)
     assert.are.equal(4, upgraded:GetTypeVersion("Frame"))
     assert.are.equal(4, upgraded:GetTypeVersion("Slider"))
     assert.are.equal(3, upgraded:GetTypeVersion("Label"))
@@ -525,7 +529,10 @@ describe("WidgetKit bootstrap", function()
     local borrowed = WidgetKit:Create("Label")
     WidgetKit:Release(pooled)
 
-    TestEnv.LoadRevision(WidgetKit.REVISION + 1, { ["  Label = 3,"] = "  Label = 4," })
+    TestEnv.LoadRevision(
+      WidgetKit.REVISION + 1,
+      { [TestEnv.VersionLine("Label", 3)] = TestEnv.VersionLine("Label", 4) }
+    )
     assert.are.equal(4, WidgetKit:GetTypeVersion("Label"))
     local fresh = WidgetKit:Create("Label")
     assert.are_not.equal(pooled, fresh)

@@ -52,17 +52,25 @@ troubleshooting. This package's load order inside a consuming addon is:
 
 ```toc
 Libs\MoltenCodes\registry\Registry.lua
-Libs\MoltenCodes\signalKit\SignalKit.lua
-Libs\MoltenCodes\poolKit\PoolKit.lua
 Libs\MoltenCodes\schemaKit\SchemaKit.lua
+Libs\MoltenCodes\signalKit\SignalKit.lua
 Libs\MoltenCodes\optionsKit\OptionsKit.lua
 Libs\MoltenCodes\widgetKit\WidgetKit.lua
+Libs\MoltenCodes\widgetKit\parts\WidgetKit-Containers.lua
+Libs\MoltenCodes\widgetKit\parts\WidgetKit-Text.lua
+Libs\MoltenCodes\widgetKit\parts\WidgetKit-Button.lua
+Libs\MoltenCodes\widgetKit\parts\WidgetKit-CheckBox.lua
+Libs\MoltenCodes\widgetKit\parts\WidgetKit-Slider.lua
+Libs\MoltenCodes\widgetKit\parts\WidgetKit-EditBox.lua
+Libs\MoltenCodes\widgetKit\parts\WidgetKit-Dropdown.lua
+Libs\MoltenCodes\widgetKit\parts\WidgetKit-ColorPicker.lua
+Libs\MoltenCodes\widgetKit\parts\WidgetKit-Renderer.lua
 Libs\MoltenCodes\panelKit\PanelKit.lua
 ```
 
-Minimum footprint: embed 7 files: `registry/Registry.lua`, `signalKit/SignalKit.lua`, `poolKit/PoolKit.lua`, `schemaKit/SchemaKit.lua`, `optionsKit/OptionsKit.lua`, `widgetKit/WidgetKit.lua`, `panelKit/PanelKit.lua`.
+Minimum footprint: embed 15 files: `registry/Registry.lua`, `schemaKit/SchemaKit.lua`, `signalKit/SignalKit.lua`, `optionsKit/OptionsKit.lua`, `widgetKit/WidgetKit.lua`, `widgetKit/parts/WidgetKit-Containers.lua`, `widgetKit/parts/WidgetKit-Text.lua`, `widgetKit/parts/WidgetKit-Button.lua`, `widgetKit/parts/WidgetKit-CheckBox.lua`, `widgetKit/parts/WidgetKit-Slider.lua`, `widgetKit/parts/WidgetKit-EditBox.lua`, `widgetKit/parts/WidgetKit-Dropdown.lua`, `widgetKit/parts/WidgetKit-ColorPicker.lua`, `widgetKit/parts/WidgetKit-Renderer.lua`, `panelKit/PanelKit.lua`. `python3 -m tooling.package.embeds panelKit` writes the list.
 
-Direct runtime dependencies: Registry API 2, WidgetKit API 1, OptionsKit API 1.
+Direct runtime dependencies: Registry API 2, WidgetKit API 1 with its `Renderer` part, OptionsKit API 1.
 Every file above is required; omitting one makes this package raise at
 load.
 

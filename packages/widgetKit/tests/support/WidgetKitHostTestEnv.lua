@@ -17,6 +17,7 @@
 --- the loaders of `WidgetKitTestEnv` do.
 local FrameworkTestEnv = require("FrameworkTestEnv")
 local WidgetKitClientRules = require("WidgetKitClientRules")
+local WidgetKitParts = require("WidgetKitParts")
 
 local WidgetKitHostTestEnv = FrameworkTestEnv.New({
   modules = {
@@ -24,6 +25,7 @@ local WidgetKitHostTestEnv = FrameworkTestEnv.New({
     "SignalKit",
     "TimerKit",
     "SchedulerKit",
+    "SchedulerKit-Coalescing",
     "PoolKit",
     "SchemaKit",
     "SettingsKit",
@@ -56,6 +58,9 @@ local sharedReset = WidgetKitHostTestEnv.Reset
 ---Clear every module, global and stub this environment owns, saved variables
 ---included.
 function WidgetKitHostTestEnv.Reset()
+  for index = 1, #WidgetKitParts do
+    package.loaded["WidgetKit-" .. WidgetKitParts[index]] = nil
+  end
   sharedReset()
   for index = #savedVariables, 1, -1 do
     setGlobal(savedVariables[index], nil)
@@ -63,8 +68,8 @@ function WidgetKitHostTestEnv.Reset()
   end
 end
 
----Reset, install the host stubs, load the whole chain, install the client
----rules and create `UIParent`.
+---Reset, install the host stubs, load the whole chain with every WidgetKit
+---part, install the client rules and create `UIParent`.
 ---@return table WidgetKit
 ---@return table modules every loaded module by name
 function WidgetKitHostTestEnv.NewPackage()
@@ -76,6 +81,7 @@ function WidgetKitHostTestEnv.NewPackage()
     "SignalKit",
     "TimerKit",
     "SchedulerKit",
+    "SchedulerKit-Coalescing",
     "PoolKit",
     "SchemaKit",
     "SettingsKit",
@@ -84,6 +90,9 @@ function WidgetKitHostTestEnv.NewPackage()
     "WidgetKit",
   }) do
     modules[name] = require(name)
+  end
+  for index = 1, #WidgetKitParts do
+    require("WidgetKit-" .. WidgetKitParts[index])
   end
   WidgetKitClientRules.Install(setGlobal)
   local uiParent = getGlobal("CreateFrame")("Frame", "UIParent")

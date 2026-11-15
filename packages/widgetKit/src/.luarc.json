@@ -6,7 +6,6 @@
     "library": [
       "../../../meta",
       "../../registry/src",
-      "../../poolKit/src",
       "../../signalKit/src"
     ],
     "checkThirdParty": false

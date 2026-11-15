@@ -1,7 +1,7 @@
 # WidgetKit internals
 
 This document describes how WidgetKit is built: its shared state, pooling, the
-layout algorithms and the renderer. The public contract is in
+part machinery, the layout algorithms and the renderer. The public contract is in
 [`API.md`](API.md); nothing here is a promise to consumers.
 
 ## Shared state
@@ -13,13 +13,17 @@ an upgrade hangs off it, under `_state`, and is never replaced:
 |---|---|
 | `schema`, `runtimeRevision` | the state layout version (`1`) and the revision that last committed its functions |
 | `unbounded`, `limits` | the `UNBOUNDED` sentinel and the package-wide limits `maxCreatedCeiling`, `maxDropdownEntries` and `maxListElements` (written at its default by revision 12 when a kept state has none) |
-| `types` | type name → type record `{ name, version, constructor, maxCallbacks, pool, borrowed }`; `maxCallbacks` is `math.huge` for `UNBOUNDED`, and `borrowed` counts the widgets of each version currently acquired |
+| `types` | type name → type record `{ name, version, constructor, maxCallbacks, maxCreated, created, discarded, borrowed, free, trusted }` (see [Pooling](#pooling)); `maxCallbacks` is `math.huge` for `UNBOUNDED`, and `borrowed` counts the widgets of each version currently acquired. A record a revision 13 or older copy made also has `pool`, its PoolKit pool, until revision 14 adopts it |
 | `layouts` | layout name → layout function |
 | `records` | widget → widget record, weak-keyed |
-| `dispatch` | `build` and `retire`, the pool callbacks, `closeOpenDropdown`, the catcher's script, `saveBinding`, the save a binding's SchedulerKit debounce calls (since revision 8), and `initializeScrollListRow` and `clickScrollListRow`, a `ScrollList`'s row drawing and row clicks (since revision 12); rewritten by every copy |
+| `dispatch` | `closeOpenDropdown`, the catcher's script, `saveBinding`, the save a binding's SchedulerKit debounce calls (since revision 8), and `initializeScrollListRow` and `clickScrollListRow`, a `ScrollList`'s row drawing and row clicks (since revision 12); each entry is rewritten by every copy of the part that owns it. Revisions 13 and older also kept `build` and `retire`, their PoolKit pool callbacks; revision 14 removes both |
 | `widgetMetatable`, `containerMetatable` | `{ __index = Widget }`, `{ __index = Container }` |
 | `bindingMetatable`, `renderingMetatable` | the metatables of bindings and renderings |
-| `scratch` | the PoolKit table pool layouts borrow from |
+| `scratchFree` | idle layout scratch tables, at most one per layout depth (revision 13 and older kept a PoolKit table pool in `scratch`; revision 14 drops it) |
+| `helpers` | the core functions and shared tables parts bind to (see [Parts](#parts)) |
+| `parts` | part name → `{ revision, bind, ... }` for every part loaded |
+| `standIns` | weak-keyed set of the stand-in functions a core installed for members of parts that are not loaded |
+| `rendererExtensions` | the renderer's extension registries (see [Renderer extensions](#renderer-extensions)); absent until the `Renderer` part loads |
 | `focus`, `holder`, `layoutDepth` | the focused widget (`false` for none), the hidden holder frame (`false` until first used), the current layout nesting |
 | `serial` | the last acquire serial handed out; absent before the first `Create` |
 | `buildProblem` | a constructor contract failure `build` leaves for `Create` to raise; cleared at once |
@@ -59,48 +63,60 @@ record with `releasing` set.
 
 ## Pooling
 
-`RegisterType` creates one PoolKit pool per type:
+Each type keeps its own free list in its type record; there is no PoolKit pool
+(revision 14 replaced the one-pool-per-type design, see the
+[upgrade](#upgrades-from-revision-13) below):
 
-```lua
-PoolKit:New({
-  create = function() return dispatch.build(typeRecord) end,
-  destroy = function(widget) dispatch.retire(widget) end,
-  maxCreated = options.maxCreated or 256,
-  generation = version,
-})
-```
+| Field | Holds |
+|---|---|
+| `free` | an array of the idle widgets of the current version, created by the type's first `Create` |
+| `maxCreated` | the cap: frames the type may ever build (256 unless the registration asked for another) |
+| `created`, `discarded` | frames built, and widgets retired because a higher version replaced their constructor |
+| `borrowed` | version → widgets of that version currently acquired |
+| `trusted` | `true` for a type WidgetKit's own part registered: its hooks run without `pcall` |
 
-- **Bounded creation.** `maxCreated` caps the frames the type ever builds. With
-  no `maxRetained`, PoolKit retains up to the cap, so a release never discards.
-- **LIFO.** `Acquire` hands out the most recently released widget.
-- **Versions are generations.** The pool's generation is the type version, and
-  PoolKit stamps each widget with the generation that built it. A higher
-  version calls `pool:SetGeneration(version)`, which retires every retained
-  widget of an older generation at once; a borrowed one is retired when it is
-  released. Retiring runs `destroy`, which removes the record and parks the
-  frame, hidden, on the holder frame. The client still owns that frame, so the
-  cap is raised by the number retired (`SetMaxCreated`).
-- **Upgrades count one generation.** Each type record keeps the number of
-  borrowed widgets per version. An upgrade adds to the cap the pooled widgets
-  `SetGeneration` retires and the borrowed widgets of the version it replaces;
-  older versions were counted by earlier upgrades. The result is clamped to
-  `state.limits.maxCreatedCeiling` (4096 unless `SetLimits` raised it).
-- **Validation outside the pool.** `build` checks the constructor's result.
-  When it breaks the author contract, `build` leaves a message in
-  `state.buildProblem` and raises; `Create` catches the pool's error, finds the
-  message and raises it at its own caller. A constructor's own error has no
-  message there and is re-raised unchanged.
+- **Nothing at load.** A type that is registered but never created costs its
+  record only; the free list is made by the first `Create`. Revision 13 built
+  thirteen empty PoolKit pools at load (34.6 KB).
+- **Bounded creation.** `Create` takes the last idle widget (LIFO) and builds a
+  new one only when the free list is empty and `created` is below the cap; at
+  the cap it answers `nil, "exhausted"`. Every released widget of the current
+  version goes back to the free list, so a release never discards.
+- **Versions are generations.** Each record keeps the version whose
+  constructor built the widget. A higher version retires every idle widget at
+  once (`retireIdle`); a borrowed one of an older version is retired when it
+  is released. Retiring removes the record and parks the frame, hidden, on
+  the holder frame. The client still owns that frame, so the cap is raised by
+  what an upgrade uses up: the idle widgets it retires and the borrowed
+  widgets of the version it replaces; older versions were counted by earlier
+  upgrades. The result is clamped to `state.limits.maxCreatedCeiling`.
+- **Building is the only protected step.** `buildForCreate` runs the
+  constructor through `buildWidget` under `pcall`. When the result breaks the
+  author contract, `buildWidget` leaves a message in `state.buildProblem` and
+  raises; `Create` raises it at its own caller. A constructor's own error is
+  passed on unchanged. Taking an idle widget calls nothing protected.
+- **Trusted hooks.** `registerBuiltInType`, which only WidgetKit's parts call,
+  marks the type trusted: `Create` calls its `OnAcquire` and `releaseWidget` its
+  `OnRelease` directly. A type registered or raised through `RegisterType` is
+  not trusted, and its hooks keep their `pcall` and their documented failure
+  handling. A built-in widget cycle therefore makes no protected call at all.
+- **Equal versions from WidgetKit's own parts.** `registerBuiltInType` replaces
+  the constructor of a type registered at the same version (the public
+  `RegisterType` answers `false, "current"` instead), so the copy of a part
+  that registered it first is no longer referenced after an upgrade. Widgets
+  that copy built keep its methods, which behave the same at the same version.
 
 `Create` marks the record active, stamps it with a new serial, counts it as
 borrowed for its version, runs `OnAcquire` and shows the frame. Every other
-field is already at its default: `build` sets them and `Release` resets them.
-`Release` performs the steps listed in the release contract, then
-`pool:Release(widget)`.
+field is already at its default: `buildWidget` sets them and `Release` resets
+them. `Release` performs the steps listed in the release contract, then puts
+the widget on the free list, or retires it when its version is stale.
 
-Both are the hot half of every widget's use, so since revision 9 they do
-inline what their helpers do, with the same checks, messages and order:
-`Create` checks the facade and the name itself (the secret probe first, then
-the type), and `releaseWidget` fires the `OnRelease` callback, calls the
+Both are the hot half of every widget's use, so they do inline what their
+helpers do, with the same checks, messages and order: `Create` checks the
+facade, then indexes the types with the name and checks the name only when
+no type answered (a secret name meets the client's own refusal at the index,
+ADR 0002), and `releaseWidget` fires the `OnRelease` callback, calls the
 type's hook, wipes a non-empty callback or user-data table (the callback table
 is read again after the hooks, which may have set the first callback), reads
 the resting parent (`UIParent` when it is a frame, otherwise the holder) and
@@ -110,12 +126,95 @@ and written by plain indexing, not `rawget`/`rawset`; the widget tables a
 constructor returned keep `rawget`, because their metatable falls back to the
 widget base. Text setters make one call for their checks: `checkText(widget,
 text, options, methodName, level)` checks the widget as `activeRecord` would,
-then the options and the text. The secret probe is read from the global table
-at every call, inline where it runs for every value (`isSecret`,
-`validateNumber`, `validateName`, `refuseSecret`, `checkText`, `Create`), so the
-old extra `readGlobal` call is gone from those paths. PoolKit's own `AttachChild` is not used for
-children: children come from other pools, their order is WidgetKit's, and a
-child must also leave its container's array, which only WidgetKit knows.
+then the options and the text.
+
+**The probe rule.** `issecretvalue` is read once, when the core loads, into
+`loadedProbe`. When it was absent then, each check reads the global again and
+accepts it only as a function, so a probe a host installs later is honoured.
+The checks that run for every value (`isSecret`, `validateNumber`,
+`validateName`, `refuseSecret`, `checkText`, the `List` layout) inline the
+rule; a setter that checks several values (`Slider:SetSliderValues`) resolves
+the probe once through `secretProbe()`. Under ADR 0002 a value that only
+indexes one of WidgetKit's tables is not probed: a receiver (`records[widget]`
+with no `type` test in front), a type or layout name, a user-data key.
+
+**Layout scratch tables.** A layout pass borrows one scratch table
+(`acquireScratch`) and gives it back emptied (`releaseScratch`); at most
+`MAX_LAYOUT_DEPTH` idle ones are kept, since passes nest at most that deep.
+
+### Upgrades from revision 13
+
+Revision 13 kept each type's widgets in a PoolKit pool whose callbacks called
+`dispatch.build` and `dispatch.retire`. Revision 14's core, on its first load
+over such a state, adopts each pool (`adoptPool`): it takes the idle widgets
+out with `Acquire` while `GetAvailableCount()` is above zero (PoolKit hands out
+a retained widget then and never builds), puts them on the free list, copies
+`GetCreatedCount`, `GetDiscardedCount` and `GetMaxCreated`, and drops the pool,
+which is collected with its maps. A widget borrowed from it comes back to the
+free list when it is released. `dispatch.build`, `dispatch.retire` and the
+PoolKit table pool in `scratch` are removed, so nothing references revision
+13's functions once the parts that replace its types and members have
+loaded.
+
+## Parts
+
+The core is `src/WidgetKit.lua`; every widget type, the anchor and binding
+code and the renderer are parts, `src/parts/WidgetKit-<Part>.lua`
+(`docs/decisions/0001-kit-core-and-parts.md`):
+
+| Part | Registers | Installs |
+|---|---|---|
+| `Containers` | `Frame` 4, `Group` 3, `ScrollFrame` 1 | |
+| `Text` | `Label` 3, `Heading` 3, `Spacer` 1 | |
+| `Button`, `CheckBox`, `Slider`, `EditBox`, `ColorPicker`, `ScrollList` | their type (`3`, `4`, `4`, `4`, `4`, `2`) | `ScrollList`: its two `dispatch` entries |
+| `Dropdown` | `Dropdown` 4 | `CreateMediaPicker`, `dispatch.closeOpenDropdown`; `fillMediaDropdown` in its part record |
+| `Position` | | `Anchor.POINTS`, `FromRect`, `Normalize`, `Apply`, `Read`; `BindPosition`; the binding methods; `dispatch.saveBinding`; `newBinding` in its part record |
+| `Renderer` | | `RenderOptions`; the rendering methods; `registerExtension` and `extensions` in its part record |
+
+**Loading.** A part resolves the core with `Registry:Get("widgetKit", 1)` and
+raises `MoltenCodes WidgetKit part <Part> requires WidgetKit API 1 to be loaded
+first` when the core's state has no `parts` and `helpers`. It returns at once
+when `state.parts[<Part>]` already holds an equal or higher revision. Otherwise
+it binds, defines its functions, registers its types with
+`registerBuiltInType`, writes its members over the stand-ins, and records
+`{ revision = PART_REVISION, bind = bind, ... }`. A part can rely on a core at
+least as new as the one it shipped with: an addon's own core file loads before
+its parts.
+
+**Binding.** A part declares one local per core helper it uses and a
+`bind(helpers)` function that assigns them from `state.helpers`; it runs once
+at load. Every core that loads afterwards (a newer revision from another
+addon) fills `state.helpers` with its own functions and calls each recorded
+part's `bind` again. A part therefore always runs the newest core's helpers,
+with no table lookup per call and no older helper kept alive. The contract:
+`state.helpers` only grows inside API 1; a helper's arguments and meaning never
+change, and a changed helper is a new name. The colours are one table,
+`helpers.colours` (`label`, `text`, `disabled`, each `{ r, g, b }`), which a
+part reads into number locals in `bind`. `readGlobal` and `clientText` are not
+helpers: each part that reads globals has its own, so the flavour gate sees
+every global read where it happens.
+
+**Stand-ins.** The core lists every member a part provides, by the table it
+lives on (the facade, `Anchor`, `Binding`, `Rendering`). For each it keeps the
+loaded part's function, or a function an older single-file revision installed;
+an empty slot or an earlier core's stand-in gets a new stand-in that raises
+`<member> is in WidgetKit's <Part> part, which is not loaded: add
+widgetKit\parts\WidgetKit-<Part>.lua to embeds.xml (or rebuild it with python3 -m
+tooling.package.embeds)` at its caller's line. The stand-ins are recorded in
+the weak-keyed `state.standIns`, so a later core replaces them and never takes
+one for a part's member. The facade and the prototypes therefore always pass
+every revision's surface check, which Registry runs on the newer facade when
+an older copy yields. `Create` raises the same message for a base type whose
+part is absent (`BASE_TYPE_PARTS`), and `GetTypeVersion` answers `nil` for it.
+`Frame:BindPosition` asks `state.parts.Position` at its call and raises the
+message for `Position` when it is absent.
+
+**A single-file copy after a split core.** A revision 13 or older copy that
+loads after a revision 14 or later core yields to it and registers nothing, so
+its types and members exist only when the matching parts are loaded. The
+reverse order keeps working: a split core loaded over revision 13 keeps that
+copy's members for parts nobody loaded, and its types keep their revision 13
+constructors on the new free lists.
 
 ## Layout algorithms
 
@@ -371,6 +470,25 @@ so each element asks the client for template info again), and `Remove` uses
 row height. WidgetKit does not work around it (a provider marked virtual would
 skip the walk, but that is Blizzard's private contract); `docs/API.md` tells
 consumers to batch changes into `SetElements`.
+
+## Renderer extensions
+
+The `Renderer` part keeps four registries in `state.rendererExtensions`, in
+the core's state so they outlive an upgrade of the part. A later part fills
+them through `state.parts.Renderer.registerExtension(registry, key, entry)`;
+each entry carries the revision of the part that registered it, and a
+registration replaces an entry only with an equal or higher revision (it
+returns `false` otherwise).
+
+| Registry | Key | Entry | Used |
+|---|---|---|---|
+| `kinds` | an option kind | `{ type, configure(rendering, record, node) -> boolean, apply?(record, value, disabled) }` | `renderNode` draws the kind with `type` and `configure` instead of the built-in widget and `configureNode`; `refreshRecord` calls `apply` instead of `applyState` |
+| `decorators` | a name | `{ decorate?(rendering, record, node), refresh?(rendering, record) }` | after a node's widget is built and after every refresh, in registration order; a raising one is reported through the host error handler |
+| `pageStyles` | a `childGroups` value | `{ render(rendering, node, parent) -> boolean }` | `renderGroupChildren` calls it instead of the built-in pages |
+| `confirm` | none | `{ ask(rendering, record, question, proceed) }` | an `execute` option with `confirm` asks it instead of the inline "click again"; `proceed()` runs the option when the rendering still owns it |
+
+An empty registry costs nothing on the build or refresh path but one length
+test. These are internal: the parts that use them ship with WidgetKit.
 
 ## Frames WidgetKit creates
 

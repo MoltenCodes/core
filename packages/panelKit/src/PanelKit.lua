@@ -42,7 +42,7 @@
 
 local PACKAGE_NAME = "panelKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 1
+local IMPLEMENTATION_REVISION = 2
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_WIDGETKIT_API = 1
 local REQUIRED_OPTIONSKIT_API = 1
@@ -155,12 +155,29 @@ end
 
 -- WidgetKit draws every page; OptionsKit holds the trees by name.
 local WidgetKit = getPackage(Registry, "widgetKit", REQUIRED_WIDGETKIT_API)
-if
-  type(WidgetKit) ~= "table"
-  or rawget(WidgetKit, "API") ~= REQUIRED_WIDGETKIT_API
-  or type(rawget(WidgetKit, "RenderOptions")) ~= "function"
-then
+if type(WidgetKit) ~= "table" or rawget(WidgetKit, "API") ~= REQUIRED_WIDGETKIT_API then
   error("MoltenCodes PanelKit requires WidgetKit API 1 to be loaded first", 2)
+end
+
+-- The pages are drawn by WidgetKit's Renderer part. A WidgetKit split into a
+-- core and parts (revision 14 on) answers `GetPartRevision`; its core holds a
+-- raising stand-in for `RenderOptions` until the part loads, so the stand-in
+-- must not pass for the renderer. An older WidgetKit is one file whose
+-- `RenderOptions` is the renderer.
+do
+  local getPartRevision = rawget(WidgetKit, "GetPartRevision")
+  local hasRenderer
+  if type(getPartRevision) == "function" then
+    hasRenderer = type(getPartRevision(WidgetKit, "Renderer")) == "number"
+  else
+    hasRenderer = type(rawget(WidgetKit, "RenderOptions")) == "function"
+  end
+  if not hasRenderer then
+    error(
+      "MoltenCodes PanelKit requires WidgetKit API 1 with its Renderer part to be loaded first",
+      2
+    )
+  end
 end
 
 local OptionsKit = getPackage(Registry, "optionsKit", REQUIRED_OPTIONSKIT_API)

@@ -1,5 +1,8 @@
 local TestEnv = require("WidgetKitTestEnv")
 
+-- The implementation revision of the files under test.
+local CURRENT_REVISION = 14
+
 local SOURCE = debug.getinfo(1, "S").short_src
 
 ---Run `action` and assert it failed with `message` reported at the line of this
@@ -868,7 +871,7 @@ describe("WidgetKit ScrollList", function()
     -- line and the limit); without it the file models revision 11, which had
     -- no `ScrollList` and no `maxListElements`.
     local REVISION_12_ONLY = {
-      ["  ScrollList = 2,\n"] = "",
+      [TestEnv.VersionLine("ScrollList", 2) .. "\n"] = "",
       ['if rawget(rawget(state, "limits"), "maxListElements") == nil then\n' .. '  rawset(rawget(state, "limits"), "maxListElements", 16384)\n' .. "end\n"] = "",
     }
 
@@ -890,6 +893,7 @@ describe("WidgetKit ScrollList", function()
       local state = old._state
 
       local upgraded = require("WidgetKit")
+      TestEnv.LoadParts()
       assert.are.equal(old, upgraded)
       assert.are.equal(state, upgraded._state)
       assert.are.equal(WidgetKit.REVISION, upgraded.REVISION)
@@ -921,7 +925,7 @@ describe("WidgetKit ScrollList", function()
       -- Revision 12: `ScrollList` at version 1, whose `Insert` and `Remove`
       -- never asked the formatter again.
       local old = TestEnv.LoadRevision(12, {
-        ["  ScrollList = 2,\n"] = "  ScrollList = 1,\n",
+        [TestEnv.VersionLine("ScrollList", 2)] = TestEnv.VersionLine("ScrollList", 1),
         ["    if widget._formatter ~= nil then\n      widget.scrollBox:ReinitializeFrames()"] = "    if false then\n      widget.scrollBox:ReinitializeFrames()",
       })
       assert.are.equal(12, old.REVISION)
@@ -933,9 +937,10 @@ describe("WidgetKit ScrollList", function()
       local state = old._state
 
       local upgraded = require("WidgetKit")
+      TestEnv.LoadParts()
       assert.are.equal(old, upgraded)
       assert.are.equal(state, upgraded._state)
-      assert.are.equal(13, upgraded.REVISION)
+      assert.are.equal(CURRENT_REVISION, upgraded.REVISION)
       assert.are.equal(2, upgraded:GetTypeVersion("ScrollList"))
       -- The borrowed list keeps working until it is released, then retires.
       assert.is_true(upgraded:IsWidget(borrowed))

@@ -35,6 +35,11 @@ local WidgetKitTestEnv = FrameworkTestEnv.New({
   modules = { "Registry", "SignalKit", "PoolKit", "SchemaKit", "OptionsKit", "WidgetKit" },
 })
 
+--- Every part, in load order (`WidgetKitParts`). `NewPackage` loads them all
+--- after the core, as an addon that embeds every part does; `NewCore` loads
+--- none.
+WidgetKitTestEnv.PARTS = require("WidgetKitParts")
+
 --- The screen size `UIParent` has.
 WidgetKitTestEnv.SCREEN_WIDTH = 1920
 WidgetKitTestEnv.SCREEN_HEIGHT = 1080
@@ -93,7 +98,23 @@ local sharedReset = WidgetKitTestEnv.Reset
 ---shared fixture does not know them.
 function WidgetKitTestEnv.Reset()
   WidgetKitScrollBox.Remove(WidgetKitTestEnv.SetGlobal)
+  for index = 1, #WidgetKitTestEnv.PARTS do
+    package.loaded["WidgetKit-" .. WidgetKitTestEnv.PARTS[index]] = nil
+  end
   sharedReset()
+end
+
+---Load parts after the core, in the order given (every part when `names` is
+---`nil`). A part already loaded in this spec is not loaded again.
+---@param names string[]?
+---@return table WidgetKit
+function WidgetKitTestEnv.LoadParts(names)
+  local WidgetKit = nil
+  local chosen = names or WidgetKitTestEnv.PARTS
+  for index = 1, #chosen do
+    WidgetKit = require("WidgetKit-" .. chosen[index])
+  end
+  return WidgetKit
 end
 
 local sharedNewPackage = WidgetKitTestEnv.NewPackage
@@ -108,6 +129,7 @@ local sharedNewPackage = WidgetKitTestEnv.NewPackage
 ---@return table OptionsKit
 function WidgetKitTestEnv.NewPackage()
   local WidgetKit, Registry, SignalKit, PoolKit, SchemaKit, OptionsKit = sharedNewPackage()
+  WidgetKitTestEnv.LoadParts()
   WidgetKitTestEnv.InstallClientRules()
   WidgetKitTestEnv.InstallScreen()
   return WidgetKit, Registry, SignalKit, PoolKit, SchemaKit, OptionsKit
@@ -117,6 +139,7 @@ end
 ---@return table WidgetKit
 function WidgetKitTestEnv.NewPackageWithoutScreen()
   local WidgetKit = sharedNewPackage()
+  WidgetKitTestEnv.LoadParts()
   WidgetKitTestEnv.InstallClientRules()
   return WidgetKit
 end
@@ -132,6 +155,25 @@ function WidgetKitTestEnv.NewPackageWithoutOptionsKit()
   require("SignalKit")
   require("PoolKit")
   local WidgetKit = require("WidgetKit")
+  WidgetKitTestEnv.LoadParts()
+  WidgetKitTestEnv.InstallClientRules()
+  WidgetKitTestEnv.InstallScreen()
+  return WidgetKit, Registry
+end
+
+---Load Registry and the WidgetKit core alone, as an addon that embeds no part
+---and none of the parts' Kits does, then the parts named in `names`, if any.
+---@param names string[]?
+---@return table WidgetKit
+---@return table Registry
+function WidgetKitTestEnv.NewCore(names)
+  WidgetKitTestEnv.Reset()
+  WidgetKitTestEnv.InstallWowApi()
+  local Registry = require("Registry")
+  local WidgetKit = require("WidgetKit")
+  if names ~= nil then
+    WidgetKitTestEnv.LoadParts(names)
+  end
   WidgetKitTestEnv.InstallClientRules()
   WidgetKitTestEnv.InstallScreen()
   return WidgetKit, Registry
@@ -166,48 +208,151 @@ function WidgetKitTestEnv.AllocatedKilobytes(workload)
   return after - before
 end
 
----Load the WidgetKit source again as a copy carrying `revision`, the way a
----newer embedded copy loads over an older one in the client. `replacements`
----maps further source text to what it becomes in that copy.
----@param revision integer
----@param replacements table<string, string>?
----@return table WidgetKit
-function WidgetKitTestEnv.LoadRevision(revision, replacements)
-  -- Lua 5.1 has no `package.searchpath`, so walk the path templates the way
-  -- `require` does.
-  local path = nil
+---Find a module's file on `package.path`, as `require` would. Lua 5.1 has no
+---`package.searchpath`, so walk the path templates.
+---@param moduleName string
+---@return string path
+local function findModuleFile(moduleName)
   for template in package.path:gmatch("[^;]+") do
-    local candidate = template:gsub("%?", "WidgetKit")
+    local candidate = template:gsub("%?", moduleName)
     local file = io.open(candidate, "r")
     if file ~= nil then
       file:close()
-      path = candidate
-      break
+      return candidate
     end
   end
-  if path == nil then
-    error("WidgetKitTestEnv.LoadRevision could not find WidgetKit.lua on package.path", 2)
-  end
+  error("WidgetKitTestEnv could not find " .. moduleName .. ".lua on package.path", 3)
+end
 
+---@param path string
+---@return string
+local function readFile(path)
   local file = assert(io.open(path, "r"))
   local text = file:read("*a")
   file:close()
+  return text
+end
 
-  local patched, count =
-    text:gsub("local IMPLEMENTATION_REVISION = %d+", "local IMPLEMENTATION_REVISION = " .. revision)
+---The source line with which a part registers WidgetKit's type `typeName` at
+---`version`, for `LoadRevision` replacements that model another version.
+---@param typeName string
+---@param version integer
+---@return string
+function WidgetKitTestEnv.VersionLine(typeName, version)
+  return 'registerBuiltInType("'
+    .. typeName
+    .. '", BASE_CONSTRUCTORS.'
+    .. typeName
+    .. ", "
+    .. version
+    .. ")"
+end
+
+---Load the WidgetKit core and every part again as a copy carrying
+---`revision`, the way another addon's embedded copy loads over the one in the
+---session. `replacements` maps source text, in the core or in any part, to
+---what it becomes in that copy. The copy's parts carry `partRevision`:
+---by default 0 for a copy older than the current core, so the current parts
+---take over when they load after it, and 2 for a newer copy, so its parts take
+---over from the current ones.
+---@param revision integer
+---@param replacements table<string, string>?
+---@param partRevision integer?
+---@return table WidgetKit
+function WidgetKitTestEnv.LoadRevision(revision, replacements, partRevision)
+  local corePath = findModuleFile("WidgetKit")
+  local coreText = readFile(corePath)
+  local currentRevision = tonumber(coreText:match("local IMPLEMENTATION_REVISION = (%d+)"))
+  local patchedCore, count = coreText:gsub(
+    "local IMPLEMENTATION_REVISION = %d+",
+    "local IMPLEMENTATION_REVISION = " .. revision
+  )
   if count ~= 1 then
     error("WidgetKitTestEnv.LoadRevision could not find IMPLEMENTATION_REVISION", 2)
   end
-  for original, replacement in pairs(replacements or {}) do
-    local start, finish = patched:find(original, 1, true)
-    if start == nil then
-      error("WidgetKitTestEnv.LoadRevision could not find " .. original, 2)
-    end
-    patched = patched:sub(1, start - 1) .. replacement .. patched:sub(finish + 1)
+  if partRevision == nil then
+    partRevision = revision > currentRevision and 2 or 0
   end
 
-  local chunk = assert(loadstring(patched, "@" .. path))
-  return chunk()
+  local files = { { path = corePath, text = patchedCore } }
+  for index = 1, #WidgetKitTestEnv.PARTS do
+    local path = findModuleFile("WidgetKit-" .. WidgetKitTestEnv.PARTS[index])
+    local text =
+      readFile(path):gsub("local PART_REVISION = %d+", "local PART_REVISION = " .. partRevision)
+    files[#files + 1] = { path = path, text = text }
+  end
+
+  for original, replacement in pairs(replacements or {}) do
+    local found = false
+    for index = 1, #files do
+      local text = files[index].text
+      local start, finish = text:find(original, 1, true)
+      if start ~= nil then
+        files[index].text = text:sub(1, start - 1) .. replacement .. text:sub(finish + 1)
+        found = true
+        break
+      end
+    end
+    if not found then
+      error("WidgetKitTestEnv.LoadRevision could not find " .. original, 2)
+    end
+  end
+
+  local WidgetKit = nil
+  for index = 1, #files do
+    local chunk = assert(loadstring(files[index].text, "@" .. files[index].path))
+    local loaded = chunk()
+    if index == 1 then
+      WidgetKit = loaded
+    end
+  end
+  return WidgetKit
+end
+
+---Load one part again as a copy carrying `partRevision`, with `replacements`
+---applied to its source, the way another addon's newer or older copy loads.
+---@param name string the part's name, such as `"Renderer"`
+---@param partRevision integer
+---@param replacements table<string, string>?
+---@return table WidgetKit
+function WidgetKitTestEnv.LoadPart(name, partRevision, replacements)
+  local path = findModuleFile("WidgetKit-" .. name)
+  local text =
+    readFile(path):gsub("local PART_REVISION = %d+", "local PART_REVISION = " .. partRevision)
+  for original, replacement in pairs(replacements or {}) do
+    local start, finish = text:find(original, 1, true)
+    if start == nil then
+      error("WidgetKitTestEnv.LoadPart could not find " .. original, 2)
+    end
+    text = text:sub(1, start - 1) .. replacement .. text:sub(finish + 1)
+  end
+  return assert(loadstring(text, "@" .. path))()
+end
+
+---Load the core alone again as a copy carrying `revision`, as another addon
+---that embeds a newer core and none of the parts does.
+---@param revision integer
+---@return table WidgetKit
+function WidgetKitTestEnv.LoadCore(revision)
+  local path = findModuleFile("WidgetKit")
+  local text = readFile(path):gsub(
+    "local IMPLEMENTATION_REVISION = %d+",
+    "local IMPLEMENTATION_REVISION = " .. revision
+  )
+  return assert(loadstring(text, "@" .. path))()
+end
+
+--- Where the fixture copy of revision 13, the last single-file revision, lives.
+WidgetKitTestEnv.REVISION_13_PATH = nil
+
+---Load the fixture copy of revision 13 (`WidgetKitRevision13.lua`, the last
+---single-file revision, unchanged), as an addon embedding that copy does.
+---It needs Registry, PoolKit and SignalKit loaded first.
+---@return table WidgetKit
+function WidgetKitTestEnv.LoadRevision13()
+  local path = findModuleFile("WidgetKitRevision13")
+  WidgetKitTestEnv.REVISION_13_PATH = path
+  return assert(loadfile(path))()
 end
 
 return WidgetKitTestEnv
