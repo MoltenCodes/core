@@ -51,6 +51,10 @@ class ClientWorkload:
     compares: str
     #: `"shared"` for a host workload module run unchanged, `"client"` for a client-only one.
     origin: str
+    #: `False` for a workload that loads one of the side's sets itself and
+    #: measures that load (`login`, `savedVariables`); the harness then does
+    #: not load the side before it.
+    loads_side: bool = True
 
     @property
     def lua_file(self) -> Path:
@@ -150,6 +154,178 @@ CLIENT_ONLY: tuple[ClientWorkload, ...] = (
         origin="client",
     ),
 )
+
+#: Workloads that load a set of a side themselves (`loads_side = False`).
+SET_WORKLOADS: tuple[ClientWorkload, ...] = (
+    ClientWorkload(
+        name="login",
+        module="clientWorkloads.Login",
+        title="Loading each side as an addon (client only)",
+        compares=(
+            "the load time and held memory of three Kit sets against the Ace3 libraries "
+            "that do the same work: the event-and-timer minimum, a typical addon, everything"
+        ),
+        origin="client",
+        loads_side=False,
+    ),
+    ClientWorkload(
+        name="savedVariables",
+        module="clientWorkloads.SavedVariables",
+        title="Opening a database restored from disk (client only)",
+        compares=(
+            "SettingsKit against AceDB-3.0 opening 1 and 20 profiles of 200 keys that the "
+            "client restored at the next session"
+        ),
+        origin="client",
+        loads_side=False,
+    ),
+)
+
+CLIENT_ONLY = (*CLIENT_ONLY, *SET_WORKLOADS)
+
+
+@dataclass(frozen=True)
+class SideSet:
+    """One set of a side's libraries, installed as a load-on-demand addon of its own.
+
+    `kits` names the Kit cores the set selects (the builder adds what they
+    require, no parts); `None` is the whole release bundle. `ace3` lists the
+    pinned Ace3 files, relative to the Ace3 root, in load order.
+    """
+
+    name: str
+    kits: tuple[str, ...] | None
+    ace3: tuple[str, ...]
+    #: The saved variable the set's addons declare, by side, or empty.
+    saved_variables: tuple[tuple[str, str], ...] = ()
+
+
+#: LibStub and CallbackHandler, which every Ace3 set loads first.
+_ACE3_BASE = ("LibStub/LibStub.lua", "CallbackHandler-1.0/CallbackHandler-1.0.lua")
+
+#: The sets the `login` and `savedVariables` workloads load, by name.
+SIDE_SETS: tuple[SideSet, ...] = (
+    SideSet(
+        "minimum",
+        ("registry", "signalKit", "eventKit", "lifecycleKit", "timerKit"),
+        (
+            *_ACE3_BASE,
+            "AceAddon-3.0/AceAddon-3.0.lua",
+            "AceEvent-3.0/AceEvent-3.0.lua",
+            "AceTimer-3.0/AceTimer-3.0.lua",
+        ),
+    ),
+    SideSet(
+        "typical",
+        ("addonKit",),
+        (
+            *_ACE3_BASE,
+            "AceAddon-3.0/AceAddon-3.0.lua",
+            "AceEvent-3.0/AceEvent-3.0.lua",
+            "AceTimer-3.0/AceTimer-3.0.lua",
+            "AceDB-3.0/AceDB-3.0.lua",
+            "AceConsole-3.0/AceConsole-3.0.lua",
+            "AceLocale-3.0/AceLocale-3.0.lua",
+        ),
+    ),
+    SideSet("full", None, ()),
+    SideSet(
+        "saved",
+        ("settingsKit",),
+        (*_ACE3_BASE, "AceDB-3.0/AceDB-3.0.lua"),
+        (("moltencodes", "MoltenCodesBenchKitsSavedDB"), ("ace3", "MoltenCodesBenchAce3SavedDB")),
+    ),
+)
+
+#: The case names of every client-only workload, as the Lua modules define
+#: them (`tooling/tests/test_bench_client.py` holds the two together).
+CLIENT_CASES: dict[str, tuple[str, ...]] = {
+    "nativeCalls": (),
+    "window": ("open-close", "open-close-drawn"),
+    "timersLive": ("oneshot-create-cancel", "oneshot-fire-1000", "repeat-200"),
+    "whisper": (),
+    "session": ("idle-30s", "load-60s", "memory-300s"),
+    "login": ("minimum", "typical", "full"),
+    "savedVariables": ("write-1x200", "read-1x200", "write-20x200", "read-20x200"),
+}
+
+#: The smoke profile: one headline case per shared workload and the cases
+#: that matter most of the client-only ones, 13 cases, 26 sessions with both
+#: sides. A run short enough to do in one sitting.
+SMOKE_PROFILE: tuple[tuple[str, str], ...] = (
+    ("eventDispatch", "dispatch-10"),
+    ("messageDispatch", "dispatch-10"),
+    ("settings", "read-saved"),
+    ("codec", "encode-medium"),
+    ("libraryRegistry", "lookup"),
+    ("hooks", "call-posthooked-method"),
+    ("slashCommands", "dispatch-words"),
+    ("locale", "lookup"),
+    ("aceSerializer", "decode-medium"),
+    ("window", "open-close-drawn"),
+    ("timersLive", "oneshot-fire-1000"),
+    ("session", "load-60s"),
+    ("session", "memory-300s"),
+)
+
+#: Seconds a case is expected to run, for the planner's estimate: a frame
+#: case runs for its own length, a batch case about this long.
+BATCH_CASE_SECONDS = 10
+CASE_SECONDS: dict[tuple[str, str], int] = {
+    ("session", "idle-30s"): 30,
+    ("session", "load-60s"): 60,
+    ("session", "memory-300s"): 300,
+    ("timersLive", "repeat-200"): 10,
+    ("login", "minimum"): 2,
+    ("login", "typical"): 2,
+    ("login", "full"): 2,
+}
+
+#: Reloads assumed per item by default: an item is one UI session.
+DEFAULT_RELOAD_SECONDS = 20
+
+
+def all_profile(host_cases: dict[str, tuple[str, ...]]) -> tuple[tuple[str, str], ...]:
+    """Every case of every workload the client runs: the shared ones from `host_cases`."""
+    entries: list[tuple[str, str]] = []
+    for name in SHARED_IN_CLIENT:
+        entries.extend((name, case) for case in host_cases.get(name, ()))
+    for workload in CLIENT_ONLY:
+        entries.extend((workload.name, case) for case in CLIENT_CASES.get(workload.name, ()))
+    return tuple(entries)
+
+
+@dataclass(frozen=True)
+class Plan:
+    """What a profile run costs before it is installed."""
+
+    profile: str
+    cases: int
+    rounds: int
+    items: int
+    reloads: int
+    seconds: int
+
+    def describe(self) -> str:
+        """The planner's output line."""
+        minutes = (self.seconds + 59) // 60
+        return (
+            f"{self.profile}: {self.cases} cases x 2 sides x {self.rounds} round(s) = "
+            f"{self.items} sessions, {self.reloads} reloads, about {minutes} min"
+        )
+
+
+def plan(
+    profile: str,
+    entries: tuple[tuple[str, str], ...],
+    rounds: int = 1,
+    reload_seconds: int = DEFAULT_RELOAD_SECONDS,
+) -> Plan:
+    """Count a profile's sessions and estimate its length (`reload_seconds` is an assumption)."""
+    items = len(entries) * 2 * rounds
+    case_seconds = sum(CASE_SECONDS.get(entry, BATCH_CASE_SECONDS) for entry in entries) * 2 * rounds
+    return Plan(profile, len(entries), rounds, items, items, case_seconds + items * reload_seconds)
+
 
 #: Every workload the in-client runner offers: the shared ones, then the client-only ones.
 CLIENT_WORKLOADS: tuple[ClientWorkload, ...] = (

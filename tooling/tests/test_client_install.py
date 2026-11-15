@@ -59,6 +59,26 @@ class FakeClientTests(unittest.TestCase):
 
 
 class InstallTests(FakeClientTests):
+    def test_all_installs_every_package_with_a_test_addon(self):
+        status, output, errors = self.run_command("--all")
+
+        self.assertEqual(0, status, errors)
+        manifests, _ = load_manifests()
+        for package_id in module.available_test_packages(manifests):
+            name = module.test_addon_name(package_id, manifests)
+            self.assertTrue((self.addons / name).is_dir(), name)
+        self.assertIn("no test addon under tests/client/ for: testKit", output)
+        self.assert_neighbour_untouched()
+
+    def test_all_and_package_are_exclusive(self):
+        with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+            module.main(["--wow-dir", str(self.wow), "--all", "--package", "registry"])
+
+    def test_every_suite_but_the_harness_belongs_to_a_package(self):
+        manifests, _ = load_manifests()
+        self.assertEqual(["testKit"], module.packages_without_test_addon(manifests))
+        self.assertEqual(41, len(module.available_test_packages(manifests)))
+
     def test_installs_the_bundle_the_harness_and_the_registry_test_addon(self):
         status, output, errors = self.run_command("--package", "registry")
 

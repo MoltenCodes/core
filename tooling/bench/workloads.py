@@ -121,8 +121,8 @@ WORKLOADS: tuple[Workload, ...] = (
         name="buckets",
         module="workloads.Buckets",
         title="Event bucketing",
-        compares="SchedulerKit coalescing against AceBucket-3.0",
-        packages=("registry", "signalKit", "eventKit", "timerKit", "schedulerKit"),
+        compares="EventKit coalescing (its Coalescing part, on TimerKit) against AceBucket-3.0",
+        packages=("registry", "signalKit", "eventKit", "timerKit"),
     ),
     Workload(
         name="options",
@@ -147,7 +147,7 @@ WORKLOADS: tuple[Workload, ...] = (
         module="workloads.Widgets",
         title="Widgets on the fake client (indicative)",
         compares="WidgetKit against AceGUI-3.0 on the shared fake client",
-        packages=("registry", "poolKit", "signalKit", "widgetKit"),
+        packages=("registry", "widgetKit"),
     ),
     Workload(
         name="aceSerializer",

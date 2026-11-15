@@ -28,6 +28,7 @@ VALID_TABLE = {
             "runtimeFile": "flavours/Retail.lua",
             "branches": ["live"],
             "detection": {"projectId": 1, "testBuild": False, "betaBuild": False},
+            "gameTypes": ["standard"],
         },
         {
             "id": "classic-era",
@@ -36,6 +37,7 @@ VALID_TABLE = {
             "runtimeFile": "flavours/ClassicEra.lua",
             "branches": ["classic_era"],
             "detection": {"projectId": 2, "testBuild": False, "betaBuild": False},
+            "gameTypes": ["vanilla"],
         },
         {
             "id": "ptr",
@@ -44,6 +46,7 @@ VALID_TABLE = {
             "runtimeFile": "flavours/Ptr.lua",
             "branches": ["ptr", "ptr2"],
             "detection": {"projectId": 1, "testBuild": True, "betaBuild": False},
+            "gameTypes": ["standard"],
         },
     ],
 }
@@ -125,6 +128,31 @@ class FlavourParsingTests(unittest.TestCase):
 
         with self.assertRaisesRegex(module.FlavoursError, r"flavours\[0\]\.runtimeFile"):
             module.parse_flavours(table)
+
+    def test_game_types_must_be_known_non_empty_and_distinct(self):
+        for game_types, message in (
+            ([], r"flavours\[0\]\.gameTypes must be a non-empty array"),
+            (["retail"], r"flavours\[0\]\.gameTypes\[0\] must be one of"),
+            (["standard", "standard"], "same game type twice"),
+        ):
+            with self.subTest(game_types=game_types):
+                table = self.table()
+                table["flavours"][0]["gameTypes"] = game_types
+                with self.assertRaisesRegex(module.FlavoursError, message):
+                    module.parse_flavours(table)
+
+    def test_committed_table_names_one_game_type_per_flavour(self):
+        table = module.load_flavours()
+        self.assertEqual(
+            {
+                "retail": ("standard",),
+                "classic-era": ("vanilla",),
+                "classic-mop": ("mists",),
+                "ptr": ("standard",),
+                "beta": ("standard",),
+            },
+            {flavour.id: flavour.game_types for flavour in table.flavours},
+        )
 
     def test_branches_must_be_non_empty_and_distinct(self):
         table = self.table()

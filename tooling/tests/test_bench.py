@@ -37,8 +37,8 @@ def archive_bytes(files: dict[str, bytes], top: str = "Ace3-abc") -> bytes:
 
 
 def ace3_files() -> dict[str, bytes]:
-    """Every file the benchmark loads, with placeholder contents."""
-    return {name: f"-- {name}\n".encode() for name in ace3.LOADED_FILES}
+    """Every pinned file, with placeholder contents."""
+    return {name: f"-- {name}\n".encode() for name in ace3.PINNED_FILES}
 
 
 def digest_of(files: dict[str, bytes]) -> str:

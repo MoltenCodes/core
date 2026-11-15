@@ -109,8 +109,19 @@ end
 ---@param host table
 ---@return table adapter, table[] libraries
 local function kitAdapter(host)
-  local loaded = host.RequireAll({ "Registry", "PoolKit", "SignalKit", "WidgetKit" })
-  local WidgetKit = loaded[4]
+  -- The WidgetKit core and the parts holding the compared types, as an addon
+  -- that uses those widgets embeds them.
+  local loaded = host.RequireAll({
+    "Registry",
+    "WidgetKit",
+    "WidgetKit-Containers",
+    "WidgetKit-Text",
+    "WidgetKit-Button",
+    "WidgetKit-CheckBox",
+    "WidgetKit-Slider",
+    "WidgetKit-EditBox",
+  })
+  local WidgetKit = loaded[2]
   local adapter = {}
 
   function adapter.create(kind)
@@ -144,12 +155,9 @@ local function kitAdapter(host)
     return frame:GetHeight()
   end
 
-  return adapter,
-    {
-      { name = "WidgetKit", revision = WidgetKit.REVISION },
-      { name = "PoolKit", revision = loaded[2].REVISION },
-      { name = "SignalKit", revision = loaded[3].REVISION },
-    }
+  return adapter, {
+    { name = "WidgetKit", revision = WidgetKit.REVISION },
+  }
 end
 
 ---@param host table

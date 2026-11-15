@@ -7,6 +7,7 @@ import subprocess
 import unittest
 
 from tooling.package import build as package_build
+from tooling.package import embeds as package_embeds
 from tooling.validation.validate_manifests import ROOT, load_manifests
 
 # Reading ``embeds.xml`` belongs to the validator, which enforces the example's
@@ -88,11 +89,15 @@ class ExampleAddonLayoutTests(unittest.TestCase):
 
     def test_load_order_matches_the_builder(self):
         """The builder's `loadOrder` is what the documentation tells readers to copy."""
-        ordered = package_build.load_order(self.packages, self.manifests)
-        expected = [
-            f"{name}/{relative}" for name in ordered for relative in package_build.runtime_files(name)
-        ]
-        self.assertEqual(expected, self.scripts)
+        # A part file `<package>/parts/<Facade>-<Part>.lua` is selected as
+        # `<package>/<Part>`; the builder then places every core and part.
+        selectors = list(self.packages)
+        for script in self.scripts:
+            package_id, relative = script.split("/", 1)
+            if relative.startswith("parts/"):
+                selectors.append(package_id + "/" + relative.rsplit("-", 1)[1].removesuffix(".lua"))
+        selection = package_embeds.selection_from_selectors(self.manifests, selectors)
+        self.assertEqual(package_build.load_order_paths(selection), self.scripts)
 
 
 class ExampleAddonSpecTests(unittest.TestCase):

@@ -10,8 +10,13 @@
 --   * publishes `MoltenCodesTest`, the small API a package test addon
 --     (`MoltenCodesTest_<Facade>`) registers its TestKit suites through, keyed
 --     by the package they test;
---   * answers `/mct` (`run [package] [combat]`, `list`, `report`, `clear`,
---     `help`);
+--   * answers `/mct` (`run [package] [combat]`, `run all`, `run guided`,
+--     `next`, `skip`, `list`, `report`, `clear`, `help`);
+--   * runs a session in passes: `/mct run all` runs every suite that needs
+--     neither the player nor combat, unattended, and ends with one totals line
+--     for the whole pass; `/mct run guided` then takes the suites registered
+--     with `interactive = "<instruction>"` one package at a time, printing the
+--     instruction and waiting for `/mct next` (or `/mct skip`);
 --   * prints one line per test and one totals line per package to the default
 --     chat frame when a run finishes;
 --   * writes each package's full TestKit report, with the facts of the client it
@@ -59,16 +64,38 @@ local SLASH_COMMAND = "/mct"
 --- `client.testBuild`; readers accept schema 1 entries, which have none of them.
 local RESULTS_SCHEMA = 2
 
---- The two kinds of run. A default run queues every suite of a package; a
---- combat run queues only the suites registered with `combat = true`, once the
---- player is in combat.
+--- The kinds of run. A default run queues every suite of a package; a combat
+--- run queues only the suites registered with `combat = true`, once the player
+--- is in combat; an unattended run (`/mct run all`) queues every suite that is
+--- neither interactive nor a combat suite; a guided run queues one package's
+--- interactive suites once the player is ready.
 local DEFAULT_MODE = "default"
 local COMBAT_MODE = "combat"
+local UNATTENDED_MODE = "unattended"
+local GUIDED_MODE = "guided"
 
---- The key of a combat run's entry in `MoltenCodesTestResults` is the package
---- ID followed by this suffix, so a combat run never replaces the package's
---- default run.
-local COMBAT_RESULTS_SUFFIX = ":combat"
+--- The key of a run's entry in `MoltenCodesTestResults` is the package ID,
+--- followed by its mode's suffix for every mode but the default one, so no run
+--- replaces the package's run of another mode. `tooling.client.report` reads
+--- the same suffixes.
+local RESULTS_SUFFIXES = {
+  [COMBAT_MODE] = ":combat",
+  [UNATTENDED_MODE] = ":unattended",
+  [GUIDED_MODE] = ":guided",
+}
+
+--- How a run of each mode is named in its "running ..." line.
+local MODE_LABELS = {
+  [DEFAULT_MODE] = "",
+  [COMBAT_MODE] = " (combat suites)",
+  [UNATTENDED_MODE] = " (unattended pass)",
+  [GUIDED_MODE] = " (guided)",
+}
+
+--- The words `/mct run` reads as a pass rather than a package ID. Repository
+--- validation refuses a package named after one of them.
+local RUN_ALL_WORD = "all"
+local RUN_GUIDED_WORD = "guided"
 
 --- Seconds `/mct run <package> combat` waits for the player to enter combat
 --- before it gives up and runs nothing.
@@ -109,7 +136,8 @@ local IDENTIFIER_PATTERN = "^[a-z][A-Za-z0-9]*$"
 local RUNTIME_SKIP_MARKER = "[MoltenCodesTest: skipped at run time] "
 
 --- The suite options `Harness:Suite` accepts.
-local SUITE_OPTION_NAMES = { timeoutSeconds = true, combat = true, prepare = true }
+local SUITE_OPTION_NAMES =
+  { timeoutSeconds = true, combat = true, prepare = true, interactive = true }
 
 --- How each TestKit status is printed, coloured so a failure stands out.
 local STATUS_LABELS = {
@@ -221,10 +249,21 @@ local combatSuiteNamesByPackage = {}
 ---@type table<string, fun()[]>
 local combatPreparationsByPackage = {}
 
+--- The instruction of each interactive suite, by suite name: what the player
+--- does before `/mct next` runs it. `/mct run all` leaves these suites out.
+---@type table<string, string>
+local interactiveInstructions = {}
+
+--- The guided pass `/mct run guided` is walking, or `nil`: the packages with
+--- interactive suites, the one shown or running now, and whether the harness
+--- waits for `/mct next`.
+---@type { packageIds: string[], position: integer, waiting: boolean }|nil
+local guidedPass = nil
+
 --- The run `/mct run` started and has not seen finish, or `nil`. TestKit is
 --- shared by every development addon in the session, so a finished run that the
 --- harness did not start is ignored rather than recorded.
----@type { packageIds: string[], mode: string, client: table, installation: table, previousRunawayThreshold: number|false }|nil
+---@type { packageIds: string[], mode: string, client: table, installation: table, previousRunawayThreshold: number|false, onFinished: fun()|nil }|nil
 local activeRun = nil
 
 --- The combat run `/mct run <package> combat` is waiting to start, or `nil`:
@@ -546,10 +585,50 @@ end
 ---@param mode string
 ---@return string
 local function resultsKey(packageId, mode)
-  if mode == COMBAT_MODE then
-    return packageId .. COMBAT_RESULTS_SUFFIX
+  return packageId .. (RESULTS_SUFFIXES[mode] or "")
+end
+
+---The interactive suites of `packageId`, in registration order.
+---@param packageId string
+---@return string[]
+local function interactiveSuites(packageId)
+  local names = {}
+  for _, suiteName in ipairs(suiteNamesByPackage[packageId] or {}) do
+    if interactiveInstructions[suiteName] ~= nil then
+      names[#names + 1] = suiteName
+    end
   end
-  return packageId
+  return names
+end
+
+---Print the totals of a whole unattended pass and what it left for the player.
+---@param byPackage table<string, table>
+---@param run table the finished run
+local function printPassTotals(byPackage, run)
+  local sums = { passed = 0, failed = 0, skipped = 0, timeout = 0 }
+  for _, packageId in ipairs(run.packageIds) do
+    local packageReport = byPackage[packageId]
+    local totals = packageReport and packageReport.totals or {}
+    for field in pairs(sums) do
+      sums[field] = sums[field] + (tonumber(totals[field]) or 0)
+    end
+  end
+  local waiting, combat = 0, 0
+  for _, packageId in ipairs(packageIds) do
+    waiting = waiting + #interactiveSuites(packageId)
+    combat = combat + #(combatSuiteNamesByPackage[packageId] or {})
+  end
+  say(
+    ("session pass done: %d packages, %d passed, %d failed, %d skipped, %d timed out; %d interactive suites wait for /mct run guided and %d combat suites for /mct run combat; /reload to save."):format(
+      #run.packageIds,
+      sums.passed,
+      sums.failed,
+      sums.skipped,
+      sums.timeout,
+      waiting,
+      combat
+    )
+  )
 end
 
 ---Print and save the results of the run `/mct run` started.
@@ -583,6 +662,11 @@ local function recordFinishedRun(report)
     }
   end
   say("results saved in " .. SAVED_VARIABLES_NAME .. "; /reload or log out to write them to disk.")
+  if run.mode == UNATTENDED_MODE then
+    printPassTotals(byPackage, run)
+  elseif run.mode == GUIDED_MODE and run.onFinished ~= nil then
+    run.onFinished()
+  end
 end
 
 -- Commands ----------------------------------------------------------------------------
@@ -624,13 +708,30 @@ local function suitesForMode(packageId, mode)
   if mode == COMBAT_MODE then
     return combatSuiteNamesByPackage[packageId] or {}
   end
+  if mode == GUIDED_MODE then
+    return interactiveSuites(packageId)
+  end
+  if mode == UNATTENDED_MODE then
+    local combat = {}
+    for _, suiteName in ipairs(combatSuiteNamesByPackage[packageId] or {}) do
+      combat[suiteName] = true
+    end
+    local names = {}
+    for _, suiteName in ipairs(suiteNamesByPackage[packageId] or {}) do
+      if interactiveInstructions[suiteName] == nil and not combat[suiteName] then
+        names[#names + 1] = suiteName
+      end
+    end
+    return names
+  end
   return suiteNamesByPackage[packageId]
 end
 
 ---Queue the suites of the given packages that `mode` runs and remember the run.
 ---@param selectedIds string[]
----@param mode string `DEFAULT_MODE` or `COMBAT_MODE`
-local function startRun(selectedIds, mode)
+---@param mode string one of the run modes
+---@param onFinished fun()|nil called after a guided run's results are saved
+local function startRun(selectedIds, mode, onFinished)
   if refuseWhileBusy() then
     return
   end
@@ -643,6 +744,7 @@ local function startRun(selectedIds, mode)
     client = collectClientFacts(),
     installation = installationFacts(),
     previousRunawayThreshold = relaxRunawayThreshold(),
+    onFinished = onFinished,
   }
 
   local suiteCount = 0
@@ -664,7 +766,7 @@ local function startRun(selectedIds, mode)
   say(
     ("running %s%s: %d suites. Results follow when every test has finished."):format(
       joinNames(selectedIds),
-      mode == COMBAT_MODE and " (combat suites)" or "",
+      MODE_LABELS[mode] or "",
       suiteCount
     )
   )
@@ -801,7 +903,90 @@ local function commandRunCombat(packageId)
   startCombatRun(selected)
 end
 
----`/mct run [package] [combat]`.
+---`/mct run all`: every suite that needs neither the player nor combat.
+local function commandRunAll()
+  local selected = {}
+  for _, packageId in ipairs(packageIds) do
+    if #suitesForMode(packageId, UNATTENDED_MODE) > 0 then
+      selected[#selected + 1] = packageId
+    end
+  end
+  if #selected == 0 then
+    say(
+      "every loaded suite is interactive or a combat suite; use /mct run guided or /mct run combat."
+    )
+    return
+  end
+  startRun(selected, UNATTENDED_MODE)
+end
+
+---Show the next package of the guided pass and wait for `/mct next`, or end it.
+local function promptGuided()
+  local pass = guidedPass
+  if pass == nil then
+    return
+  end
+  pass.position = pass.position + 1
+  local packageId = pass.packageIds[pass.position]
+  if packageId == nil then
+    guidedPass = nil
+    say("guided pass done: " .. #pass.packageIds .. " packages; /reload to save.")
+    return
+  end
+  pass.waiting = true
+  say(
+    ("guided %d of %d: %s. Get ready, then type /mct next (or /mct skip to leave it out):"):format(
+      pass.position,
+      #pass.packageIds,
+      packageId
+    )
+  )
+  for _, suiteName in ipairs(interactiveSuites(packageId)) do
+    say("  " .. suiteName .. ": " .. interactiveInstructions[suiteName])
+  end
+end
+
+---`/mct run guided`: walk the interactive suites one package at a time.
+local function commandRunGuided()
+  if refuseWhileBusy() then
+    return
+  end
+  local selected = {}
+  for _, packageId in ipairs(packageIds) do
+    if #interactiveSuites(packageId) > 0 then
+      selected[#selected + 1] = packageId
+    end
+  end
+  if #selected == 0 then
+    say("no loaded suite is interactive; /mct run all runs everything else.")
+    return
+  end
+  guidedPass = { packageIds = selected, position = 0, waiting = false }
+  promptGuided()
+end
+
+---`/mct next` and `/mct skip`: run, or leave out, the package the guided pass shows.
+---@param skip boolean
+local function continueGuided(skip)
+  local pass = guidedPass
+  if pass == nil or not pass.waiting then
+    say("no guided package is waiting; /mct run guided starts the guided pass.")
+    return
+  end
+  if refuseWhileBusy() then
+    return
+  end
+  local packageId = pass.packageIds[pass.position]
+  pass.waiting = false
+  if skip then
+    say("left out " .. packageId .. "; its interactive suites stay not run.")
+    promptGuided()
+    return
+  end
+  startRun({ packageId }, GUIDED_MODE, promptGuided)
+end
+
+---`/mct run [package] [combat]`, `/mct run all` and `/mct run guided`.
 ---@param argument string
 local function commandRun(argument)
   if #packageIds == 0 then
@@ -811,6 +996,14 @@ local function commandRun(argument)
   local first, second = argument:match("^(%S*)%s*(%S*)")
   if first == COMBAT_MODE and second == "" then
     commandRunCombat(nil)
+    return
+  end
+  if first == RUN_ALL_WORD and second == "" then
+    commandRunAll()
+    return
+  end
+  if first == RUN_GUIDED_WORD and second == "" then
+    commandRunGuided()
     return
   end
   if first == "" then
@@ -842,6 +1035,10 @@ local function commandList()
     local combatSuites = combatSuiteNamesByPackage[packageId]
     if combatSuites ~= nil then
       line = line .. "; combat suites: " .. joinNames(combatSuites)
+    end
+    local interactive = interactiveSuites(packageId)
+    if #interactive > 0 then
+      line = line .. "; interactive suites: " .. joinNames(interactive)
     end
     say(line)
   end
@@ -899,6 +1096,10 @@ local function commandHelp()
       .. " seconds for combat, then run the package's combat suites"
   )
   say(SLASH_COMMAND .. " run combat -- the same for every loaded package with combat suites")
+  say(SLASH_COMMAND .. " run all -- every suite that needs neither you nor combat, unattended")
+  say(SLASH_COMMAND .. " run guided -- the interactive suites, one package at a time")
+  say(SLASH_COMMAND .. " next -- run the package the guided pass shows")
+  say(SLASH_COMMAND .. " skip -- leave that package out and show the next")
   say(SLASH_COMMAND .. " list -- the loaded packages and their suites")
   say(SLASH_COMMAND .. " report -- the saved totals and every test that did not pass")
   say(SLASH_COMMAND .. " clear -- forget every saved result")
@@ -909,6 +1110,12 @@ end
 ---@type table<string, fun(argument: string)>
 local COMMANDS = {
   run = commandRun,
+  next = function()
+    continueGuided(false)
+  end,
+  skip = function()
+    continueGuided(true)
+  end,
   list = commandList,
   report = commandReport,
   clear = commandClear,
@@ -945,6 +1152,7 @@ local Harness = {
 ---@field timeoutSeconds number|nil How long one test may take, forwarded to TestKit (10 seconds by default).
 ---@field combat boolean|nil `true` for a combat suite: `/mct run <package> combat` runs it once the player is in combat; a default run runs it too.
 ---@field prepare fun()|nil Only with `combat = true`: called out of combat when a combat run is requested, before the harness waits, for set-up the client allows only out of combat.
+---@field interactive string|nil One instruction line for a suite whose test needs the player (a right click, Edit Mode, a party): `/mct run all` leaves it out and `/mct run guided` prints the line and waits for `/mct next`. Not with `combat = true`.
 
 ---Check the harness's own options, `combat` and `prepare`, raising at the test
 ---addon's line when they are malformed.
@@ -984,6 +1192,15 @@ local function suiteOptions(addonName, options)
     end
   end
   checkCombatOptions(options)
+  local interactive = options.interactive
+  if type(interactive) ~= "nil" then
+    if type(interactive) ~= "string" or interactive == "" then
+      error("MoltenCodesTest:Suite options.interactive must be a non-empty instruction line", 3)
+    end
+    if options.combat == true then
+      error("MoltenCodesTest:Suite options.interactive cannot be combined with options.combat", 3)
+    end
+  end
   local timeoutSeconds = options.timeoutSeconds
   if type(timeoutSeconds) ~= "nil" then
     if
@@ -1044,6 +1261,9 @@ function Harness:Suite(packageId, part, addonName, options)
   names[#names + 1] = suiteName
   packageBySuiteName[suiteName] = packageId
 
+  if type(options) == "table" and type(options.interactive) == "string" then
+    interactiveInstructions[suiteName] = options.interactive
+  end
   if type(options) == "table" and options.combat == true then
     local combatNames = combatSuiteNamesByPackage[packageId] or {}
     combatSuiteNamesByPackage[packageId] = combatNames

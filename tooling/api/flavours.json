@@ -16,7 +16,8 @@
       "namespace": "wow.retail.api",
       "runtimeFile": "flavours/Retail.lua",
       "branches": ["live"],
-      "detection": { "projectId": 1, "testBuild": false, "betaBuild": false }
+      "detection": { "projectId": 1, "testBuild": false, "betaBuild": false },
+      "gameTypes": ["standard"]
     },
     {
       "id": "classic-era",
@@ -24,7 +25,8 @@
       "namespace": "wow.classic.era.api",
       "runtimeFile": "flavours/ClassicEra.lua",
       "branches": ["classic_era"],
-      "detection": { "projectId": 2, "testBuild": false, "betaBuild": false }
+      "detection": { "projectId": 2, "testBuild": false, "betaBuild": false },
+      "gameTypes": ["vanilla"]
     },
     {
       "id": "classic-mop",
@@ -32,7 +34,8 @@
       "namespace": "wow.classic.mop.api",
       "runtimeFile": "flavours/ClassicMop.lua",
       "branches": ["classic"],
-      "detection": { "projectId": 19, "testBuild": false, "betaBuild": false }
+      "detection": { "projectId": 19, "testBuild": false, "betaBuild": false },
+      "gameTypes": ["mists"]
     },
     {
       "id": "ptr",
@@ -40,7 +43,8 @@
       "namespace": "wow.ptr.api",
       "runtimeFile": "flavours/Ptr.lua",
       "branches": ["ptr", "ptr2"],
-      "detection": { "projectId": 1, "testBuild": true, "betaBuild": false }
+      "detection": { "projectId": 1, "testBuild": true, "betaBuild": false },
+      "gameTypes": ["standard"]
     },
     {
       "id": "beta",
@@ -48,7 +52,8 @@
       "namespace": "wow.beta.api",
       "runtimeFile": "flavours/Beta.lua",
       "branches": ["beta"],
-      "detection": { "projectId": 1, "testBuild": true, "betaBuild": true }
+      "detection": { "projectId": 1, "testBuild": true, "betaBuild": true },
+      "gameTypes": ["standard"]
     }
   ]
 }

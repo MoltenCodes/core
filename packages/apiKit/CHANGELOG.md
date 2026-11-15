@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.3 — 2026-11-15
+
+- Packaging: the standalone `MoltenCodes` addon's `.toc` (and every `.toc` the builder, `tooling.release.library_toc` and `tooling.package.embeds --toc` write) ends each flavour file line with `[AllowLoadGameType ...]`: Retail, Ptr and Beta `standard`, ClassicMop `mists`, ClassicEra `vanilla`. A client compiles only the flavour files of its own game type instead of all five (2.27 MB of source). Measured on host Lua 5.1, compile only: all five files 11.4 ms and 6,401 KB allocated, Retail with Ptr and Beta 7.8 ms and 4,264 KB, one Classic file 1.8 ms and 1,560 KB. Held memory is unchanged: the installers of the other flavours were already discarded.
+- Visible change: in that addon, `GetMetadataBuild(flavor)` answers nothing for a flavour other than the running client's, since its file is not loaded. Documented in `docs/API.md`.
+- Not yet verified in a client: whether Burning Crusade Classic Anniversary 2.5.6 reads inline directives (that client has no ApiKit flavour, so no flavour file applies there whichever way it reads the line), and which game type a Retail test realm or beta client reports (if it is not `standard`, the Ptr and Beta files do not load there). The ApiKit client suite checks the running flavour's file is installed.
+- Documentation and packaging only: the implementation revision is unchanged (6), and no generated file changed.
+
 ## 0.2.2 — 2026-11-15
 
 - Fixed: a write to `ApiKit.SUPPORTED_FLAVORS` built its refusal with `tostring(key)`. For a table or userdata key that runs the key's `__tostring`, foreign code that can raise or answer a secret, so the writer saw that code's error (or a message it chose) instead of the refusal. A string key is still shown as written and a number or boolean as its text (`index "6"` is unchanged); any other key is named by its type, `ApiKit.SUPPORTED_FLAVORS is read-only; index "<table>" cannot be written`, and a key `issecretvalue` reports secret by `<secret>`, asked first. Whether the client hands `__newindex` a secret key at all is not documented, so that check is defensive. Documented under *Errors* in `docs/API.md`.

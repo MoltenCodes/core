@@ -118,6 +118,23 @@ class ReadingTests(ReportTestCase):
         self.assertEqual(1, combat.passed)
         self.assertIs(True, combat.dirty)
 
+    def test_session_pass_entries_are_rows_of_their_own_modes(self):
+        entry = {
+            "schema": 2,
+            "package": "menuKit",
+            "client": {"flavour": "retail", "projectId": 1},
+            "report": {"totals": {"tests": 1, "passed": 1, "failed": 0, "skipped": 0, "timeout": 0}},
+        }
+        for key, mode in (("menuKit:unattended", "unattended"), ("menuKit:guided", "guided")):
+            with self.subTest(key=key):
+                row = module.row_from_entry(key, dict(entry), None)
+                self.assertEqual(mode, row.mode)
+                self.assertEqual(f"`menuKit` ({mode})", module.package_label(row))
+        explicit = module.row_from_entry("menuKit", dict(entry, mode="guided"), None)
+        self.assertEqual("guided", explicit.mode)
+        with self.assertRaisesRegex(module.ReportError, "unknown mode"):
+            module.row_from_entry("menuKit", dict(entry, mode="nightly"), None)
+
     def test_a_schema_1_entry_is_attributed_by_the_project_id_and_has_no_commit(self):
         warnings: list[str] = []
 

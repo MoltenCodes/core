@@ -365,8 +365,34 @@ class TocModuleTests(unittest.TestCase):
     def test_nested_runtime_files_convert_every_separator(self):
         entry = toc.toc_entry("apiKit", "flavours/Retail.lua")
 
-        self.assertEqual("apiKit\\flavours\\Retail.lua", entry)
+        self.assertEqual("apiKit\\flavours\\Retail.lua [AllowLoadGameType standard]", entry)
         self.assertEqual("apiKit/flavours/Retail.lua", toc.entry_to_bundle_path(entry))
+
+    def test_each_api_kit_flavour_file_loads_only_on_its_game_types(self):
+        expected = {
+            "flavours/Retail.lua": "[AllowLoadGameType standard]",
+            "flavours/Ptr.lua": "[AllowLoadGameType standard]",
+            "flavours/Beta.lua": "[AllowLoadGameType standard]",
+            "flavours/ClassicMop.lua": "[AllowLoadGameType mists]",
+            "flavours/ClassicEra.lua": "[AllowLoadGameType vanilla]",
+        }
+        for runtime_file, directive in expected.items():
+            with self.subTest(runtime_file=runtime_file):
+                self.assertEqual(directive, toc.file_directive(f"apiKit/{runtime_file}"))
+                self.assertTrue(toc.toc_entry("apiKit", runtime_file).endswith(" " + directive))
+
+    def test_other_files_carry_no_directive(self):
+        self.assertEqual("", toc.file_directive("apiKit/ApiKit.lua"))
+        self.assertEqual("", toc.file_directive("timerKit/TimerKit.lua"))
+        self.assertEqual("apiKit\\ApiKit.lua", toc.toc_entry("apiKit", "ApiKit.lua"))
+
+    def test_bundle_path_drops_every_inline_directive(self):
+        self.assertEqual(
+            "apiKit/flavours/Ptr.lua",
+            toc.entry_to_bundle_path(
+                "apiKit\\flavours\\Ptr.lua [AllowLoadGameType standard][AllowLoadTextLocale enUS]"
+            ),
+        )
 
     def test_entries_use_backslashes_and_convert_back(self):
         entry = toc.toc_entry("timerKit", "TimerKit.lua")
@@ -441,8 +467,8 @@ class BundleTocTests(TemporaryRepositoryTests):
             [
                 "registry\\Registry.lua",
                 "apiKit\\ApiKit.lua",
-                "apiKit\\flavours\\ClassicEra.lua",
-                "apiKit\\flavours\\Retail.lua",
+                "apiKit\\flavours\\ClassicEra.lua [AllowLoadGameType vanilla]",
+                "apiKit\\flavours\\Retail.lua [AllowLoadGameType standard]",
                 "signalKit\\SignalKit.lua",
             ],
             toc.listed_files(text),

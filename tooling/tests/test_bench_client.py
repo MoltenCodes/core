@@ -28,7 +28,7 @@ from tooling.validation.interface_numbers import load_supported_clients
 def fake_ace3(root: Path) -> ace3.Ace3Source:
     """A verified-looking Ace3 checkout of placeholder files under `root`."""
     directory = root / "ace3" / ace3.ACE3_COMMIT
-    for name in ace3.LOADED_FILES:
+    for name in ace3.PINNED_FILES:
         path = directory / name
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(f"-- {name}\n", encoding="utf-8")

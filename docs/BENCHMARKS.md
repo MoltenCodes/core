@@ -414,6 +414,22 @@ doing the same work on both sides through one set of adapters
   torn down. `UpdateAddOnMemoryUsage` walks the whole heap, so that case's
   frame times are not comparable with `load-60s`.
 
+- **`login`** (no side loaded first): after a `/reload`, loads one set of a
+  side as its own load-on-demand addon, times `C_AddOns.LoadAddOn` with
+  `debugprofilestop` and reads the addon's memory after a full collection.
+  Three sets, each a pair of side addons the installer writes: `minimum`
+  (Registry, SignalKit, EventKit, LifecycleKit and TimerKit against LibStub,
+  CallbackHandler-1.0, AceAddon-3.0, AceEvent-3.0 and AceTimer-3.0),
+  `typical` (AddonKit's core and what it requires, no parts, against those
+  plus AceDB-3.0, AceConsole-3.0 and AceLocale-3.0) and `full` (the release
+  bundle against every pinned Ace3 file, AceConfigDialog-3.0 included).
+- **`savedVariables`** (no side loaded first): `write-1x200` and
+  `write-20x200` build a database of that many profiles of 200 keys
+  (SettingsKit against AceDB-3.0, the same values) in the side's saved
+  variable; after the `/reload`, `read-1x200` and `read-20x200` time the
+  `LoadAddOn` that restores it and the open of the database apart, with
+  memory after a full collection. A read with nothing restored is refused.
+
 ### Methodology in the client
 
 - **One case per session.** The host's fresh process per case is a fresh UI
@@ -502,7 +518,26 @@ installation (older ones and test builds are reported and left out), pools the
 rounds of a batch case as the host runner does and takes the median of each
 frame measurement, writes `tooling/bench/results/<date>-client-<flavour>.json`
 (`-2`, `-3`... when the name is taken; `--out` names another file, `--dry-run`
-writes none) and prints the tables. `--remove` deletes the three addons, the
+writes none) and prints the tables.
+
+**Profiles.** `/mcb run smoke [rounds]` queues 13 headline cases on both
+sides, 26 sessions: eventDispatch and messageDispatch `dispatch-10`, settings
+`read-saved`, codec `encode-medium`, libraryRegistry `lookup`, hooks
+`call-posthooked-method`, slashCommands `dispatch-words`, locale `lookup`,
+aceSerializer `decode-medium`, window `open-close-drawn`, timersLive
+`oneshot-fire-1000`, session `load-60s` and `memory-300s`. `/mcb run all
+[rounds]` queues every case. Before installing,
+`python3 -m tooling.bench.client_install --wow-dir DIR --plan smoke|all [--rounds N] [--reload-seconds S]`
+prints the sessions, reloads and an estimate (smoke: 26 sessions, about 25
+minutes; all: 154 at one round, 770 at five), assuming 20 s per reload
+unless told otherwise.
+
+**AceConfigDialog-3.0.** It and the ten AceGUI-3.0 files it creates
+(BlizOptionsGroup, DropDownGroup, TabGroup and TreeGroup containers;
+DropDown, DropDown-Items, ColorPicker, Keybinding, MultiLineEditBox and Icon
+widgets, read from its source at the pinned commit) are pinned in the
+content digest (`ace3.DIALOG_FILES`). Only the `full` login set loads them,
+so every other workload loads exactly the files it loaded before. `--remove` deletes the three addons, the
 harness's saved variables and their lines in every `AddOns.txt`, and nothing
 else; run the report first.
 

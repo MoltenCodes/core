@@ -23,8 +23,10 @@
 ---     framework/ErrorHandlerStub.lua    geterrorhandler and securecallfunction
 ---
 --- What stays here is what is not any one stub's: option handling, the load
---- order of a package's module chain, and the `Reset`/`NewPackage`/`ReloadPackage`
---- lifecycle that drives every stub together.
+--- order of a package's module chain, the `Reset`/`NewPackage`/`ReloadPackage`
+--- lifecycle that drives every stub together, and the helpers the shared
+--- conformance suite (`KitConformance.lua`) builds on: `Modules`,
+--- `NewPackageWithout` and `LoadSourceWithRevision`.
 ---
 --- A package keeps `tests/support/<Kit>TestEnv.lua` for what is genuinely its
 --- own: the load order of its module chain, and any helper that only its specs
@@ -229,7 +231,102 @@ function FrameworkTestEnv.New(options)
     return require(packageModule)
   end
 
+  ---The module chain in load order, the package under test last. A copy, so a
+  ---caller cannot change the environment's own list.
+  ---@return string[]
+  function environment.Modules()
+    local copy = {}
+    for index = 1, #modules do
+      copy[index] = modules[index]
+    end
+    return copy
+  end
+
+  ---Reset, install the host stubs, and load the module chain without
+  ---`skippedModule`, then try to load the package under test.
+  ---
+  ---With a dependency skipped this proves the package refuses to load and
+  ---names what is missing; with the package under test skipped it loads
+  ---only the dependencies, ready for an older revision to load over them.
+  ---@param skippedModule string a module of the chain
+  ---@return boolean loaded whether the package under test loaded (`false` when it was skipped)
+  ---@return any result the package, or the load error
+  function environment.NewPackageWithout(skippedModule)
+    if packageModule == nil then
+      error("this environment was built without a module chain to load", 2)
+    end
+    local known = false
+    for index = 1, #modules do
+      known = known or modules[index] == skippedModule
+    end
+    if not known then
+      error("NewPackageWithout: " .. tostring(skippedModule) .. " is not in the module chain", 2)
+    end
+
+    environment.Reset()
+    if installsWowApi then
+      environment.InstallWowApi()
+    end
+    for index = 1, #modules - 1 do
+      if modules[index] ~= skippedModule then
+        require(modules[index])
+      end
+    end
+    if skippedModule == packageModule then
+      return false, nil
+    end
+    return pcall(require, packageModule)
+  end
+
+  ---Load `moduleName`'s source from `package.path` with its
+  ---`IMPLEMENTATION_REVISION` set to `revision`, and return what it returns.
+  ---
+  ---This is the shared form of the per-package `LoadRevision` helpers: the
+  ---same code under a lower revision number proves the in-place takeover
+  ---path, which an older embedded copy takes in a real session.
+  ---@param moduleName string
+  ---@param revision integer
+  ---@return any
+  function environment.LoadSourceWithRevision(moduleName, revision)
+    local path = FrameworkTestEnv.findModuleFile(moduleName)
+    if path == nil then
+      error("LoadSourceWithRevision could not find " .. moduleName .. " on package.path", 2)
+    end
+    local file = assert(io.open(path, "r"))
+    local text = file:read("*a")
+    file:close()
+    local patched, replacements = text:gsub(
+      "local IMPLEMENTATION_REVISION = %d+",
+      "local IMPLEMENTATION_REVISION = " .. revision,
+      1
+    )
+    if replacements ~= 1 then
+      error("LoadSourceWithRevision found no IMPLEMENTATION_REVISION in " .. path, 2)
+    end
+    local chunk = assert(loadstring(patched, "@" .. path))
+    return chunk()
+  end
+
   return environment
+end
+
+---Return the file `require(moduleName)` would load from `package.path`, or `nil`.
+---
+---Lua 5.1 has no `package.searchpath`, so the templates are walked the way
+---`require` walks them.
+---@param moduleName string
+---@return string?
+function FrameworkTestEnv.findModuleFile(moduleName)
+  local fileName = moduleName:gsub("%.", "/")
+  for template in package.path:gmatch("[^;]+") do
+    local candidate = template:gsub("%?", fileName)
+    local file = io.open(candidate, "r")
+    if file ~= nil then
+      file:close()
+      return candidate
+    end
+  end
+  return nil
 end
 
 return FrameworkTestEnv

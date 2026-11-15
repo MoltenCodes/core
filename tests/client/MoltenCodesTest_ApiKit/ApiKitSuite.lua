@@ -3,8 +3,9 @@
 -- Real-client suites for the `apiKit` package. The Busted specs under
 -- packages/apiKit/tests/ prove ApiKit and every generated flavour file against
 -- a stand-in host whose functions are made up; these prove, inside the game
--- client with the installed MoltenCodes addon (which loads all five flavour
--- files), what a stand-in host cannot:
+-- client with the installed MoltenCodes addon (whose `.toc` loads each
+-- flavour file only on its own client game type), what a stand-in host
+-- cannot:
 --
 --   * the installed facade and its committed revision;
 --   * that the client's own facts (`WOW_PROJECT_ID`, and on Retail
@@ -16,7 +17,8 @@
 --     flavour's `api` table (`MoltenCodes.wow.retail.api`,
 --     `MoltenCodes.wow.classic.era.api` or `MoltenCodes.wow.classic.mop.api`)
 --     is filled while the other four flavours' tables stay empty, and that
---     every flavour file registered its metadata;
+--     exactly the flavour files of the client's game type were loaded: each
+--     flavour file line of the `.toc` ends with `[AllowLoadGameType ...]`;
 --   * the direct-alias promise over the whole installed surface: every
 --     bound function is the very host function the naming rules of
 --     packages/apiKit/docs/NAMING.md derive for it (`api.timer.newTicker` is
@@ -81,12 +83,26 @@ local FLAVOR_IDS = { "retail", "classic-era", "classic-mop", "ptr", "beta" }
 --- The metadata each committed flavour file registers (packages/apiKit/README.md,
 --- "Flavours"; the last line of each `src/flavours/<Flavour>.lua`), and the
 --- path of its `api` table under `MoltenCodes.wow`.
+--- `gameType` is the client game type the bundle `.toc` loads the flavour's
+--- file on (`tooling/api/flavours.json`, `gameTypes`).
 local COMMITTED_FLAVORS = {
-  { id = "retail", version = "12.1.5", build = 70783, path = { "retail" } },
-  { id = "classic-era", version = "1.15.9", build = 70576, path = { "classic", "era" } },
-  { id = "classic-mop", version = "5.5.4", build = 70631, path = { "classic", "mop" } },
-  { id = "ptr", version = "12.1.7", build = 70892, path = { "ptr" } },
-  { id = "beta", version = "12.0.1", build = 66220, path = { "beta" } },
+  { id = "retail", version = "12.1.5", build = 70783, path = { "retail" }, gameType = "standard" },
+  {
+    id = "classic-era",
+    version = "1.15.9",
+    build = 70576,
+    path = { "classic", "era" },
+    gameType = "vanilla",
+  },
+  {
+    id = "classic-mop",
+    version = "5.5.4",
+    build = 70631,
+    path = { "classic", "mop" },
+    gameType = "mists",
+  },
+  { id = "ptr", version = "12.1.7", build = 70892, path = { "ptr" }, gameType = "standard" },
+  { id = "beta", version = "12.0.1", build = 66220, path = { "beta" }, gameType = "standard" },
 }
 
 ---The committed metadata row of `flavorId` in `COMMITTED_FLAVORS`.
@@ -994,14 +1010,35 @@ flavour:Test(
   end
 )
 
+-- The bundle `.toc` restricts each flavour file with `[AllowLoadGameType ...]`
+-- (warcraft.wiki.gg, "TOC format"), so a client loads only the files of its
+-- own game type and only those register metadata. Two facts the page does not
+-- state are checked here: that this client honours the directive, and, on a
+-- Retail test realm or beta client, that it reports the `standard` game type
+-- (if it did not, its own Ptr or Beta file would be missing and this fails).
 flavour:Test(
-  "all five flavour files of the bundle registered their metadata: GetMetadataBuild answers the committed version and build of every flavour, installed or not",
+  ("only the flavour files of this client's game type (%s) were loaded: GetMetadataBuild answers the committed version and build of each of them, and nothing for the others"):format(
+    committedFlavor(RUNNING.id).gameType
+  ),
   function(ctx)
+    local runningGameType = committedFlavor(RUNNING.id).gameType
     for _, committed in ipairs(COMMITTED_FLAVORS) do
       local version, build = ApiKit:GetMetadataBuild(committed.id)
-      ctx:Log(("%s: version %s, build %s"):format(committed.id, tostring(version), tostring(build)))
-      ctx:Expect(version):ToBe(committed.version)
-      ctx:Expect(build):ToBe(committed.build)
+      ctx:Log(
+        ("%s (%s): version %s, build %s"):format(
+          committed.id,
+          committed.gameType,
+          tostring(version),
+          tostring(build)
+        )
+      )
+      if committed.gameType == runningGameType then
+        ctx:Expect(version):ToBe(committed.version)
+        ctx:Expect(build):ToBe(committed.build)
+      else
+        ctx:Expect(version):ToBe(nil)
+        ctx:Expect(build):ToBe(nil)
+      end
     end
   end
 )

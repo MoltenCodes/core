@@ -21,10 +21,12 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any, NamedTuple, Sequence
 
 from tooling.package import parts as kit_parts
+from tooling.test import previous
 from tooling.validation.validate_manifests import load_manifests, validate_graph
 
 
@@ -37,6 +39,10 @@ PACKAGES = ROOT / "packages"
 #: test scaffolding rather than package-owned code, so it is never published
 #: with a package and never reachable from runtime source.
 SHARED_SUPPORT = ROOT / "tests" / "support"
+
+#: The spec a package adds to opt into the shared conformance suite
+#: (`tests/support/KitConformance.lua`, docs/TESTING.md).
+CONFORMANCE_SPEC = "Conformance_spec.lua"
 
 #: Example-addon specs run from the repository root, outside any package. They
 #: are a test target rather than a package: the example loads framework sources
@@ -297,11 +303,19 @@ def run_package_suite(
     )
 
     command = [busted, *busted_args, target]
-    # Output is captured rather than streamed so the summary line can be parsed.
-    # Package suites are short, and the captured text is echoed immediately.
-    result = subprocess.run(
-        command, cwd=ROOT, env=env, check=False, capture_output=True, text=True
-    )
+    with tempfile.TemporaryDirectory(prefix=f"{package_name}-previous-") as previous_dir:
+        # A suite that opts into the conformance suite also proves the upgrade
+        # from the committed previous revision, when the history has it.
+        if (PACKAGES / package_name / "tests" / CONFORMANCE_SPEC).is_file() and (
+            previous.extract_previous_revision(package_name, Path(previous_dir))
+        ):
+            env[previous.ENVIRONMENT_VARIABLE] = previous_dir
+        # Output is captured rather than streamed so the summary line can be
+        # parsed. Package suites are short, and the captured text is echoed
+        # immediately.
+        result = subprocess.run(
+            command, cwd=ROOT, env=env, check=False, capture_output=True, text=True
+        )
 
     print(f"==> {package_name}")
     stdout = getattr(result, "stdout", "") or ""

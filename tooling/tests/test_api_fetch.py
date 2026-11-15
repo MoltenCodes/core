@@ -39,6 +39,7 @@ FLAVOUR_TABLE = {
             "runtimeFile": "flavours/Retail.lua",
             "branches": ["live"],
             "detection": {"projectId": 1, "testBuild": False, "betaBuild": False},
+            "gameTypes": ["standard"],
         },
         {
             "id": "ptr",
@@ -47,6 +48,7 @@ FLAVOUR_TABLE = {
             "runtimeFile": "flavours/Ptr.lua",
             "branches": ["ptr", "ptr2"],
             "detection": {"projectId": 1, "testBuild": True, "betaBuild": False},
+            "gameTypes": ["standard"],
         },
     ],
 }

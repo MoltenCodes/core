@@ -251,18 +251,86 @@ Before submitting a change with specs, check it against this list:
 
 ## New packages
 
-New packages must satisfy the package layout and manifest contract in [`PACKAGE_MANIFEST.md`](PACKAGE_MANIFEST.md), which includes a `src/.luarc.json`, a `tests/README.md` and a `tests/support/<Facade>TestEnv.lua`, and, for a package consumers embed, its two `move-folders` lines in [`.pkgmeta`](../.pkgmeta) and an "Embedding" section in its README. A new package is also listed in `docs/README.md`, `packages/README.md`, the quoted load order in `EMBEDDING.md` and the Kit lists under `.github/`; repository validation names every place still missing ([`TOOLING.md`](TOOLING.md#repository-validation)). It also needs a line-coverage floor in `tooling/test/coverage-floors.json`, set with `python3 -m tooling.test.coverage --update-floors`; the `coverage` job fails without one.
+New packages must satisfy the package layout and manifest contract in [`PACKAGE_MANIFEST.md`](PACKAGE_MANIFEST.md), which includes a `src/.luarc.json`, a `tests/README.md` and a `tests/support/<Facade>TestEnv.lua`, and, for a package consumers embed, its two `move-folders` lines in [`.pkgmeta`](../.pkgmeta) and an "Embedding" section in its README. Its manifest's `summary` is the sentence the package indexes show; `python3 -m tooling.docs.generate --write` then adds the package to every generated list (the README table and counts, `docs/README.md`, `packages/README.md`, the ARCHITECTURE tree and naming lists, `.pkgmeta`, the labels, the labeler and the issue forms), and repository validation names any list still stale ([`TOOLING.md`](TOOLING.md#generated-package-lists)). The quoted load order in `EMBEDDING.md` is checked the same way. It also needs a line-coverage floor in `tooling/test/coverage-floors.json`, set with `python3 -m tooling.test.coverage --update-floors`; the `coverage` job fails without one.
 
-Validation cannot see the rest of what a new Kit owes its readers, so it is listed here. A Kit is agreed as a nine-point record in [`ROADMAP.md`](ROADMAP.md#planned-package-policy) before its code, and the record's status line is kept current. Once it exists it also gets: a paragraph in the "Package by package" part of [`ARCHITECTURE.md`](ARCHITECTURE.md) and its place in the dependency graph there and in [`EMBEDDING.md`](EMBEDDING.md#load-order); a row in EMBEDDING's [footprint table](EMBEDDING.md#minimum-footprint-per-kit) and in its [host-requirements table](EMBEDDING.md#what-the-framework-promises); a section in [`MIGRATING_FROM_ACE3.md`](MIGRATING_FROM_ACE3.md) and a migration table in its README when it replaces an Ace3 library or one that travels with Ace3; and a real-client test addon, `tests/client/MoltenCodesTest_<Facade>/` with its `EXPECTED.md`, listed in [`tests/client/README.md`](../tests/client/README.md). `packages/editModeKit` and `packages/glowKit` are the reference layout for a new Kit.
+Validation cannot see the rest of what a new Kit owes its readers, so it is listed here. A Kit is agreed as a nine-point record in `docs/records/<package>.md`, with a row in [`ROADMAP.md`](ROADMAP.md#planned-package-policy), before its code, and the record's status line is kept current in both. Once it exists it also gets: a paragraph in the "Package by package" part of [`ARCHITECTURE.md`](ARCHITECTURE.md) and its place in the dependency graph there and in [`EMBEDDING.md`](EMBEDDING.md#load-order); a row in EMBEDDING's [footprint table](EMBEDDING.md#minimum-footprint-per-kit) and in its [host-requirements table](EMBEDDING.md#what-the-framework-promises); a section in [`MIGRATING_FROM_ACE3.md`](MIGRATING_FROM_ACE3.md) and a migration table in its README when it replaces an Ace3 library or one that travels with Ace3; and a real-client test addon, `tests/client/MoltenCodesTest_<Facade>/` with its `EXPECTED.md`, listed in [`tests/client/README.md`](../tests/client/README.md). `packages/editModeKit` and `packages/glowKit` are the reference layout for a new Kit.
 
 Public framework capability packages use a lowerCamelCase `Kit` package ID and matching PascalCase Lua facade/module name (for example `eventKit` / `EventKit`). `registry` / `Registry` is the infrastructure exception.
 
 Repository tooling should discover a new package automatically. Avoid adding package names directly to CI or editor configuration.
 
+## Shared helper blocks
+
+A Kit's copies of the shared helpers (`isSecret`, `reportError`,
+`describeKey`, `validateFacade`, the limits loop) come from
+`tooling/shared/lua/` and stand between `-- shared:begin` and
+`-- shared:end` markers ([`TOOLING.md`](TOOLING.md#shared-helper-blocks)).
+Never edit inside the markers: change the source and run
+`python3 -m tooling.shared.sync`, which rewrites every copy.
+
+Converting an existing Kit is a change of that Kit:
+
+1. `python3 -m tooling.shared.sync --list` names its hand-written helpers;
+   "identical" ones change nothing, "compare" ones may change behaviour (the
+   helpers' record in `ROADMAP.md` lists the known differences).
+2. Replace each with an empty marker pair, `-- shared:begin <name> 1` (with
+   `__FACADE__=<Facade>` for `validateFacade` and `limits`) and
+   `-- shared:end <name>`, `isSecret` and `describeKey` before `limits`, and
+   rename call sites to the shared names (`isSecretValue` becomes
+   `isSecret`). For `limits`, declare `UNBOUNDED` (or `nil`) and
+   `LIMIT_RULES` before the block.
+3. Run `python3 -m tooling.shared.sync`, then the Kit's gates. Where
+   behaviour changed, bump `IMPLEMENTATION_REVISION`, the manifest
+   `revision` and `version`, and add the `CHANGELOG.md` line and specs.
+
+A new Kit starts with the blocks. A Kit that must differ pins its helper in
+`tooling/shared/pins.json` with a reason, which review reads.
+
+## The docs/API.md skeleton
+
+Every package's `docs/API.md` has these `##` sections, in this order. Kit
+sections (one per method or concept) go anywhere after "Public surface". A
+section with nothing to say says "None." and one sentence of why. Repository
+validation warns about each departure.
+
+```markdown
+## Loading
+
+What to load first, the files, and what the Kit finds at call time.
+
+## Public surface
+
+Every facade field and method, with its arguments and return values.
+
+## Secret values
+
+Which arguments and client answers are asked about, and what the client
+refuses on its own (ADR 0002).
+
+## Limits
+
+Every `GetLimits` name with its default, ceiling and what it bounds.
+
+## Error behaviour
+
+What raises at the caller's line, what is reported through the error
+handler, and the messages.
+
+## Performance
+
+What runs per call, per frame and at load, and what it allocates.
+
+## Embedded copies and upgrades
+
+How two embedded revisions share one instance and what an upgrade keeps.
+```
+
 ## Generated files
 
 Some files are produced by tooling from data and are never edited by hand:
-the `apiKit` runtime bindings (`packages/apiKit/src/flavours/*.lua`), its
+the shared helper blocks in each Kit (`tooling.shared.sync`), the package
+lists between `generated:` markers (`tooling.docs.generate`), the `apiKit`
+runtime bindings (`packages/apiKit/src/flavours/*.lua`), its
 LuaCATS definitions (`packages/apiKit/types/`), its metadata
 (`packages/apiKit/metadata/`), its change reports and history. Each says so
 in its first lines. A change to them is a change to the metadata, the naming

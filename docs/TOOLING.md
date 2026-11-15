@@ -41,8 +41,12 @@ tooling/
 ├── client/
 │   ├── flavours.py                # the client flavours the real-client tests cover: folder, project ID
 │   ├── install.py                 # installs the bundle and the real-client test addons into a game folder, or removes them
+│   ├── session.py                 # one session per flavour: prepare (install everything, the sheet), collect, clean
 │   ├── report.py                  # merges the harness's saved results into the committed result matrix
 │   └── saved_variables.py         # reads a saved-variables file as Lua literals, without running Lua
+├── docs/
+│   ├── generate.py                # the package lists between generated markers, rendered from the manifests
+│   └── split_roadmap.py           # moves ROADMAP's nine-point records into docs/records/, one file per package
 ├── package/
 │   ├── build.py                   # assembles a checksummed bundle that installs as an addon
 │   ├── embeds.py                  # writes an addon's embeds.xml (or .toc lines) for chosen Kits and parts
@@ -56,8 +60,13 @@ tooling/
 │   ├── notes.py                   # prints one release's notes
 │   ├── pkgmeta.py                 # narrows .pkgmeta to one Kit for a package release
 │   └── publish_mode.py            # decides dry run or upload, and whether to draft a release
+├── shared/
+│   ├── lua/                       # the canonical shared helpers Kits copy: isSecret, reportError, describeKey, validateFacade, limits
+│   ├── sync.py                    # copies them between a Kit's markers; --check is the gate, --list the migration list
+│   └── pins.json                  # Kits that keep an older helper revision or opt out, each with a reason
 ├── test/
 │   ├── run.py                     # package-aware Busted orchestration
+│   ├── previous.py                # finds a Kit's committed previous revision for the conformance suite
 │   ├── coverage.py                # the same run under LuaCov, gated on per-package floors
 │   └── coverage-floors.json       # each package's line-coverage floor, a whole percent
 ├── tests/                         # Python unit tests for repository tooling
@@ -203,6 +212,101 @@ built from the same selection list the same files in the same order.
 repository validation holds those blocks to the manifests and prints the
 replacement when they drift.
 
+## apiKit flavour files in a `.toc`
+
+Every `.toc` the tooling writes (the bundle's, `tooling.release.library_toc`'s
+for the packager, the real-client installer's bundle, and
+`tooling.package.embeds --toc`) ends each apiKit flavour file line with an
+inline directive that loads it only on its own client:
+
+```toc
+apiKit\flavours\Retail.lua [AllowLoadGameType standard]
+apiKit\flavours\ClassicMop.lua [AllowLoadGameType mists]
+apiKit\flavours\ClassicEra.lua [AllowLoadGameType vanilla]
+```
+
+The game types come from `gameTypes` in `tooling/api/flavours.json` (Retail,
+Ptr and Beta `standard`); `tooling.package.toc.toc_entry` adds the directive,
+and `entry_to_bundle_path` drops it again, so `--verify` and the load order
+compare paths. warcraft.wiki.gg, "TOC format" (read 2026-11-15), documents
+inline directives on file lines since patch 11.1.5, included in Mists of
+Pandaria Classic 5.5.4 and Classic Era 1.15.9, and says a list naming no
+recognised game type still loads the file. On host Lua 5.1, compiling all
+five files takes 11.4 ms and allocates 6.4 MB; one Classic file 1.8 ms and
+1.6 MB; Retail with Ptr and Beta 7.8 ms and 4.3 MB. Held memory does not
+change: ApiKit discarded the other flavours' installers already. `embeds.xml`
+has no such directive; an embedder lists only the flavours it ships. Two
+facts the page does not state are checked by the ApiKit client suite:
+whether the client honours the directive, and which game type a Retail test
+realm or beta client reports. Whether Burning Crusade Classic Anniversary
+2.5.6 reads it is not known; that client has no ApiKit flavour, so no flavour
+file applies there whichever way it reads the line.
+
+## Shared helper blocks
+
+Every Kit is embeddable on its own, so the small helpers each needs live in
+its own file. Written by hand they drifted (28 copies of `isSecret` had 10
+bodies, 18 of `describeKey` 5). Each helper now has one source under
+`tooling/shared/lua/`, and a Kit carries a verbatim copy between markers:
+
+```lua
+-- shared:begin validateFacade 1 __FACADE__=GlowKit
+-- Copied from tooling/shared/lua/validateFacade.lua by python3 -m tooling.shared.sync; edit that file, not this copy.
+local function validateFacade(receiver, label, level)
+  ...
+end
+-- shared:end validateFacade
+```
+
+```bash
+python3 -m tooling.shared.sync              # rewrite every block from its source
+python3 -m tooling.shared.sync --check      # the gate: fail when a block differs
+python3 -m tooling.shared.sync --list       # every hand-written helper still to convert
+```
+
+- **Sources.** `isSecret.lua` (the probe rule: `issecretvalue` read once at
+  load, read again per call only when it was absent then; a strict boolean),
+  `reportError.lua` (the host error handler through `pcall`, `print` when it
+  is missing or raises), `describeKey.lua` (`<secret>`, a string as written,
+  a number or boolean through `tostring`, anything else `<type>`; never a
+  caller's `__tostring`), `validateFacade.lua` and `limits.lua`
+  (`validateLimitUpdate`, `applyLimitUpdate` and `copyLimits` over a
+  `LIMIT_RULES` table the Kit declares; the source's header documents each
+  rule field). Each source names `-- shared revision: N`,
+  `-- shared requires:` (blocks that must come earlier in a Kit's file) and
+  `-- shared parameters:`. The body runs from `-- shared:body` to
+  `-- shared:exports`; the stand-ins before it (which let the source lint and
+  compile alone) and the exports after it (which the behaviour tests load)
+  are never copied.
+- **One main-chunk local per helper.** A block declares exactly the names a
+  Kit calls and keeps any state of its own inside a `do` block, so converting
+  a Kit never raises its locals (the `lua_limits` ratchet only goes down).
+- **Parameters** are identifiers that are valid Lua (`__FACADE__`), replaced
+  in identifiers and strings alike. Body lines are at most 90 columns, with a
+  parameter measured at 14 characters, so a copy indented into a `do` block
+  never needs StyLua to rewrap it.
+- **Revisions and pins.** A block names the revision it was copied at; one
+  older than its source fails unless `tooling/shared/pins.json` pins that
+  Kit's helper to it with a reason. `optOuts` there leaves a Kit's helper off
+  the migration list, also with a reason (registry opts out of every helper:
+  its 1000-line budget cannot take the markers).
+- **What `--check` refuses**: a block that differs from its source (it
+  prints the expected text and names the source), an unknown helper, a
+  missing or unknown parameter, a required block that does not come earlier,
+  an unpinned older revision, a malformed or unclosed marker, a source over
+  the column budget. It never fails because a Kit has no blocks: converting a
+  Kit is that Kit's own change (`CONTRIBUTING.md`, "Shared helper blocks").
+- **`--list`** prints every `local function isSecret|isSecretValue|
+  reportError|describeKey|validateFacade|validateLimitUpdate(` outside a
+  block, as `package: file:line helper (identical|compare)`: "identical"
+  when its code, comments aside, is already the source's body.
+- **Where it runs**: the `repository` CI job and `python3 -m tooling.lint`.
+  `tooling/tests/test_shared_sync.py` covers the markers, rewriting, every
+  refusal and the pins in temporary repositories, and runs
+  `tooling/tests/fixtures/shared/behaviour.lua` under host Lua 5.1 (skipped
+  where `lua` is absent; the `limits` CI job runs it) to prove each helper
+  behaves as its header says, error levels included.
+
 ## Lua limits
 
 Lua 5.1 refuses to compile a function with more than 200 active locals or more
@@ -306,7 +410,88 @@ where there is one, the line to add:
   option in the Kit dropdown of the bug report and feature request forms, for
   every package and for no package that does not exist;
 - every repository-relative Markdown link names a file that exists (generated
-  reference and change reports excepted).
+  reference and change reports excepted);
+- the package lists between generated markers (see "Generated package
+  lists"): a stale block fails with the block to put in its place;
+- no package is called by a word `/mct` reads as a command (`all`, `guided`,
+  `combat`, `next`, `skip`);
+- once `docs/records/` exists, every record file is linked from ROADMAP and
+  every record there has points 1 to 9 (see "ROADMAP records").
+
+It also prints **warnings**, which do not fail it: every `docs/API.md` that
+does not follow the required skeleton (see "The docs/API.md skeleton").
+
+## Generated package lists
+
+A new Kit used to be written by hand into fourteen lists in nine files, and
+the three package indexes gave three different purposes for every package.
+Each list is now a block between markers, rendered from the manifests:
+
+```bash
+python3 -m tooling.docs.generate                 # print every block
+python3 -m tooling.docs.generate --check         # fail on a stale block, print its replacement
+python3 -m tooling.docs.generate --write         # rewrite every marked block in place
+python3 -m tooling.docs.generate --block kit-labels
+```
+
+| Block | File | Rendered from |
+|---|---|---|
+| `package-total` (inline), `package-count-sentence` (inline), `package-table` | `README.md` | the count, and each package's `name` and `summary` |
+| `package-index` | `docs/README.md`, `packages/README.md` | `displayName` or `name`, and `summary` |
+| `package-tree`, `package-ids` (inline), `facade-names` (inline) | `docs/ARCHITECTURE.md` | `name`, `displayName` (registry left out of the naming lists) |
+| `move-folders` | `.pkgmeta` | every release package's `src` and `docs` |
+| `kit-labels`, `kit-labeler` | `.github/labels.yml`, `.github/labeler.yml` | every package |
+| `kit-options` | both issue forms | every package |
+
+- **Markers.** Markdown: `<!-- generated:<name> -->` and
+  `<!-- /generated:<name> -->` on their own lines, or around a value inside a
+  line; YAML: `# generated:<name>` and `# /generated:<name>` comment lines,
+  indented like the entries they hold. Only the text between markers is
+  generated; `--write` never adds a marker.
+- **Order.** `registry`, then the release packages by ID (case-insensitive),
+  then the development packages, in every list.
+- **Purpose text** is the manifest's optional `summary` (one sentence on one
+  line, at most 240 characters, ending with a full stop, no `|`), or its
+  `description` when there is none.
+- **A missing marker fails** too (`MARKERS_REQUIRED` in
+  `tooling/docs/generate.py`), so a list cannot fall back to being kept by
+  hand. The older presence checks of `validate_repository` stay as a second
+  line.
+- `tooling/tests/test_docs_generate.py` covers every renderer, the order,
+  the markers, `--write` and the summary rules.
+
+## The docs/API.md skeleton
+
+Every package's `docs/API.md` carries these `##` sections, in this order:
+Loading, Public surface, Secret values, Limits, Error behaviour,
+Performance, Embedded copies and upgrades. Other sections may stand anywhere
+after Public surface; a required one may say "None." and why
+(`CONTRIBUTING.md` has the copyable skeleton). Headings inside fenced code
+are ignored. Repository validation reports each departure as a warning,
+with the rename to make for the old spellings (`Errors`, `Cost`, `Upgrades`,
+`Embedded identity and upgrades`); `API_SECTIONS_REQUIRED` in
+`validate_repository.py` turns the warnings into errors once every document
+conforms.
+
+## ROADMAP records
+
+```bash
+python3 -m tooling.docs.split_roadmap            # print the plan, change nothing
+python3 -m tooling.docs.split_roadmap --write    # move the records
+```
+
+Moves every nine-point record of `docs/ROADMAP.md`, byte for byte, into
+`docs/records/<package>.md` (tooling records into `docs/records/tooling.md`),
+each under a heading of its title, and leaves in ROADMAP, where each run of
+records stood, a table of title, package, status (the first clause of point
+9) and link. A record is its `**<title>** — <kind>` line and everything up
+to the next record, heading or `---` line, so an appendix such as a data
+table travels with it. It belongs to the package its kind's facade names,
+else the package its title starts with, else `tooling` for a tooling, test
+support, packaging or documentation record; any other stops the run, named.
+It ran once, on 2026-11-16: the records now live in `docs/records/` and a new record is written there directly.
+`tooling/tests/test_split_roadmap.py` holds the move to byte-for-byte on a
+fixture and checks every committed record can be placed.
 
 ## Lint policy: deliberate `_G` access
 
@@ -728,8 +913,12 @@ repository and a temporary directory, so it is deliberately narrow:
 
 ```bash
 python3 -m tooling.client.install --wow-dir DIR [--flavour-dir _retail_] --package ID [--package ID ...] [--dry-run]
+python3 -m tooling.client.install --wow-dir DIR [--flavour-dir _retail_] --all [--dry-run]
 python3 -m tooling.client.install --wow-dir DIR [--flavour-dir _retail_] --remove [--dry-run]
 ```
+
+`--all` installs the test addon of every package that has one under
+`tests/client/` (41 today) and names the packages without one (testKit).
 
 - **Flavours.** `--flavour-dir` names the client folder under the game folder:
   `_retail_` (the default), `_classic_era_` (Classic Era, which Hardcore and
@@ -783,6 +972,36 @@ python3 -m tooling.client.install --wow-dir DIR [--flavour-dir _retail_] --remov
 `tooling/tests/test_client_install.py` runs both against a fake game folder in
 a temporary directory, with a neighbouring addon and saved variables that must
 survive.
+
+## Real-client sessions
+
+```bash
+python3 -m tooling.client.session prepare --wow-dir DIR [--flavour-dir _retail_] [--packages ID,...] [--dry-run]
+python3 -m tooling.client.session collect --wow-dir DIR [--flavour-dir _retail_]
+python3 -m tooling.client.session clean   --wow-dir DIR [--flavour-dir _retail_] [--force] [--dry-run]
+```
+
+- **`prepare`** is `install --all` (or the named packages) plus a session
+  sheet, printed and written to `<DIR>/<flavour>/MoltenCodesTest-session.txt`:
+  the in-game lines in order (`/mct run all`, `/mct run guided`, `/mct run
+  combat`, `/reload`, settingsKit's second run, `/reload`), the preconditions
+  each `EXPECTED.md` names (its "Before the run" paragraph and the first
+  paragraph of "Combat run", "The procedure" and "Per flavour"), the suites
+  registered with `interactive = "..."`, and each package's expected totals
+  from its `EXPECTED.md` totals line.
+- **`collect`** runs `tooling.client.report` for the flavour, then prints per
+  package "as expected", "differs" (both totals) or "not run", comparing the
+  default run, or else the unattended and guided runs summed. A difference is
+  reported, never fatal. It writes `MoltenCodesTest-collected.txt` with the
+  collected installation's time.
+- **`clean`** is `install --remove` plus the sheet and the marker, refused
+  while the installed `Expected.lua`'s installation time is not the one
+  `collect` recorded; `--force` overrides and says so.
+- `tooling/tests/test_client_session.py` covers the sheet, the comparison and
+  the clean gate; `tooling/tests/test_client_harness.py` runs
+  `tooling/tests/fixtures/harness/Harness_spec.lua`, which drives the
+  harness's `/mct run all`, `/mct run guided`, `/mct next` and `/mct skip`
+  over the Kits in the fake client (CI's `test` job).
 
 ## Real-client results
 
@@ -996,15 +1215,15 @@ timeout:
 
 | Job | What it checks |
 |---|---|
-| `test` | `python3 -m tooling.test.run`: every package suite and the example addon, under Lua 5.1.5 and Busted |
+| `test` | `python3 -m tooling.test.run`: every package suite and the example addon, under Lua 5.1.5 and Busted, with full history so an opted-in conformance suite upgrades from the committed previous revision; then the conformance suite's and the client harness's own Busted-driven tests |
 | `coverage` | `python3 -m tooling.test.coverage`: every spec but the `#allocation` ones passes under LuaCov and every package meets its floor; the per-package table with floors in the job summary, the LuaCov report as the `luacov-report` artefact |
 | `types` | `lua-language-server --check` for every package source directory, `examples/` and `tests/client/` |
 | `format` | `stylua --check .` |
 | `lint` | `python3 -m tooling.lint`, both scopes |
 | `package` | `tooling.package.build --all --verify`, then `sha256sum --check --strict`; on a push to `main`, the bundle is uploaded as the artefact `MoltenCodes-<commit>` |
 | `spell` | `python3 -m tooling.spell --require` and the cspell integration tests |
-| `repository` | repository validation, `tooling.api.generate --all --check`, `python3 -m tooling.validation.flavour_api`, the tooling unit tests, `compileall` |
-| `limits` | `python3 -m tooling.validation.lua_limits` and its unit tests, with the Lua 5.1 toolchain (see "Lua limits") |
+| `repository` | repository validation, `tooling.api.generate --all --check`, `python3 -m tooling.validation.flavour_api`, `tooling.shared.sync --check`, `tooling.docs.generate --check`, the tooling unit tests, `compileall` |
+| `limits` | `python3 -m tooling.validation.lua_limits` and its unit tests, and the shared helpers' behaviour tests, with the Lua 5.1 toolchain (see "Lua limits") |
 | `commits` | pull requests only: `python3 -m tooling.ci.check_commits` over the new commits and the title |
 | `secrets` | gitleaks over the whole history, with found values redacted from the log |
 | `workflows` | actionlint (and the shellcheck it runs) over every workflow |
@@ -1175,6 +1394,7 @@ tooling/bench/
 ```
 
 ```bash
+python3 -m tooling.bench.client_install --wow-dir DIR --plan smoke|all [--rounds N] [--reload-seconds S]
 python3 -m tooling.bench.client_install --wow-dir DIR [--flavour-dir _retail_] [--cache DIR] [--dry-run]
 python3 -m tooling.bench.client_install --wow-dir DIR [--flavour-dir _retail_] --remove [--dry-run]
 python3 -m tooling.bench.client_report --wow-dir DIR [--flavour-dir NAME ...] [--out FILE] [--markdown FILE] [--dry-run]
@@ -1200,9 +1420,27 @@ python3 -m tooling.bench.client_report --render FILE [--markdown FILE]
   touched; `--dry-run` changes nothing and downloads nothing. Ace3 is never
   in the repository: copying it into the local game folder is use, not
   redistribution.
+- **Sets.** Install also writes one load-on-demand side addon per set of
+  `client_workloads.SIDE_SETS` and side, for the `login` and
+  `savedVariables` workloads: `MoltenCodesBench_KitsMinimum` and
+  `MoltenCodesBench_Ace3Minimum`, `..._KitsTypical` and `..._Ace3Typical`,
+  `MoltenCodesBench_Ace3Full` (every pinned Ace3 file, AceConfigDialog-3.0
+  included; the full Kits set is the Kits side itself), and
+  `MoltenCodesBench_KitsSaved` and `MoltenCodesBench_Ace3Saved`, each with one
+  `## SavedVariables`. A Kit set is a builder selection of its Kits' cores,
+  so it follows the manifests and parts. `Installation.lua` names each side's
+  sets and carries the profiles.
+- **Profiles and the planner.** `smoke` is 13 cases (one headline case per
+  shared workload, `window open-close-drawn`, `timersLive oneshot-fire-1000`,
+  `session load-60s` and `memory-300s`), 26 sessions with both sides; `all`
+  is every case (the shared cases from the newest host results file). `/mcb
+  run smoke|all [rounds]` queues one; `--plan` prints the sessions, reloads
+  and an estimate (case lengths plus `--reload-seconds`, 20 by default, an
+  assumption it states) and installs nothing.
 - **Remove** deletes `MoltenCodesBench` and every `MoltenCodesBench_*` entry
   of `AddOns`, every `MoltenCodesBench.lua` and `.lua.bak` under
-  `WTF/Account/*/SavedVariables/` and `WTF/Account/*/*/*/SavedVariables/`,
+  `WTF/Account/*/SavedVariables/` and `WTF/Account/*/*/*/SavedVariables/`
+  (and the saved sets' `MoltenCodesBench_*.lua`),
   and the bench addons' lines in every `AddOns.txt`, with the same link and
   line-ending care as the test installer (whose removal helpers it shares,
   with its own notion of which addons it owns). The two installers never
@@ -1216,7 +1454,10 @@ python3 -m tooling.bench.client_report --render FILE [--markdown FILE]
   from a fake game folder with a neighbouring addon and saved variables that
   must survive, with a fake verified Ace3 cache; holds the catalogue to the
   host's and to the Lua files; and feeds the report saved variables written in
-  the client's format. No network, no Lua, no real game folder.
+  the client's format. `tooling/tests/test_bench_profiles.py` holds the
+  profiles to the cases the host results and the Lua modules declare, and
+  checks the planner, the sets and the AceConfigDialog pin. No network, no
+  Lua, no real game folder.
 - **Lint and checks.** `tooling/bench/client/` is runtime Lua for
   `python3 -m tooling.lint`, StyLua formats it, and
   `lua-language-server --check tooling/bench/client --checklevel=Warning` reads

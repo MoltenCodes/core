@@ -82,8 +82,32 @@ LOADED_FILES: tuple[str, ...] = (
     "AceGUI-3.0/widgets/AceGUIContainer-Frame.lua",
 )
 
-#: SHA-256 over `LOADED_FILES` at `ACE3_COMMIT`, as `content_digest` computes it.
-EXPECTED_CONTENT_DIGEST = "01f8e275ce38c4f739781feaf3bd95589d7cee854a7da953eb1ec3efcac24412"
+#: AceConfigDialog-3.0 and the AceGUI-3.0 containers and widgets it creates
+#: that `LOADED_FILES` does not already hold, read from its source at
+#: `ACE3_COMMIT` (`gui:Create` of BlizOptionsGroup, DropdownGroup, TabGroup and
+#: TreeGroup; `CreateControl` of Dropdown, ColorPicker, Keybinding,
+#: MultiLineEditBox and Icon). Pinned so the options dialog most Ace3 addons
+#: load can be compared; only the `full` login set loads them, so every
+#: existing workload keeps exactly the files it loaded before.
+DIALOG_FILES: tuple[str, ...] = (
+    "AceGUI-3.0/widgets/AceGUIContainer-BlizOptionsGroup.lua",
+    "AceGUI-3.0/widgets/AceGUIContainer-DropDownGroup.lua",
+    "AceGUI-3.0/widgets/AceGUIContainer-TabGroup.lua",
+    "AceGUI-3.0/widgets/AceGUIContainer-TreeGroup.lua",
+    "AceGUI-3.0/widgets/AceGUIWidget-DropDown-Items.lua",
+    "AceGUI-3.0/widgets/AceGUIWidget-DropDown.lua",
+    "AceGUI-3.0/widgets/AceGUIWidget-ColorPicker.lua",
+    "AceGUI-3.0/widgets/AceGUIWidget-Keybinding.lua",
+    "AceGUI-3.0/widgets/AceGUIWidget-MultiLineEditBox.lua",
+    "AceGUI-3.0/widgets/AceGUIWidget-Icon.lua",
+    "AceConfig-3.0/AceConfigDialog-3.0/AceConfigDialog-3.0.lua",
+)
+
+#: Every pinned file: what the benchmark loads, then the dialog files.
+PINNED_FILES: tuple[str, ...] = (*LOADED_FILES, *DIALOG_FILES)
+
+#: SHA-256 over `PINNED_FILES` at `ACE3_COMMIT`, as `content_digest` computes it.
+EXPECTED_CONTENT_DIGEST = "91ab2b1e56bef508452d17284efb39cf9b28bc98c8f99b1766cd615045f4d06f"
 
 #: The provenance file written beside an extracted copy.
 PROVENANCE_NAME = "fetch.json"
@@ -150,7 +174,7 @@ def ensure_outside_repository(path: Path, repository: Path = ROOT) -> None:
         )
 
 
-def content_digest(directory: Path, files: Sequence[str] = LOADED_FILES) -> str:
+def content_digest(directory: Path, files: Sequence[str] = PINNED_FILES) -> str:
     """SHA-256 over each listed file's relative path and bytes, in the given order.
 
     The path is hashed with its length, so moving bytes from one file to the

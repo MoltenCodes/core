@@ -1225,5 +1225,74 @@ class RepositoryIndexTests(unittest.TestCase):
         self.assertEqual([], module.validate_github_kit_lists(manifests))
 
 
+class ApiSectionTests(unittest.TestCase):
+    """The required `docs/API.md` skeleton (docs/CONTRIBUTING.md)."""
+
+    CONFORMING = "\n".join(
+        [
+            "# Kit API",
+            "## Loading",
+            "## Public surface",
+            "## `Kit:Do()`",
+            "## Secret values",
+            "None. Kit compares nothing a caller passes.",
+            "## Limits",
+            "## Error behaviour",
+            "## Performance",
+            "## Embedded copies and upgrades",
+            "## Deviations from the planned contract",
+        ]
+    )
+
+    def test_a_conforming_document_has_no_problem(self):
+        self.assertEqual([], module.api_section_problems(self.CONFORMING))
+
+    def test_a_missing_section_is_named(self):
+        text = self.CONFORMING.replace("## Secret values\n", "")
+        problems = module.api_section_problems(text)
+        self.assertEqual(['has no "## Secret values" section (it may say "None." and why)'], problems)
+
+    def test_order_is_checked(self):
+        text = self.CONFORMING.replace("## Secret values", "## X").replace("## Limits", "## Secret values")
+        text = text.replace("## X", "## Limits")
+        problems = module.api_section_problems(text)
+        self.assertEqual(1, len(problems))
+        self.assertIn("orders its required sections", problems[0])
+
+    def test_renames_are_suggested_and_count_as_the_section(self):
+        text = self.CONFORMING.replace("## Error behaviour", "## Errors").replace(
+            "## Performance", "## Cost"
+        )
+        self.assertEqual(
+            [
+                'rename "## Errors" to "## Error behaviour"',
+                'rename "## Cost" to "## Performance"',
+            ],
+            module.api_section_problems(text),
+        )
+
+    def test_a_section_before_loading_is_reported(self):
+        text = self.CONFORMING.replace("# Kit API\n", "# Kit API\n## Overview\n")
+        self.assertIn('has "## Overview" before "## Loading"', module.api_section_problems(text))
+
+    def test_headings_inside_fences_are_ignored(self):
+        text = self.CONFORMING + "\n```toc\n## Title: My Addon\n```\n"
+        self.assertEqual([], module.api_section_problems(text))
+
+    def test_warning_mode_reports_without_failing(self):
+        manifests, _ = validate_manifests.load_manifests()
+        warnings = module.repository_warnings(manifests)
+        flagged = {item.split("/")[1] for item in (w.split("packages", 1)[1] for w in warnings)}
+        self.assertIn("timerKit", flagged)
+        self.assertNotIn("glowKit", flagged)
+
+
+class ReservedPackageIdTests(unittest.TestCase):
+    def test_harness_words_are_refused_as_package_ids(self):
+        errors = module.validate_reserved_package_ids({"all": {}, "timerKit": {}})
+        self.assertEqual(1, len(errors))
+        self.assertIn('"all" is a reserved word of /mct', errors[0])
+
+
 if __name__ == "__main__":
     unittest.main()

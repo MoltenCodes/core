@@ -515,7 +515,11 @@ local function runItem(item, entry)
     error("unknown workload " .. tostring(item.workload), 0)
   end
 
-  loadSide(item.side, entry.session)
+  -- A workload that loads a set of the side itself (`login`,
+  -- `savedVariables`) measures that load, so the side is not loaded first.
+  if catalogue.loadsSide ~= false then
+    loadSide(item.side, entry.session)
+  end
   -- Taken after the load, so the list shows the side addon beside everything else.
   entry.session.addonsLoaded = loadedAddons()
   coroutine.yield()
@@ -531,6 +535,7 @@ local function runItem(item, entry)
     files = info.files or {},
     packages = info.packages or {},
     baselineFrames = session.baselineFrames or {},
+    sets = info.sets,
   })
   entry.previousHandler = callHost("geterrorhandler")
   callHost("seterrorhandler", host.CaptureError)
@@ -783,10 +788,77 @@ local function listWorkloads()
   end
 end
 
+---Queue a profile (`/mcb run smoke [rounds]`, `/mcb run all [rounds]`): every
+---case it names, on both sides, the first side alternating from case to case
+---and round to round, one session per item. A profile skips the per-workload
+---"checks" items: it measures, and `/mcb run <workload> both` checks.
+---@param profileName string
+---@param roundsText string|nil
+local function runProfile(profileName, roundsText)
+  local rounds = tonumber(roundsText or "1")
+  if rounds == nil or rounds < 1 or rounds > MAX_ROUNDS or rounds ~= math.floor(rounds) then
+    say("rounds must be a whole number from 1 to " .. MAX_ROUNDS)
+    return
+  end
+  if queue() ~= nil then
+    say("a run is queued already; /mcb status shows it, /mcb stop drops it")
+    return
+  end
+  for _, side in ipairs(SIDE_ORDER) do
+    if sideInfo(side) == nil then
+      say("the " .. WORD_FOR_SIDE[side] .. " side is not installed; reinstall the benchmark")
+      return
+    end
+  end
+  local items = {}
+  for round = 1, rounds do
+    for index, entry in ipairs(private.profiles[profileName]) do
+      local first = (index + round) % 2 == 0 and 1 or 2
+      for position = 1, 2 do
+        local side = SIDE_ORDER[position == 1 and first or 3 - first]
+        items[#items + 1] = {
+          workload = entry.workload,
+          side = side,
+          step = "case",
+          case = entry.case,
+          round = round,
+        }
+      end
+    end
+  end
+  saved().queue = {
+    workload = profileName .. " profile",
+    sides = SIDE_ORDER,
+    rounds = rounds,
+    items = items,
+    listed = {},
+    done = 0,
+    planned = true,
+    total = #items,
+  }
+  say(("%s profile: %d sessions queued"):format(profileName, #items))
+  if session.ran or session.loadedSide ~= nil then
+    queue().awaitingReload = true
+    showPanel(
+      "MoltenCodes Bench: the " .. profileName .. " profile is queued.\nReload to start.",
+      function()
+        saved().queue = nil
+        hidePanel()
+      end
+    )
+    return
+  end
+  startWhenSettled()
+end
+
 ---`/mcb run <workload> <side> [rounds]`
 ---@param arguments string[]
 local function run(arguments)
   local workloadName, sideWord, roundsText = arguments[2], arguments[3], arguments[4]
+  if type(private.profiles) == "table" and private.profiles[workloadName or ""] ~= nil then
+    runProfile(workloadName, sideWord)
+    return
+  end
   if workloadName == nil or findWorkload(workloadName) == nil then
     say("unknown workload " .. tostring(workloadName) .. "; /mcb list shows them")
     return
@@ -935,6 +1007,8 @@ end
 local HELP_LINES = {
   "/mcb list: the workloads, and the host workloads the client does not run",
   "/mcb run <workload> <kits|ace3|both> [rounds]: queue a run; one case per session",
+  "/mcb run smoke [rounds]: the short profile, one headline case per workload, both sides",
+  "/mcb run all [rounds]: every case of every workload, both sides",
   "/mcb continue: reload now to run the next queued item",
   "/mcb status: what is queued",
   "/mcb stop: drop the queue (saved results stay)",

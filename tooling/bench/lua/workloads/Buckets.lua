@@ -1,15 +1,16 @@
---- Event bucketing: EventKit's `Coalesce` (on SchedulerKit) against AceBucket-3.0.
+--- Event bucketing: EventKit's `Coalesce` (its Coalescing part, on TimerKit)
+--- against AceBucket-3.0.
 ---
 --- Both sides collect a burst of game events into one set keyed by the
 --- event's first payload argument and deliver it once per interval, with
 --- AceBucket's interval rule on both: the first event of a burst starts the
 --- interval, the callback runs at its end with everything collected.
 ---
----   MoltenCodes  `EventKit:Coalesce(events, interval, callback)`, whose
----                timing half is a SchedulerKit `Coalesce` handle on a
----                TimerKit timer (every handle's in one EventKit-private
----                SchedulerKit scope since EventKit revision 18);
----                `handle:Close()`
+---   MoltenCodes  `EventKit:Coalesce(events, interval, callback)` from
+---                EventKit's Coalescing part, which times itself on a
+---                TimerKit timer since EventKit revision 22 (SchedulerKit
+---                is needed only for a `lane`, which this workload does not
+---                use, so it is not loaded); `handle:Close()`
 ---   Ace3         `object:RegisterBucketEvent(events, interval, callback)`
 ---                on AceEvent-3.0 and AceTimer-3.0; `UnregisterBucket`
 ---
@@ -25,9 +26,9 @@
 --- goes idle only when that timer finds nothing, while the Kit is idle at once.
 ---
 --- Left out: AceBucket's `RegisterBucketMessage`. Its counterpart is a
---- SchedulerKit `Coalesce` handle fed by a SignalKit bus listener, a pairing
---- the application writes itself rather than one call, so the event form is
---- the one compared.
+--- bucketed SignalKit bus message (SignalKit's Coalescing part, on
+--- SchedulerKit), another Kit than the one measured here, so the event form
+--- is the one compared.
 
 local Buckets = {}
 
@@ -69,8 +70,8 @@ local KEY_PROBE = 300
 ---@return table adapter, table[] libraries
 local function kitAdapter(host)
   local loaded =
-    host.RequireAll({ "Registry", "SignalKit", "EventKit", "TimerKit", "SchedulerKit" })
-  local SignalKit, EventKit, TimerKit, SchedulerKit = loaded[2], loaded[3], loaded[4], loaded[5]
+    host.RequireAll({ "Registry", "SignalKit", "EventKit", "TimerKit", "EventKit-Coalescing" })
+  local SignalKit, EventKit, TimerKit = loaded[2], loaded[3], loaded[4]
   local adapter = { side = "moltencodes" }
 
   function adapter.bucket(callback)
@@ -84,7 +85,6 @@ local function kitAdapter(host)
   return adapter,
     {
       { name = "EventKit", revision = EventKit.REVISION },
-      { name = "SchedulerKit", revision = SchedulerKit.REVISION },
       { name = "TimerKit", revision = TimerKit.REVISION },
       { name = "SignalKit", revision = SignalKit.REVISION },
     }

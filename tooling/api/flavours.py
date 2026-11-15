@@ -67,7 +67,32 @@ MIRROR_KEYS = {"repository", "documentationPath"}
 PROBE_KEYS = {"projectId", "testBuild", "betaBuild"}
 
 #: The keys every flavour entry carries, and nothing else.
-FLAVOUR_KEYS = {"id", "displayName", "namespace", "runtimeFile", "branches", "detection"}
+FLAVOUR_KEYS = {
+    "id",
+    "displayName",
+    "namespace",
+    "runtimeFile",
+    "branches",
+    "detection",
+    "gameTypes",
+}
+
+#: The client game types a `.toc` file line can be restricted to with
+#: `[AllowLoadGameType ...]` (warcraft.wiki.gg, "TOC format", read 2026-11-15).
+#: A flavour's `gameTypes` names the clients its runtime file is loaded on, so
+#: the bundle `.toc` loads each flavour file only where it can apply.
+GAME_TYPES = (
+    "standard",
+    "forever",
+    "camelot",
+    "mists",
+    "cata",
+    "wrath",
+    "tbc",
+    "vanilla",
+    "plunderstorm",
+    "wowhack",
+)
 
 #: The keys of a flavour's `detection` object.
 DETECTION_KEYS = {"projectId", "testBuild", "betaBuild"}
@@ -114,6 +139,8 @@ class Flavour:
     runtime_file: str
     branches: tuple[str, ...]
     detection: Detection
+    #: The client game types the runtime file is loaded on (`GAME_TYPES`).
+    game_types: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -209,6 +236,17 @@ def _parse_flavour(index: int, entry: Any) -> Flavour:
     if len(set(branches)) != len(branches):
         raise FlavoursError(f"{where}.branches lists the same branch twice")
 
+    game_types = fields["gameTypes"]
+    if not isinstance(game_types, list) or not game_types:
+        raise FlavoursError(f"{where}.gameTypes must be a non-empty array")
+    for position, game_type in enumerate(game_types):
+        if game_type not in GAME_TYPES:
+            raise FlavoursError(
+                f"{where}.gameTypes[{position}] must be one of {', '.join(GAME_TYPES)}"
+            )
+    if len(set(game_types)) != len(game_types):
+        raise FlavoursError(f"{where}.gameTypes lists the same game type twice")
+
     return Flavour(
         id=_require_string(f"{where}.id", fields["id"], FLAVOUR_ID_RE),
         display_name=_require_string(f"{where}.displayName", fields["displayName"]),
@@ -216,6 +254,7 @@ def _parse_flavour(index: int, entry: Any) -> Flavour:
         runtime_file=_require_string(f"{where}.runtimeFile", fields["runtimeFile"], RUNTIME_FILE_RE),
         branches=tuple(branches),
         detection=_parse_detection(f"{where}.detection", fields["detection"]),
+        game_types=tuple(game_types),
     )
 
 

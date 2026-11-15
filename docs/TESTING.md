@@ -97,7 +97,14 @@ and group communication with a second character. The last command removes
 everything, the saved results included. Nothing runs at login: runs start
 only by `/mct run`. Tests that need the player in combat live in combat suites
 that `/mct run <package> combat` runs after waiting a bounded time for combat
-(a training dummy); the default run reports them as skips. Each test addon's
+(a training dummy); the default run reports them as skips. A whole session runs in
+passes: `/mct run all` runs every suite that needs neither the player nor
+combat and ends with one totals line for the pass; `/mct run guided` then
+takes the suites registered with `interactive = "<instruction>"` one package
+at a time, printing the instruction and waiting for `/mct next` (or `/mct
+skip`). `python3 -m tooling.client.session prepare|collect|clean` installs
+every suite with a session sheet, records and compares the results, and
+removes everything once they are recorded ([`TOOLING.md`](TOOLING.md#real-client-sessions)). Each test addon's
 `EXPECTED.md` lists the exact chat lines of a correct run, per flavour where
 they differ, and what to send back. The addons are runtime Lua for the gates:
 the runtime lint scope, StyLua, and
@@ -279,6 +286,88 @@ after the package's own support directory, so a package could shadow a shared
 module from its own `tests/support/` without the runner changing.
 
 Test-only helpers are not public runtime API.
+
+## The conformance suite
+
+`tests/support/KitConformance.lua` holds every Kit to the rules all Kits keep,
+tested the same way for each: bounded limits, argument errors at the
+caller's line, secret values refused before they are compared, an in-place
+upgrade over an older revision, and a manifest that agrees with the code.
+A package opts in with one spec, `tests/Conformance_spec.lua`:
+
+```lua
+local KitConformance = require("KitConformance")
+local GlowKitTestEnv = require("GlowKitTestEnv")
+
+KitConformance.Register({ describe = describe, it = it, pending = pending }, {
+  environment = GlowKitTestEnv, -- built with a profile that has secret values
+  packageId = "glowKit",
+  limits = {
+    maxGlows = { default = 64, ceiling = 1024 }, -- minimum 1, integer, no UNBOUNDED by default
+  },
+  arguments = {
+    {
+      name = "Start frame",
+      call = function(kit, value)
+        kit:Start(value) -- no `return`: a tail call drops the caller's line
+      end,
+    },
+  },
+  upgrade = {
+    seed = function(kit) ... end, -- state an older revision leaves; its result goes to verify
+    verify = function(kit, seeded) ... end,
+  },
+})
+```
+
+Busted hands `describe`, `it` and `pending` to spec chunks only, so the spec
+passes them in. A field left out becomes one pending case that names it.
+
+| Group | What it proves |
+|---|---|
+| `manifest` | `API` and `REVISION` equal the manifest's `api` and `revision`; `Registry:Get(packageId, api)` is the facade; each part's `PART_REVISION` equals its manifest entry; loading without each required dependency in the module chain fails naming it |
+| `limits` | `GetLimits` answers a fresh table of exactly the described names and defaults (`default = "UNBOUNDED"` for the Kit's sentinel); `SetLimits` accepts each limit's minimum and ceiling (and `UNBOUNDED` where `unbounded = true`), refuses a non-table, an unknown name, a table key whose `__tostring` must never run, a number key, a secret value, a value above the ceiling or below the minimum, a string, a fraction (`integer = false` allows one) and `UNBOUNDED`, each at the caller's line and changing no limit; every limit is named in the "Limits" section of `docs/API.md` |
+| `receivers` | every facade method (a capitalised function field; `receiverExempt` lists documented exceptions) called on a table or a string raises at the caller's line |
+| `arguments` | each listed argument refuses a secret value at the caller's line, with "secret" in the message (ADR 0002: list only arguments the Kit compares, tests or stores as a key) |
+| `upgrade` | the Kit's source loaded with `IMPLEMENTATION_REVISION` one lower, `seed`, then the current source: same facade, `REVISION` current, `verify` passes. And, when the runner provides it, the same with the runtime files committed at the previous revision |
+
+"At the caller's line" means the error message names a line of the calling
+function, not of the Kit. The environment needs `wowProfile = "mainline"`
+(or another profile with secret values) for the secret cases; the suite says
+so when it is missing.
+
+**The committed previous revision.** For a package with
+`tests/Conformance_spec.lua`, `python3 -m tooling.test.run` finds the newest
+commit whose manifest declares `revision` one lower (`tooling/test/previous.py`,
+read-only git), writes that commit's facade and parts into a temporary
+directory and names it in `MOLTENCODES_PREVIOUS_REVISION_DIR`. Outside a
+checkout, in a shallow clone or at revision 1, that case is pending with the
+reason; CI's `test` job checks out the full history.
+
+`FrameworkTestEnv` gained what the suite needs and any spec may use:
+`environment.Modules()`, `environment.NewPackageWithout(moduleName)` (load
+the chain without one module, then try the package; with the package itself
+skipped, load only its dependencies) and
+`environment.LoadSourceWithRevision(moduleName, revision)`, the shared form
+of the per-package `LoadRevision` helpers, and
+`FrameworkTestEnv.findModuleFile(moduleName)`.
+
+The suite's own tests (`tooling/tests/test_kit_conformance.py`) run it against
+a fixture Kit that keeps every rule, then against copies that each break one
+and must fail exactly the case that names it.
+
+**Opt-in order**, from the packages that need the least: the user-interface
+Kits with one or two limits (glowKit, toastKit, barKit, tooltipKit,
+dialogKit, bindingKit, menuKit, launcherKit, panelKit, editModeKit,
+rangeKit, unitFrameKit); then the data Kits (brokerKit, cacheKit,
+profileKit, localeKit, logKit, mediaKit, compatKit, schemaKit, codecKit,
+interopKit, readinessKit, poolKit, clientKit, apiKit, bridgeKit); then the
+runtime Kits (signalKit, eventKit, lifecycleKit, moduleKit, timerKit,
+schedulerKit, hookKit, settingsKit, optionsKit, commandKit, commKit,
+widgetKit, addonKit); then testKit. Registry's own specs prove the bootstrap
+the suite relies on, so it is not on the list. A package that opts in may
+retire the parts of its `Limits_spec.lua`, `ErrorLevels_spec.lua` and
+`SecretValues_spec.lua` the suite now covers.
 
 ## Support modules must not rely on Busted's injected globals
 

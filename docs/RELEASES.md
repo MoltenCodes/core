@@ -430,6 +430,13 @@ example) lists its facade first and those files after it, in sorted path
 order. Development packages are never listed. `--package <id>` prints the
 single-Kit `.toc` instead.
 
+Each apiKit flavour file line ends with an inline directive that loads it
+only on its own client game type, taken from `gameTypes` in
+`tooling/api/flavours.json`: `apiKit\flavours\ClassicMop.lua [AllowLoadGameType mists]`.
+Retail, Ptr and Beta ship under `standard`. The directive is the only
+difference it makes: every file, `manifest.json` and the load order are the
+same, and `--verify` compares paths without it.
+
 There is one layout, not two: the builder's bundle is
 `MoltenCodes/<packageId>/<Facade>.lua` plus any subdirectories of the
 package's `src/`, and so is the packager's zip after `.pkgmeta`'s

@@ -30,7 +30,11 @@ SEMVER_RE = re.compile(
 )
 
 REQUIRED = {"name", "displayName", "description", "version", "license", "dependencies"}
-OPTIONAL = {"api", "revision", "optionalDependencies", "distribution", "parts"}
+OPTIONAL = {"api", "revision", "optionalDependencies", "distribution", "parts", "summary"}
+
+#: The longest `summary` a manifest may carry: one sentence a package index
+#: shows beside the package's name (`python3 -m tooling.docs.generate`).
+SUMMARY_MAX_LENGTH = 240
 ALLOWED = REQUIRED | OPTIONAL
 
 #: The two dependency maps a manifest (or a part entry) can carry. Both have the
@@ -174,6 +178,8 @@ def load_manifests() -> tuple[dict[str, dict[str, Any]], list[str]]:
             value = data.get(field)
             if not isinstance(value, str) or not value.strip():
                 errors.append(error(path, f'"{field}" must be a non-empty string'))
+
+        errors.extend(error(path, problem) for problem in summary_problems(data))
 
         version = data.get("version")
         if not isinstance(version, str) or not SEMVER_RE.fullmatch(version):
@@ -331,6 +337,28 @@ def distribution(data: dict[str, Any]) -> str:
     """Return a manifest's distribution, `"release"` when the field is absent."""
     value = data.get("distribution", RELEASE_DISTRIBUTION)
     return value if value in DISTRIBUTIONS else RELEASE_DISTRIBUTION
+
+
+def summary_problems(data: dict[str, Any]) -> list[str]:
+    """Return what is wrong with a manifest's optional `summary`, if anything.
+
+    The summary is the one line the package indexes show (the root README
+    table, `docs/README.md`, `packages/README.md`), so it is one sentence on
+    one line, ending with a full stop, short enough for a table cell.
+    """
+    if "summary" not in data:
+        return []
+    value = data["summary"]
+    if not isinstance(value, str) or not value.strip():
+        return ['"summary" must be a non-empty string']
+    problems: list[str] = []
+    if value != value.strip() or "\n" in value or "|" in value:
+        problems.append('"summary" must be one line without surrounding spaces or a "|"')
+    if len(value) > SUMMARY_MAX_LENGTH:
+        problems.append(f'"summary" must be at most {SUMMARY_MAX_LENGTH} characters')
+    if not value.endswith("."):
+        problems.append('"summary" must end with a full stop')
+    return problems
 
 
 def is_development(data: dict[str, Any]) -> bool:

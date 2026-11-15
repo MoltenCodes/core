@@ -86,11 +86,20 @@ MAX_UNAVAILABLE_REASON = 200
 #: The harness entry schemas this command reads.
 SUPPORTED_ENTRY_SCHEMAS = (1, 2)
 
-#: The run modes, in the order rows of one package are listed.
-RUN_MODES = ("default", "combat")
+#: The run modes, in the order rows of one package are listed: `/mct run`,
+#: `/mct run all` (every suite that needs neither the player nor combat),
+#: `/mct run guided` (the suites that need the player) and `/mct run combat`.
+RUN_MODES = ("default", "unattended", "guided", "combat")
 
 #: The suffix of a combat run's key in ``MoltenCodesTestResults``.
 COMBAT_KEY_SUFFIX = ":combat"
+
+#: The key suffix of each mode other than the default one, as the harness writes it.
+MODE_KEY_SUFFIXES = {
+    "unattended": ":unattended",
+    "guided": ":guided",
+    "combat": COMBAT_KEY_SUFFIX,
+}
 
 #: The totals every row carries, in matrix column order.
 TOTAL_FIELDS = ("tests", "passed", "failed", "skipped", "timeout")
@@ -403,7 +412,10 @@ def row_from_entry(key: Any, entry: Any, folder_flavour: ClientFlavour | None) -
         raise ReportError(f"entry {key!r} names no package")
     mode = entry.get("mode")
     if mode is None:
-        mode = "combat" if isinstance(key, str) and key.endswith(COMBAT_KEY_SUFFIX) else "default"
+        mode = "default"
+        for candidate, suffix in MODE_KEY_SUFFIXES.items():
+            if isinstance(key, str) and key.endswith(suffix):
+                mode = candidate
     if mode not in RUN_MODES:
         raise ReportError(f"entry {key!r} has the unknown mode {mode!r}")
     report = entry.get("report")
@@ -587,7 +599,7 @@ def describe_build(row: Row) -> str:
 def package_label(row: Row) -> str:
     """The package column: ``hookKit``, or ``hookKit (combat)`` for a combat run."""
     label = f"`{row.package}`"
-    return label if row.mode == "default" else f"{label} (combat)"
+    return label if row.mode == "default" else f"{label} ({row.mode})"
 
 
 def shown_flavours(rows: Sequence[Row]) -> list[ClientFlavour]:
@@ -644,7 +656,7 @@ def render_matrix_table(rows: Sequence[Row]) -> list[str]:
     )
     totals = {flavour.flavour_id: [0] * len(TOTAL_FIELDS) for flavour in flavours}
     for package, mode in labels:
-        cells = [f"`{package}`" if mode == "default" else f"`{package}` (combat)"]
+        cells = [f"`{package}`" if mode == "default" else f"`{package}` ({mode})"]
         for flavour in flavours:
             row = by_key.get((flavour.flavour_id, package, mode))
             if row is None:

@@ -19,6 +19,8 @@ import sys
 from pathlib import Path
 from typing import NamedTuple, Sequence
 
+from tooling.shared import sync as shared_sync
+
 
 ROOT = Path(__file__).resolve().parents[1]
 PACKAGES = ROOT / "packages"
@@ -30,6 +32,10 @@ CLIENT_TESTS = ROOT / "tests" / "client"
 BENCH_LUA = ROOT / "tooling" / "bench" / "lua"
 #: The in-client benchmark's Lua: the harness addon and its modules, run by the game client.
 BENCH_CLIENT_LUA = ROOT / "tooling" / "bench" / "client"
+#: The canonical shared helpers Kits copy (`tooling.shared.sync`), and the
+#: plain-Lua fixtures the tooling tests run under host Lua, relative to `ROOT`.
+SHARED_HELPERS_LUA = Path("tooling") / "shared" / "lua"
+TOOLING_FIXTURES_LUA = Path("tooling") / "tests" / "fixtures"
 
 #: Selene configuration for test code: the Lua 5.1 library plus Busted's globals.
 TEST_CONFIG = "selene-tests.toml"
@@ -83,6 +89,15 @@ def discover_runtime_lua_files() -> list[Path]:
     discovered.extend(path for path in BENCH_LUA.glob("**/*.lua") if path.is_file())
     # The in-client benchmark runs inside the game client (docs/BENCHMARKS.md).
     discovered.extend(path for path in BENCH_CLIENT_LUA.glob("**/*.lua") if path.is_file())
+    # The shared helpers are runtime code: Kits carry them verbatim. The
+    # tooling fixtures run under plain `lua`, never Busted, except the specs
+    # (`*_spec.lua`), which are test code.
+    discovered.extend(path for path in (ROOT / SHARED_HELPERS_LUA).glob("*.lua") if path.is_file())
+    discovered.extend(
+        path
+        for path in (ROOT / TOOLING_FIXTURES_LUA).glob("**/*.lua")
+        if path.is_file() and not path.name.endswith("_spec.lua")
+    )
     return sorted(set(discovered))
 
 
@@ -95,6 +110,9 @@ def discover_test_lua_files() -> list[Path]:
     discovered = [path for path in PACKAGES.glob("*/tests/**/*.lua") if path.is_file()]
     discovered.extend(path for path in (EXAMPLES / "tests").glob("**/*.lua") if path.is_file())
     discovered.extend(path for path in SHARED_TEST_SUPPORT.glob("**/*.lua") if path.is_file())
+    discovered.extend(
+        path for path in (ROOT / TOOLING_FIXTURES_LUA).glob("**/*_spec.lua") if path.is_file()
+    )
     return sorted(set(discovered))
 
 
@@ -133,6 +151,15 @@ def run(extra_args: Sequence[str] = ()) -> int:
         returncode = subprocess.run(command, cwd=ROOT, check=False).returncode
         if returncode != 0 and status == 0:
             status = returncode
+
+    # The shared helper copies are Lua too: a hand edit inside a block is a
+    # lint failure that names the source to edit (`tooling.shared.sync`).
+    print("==> shared helper blocks", flush=True)
+    problems = shared_sync.run_check(root=ROOT, write=False)
+    for problem in problems:
+        print(problem, file=sys.stderr)
+    if problems and status == 0:
+        status = 1
     return status
 
 

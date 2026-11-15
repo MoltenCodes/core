@@ -13,6 +13,7 @@ from typing import Sequence
 from urllib.parse import unquote
 
 from tooling.api import flavours
+from tooling.docs import generate, split_roadmap
 from tooling.package import toc
 from tooling.package import build
 from tooling.package import embeds
@@ -1252,6 +1253,124 @@ def validate_markdown_links() -> list[str]:
     return errors
 
 
+#: The `##` sections every package's `docs/API.md` carries, in this order
+#: (docs/CONTRIBUTING.md, "The docs/API.md skeleton"). Any other section may
+#: stand anywhere after "Public surface"; a required one may say only "None."
+#: with a sentence of why.
+API_REQUIRED_SECTIONS = (
+    "Loading",
+    "Public surface",
+    "Secret values",
+    "Limits",
+    "Error behaviour",
+    "Performance",
+    "Embedded copies and upgrades",
+)
+
+#: Headings used for a required section's content under another name, and
+#: the name to give them.
+API_SECTION_RENAMES = {
+    "Errors": "Error behaviour",
+    "Cost": "Performance",
+    "Upgrades": "Embedded copies and upgrades",
+    "Embedded identity and upgrades": "Embedded copies and upgrades",
+}
+
+#: While false, a `docs/API.md` that does not follow the skeleton is a warning;
+#: set it to true once every package conforms, and it fails validation.
+API_SECTIONS_REQUIRED = False
+
+#: Words `/mct` reads as commands, so no package may be called by one of them
+#: (`/mct run all` must never mean a package named "all").
+RESERVED_PACKAGE_IDS = frozenset({"all", "guided", "combat", "next", "skip"})
+
+
+def level_two_headings(text: str) -> list[str]:
+    """Return the `## ` headings of a Markdown text, skipping fenced code blocks.
+
+    A `.toc` quoted in a fence has `## Title:` lines that are not headings.
+    """
+    headings: list[str] = []
+    fenced = False
+    for line in text.splitlines():
+        if line.lstrip().startswith("```"):
+            fenced = not fenced
+            continue
+        if not fenced and line.startswith("## "):
+            headings.append(line[3:].strip())
+    return headings
+
+
+def api_section_problems(text: str) -> list[str]:
+    """Return how a `docs/API.md` text departs from the required skeleton."""
+    headings = level_two_headings(text)
+    problems: list[str] = []
+    for heading in headings:
+        if heading in API_SECTION_RENAMES:
+            problems.append(f'rename "## {heading}" to "## {API_SECTION_RENAMES[heading]}"')
+    effective = [API_SECTION_RENAMES.get(heading, heading) for heading in headings]
+    for section in API_REQUIRED_SECTIONS:
+        if section not in effective:
+            problems.append(f'has no "## {section}" section (it may say "None." and why)')
+    present = [heading for heading in effective if heading in API_REQUIRED_SECTIONS]
+    expected_order = [section for section in API_REQUIRED_SECTIONS if section in present]
+    if present != expected_order:
+        problems.append(
+            "orders its required sections "
+            + " > ".join(present)
+            + "; the order is "
+            + " > ".join(API_REQUIRED_SECTIONS)
+        )
+    if effective and "Loading" in effective and effective[0] != "Loading":
+        problems.append(f'has "## {headings[0]}" before "## Loading"')
+    return problems
+
+
+def validate_api_sections(manifests: dict[str, dict[str, object]]) -> list[str]:
+    """Check every package's `docs/API.md` against the required section skeleton.
+
+    The messages are warnings while `API_SECTIONS_REQUIRED` is false; see
+    `repository_warnings`.
+    """
+    messages: list[str] = []
+    for name in sorted(manifests):
+        path = ROOT / "packages" / name / "docs" / "API.md"
+        if not path.is_file():
+            continue
+        for problem in api_section_problems(path.read_text(encoding="utf-8")):
+            messages.append(error(path, problem))
+    return messages
+
+
+def validate_reserved_package_ids(manifests: dict[str, dict[str, object]]) -> list[str]:
+    """Refuse a package whose ID is one of the harness's command words."""
+    return [
+        error(ROOT / "packages" / name / "package.manifest.json", f'"{name}" is a reserved word of /mct')
+        for name in sorted(manifests)
+        if name in RESERVED_PACKAGE_IDS
+    ]
+
+
+def validate_generated_lists(manifests: dict[str, dict[str, object]]) -> list[str]:
+    """Check the package lists rendered between generated markers (`tooling.docs.generate`).
+
+    A stale block, or a file without a block's markers, is an error that
+    prints the block to put in place (`tooling.docs.generate.MARKERS_REQUIRED`).
+    """
+    try:
+        packages = generate.ordered_packages(manifests)
+        return generate.stale_block_errors(packages)
+    except (generate.GenerateError, KeyError) as failure:
+        return [f"generated package lists: {failure}"]
+
+
+def repository_warnings(manifests: dict[str, dict[str, object]]) -> list[str]:
+    """Return the problems reported without failing validation."""
+    if API_SECTIONS_REQUIRED:
+        return []
+    return validate_api_sections(manifests)
+
+
 def validate_repository() -> tuple[dict[str, dict[str, object]], list[str]]:
     """Run all repository checks and return loaded package manifests plus errors."""
     errors = validate_python_version()
@@ -1274,6 +1393,12 @@ def validate_repository() -> tuple[dict[str, dict[str, object]], list[str]]:
     errors.extend(validate_quoted_example_files())
     errors.extend(validate_github_kit_lists(manifests))
     errors.extend(validate_markdown_links())
+    errors.extend(validate_generated_lists(manifests))
+    errors.extend(validate_reserved_package_ids(manifests))
+    # Nothing to check until `python3 -m tooling.docs.split_roadmap --write` has run.
+    errors.extend(split_roadmap.check_records())
+    if API_SECTIONS_REQUIRED:
+        errors.extend(validate_api_sections(manifests))
     return manifests, errors
 
 
@@ -1295,6 +1420,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     """Run every repository check and print the result."""
     parse_args(argv)
     manifests, errors = validate_repository()
+
+    warnings = repository_warnings(manifests)
+    if warnings:
+        print(f"Repository validation warnings ({len(warnings)}):", file=sys.stderr)
+        for item in warnings:
+            print(f"  - warning: {item}", file=sys.stderr)
 
     if errors:
         print(f"Repository validation failed with {len(errors)} error(s):", file=sys.stderr)

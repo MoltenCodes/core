@@ -1,0 +1,20 @@
+{
+  "pins": [],
+  "optOuts": [
+    {
+      "package": "registry",
+      "helpers": ["isSecret", "reportError", "describeKey", "validateFacade", "limits"],
+      "reason": "Registry's 1000-line budget cannot take the marker lines, and it reports nothing these helpers report."
+    },
+    {
+      "package": "commandKit",
+      "helpers": ["isSecret"],
+      "reason": "CommandKit asks ClientKit's secret probe first, which the shared probe does not do; its owner decides when that changes."
+    },
+    {
+      "package": "hookKit",
+      "helpers": ["validateFacade"],
+      "reason": "HookKit compares the receiver with rawequal; its owner decides whether to take the shared type-first form."
+    }
+  ]
+}

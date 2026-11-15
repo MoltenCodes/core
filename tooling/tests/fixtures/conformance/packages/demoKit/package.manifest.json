@@ -1,0 +1,14 @@
+{
+  "name": "demoKit",
+  "displayName": "DemoKit",
+  "description": "A fixture Kit the conformance suite's own tests run against.",
+  "version": "0.1.0",
+  "license": "MIT",
+  "api": 1,
+  "revision": 2,
+  "dependencies": {
+    "registry": {
+      "api": 2
+    }
+  }
+}

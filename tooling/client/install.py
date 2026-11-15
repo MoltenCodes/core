@@ -24,6 +24,10 @@ client loads them. This command does that and nothing else:
   own ``.toc`` is generated from. Exactly these folders are replaced when they
   already exist; no other addon is touched.
 
+* ``--all`` does the same for every package that has a test addon under
+  ``tests/client/``, read from the manifests, and names the packages that have
+  none (``tooling.client.session prepare`` uses it).
+
 * ``--remove`` deletes ``MoltenCodes``, ``MoltenCodesTest`` and every
   ``MoltenCodesTest_*`` folder from ``AddOns``, and every
   saved-variables file of the harness and of every test addon
@@ -182,6 +186,12 @@ def available_test_packages(manifests: dict[str, dict[str, Any]]) -> list[str]:
         for package_id in manifests
         if (CLIENT_TESTS / test_addon_name(package_id, manifests)).is_dir()
     )
+
+
+def packages_without_test_addon(manifests: dict[str, dict[str, Any]]) -> list[str]:
+    """Package IDs that have no test addon under ``tests/client/``, sorted."""
+    available = set(available_test_packages(manifests))
+    return sorted(package_id for package_id in manifests if package_id not in available)
 
 
 def select_test_addons(
@@ -395,14 +405,23 @@ def replace_addon(addons_dir: Path, name: str, fill: Callable[[Path], None]) -> 
 
 def install(
     layout: ClientLayout,
-    package_ids: Sequence[str],
+    package_ids: Sequence[str] | None,
     dry_run: bool = False,
     report: Callable[[str], None] = print,
-) -> None:
-    """Build the bundle and install it, the harness and the requested test addons."""
+) -> Installation:
+    """Build the bundle and install it, the harness and the requested test addons.
+
+    ``package_ids`` of ``None`` installs every package's test addon (``--all``).
+    Returns the installation recorded in ``Expected.lua``.
+    """
     manifests, errors = load_manifests()
     if errors:
         raise InstallError("package manifests are invalid: " + "; ".join(errors))
+    if package_ids is None:
+        package_ids = available_test_packages(manifests)
+        without = packages_without_test_addon(manifests)
+        if without:
+            report(f"no test addon under tests/client/ for: {', '.join(without)}")
     test_addons = select_test_addons(package_ids, manifests)
     interface_line = supported_interface_line()
     installation = current_installation(layout.flavour_dir.name)
@@ -413,7 +432,7 @@ def install(
             report(f"would install {layout.addons_dir / name}")
         report(f'would write "{interface_line}" into every installed test .toc')
         report(f"would record {describe_installation(installation)} in {EXPECTED_FILE_NAME}")
-        return
+        return installation
 
     with tempfile.TemporaryDirectory(prefix="moltencodes-client-") as temporary:
         try:
@@ -459,6 +478,7 @@ def install(
         )
         report(f"{verb} {layout.addons_dir / name}")
     report(f'every installed test .toc carries "{interface_line}"')
+    return installation
 
 
 # Removing -------------------------------------------------------------------------------
@@ -621,6 +641,12 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help="install the test addon of this package (repeatable), with the bundle and harness",
     )
     action.add_argument(
+        "--all",
+        action="store_true",
+        dest="every_package",
+        help="install the test addon of every package that has one, with the bundle and harness",
+    )
+    action.add_argument(
         "--remove",
         action="store_true",
         help=(
@@ -644,7 +670,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.remove:
             remove(layout, dry_run=args.dry_run)
         else:
-            install(layout, args.packages, dry_run=args.dry_run)
+            packages = None if args.every_package else args.packages
+            install(layout, packages, dry_run=args.dry_run)
     except InstallError as failure:
         print(f"error: {failure}", file=sys.stderr)
         return 1

@@ -73,7 +73,10 @@ it yet; the method returns whether it ran. A registration for another flavour
 costs nothing beyond the call. A second registration of the running flavour
 (two addons embedding the same file) is dropped; the first file to load wins,
 and its `info` is what `GetMetadataBuild` reports. `info` is recorded for every
-flavour, installed or not, first registration winning.
+flavour whose file loaded, installed or not, first registration winning. The
+standalone `MoltenCodes` addon's `.toc` loads each flavour file only on its own
+client game type (`[AllowLoadGameType ...]`), so there `GetMetadataBuild`
+answers nothing for a flavour other than the running client's.
 
 An error raised by the installer propagates to the generated file's load, so a
 broken generated file is loud rather than half-installed and silent. Before it

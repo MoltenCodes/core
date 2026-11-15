@@ -103,6 +103,9 @@ Minimum footprint: Embed 3 files: Registry, ApiKit, one flavour file.
 
 Direct runtime dependencies: Registry API 2. A flavour file for a client the
 addon is not running on costs its parse and one registration call, nothing
-else; the flavour files depend only on the facade, never on each other. Two
+else; the standalone `MoltenCodes` addon's `.toc` skips even that, since each
+flavour file line ends with `[AllowLoadGameType ...]` for its own client. A
+`.toc` written by `python3 -m tooling.package.embeds --toc` carries the same
+directives. The flavour files depend only on the facade, never on each other. Two
 addons that embed the same flavour install it once: the first file to load
 fills the namespace and later copies are dropped.

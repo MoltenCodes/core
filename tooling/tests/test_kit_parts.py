@@ -467,6 +467,14 @@ class EmbedsGeneratorTests(FixtureRepository):
         lines = [line for line in printed.getvalue().splitlines() if not line.startswith("#")]
         self.assertEqual(["Libs\\MC\\registry\\Registry.lua", "Libs\\MC\\timerKit\\TimerKit.lua"], lines)
 
+    def test_toc_lines_carry_the_flavour_directive(self):
+        text = embeds.render_toc_lines(
+            ["apiKit/ApiKit.lua", "apiKit/flavours/ClassicMop.lua"], "apiKit", "Libs/MC"
+        )
+
+        self.assertIn("Libs\\MC\\apiKit\\ApiKit.lua\n", text)
+        self.assertIn("Libs\\MC\\apiKit\\flavours\\ClassicMop.lua [AllowLoadGameType mists]", text)
+
     def test_unknown_selector_is_refused(self):
         self.write_parted_repository()
 
@@ -663,12 +671,29 @@ class RealRepositoryTests(unittest.TestCase):
     """The real repository keeps the load order the builder always computed for cores."""
 
     def test_cores_keep_the_package_walk(self):
+        # Every release Kit's core, with only the parts a dependency contract
+        # names (PanelKit's WidgetKit Renderer). A part that needs another Kit
+        # (CommandKit's Options part needs OptionsKit) may move that Kit ahead
+        # when the part is selected, so the every-part bundle is checked below
+        # for dependency order rather than against the package walk.
         manifests = build.load_valid_manifests()
-        selection = build.select_packages(manifests)
+        release = sorted(build.select_packages(manifests).selected)
+        selection = build.select(manifests, packages=release)
 
         cores = [node.package for node in selection.load_nodes() if node.part is None]
 
         self.assertEqual(build.load_order(sorted(selection.selected), manifests), cores)
+
+    def test_every_part_bundle_loads_each_core_after_its_dependencies(self):
+        manifests = build.load_valid_manifests()
+        selection = build.select_packages(manifests)
+
+        loaded: set[str] = set()
+        for node in selection.load_nodes():
+            if node.part is None:
+                for dependency in manifests[node.package].get("dependencies", {}):
+                    self.assertIn(dependency, loaded, f"{node.package} loads before {dependency}")
+                loaded.add(node.package)
 
 
 if __name__ == "__main__":

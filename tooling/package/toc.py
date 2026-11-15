@@ -19,6 +19,8 @@ conventions follow `docs/EMBEDDING.md` ("TOC fields and packaging").
 
 from __future__ import annotations
 
+import functools
+import re
 from typing import Sequence
 
 
@@ -85,6 +87,51 @@ def addon_notes(facade: str | None = None) -> str:
 TOC_SEPARATOR = "\\"
 
 
+#: The package whose runtime files are restricted to client game types.
+API_KIT_PACKAGE = "apiKit"
+
+#: One or more inline directives at the end of a `.toc` file line, such as
+#: ` [AllowLoadGameType standard]`. File paths in a bundle never hold `[`.
+INLINE_DIRECTIVES_RE = re.compile(r"\s*(\[[^\]]*\])+\s*$")
+
+
+@functools.lru_cache(maxsize=1)
+def _game_type_directives() -> dict[str, str]:
+    """Map each apiKit flavour file (POSIX bundle path) to its inline directive.
+
+    The client compiles every file a `.toc` lists. ApiKit installs only the
+    running client's flavour, so each flavour file is restricted with
+    `[AllowLoadGameType ...]` to the game types `tooling/api/flavours.json`
+    names for it (warcraft.wiki.gg, "TOC format": file lines take inline
+    directives since patch 11.1.5, which Mists of Pandaria Classic 5.5.4 and
+    Classic Era 1.15.9 include). A client that does not recognise a listed
+    game type still loads the file, so the directive can only save work.
+    """
+    # Imported here: `tooling.api.flavours` imports the validation package,
+    # which imports the builder, which imports this module.
+    from tooling.api import flavours
+
+    table = flavours.load_flavours()
+    return {
+        f"{API_KIT_PACKAGE}/{flavour.runtime_file}": (
+            f"[AllowLoadGameType {', '.join(flavour.game_types)}]"
+        )
+        for flavour in table.flavours
+        if flavour.game_types
+    }
+
+
+def file_directive(bundle_path: str) -> str:
+    """Return the inline directive of a bundle file's `.toc` line, or `""`."""
+    return _game_type_directives().get(bundle_path, "")
+
+
+def with_directive(line: str, bundle_path: str) -> str:
+    """Return `line` followed by the file's inline directive, when it has one."""
+    directive = file_directive(bundle_path)
+    return f"{line} {directive}" if directive else line
+
+
 def toc_entry(package_id: str, runtime_file: str) -> str:
     """Return the `.toc` line that loads one of a package's runtime files.
 
@@ -92,14 +139,20 @@ def toc_entry(package_id: str, runtime_file: str) -> str:
     POSIX form the builder records (`TimerKit.lua`, `flavours/Retail.lua`).
     Paths in a `.toc` are relative to the addon folder and use backslashes, as
     the client and every published `.toc` do: `timerKit\\TimerKit.lua`,
-    `apiKit\\flavours\\Retail.lua`.
+    `apiKit\\flavours\\Retail.lua [AllowLoadGameType standard]`. An apiKit
+    flavour file carries the inline directive that loads it only on its own
+    client (`file_directive`).
     """
-    return TOC_SEPARATOR.join([package_id, *runtime_file.split("/")])
+    line = TOC_SEPARATOR.join([package_id, *runtime_file.split("/")])
+    return with_directive(line, f"{package_id}/{runtime_file}")
 
 
 def entry_to_bundle_path(entry: str) -> str:
-    """Convert a `.toc` file line to the POSIX path `manifest.json` records."""
-    return entry.replace(TOC_SEPARATOR, "/")
+    """Convert a `.toc` file line to the POSIX path `manifest.json` records.
+
+    Inline directives at the end of the line are dropped.
+    """
+    return INLINE_DIRECTIVES_RE.sub("", entry).replace(TOC_SEPARATOR, "/")
 
 
 def render_toc(

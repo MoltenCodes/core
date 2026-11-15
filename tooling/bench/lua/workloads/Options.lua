@@ -215,9 +215,13 @@ local function kitAdapter(host)
     "SchemaKit",
     "SettingsKit",
     "OptionsKit",
+    -- `ProfileOptions` is in OptionsKit's Profiles part from revision 15.
+    "OptionsKit-Profiles",
     "CommandKit",
+    -- `BindOptions` is in CommandKit's Options part.
+    "CommandKit-Options",
   })
-  local SchemaKit, SettingsKit, OptionsKit, CommandKit = loaded[4], loaded[5], loaded[6], loaded[7]
+  local SchemaKit, SettingsKit, OptionsKit, CommandKit = loaded[4], loaded[5], loaded[6], loaded[8]
   local scope = CommandKit:CreateScope()
   local adapter = {}
 

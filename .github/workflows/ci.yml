@@ -82,8 +82,13 @@ jobs:
       # at code this repository has never reviewed; a SHA cannot move. The
       # trailing comment records which release the SHA was taken from, because
       # a bare SHA says nothing about how far behind the pin has fallen.
+      # Full history: a suite that opts into the conformance suite also
+      # upgrades from the runtime files committed at the previous revision,
+      # which the runner finds with `git log` (tooling/test/previous.py).
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
 
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
@@ -100,6 +105,13 @@ jobs:
       # the same command and the same targets a developer runs locally.
       - name: Run package and example tests
         run: python3 -m tooling.test.run
+
+      # The shared conformance suite's own tests run its fixture Kit through
+      # Busted, and the client harness's session passes run over the Kits in
+      # the fake client; only this job installs Busted, so the repository job
+      # skips both.
+      - name: Run the conformance suite's and the harness's host tests
+        run: python3 -m unittest tooling.tests.test_kit_conformance tooling.tests.test_client_harness
 
   types:
     name: lua-language-server
@@ -386,6 +398,19 @@ jobs:
       - name: Check client API availability on every promised flavour
         run: python3 -m tooling.validation.flavour_api
 
+      # Each Kit carries verbatim copies of the shared helpers between
+      # `-- shared:begin` and `-- shared:end` markers; a hand edit inside one
+      # fails here with the name of the source to edit instead
+      # (tooling/shared/lua/, docs/TOOLING.md "Shared helper blocks").
+      - name: Check shared helper blocks equal their sources
+        run: python3 -m tooling.shared.sync --check
+
+      # The package lists between generated markers (README tables and
+      # counts, the indexes, ARCHITECTURE, .pkgmeta, labels, issue forms) are
+      # rendered from the manifests; a stale one prints its replacement.
+      - name: Check generated package lists are current
+        run: python3 -m tooling.docs.generate --check
+
       - name: Run tooling unit tests
         run: python3 -m unittest discover -s tooling/tests -p "test_*.py"
 
@@ -423,6 +448,11 @@ jobs:
 
       - name: Run the gate's unit tests against the real compiler
         run: python3 -m unittest tooling.tests.test_lua_limits
+
+      # The shared helpers' own behaviour runs under host Lua 5.1, which only
+      # this job installs (the repository job skips these tests).
+      - name: Run the shared helpers' behaviour tests under Lua 5.1
+        run: python3 -m unittest tooling.tests.test_shared_sync
 
   commits:
     name: Commit subjects

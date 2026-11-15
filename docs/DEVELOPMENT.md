@@ -409,4 +409,28 @@ Capability packages follow the canonical `Kit` convention: lowerCamelCase packag
 
 After adding a package, the normal repository commands should discover it automatically. If adding a package requires editing CI merely to make tests or linting see it, repository tooling is missing an abstraction and should be improved instead of adding another hard-coded package entry.
 
-What a reader or a packager needs to find the package is listed by hand, and repository validation names each place that is still missing: the two `move-folders` lines in `.pkgmeta`, the entries in `docs/README.md` and `packages/README.md`, the `kit: <packageId>` label and labeler rule, the Kit options of the issue forms, and the quoted load order in `docs/EMBEDDING.md` ([`TOOLING.md`](TOOLING.md#repository-validation)). The documentation a new Kit owes beyond what validation checks is listed under "New packages" in [`CONTRIBUTING.md`](CONTRIBUTING.md#new-packages).
+What a reader or a packager needs to find the package is rendered from the manifests: give the manifest a `summary` and run `python3 -m tooling.docs.generate --write`, which updates the `move-folders` lines in `.pkgmeta`, the entries in `README.md`, `docs/README.md` and `packages/README.md`, the ARCHITECTURE lists, the `kit: <packageId>` label and labeler rule and the Kit options of the issue forms. Repository validation names any list still stale and the quoted load order in `docs/EMBEDDING.md` ([`TOOLING.md`](TOOLING.md#generated-package-lists)).
+
+## A real-client session
+
+One evening per flavour proves every client suite. From the repository:
+
+```bash
+python3 -m tooling.client.session prepare --wow-dir "/Applications/World of Warcraft" --flavour-dir _retail_
+```
+
+This installs the bundle, the harness and every package's test addon and
+prints the session sheet (also written beside the flavour folder). In the
+game: `/mct run all` and wait for "session pass done"; `/mct run guided` and
+follow each instruction, `/mct next` when ready; stand at a training dummy
+(a low-level creature on Classic Era) for `/mct run combat`; `/reload`;
+`/mct run settingsKit` for its second run; `/reload`. Then:
+
+```bash
+python3 -m tooling.client.session collect --wow-dir "/Applications/World of Warcraft" --flavour-dir _retail_
+python3 -m tooling.client.session clean --wow-dir "/Applications/World of Warcraft" --flavour-dir _retail_
+```
+
+`collect` records the results in `tests/client/results.json` and
+`RESULTS.md` and prints, per package, whether the totals are the expected
+ones; `clean` removes everything, and refuses until `collect` has run. The documentation a new Kit owes beyond what validation checks is listed under "New packages" in [`CONTRIBUTING.md`](CONTRIBUTING.md#new-packages).

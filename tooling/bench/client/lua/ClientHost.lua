@@ -50,6 +50,7 @@ local MAX_CAPTURED_ERRORS = 32
 ---@field files string[] the Ace3 files the side addon loaded, relative to the Ace3 root
 ---@field packages { id: string, facade: string, api: integer }[] the Kits the side addon loaded
 ---@field baselineFrames table<table, boolean> every frame that existed before the side loaded
+---@field sets table<string, string>? the side's set addons by set name (`minimum`, `typical`, `full`, `saved`), for the workloads that load one themselves
 
 ---Read a client global.
 ---@param name string
@@ -89,6 +90,18 @@ function ClientHost.New(context)
   end
 
   host.client = { sideAddon = context.sideAddon, harnessAddon = context.harnessAddon }
+
+  ---The addon of one of the side's sets, for a workload that loads it itself
+  ---(`login`, `savedVariables`); an error naming the fix when it is missing.
+  ---@param setName string
+  ---@return string
+  function host.SetAddon(setName)
+    local addon = type(context.sets) == "table" and context.sets[setName] or nil
+    if type(addon) ~= "string" then
+      error("ClientHost: the installer wrote no " .. setName .. " set addon; reinstall", 0)
+    end
+    return addon
+  end
 
   function host.Global(name)
     return readGlobal(name)

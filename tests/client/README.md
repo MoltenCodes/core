@@ -176,6 +176,52 @@ again at logout or `/reload`. Add `--dry-run` to see the list first, and
 Both commands refuse when the `AddOns` folder does not exist, and neither
 follows a symbolic link out of the game folder.
 
+### A session per flavour
+
+One evening per flavour runs every suite. From the repository:
+
+```bash
+python3 -m tooling.client.session prepare --wow-dir "/Applications/World of Warcraft" --flavour-dir _retail_
+```
+
+This installs the bundle, the harness and every package's test addon
+(`install --all`) and prints a session sheet, also written to
+`_retail_/MoltenCodesTest-session.txt`: the lines to type in order, the
+preconditions each `EXPECTED.md` names, the interactive suites, and every
+package's expected totals. In the game:
+
+1. `/mct run all` runs every suite that needs neither you nor combat and ends
+   with `MoltenCodes Test: session pass done: ...`.
+2. `/mct run guided` takes the interactive suites one package at a time: it
+   prints what to do, waits for `/mct next` (or `/mct skip` to leave the
+   package out), runs it and moves on.
+3. At a training dummy (a low-level creature on Classic Era),
+   `/mct run combat`.
+4. `/reload`, then `/mct run settingsKit` for its second run, then `/reload`.
+
+Then:
+
+```bash
+python3 -m tooling.client.session collect --wow-dir "/Applications/World of Warcraft" --flavour-dir _retail_
+python3 -m tooling.client.session clean --wow-dir "/Applications/World of Warcraft" --flavour-dir _retail_
+```
+
+`collect` records the runs (`tooling.client.report`) and prints, per package,
+"as expected", "differs" with both totals, or "not run"; a difference is
+reported, never fatal, since the expected totals are Retail's. `clean`
+removes everything and refuses until `collect` has recorded the installation
+(`--force` overrides). The runs are saved as their own modes, `unattended`
+and `guided`, beside `default` and `combat`.
+
+A suite whose test waits for the player registers with an instruction line,
+which `/mct run all` leaves out and `/mct run guided` prints first:
+
+```lua
+local extensions = Harness:Suite(PACKAGE_ID, "extensions", addonName, {
+  interactive = "right-click your own unit frame when asked",
+})
+```
+
 ## Result matrix
 
 [`RESULTS.md`](RESULTS.md) is the matrix of every package's latest recorded

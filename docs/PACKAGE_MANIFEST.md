@@ -34,6 +34,7 @@ with it.
 | `optionalDependencies` | object | Packages this package uses when they are present, found at call time. Same shape as `dependencies`. See [Optional dependencies](#optional-dependencies). |
 | `distribution` | string | `"release"` (the default when absent) or `"development"`. See [Distribution](#distribution). |
 | `parts` | object | The Kit's optional part files, each with what it needs. Written last. See [Parts](#parts). |
+| `summary` | string | One sentence on one line, at most 240 characters, ending with a full stop, without `\|`: the line the package indexes (the root README table, `docs/README.md`, `packages/README.md`) show, rendered by `python3 -m tooling.docs.generate`. Without it they show `description`. |
 
 ## Distribution
 
