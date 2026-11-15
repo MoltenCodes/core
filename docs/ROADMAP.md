@@ -1411,8 +1411,10 @@ its code. Order:
    `options.parent` (a panel, for a subcategory); `panel:Open()` → `true`,
    or `nil` and a reason; `panel:GetCategoryID()`; `panel:GetRendering()`
    (`nil` while hidden); `panel:SetDefaultHandler(callback|nil)`, run by the
-   panel's Defaults button; `PanelKit:Get(name)`; `PanelKit:Panels()`
-   sorted; `SetLimits{ maxPanels }` / `GetLimits()`.
+   panel's Defaults button; `PanelKit:Get(name, parent?)`;
+   `SetLimits{ maxPanels }` / `GetLimits()`. (A sorted `Panels()` was
+   dropped while building: names are unique per level, so `Get` with the
+   parent finds every panel, and nothing needed the list.)
 5. Ownership: Blizzard cannot unregister a category, so a panel lives for
    the session, with one plain frame created at `Register`. The tree is
    found by name with `OptionsKit:Get` each time the page is shown, so
@@ -1441,7 +1443,9 @@ its code. Order:
 8. Docs: README, API.md, CHANGELOG, tests/README; EMBEDDING footprint and
    host-requirements rows; ARCHITECTURE's package list; the
    `AddToBlizOptions` recipe in `MIGRATING_FROM_ACE3.md`.
-9. Status: recorded 2026-11-15; code starts on the owner's go.
+9. Status: implemented 2026-11-15 after the owner's go, 0.1.0, revision 1,
+   48 specs; the client suite (`tests/client/MoltenCodesTest_PanelKit`) is
+   written and has not been run in a client. Ticked once it has.
 
 #### Package N — bridgeKit, migrating from Ace3
 

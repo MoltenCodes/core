@@ -154,6 +154,7 @@ registry
 ├──→ poolKit
 │       ├──→ codecKit
 │       └──→ widgetKit   (also needs signalKit)
+│               └──→ panelKit   (also needs optionsKit)
 ├──→ timerKit
 │       ├──→ readinessKit
 │       └──→ schedulerKit
@@ -203,10 +204,11 @@ logKit/LogKit.lua
 mediaKit/MediaKit.lua
 moduleKit/ModuleKit.lua
 optionsKit/OptionsKit.lua
+widgetKit/WidgetKit.lua
+panelKit/PanelKit.lua
 profileKit/ProfileKit.lua
 readinessKit/ReadinessKit.lua
 settingsKit/SettingsKit.lua
-widgetKit/WidgetKit.lua
 ```
 
 You can list the files directly in your `.toc`:
@@ -254,6 +256,7 @@ optional and found at call time, so embedding one Kit costs this many files:
 | 4 | `optionsKit`, `settingsKit` | `schemaKit`, `signalKit` |
 | 4 | `widgetKit` | `poolKit`, `signalKit` |
 | 5 | `moduleKit` | `signalKit`, `eventKit`, `lifecycleKit` |
+| 7 | `panelKit` | `signalKit`, `poolKit`, `schemaKit`, `optionsKit`, `widgetKit` |
 | 7 | `commKit` | `signalKit`, `eventKit`, `timerKit`, `schedulerKit`, `poolKit` |
 | 7 | `testKit` (development only) | `signalKit`, `eventKit`, `lifecycleKit`, `timerKit`, `schedulerKit` |
 
@@ -650,6 +653,7 @@ actually touch, which is deliberately small:
 | `testKit` (development only) | LifecycleKit's and SchedulerKit's surfaces | `issecretvalue` (nothing treated as secret), `issecurevariable` (`ToBeSecure` fails), `GetTimePreciseSec` (`durationMs` 0), `geterrorhandler` (`print`), EventKit and TimerKit API 1 through `Registry:Find` |
 | `commKit` | SignalKit's, EventKit's, TimerKit's, SchedulerKit's and PoolKit's surfaces; `GetTimePreciseSec`; `C_ChatInfo.SendAddonMessage` (legacy global fallback; else `Send` refuses `"unavailable"`) | `C_ChatInfo.RegisterAddonMessagePrefix` and `IsAddonMessagePrefixRegistered` (legacy globals, then nothing registered), `C_ChatInfo.SendAddonMessageLogged` (logged sends refused), the events `CHAT_MSG_ADDON`, `CHAT_MSG_ADDON_LOGGED`, `GROUP_ROSTER_UPDATE`, `PLAYER_ENTERING_WORLD`, `GetFramerate` (no low-frame-rate mode), `UnitInParty` and `UnitInRaid` (no roster eviction; streams still expire), `Enum` (12.x values assumed), `securecallfunction` (`pcall`), `issecretvalue`, `geterrorhandler` (`print`), CodecKit API 1 (`SyncSet` raises), HookKit API 1 (outside traffic uncharged), SchemaKit API 1 (`schema` raises); LifecycleKit API 1 through `Registry:Find` (otherwise CommKit's own `PLAYER_LOGOUT` watcher closes its addon scopes) |
 | `widgetKit` | PoolKit's and SignalKit's surfaces; `CreateFrame` | `UIParent` (released frames rest on a hidden holder), `issecretvalue` (nothing secret), `geterrorhandler` (`print`), `ColorPickerFrame:SetupColorPickerAndShow` (a click fires the current colour), `IsAltKeyDown`, `IsControlKeyDown`, `IsShiftKeyDown` (no modifiers), OptionsKit API 1 through `Registry:Find` (`RenderOptions` raises at the caller), SchedulerKit API 1 (saves are immediate), MediaKit API 1 (`CreateMediaPicker` raises; the renderer uses the option's `values`) |
+| `panelKit` | WidgetKit's and OptionsKit's surfaces; `CreateFrame`; `Settings.RegisterCanvasLayoutCategory`, `Settings.RegisterCanvasLayoutSubcategory` and `Settings.RegisterAddOnCategory` (`Register` raises at the caller) | `Settings.OpenToCategory` (`panel:Open` answers `nil, "unavailable"`), `issecretvalue` (nothing secret), `geterrorhandler` (`print`) |
 | `hookKit` | nothing but Lua 5.1 | `hooksecurefunc` (`SecureHook` raises at the caller), `issecurevariable` (nothing treated as secure), `Frame:HookScript` / `Frame:GetScript` / `Frame:SetScript` (the matching script hooks raise at the caller), `Frame:IsProtected` (frame not protected), `InCombatLockdown` (never in combat), `issecretvalue` (nothing is secret); LifecycleKit and EventKit API 1 through `Registry:Find` decide who closes an addon scope at logout (with neither, call `HookKit:CloseAddonScopes` on `PLAYER_LOGOUT`) |
 | `eventKit` | `CreateFrame`, `Frame:RegisterEvent`, `Frame:RegisterUnitEvent`, `Frame:UnregisterEvent`, `Frame:SetScript`; `CombatLogGetCurrentEventInfo`, or `C_CombatLog.GetCurrentEventInfo` without it, for `ConnectCombatLog` alone (with neither, as on retail 12, `IsCombatLogAvailable()` answers `false` and `ConnectCombatLog` raises at the caller) | `C_EventUtils.IsEventValid` (unknown event names reach `RegisterEvent` instead of being refused at the caller), `securecallfunction` (falls back to `xpcall`), `geterrorhandler` (falls back to `print`), SchedulerKit API 1 through `Registry:Find` (`Coalesce` refused, `Derive` recomputes synchronously); LifecycleKit API 1 through `Registry:Find` (addon scopes close at logout either way: through LifecycleKit when loaded, otherwise through EventKit's own `PLAYER_LOGOUT` listener) |
 | `lifecycleKit` | EventKit's surface; the events `ADDON_LOADED`, `PLAYER_LOGIN`, `PLAYER_LOGOUT`, `PLAYER_REGEN_DISABLED`, `PLAYER_REGEN_ENABLED` | `C_AddOns.IsAddOnLoaded` (falls back to the legacy global), `IsLoggedIn`, `InCombatLockdown` (absent: never in combat), TimerKit, SchedulerKit, HookKit, CommandKit and CommKit API 1 through `Registry:Find` (at logout the addon's TimerKit, SchedulerKit, EventKit, HookKit, CommandKit and CommKit scopes and then its SignalKit bus are closed, in that order); publishes the read-only `LifecycleKit.CLOSES_ADDON_SCOPES` naming the seven packages it closes at shutdown, and pairs with any revision of them |
@@ -1087,6 +1091,15 @@ on `tree:OnChange`. Call `rendering:Refresh()` from `db:OnProfileChanged` so a
 profile switch redraws the values. The widget author contract, the release
 contract and the layout contract are in
 [`widgetKit/docs/API.md`](../packages/widgetKit/docs/API.md).
+
+To put the same tree in Blizzard's settings panel (Esc → Options → AddOns),
+`PanelKit` (package `panelKit`) registers it with the client's own `Settings`
+API: `PanelKit:Register("MyAddon")` adds a category, and `{ parent = panel }`
+a subcategory under it. PanelKit hands Blizzard a plain frame of its own and
+draws the tree into it with `RenderOptions` only while Blizzard shows the
+page; every widget goes back to its pool when the page is hidden. Blizzard
+cannot remove a category, so a registration lasts until logout. See
+[`panelKit/docs/API.md`](../packages/panelKit/docs/API.md).
 
 ## Performance guidance
 

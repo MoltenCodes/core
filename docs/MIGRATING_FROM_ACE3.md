@@ -703,6 +703,7 @@ LibStub("AceConfigRegistry-3.0"):NotifyChange("MyAddon")
 local OptionsKit = Registry:Get("optionsKit", 1)
 local CommandKit = Registry:Get("commandKit", 1)
 local WidgetKit = Registry:Get("widgetKit", 1)
+local PanelKit = Registry:Get("panelKit", 1)
 
 local tree = OptionsKit:Define(ADDON_NAME, {
   type = "group",
@@ -722,6 +723,9 @@ local tree = OptionsKit:Define(ADDON_NAME, {
 
 -- /myaddon get|set|reset|list|exec
 CommandKit:ForAddon(ADDON_NAME):BindOptions(tree, "myaddon", { description = "My Addon options." })
+
+-- a page in Blizzard's settings panel (Esc > Options > AddOns)
+local panel = PanelKit:Register(ADDON_NAME, { name = "My Addon" })
 
 -- a window
 local frame = assert(WidgetKit:Create("Frame"))
@@ -761,7 +765,11 @@ rendering:Refresh()
   `db:OnChange` and `db:OnProfileChanged`.
 - **Command line**: CommandKit's syntax is `/myaddon set scale 1.25`, where
   AceConfigCmd's is `/myaddon scale 1.25`.
-- **`AddToBlizOptions`** has no equivalent yet (the user-interface phase).
+- **`AddToBlizOptions(appName, name, parent)`** is
+  `PanelKit:Register(treeName, { name = name, parent = parentPanel })`; the
+  parent is the panel the first `Register` returned, not a name, and Ace3's
+  fourth argument (a sub-group path) has no equivalent: define a second tree
+  for a subcategory. `AceConfigDialog:Open` on that page is `panel:Open()`.
 - **Converting an existing table** instead of rewriting it is BridgeKit's
   AceConfig adapter: see
   [below](#converting-an-aceconfig-table).
@@ -1094,7 +1102,6 @@ end
 
 | Ace3 | Status |
 |---|---|
-| `AceConfigDialog:AddToBlizOptions` (the Blizzard settings panel) | The user-interface phase. |
 | AceGUI `TreeGroup`, `TabGroup`, `DropdownGroup`, `Icon`, `InteractiveLabel`, `Frame:SetStatusText` | The user-interface phase. |
 | AceConfigDialog `childGroups` (tabs, trees, drop-down groups) | The user-interface phase; `RenderOptions` nests groups. |
 | AceTab completion in arbitrary edit boxes | Not planned; CommandKit completes its own commands. |

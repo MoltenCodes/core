@@ -35,5 +35,6 @@ Current packages:
 - [`compatKit`](compatKit/) — versioned shims applied once per session with a host opt-out, provider registries with liveness probes and a deterministic fallback cascade, the catalogue of taint-hostile subsystems as data.
 - [`commKit`](commKit/) — addon messaging: chunk protocol, bounded reassembly, refusing priority queues, session bandwidth budget, sync sets.
 - [`widgetKit`](widgetKit/) — pooled versioned widgets, List/Fill/Flow layouts, anchors, position bindings, OptionsKit renderer.
+- [`panelKit`](panelKit/) — OptionsKit trees in Blizzard's settings panel: a category or subcategory per tree, drawn by WidgetKit only while shown.
 - [`apiKit`](apiKit/) — the flavour-aware, typed wrapper over the World of Warcraft API (`wow.retail.api`, ...): direct aliases generated from the client's own documentation tables, LuaCATS types per flavour, the raw API always valid.
 - [`testKit`](testKit/) — development-only in-client test suites: phase-gated, SchedulerKit-driven, secret-safe expectations, structured results.

@@ -151,3 +151,5 @@ move-folders:
   MoltenCodes/packages/apiKit/docs: MoltenCodes/apiKit/docs
   MoltenCodes/packages/bridgeKit/src: MoltenCodes/bridgeKit
   MoltenCodes/packages/bridgeKit/docs: MoltenCodes/bridgeKit/docs
+  MoltenCodes/packages/panelKit/src: MoltenCodes/panelKit
+  MoltenCodes/packages/panelKit/docs: MoltenCodes/panelKit/docs

@@ -4,7 +4,7 @@
 [![Release](https://img.shields.io/github/v/release/MoltenCodes/core?include_prereleases&sort=semver)](https://github.com/MoltenCodes/core/releases)
 
 A modular Lua 5.1 framework for professional World of Warcraft addon
-development: 29 small packages, called Kits, each independently versioned,
+development: 30 small packages, called Kits, each independently versioned,
 tested and publishable, that an addon embeds one by one or loads together as the
 standalone addon `MoltenCodes`.
 
@@ -16,7 +16,7 @@ bounded by default and safe around the Retail secret-value and taint rules.
 
 ## Packages
 
-Twenty-eight release packages and one development package. Each links to its
+Twenty-nine release packages and one development package. Each links to its
 README; its full contract is the package's `docs/API.md`.
 
 | Package | Purpose |
@@ -48,6 +48,7 @@ README; its full contract is the package's `docs/API.md`.
 | [`compatKit`](packages/compatKit/) | Versioned shims with a host opt-out, provider registries with a fallback cascade, and the catalogue of taint-hostile subsystems as data. |
 | [`commKit`](packages/commKit/) | Addon messaging of any length: a chunk protocol with bounded reassembly, refusing priority queues, a session bandwidth budget and sync sets. |
 | [`widgetKit`](packages/widgetKit/) | Pooled, versioned widgets with explicit layouts, saveable anchors and an OptionsKit renderer. |
+| [`panelKit`](packages/panelKit/) | An OptionsKit tree in Blizzard's settings panel, as a category or subcategory, drawn by WidgetKit only while its page is shown. |
 | [`apiKit`](packages/apiKit/) | The flavour-aware, typed wrapper over the World of Warcraft API (`wow.retail.api`, ...), generated from the client's own documentation tables. |
 | [`testKit`](packages/testKit/) | Development only, never bundled: in-client test suites in LifecycleKit phases and SchedulerKit jobs, with structured results. |
 
@@ -137,7 +138,7 @@ answers `--help`.
 ├── examples/                # a complete example addon, loaded by its own spec
 ├── lychee.toml              # Markdown link-check configuration
 ├── meta/                    # editor-only LuaCATS definitions, including the game API
-├── packages/                # the 29 Kits, one directory each (see packages/README.md)
+├── packages/                # the 30 Kits, one directory each (see packages/README.md)
 ├── pyproject.toml           # the supported Python floor for the tooling
 ├── selene.toml              # Selene configuration for runtime Lua
 ├── selene-tests.toml        # Selene configuration for test Lua

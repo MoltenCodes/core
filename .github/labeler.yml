@@ -78,6 +78,10 @@
   - changed-files:
       - any-glob-to-any-file: "packages/optionsKit/**"
 
+"kit: panelKit":
+  - changed-files:
+      - any-glob-to-any-file: "packages/panelKit/**"
+
 "kit: poolKit":
   - changed-files:
       - any-glob-to-any-file: "packages/poolKit/**"
