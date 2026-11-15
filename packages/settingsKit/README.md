@@ -37,7 +37,7 @@ What each piece promises:
 
 - **Defaults are a view, not stored data.** A read that finds nothing saved returns the schema's default, including wildcard defaults for every key of a keyed section, and writes nothing. The saved file holds only what the player changed, and `db:Compact()` removes values that were set back to their default.
 - **Writes are validated where they happen.** `db.profile.scale = 7` raises at that line with SchemaKit's failure text, and nothing is stored. A secret value is refused the same way: saved variables never hold one.
-- **Scopes.** `db.global`, `db.char`, `db.realm`, `db.class`, `db.faction` and `db.profile`, keyed from `UnitName`, `GetRealmName`, `UnitClass` and `UnitFactionGroup` read once at `Open`.
+- **Scopes.** `db.global`, `db.char`, `db.realm`, `db.class`, `db.faction` and `db.profile`, keyed from `UnitNameUnmodified` (else `UnitName`), `GetRealmName`, `UnitClass` and `UnitFactionGroup` read once at `Open`; `SettingsKit:GetCharacterKey()` answers the character key.
 - **Profiles.** `SetProfile`, `GetProfiles` (sorted), `CopyProfile`, `ResetProfile`, `DeleteProfile`, `ResetDatabase`, with a signal for each change.
 - **Spec profiles.** `db:SetSpecProfile(index, name)` assigns a profile to a specialization (Retail, Mists of Pandaria Classic) or a talent group (Classic Era, Season of Discovery, Hardcore), and the database switches to it when the player changes specialization, while EventKit is embedded; `db:ApplySpecProfile()` does it by hand. See *Spec profiles* in the API.
 - **Change notifications.** `db:OnChange(scope, callback)` returns a SignalKit connection called after every validated write.
@@ -45,7 +45,7 @@ What each piece promises:
 - **Newer data is read-only.** A saved table a newer version of the addon wrote (stored version above `options.version`) opens read-only: reads work, every write raises at the writer's line, and `db:IsReadOnly()` says so. `allowNewerData = true` opts in to writing it.
 - **Compaction at logout.** When EventKit is embedded, every database compacts itself on `PLAYER_LOGOUT`.
 - **Views hold their saved tables.** A view keeps the table it reads until a SettingsKit mutation may have changed it. After editing the saved variable yourself once the database is open, call `db:Resync()`.
-- **Getters for hot loops.** `db:Getter("profile", "scale")` returns a function answering exactly what `db.profile.scale` does, defaults included, without the metamethod call or a per-call probe of the key.
+- **Reads cost what AceDB's do.** A view reads through chained tables, so `db.profile.scale` is answered by the VM without a SettingsKit call (about 10 ns against AceDB-3.0's 3.5 ns on host Lua; revision 13 took 110 ns), and views are built on first use, so `Open` holds less than AceDB-3.0's database. While a database is open its saved tables read their defaults, as AceDB's do; use `rawget` to test what is saved. `db:Getter("profile", "scale")` returns a function answering exactly what `db.profile.scale` does, for handing a reader around.
 - **Bounded by default, opened on purpose.** The secret-value scan of a written table (`maxScannedEntries`, an `Open` option that accepts `SettingsKit.UNBOUNDED`), profile-name length and path-key length (`SettingsKit:SetLimits`) each have a documented default; see *Limits* in the API.
 
 ## Migrating from AceDB-3.0
@@ -63,6 +63,8 @@ What each piece promises:
 | `db:ResetDB()` | `db:ResetDatabase()` |
 | `db:RegisterNamespace(name, defaults)` | No namespaces in API 1: open a second database. |
 | `db:RegisterDefaults(defaults)` | The schema passed to `Open`. |
+| Defaults copied into the saved tables, so `MyAddonDB.profiles.Default.scale` reads the default | The same while the database is open: saved tables read their scalar defaults through a metatable (revision 14); `rawget` sees only what is saved, and nothing is written. |
+| Character key from `UnitNameUnmodified("player") .. " - " .. GetRealmName()` | The same key (revision 14), `SettingsKit:GetCharacterKey()`; `UnitName` only where the client has no `UnitNameUnmodified`. AceDB's ruleset keys on WoW Forever (interface 1.60) are not followed: that client is not supported. |
 | Callbacks `OnProfileChanged(event, db, name)` and the other three | `db:OnProfileChanged(function(db, name, previous) end)`, `OnProfileCopied`, `OnProfileReset`, `OnProfileDeleted`. |
 | Values equal to their defaults stripped at logout | `db:Compact()`, run at logout while EventKit is embedded. |
 

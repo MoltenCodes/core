@@ -72,11 +72,11 @@ moment:
 
 ```text
 MoltenCodes Test: running settingsKit: 10 suites. Results follow when every test has finished.
-MoltenCodes Test: PASS settingsKit.facade: Registry:Get('settingsKit', 1) is the SettingsKit facade with API 1, Open, SetLimits, GetLimits, UNBOUNDED, DEFAULT_PROFILE 'Default', MAX_PROFILE_NAME_LENGTH 64 and the Database prototype's twenty-two methods, and GetSpecIndex
+MoltenCodes Test: PASS settingsKit.facade: Registry:Get('settingsKit', 1) is the SettingsKit facade with API 1, Open, SetLimits, GetLimits, UNBOUNDED, DEFAULT_PROFILE 'Default', MAX_PROFILE_NAME_LENGTH 64 and the Database prototype's twenty-two methods, GetSpecIndex and GetCharacterKey
 MoltenCodes Test: PASS settingsKit.facade: the installed SettingsKit carries the revision of the committed manifest
 MoltenCodes Test: PASS settingsKit.facade: GetLimits answers a fresh table holding the session's shared limits at their defaults: maxProfileNameLength 64 and pathKeyLimit 32
 MoltenCodes Test: PASS settingsKit.savedVariables: Open over the two saved variables of the toc, after the loaded phase, uses each global as the raw table, stamps its version, creates every layout section, and a second Open returns the same database
-MoltenCodes Test: PASS settingsKit.savedVariables: the current profile and the char scope are keyed '<name> - <realm>' from the live UnitName('player') and GetRealmName(), and a write through db.char lands under that key
+MoltenCodes Test: PASS settingsKit.savedVariables: the current profile and the char scope are keyed '<name> - <realm>' from the live UnitNameUnmodified('player') and GetRealmName(), as SettingsKit:GetCharacterKey() answers, a write through db.char lands under that key, and the open profile's raw table reads the scale default while rawget sees nothing saved
 MoltenCodes Test: PASS settingsKit.savedVariables: the realm, class and faction scopes are keyed by the live GetRealmName(), UnitClass('player')'s class file and UnitFactionGroup('player'), and a write through each lands under its key
 MoltenCodes Test: PASS settingsKit.savedVariables: reading defaults writes nothing: frame.x, frame.y, auras[118].shown, label, global.counter and char.touched read their defaults and the raw profile, global and char tables gain no key
 MoltenCodes Test: PASS settingsKit.savedVariables: an array default is copied into the raw saved table on its first read, as documented, and Compact removes the unchanged copy
@@ -106,7 +106,7 @@ MoltenCodes Test: PASS settingsKit.secrets: a secret string and a secret number 
 MoltenCodes Test: PASS settingsKit.secrets: Compact walks a profile holding a secret without raising and leaves the secret in place
 MoltenCodes Test: PASS settingsKit.secrets: writing a secret value, or a table holding one, through a view raises at the writing line with 'refused a secret value' and the raw saved table is unchanged
 MoltenCodes Test: PASS settingsKit.secrets: Validate refuses a secret key on the path with 'refused a secret key' and stores nothing
-MoltenCodes Test: PASS settingsKit.secrets: a secret key never reads or stores: db.profile[secret], db.profile.auras[secret], db[secret] and db.profile[secret] = 1 each raise at this file's line, and the raw profile gains no key
+MoltenCodes Test: PASS settingsKit.secrets: a secret key never reads or stores: the client refuses db.profile[secret], db.profile.auras[secret] and db[secret] at this file's line before any metamethod runs (SettingsKit asks nothing since revision 14), SettingsKit refuses db.profile[secret] = 1, and the raw profile gains no key
 MoltenCodes Test: PASS settingsKit.secrets: OnChange and Validate refuse a secret scope, Open a secret version and SetLimits a secret value, each at the calling line before comparing it, and the limits stay as they were
 MoltenCodes Test: PASS settingsKit.persistence: persistence step one: profile.scale 1.25, profile.anchor at its default, char.note, the per-character global.note and a marker are written through the views and stored in both raw saved tables
 MoltenCodes Test: SKIP settingsKit.persistence: persistence step two: after /reload the client restored both saved tables after this file ran (nil at file scope) and before the loaded phase, and the views read back the marker, scale 1.25, char.note and the per-character note -- run again after /reload: no marker from an earlier session yet (step one wrote it now)
@@ -154,11 +154,11 @@ The client may order the keys differently.
 
 ```text
 MoltenCodes Test: running settingsKit: 10 suites. Results follow when every test has finished.
-MoltenCodes Test: PASS settingsKit.facade: Registry:Get('settingsKit', 1) is the SettingsKit facade with API 1, Open, SetLimits, GetLimits, UNBOUNDED, DEFAULT_PROFILE 'Default', MAX_PROFILE_NAME_LENGTH 64 and the Database prototype's twenty-two methods, and GetSpecIndex
+MoltenCodes Test: PASS settingsKit.facade: Registry:Get('settingsKit', 1) is the SettingsKit facade with API 1, Open, SetLimits, GetLimits, UNBOUNDED, DEFAULT_PROFILE 'Default', MAX_PROFILE_NAME_LENGTH 64 and the Database prototype's twenty-two methods, GetSpecIndex and GetCharacterKey
 MoltenCodes Test: PASS settingsKit.facade: the installed SettingsKit carries the revision of the committed manifest
 MoltenCodes Test: PASS settingsKit.facade: GetLimits answers a fresh table holding the session's shared limits at their defaults: maxProfileNameLength 64 and pathKeyLimit 32
 MoltenCodes Test: PASS settingsKit.savedVariables: Open over the two saved variables of the toc, after the loaded phase, uses each global as the raw table, stamps its version, creates every layout section, and a second Open returns the same database
-MoltenCodes Test: PASS settingsKit.savedVariables: the current profile and the char scope are keyed '<name> - <realm>' from the live UnitName('player') and GetRealmName(), and a write through db.char lands under that key
+MoltenCodes Test: PASS settingsKit.savedVariables: the current profile and the char scope are keyed '<name> - <realm>' from the live UnitNameUnmodified('player') and GetRealmName(), as SettingsKit:GetCharacterKey() answers, a write through db.char lands under that key, and the open profile's raw table reads the scale default while rawget sees nothing saved
 MoltenCodes Test: PASS settingsKit.savedVariables: the realm, class and faction scopes are keyed by the live GetRealmName(), UnitClass('player')'s class file and UnitFactionGroup('player'), and a write through each lands under its key
 MoltenCodes Test: PASS settingsKit.savedVariables: reading defaults writes nothing: frame.x, frame.y, auras[118].shown, label, global.counter and char.touched read their defaults and the raw profile, global and char tables gain no key
 MoltenCodes Test: PASS settingsKit.savedVariables: an array default is copied into the raw saved table on its first read, as documented, and Compact removes the unchanged copy
@@ -188,7 +188,7 @@ MoltenCodes Test: PASS settingsKit.secrets: a secret string and a secret number 
 MoltenCodes Test: PASS settingsKit.secrets: Compact walks a profile holding a secret without raising and leaves the secret in place
 MoltenCodes Test: PASS settingsKit.secrets: writing a secret value, or a table holding one, through a view raises at the writing line with 'refused a secret value' and the raw saved table is unchanged
 MoltenCodes Test: PASS settingsKit.secrets: Validate refuses a secret key on the path with 'refused a secret key' and stores nothing
-MoltenCodes Test: PASS settingsKit.secrets: a secret key never reads or stores: db.profile[secret], db.profile.auras[secret], db[secret] and db.profile[secret] = 1 each raise at this file's line, and the raw profile gains no key
+MoltenCodes Test: PASS settingsKit.secrets: a secret key never reads or stores: the client refuses db.profile[secret], db.profile.auras[secret] and db[secret] at this file's line before any metamethod runs (SettingsKit asks nothing since revision 14), SettingsKit refuses db.profile[secret] = 1, and the raw profile gains no key
 MoltenCodes Test: PASS settingsKit.secrets: OnChange and Validate refuse a secret scope, Open a secret version and SetLimits a secret value, each at the calling line before comparing it, and the limits stay as they were
 MoltenCodes Test: SKIP settingsKit.persistence: persistence step one: profile.scale 1.25, profile.anchor at its default, char.note, the per-character global.note and a marker are written through the views and stored in both raw saved tables -- a marker from an earlier session is present; step two reads it, so nothing is rewritten
 MoltenCodes Test: PASS settingsKit.persistence: persistence step two: after /reload the client restored both saved tables after this file ran (nil at file scope) and before the loaded phase, and the views read back the marker, scale 1.25, char.note and the per-character note
@@ -239,7 +239,7 @@ passes trivially on the unchanged index, which the log makes visible.
 
 None in the game: nothing is drawn, no sound plays, no chat line other than
 the harness's appears, no client setting (CVar) changes and no request goes to
-the server. `UnitName`, `GetRealmName`, `UnitClass` and `UnitFactionGroup`
+the server. `UnitNameUnmodified` (SettingsKit's character key since revision 14), `UnitName`, `GetRealmName`, `UnitClass` and `UnitFactionGroup`
 are only read. The only thing a player could notice is the short stutter of
 the three full garbage collections. On disk, the two
 `MoltenCodesTest_SettingsKit.lua` files exist between run 1 and the final
@@ -278,7 +278,7 @@ exercised`, and the totals read 33 and 35 passed with 10 and 8 skipped.
 
 ## Per flavour
 
-The suite reads only what all three promised clients have: `UnitName`,
+The suite reads only what all three promised clients have: `UnitNameUnmodified` (in `UnitDocumentation.lua` of `live`, `classic` and `classic_era`), `UnitName`,
 `GetRealmName`, `UnitClass` and `UnitFactionGroup` (documented by the apiKit
 metadata for `retail`, `classic-era` and `classic-mop`), the `PLAYER_LOGOUT`
 event EventKit connects the compaction to (in `events.json` of all three),
@@ -321,7 +321,7 @@ MoltenCodes Test: SKIP settingsKit.secrets: a secret string and a secret number 
 MoltenCodes Test: SKIP settingsKit.secrets: Compact walks a profile holding a secret without raising and leaves the secret in place -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
 MoltenCodes Test: SKIP settingsKit.secrets: writing a secret value, or a table holding one, through a view raises at the writing line with 'refused a secret value' and the raw saved table is unchanged -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
 MoltenCodes Test: SKIP settingsKit.secrets: Validate refuses a secret key on the path with 'refused a secret key' and stores nothing -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
-MoltenCodes Test: SKIP settingsKit.secrets: a secret key never reads or stores: db.profile[secret], db.profile.auras[secret], db[secret] and db.profile[secret] = 1 each raise at this file's line, and the raw profile gains no key -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
+MoltenCodes Test: SKIP settingsKit.secrets: a secret key never reads or stores: the client refuses db.profile[secret], db.profile.auras[secret] and db[secret] at this file's line before any metamethod runs (SettingsKit asks nothing since revision 14), SettingsKit refuses db.profile[secret] = 1, and the raw profile gains no key -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
 MoltenCodes Test: SKIP settingsKit.secrets: OnChange and Validate refuse a secret scope, Open a secret version and SetLimits a secret value, each at the calling line before comparing it, and the limits stay as they were -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
 ```
 
@@ -333,7 +333,7 @@ MoltenCodes Test: SKIP settingsKit.secrets: a secret string and a secret number 
 MoltenCodes Test: SKIP settingsKit.secrets: Compact walks a profile holding a secret without raising and leaves the secret in place -- the client has no issecretvalue and secretwrap; the secret path was not exercised
 MoltenCodes Test: SKIP settingsKit.secrets: writing a secret value, or a table holding one, through a view raises at the writing line with 'refused a secret value' and the raw saved table is unchanged -- the client has no issecretvalue and secretwrap; the secret path was not exercised
 MoltenCodes Test: SKIP settingsKit.secrets: Validate refuses a secret key on the path with 'refused a secret key' and stores nothing -- the client has no issecretvalue and secretwrap; the secret path was not exercised
-MoltenCodes Test: SKIP settingsKit.secrets: a secret key never reads or stores: db.profile[secret], db.profile.auras[secret], db[secret] and db.profile[secret] = 1 each raise at this file's line, and the raw profile gains no key -- the client has no issecretvalue and secretwrap; the secret path was not exercised
+MoltenCodes Test: SKIP settingsKit.secrets: a secret key never reads or stores: the client refuses db.profile[secret], db.profile.auras[secret] and db[secret] at this file's line before any metamethod runs (SettingsKit asks nothing since revision 14), SettingsKit refuses db.profile[secret] = 1, and the raw profile gains no key -- the client has no issecretvalue and secretwrap; the secret path was not exercised
 MoltenCodes Test: SKIP settingsKit.secrets: OnChange and Validate refuse a secret scope, Open a secret version and SetLimits a secret value, each at the calling line before comparing it, and the limits stay as they were -- the client has no issecretvalue and secretwrap; the secret path was not exercised
 ```
 
@@ -349,7 +349,7 @@ and in every case, since the six secrets tests skip there either way.
 | `the installed SettingsKit carries the revision ...` | Registry's selected revision and the facade's `REVISION` are both the committed manifest's (12 at the time of writing), not an older or newer embedded copy. |
 | `GetLimits answers a fresh table ...` | A new table per call holding `maxProfileNameLength` 64 and `pathKeyLimit` 32; a difference means another addon changed the shared limits. |
 | `Open over the two saved variables of the toc ...` | After the loaded phase, `Open` works on the tables the client restored (or creates them on a first install), stamps `version` 2 and 1, creates all nine layout sections, `GetSavedVariable` names each global, a second `Open` (with or without the schema) returns the same database, and views report `getmetatable` `"SettingsKit.View"`. The log says what the client restored at the loaded phase. |
-| `the current profile and the char scope are keyed '<name> - <realm>' ...` | With `defaultProfile = "char"`, the current profile is `UnitName("player") .. " - " .. GetRealmName()` from the live client, its table exists in the saved `profiles`, and a write through `db.char` lands in `char["<name> - <realm>"]`. The log gives the key. |
+| `the current profile and the char scope are keyed '<name> - <realm>' ...` | With `defaultProfile = "char"`, the current profile is `UnitNameUnmodified("player") .. " - " .. GetRealmName()` from the live client (`UnitName` where the client has no `UnitNameUnmodified`), `SettingsKit:GetCharacterKey()` answers the same key, its table exists in the saved `profiles`, a write through `db.char` lands in `char["<name> - <realm>"]`, and with `scale` reset the raw profile table answers the default `1` while `rawget` sees no `scale` (revision 14: saved tables read their defaults while the database is open). The log gives the key. |
 | `the realm, class and faction scopes are keyed ...` | Writes through `db.realm`, `db.class` and `db.faction` land under the live realm, the class file (`"MAGE"`) and the faction group. The log gives the three keys. |
 | `reading defaults writes nothing ...` | Reading record, keyed-section (wildcard) and scalar defaults leaves the raw profile, `global` and `char` tables with exactly the keys they had. |
 | `an array default is copied into the raw saved table on its first read ...` | The documented exception: the first read of the array default `color` stores a copy (the same table the read returned), and `Compact` removes it again while unchanged. |
@@ -379,7 +379,7 @@ and in every case, since the six secrets tests skip there either way.
 | `Compact walks a profile holding a secret ...` | `Compact` does not raise on a secret and keeps it, since a secret never equals a default. |
 | `writing a secret value, or a table holding one ...` | `profile.label = secret`, `profile.frame = { x = secret }` and `char.note = secret` raise `... refused a secret value: saved variables never hold secret values` at the writing line, nothing is stored, and `Validate` answers the same text. |
 | `Validate refuses a secret key on the path ...` | `Validate("profile", { secretKey }, ...)` answers `... profile refused a secret key: saved variables never hold secret values` and stores nothing. |
-| `a secret key never reads or stores ...` | `db.profile[secret]`, `db.profile.auras[secret]`, `db[secret]` and `db.profile[secret] = 1` each raise at this file's line and the raw profile gains no key. The log says, for each, whether SettingsKit refused it (`... cannot be read with a secret key`, `... refused a secret key ...`) or the client refused the key before any metamethod ran (`cannot be indexed with secret keys`); both pass, and the log is the fact to send back. |
+| `a secret key never reads or stores ...` | The client refuses `db.profile[secret]`, `db.profile.auras[secret]` and `db[secret]` with its own `cannot be indexed with secret keys` at this file's line, before any metamethod runs: SettingsKit revision 14 removed its read probes on that measured behaviour (core decision 19b), so a SettingsKit message for a read is a failure. `db.profile[secret] = 1` is refused by SettingsKit (`... refused a secret key ...`). The raw profile gains no key. The log gives each message. |
 | `OnChange and Validate refuse a secret scope ...` | `... OnChange scope must not be a secret value`, `... Validate scope must not be a secret value`, `SettingsKit:Open options.version must not be a secret value` (no global created) and `SettingsKit:SetLimits limits.pathKeyLimit must not be a secret value`, each at the calling line, and the limits are unchanged. |
 | `persistence step one: ...` | Run 1: `scale` 1.25, `anchor` at its default `"CENTER"`, `char.note`, the per-character `global.note` and the marker `global.persistence` are written through the views and are in both raw saved tables, `anchor` included (a write of a default-equal value is stored until compaction). Run 2: `SKIP`, keeping the restored marker. |
 | `persistence step two: after /reload the client restored both saved tables ...` | Run 2: both globals were `nil` when this file ran and tables at the loaded phase (so a database opened at file scope would have been replaced), the restored tables carry `version` 2 and 1, the current profile is still `"<name> - <realm>"`, and the views read back the marker's token, `scale` 1.25, `char.note` and the per-character `global.note` the client wrote to disk. It then records `verifiedAt` in the marker. Run 1: `SKIP`. |

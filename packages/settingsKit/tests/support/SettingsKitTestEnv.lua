@@ -30,7 +30,8 @@ local SettingsKitTestEnv = FrameworkTestEnv.New({
 })
 
 --- The player identity host functions this environment installs and removes.
-local IDENTITY_GLOBALS = { "UnitName", "GetRealmName", "UnitClass", "UnitFactionGroup" }
+local IDENTITY_GLOBALS =
+  { "UnitName", "UnitNameUnmodified", "GetRealmName", "UnitClass", "UnitFactionGroup" }
 
 --- The specialization host surface `SetSpecialization` installs and `Reset`
 --- removes. `WOW_PROJECT_ID` is owned, and cleared, by the shared fixture.
@@ -73,7 +74,10 @@ end
 
 ---Install the four identity functions for `player`. A field set to `false`
 ---leaves that function out, so the scope it feeds is unavailable.
----@param player table? `{ name, realm, class, faction }`; omitted fields take the defaults
+---`unmodified`, when given, installs `UnitNameUnmodified` answering it (any
+---value, for the fallback cases); without it the function is left out, as on
+---a client without one.
+---@param player table? `{ name, realm, class, faction, unmodified }`; omitted fields take the defaults
 function SettingsKitTestEnv.SetPlayer(player)
   player = player or {}
   local function pick(field)
@@ -88,6 +92,13 @@ function SettingsKitTestEnv.SetPlayer(player)
   setGlobal("UnitName", name ~= false and function(unit)
     if unit == "player" then
       return name, nil
+    end
+    return nil
+  end or nil)
+  local unmodified = player.unmodified
+  setGlobal("UnitNameUnmodified", unmodified ~= nil and function(unit)
+    if unit == "player" then
+      return unmodified, nil
     end
     return nil
   end or nil)

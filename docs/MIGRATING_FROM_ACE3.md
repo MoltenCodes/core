@@ -668,6 +668,8 @@ end)
 | `db:RegisterDefaults(defaults)` | the schema passed to `Open` |
 | callbacks `OnProfileChanged(event, db, name)`, `OnProfileCopied`, `OnProfileReset`, `OnProfileDeleted` | `db:OnProfileChanged(function(db, name, previous))`, `OnProfileCopied(db, from, name)`, `OnProfileReset(db, name)`, `OnProfileDeleted(db, name)` |
 | `OnDatabaseShutdown` | `LifecycleKit:ForAddon(ADDON_NAME):OnShutdown(callback)` |
+| defaults copied into the saved tables, so `MyAddonDB.profiles.Default.scale` reads the default | the same while the database is open: SettingsKit gives the saved tables a metatable answering their scalar defaults; `rawget`, `next` and `pairs` see only what is saved, and nothing is written to disk |
+| character key `UnitNameUnmodified("player") .. " - " .. GetRealmName()` | the same key, answered by `SettingsKit:GetCharacterKey()`; WoW Forever's ruleset keys are not followed (the client is not supported) |
 | stripping values equal to defaults at logout | `db:Compact()`, run at logout when EventKit is loaded |
 
 - **Open in the loaded phase.** Before `ADDON_LOADED` the client has not
@@ -681,9 +683,10 @@ end)
   `db:Pairs(db.profile)`.
 - **Views hold their saved tables.** SettingsKit views keep a reference to
   the saved tables they read; if you edit the saved variable directly after
-  `Open`, call `db:Resync()`. For hot loops, `db:Getter("profile", key)`
-  replaces repeated `db.profile.key` reads: it returns a function that answers
-  what the view would, defaults included, and follows `SetProfile`.
+  `Open`, call `db:Resync()`. A view read costs what an AceDB table read
+  costs, so read `db.profile.key` in hot loops; `db:Getter("profile", key)`
+  returns a function answering what the view would, defaults included, for
+  handing a reader around.
 - **Versioned data.** `Open(name, schema, { version = 2, migrations = { [2] =
   function(raw) end } })` runs each migration once, transactionally, and a
   saved table written by a newer version of the addon opens read-only.

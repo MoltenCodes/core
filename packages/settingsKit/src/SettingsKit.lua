@@ -53,7 +53,7 @@
 
 local PACKAGE_NAME = "settingsKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 13
+local IMPLEMENTATION_REVISION = 14
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_SCHEMAKIT_API = 1
 local REQUIRED_SIGNALKIT_API = 1
@@ -75,9 +75,11 @@ local STATE_SCHEMA = 1
 -- the resolved-table cache (`cache`, `generation`) and, to stay within 16
 -- fields, dropped `kind` (a record node is the one with `kinds`), `depth`
 -- (one more than the length of `pathKeys`) and the root's `dead` (a detached
--- root's `generation` is `DETACHED`).
+-- root's `generation` is `DETACHED`). Node layout 4 (revision 14) builds the
+-- probe table on the first full check (`probe` is `false` until then), and
+-- each view reads through a metatable of its own (see "Read-through chains").
 local DATABASE_SCHEMA = 4
-local NODE_SCHEMA = 3
+local NODE_SCHEMA = 4
 local PLAN_SCHEMA = 2
 
 -- The profile every character shares unless the addon asks otherwise.
@@ -168,7 +170,16 @@ local OPTION_KEYS = {
 local KIND_RECORD = "record"
 local KIND_MAP = "map"
 
-local FACADE_METHODS = { "Open", "SetLimits", "GetLimits", "GetSpecIndex" }
+local FACADE_METHODS = { "Open", "SetLimits", "GetLimits", "GetSpecIndex", "GetCharacterKey" }
+
+-- The field that marks a metatable SettingsKit gave a saved table (revision
+-- 14): a saved table reachable from an open database reads through to its
+-- view's scalar defaults, and `scanValue` accepts such a table as plain. A
+-- string, so every revision recognises the mark of every other.
+local SAVED_MARK = "__settingsKitSaved"
+
+-- What `getmetatable` answers for a view, in every revision.
+local VIEW_METATABLE_NAME = "SettingsKit.View"
 local DATABASE_METHODS = {
   "GetProfile",
   "SetProfile",
@@ -237,7 +248,6 @@ local DETACHED = false
 local NO_PROBE_KEY = {}
 
 local WEAK_KEYS = { __mode = "k" }
-local WEAK_VALUES = { __mode = "v" }
 
 -- Public types ---------------------------------------------------------------
 --
@@ -417,11 +427,16 @@ end
 ---`SchemaKit:SetLimits` may change at any time, so it is read when a check
 ---starts rather than once at load. Every scan, comparison and depth test in
 ---this file stops there, and views are built to the depth in force when the
----database is opened. A SchemaKit revision without `GetLimits` has only the
----fixed `MAX_DEPTH`. Allocates one table (`GetLimits` returns a fresh one),
----so only paths that walk tables call it.
+---database is opened. Read through `SchemaKit:GetLimit` (SchemaKit revision
+---6), which allocates nothing; an older SchemaKit answers through `GetLimits`,
+---which allocates one table, and one without either has only the fixed
+---`MAX_DEPTH`.
 ---@return integer
 local function readMaxDepth()
+  local getLimit = rawget(SchemaKit, "GetLimit")
+  if type(getLimit) == "function" then
+    return getLimit(SchemaKit, "maxDepth")
+  end
   local getLimits = rawget(SchemaKit, "GetLimits")
   if type(getLimits) == "function" then
     return getLimits(SchemaKit).maxDepth
@@ -563,6 +578,8 @@ if previousRevision == nil then
     logoutDatabases = {},
     logoutConnected = false,
   }
+  -- The read-through chain tables (revision 14) are added below, for a new
+  -- state and an inherited one alike.
   rawset(SettingsKit, "Database", Database)
   rawset(SettingsKit, "_state", state)
 elseif type(Database) ~= "table" or not validateStateBase(state) then
@@ -586,6 +603,40 @@ if type(rawget(state, "logoutDatabases")) ~= "table" then
   rawset(state, "logoutDatabases", {})
   rawset(state, "logoutConnected", false)
 end
+
+-- Revision 14 reads views through tables (see "Read-through chains"). What
+-- every revision from 14 on shares:
+-- `chains`: node to its view's metatable. Weak in both, so neither keeps the
+--   other alive; the metatable lives as long as its proxy.
+-- `pendingRoots`: a scope root's proxy not built yet, to what builds it.
+-- `pendingChildren`: a record field's proxy not built yet, to its parent node.
+-- `entryOwners`: a keyed section's entry cache to its node (weak in both).
+-- `planShapes`: a plan to the read-through shape every view of it with the
+--   plan's own defaults shares.
+-- `pendingMetatable`: the metatable of every proxy not built yet.
+-- `entryCacheMetatable`: the metatable of every keyed section's entry cache.
+if type(rawget(state, "chains")) ~= "table" then
+  rawset(state, "chains", setmetatable({}, { __mode = "kv" }))
+  rawset(state, "pendingRoots", setmetatable({}, WEAK_KEYS))
+  rawset(state, "pendingChildren", setmetatable({}, WEAK_KEYS))
+  rawset(state, "entryOwners", setmetatable({}, { __mode = "kv" }))
+  rawset(state, "planShapes", setmetatable({}, WEAK_KEYS))
+  rawset(state, "pendingMetatable", {})
+  rawset(state, "entryCacheMetatable", { __mode = "v" })
+end
+
+-- The chain, pending-view and rebinding helpers and their shared tables, in
+-- one table so the main chunk stays under Lua 5.1's 200 locals. The helpers
+-- are filled in under "Pending views" and "Read-through chains".
+local Chain = {
+  chains = rawget(state, "chains"),
+  pendingRoots = rawget(state, "pendingRoots"),
+  pendingChildren = rawget(state, "pendingChildren"),
+  entryOwners = rawget(state, "entryOwners"),
+  planShapes = rawget(state, "planShapes"),
+  PENDING_METATABLE = rawget(state, "pendingMetatable"),
+  ENTRY_CACHE_METATABLE = rawget(state, "entryCacheMetatable"),
+}
 
 -- Host facilities ------------------------------------------------------------
 
@@ -1062,16 +1113,27 @@ local function countEntries(container, limit)
 end
 
 ---Whether a table may be stored in a saved variable: a plain table, never a
----view and never one with a metatable (the client saves neither).
+---view and never one with a metatable (the client saves neither). A saved
+---table SettingsKit gave its own metatable (`SAVED_MARK`) counts as plain:
+---the client saves no metatable, and the view the table lands under gives it
+---the right one.
 ---
 ---Asked only after the secret check, so it never touches a secret.
 ---@param value table
 ---@return "view"|"metatable"|nil problem
 local function plainTableProblem(value)
-  if rawget(views, value) ~= nil then
+  if
+    rawget(views, value) ~= nil
+    or rawget(Chain.pendingRoots, value) ~= nil
+    or rawget(Chain.pendingChildren, value) ~= nil
+  then
     return "view"
   end
-  if type(getmetatable(value)) ~= "nil" then
+  local metatable = getmetatable(value)
+  if type(metatable) ~= "nil" then
+    if type(metatable) == "table" and rawget(metatable, SAVED_MARK) == true then
+      return nil
+    end
     return "metatable"
   end
   return nil
@@ -1494,13 +1556,14 @@ end
 -- differs resolves again. A direct edit of the saved variable after `Open` is
 -- not a SettingsKit mutation: views see it once the addon calls `db:Resync()`.
 --
--- Reads and writes are the hot paths. They index SettingsKit's own tables
--- (nodes, plans, defaults, probes) directly, reach saved tables with plain
--- indexing only through a cached table (cached only when it has no
--- metatable, so the lookup is a raw one) and with `rawget` and `rawset`
--- otherwise, and decide everything that depends only on the schema when a
--- plan or view is built (`kinds`, `fastChecks`, `defaultKind`), so a read
--- tests the type only of what it finds in the saved variable.
+-- Reads and writes are the hot paths. A read through a view is answered by
+-- the VM without a Lua call (see "Read-through chains" below); the function
+-- path (`viewIndex`) remains for what a chain cannot answer. Both index
+-- SettingsKit's own tables (nodes, plans, defaults, probes) directly, reach
+-- saved tables with `rawget` and `rawset`, and decide everything that depends
+-- only on the schema when a plan or view is built (`kinds`, `fastChecks`,
+-- `defaultKind`), so a read tests the type only of what it finds in the saved
+-- variable.
 
 ---Bump the generation of `db`: every node's cached table is stale from now
 ---on and is resolved again on its next use. One field write, no allocation.
@@ -1516,11 +1579,11 @@ end
 ---Walks down from the saved variable: the root's section, its entry, then one
 ---key per nesting level below the root (`pathKeys`), stopping at anything
 ---missing or not a table. One `rawget` and one `type` per level, no
----allocation. A table with a metatable (a direct edit) is returned but not
----cached, so every access to it resolves again and uses `rawget`: plain
----indexing through the cache is a raw lookup only because a cached table has
----no metatable. A missing table is cached as `false`, except by a detached
----root, which keeps its `DETACHED` generation.
+---allocation. A table with a foreign metatable (a direct edit) is returned but
+---not cached, so every access to it resolves again; a table without one, or
+---with the metatable SettingsKit gave it (`SAVED_MARK`), is cached. A missing
+---table is cached as `false`, except by a detached root, which keeps its
+---`DETACHED` generation.
 ---@param node table
 ---@return table|nil
 local function refreshContainer(node)
@@ -1551,9 +1614,15 @@ local function refreshContainer(node)
       node.cache = false
       node.generation = root.db._generation
     end
-  elseif type(getmetatable(container)) == "nil" then
-    node.cache = container
-    node.generation = root.db._generation
+  else
+    local metatable = getmetatable(container)
+    if
+      type(metatable) == "nil"
+      or (type(metatable) == "table" and rawget(metatable, SAVED_MARK) == true)
+    then
+      node.cache = container
+      node.generation = root.db._generation
+    end
   end
   return container
 end
@@ -1694,20 +1763,26 @@ end
 
 -- The write fast path (`checkWrite`) skips SchemaKit's check of the whole
 -- probe chain, but that check also refuses any chain nested deeper than
--- SchemaKit's `maxDepth`, which `SchemaKit:SetLimits` may lower at any time
--- and `SchemaKit:GetLimits` reads only by allocating. `depthProbes[depth]`
--- holds a sealed chain of `depth` nested closed tables with one optional
--- field each, and a Kit-owned value of exactly that shape: checking it passes
--- exactly when a probe chain of `depth` tables would pass SchemaKit's depth
--- rule, and costs one small table check per level. Built once per depth and
+-- SchemaKit's `maxDepth`, which `SchemaKit:SetLimits` may lower at any time.
+-- SchemaKit revision 6 answers it without allocating (`GetLimit`), which is
+-- what `depthAllows` reads. With an older SchemaKit, whose `GetLimits`
+-- allocates, `depthProbes[depth]` holds a sealed chain of `depth` nested
+-- closed tables with one optional field each, and a Kit-owned value of
+-- exactly that shape: checking it passes exactly when a probe chain of
+-- `depth` tables would pass SchemaKit's depth rule. Built once per depth and
 -- session, when the first view of that depth is built; never written after.
 local depthProbes = {}
 
----Build the depth probe of `depth` unless it exists. Depth 1 needs none: the
----smallest `maxDepth` SchemaKit accepts is 1.
+---Build the depth probe of `depth` unless it exists or SchemaKit answers the
+---limit itself. Depth 1 needs none: the smallest `maxDepth` SchemaKit accepts
+---is 1.
 ---@param depth integer
 local function ensureDepthProbe(depth)
-  if depth < 2 or depthProbes[depth] ~= nil then
+  if
+    depth < 2
+    or depthProbes[depth] ~= nil
+    or type(rawget(SchemaKit, "GetLimit")) == "function"
+  then
     return
   end
   local buildTable = rawget(SchemaKit, "table")
@@ -1732,6 +1807,10 @@ local function depthAllows(pathKeys)
   if pathKeys == nil then
     return true
   end
+  local getLimit = rawget(SchemaKit, "GetLimit")
+  if type(getLimit) == "function" then
+    return #pathKeys + 1 <= getLimit(SchemaKit, "maxDepth")
+  end
   local probe = depthProbes[#pathKeys + 1]
   if probe == nil then
     return false
@@ -1739,14 +1818,50 @@ local function depthAllows(pathKeys)
   return probe.schema:Check(probe.value) == true
 end
 
-local newChildView
+-- Pending views ---------------------------------------------------------------
+--
+-- A view is built when it is first used, not when its parent is (revision
+-- 14). `Open` gives each scope a proxy and nothing else, and building a
+-- record view gives each record field a proxy and nothing else; the node,
+-- the read-through chain and the proxies below are built by the proxy's first
+-- read or write (`completeView`). The proxy is the view from the start, so
+-- `db.global` is a plain field of the database and a field's view keeps its
+-- identity. A pending proxy shares `Chain.PENDING_METATABLE`, whose `__metatable`
+-- answers `VIEW_METATABLE_NAME` like every view's.
 
----Put `node` behind a new proxy and build what hangs below it: every child
----view of a record, or the empty entry cache of a keyed section.
----@param node table
+---Give `proxy` the metatable `metatable`, which replaces `current`, the
+---protected metatable it has now (or `nil`). `current` belongs to SettingsKit,
+---so its `__metatable` field is cleared for the swap and put back after.
+---@param proxy table
+---@param current table|nil
+---@param metatable table
+function Chain.setProxyMetatable(proxy, current, metatable)
+  if current ~= nil then
+    rawset(current, "__metatable", nil)
+  end
+  setmetatable(proxy, metatable)
+  if current ~= nil then
+    rawset(current, "__metatable", VIEW_METATABLE_NAME)
+  end
+end
+
+---A new proxy for a record field of `parent`, built on first use.
+---@param parent table the record node
 ---@return table proxy
-local function attachView(node)
-  local proxy = setmetatable({}, VIEW_METATABLE)
+function Chain.pendingChild(parent)
+  local proxy = setmetatable({}, Chain.PENDING_METATABLE)
+  Chain.pendingChildren[proxy] = parent
+  return proxy
+end
+
+---Put `node` behind `proxy` and build what hangs below it: a pending proxy
+---for every record field, or the empty entry cache of a keyed section. Then
+---give the view its read-through chain.
+---@param node table
+---@param proxy table a new table, or a pending proxy
+---@param current table|nil the proxy's protected metatable, when it has one
+---@return table proxy
+function Chain.attachView(node, proxy, current)
   views[proxy] = node
 
   local plan = node.plan
@@ -1755,22 +1870,24 @@ local function attachView(node)
     local fieldNames = plan.fieldNames --[[@as string[] ]]
     for index = 1, #fieldNames do
       local name = fieldNames[index]
-      local field = plan.fields[name]
-      if field.proxied ~= false then
-        children[name] = newChildView(node, name, field)
+      if plan.fields[name].proxied ~= false then
+        children[name] = Chain.pendingChild(node)
       end
     end
     node.children = children
   else
     -- Entry views are made on first access and cached while somebody
     -- holds them.
-    node.children = setmetatable({}, WEAK_VALUES)
+    local entries = setmetatable({}, Chain.ENTRY_CACHE_METATABLE)
+    Chain.entryOwners[entries] = node
+    node.children = entries
   end
+  Chain.build(node, proxy, current)
   return proxy
 end
 
----Build the view of `plan` at `key` below the view of `parent`: a record
----field's view, or a keyed-section entry's.
+---Build the node of the view of `plan` at `key` below the view of `parent`: a
+---record field's view, or a keyed-section entry's.
 ---
 ---A node has at most 16 fields, so Lua gives it a 16-slot table rather than a
 ---32-slot one: what only a scope root needs (`db`, `scope`, `sectionKey`)
@@ -1780,15 +1897,14 @@ end
 ---@param parent table
 ---@param key any
 ---@param plan SettingsKit.Plan
----@return table proxy
-newChildView = function(parent, key, plan)
+---@return table node
+function Chain.newChildNode(parent, key, plan)
   local defaults = viewDefaults(parent.defaults, key, plan)
   local path = joinRelative(parent.path, formatKey(key))
   local pathKeys = extendPathKeys(parent, key)
-  local node
   if plan.proxied == KIND_RECORD then
     ensureDepthProbe(#pathKeys + 1)
-    node = {
+    return {
       layout = NODE_SCHEMA,
       plan = plan,
       parent = parent,
@@ -1798,42 +1914,41 @@ newChildView = function(parent, key, plan)
       path = path,
       pathKeys = pathKeys,
       verified = false,
-      probe = {},
+      -- Built by the first full check through the view (`setProbe`).
+      probe = false,
       probeKey = NO_PROBE_KEY,
       children = false,
       kinds = readKindsOf(plan, defaults),
       cache = false,
       generation = NEVER_RESOLVED,
     }
-  else
-    node = {
-      layout = NODE_SCHEMA,
-      plan = plan,
-      parent = parent,
-      key = key,
-      root = parent.root,
-      defaults = defaults,
-      path = path,
-      pathKeys = pathKeys,
-      verified = false,
-      probe = {},
-      probeKey = NO_PROBE_KEY,
-      children = false,
-      ownEntries = ownEntriesOf(defaults),
-      valuesProxied = plan.values.proxied ~= false,
-      cache = false,
-      generation = NEVER_RESOLVED,
-    }
   end
-  return attachView(node)
+  return {
+    layout = NODE_SCHEMA,
+    plan = plan,
+    parent = parent,
+    key = key,
+    root = parent.root,
+    defaults = defaults,
+    path = path,
+    pathKeys = pathKeys,
+    verified = false,
+    probe = false,
+    probeKey = NO_PROBE_KEY,
+    children = false,
+    ownEntries = ownEntriesOf(defaults),
+    valuesProxied = plan.values.proxied ~= false,
+    cache = false,
+    generation = NEVER_RESOLVED,
+  }
 end
 
----Build the root view of a scope over `section[sectionKey]`.
+---Build the node of a scope's root view over `section[sectionKey]`.
 ---@param db table
 ---@param scope table the scope record
 ---@param sectionKey string|false the key inside the section; `false` for `global`
----@return table proxy
-local function newRootView(db, scope, sectionKey)
+---@return table node
+function Chain.newRootNode(db, scope, sectionKey)
   local plan = scope.plan
   local node = {
     layout = NODE_SCHEMA,
@@ -1844,7 +1959,7 @@ local function newRootView(db, scope, sectionKey)
     path = "",
     -- Nothing is above a root, so its keys need no proving (`checkWrite`).
     verified = true,
-    probe = {},
+    probe = false,
     probeKey = NO_PROBE_KEY,
     children = false,
     kinds = readKindsOf(plan, plan.ownDefaults),
@@ -1856,7 +1971,91 @@ local function newRootView(db, scope, sectionKey)
     generation = NEVER_RESOLVED,
   }
   node.root = node
-  return attachView(node)
+  return node
+end
+
+---The root view of a scope: a pending proxy, built by its first read or
+---write. It keeps only its database (`Chain.pendingRoots`): the scope is the
+---one whose database field holds the proxy, or the profile `_profileRoots`
+---names it by; a profile root found in neither was detached.
+---@param db table
+---@return table proxy
+function Chain.newRootView(db)
+  local proxy = setmetatable({}, Chain.PENDING_METATABLE)
+  Chain.pendingRoots[proxy] = db
+  return proxy
+end
+
+---Find the scope and section key of the pending root `proxy` of `db`.
+---@param db table
+---@param proxy table
+---@return table scope, string|false sectionKey, boolean detached
+function Chain.findRoot(db, proxy)
+  local scopes = db._scopes
+  for index = 1, #SCOPE_NAMES do
+    local scopeName = SCOPE_NAMES[index]
+    if scopeName ~= "profile" and rawget(db, scopeName) == proxy then
+      local scope = rawget(scopes, scopeName)
+      return scope, scope.sectionKey, false
+    end
+  end
+  local profileScope = rawget(scopes, "profile")
+  for name, root in next, db._profileRoots do
+    if root == proxy then
+      return profileScope, name, false
+    end
+  end
+  return profileScope, false, true
+end
+
+---Build the view behind a pending proxy and return its node, or `nil` when
+---`proxy` is not pending.
+---@param proxy table
+---@return table|nil node
+function Chain.completeView(proxy)
+  local parent = Chain.pendingChildren[proxy]
+  if parent ~= nil then
+    Chain.pendingChildren[proxy] = nil
+    -- A record has few fields; finding the key here keeps a pending proxy
+    -- to one weak-table entry.
+    local key = nil
+    for name, child in next, parent.children do
+      if child == proxy then
+        key = name
+        break
+      end
+    end
+    local node = Chain.newChildNode(parent, key, parent.plan.fields[key])
+    Chain.attachView(node, proxy, Chain.PENDING_METATABLE)
+    return node
+  end
+  local db = Chain.pendingRoots[proxy]
+  if db ~= nil then
+    Chain.pendingRoots[proxy] = nil
+    local scope, sectionKey, detached = Chain.findRoot(db, proxy)
+    local node = Chain.newRootNode(db, scope, sectionKey)
+    if detached then
+      node.generation = DETACHED
+    end
+    Chain.attachView(node, proxy, Chain.PENDING_METATABLE)
+    return node
+  end
+  return nil
+end
+
+---The node of view `proxy`, building a pending view; `nil` for anything that
+---is not a view.
+---@param proxy any
+---@return table|nil node
+local function nodeOf(proxy)
+  if type(proxy) ~= "table" then
+    return nil
+  end
+  local node = rawget(views, proxy)
+  if node ~= nil then
+    return node
+  end
+  return Chain.completeView(proxy)
 end
 
 ---Return the view of entry `key` of a keyed section, building it on first use.
@@ -1869,7 +2068,8 @@ local function entryView(node, key)
   if proxy ~= nil then
     return proxy
   end
-  proxy = newChildView(node, key, node.plan.values --[[@as SettingsKit.Plan]])
+  local child = Chain.newChildNode(node, key, node.plan.values --[[@as SettingsKit.Plan]])
+  proxy = Chain.attachView(child, {}, nil)
   rawset(entries, key, proxy)
   return proxy
 end
@@ -1933,23 +2133,17 @@ local function materialise(node, key, default)
   if root.generation == DETACHED or root.db._readOnly == true or wouldCreateEntry(node) then
     return copy
   end
+  local generation = root.db._generation
   local container = resolveForWrite(node)
   rawset(container, key, copy)
+  -- The copy is stored now, so the view can read through its chain; tables
+  -- created on the way change what the views above it read.
+  if root.db._generation ~= generation then
+    Chain.rebindPath(node, key)
+  else
+    Chain.bind(node)
+  end
   return copy
-end
-
----Raise the refusal of a read with a secret key at the reading line:
----raiseSecretRead <- viewIndex <- the reading line.
----@param node table
-local function raiseSecretRead(node)
-  error(
-    "SettingsKit ("
-      .. node.root.db._name
-      .. ") "
-      .. displayPathOf(node)
-      .. " cannot be read with a secret key",
-    3
-  )
 end
 
 ---Read `key` through a keyed-section view, falling back to the section's own
@@ -2012,36 +2206,31 @@ local function readMap(node, key, value)
   return valuesPlan.default
 end
 
----The `__index` of every view: every read through a view is one call of it.
+---Read `key` through the view of `node`: the function path of a read, for
+---what a view's chain cannot answer and for keyed-section entries a cache
+---does not hold yet.
 ---
----The secret probe comes first: the key is compared and used to index below,
----and either raises on a secret. The saved value is read from the node's
----cached table while the database's generation is unchanged, with plain
----indexing (a cached table has no metatable), and after resolving the table
----again otherwise. A keyed-section read continues in `readMap`; a record
----read, the common one, is answered here. `kinds` answers everything that
----depends only on the schema: an undeclared key (`nil` there) returns what is
----saved or `nil`, a record or keyed-section field returns its child view, and
----a missing value its default.
----@param proxy table
+---No secret probe (revision 14, core decision 19b): the client refuses a
+---secret key at the reading line before any `__index` runs ("attempted to
+---index a table that cannot be indexed with secret keys", measured on Retail
+---12.1.0 b69933, docs/EMBEDDING.md), so a secret key never gets here. The
+---saved value is read from the node's cached table while the database's
+---generation is unchanged and after resolving the table again otherwise,
+---with `rawget` either way: a saved table may carry SettingsKit's metatable.
+---A keyed-section read continues in `readMap`; a record read is answered
+---here. `kinds` answers everything that depends only on the schema: an
+---undeclared key (`nil` there) returns what is saved or `nil`, a record or
+---keyed-section field returns its child view, and a missing value its
+---default.
+---@param node table
 ---@param key any
 ---@return any
-local function viewIndex(proxy, key)
-  -- Every proxy is registered in `views` when it is built, and nothing
-  -- removes an entry while the proxy is reachable.
-  local node = views[proxy]
-  -- issecretvalue is a World of Warcraft client API reachable only through the global table.
-  -- selene: allow(global_usage)
-  local isSecretValue = rawget(_G, "issecretvalue")
-  if type(isSecretValue) == "function" and isSecretValue(key) == true then
-    raiseSecretRead(node)
-  end
-
+local function readNode(node, key)
   local value = nil
   if node.generation == node.root.db._generation then
     local container = node.cache
     if container then
-      value = container[key]
+      value = rawget(container, key)
     end
   else
     local container = refreshContainer(node)
@@ -2079,6 +2268,16 @@ local function viewIndex(proxy, key)
   return nil
 end
 
+---The `__index` of a view whose chain cannot answer (see "Read-through
+---chains"), and the read every getter made before revision 14 dispatches to
+---(`dispatch.readView`). A pending view is built first.
+---@param proxy table
+---@param key any
+---@return any
+local function viewIndex(proxy, key)
+  return readNode(rawget(views, proxy) or Chain.completeView(proxy), key)
+end
+
 ---Set `key` in `node`'s probe table, clearing whatever key an earlier,
 ---interrupted write left there.
 ---@param node table
@@ -2086,6 +2285,10 @@ end
 ---@param value any
 local function setProbe(node, key, value)
   local probe = node.probe
+  if probe == false then
+    probe = {}
+    node.probe = probe
+  end
   local previousKey = node.probeKey
   if previousKey ~= NO_PROBE_KEY then
     rawset(probe, previousKey, nil)
@@ -2184,6 +2387,9 @@ local function checkWrite(node, key, value, valueType)
   local child = node
   local parent = child.parent
   while parent ~= false do
+    if child.probe == false then
+      child.probe = {}
+    end
     setProbe(parent, child.key, child.probe)
     child = parent
     parent = child.parent
@@ -2349,55 +2555,559 @@ local function refuseWrite(node, key, value, valueType)
   return nil
 end
 
----Validate and store `node[key] = value`, then fire the scope's change signal
----when anybody connected to it. Every refusal is raised at the writing line:
----this function is called by `viewNewIndex`, which is called by the writer,
----so the level is 3.
----
----A write that stores or replaces a table changes what views below `node`
----resolve to, so it bumps the database's generation; a scalar written over a
----scalar does not, and leaves every cached table current.
----
----A nil or NaN key never gets here: Lua 5.1 refuses it while looking for the
----slot, before it consults `__newindex`.
----@param node table
----@param key any
----@param value any
-local function writeView(node, key, value)
-  local valueType = type(value)
-  local refusal = refuseWrite(node, key, value, valueType)
-  if refusal ~= nil then
-    error(refusal, 3)
-  end
-
-  local container
-  if valueType == "nil" then
-    container = resolveContainer(node)
-  else
-    container = resolveForWrite(node)
-  end
-  local root = node.root
-  if container ~= nil then
-    if valueType == "table" or type(rawget(container, key)) == "table" then
-      bumpGeneration(root.db)
+-- The write functions. `storeWrite` and `fusedWrite` are locals of this block,
+-- so they do not count against the main chunk's 200 locals.
+local writeView
+local viewNewIndex
+do
+  ---Store `node[key] = value`, a write already validated, then rebind what
+  ---the store changed and fire the scope's change signal when anybody
+  ---connected to it.
+  ---
+  ---A write that stores or replaces a table changes what views below `node`
+  ---resolve to, so it bumps the database's generation, and so does creating
+  ---the tables on the way to `node`; the chains of the views it changed are
+  ---rebound after the store (`Chain.rebindPath`). A scalar written over a
+  ---scalar does neither, and leaves every chain and cached table current.
+  ---@param node table
+  ---@param key any
+  ---@param value any
+  ---@param valueType string `type(value)`
+  local function storeWrite(node, key, value, valueType)
+    local root = node.root
+    local db = root.db
+    local generation = db._generation
+    -- The cached table while it is current, the common case, without a call.
+    local container = node.generation == generation and node.cache or nil
+    if container == nil then
+      if valueType == "nil" then
+        container = resolveContainer(node)
+      else
+        container = resolveForWrite(node)
+      end
     end
-    rawset(container, key, value)
+    if container ~= nil then
+      if valueType == "table" or type(rawget(container, key)) == "table" then
+        bumpGeneration(db)
+      end
+      rawset(container, key, value)
+    end
+    -- Removing a stored copy removes a table, which bumped the generation
+    -- above, so the view finds its default again through the function path.
+    if db._generation ~= generation then
+      Chain.rebindPath(node, key)
+    end
+
+    -- The signal is created by the first `OnChange` of the scope.
+    local scope = root.scope
+    local signal = scope.signal
+    if signal ~= false then
+      signal:Fire(db, scope.name, key, value, node.path)
+    end
   end
 
-  -- The signal is created by the first `OnChange` of the scope.
-  local scope = root.scope
-  local signal = scope.signal
-  if signal ~= false then
-    signal:Fire(root.db, scope.name, key, value, node.path)
+  ---Validate and store `node[key] = value`. Every refusal is raised at the
+  ---writing line: this function is called by `viewNewIndex`, which is called
+  ---by the writer, so the level is 3.
+  ---
+  ---A nil or NaN key never gets here: Lua 5.1 refuses it while looking for the
+  ---slot, before it consults `__newindex`.
+  ---@param node table
+  ---@param key any
+  ---@param value any
+  writeView = function(node, key, value)
+    local valueType = type(value)
+    local refusal = refuseWrite(node, key, value, valueType)
+    if refusal ~= nil then
+      error(refusal, 3)
+    end
+    storeWrite(node, key, value, valueType)
+  end
+
+  ---The fused write of the common case (revision 14): a value that is not a
+  ---table, written to a declared scalar field of a record view a full check
+  ---already passed through. It runs exactly the checks `refuseWrite` runs for
+  ---that case, in the same order, without building anything, and answers
+  ---`false` the moment one would refuse, so `writeView` runs them again and
+  ---raises the refusal with its message.
+  ---@param node table a record node with `verified` set
+  ---@param key any
+  ---@param value any not a table
+  ---@param valueType string `type(value)`
+  ---@return boolean written
+  local function fusedWrite(node, key, value, valueType)
+    local root = node.root
+    if root.db._readOnly == true or root.generation == DETACHED then
+      return false
+    end
+    -- The key is probed before it indexes `fastChecks`: indexing with a secret
+    -- key raises.
+    -- issecretvalue is a World of Warcraft client API reachable only through the global table.
+    -- selene: allow(global_usage)
+    local isSecretValue = rawget(_G, "issecretvalue")
+    if
+      type(isSecretValue) == "function"
+      and (isSecretValue(key) == true or isSecretValue(value) == true)
+    then
+      return false
+    end
+    local fastCheck = node.plan.fastChecks[key]
+    if fastCheck == nil or not passesFastCheck(fastCheck, value, valueType) then
+      return false
+    end
+    -- A scope root has no depth to prove and no keyed section above it.
+    if node.parent ~= false then
+      if not depthAllows(node.pathKeys) then
+        return false
+      end
+      if valueType ~= "nil" and findFullMap(node, key) ~= nil then
+        return false
+      end
+    end
+    storeWrite(node, key, value, valueType)
+    return true
+  end
+
+  ---The `__newindex` of every view: the fused write when it applies, the full
+  ---one otherwise.
+  ---@param proxy table
+  ---@param key any
+  ---@param value any
+  viewNewIndex = function(proxy, key, value)
+    -- `views` has no `__index`, so plain indexing is a raw lookup.
+    -- Every proxy SettingsKit hands out is built or pending.
+    local node = views[proxy] or Chain.completeView(proxy) --[[@as table]]
+    local valueType = type(value)
+    if
+      valueType ~= "table"
+      and node.verified
+      and node.kinds ~= nil
+      and fusedWrite(node, key, value, valueType)
+    then
+      return
+    end
+    writeView(node, key, value)
   end
 end
 
----The `__newindex` of every view.
+-- Read-through chains ---------------------------------------------------------
+--
+-- Revision 14. A view's proxy stays empty, so every write reaches
+-- `__newindex` and is validated at the writer's line, but each view has a
+-- metatable of its own whose `__index` is a table, so the VM answers a read
+-- without a Lua call:
+--
+--   proxy -> shadow (the views of record fields, when the record has any)
+--         -> saved table (given a metatable marked `SAVED_MARK`)
+--         -> scalar defaults (the view's defaults that are not tables)
+--
+-- A keyed section whose every key answers with an entry view reads through
+-- its entry cache, which calls `readNode` on a miss; one with plain values
+-- reads through its saved table to its own default entries and wildcard
+-- default. The function path (`viewIndex`) answers for a view whose chain
+-- would answer wrongly: a saved table with a foreign metatable, a record field
+-- without a default stored as a scalar, and a plain-table default (`READ_COPY`)
+-- not stored yet (its first read stores the copy, then the view reads through
+-- its chain; a read-only database never stores it).
+--
+-- Chains are eager where the generation scheme is lazy: every mutation that
+-- can change which table a view finds rebinds the chains it changed after it
+-- mutates, never before (`rebindPath` for a write, `rebindDatabase` for the
+-- database methods). The generation scheme stays underneath, for the writes,
+-- `Pairs`, `Validate` and the getters made before revision 14.
+--
+-- The chain of a view lives in its proxy's metatable: `shape` (what every
+-- view of the same plan and defaults shares) and `shadow`. Shapes of views
+-- that read their plan's own defaults are shared per plan (`Chain.planShapes`).
+
+-- What a view without anything to answer reads through to.
+Chain.NO_DEFAULTS = {}
+
+---The shape of the chain of a record view: its scalar defaults, the metatable
+---its saved table gets, and the fields that decide the function path.
+---@param node table a record node
+---@return table shape
+function Chain.recordShape(node)
+  local plan = node.plan
+  local shared = node.kinds == plan.ownKinds and node.defaults == plan.ownDefaults
+  if shared then
+    local known = Chain.planShapes[plan]
+    if known ~= nil then
+      return known
+    end
+  end
+  local scalarDefaults = {}
+  local hasScalarDefaults = false
+  local copyKeys = false
+  local optionalKeys = false
+  local hasViews = false
+  local defaults = node.defaults
+  for name, kind in next, node.kinds do
+    if kind == READ_DEFAULT then
+      scalarDefaults[name] = defaults[name]
+      hasScalarDefaults = true
+    elseif kind == READ_COPY then
+      copyKeys = copyKeys or {}
+      copyKeys[#copyKeys + 1] = name
+    elseif kind == READ_VIEW then
+      hasViews = true
+    elseif kind == READ_VIEW_OR_NIL then
+      hasViews = true
+      optionalKeys = optionalKeys or {}
+      optionalKeys[#optionalKeys + 1] = name
+    end
+  end
+  local shape = {
+    scalarDefaults = hasScalarDefaults and scalarDefaults or Chain.NO_DEFAULTS,
+    -- `false` when nothing would read through it: the saved table then keeps
+    -- no metatable at all.
+    savedMetatable = hasScalarDefaults and { __index = scalarDefaults, [SAVED_MARK] = true }
+      or false,
+    copyKeys = copyKeys,
+    optionalKeys = optionalKeys,
+    hasViews = hasViews,
+  }
+  if shared then
+    Chain.planShapes[plan] = shape
+  end
+  return shape
+end
+
+---The shape of the chain of a keyed-section view whose values are not
+---records or keyed sections, or `false` when its reads take the function
+---path (a plain-table wildcard default, or own default entries that are
+---tables).
+---@param node table a map node
+---@return table|false shape
+function Chain.mapShape(node)
+  local plan = node.plan
+  local valuesPlan = plan.values --[[@as SettingsKit.Plan]]
+  local ownEntries = node.ownEntries
+  if ownEntries == false then
+    local known = Chain.planShapes[plan]
+    if known ~= nil then
+      return known
+    end
+  end
+  if valuesPlan.defaultKind == READ_COPY then
+    return false
+  end
+  local mapDefaults = {}
+  local hasDefaults = false
+  if ownEntries ~= false then
+    for entryKey, default in next, ownEntries do
+      if type(default) == "table" then
+        return false
+      end
+      mapDefaults[entryKey] = default
+      hasDefaults = true
+    end
+  end
+  if valuesPlan.defaultKind == READ_DEFAULT then
+    local wildcard = valuesPlan.default
+    hasDefaults = true
+    setmetatable(mapDefaults, {
+      -- A `nil` or NaN key reads `nil`, as `readMap` answers it.
+      __index = function(_, entryKey)
+        if type(entryKey) == "nil" or entryKey ~= entryKey then
+          return nil
+        end
+        return wildcard
+      end,
+    })
+  end
+  local shape = {
+    scalarDefaults = hasDefaults and mapDefaults or Chain.NO_DEFAULTS,
+    savedMetatable = hasDefaults and { __index = mapDefaults, [SAVED_MARK] = true } or false,
+  }
+  if ownEntries == false then
+    Chain.planShapes[plan] = shape
+  end
+  return shape
+end
+
+---Give the saved table `container` the metatable `savedMetatable` (or none),
+---unless a foreign metatable holds it. Returns `false` for a foreign one: the
+---view then reads through the function path.
+---@param container table
+---@param savedMetatable table|false
+---@return boolean bound
+function Chain.markSaved(container, savedMetatable)
+  local metatable = getmetatable(container)
+  if type(metatable) == "nil" then
+    if savedMetatable then
+      setmetatable(container, savedMetatable)
+    end
+    return true
+  end
+  if type(metatable) == "table" and rawget(metatable, SAVED_MARK) == true then
+    if metatable ~= savedMetatable then
+      setmetatable(container, savedMetatable or nil)
+    end
+    return true
+  end
+  return false
+end
+
+---Point the chain of a record view at what it reads now.
+---@param node table a record node
+---@param metatable table the view's metatable
+function Chain.bindRecord(node, metatable)
+  local shape = metatable.shape
+  local container = resolveContainer(node)
+  local target = shape.scalarDefaults
+  if container ~= nil then
+    if not Chain.markSaved(container, shape.savedMetatable) then
+      metatable.__index = viewIndex
+      return
+    end
+    target = container
+  end
+
+  local copyKeys = shape.copyKeys
+  if copyKeys then
+    if container == nil then
+      -- Nothing saved: a copy is handed out by `readNode` (stored when the
+      -- read may create tables, else fresh each time), through a tail of the
+      -- view's own, so every other field still reads without a call.
+      target = Chain.copyTail(node, metatable, shape)
+    else
+      for index = 1, #copyKeys do
+        if type(rawget(container, copyKeys[index])) == "nil" then
+          -- Until its first read stores the copy (`materialise` rebinds).
+          metatable.__index = viewIndex
+          return
+        end
+      end
+    end
+  end
+
+  local shadow = metatable.shadow
+  if not shadow then
+    metatable.__index = target
+    return
+  end
+  local optionalKeys = shape.optionalKeys
+  if optionalKeys then
+    local children = node.children
+    for index = 1, #optionalKeys do
+      local name = optionalKeys[index]
+      local stored = nil
+      if container ~= nil then
+        stored = rawget(container, name)
+      end
+      local storedType = type(stored)
+      if storedType == "table" then
+        rawset(shadow, name, children[name])
+      elseif storedType == "nil" then
+        rawset(shadow, name, nil)
+      else
+        -- A record field without a default stored as a scalar reads as
+        -- absent, which the chain would not answer.
+        metatable.__index = viewIndex
+        return
+      end
+    end
+  end
+  getmetatable(shadow).__index = target
+  metatable.__index = shadow
+end
+
+---The tail a record view with plain-table defaults reads through while
+---nothing is saved for it: its scalar defaults, and `readNode` for the rest
+---(the copies, and `nil` for anything undeclared). One per view, built on
+---first need; a saved table never reads through it, so a direct read of the
+---saved variable never stores a copy.
+---@param node table a record node
+---@param metatable table the view's metatable
+---@param shape table the view's record shape
+---@return table tail
+function Chain.copyTail(node, metatable, shape)
+  local tail = metatable.copyTail
+  if tail then
+    return tail
+  end
+  tail = {}
+  for name, default in next, shape.scalarDefaults do
+    tail[name] = default
+  end
+  setmetatable(tail, {
+    __index = function(_, key)
+      return readNode(node, key)
+    end,
+  })
+  metatable.copyTail = tail
+  return tail
+end
+
+---Point the chain of a keyed-section view at what it reads now.
+---@param node table a map node
+---@param metatable table the view's metatable
+function Chain.bindMap(node, metatable)
+  if node.valuesProxied then
+    -- Every key answers with an entry view only when a wildcard default
+    -- exists; then the entry cache answers, and builds a missing entry
+    -- through `readNode`.
+    if node.plan.values.defaultKind ~= READ_NIL then
+      metatable.__index = node.children
+    else
+      metatable.__index = viewIndex
+    end
+    return
+  end
+  local shape = metatable.shape
+  if not shape then
+    metatable.__index = viewIndex
+    return
+  end
+  local container = resolveContainer(node)
+  if container == nil then
+    metatable.__index = shape.scalarDefaults
+  elseif Chain.markSaved(container, shape.savedMetatable) then
+    metatable.__index = container
+  else
+    metatable.__index = viewIndex
+  end
+end
+
+---Point the chain of the view of `node` at what it reads now. A view that is
+---not built yet has no chain, and gets one when it is built.
+---@param node table
+function Chain.bind(node)
+  local metatable = Chain.chains[node]
+  if metatable == nil then
+    return
+  end
+  if node.kinds ~= nil then
+    Chain.bindRecord(node, metatable)
+  else
+    Chain.bindMap(node, metatable)
+  end
+end
+
+---Give the view `proxy` of `node` its metatable and chain.
+---@param node table
+---@param proxy table
+---@param current table|nil the proxy's protected metatable, when it has one
+function Chain.build(node, proxy, current)
+  local metatable = {
+    __index = viewIndex,
+    __newindex = viewNewIndex,
+    __metatable = VIEW_METATABLE_NAME,
+    shape = false,
+    shadow = false,
+    -- Built by `copyTail` for a view with plain-table defaults.
+    copyTail = false,
+  }
+  if node.kinds ~= nil then
+    local shape = Chain.recordShape(node)
+    metatable.shape = shape
+    if shape.hasViews then
+      local shadow = setmetatable({}, { __index = Chain.NO_DEFAULTS })
+      -- Fields with a default always answer with their view; optional ones
+      -- only while something is saved (`bindRecord`).
+      local kinds = node.kinds
+      for name, child in next, node.children do
+        if kinds[name] == READ_VIEW then
+          rawset(shadow, name, child)
+        end
+      end
+      metatable.shadow = shadow
+    end
+  elseif not node.valuesProxied then
+    metatable.shape = Chain.mapShape(node)
+  end
+  Chain.chains[node] = metatable
+  Chain.setProxyMetatable(proxy, current, metatable)
+  Chain.bind(node)
+end
+
+---Rebind the view of `node` and every built view below it.
+---@param node table
+function Chain.rebindTree(node)
+  Chain.bind(node)
+  local children = node.children
+  if not children then
+    return
+  end
+  for _, child in next, children do
+    local childNode = rawget(views, child)
+    if childNode ~= nil then
+      Chain.rebindTree(childNode)
+    end
+  end
+end
+
+---Rebind after a write of `key` through `node` changed tables: every view
+---from the scope root down to `node` (the write may have created their saved
+---tables), and the views below the field or entry `key`.
+---@param node table
+---@param key any
+function Chain.rebindPath(node, key)
+  local current = node
+  while current do
+    Chain.bind(current)
+    current = current.parent
+  end
+  local children = node.children
+  if children then
+    local child = rawget(children, key)
+    local childNode = child and rawget(views, child)
+    if childNode then
+      Chain.rebindTree(childNode)
+    end
+  end
+end
+
+---Rebind every built view of `db`: its scope roots and every profile root it
+---keeps, the detached ones included until they are dropped.
+---@param db table
+function Chain.rebindDatabase(db)
+  for index = 1, #SCOPE_NAMES do
+    local scopeName = SCOPE_NAMES[index]
+    if scopeName ~= "profile" then
+      local proxy = rawget(db, scopeName)
+      local node = proxy and rawget(views, proxy)
+      if node then
+        Chain.rebindTree(node)
+      end
+    end
+  end
+  for _, proxy in next, db._profileRoots do
+    local node = rawget(views, proxy)
+    if node then
+      Chain.rebindTree(node)
+    end
+  end
+end
+
+---The `__index` of a keyed section's entry cache: an entry it does not hold
+---yet is read through `readNode`, which builds and caches its view.
+---@param entries table
+---@param key any
+---@return any
+function Chain.entryCacheIndex(entries, key)
+  return readNode(Chain.entryOwners[entries], key)
+end
+
+---The `__index` of a pending view: build it, then read through its chain.
+---@param proxy table
+---@param key any
+---@return any
+function Chain.pendingIndex(proxy, key)
+  Chain.completeView(proxy)
+  return proxy[key]
+end
+
+---The `__newindex` of a pending view: build it, then write through it. The
+---refusal level stays the writer's line: writeView <- Chain.pendingNewIndex <- the
+---writer.
 ---@param proxy table
 ---@param key any
 ---@param value any
-local function viewNewIndex(proxy, key, value)
-  writeView(rawget(views, proxy), key, value)
+function Chain.pendingNewIndex(proxy, key, value)
+  local node = Chain.completeView(proxy) or rawget(views, proxy)
+  writeView(node, key, value)
 end
 
 ---The iterator `db:Pairs(view)` returns. Stateless: everything it needs is
@@ -2414,7 +3124,7 @@ end
 ---@param previous any
 ---@return any key, any value
 local function pairsNext(proxy, previous)
-  local node = rawget(views, proxy)
+  local node = nodeOf(proxy)
   if node == nil then
     return nil
   end
@@ -2577,14 +3287,22 @@ local function compactDatabase(db)
   local isSecretValue = readIsSecret()
   local maxDepth = readMaxDepth()
   -- Compaction removes tables views may have cached. Bumped first, so even a
-  -- compaction that raises halfway leaves no stale cache behind.
+  -- compaction that raises halfway leaves no stale cache behind, and the
+  -- chains are rebound after it, raised or not, so none reads a removed table.
   bumpGeneration(db)
-  local removed = 0
-  for index = 1, #SCOPE_NAMES do
-    local scope = rawget(db._scopes, SCOPE_NAMES[index])
-    if scope ~= nil then
-      removed = removed + compactScope(raw, scope, isSecretValue, maxDepth)
+  local ok, removed = pcall(function()
+    local count = 0
+    for index = 1, #SCOPE_NAMES do
+      local scope = rawget(db._scopes, SCOPE_NAMES[index])
+      if scope ~= nil then
+        count = count + compactScope(raw, scope, isSecretValue, maxDepth)
+      end
     end
+    return count
+  end)
+  Chain.rebindDatabase(db)
+  if not ok then
+    error(removed, 0)
   end
   return removed
 end
@@ -2680,8 +3398,24 @@ end
 ---Read the four scope keys once, the way `Open` resolves them.
 ---@return table<string, string|false> keys
 local function readScopeKeys()
+  ---The player's name for the character key: `UnitNameUnmodified("player")`
+  ---(revision 14), which no name-changing effect alters, as AceDB-3.0 keys
+  ---characters; `UnitName("player")` when the client has no such function or
+  ---its answer is not usable (secret, empty, not a string), so no client that
+  ---had a key loses it. Both answer alike outside such effects, so saved data
+  ---keeps its key.
+  ---@param isSecretValue (fun(value: any): boolean)|nil
+  ---@return string|nil
+  local function readPlayerName(isSecretValue)
+    local unmodified = usableKey((callHost("UnitNameUnmodified", "player")), isSecretValue)
+    if unmodified ~= nil then
+      return unmodified
+    end
+    return usableKey((callHost("UnitName", "player")), isSecretValue)
+  end
+
   local isSecretValue = readIsSecret()
-  local playerName = usableKey((callHost("UnitName", "player")), isSecretValue)
+  local playerName = readPlayerName(isSecretValue)
   local realm = usableKey((callHost("GetRealmName")), isSecretValue)
   local class = usableKey((select(2, callHost("UnitClass", "player"))), isSecretValue)
   local faction = usableKey((callHost("UnitFactionGroup", "player")), isSecretValue)
@@ -2701,7 +3435,7 @@ end
 
 -- Why each scope can be unavailable, for the error a read of it raises.
 local UNAVAILABLE_REASONS = {
-  char = 'UnitName("player") or GetRealmName() returned no name',
+  char = 'UnitNameUnmodified("player"), UnitName("player") or GetRealmName() returned no name',
   realm = "GetRealmName() returned no realm",
   class = 'UnitClass("player") returned no class',
   faction = 'UnitFactionGroup("player") returned no faction',
@@ -2715,6 +3449,10 @@ local UNAVAILABLE_REASONS = {
 ---@param candidate table the saved table, or a migrated copy of it
 ---@return string|nil sectionName
 local function findLayoutProblem(candidate)
+  -- A new saved variable holds nothing to refuse.
+  if type(next(candidate)) == "nil" then
+    return nil
+  end
   for index = 1, #LAYOUT_SECTIONS do
     local sectionName = LAYOUT_SECTIONS[index]
     local section = rawget(candidate, sectionName)
@@ -2913,7 +3651,7 @@ local function profileView(db, name)
   local roots = db._profileRoots
   local proxy = rawget(roots, name)
   if proxy == nil then
-    proxy = newRootView(db, rawget(db._scopes, "profile"), name)
+    proxy = Chain.newRootView(db)
     rawset(roots, name, proxy)
   end
   return proxy
@@ -2922,7 +3660,8 @@ end
 ---Detach the cached root view of profile `name`: reads fall back to defaults
 ---and writes are refused from now on. The views below it resolve again on
 ---their next read, because every caller also bumps the database's
----generation.
+---generation, and their chains are rebound here to read defaults, since the
+---database stops keeping the root. A root never built is detached when it is.
 ---@param db table
 ---@param name string
 local function detachProfileView(db, name)
@@ -2934,17 +3673,26 @@ local function detachProfileView(db, name)
       node.generation = DETACHED
       -- Dropped so a detached view does not keep a deleted profile alive.
       node.cache = false
+      Chain.rebindTree(node)
     end
+    -- A root never built is detached by leaving `_profileRoots`
+    -- (`Chain.findRoot`).
     rawset(roots, name, nil)
   end
 end
 
 ---Point `db.profile` at the current profile's view, when the profile scope is
----declared.
+---declared. After an in-place upgrade from a revision before 14 the view is
+---built at once: a getter such a revision made follows `db.profile` and
+---expects a built view behind it.
 ---@param db table
 local function publishProfileView(db)
   if rawget(db._scopes, "profile") ~= nil then
-    rawset(db, "profile", profileView(db, db._profile))
+    local proxy = profileView(db, db._profile)
+    rawset(db, "profile", proxy)
+    if rawget(db, "_buildProfileAtOnce") == true then
+      nodeOf(proxy)
+    end
   end
 end
 
@@ -2957,7 +3705,9 @@ end
 ---@param signalName string
 ---@param ... any
 local function fireProfileSignal(db, signalName, ...)
-  local signal = db._signals[signalName]
+  -- `_signals` is created by the first `OnProfile*` (revision 14).
+  local signals = rawget(db, "_signals")
+  local signal = signals and rawget(signals, signalName)
   if signal ~= nil then
     signal:Fire(...)
   end
@@ -3023,7 +3773,8 @@ local function databaseSetProfile(self, name)
   -- Switching to an existing profile changes no saved table, so every cached
   -- one stays current, the new profile's included; getters that follow the
   -- profile scope notice the new `db.profile` themselves.
-  if ensureProfile(raw, name) then
+  local created = ensureProfile(raw, name)
+  if created then
     bumpGeneration(db)
   end
   if db._charKey ~= false then
@@ -3031,6 +3782,10 @@ local function databaseSetProfile(self, name)
   end
   db._profile = name
   publishProfileView(db)
+  if created then
+    -- A root of this profile built before its table existed read defaults.
+    Chain.rebindDatabase(db)
+  end
   fireProfileSignal(db, "profileChanged", self, name, previous)
   return true
 end
@@ -3092,6 +3847,7 @@ local function databaseCopyProfile(self, from)
     rawset(target, key, copyPlain(value))
   end
   bumpGeneration(db)
+  Chain.rebindDatabase(db)
   fireProfileSignal(db, "profileCopied", self, from, current)
 end
 
@@ -3105,6 +3861,7 @@ local function databaseResetProfile(self)
   ensureProfile(db._raw, current)
   wipe(rawget(rawget(db._raw, "profiles"), current))
   bumpGeneration(db)
+  Chain.rebindDatabase(db)
   fireProfileSignal(db, "profileReset", self, current)
 end
 
@@ -3136,8 +3893,9 @@ local function databaseDeleteProfile(self, name)
     end
   end
   dispatch.forgetSpecProfiles(raw, name)
-  detachProfileView(db, name)
   bumpGeneration(db)
+  detachProfileView(db, name)
+  Chain.rebindDatabase(db)
   fireProfileSignal(db, "profileDeleted", self, name)
 end
 
@@ -3176,6 +3934,7 @@ local function databaseResetDatabase(self)
   ensureProfile(raw, name)
   db._profile = name
   publishProfileView(db)
+  Chain.rebindDatabase(db)
 
   fireProfileSignal(db, "profileReset", self, name)
   if name ~= previous then
@@ -3217,6 +3976,10 @@ local function connectProfileSignal(db, signalName, methodName, callback)
   validateCallback(callback, methodName, 4)
   -- Created on first use; `fireProfileSignal` skips a signal never created.
   local signals = rawget(db, "_signals")
+  if signals == nil then
+    signals = {}
+    rawset(db, "_signals", signals)
+  end
   local signal = rawget(signals, signalName)
   if signal == nil then
     signal = SignalKit:New()
@@ -3279,7 +4042,7 @@ end
 ---@return function iterator, table view, nil
 local function databasePairs(self, view)
   validateDatabase(self, "SettingsKit.Database:Pairs", 3)
-  local node = type(view) == "table" and rawget(views, view) or nil
+  local node = nodeOf(view)
   if node == nil or node.root.db ~= self then
     error("SettingsKit.Database:Pairs view must be a view of this database", 2)
   end
@@ -3315,7 +4078,7 @@ local function descendPath(node, key)
         .. formatKey(key)
         .. " is not a record or keyed section"
   end
-  return rawget(views, child)
+  return nodeOf(child)
 end
 
 ---Turn a dotted-path segment into the key it names: a number when it is one
@@ -3358,12 +4121,13 @@ local function databaseValidate(self, scopeName, path, value)
   if scope == nil or not scope.available then
     error("SettingsKit.Database:Validate scope must name a declared, available scope", 2)
   end
-  local node = rawget(views, rawget(db, scopeName))
+  -- A declared, available scope always has its root proxy.
+  local node = nodeOf(rawget(db, scopeName)) --[[@as any]]
   local refusal = nil
   local key = nil
 
   local pathType = type(path)
-  if pathType == "table" and rawget(views, path) == nil then
+  if pathType == "table" and plainTableProblem(path) ~= "view" then
     local count = #path
     if count == 0 then
       error(
@@ -3430,69 +4194,29 @@ end
 ---after changing the saved variable directly (not through a view or a
 ---database method) once the database is open.
 ---
----Costs one field write now, and one walk from the saved variable (one
----lookup per nesting level) on the next read through each view.
+---Costs one walk from the saved variable (one lookup per nesting level) for
+---each built view, whose chain is rebound to what it finds.
 ---@param self SettingsKit.Database
 local function databaseResync(self)
   validateDatabase(self, "SettingsKit.Database:Resync", 3)
   bumpGeneration(self)
+  Chain.rebindDatabase(self)
 end
 
----The getter of a field with a plain answer (an undeclared key, a scalar
----default or none): the saved value, else `default`. While the node's cached
----table is current it reads that table directly; otherwise it reads through
----the newest revision's `__index` (`dispatch.readView`), which resolves the
----table again and caches it. A getter that follows a scope first compares
----the scope's current view (`db[scopeName]`, a plain field of the database,
----which only `db.profile` ever changes) with the one it read last.
----
----A getter made by this revision may outlive it: a later revision keeps the
----meaning of `node.generation`, `node.cache` and `db._generation`, or makes
----`db._generation` differ from every node's `generation`, so old getters
----take the dispatched path.
----@param db table
----@param scopeName string|false the scope followed, or `false` for a getter bound to `proxy`
----@param proxy table
----@param key any
----@param default any
----@return fun(): any
-local function plainGetter(db, scopeName, proxy, key, default)
-  local node = views[proxy]
-  return function()
-    if scopeName then
-      local current = db[scopeName]
-      if current ~= proxy then
-        proxy = current
-        node = views[current]
-      end
-    end
-    if node.generation == db._generation then
-      local container = node.cache
-      if container then
-        local value = container[key]
-        -- The one documented exception to the nil rule (docs/CONTRIBUTING.md,
-        -- INTERNALS.md "Getters"): `value` comes from the saved variable, but
-        -- `~= nil` never raises on a secret, and it is only returned. It saves
-        -- the `type` call, about 40% of this hot path.
-        if value ~= nil then
-          return value
-        end
-      end
-      return default
-    end
-    return dispatch.readView(proxy, key)
-  end
-end
-
----Return a function that reads `key` from a view, for hot loops: each call
----returns exactly what `view[key]` would, defaults and wildcard defaults
+---Return a function that reads `key` from a view: each call returns exactly
+---what `view[key]` returns at that moment, defaults and wildcard defaults
 ---included, and follows every SettingsKit mutation.
 ---
 ---`source` is a view of this database, which the getter reads for good, or a
 ---scope name, whose current view the getter follows (after `SetProfile`, the
 ---new profile). The key is checked once, here: a secret, `nil` or NaN key is
----refused at the caller's line, so no call probes it again. Allocates the
----getter; a call allocates nothing.
+---refused at the caller's line. Allocates the getter; a call allocates
+---nothing.
+---
+---Since revision 14 a view read costs what a plain table read costs (see
+---"Read-through chains"), so a getter is one Lua call plus that read: it is
+---for handing a reader around, not faster than `view[key]`. It reads through
+---the view itself, so it keeps working across every later revision.
 ---@param self SettingsKit.Database
 ---@param source SettingsKit.ScopeName|table
 ---@param key any
@@ -3512,7 +4236,7 @@ local function databaseGetter(self, source, key)
     scopeName = source
     proxy = rawget(db, source)
   elseif type(source) == "table" then
-    local node = rawget(views, source)
+    local node = nodeOf(source)
     if node ~= nil and node.root.db == db then
       proxy = source
     end
@@ -3527,28 +4251,15 @@ local function databaseGetter(self, source, key)
     error("SettingsKit.Database:Getter key must not be nil or NaN", 2)
   end
 
-  local node = rawget(views, proxy)
-  local kinds = node.kinds
-  if kinds ~= nil then
-    local kind = kinds[key]
-    if kind == nil or kind == READ_NIL or kind == READ_DEFAULT then
-      -- Every profile view shares the scope's plan and defaults, so the
-      -- kind and default hold for whichever view a scope getter follows.
-      local default = nil
-      if kind == READ_DEFAULT then
-        default = node.defaults[key]
-      end
-      return plainGetter(db, scopeName, proxy, key, default)
+  if scopeName then
+    -- `db.<scope>` is a plain field of the database, which only `db.profile`
+    -- ever changes.
+    return function()
+      return db[scopeName][key]
     end
   end
-  -- A field whose answer is a view or a stored copy, or a keyed-section
-  -- entry: every call reads through the newest revision's `__index`
-  -- directly, which skips only the metamethod dispatch.
   return function()
-    if scopeName then
-      proxy = db[scopeName]
-    end
-    return dispatch.readView(proxy, key)
+    return proxy[key]
   end
 end
 
@@ -3558,12 +4269,9 @@ end
 ---@param key any
 ---@return any
 local function databaseIndex(db, key)
-  -- A secret key would raise inside SettingsKit while it indexes the
-  -- prototype; refuse it at the reading line instead.
-  if isSecret(key) then
-    -- databaseIndex <- the reading line
-    error("SettingsKit databases cannot be read with a secret key", 2)
-  end
+  -- No secret probe (revision 14, core decision 19b): the client refuses a
+  -- secret key at the reading line before `__index` runs, so the method is
+  -- looked up first and a secret never gets here.
   local method = rawget(Database, key)
   if method ~= nil then
     return method
@@ -3762,8 +4470,9 @@ local function open(self, savedVariable, schema, options)
     _readOnly = readOnly,
     -- `math.huge` when opened with `maxScannedEntries = SettingsKit.UNBOUNDED`.
     _maxScannedEntries = maxScannedEntries,
-    -- The four profile signals, each created by its first `OnProfile*`.
-    _signals = {},
+    -- `_signals`, the four profile signals, is created with the first of
+    -- them by the first `OnProfile*` (revision 14), so a database nobody
+    -- listens to keeps to the 16 hash slots it has with two scopes.
     -- Bumped by every mutation that can change which saved table a view
     -- resolves to; a node's cached table is current while its `generation`
     -- equals this.
@@ -3774,7 +4483,7 @@ local function open(self, savedVariable, schema, options)
     local scopeName = SCOPE_NAMES[index]
     local scope = rawget(scopes, scopeName)
     if scope ~= nil and scope.available and scopeName ~= "profile" then
-      rawset(db, scopeName, newRootView(db, scope, scope.sectionKey))
+      rawset(db, scopeName, Chain.newRootView(db))
     end
   end
   publishProfileView(db)
@@ -4553,6 +5262,46 @@ if previousRevision ~= nil and previousRevision < 7 then
   upgradeCaches()
 end
 
+-- Revision 14 reads every view through a metatable of its own (see
+-- "Read-through chains"). Views an older revision built share
+-- `VIEW_METATABLE`; each gets its own metatable and chain here, and every
+-- keyed section's entry cache the shared entry-cache metatable. After any
+-- upgrade from revision 14 on, every chain's metatable is given this file's
+-- write function and rebound, since its functions are this file's locals.
+if previousRevision ~= nil then
+  ---Bring every live view to this revision's chain. A function of its own so
+  ---its loop variables do not count against the main chunk's 200 locals.
+  local function upgradeChains()
+    local fromOlderLayout = previousRevision < 14
+    if fromOlderLayout then
+      for _, db in next, databases do
+        -- Getters made before revision 14 follow `db.profile` and expect a
+        -- built view behind it.
+        rawset(db, "_buildProfileAtOnce", true)
+      end
+    end
+    local live = {}
+    for proxy, node in next, views do
+      live[#live + 1] = { proxy = proxy, node = node }
+    end
+    for index = 1, #live do
+      local proxy, node = live[index].proxy, live[index].node
+      local metatable = Chain.chains[node]
+      if metatable == nil then
+        if node.kinds == nil and type(node.children) == "table" then
+          setmetatable(node.children, Chain.ENTRY_CACHE_METATABLE)
+          Chain.entryOwners[node.children] = node
+        end
+        Chain.build(node, proxy, VIEW_METATABLE)
+      else
+        metatable.__newindex = viewNewIndex
+        Chain.bind(node)
+      end
+    end
+  end
+  upgradeChains()
+end
+
 -- The depth probes the write fast path reads (`depthAllows`) live in this
 -- file, so a newer copy starts without them. Views built from now on build
 -- theirs; every live view below a scope root gets its probe here, after
@@ -4593,9 +5342,15 @@ rawset(Database, "IsReadOnly", databaseIsReadOnly)
 rawset(Database, "Resync", databaseResync)
 rawset(Database, "Getter", databaseGetter)
 
+-- Only views an older revision built and an upgrade missed still use the
+-- shared view metatable; it keeps reading and writing through this file.
 rawset(VIEW_METATABLE, "__index", viewIndex)
 rawset(VIEW_METATABLE, "__newindex", viewNewIndex)
-rawset(VIEW_METATABLE, "__metatable", "SettingsKit.View")
+rawset(VIEW_METATABLE, "__metatable", VIEW_METATABLE_NAME)
+rawset(Chain.PENDING_METATABLE, "__index", Chain.pendingIndex)
+rawset(Chain.PENDING_METATABLE, "__newindex", Chain.pendingNewIndex)
+rawset(Chain.PENDING_METATABLE, "__metatable", VIEW_METATABLE_NAME)
+rawset(Chain.ENTRY_CACHE_METATABLE, "__index", Chain.entryCacheIndex)
 rawset(DATABASE_METATABLE, "__index", databaseIndex)
 rawset(DATABASE_METATABLE, "__newindex", databaseNewIndex)
 
@@ -4607,6 +5362,21 @@ rawset(SettingsKit, "UNBOUNDED", UNBOUNDED)
 rawset(SettingsKit, "Open", open)
 rawset(SettingsKit, "SetLimits", setLimits)
 rawset(SettingsKit, "GetLimits", getLimits)
+---Return the key of this character in the `char`, `profileKeys` and
+---`specProfiles` sections: `"<name> - <realm>"`, the key `Open` uses now, or
+---`nil` while the client cannot name the character. For an importer (such as
+---BridgeKit's AceDB import) that must key the data the way SettingsKit reads
+---it.
+---@param self SettingsKit
+---@return string|nil key
+rawset(SettingsKit, "GetCharacterKey", function(self)
+  validateFacade(self, "SettingsKit:GetCharacterKey", 3)
+  local key = readScopeKeys().char
+  if key == false then
+    return nil
+  end
+  return key
+end)
 
 rawset(dispatch, "compactOnLogout", compactOnLogout)
 rawset(dispatch, "compactAllOnLogout", compactAllOnLogout)

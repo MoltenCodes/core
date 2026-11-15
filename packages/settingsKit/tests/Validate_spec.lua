@@ -153,6 +153,9 @@ describe("SettingsKit db:Validate", function()
     -- Entry views are cached while referenced; hold this one so the full
     -- collection the measurement starts with cannot drop it.
     local held = db.profile.auras[7]
+    -- Views are built by their first use (revision 14).
+    db:Validate("profile", topLevel, 1)
+    db:Validate("profile", nested, 1)
     db:Validate("profile", entry, true)
     local allocated = TestEnv.AllocatedKilobytes(function()
       for index = 1, 2000 do

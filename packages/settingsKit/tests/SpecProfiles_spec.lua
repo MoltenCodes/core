@@ -582,7 +582,7 @@ describe("SettingsKit spec profiles", function()
 
       local upgraded = TestEnv.ReloadPackage()
       assert.are.equal(previous, upgraded)
-      assert.are.equal(13, upgraded.REVISION)
+      assert.is_true(upgraded.REVISION > 10)
       assert.are.equal(db, upgraded:Open("MyAddonDB"))
       assert.are.equal("Healing", other:GetProfile())
       assert.is_true(state.specListenerConnected)

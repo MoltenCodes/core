@@ -3559,7 +3559,22 @@ Client facts used, read 2026-11-15 from Gethe/wow-ui-source
    *Performance* table, revision 14 under *Embedded copies and upgrades*),
    `docs/INTERNALS.md` (the chain, its rebinding rule, node layout 4, the
    upgrade), CHANGELOG, `tests/README.md`, the client suite's `EXPECTED.md`.
-9. Status: recorded 2026-11-15 under core decisions 18 and 19; code follows.
+9. Status: implemented 2026-11-15 under core decisions 18 and 19, 0.5.0,
+   revision 14, node layout 4, 298 specs (25 new in `ReadThrough_spec.lua`).
+   Recorded deviations: record field views are built on their first use too (a
+   pending proxy each, which the shadow holds), not with their parent; a
+   record view whose plain-table default is not stored yet reads through the
+   function path while its saved table exists (a direct read of the saved
+   table must never store a copy) and through a tail of its own while nothing
+   is saved; a database creates `_signals` with its first profile listener, so
+   two scopes keep it to 16 fields. Measured on host Lua 5.1, each against
+   AceDB-3.0 in its own run: read-saved 31.7x to 2.8x, read-default 29.3x to
+   3.7x, read-nested 34.4x to 1.9x, read-entry-default 40.2x to 1.9x, read-
+   getter 2.5x to 1.65x, write-scalar 53x to 35x, write-nested 190x to 102x,
+   open-empty 4.7x and 8.3 KB to 3.1x and 3.7 KB (AceDB 3.3 KB), open-
+   populated 2.6x to 2.3x, switch-profile 0.24x to 0.19x; an open database
+   with one profile read holds 3.0 KB (revision 13: 3.9 KB, AceDB-3.0: 3.4
+   KB). The main chunk is down to 195 locals.
 
 ---
 
@@ -3609,7 +3624,10 @@ Client facts used, read 2026-11-15 from Gethe/wow-ui-source
 8. Docs: `docs/API.md` (`GetLimit`, *Limits*), `docs/INTERNALS.md` (node
    layout 2, the upgrade), CHANGELOG, README (memory), `tests/README.md`;
    client suite: `GetLimit` returns the defaults.
-9. Status: recorded 2026-11-15 under core decisions 18 and 19; code follows.
+9. Status: implemented 2026-11-15 under core decision 18, 0.2.0, revision 6,
+   node layout 2, 139 specs. A 4-field schema holds 4,723 B (revision 5:
+   13,523 B, −65%); an upgrade from revision 5 rebuilds older nodes as sparse
+   ones and re-points every reference.
 
 ---
 
@@ -3666,7 +3684,17 @@ Client facts used, read 2026-11-15 from Gethe/wow-ui-source
 8. Docs: `docs/INTERNALS.md` (record fields, the derived ones),
    CHANGELOG, `tests/README.md`, README performance note. API.md unchanged
    except its *Performance* notes.
-9. Status: recorded 2026-11-15 under core decisions 18 and 19; code follows.
+9. Status: implemented 2026-11-15 under core decision 18, 0.6.2, revision 13,
+   208 specs. Recorded deviations: `desc`, `order`, `disabled` and `hidden`
+   live in the hints table, collected in the unknown-field walk, so a value
+   option keeps 8 fields with an order too; SettingsKit is still found on
+   every `ProfileOptions` call, because a call must refuse when SettingsKit is
+   gone from the Registry, and only the method probes of a database that
+   already has a group are skipped. Measured on host Lua 5.1: 589 B held per
+   option with a name, description, getter and setter (revision 12: 806 B), a
+   20-option tree 18.7 KB (20.8 KB); against Ace3 in the same runs, define-50
+   0.92x to 0.78x, profile-options-build 6.4x to 2.0x, cmd-refused 1.34x to
+   1.18x.
 
 ---
 
@@ -3705,7 +3733,9 @@ Client facts used, read 2026-11-15 from Gethe/wow-ui-source
    `TakenCheck_spec.lua:123` ("reads every alias live") unchanged.
 8. Docs: `docs/INTERNALS.md` (the kept lookup and why a miss may be kept),
    CHANGELOG, `tests/README.md`.
-9. Status: recorded 2026-11-15 under core decisions 18 and 19; code follows.
+9. Status: implemented 2026-11-15 under core decision 18, 0.2.10, revision 10,
+   176 specs. register-unregister 29.9x to 28.3x of AceConsole-3.0; the live
+   alias scan stays, by the owner's decision, and `docs/API.md` says why.
 
 **timerKit (package O): fixed-cost trims, the probe rule, scope reopening and method-name callbacks** — a change to facade `TimerKit`
 

@@ -348,6 +348,8 @@ describe("SettingsKit view caches", function()
       local db = previous:Open("MyAddonDB", schemaFor(SchemaKit))
       db:SetProfile("Doomed")
       local doomedFrame = db.profile.frame
+      -- Views are built by their first use; revision 6 built them eagerly.
+      local _ = doomedFrame.x
       db:SetProfile("Default")
       db:DeleteProfile("Doomed")
       local profile, frame, aura = db.profile, db.profile.frame, db.profile.auras[5]
@@ -375,7 +377,7 @@ describe("SettingsKit view caches", function()
       assert.are.equal(4, rawget(db, "_layout"))
       assert.are.equal("number", type(rawget(db, "_generation")))
       for _, node in pairs(state.views) do
-        assert.are.equal(3, node.layout)
+        assert.are.equal(4, node.layout)
         assert.is_nil(node.kind)
         assert.is_nil(node.depth)
         assert.is_nil(node.dead)
@@ -413,6 +415,8 @@ describe("SettingsKit view caches", function()
       local db = previous:Open("MyAddonDB", schemaFor(SchemaKit))
       db:SetProfile("Doomed")
       local doomedFrame = db.profile.frame
+      -- Views are built by their first use; revision 6 built them eagerly.
+      local _ = doomedFrame.x
       db:SetProfile("Default")
       db:DeleteProfile("Doomed")
 

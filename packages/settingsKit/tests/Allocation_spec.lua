@@ -35,6 +35,9 @@ describe("SettingsKit allocation #allocation", function()
   it("allocates nothing for a default read, top-level or nested", function()
     local profile = db.profile
     local aura = profile.auras[7]
+    -- A view is built by its first use (revision 14); the reads measured
+    -- below are the later ones.
+    local _ = profile.frame.x
     local sum = 0
 
     local allocated = TestEnv.AllocatedKilobytes(function()
@@ -101,8 +104,11 @@ describe("SettingsKit allocation #allocation", function()
   )
 
   it("allocates nothing for a profile switch and a read of the new profile", function()
+    -- Each profile's root view is built by its first read (revision 14).
     db:SetProfile("Other")
+    local _ = db.profile.scale
     db:SetProfile("Default")
+    _ = db.profile.scale
     local sum = 0
 
     local allocated = TestEnv.AllocatedKilobytes(function()

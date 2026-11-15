@@ -41,7 +41,10 @@ describe("SettingsKit refuses values a saved variable cannot hold", function()
     assert.are.equal(1, db.profile.a.x)
     assert.are.equal(9, db.profile.b.x)
     assert.are_not.equal(saved().a, saved().b)
-    assert.is_nil(getmetatable(saved().a))
+    -- The only metatable a saved table carries is the one SettingsKit gives
+    -- it while the database is open; the client saves none.
+    local metatable = getmetatable(saved().a)
+    assert.is_true(metatable == nil or rawget(metatable, "__settingsKitSaved") == true)
   end)
 
   it("refuses a view nested inside a table value", function()
@@ -256,16 +259,21 @@ end)
 describe("SettingsKit record reads and Compact", function()
   after_each(TestEnv.Reset)
 
-  it("refuses to read a record view with a secret key", function()
+  it("reads a record view without probing the key (decision 19b)", function()
+    -- The client refuses a secret key at the reading line before `__index`
+    -- runs (the client suite asserts it), so a view read asks no probe.
     local SettingsKit, _, _, _, S = TestEnv.NewPackage()
-    TestEnv.InstallSecretProbe()
+    local asked = 0
+    TestEnv.SetGlobal("issecretvalue", function()
+      asked = asked + 1
+      return false
+    end)
     local db = SettingsKit:Open("MyAddonDB", { profile = S.table({ fields = {} }) })
-    TestEnv.expectErrorContaining(
-      "SettingsKit (MyAddonDB) profile cannot be read with a secret key",
-      function()
-        local _ = db.profile[TestEnv.NewSecret()]
-      end
-    )
+    local profile = db.profile
+    asked = 0
+    assert.is_nil(profile.anything)
+    assert.is_nil(profile[{}])
+    assert.are.equal(0, asked)
   end)
 
   it("keeps undeclared keys through Compact", function()

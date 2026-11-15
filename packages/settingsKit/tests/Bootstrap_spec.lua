@@ -111,17 +111,23 @@ describe("SettingsKit bootstrap", function()
     })
     local entry = db.profile.auras[5]
     local glow = entry.glow
+    -- Views are built by their first use; build `glow` before its node is
+    -- laid out as revision 1 left it.
+    local _ = glow.alpha
 
     -- Leave the two nodes as revision 1 built them: `false` handed down
     -- from the section, which was declared without a default. Revision 6
     -- decides each field's read from the defaults when a view is built, so
     -- those read kinds are emptied too: every field then reads `nil`, as
     -- revision 1 read it.
-    local views = rawget(previous, "_state").views
+    local packageState = rawget(previous, "_state")
+    local views = packageState.views
     for _, view in ipairs({ entry, glow }) do
       local node = rawget(views, view)
       node.defaults = false
       node.kinds = {}
+      -- Revision 1 read every view through its `__index` function.
+      packageState.chains[node].__index = packageState.dispatch.readView
     end
     assert.is_nil(entry.shown)
     assert.is_nil(glow.alpha)
@@ -219,10 +225,13 @@ describe("SettingsKit bootstrap", function()
         db:OnChange(secret, function() end)
       end
     )
+    -- Since revision 14 a database read probes no key (decision 19b): the
+    -- client refuses a secret key before `__index` runs.
+    assert.is_nil(db[secret])
     TestEnv.expectErrorContaining(
-      "SettingsKit databases cannot be read with a secret key",
+      "SettingsKit.Database:Getter key must not be a secret value",
       function()
-        return db[secret]
+        return db:Getter("profile", secret)
       end
     )
   end)
@@ -310,6 +319,10 @@ describe("SettingsKit bootstrap", function()
       }),
     })
     local profile, frame, aura = db.profile, db.profile.frame, db.profile.auras[5]
+    -- Views are built by their first use; build them before their nodes are
+    -- laid out as revision 5 left them.
+    local _ = frame.x
+    _ = aura.shown
     local EventKit = require("EventKit")
     EventKit:Connect("PLAYER_LOGOUT", function()
       rawget(state.dispatch, "compactOnLogout")(db)
@@ -354,7 +367,7 @@ describe("SettingsKit bootstrap", function()
     end
     -- An interrupted write left a key in the frame's probe.
     local frameNode = rawget(views, frame)
-    frameNode.probe.stale = 1
+    frameNode.probe = { stale = 1 }
     frameNode.probeSet, frameNode.probeKey = true, "stale"
     -- The database, its scopes and the package state as revision 5 left them.
     rawset(db, "_layout", 2)
@@ -388,7 +401,7 @@ describe("SettingsKit bootstrap", function()
     assert.are.equal(frame, profile.frame)
     assert.are.equal(aura, profile.auras[5])
     for _, node in pairs(views) do
-      assert.are.equal(3, node.layout)
+      assert.are.equal(4, node.layout)
       assert.is_nil(node.displayPath)
       assert.is_nil(node.probeSet)
       assert.is_nil(node.entries)

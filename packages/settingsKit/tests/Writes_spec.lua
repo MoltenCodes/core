@@ -82,7 +82,9 @@ describe("SettingsKit validated writes", function()
         "SettingsKit (MyAddonDB) profile.scale: expected number <= 2, found larger number",
         message
       )
-      assert.is_nil(saved().profiles.Default.scale)
+      -- `rawget`: an open database's saved tables read through to the
+      -- defaults (revision 14).
+      assert.is_nil(rawget(saved().profiles.Default, "scale"))
 
       message = raisedAtWriter(function(mark)
         mark()
@@ -179,7 +181,9 @@ describe("SettingsKit validated writes", function()
     db.profile.scale = 2
     db.profile.scale = nil
     assert.are.equal(1, db.profile.scale)
-    assert.is_nil(saved().profiles.Default.scale)
+    assert.is_nil(rawget(saved().profiles.Default, "scale"))
+    -- The open database's saved table reads through to the default.
+    assert.are.equal(1, saved().profiles.Default.scale)
   end)
 
   it("leaves a NaN key to Lua, which refuses it before any metamethod runs", function()
@@ -328,16 +332,17 @@ describe("SettingsKit and secret values", function()
     )
   end)
 
-  it("refuses to read a keyed section with a secret key", function()
-    local secret = TestEnv.NewSecret()
-    local message = raisedAtWriter(function(mark)
-      mark()
-      local _ = db.profile.byName[secret]
+  it("reads a keyed section without probing the key (decision 19b)", function()
+    -- The client refuses a secret key at the reading line before `__index`
+    -- runs (the client suite asserts it); SettingsKit asks nothing.
+    local byName = db.profile.byName
+    local asked = 0
+    TestEnv.SetGlobal("issecretvalue", function()
+      asked = asked + 1
+      return false
     end)
-    assert.are.equal(
-      "SettingsKit (MyAddonDB) profile.byName cannot be read with a secret key",
-      message
-    )
+    local _ = byName.anyone
+    assert.are.equal(0, asked)
   end)
 
   it("refuses a secret scope name at the caller's line before it indexes a scope", function()
@@ -355,16 +360,18 @@ describe("SettingsKit and secret values", function()
     assert.are.equal("SettingsKit.Database:Validate scope must not be a secret value", message)
   end)
 
-  it("refuses to read the database with a secret key at the reading line", function()
-    local secret = TestEnv.NewSecret()
-    local message = raisedAtWriter(function(mark)
-      mark()
-      return db[secret]
+  it("reads the database without probing the key (decision 19b)", function()
+    -- The client refuses a secret key before `__index` runs; a database
+    -- read looks the method up first and probes nothing.
+    local asked = 0
+    TestEnv.SetGlobal("issecretvalue", function()
+      asked = asked + 1
+      return false
     end)
-    assert.are.equal("SettingsKit databases cannot be read with a secret key", message)
-    -- Methods and scopes still read as before.
     assert.are.equal("function", type(db.OnChange))
+    assert.is_nil(db.undeclaredField)
     assert.are.equal("table", type(db.profile))
+    assert.are.equal(0, asked)
   end)
 end)
 

@@ -119,15 +119,15 @@ describe("SettingsKit defaults", function()
     )
   end)
 
-  it("reads nil for a nil key of a keyed section, after asking the secret probe", function()
+  it("reads nil for a nil key of a keyed section without asking the secret probe", function()
     local db = openProfile({
       flags = S.optional(
         S.map({ keys = S.string(), values = S.optional(S.boolean(), true), max = 8 }),
         {}
       ),
     })
-    -- The key is compared and used as a key after the nil test, both of
-    -- which raise on a secret in the client, so the probe asks first.
+    -- No probe since revision 14 (decision 19b): the client refuses a
+    -- secret key before `__index` runs, so none gets here.
     local asked = 0
     TestEnv.SetGlobal("issecretvalue", function()
       asked = asked + 1
@@ -136,7 +136,7 @@ describe("SettingsKit defaults", function()
     local flags = db.profile.flags
     asked = 0
     assert.is_nil(flags[nil])
-    assert.are.equal(1, asked)
+    assert.are.equal(0, asked)
     assert.is_true(flags.anything)
   end)
 

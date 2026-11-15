@@ -894,6 +894,12 @@ checklist in [`CONTRIBUTING.md`](CONTRIBUTING.md#taint-and-secret-values)): the 
 and never compares anything, so it does not depend on the comparison with
 `nil` staying harmless.
 
+SettingsKit (revision 14) relies on the indexing row of this table: by
+[ADR 0002](decisions/0002-secret-checks-only-where-the-client-answers.md) its views and databases no longer probe a read key, because the
+client refuses a secret key at the reading line before any `__index` runs. The
+SettingsKit client suite asserts that refusal (`settingsKit.secrets`), so a
+client build that changes it shows up there.
+
 `issecretvalue(value)` returns `true` for a secret. Ask it before any of the
 operations above on a value that came from the client during combat. Clients
 without secret values (Retail before 12.0 and older Classic builds; current Classic Era 1.15.9 and Mists Classic 5.5.4 do expose it) do not have

@@ -436,7 +436,10 @@ end
 ---The character key `"<name> - <realm>"` from the live client, or `nil`.
 ---@return string|nil
 local function liveCharacterKey()
-  local playerName = plainName((callHost("UnitName", "player")))
+  -- SettingsKit revision 14 keys the character by the unmodified name, and
+  -- falls back to `UnitName` where the client has none.
+  local playerName = plainName((callHost("UnitNameUnmodified", "player")))
+    or plainName((callHost("UnitName", "player")))
   local realm = plainName((callHost("GetRealmName")))
   if type(playerName) == "nil" or type(realm) == "nil" then
     return nil
@@ -497,7 +500,9 @@ end
 local function requireCharacterKey(ctx)
   local characterKey = liveCharacterKey()
   if type(characterKey) == "nil" then
-    ctx:Fail('UnitName("player") or GetRealmName() answered no plain name')
+    ctx:Fail(
+      'UnitNameUnmodified("player"), UnitName("player") or GetRealmName() answered no plain name'
+    )
   end
   ---@cast characterKey string
   return characterKey
@@ -748,11 +753,17 @@ end
 local facade = newSuite("facade")
 
 facade:Test(
-  "Registry:Get('settingsKit', 1) is the SettingsKit facade with API 1, Open, SetLimits, GetLimits, UNBOUNDED, DEFAULT_PROFILE 'Default', MAX_PROFILE_NAME_LENGTH 64 and the Database prototype's twenty-two methods, and GetSpecIndex",
+  "Registry:Get('settingsKit', 1) is the SettingsKit facade with API 1, Open, SetLimits, GetLimits, UNBOUNDED, DEFAULT_PROFILE 'Default', MAX_PROFILE_NAME_LENGTH 64 and the Database prototype's twenty-two methods, GetSpecIndex and GetCharacterKey",
   function(ctx)
     ctx:Expect(type(SettingsKit)):ToBe("table")
     ctx:Expect(rawget(SettingsKit, "API")):ToBe(SETTINGS_KIT_API)
-    for _, functionName in ipairs({ "Open", "SetLimits", "GetLimits", "GetSpecIndex" }) do
+    for _, functionName in ipairs({
+      "Open",
+      "SetLimits",
+      "GetLimits",
+      "GetSpecIndex",
+      "GetCharacterKey",
+    }) do
       ctx:Expect(type(rawget(SettingsKit, functionName))):ToBe("function")
     end
     ctx:Expect(type(rawget(SettingsKit, "UNBOUNDED"))):ToBe("table")
@@ -861,17 +872,25 @@ savedVariables:Test(
 )
 
 savedVariables:Test(
-  "the current profile and the char scope are keyed '<name> - <realm>' from the live UnitName('player') and GetRealmName(), and a write through db.char lands under that key",
+  "the current profile and the char scope are keyed '<name> - <realm>' from the live UnitNameUnmodified('player') and GetRealmName(), as SettingsKit:GetCharacterKey() answers, a write through db.char lands under that key, and the open profile's raw table reads the scale default while rawget sees nothing saved",
   function(ctx)
     local db = openDatabases(ctx)
     local characterKey = requireCharacterKey(ctx)
     ctx:Log("character key: " .. characterKey)
+    ctx:Expect(SettingsKit:GetCharacterKey()):ToBe(characterKey)
     ctx:Expect(db:GetProfile()):ToBe(characterKey)
     ctx:Expect(type(rawProfile(characterKey))):ToBe("table")
 
     db.char.touched = true
     ctx:Expect(rawField(rawScopeEntry("char", characterKey), "touched")):ToBe(true)
     ctx:Expect(db.char.touched):ToBe(true)
+
+    -- Revision 14: an open database's saved tables read their scalar
+    -- defaults through SettingsKit's metatable; nothing is written.
+    db.profile.scale = nil
+    local profileTable = rawProfile(characterKey)
+    ctx:Expect(rawget(profileTable, "scale")):ToBeNil()
+    ctx:Expect(profileTable.scale):ToBe(1)
   end
 )
 
@@ -1670,15 +1689,17 @@ secretTest(
 )
 
 secretTest(
-  "a secret key never reads or stores: db.profile[secret], db.profile.auras[secret], db[secret] and db.profile[secret] = 1 each raise at this file's line, and the raw profile gains no key",
+  "a secret key never reads or stores: the client refuses db.profile[secret], db.profile.auras[secret] and db[secret] at this file's line before any metamethod runs (SettingsKit asks nothing since revision 14), SettingsKit refuses db.profile[secret] = 1, and the raw profile gains no key",
   function(ctx)
     local db = openDatabases(ctx)
     local characterKey = requireCharacterKey(ctx)
     local secretText = makeSecret(ctx, "label")
     local secretNumber = makeSecret(ctx, AURA_SPELL_ID)
     local keysBefore = sortedKeys(rawProfile(characterKey))
-    -- SettingsKit's own refusal, or the client's, when the client refuses the
-    -- key before any metamethod runs; the log says which.
+    -- Core decision 19b: SettingsKit revision 14 removed its read probes
+    -- because the client refuses a secret key before any metamethod runs
+    -- (measured on Retail 12.1.0 b69933). The reads must therefore raise the
+    -- client's own error; a write is still refused by SettingsKit.
     local clientRefusal = "cannot be indexed with secret keys"
     local cases = {
       {
@@ -1686,29 +1707,28 @@ secretTest(
         read = function()
           return db.profile[secretText]
         end,
-        expected = ACCOUNT_PREFIX .. "profile cannot be read with a secret key",
+        expected = clientRefusal,
       },
       {
         label = "db.profile.auras[secret]",
         read = function()
           return db.profile.auras[secretNumber]
         end,
-        expected = ACCOUNT_PREFIX .. "profile.auras cannot be read with a secret key",
+        expected = clientRefusal,
       },
       {
         label = "db[secret]",
         read = function()
           return db[secretText]
         end,
-        expected = "SettingsKit databases cannot be read with a secret key",
+        expected = clientRefusal,
       },
       {
         label = "db.profile[secret] = 1",
         read = function()
           db.profile[secretText] = 1
         end,
-        expected = ACCOUNT_PREFIX
-          .. "profile refused a secret key: saved variables never hold secret values",
+        expected = "profile refused a secret key: saved variables never hold secret values",
       },
     }
     for _, case in ipairs(cases) do
@@ -1716,16 +1736,8 @@ secretTest(
       ctx:Expect(succeeded):ToBe(false)
       expectThisFile(ctx, message)
       if type(message) == "string" and not isSecret(message) then
-        local bySettingsKit = message:sub(-#case.expected) == case.expected
-        local byClient = message:find(clientRefusal, 1, true) ~= nil
-        ctx:Log(
-          ("%s refused by %s: %s"):format(
-            case.label,
-            bySettingsKit and "SettingsKit" or (byClient and "the client" or "neither"),
-            message
-          )
-        )
-        ctx:Expect(bySettingsKit or byClient):ToBe(true)
+        ctx:Log(("%s raised: %s"):format(case.label, message))
+        ctx:Expect(message:find(case.expected, 1, true) ~= nil):ToBe(true)
       end
     end
     ctx:Expect(sortedKeys(rawProfile(characterKey))):ToEqual(keysBefore)
