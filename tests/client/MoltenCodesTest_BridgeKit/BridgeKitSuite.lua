@@ -674,6 +674,47 @@ aceConfig:Test(
   end
 )
 
+aceConfig:Test(
+  "with OptionsKit revision 14 or later a converted toggle keeps width and confirm, and with its Dynamic part a field added to the Ace table appears after NotifyChange",
+  function(ctx)
+    if OptionsKit == nil or type(rawget(OptionsKit, "GetFields")) ~= "function" then
+      Harness:SkipTest(ctx, "the MoltenCodes addon carries no OptionsKit revision 14 or later")
+    end
+    local appName = "MoltenCodesTest_BridgeKitFields"
+    local store = { shown = true }
+    local source = {
+      type = "group",
+      args = {
+        shown = {
+          type = "toggle",
+          name = "Shown",
+          width = "full",
+          confirm = function(_, value)
+            return value and "Show it?" or false
+          end,
+          get = function()
+            return store.shown
+          end,
+          set = function(_, value)
+            store.shown = value
+          end,
+        },
+      },
+    }
+    local tree = BridgeKit:DefineAceConfig(appName, source)
+    atCleanUp(function()
+      OptionsKit:Undefine(appName)
+    end)
+    ctx:Expect(tree:DescribeOption("shown").width):ToBe("full")
+    ctx:Expect(tree:GetConfirmation("shown", true)):ToBe("Show it?")
+    if OptionsKit:IsPartLoaded("Dynamic") then
+      source.args.extra = { type = "header", name = "Extra" }
+      tree:NotifyChange()
+      ctx:Expect(tree:DescribeOption("extra").kind):ToBe("header")
+    end
+  end
+)
+
 -- bridgeKit.secrets ----------------------------------------------------------
 
 local secrets = newSuite("secrets")

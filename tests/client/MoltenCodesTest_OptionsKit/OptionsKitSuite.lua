@@ -323,7 +323,7 @@ local function trackTreeName(name)
 end
 
 ---Define a tree under `TREE_NAME` for the running test.
----@param spec table the root group
+---@param spec table|function the root group, or a builder (Dynamic part)
 ---@param options table|nil the `Define` options
 ---@return any tree
 local function defineTree(spec, options)
@@ -572,11 +572,19 @@ end
 local facade = newSuite("facade")
 
 facade:Test(
-  "Registry:Get('optionsKit', 1) is the OptionsKit facade with API 1, Define, Get, Undefine, ProfileOptions, MAX_OPTIONS 1024, MAX_DEPTH 8, UNBOUNDED, CHILD_GROUPS and a Tree prototype with its eleven methods",
+  "Registry:Get('optionsKit', 1) is the OptionsKit facade with API 1, Define, Get, Undefine, ProfileOptions, GetFields, GetTrees, IsPartLoaded, MAX_OPTIONS 1024, MAX_DEPTH 8, UNBOUNDED, CHILD_GROUPS and a Tree prototype with its sixteen methods",
   function(ctx)
     ctx:Expect(type(OptionsKit)):ToBe("table")
     ctx:Expect(rawget(OptionsKit, "API")):ToBe(OPTIONS_KIT_API)
-    for _, functionName in ipairs({ "Define", "Get", "Undefine", "ProfileOptions" }) do
+    for _, functionName in ipairs({
+      "Define",
+      "Get",
+      "Undefine",
+      "ProfileOptions",
+      "GetFields",
+      "GetTrees",
+      "IsPartLoaded",
+    }) do
       ctx:Expect(type(rawget(OptionsKit, functionName))):ToBe("function")
     end
     ctx:Expect(rawget(OptionsKit, "MAX_OPTIONS")):ToBe(1024)
@@ -601,6 +609,11 @@ facade:Test(
       "Describe",
       "DescribeOption",
       "OnChange",
+      "GetConfirmation",
+      "OnStructureChanged",
+      "NotifyChange",
+      "Replace",
+      "Remove",
     }) do
       ctx:Expect(type(rawget(prototype, methodName))):ToBe("function")
     end
@@ -1838,5 +1851,86 @@ secretTest(
     ctx:Expect(accepted):ToBe(false)
     ctx:Expect(message):ToBe("r: expected number, found secret value")
     ctx:Expect(setCount.calls):ToBe(0)
+  end
+)
+
+-- optionsKit.fields and optionsKit.dynamic (revisions 14 and 15) -------------------------
+
+local fields = newSuite("fields")
+
+fields:Test(
+  "a tree with AceConfig's presentation fields, a handler method and a group's confirm defines on the client, Describe resolves the width and image functions and GetConfirmation answers the inherited question",
+  function(ctx)
+    local handler = {}
+    function handler:GetShown()
+      return true
+    end
+    function handler:SetShown() end
+    local tree = defineTree({
+      type = "group",
+      handler = handler,
+      args = {
+        intro = {
+          type = "description",
+          name = "Intro",
+          width = function()
+            return "full"
+          end,
+          image = function()
+            return 136243, 24, 12
+          end,
+          imageCoords = { 0.1, 0.9, 0.1, 0.9 },
+          descStyle = "inline",
+        },
+        careful = {
+          type = "group",
+          name = "Careful",
+          confirm = true,
+          args = {
+            shown = {
+              type = "toggle",
+              name = "Shown",
+              get = "GetShown",
+              set = "SetShown",
+              cmdHidden = true,
+            },
+          },
+        },
+      },
+    }, nil)
+    local intro = tree:DescribeOption("intro")
+    ctx:Expect(intro.width):ToBe("full")
+    ctx:Expect(intro.image):ToBe(136243)
+    ctx:Expect(intro.imageWidth):ToBe(24)
+    ctx:Expect(tree:Get("careful.shown")):ToBe(true)
+    ctx:Expect(tree:GetConfirmation("careful.shown", false)):ToBe("Shown")
+    ctx:Expect(tree:IsHidden("careful.shown", "cmd")):ToBe(true)
+    ctx:Expect(tree:IsHidden("careful.shown", "dialog")):ToBe(false)
+  end
+)
+
+local dynamic = newSuite("dynamic")
+
+dynamic:Test(
+  "with the Dynamic part installed, a builder tree reads its builder again once after NotifyChange, and the client's geterrorhandler, which reports a refused rebuild, is a function",
+  function(ctx)
+    ctx:Expect(OptionsKit:IsPartLoaded("Dynamic")):ToBe(true)
+    ctx:Expect(type(readHost("geterrorhandler"))):ToBe("function")
+    local count = 1
+    local calls = 0
+    local tree = defineTree(function()
+      calls = calls + 1
+      local args = {}
+      for index = 1, count do
+        args["option" .. index] = { type = "header", name = "Option " .. index }
+      end
+      return { type = "group", args = args }
+    end, nil)
+    count = 3
+    tree:NotifyChange()
+    tree:NotifyChange()
+    ctx:Expect(calls):ToBe(1)
+    ctx:Expect(tree:Walk(function() end)):ToBe(3)
+    ctx:Expect(calls):ToBe(2)
   end
 )

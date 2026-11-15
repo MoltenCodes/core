@@ -389,4 +389,43 @@ describe("OptionsKit with the real SettingsKit", function()
     end)
     assert.is_true(allocated < 1, "Validate allocated " .. allocated .. " KiB")
   end)
+
+  -- Revision 14's `ns:` binds against SettingsKit revision 15's Namespaces
+  -- part, when the tree has it; `Namespaces_spec.lua` covers the stand-in.
+  if isOnPath("SettingsKit-Namespaces") then
+    it("binds into a real namespace and refuses one without the part", function()
+      local OptionsKit = TestEnv.NewPackage()
+      local SettingsKit = require("SettingsKit")
+      local S = require("SchemaKit")
+      local db = SettingsKit:Open(SAVED_VARIABLE, {
+        profile = S.table({ fields = { scale = S.optional(S.number(), 1) } }),
+      })
+      local spec = {
+        type = "group",
+        args = {
+          size = { type = "range", name = "Size", min = 0, max = 10, bind = "ns:Bars.profile.size" },
+        },
+      }
+      TestEnv.expectErrorContaining("needs options.db with namespaces", function()
+        OptionsKit:Define("Addon", spec, { db = db })
+      end)
+      require("SettingsKit-Namespaces")
+      TestEnv.expectErrorContaining('namespace "Bars" is not registered in options.db', function()
+        OptionsKit:Define("Addon", spec, { db = db })
+      end)
+      local bars = db:RegisterNamespace("Bars", {
+        profile = S.table({ fields = { size = S.optional(S.number({ max = 8 }), 4) } }),
+      })
+      local tree = OptionsKit:Define("Addon", spec, { db = db })
+      assert.are.equal(4, tree:Get("size"))
+      assert.is_true(tree:Set("size", 6))
+      assert.are.equal(6, bars.profile.size)
+      local accepted = tree:Validate("size", 9)
+      assert.is_false(accepted)
+      db:SetProfile("Other")
+      assert.are.equal(4, tree:Get("size"))
+      assert.are.equal(4, tree:Reset("size"))
+      package.loaded["SettingsKit-Namespaces"] = nil
+    end)
+  end
 end)

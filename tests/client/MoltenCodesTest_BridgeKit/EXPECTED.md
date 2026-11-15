@@ -47,8 +47,9 @@ MoltenCodes Test: PASS bridgeKit.aceComm: with Ace3 loaded, AceComm-3.0 receives
 MoltenCodes Test: SKIP bridgeKit.aceDB: an AceDB saved variable written by a first session imports after /reload in both modes, with its backup in WTF and every field read as before -- not run: it needs an AceDB saved variable from an earlier session; packages/bridgeKit/tests/AceDB_spec.lua covers the import through SettingsKit itself on the host
 MoltenCodes Test: PASS bridgeKit.aceDB: the AceDB preview names the current character under the key UnitNameUnmodified gives, the key AceDB saved and SettingsKit opens
 MoltenCodes Test: PASS bridgeKit.aceConfig: an AceConfig table converted by DefineAceConfig is rendered by WidgetKit, and a write through the tree reaches the Ace handler with the Ace info shape
+MoltenCodes Test: PASS bridgeKit.aceConfig: with OptionsKit revision 14 or later a converted toggle keeps width and confirm, and with its Dynamic part a field added to the Ace table appears after NotifyChange
 MoltenCodes Test: PASS bridgeKit.secrets: AceSerialize refuses a secret value and OpenAceComm a secret prefix, each at this file's line
-MoltenCodes Test: bridgeKit: 10 passed, 0 failed, 1 skipped, 0 timed out (11 tests)
+MoltenCodes Test: bridgeKit: 11 passed, 0 failed, 1 skipped, 0 timed out (12 tests)
 MoltenCodes Test: results saved in MoltenCodesTestResults; /reload or log out to write them to disk.
 ```
 
@@ -62,7 +63,7 @@ every field back before and after compaction.
 The two `with Ace3 loaded` tests print `SKIP` instead, with the reason
 `MoltenCodesBench_Ace3 is not installed (...); install it with python3 -m
 tooling.bench.client_install to compare with real Ace3`, and the totals line
-reads `8 passed, 0 failed, 3 skipped, 0 timed out (11 tests)`.
+reads `9 passed, 0 failed, 3 skipped, 0 timed out (12 tests)`.
 
 ### Per flavour
 

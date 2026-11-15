@@ -452,6 +452,8 @@ describe("BridgeKit AceDB importer", function()
 
   describe("scopes and namespaces SettingsKit lacks", function()
     it("map an AceDB scope into a global map field, or drop it", function()
+      -- The plan's mappings, as a SettingsKit before revision 15 takes them.
+      rawset(SettingsKit, "REVISION", 14)
       local source = { race = { Human = { a = 1 }, Orc = { b = 2 } }, locale = { enus = {} } }
       local report = BridgeKit:ImportAceDB(source, "MyAddonSettings", {
         schema = schema,
@@ -466,6 +468,8 @@ describe("BridgeKit AceDB importer", function()
     end)
 
     it("put a namespace's sections under a field of the same sections, or drop it", function()
+      -- The plan's mappings, as a SettingsKit before revision 15 takes them.
+      rawset(SettingsKit, "REVISION", 14)
       local source = aceTable()
       source.namespaces = {
         Bars = {
@@ -488,6 +492,133 @@ describe("BridgeKit AceDB importer", function()
       assert.are.same({ slot = 1 }, target.char[CHARACTER].bars)
       assert.are.same({ seen = true }, target.global.bars)
       assert.is_true(hasEntry(report, "namespaces.Unmapped", "unmappedNamespace"))
+    end)
+  end)
+
+  describe("namespaces and scopes with SettingsKit revision 15", function()
+    it(
+      "copies every namespace in AceDB's layout and reports a plan entry it no longer needs",
+      function()
+        local source = aceTable()
+        source.namespaces = {
+          Bars = {
+            profiles = { Default = { size = 4 }, Raid = { size = 6 } },
+            char = { [CHARACTER] = { shown = true } },
+            global = { seen = 3 },
+            race = { Human = { a = 1 } },
+            unknown = { dropped = true },
+          },
+        }
+        local profileSchema =
+          S.table({ fields = { bars = S.optional(S.table({ fields = {}, open = true })) } })
+        local report = BridgeKit:ImportAceDB(source, "MyAddonSettings", {
+          schema = { profile = profileSchema, char = schema.char, global = schema.global },
+          aceDefaults = {},
+          namespaces = { Bars = { field = "bars" } },
+        })
+        local saved = Env.Global("MyAddonSettings").namespaces.Bars
+        assert.are.same({ Default = { size = 4 }, Raid = { size = 6 } }, saved.profiles)
+        assert.are.same({ [CHARACTER] = { shown = true } }, saved.char)
+        assert.are.same({ seen = 3 }, saved.global)
+        assert.are.same({ Human = { a = 1 } }, saved.race)
+        assert.is_nil(saved.unknown)
+        assert.is_true(hasEntry(report, "namespaces.Bars", "nativeNamespace"))
+        assert.is_false(hasEntry(report, "namespaces.Bars", "unmappedNamespace"))
+        -- SettingsKit's own namespace reads what was imported.
+        require("SettingsKit-Namespaces")
+        local db = SettingsKit:Open("MyAddonSettings", {
+          profile = profileSchema,
+          char = schema.char,
+          global = schema.global,
+        })
+        local bars = db:RegisterNamespace("Bars", {
+          profile = S.table({ fields = { size = S.optional(S.number(), 1) } }),
+        })
+        assert.are.equal(4, bars.profile.size)
+        package.loaded["SettingsKit-Namespaces"] = nil
+      end
+    )
+
+    it("renames namespace profiles and characters as the main sections are", function()
+      local source = aceTable()
+      source.namespaces = {
+        Bars = {
+          profiles = { Default = { size = 4 } },
+          char = { ["Old - Realm"] = { shown = true }, ["Gone - Realm"] = { shown = false } },
+        },
+      }
+      BridgeKit:ImportAceDB(source, "MyAddonSettings", {
+        schema = schema,
+        aceDefaults = {},
+        renameProfile = function(name)
+          return name == "Default" and "Main" or name
+        end,
+        renameCharacter = function(key)
+          if key == "Gone - Realm" then
+            return nil
+          end
+          return key == "Old - Realm" and "New - Realm" or key
+        end,
+      })
+      local saved = Env.Global("MyAddonSettings").namespaces.Bars
+      assert.are.same({ Main = { size = 4 } }, saved.profiles)
+      assert.are.same({ ["New - Realm"] = { shown = true } }, saved.char)
+    end)
+
+    it("drops what cannot be stored and stops at the depth bound", function()
+      local deep = {}
+      local node = deep
+      for _ = 1, 40 do
+        node.next = {}
+        node = node.next
+      end
+      local source = aceTable()
+      source.namespaces = {
+        Bars = { global = { fn = function() end }, realm = { deep = deep } },
+        [1] = { global = {} },
+      }
+      local report =
+        BridgeKit:ImportAceDB(source, "MyAddonSettings", { schema = schema, aceDefaults = {} })
+      local saved = Env.Global("MyAddonSettings").namespaces.Bars
+      assert.is_nil(saved.global)
+      assert.is_nil(saved.realm)
+      assert.is_true(hasEntry(report, "namespaces.Bars.global", "notStorable"))
+      assert.is_true(hasEntry(report, "namespaces.Bars.realm", "tooDeep"))
+    end)
+
+    it("drops namespace entries that are not tables and sections of the wrong type", function()
+      local source = aceTable()
+      source.namespaces = {
+        Bars = { profiles = { Default = 4 }, char = "wrong" },
+      }
+      local report =
+        BridgeKit:ImportAceDB(source, "MyAddonSettings", { schema = schema, aceDefaults = {} })
+      local saved = Env.Global("MyAddonSettings").namespaces.Bars
+      assert.are.same({}, saved.profiles)
+      assert.is_nil(saved.char)
+      assert.is_true(hasEntry(report, "namespaces.Bars.profiles.Default", "notStorable"))
+      assert.is_true(hasEntry(report, "namespaces.Bars.char", "notStorable"))
+    end)
+
+    it("copies the four scopes into sections of their own", function()
+      local source = {
+        race = { Human = { a = 1 } },
+        factionrealm = { ["Alliance - Silvermoon"] = { b = 2 } },
+        factionrealmregion = { ["Alliance - Silvermoon - EU"] = { c = 3 } },
+        locale = { enus = { d = 4 } },
+      }
+      local report = BridgeKit:ImportAceDB(source, "MyAddonSettings", {
+        schema = schema,
+        aceDefaults = {},
+        scopes = { race = { into = "global", field = "byRace" } },
+      })
+      local saved = Env.Global("MyAddonSettings")
+      assert.are.same({ Human = { a = 1 } }, saved.race)
+      assert.are.same({ ["Alliance - Silvermoon"] = { b = 2 } }, saved.factionrealm)
+      assert.are.same({ ["Alliance - Silvermoon - EU"] = { c = 3 } }, saved.factionrealmregion)
+      assert.are.same({ enus = { d = 4 } }, saved.locale)
+      assert.is_true(hasEntry(report, "race", "nativeScope"))
+      assert.is_false(hasEntry(report, "locale", "unsupportedScope"))
     end)
   end)
 
@@ -801,6 +932,8 @@ describe("BridgeKit AceDB importer", function()
     end)
 
     it("merges a namespace into a global map that a mapped scope also fills", function()
+      -- The plan's mappings, as a SettingsKit before revision 15 takes them.
+      rawset(SettingsKit, "REVISION", 14)
       local plan = {
         schema = schema,
         aceDefaults = {},
@@ -1053,6 +1186,8 @@ describe("BridgeKit AceDB importer", function()
     end)
 
     it("keep what a section holds when a namespace lands on it, up to the map's max", function()
+      -- The plan's mappings, as a SettingsKit before revision 15 takes them.
+      rawset(SettingsKit, "REVISION", 14)
       local mergeSchema = {
         profile = S.table({
           fields = { bars = S.optional(S.table({ fields = {}, open = true })) },

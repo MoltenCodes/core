@@ -54,7 +54,7 @@
 
 local PACKAGE_NAME = "bridgeKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 7
+local IMPLEMENTATION_REVISION = 8
 local REQUIRED_REGISTRY_API = 2
 local STATE_SCHEMA = 1
 
@@ -1561,6 +1561,277 @@ local function anyOf(predicates)
   end
 end
 
+-- Field carry-over (revision 8). OptionsKit revision 14 and later publish
+-- `GetFields(kind)`: every field a kind accepts and its forms. A field the
+-- registered OptionsKit lists is carried over in OptionsKit's form; one it
+-- does not list keeps the older rule (dropped and reported). The helpers sit
+-- in one table, so the main chunk spends one local on them.
+local Carry = {}
+
+-- AceConfigDialog's widths, which OptionsKit takes as they are.
+Carry.WIDTHS = { normal = true, half = true, double = true, full = true }
+
+---The fields the registered OptionsKit accepts for `kind`, asked once per
+---conversion, or `false` when it publishes none.
+---@param work table
+---@param kind string
+---@return table|false
+function Carry.fieldsOf(work, kind)
+  local cache = work.fields
+  if cache == nil then
+    cache = {}
+    work.fields = cache
+    local OptionsKit = Registry:Find("optionsKit", 1)
+    work.optionsKit = type(OptionsKit) == "table"
+        and type(rawget(OptionsKit, "GetFields")) == "function"
+        and OptionsKit
+      or false
+  end
+  local fields = cache[kind]
+  if fields == nil then
+    fields = false
+    if work.optionsKit then
+      fields = work.optionsKit:GetFields(kind)
+    end
+    cache[kind] = fields
+  end
+  return fields
+end
+
+---Whether the registered OptionsKit accepts `field` on `kind`, in `form`
+---when one is given (`"function"`, `"number"`, ...).
+---@param work table
+---@param kind string
+---@param field string
+---@param form string|nil
+---@return boolean
+function Carry.accepts(work, kind, field, form)
+  local fields = Carry.fieldsOf(work, kind)
+  local forms = fields and fields[field]
+  if not forms then
+    return false
+  end
+  return form == nil or forms[form] == true
+end
+
+---A function OptionsKit calls for the field: the Ace callback with the Ace
+---`info`, its answer used when `accepts` says so, else `fallback`.
+---@param spec table
+---@param aceInfo table
+---@param member string
+---@param accepts fun(value: any): boolean
+---@param fallback any
+---@return function
+function Carry.live(spec, aceInfo, member, accepts, fallback)
+  return function()
+    local answer = callAce(spec, aceInfo, member)
+    if not isSecretValue(answer) and accepts(answer) then
+      return answer
+    end
+    return fallback
+  end
+end
+
+---Whether `value` is a width OptionsKit takes.
+---@param value any
+---@return boolean
+function Carry.isWidth(value)
+  return Carry.WIDTHS[value] == true
+    or (type(value) == "number" and value > 0 and value < math.huge)
+end
+
+---Whether `value` is a texture: a path or a file ID.
+---@param value any
+---@return boolean
+function Carry.isTexture(value)
+  return type(value) == "string" or (type(value) == "number" and value == value)
+end
+
+---Whether `value` is an array of 4 or 8 numbers.
+---@param value any
+---@return boolean
+function Carry.isCoordinates(value)
+  if type(value) ~= "table" then
+    return false
+  end
+  local count = 0
+  for key, item in next, value do
+    if type(key) ~= "number" or type(item) ~= "number" or item ~= item then
+      return false
+    end
+    count = count + 1
+  end
+  if count ~= 4 and count ~= 8 then
+    return false
+  end
+  for index = 1, count do
+    if rawget(value, index) == nil then
+      return false
+    end
+  end
+  return true
+end
+
+---Whether `value` is a string.
+---@param value any
+---@return boolean
+function Carry.isString(value)
+  return type(value) == "string"
+end
+
+-- Per presentation field: whether a value is carried as it is, and what a
+-- callback answers when it answers something else.
+Carry.VALUE_RULES = {
+  width = { Carry.isWidth, "normal" },
+  relWidth = {
+    function(value)
+      return type(value) == "number" and value > 0 and value <= 1
+    end,
+    nil,
+  },
+  descStyle = {
+    function(value)
+      return value == "inline" or value == "tooltip"
+    end,
+    nil,
+  },
+  tooltipHyperlink = { Carry.isString, "" },
+  icon = { Carry.isTexture, "" },
+  image = { Carry.isTexture, "" },
+  -- The whole texture, for a callback that answers no coordinates;
+  -- OptionsKit copies it into each description.
+  iconCoords = { Carry.isCoordinates, { 0, 1, 0, 1 } },
+  imageCoords = { Carry.isCoordinates, { 0, 1, 0, 1 } },
+  imageWidth = {
+    function(value)
+      return type(value) == "number" and value > 0 and value < math.huge
+    end,
+    nil,
+  },
+  dialogControl = {
+    function(value)
+      return type(value) == "string" and value ~= ""
+    end,
+    nil,
+  },
+}
+Carry.VALUE_RULES.imageHeight = Carry.VALUE_RULES.imageWidth
+Carry.VALUE_RULES.control = Carry.VALUE_RULES.dialogControl
+Carry.VALUE_RULES.itemControl = Carry.VALUE_RULES.dialogControl
+
+-- Where a string names a handler method rather than being the value
+-- (AceConfigDialog-3.0.lua:141-150, `stringIsLiteral`).
+Carry.METHOD_STRING = { iconCoords = true, imageCoords = true }
+
+---Carry one presentation field over when the registered OptionsKit takes
+---it: a value it accepts as it is, a callback as a live function (an
+---`image` callback answers Ace's three values). Returns `true` when the
+---field is handled (carried, or reported malformed), `false` when the
+---registered OptionsKit does not take it.
+---@param work table
+---@param aceOption table
+---@param target table
+---@param context table
+---@param field string
+---@return boolean handled
+function Carry.presentation(work, aceOption, target, context, field)
+  if not Carry.accepts(work, target.type, field) then
+    return false
+  end
+  local value = readField(work, aceOption, field, context.where)
+  local rule = Carry.VALUE_RULES[field]
+  local spec = nil
+  if type(value) == "function" or (Carry.METHOD_STRING[field] and type(value) == "string") then
+    spec = callbackSpec(value, context.handler)
+  end
+  if spec and Carry.accepts(work, target.type, field, "function") then
+    checkMethod(work, spec, context.path, field)
+    if field == "image" then
+      local aceInfo = context.aceInfo
+      target.image = function()
+        local image, width, height = callAce(spec, aceInfo, "image")
+        if isSecretValue(image) or not Carry.isTexture(image) then
+          return ""
+        end
+        return image, width, height
+      end
+    else
+      target[field] = Carry.live(spec, context.aceInfo, field, rule[1], rule[2])
+    end
+  elseif not isSecretValue(value) and rule[1](value) then
+    target[field] = value
+  else
+    noteEntry(work.report, context.path, field, "dropped", "malformedField")
+  end
+  return true
+end
+
+---The Ace arguments `confirm` receives for a value about to be set: a
+---colour's four numbers, a multiselect's first key whose state changes
+---and that state, any other value as it is.
+---@param kind string
+---@param value any
+---@param getSpec table|false|nil
+---@param aceInfo table
+---@param context table
+---@param info table OptionsKit's `info`
+---@return ...
+function Carry.confirmArguments(kind, value, getSpec, aceInfo, context, info)
+  if kind == "color" and type(value) == "table" then
+    return value.r, value.g, value.b, value.a
+  end
+  if kind == "multiselect" and type(value) == "table" and getSpec and context.keysOf then
+    for key in next, context.keysOf(info) do
+      local wanted = value[key] == true
+      local current = callAce(getSpec, aceInfo, "get", key)
+      if isSecretValue(current) or (current and true or false) ~= wanted then
+        return key, wanted
+      end
+    end
+    return nil
+  end
+  return value
+end
+
+---Carry `confirm` and `confirmText` over to an OptionsKit that takes them
+---on every kind (revision 14): `true` as it is, a callback (function or
+---method) as a function OptionsKit's `GetConfirmation` calls with the value
+---about to be set, answering Ace3's way (a string is the question, `true`
+---asks with the default question, anything else asks nothing).
+---@param work table
+---@param target table
+---@param context table
+---@param confirm any the resolved Ace `confirm`
+---@param confirmText any
+function Carry.confirm(work, target, context, confirm, confirmText)
+  if type(confirmText) == "string" and not isSecretValue(confirmText) then
+    target.confirmText = confirmText
+  end
+  if confirm == true then
+    target.confirm = true
+    return
+  end
+  local spec = callbackSpec(confirm, context.handler)
+  if not spec then
+    return
+  end
+  checkMethod(work, spec, context.path, "confirm")
+  local kind, aceInfo = target.type, context.aceInfo
+  local getSpec = callbackSpec(context.resolved.get, context.handler)
+  target.confirm = function(info, value)
+    local answer = callAce(
+      spec,
+      aceInfo,
+      "confirm",
+      Carry.confirmArguments(kind, value, getSpec, aceInfo, context, info)
+    )
+    if type(answer) == "string" then
+      return answer
+    end
+    return not isSecretValue(answer) and answer == true
+  end
+end
+
 ---The converted key of every key of `args`, in the sorted order of the
 ---original keys: an identifier keeps its name; any other key has every byte
 ---outside `[%w_]` replaced with `_`, a leading digit prefixed with `_`, and a
@@ -1700,6 +1971,14 @@ local function convertName(work, aceOption, target, context)
     return
   end
   local spec = callbackSpec(name, context.handler)
+  if spec and Carry.accepts(work, target.type, "name", "function") then
+    -- Revision 8: called by `Describe`, as the dialog calls it per redraw.
+    checkMethod(work, spec, context.path, "name")
+    target.name = Carry.live(spec, context.aceInfo, "name", function(value)
+      return type(value) == "string"
+    end, context.aceKey)
+    return
+  end
   if spec then
     local result = evaluateOnce(work, spec, context, "name")
     local probe = work.probe
@@ -1730,6 +2009,13 @@ local function convertOrder(work, aceOption, target, context)
     return
   end
   local spec = callbackSpec(order, context.handler)
+  if spec and Carry.accepts(work, target.type, "order", "function") then
+    checkMethod(work, spec, context.path, "order")
+    target.order = Carry.live(spec, context.aceInfo, "order", function(value)
+      return type(value) == "number" and value == value
+    end, 100)
+    return
+  end
   if spec then
     local result = evaluateOnce(work, spec, context, "order")
     local probe = work.probe
@@ -1768,21 +2054,33 @@ local function convertDescription(work, aceOption, target, context)
   end
 end
 
----Report the fields every option may carry that the conversion drops.
+---Carry over the presentation and control fields every option may carry
+---that the registered OptionsKit takes (revision 8), and report the others
+---dropped. `dropdownControl` is dropped without a report unless `uiType` is
+---`"dropdown"`: Ace3 has no dropdown interface that reads it.
 ---@param work table
 ---@param aceOption table
+---@param target table
 ---@param context table
-local function dropCommonFields(work, aceOption, context)
+local function dropCommonFields(work, aceOption, target, context)
   for index = 1, #PRESENTATION_FIELDS do
     local field = PRESENTATION_FIELDS[index]
     if type(readField(work, aceOption, field, context.where)) ~= "nil" then
-      noteEntry(work.report, context.path, field, "dropped", "presentation")
+      if not Carry.presentation(work, aceOption, target, context, field) then
+        noteEntry(work.report, context.path, field, "dropped", "presentation")
+      end
     end
   end
   for index = 1, #CONTROL_FIELDS do
     local field = CONTROL_FIELDS[index]
     if type(readField(work, aceOption, field, context.where)) ~= "nil" then
-      noteEntry(work.report, context.path, field, "dropped", "customControl")
+      if field == "dropdownControl" then
+        if work.uiType == "dropdown" then
+          noteEntry(work.report, context.path, field, "dropped", "customControl")
+        end
+      elseif not Carry.presentation(work, aceOption, target, context, field) then
+        noteEntry(work.report, context.path, field, "dropped", "customControl")
+      end
     end
   end
 end
@@ -1804,14 +2102,19 @@ local function convertFlags(work, aceOption, target, context)
     hiddenParts[1] = hidden
   end
   local folded = INTERFACE_FLAGS[work.uiType].hidden
+  -- Revision 8: an OptionsKit that takes the per-interface flags gets them
+  -- as they are, and each renderer asks for its own interface.
+  local native = Carry.accepts(work, target.type, "guiHidden")
   for index = 1, #HIDDEN_FLAGS do
     local field = HIDDEN_FLAGS[index]
     local value = readField(work, aceOption, field, context.where)
     if type(value) ~= "nil" then
-      if listHolds(folded, field) then
+      if native and field ~= "dropdownHidden" then
+        target[field] = predicateFrom(value, handler, aceInfo, field)
+      elseif listHolds(folded, field) then
         noteEntry(work.report, context.path, field, "changed", "perInterfaceFlag")
         hiddenParts[#hiddenParts + 1] = predicateFrom(value, handler, aceInfo, "hidden")
-      else
+      elseif field ~= "dropdownHidden" then
         noteEntry(work.report, context.path, field, "dropped", "perInterfaceFlag")
       end
     end
@@ -1903,6 +2206,27 @@ local function convertSorting(work, aceOption, target, staticValues, context)
     return
   end
   local spec = callbackSpec(sorting, context.handler)
+  if spec and Carry.accepts(work, target.type, "sorting", "function") then
+    -- Revision 8: called by `Describe`; keys the current values lack are
+    -- left out, which OptionsKit would refuse.
+    checkMethod(work, spec, context.path, "sorting")
+    local aceInfo = context.aceInfo
+    target.sorting = function(info)
+      local answer = callAce(spec, aceInfo, "sorting")
+      local keys = {}
+      if type(answer) == "table" and not isSecretValue(answer) then
+        local values = context.keysOf(info)
+        for index = 1, #answer do
+          local key = answer[index]
+          if not isSecretValue(key) and type(key) ~= "nil" and values[key] ~= nil then
+            keys[#keys + 1] = key
+          end
+        end
+      end
+      return keys
+    end
+    return
+  end
   if spec then
     sorting = evaluateOnce(work, spec, context, "sorting")
   end
@@ -1962,8 +2286,13 @@ local function convertAccessors(work, target, context)
     local keysOf = context.keysOf
     target.get = function(info)
       local states = {}
+      local tristate = target.tristate == true
       for key in next, keysOf(info) do
-        states[key] = stateOf(callAce(getSpec, aceInfo, "get", key))
+        local answer = callAce(getSpec, aceInfo, "get", key)
+        -- With `tristate` carried over, `nil` is the third state: no key.
+        if not (tristate and type(answer) == "nil") then
+          states[key] = stateOf(answer)
+        end
       end
       return states
     end
@@ -2053,6 +2382,10 @@ end
 local function convertConfirm(work, aceOption, target, context)
   local confirm = context.resolved.confirm
   local confirmText = readField(work, aceOption, "confirmText", context.where)
+  if Carry.accepts(work, target.type, "confirm", "function") then
+    Carry.confirm(work, target, context, confirm, confirmText)
+    return
+  end
   if target.type ~= "execute" then
     if type(confirm) ~= "nil" and confirm ~= false then
       noteEntry(work.report, context.path, "confirm", "dropped", "confirmOnValue")
@@ -2090,13 +2423,32 @@ local function convertOwnFields(work, aceOption, target, spec, context)
           noteEntry(report, path, field, "dropped", "malformedField")
         end
       elseif rule == "drop" then
-        noteEntry(report, path, field, "dropped", "presentation")
+        if field == "style" then
+          if
+            Carry.accepts(work, target.type, "style") and (value == "radio" or value == "dropdown")
+          then
+            target.style = value
+          else
+            noteEntry(report, path, field, "dropped", "presentation")
+          end
+        elseif not Carry.presentation(work, aceOption, target, context, field) then
+          noteEntry(report, path, field, "dropped", "presentation")
+        end
       elseif rule == "multiline" then
         if value == true then
           target.multiline = true
         elseif type(value) == "number" then
-          target.multiline = true
-          noteEntry(report, path, field, "changed", "lineCount")
+          if
+            Carry.accepts(work, "input", "multiline", "number")
+            and value >= 1
+            and value % 1 == 0
+            and value < math.huge
+          then
+            target.multiline = value
+          else
+            target.multiline = true
+            noteEntry(report, path, field, "changed", "lineCount")
+          end
         end
       elseif rule == "hasAlpha" then
         if type(value) == "boolean" then
@@ -2116,16 +2468,28 @@ local function convertOwnFields(work, aceOption, target, spec, context)
         -- A string is the size itself; only a function is evaluated.
         local size = value
         local callback = type(value) == "function" and callbackSpec(value, context.handler) or nil
-        if callback then
+        if callback and Carry.accepts(work, target.type, "fontSize", "function") then
+          target.fontSize = Carry.live(callback, context.aceInfo, "fontSize", function(answer)
+            return type(answer) == "string" and FONT_SIZES[answer] == true
+          end, "medium")
+          size = nil
+        elseif callback then
           size = evaluateOnce(work, callback, context, "fontSize")
         end
-        if type(size) == "string" and not isSecretValue(size) and FONT_SIZES[size] then
+        if type(size) == "nil" and type(target.fontSize) == "function" then
+          -- Carried as a live function above.
+          size = nil
+        elseif type(size) == "string" and not isSecretValue(size) and FONT_SIZES[size] then
           target.fontSize = size
         else
           noteEntry(report, path, field, "dropped", "fontSize")
         end
       elseif rule == "tristate" then
-        noteEntry(report, path, field, "changed", "multiselectTristate")
+        if Carry.accepts(work, "multiselect", "tristate") then
+          target.tristate = value == true
+        else
+          noteEntry(report, path, field, "changed", "multiselectTristate")
+        end
       end
     end
   end
@@ -2403,7 +2767,7 @@ function convertBody(work, aceOption, spec, target, context)
   end
   convertOrder(work, aceOption, target, context)
   convertDescription(work, aceOption, target, context)
-  dropCommonFields(work, aceOption, context)
+  dropCommonFields(work, aceOption, target, context)
   convertFlags(work, aceOption, target, context)
 
   if spec.kind == "group" then
@@ -2411,16 +2775,23 @@ function convertBody(work, aceOption, spec, target, context)
       target.inline = true
     end
     local folded = INTERFACE_FLAGS[work.uiType].inline
+    local native = Carry.accepts(work, "group", "guiInline")
     for index = 1, #INLINE_FLAGS do
       local field = INLINE_FLAGS[index]
       local value = readField(work, aceOption, field, context.where)
       if type(value) ~= "nil" then
-        if listHolds(folded, field) then
+        if native and field ~= "dropdownInline" then
+          if type(value) == "boolean" then
+            target[field] = value
+          else
+            noteEntry(work.report, path, field, "dropped", "malformedField")
+          end
+        elseif listHolds(folded, field) then
           noteEntry(work.report, path, field, "changed", "perInterfaceFlag")
           if value == true then
             target.inline = true
           end
-        else
+        elseif field ~= "dropdownInline" then
           noteEntry(work.report, path, field, "dropped", "perInterfaceFlag")
         end
       end
@@ -2760,6 +3131,48 @@ local function convertAceConfig(self, appName, source, options)
   return conversion
 end
 
+---Remove every entry of `reason` from `report`, and its counts.
+---@param report BridgeKit.Report
+---@param reason string
+function Carry.dropReason(report, reason)
+  local kept = {}
+  for _, entry in ipairs(report.entries) do
+    if entry.reason == reason then
+      report.counts[entry.action] = report.counts[entry.action] - 1
+    else
+      kept[#kept + 1] = entry
+    end
+  end
+  report.entries = kept
+end
+
+---The builder `DefineAceConfig` defines a tree with when OptionsKit has its
+---Dynamic part: the conversion already made first, then the same conversion
+---of the same source with the same options on every rebuild. A rebuild's
+---report is not kept; under `strict`, a rebuild that would report raises,
+---which OptionsKit reports and survives, keeping the tree as it was.
+---@param label string
+---@param addonName string
+---@param source table|function
+---@param read table the read conversion options
+---@param first table the first conversion's tree
+---@return fun(): table
+function Carry.rebuildingSource(label, addonName, source, read, first)
+  local pending = first ---@type table|nil
+  return function()
+    if pending ~= nil then
+      local tree = pending
+      pending = nil
+      return tree
+    end
+    local again = runConversion(label, convert, addonName, source, read)
+    if read.strict then
+      enforceStrict(label, again.report)
+    end
+    return again.tree
+  end
+end
+
 ---`ConvertAceConfig`, then `OptionsKit:Define` with the converted tree
 ---(design section 5.4). Returns the tree handle and the report.
 ---@param self BridgeKit
@@ -2781,13 +3194,27 @@ local function defineAceConfig(self, addonName, source, options)
     )
   end
   local conversion = runConversion(label, convert, addonName, source, read)
+  -- Revision 8: with OptionsKit's Dynamic part the tree is defined from a
+  -- builder that converts the source again on every `tree:NotifyChange()`,
+  -- as AceConfigRegistry reads its table again; the first conversion is the
+  -- one already made. A source function then reads fresh each time, so it
+  -- is no longer a snapshot. Without the part the tree stays one snapshot.
+  local dynamic = type(rawget(OptionsKit, "IsPartLoaded")) == "function"
+    and OptionsKit:IsPartLoaded("Dynamic") == true
+  local spec = conversion.tree
+  if dynamic then
+    Carry.dropReason(conversion.report, "sourceFunction")
+    spec = Carry.rebuildingSource(label, addonName, source, read, conversion.tree)
+  end
   if read.strict then
     enforceStrict(label, conversion.report)
   end
-  local ok, result = pcall(OptionsKit.Define, OptionsKit, addonName, conversion.tree, {
+  local ok, result = pcall(OptionsKit.Define, OptionsKit, addonName, spec, {
     db = read.db,
     maxOptions = read.maxOptions == UNBOUNDED and OptionsKit.UNBOUNDED or read.maxOptions,
-    maxDepth = conversion.maxDepth,
+    -- A rebuilt tree may grow deeper than the first conversion: it gets
+    -- the conversion's own bound.
+    maxDepth = dynamic and read.maxDepth or conversion.maxDepth,
     -- A values table larger than OptionsKit's default is the addon's own data,
     -- which Ace accepted; the tree is defined with room for it.
     maxDynamicEntries = conversion.largestValues > DEFAULT_MAX_OPTIONS and conversion.largestValues
@@ -2930,8 +3357,27 @@ do
   }
   local KEYED_SCOPES = { "char", "realm", "class", "faction" }
 
-  -- AceDB scopes SettingsKit lacks (design section 7.3).
+  -- AceDB scopes SettingsKit lacks before its revision 15 (design section 7.3).
   local UNSUPPORTED_SCOPES = { "race", "factionrealm", "factionrealmregion", "locale" }
+
+  -- Revision 8: the SettingsKit revision whose saved layout is AceDB's for
+  -- namespaces and has the four scopes above, so both are copied as they are.
+  local Native = { layoutRevision = 15 }
+
+  -- The sections of a namespace in AceDB's layout, which SettingsKit
+  -- revision 15 keeps as they are inside `namespaces[name]`.
+  Native.namespaceSections = {
+    "profiles",
+    "char",
+    "realm",
+    "class",
+    "race",
+    "faction",
+    "factionrealm",
+    "factionrealmregion",
+    "locale",
+    "global",
+  }
 
   -- Every top-level key of an AceDB saved variable the importer knows.
   local ACE_TOP_LEVEL = {
@@ -4039,12 +4485,100 @@ do
     end
   end
 
+  ---A copy of a section SettingsKit revision 15 keeps as it is, or `nil`
+  ---after reporting why it cannot be stored (a secret, a function, a
+  ---metatable, nesting past `maxDepth`). Every entry counts against
+  ---`maxImportEntries`.
+  ---@param ctx table
+  ---@param value table
+  ---@param path string
+  ---@return table|nil
+  function Native.copy(ctx, value, path)
+    local reason = unstorable(ctx, value, 1)
+    if reason ~= nil then
+      noteEntry(ctx.report, path, nil, "dropped", reason)
+      return nil
+    end
+    return copyCounted(ctx, value, {})
+  end
+
+  ---AceDB's `namespaces` in SettingsKit revision 15's layout, which is
+  ---AceDB's: every namespace's ten sections copied as they are, the keys of
+  ---`profiles` renamed as the main profiles are and those of `char` as the
+  ---main characters are. A `plan.namespaces` entry is not needed, and is
+  ---reported once when given.
+  ---@param ctx table
+  ---@param namespaces table
+  ---@param profileNames table<any, string>
+  ---@return table
+  function Native.importNamespaces(ctx, namespaces, profileNames)
+    local result = {}
+    for _, name in ipairs(sortedKeys(namespaces, ctx, "namespaces")) do
+      local namespacePath = joinPath("namespaces", name)
+      local namespaceData = rawget(namespaces, name)
+      if ctx.plan.namespaces and type(name) == "string" and ctx.plan.namespaces[name] then
+        noteEntry(ctx.report, namespacePath, nil, "changed", "nativeNamespace")
+      end
+      if type(name) ~= "string" or type(namespaceData) ~= "table" then
+        noteEntry(ctx.report, namespacePath, nil, "dropped", "notStorable")
+      else
+        local copy = {}
+        for _, section in ipairs(Native.namespaceSections) do
+          local data = rawget(namespaceData, section)
+          local sectionPath = joinPath(namespacePath, section)
+          if type(data) == "table" and (section == "profiles" or section == "char") then
+            local renamed = {}
+            for _, key in ipairs(sortedKeys(data, ctx, sectionPath)) do
+              local newKey = key
+              if section == "profiles" then
+                newKey = profileNames[key] or key
+              else
+                newKey = characterKeyFor(ctx, key)
+              end
+              local entry = rawget(data, key)
+              if newKey ~= nil and type(entry) == "table" then
+                renamed[newKey] = Native.copy(ctx, entry, joinPath(sectionPath, renderKey(key)))
+              elseif newKey ~= nil then
+                noteEntry(
+                  ctx.report,
+                  joinPath(sectionPath, renderKey(key)),
+                  nil,
+                  "dropped",
+                  "notStorable"
+                )
+              end
+            end
+            copy[section] = renamed
+          elseif type(data) == "table" then
+            copy[section] = Native.copy(ctx, data, sectionPath)
+          elseif type(data) ~= "nil" then
+            noteEntry(ctx.report, sectionPath, nil, "dropped", "notStorable")
+          end
+        end
+        result[name] = copy
+      end
+    end
+    return result
+  end
+
   ---Import the AceDB scopes SettingsKit lacks into the map fields `plan.scopes`
   ---names, or report them dropped.
   ---@param ctx table
   ---@param source table
   ---@param layout table
   local function importUnsupportedScopes(ctx, source, layout)
+    if ctx.nativeLayout then
+      for _, scope in ipairs(UNSUPPORTED_SCOPES) do
+        if ctx.plan.scopes and ctx.plan.scopes[scope] ~= nil then
+          noteEntry(ctx.report, scope, nil, "changed", "nativeScope")
+        end
+        local section = sourceSection(ctx, source, scope)
+        if section ~= nil and holdsEntries(section) then
+          layout[scope] = Native.copy(ctx, section, scope)
+        end
+      end
+      return
+    end
     for _, scope in ipairs(UNSUPPORTED_SCOPES) do
       local section = sourceSection(ctx, source, scope)
       local destination = ctx.plan.scopes and ctx.plan.scopes[scope]
@@ -4078,6 +4612,10 @@ do
   local function importNamespaces(ctx, source, layout, profileNames)
     local namespaces = sourceSection(ctx, source, "namespaces")
     if namespaces == nil then
+      return
+    end
+    if ctx.nativeLayout then
+      layout.namespaces = Native.importNamespaces(ctx, namespaces, profileNames)
       return
     end
     for _, name in ipairs(sortedKeys(namespaces, ctx, "namespaces")) do
@@ -4192,7 +4730,7 @@ do
         end
       end
     end
-    layout.namespaces = {}
+    layout.namespaces = layout.namespaces or {}
     return layout
   end
 
@@ -4364,9 +4902,15 @@ do
       maxProfileNameLength = SettingsKit:GetLimits().maxProfileNameLength or maxProfileNameLength
     end
     local actions = {}
+    -- Revision 8: SettingsKit revision 15 and later saves namespaces in
+    -- AceDB's layout and has AceDB's four extra scopes, so both are copied
+    -- as they are; an older SettingsKit keeps the plan's mappings.
+    local revision = type(SettingsKit) == "table" and rawget(SettingsKit, "REVISION") or nil
+    local nativeLayout = type(revision) == "number" and revision >= Native.layoutRevision
     return {
       mode = mode,
       plan = plan,
+      nativeLayout = nativeLayout,
       probe = probe,
       scopes = scopes,
       declared = declared,

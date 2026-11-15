@@ -2,7 +2,7 @@
 
 OptionsKit API generation **1** provides a typed, validated, introspectable options tree with no renderer: what an addon exposes as configurable, how each option is read and written, and what a dialog or a command line needs to present it.
 
-Implementation revision: **12**.
+Implementation revision: **15**. Since revision 15 OptionsKit is a core file and two optional parts ([ADR 0001](../../../docs/decisions/0001-kit-core-and-parts.md)): **Profiles** (`ProfileOptions`) and **Dynamic** (trees that change shape). See [Parts](#parts).
 
 ## Loading
 
@@ -13,7 +13,11 @@ Registry.lua
 SignalKit.lua
 SchemaKit.lua
 OptionsKit.lua
+parts/OptionsKit-Profiles.lua   (optional: ProfileOptions)
+parts/OptionsKit-Dynamic.lua    (optional: builders, NotifyChange, Replace, Remove)
 ```
+
+A part loads after the core; `python3 -m tooling.package.embeds` writes the lines.
 
 Portable WoW code resolves the package through Registry:
 
@@ -30,6 +34,8 @@ OptionsKit does not rely on `require()` at runtime.
 | SettingsKit API 1, through `Registry:Find` | `Define` with `options.db`, which every `bind` needs; `ProfileOptions` | `Define` with `options.db` and `ProfileOptions` raise; options with `get`/`set` work as usual. |
 | `UnitName("player")`, `GetRealmName()` | `ProfileOptions`, for the per-character profile choice `"<name> - <realm>"` | The choice is left out; the group works otherwise. Read when the group is built, and again by each later call returning it until the client answers both. |
 | `issecretvalue` | `Set`, `Validate`, `Describe`'s copy of a value, every path and addon-name argument, the `Define` limit options, and the results of `validate` and `db:Validate` | Nothing is treated as secret, which is correct on clients without secret values. |
+| `geterrorhandler()` | The Dynamic part, to report a rebuild it refused (Blizzard's own `Blizzard_SharedXMLBase/ErrorUtil.lua` calls it on every flavour) | The report is dropped; the structure is kept either way. |
+| SettingsKit revision 15's `db:GetNamespace` | `bind = "ns:<name>..."` | Such a bind is refused at `Define`. |
 
 `issecretvalue` is read from the global table at every call, as SchemaKit reads it, so a probe that appears later is used at once.
 
@@ -42,7 +48,10 @@ Package facade:
 | `Define(addonName, tree, options?)` | Check and copy an options tree; return its handle. |
 | `Get(addonName)` | The tree defined for `addonName`, or `nil`. |
 | `Undefine(addonName)` | Forget the tree and disconnect its listeners. `true` when there was one. |
-| `ProfileOptions(db, options?)` | A ready-made `group` over a SettingsKit database's profiles, to place in a tree; one group per database and options, built on the first call (see [Profile options](#profile-options-optionskitprofileoptionsdb-options)). |
+| `ProfileOptions(db, options?)` | A ready-made `group` over a SettingsKit database's profiles, to place in a tree; one group per database and options, built on the first call (see [Profile options](#profile-options-optionskitprofileoptionsdb-options)). Profiles part. |
+| `GetFields(kind)` | Every field `kind` accepts, each mapped to a fresh set of its forms (`string`, `number`, `boolean`, `table`, `function`, `method`, `any`). A fresh table per call, for converters (BridgeKit). Revision 14. |
+| `GetTrees()` | The addon names that have a tree, a fresh sorted array (AceConfigRegistry's `IterateOptionsTables`). Revision 15. |
+| `IsPartLoaded(partName)` | Whether the part `"Profiles"` or `"Dynamic"` is loaded. Revision 15. |
 | `MAX_OPTIONS` | `1024`: the default `maxOptions`, the most options one tree holds. |
 | `CHILD_GROUPS` | `{ tab = true, tree = true, select = true }`: the `childGroups` values `Define` accepts. A fresh table each revision: writing to it changes nothing. Revision 10. |
 | `MAX_DEPTH` | `8`: the default `maxDepth`, the most keys one option path has. |
@@ -58,17 +67,20 @@ Tree handle:
 | `Validate(path, value)` | `true`, or `false, message`, without writing. | only the message of a refusal |
 | `Reset(path)` | Restore a bound option's default; return it. | no |
 | `Execute(path)` | Run an `execute` option's `func`. | no |
-| `IsDisabled(path)`, `IsHidden(path)` | The effective flag, a group's included. | no |
+| `IsDisabled(path)`, `IsHidden(path, interface?)` | The effective flag, a group's included; `IsHidden` for `"dialog"` or `"cmd"` when given (revision 14, [Per interface](#per-interface)). | no |
+| `GetConfirmation(path, value?)` | The question to ask before `Set(path, value)` or `Execute(path)`, or `nil` (revision 14, [Confirmation](#confirmation)). | the answer of a `confirm` function |
 | `Walk(visitor)` | Visit every option in order. Returns the count. | no |
-| `Describe()` | A fresh plain description of the whole tree. | yes, by design |
-| `DescribeOption(path)` | A fresh plain description of one option, or of a group and everything below it; `nil` when the tree has no such path. Revision 7. | yes, that option's part |
+| `Describe(interface?)` | A fresh plain description of the whole tree; `hidden` and `inline` for `interface` when given (revision 14). | yes, by design |
+| `DescribeOption(path, interface?)` | A fresh plain description of one option, or of a group and everything below it; `nil` when the tree has no such path. Revision 7. | yes, that option's part |
 | `OnChange(callback)` | Connect `callback(tree, path, value)` to every `Set`, `Reset` and, while the tree holds a profile group, its database's profile signals; return a SignalKit connection. | one connection |
+| `OnStructureChanged(callback)` | Connect `callback(tree, path)` to every change of the tree's shape (revision 15, [Dynamic trees](#dynamic-trees)); the signal is created on the first connection. A static tree never fires it. | the signal, once; one connection |
+| `NotifyChange()`, `Replace(path, option)`, `Remove(path)` | Read the tree's source again at the next read; put one option at a path; remove one. Dynamic part ([Dynamic trees](#dynamic-trees)). | no for `NotifyChange`; the subtree for `Replace` |
 
 The options of a [profile group](#profile-options-optionskitprofileoptionsdb-options) are the exception to the "no" column: their getters, predicates and values functions call `db:GetProfiles()`, which allocates (see [Performance](#performance)).
 
 ## `OptionsKit:Define(addonName, tree, options?)`
 
-`addonName` is a non-empty string; one tree per addon name (a second `Define` raises until `Undefine`). `tree` is the root: a `group` whose `name` is optional and defaults to `addonName`. `options` accepts these fields:
+`addonName` is a non-empty string; one tree per addon name (a second `Define` raises until `Undefine`). `tree` is the root, or (Dynamic part) a builder `fun(addonName): table` that returns it, called now and at every rebuild; a builder's own error propagates, and one that returns no table raises `OptionsKit:Define tree function must return the root group table`. Without the part a function raises `OptionsKit:Define tree is a function, which needs OptionsKit's Dynamic part: add optionsKit\parts\OptionsKit-Dynamic.lua to embeds.xml (or rebuild it with python3 -m tooling.package.embeds)`. The root is a `group` whose `name` is optional and defaults to `addonName`. `options` accepts these fields:
 
 | Option | Meaning |
 |---|---|
@@ -96,7 +108,7 @@ What it refuses:
 - a value option with neither `get` and `set` nor `bind`, or with both; a `bind` without `options.db`;
 - `options.db` when `Registry:Find("settingsKit", 1)` finds nothing, or when it is not a table with `OnChange` and `Validate` methods; a `bind` whose scope the database did not declare or cannot provide on this client (`OptionsKit:Define tree.args.x.bind scope "realm" is not an available scope of options.db`). The scope is read with `rawget`, so SettingsKit's own error for an undeclared scope never escapes from inside OptionsKit.
 
-The tree is **copied**: labels, values tables and sorting arrays are read once, and later edits to the tables you passed have no effect. Functions (`get`, `set`, `validate`, `disabled`, `hidden`, `values`, `func`) are kept by reference.
+The tree is **copied**: labels, values tables, sorting arrays and coordinates are read once, and later edits to the tables you passed have no effect until `tree:NotifyChange()` (Dynamic part), which reads the table again while you still hold it. Functions (`get`, `set`, `validate`, `disabled`, `hidden`, `values`, `func`, and every presentation function) and `arg` are kept by reference.
 
 ## A complete options tree
 
@@ -254,11 +266,24 @@ options:Execute("frame.resetPosition")     -- runs func; asking `confirm` is the
 | Field | Type | Meaning |
 |---|---|---|
 | `type` | string | The kind, below. |
-| `name` | string | The label. Required, except on the root. |
-| `desc` | string, or `fun(info): string` | Longer help text. A function is called by `Describe`, with the option's `info`, and must return a string; it is the one place a description can follow the current state. Nothing else reads `desc`. |
-| `order` | number? | Sort position among siblings; default `100`. Ties sort by `name`, then by key. A number, never a function: no code of yours runs inside a sort. |
-| `disabled` | boolean or `fun(info): boolean` | Shown but not editable. A disabled group disables everything below it. |
-| `hidden` | boolean or `fun(info): boolean` | Not shown. A hidden group hides everything below it. |
+| `name` | string, or `fun(info): string` | The label. Required, except on the root. A function (revision 14) is called by `Describe` before it sorts; at `Define`, and so in `Walk`, such an option sorts by its key. |
+| `desc` | string, or `fun(info): string` | Longer help text. A function is called by `Describe`, with the option's `info`, and must return a string. |
+| `order` | number, function or method name | Sort position among siblings; default `100`. Ties sort by `name`, then by key. A function or method (revision 14) is called by `Describe`, which then sorts the described siblings on the plain results, so no code of yours runs inside a sort; at `Define`, and in `Walk`, it sorts as `100`. |
+| `disabled` | boolean, function or method name | Shown but not editable. A disabled group disables everything below it. |
+| `hidden` | boolean, function or method name | Not shown. A hidden group hides everything below it. |
+| `guiHidden`, `dialogHidden`, `cmdHidden` | boolean, function or method name | `hidden` for one interface, AceConfig's flags; see [Per interface](#per-interface). Revision 14. |
+| `descStyle` | `"inline"` or `"tooltip"` | Where a renderer shows `desc`. Revision 14. |
+| `confirm` | boolean, the question as a string, or `fun(info, value): string\|boolean` | Ask before a change; a group's applies below it. See [Confirmation](#confirmation). Every kind since revision 14 (`execute` before). |
+| `confirmText` | string | The question when `confirm` is `true`. Revision 14. |
+| `arg` | any value but a secret | Kept by reference, handed to every callback as `info.arg`; never described. Revision 14. |
+| `handler` | table | The object method names are looked up on; a group's applies below it. See [Method names and inheritance](#method-names-and-inheritance). Revision 14. |
+| `icon`, `iconCoords` | texture path or file ID, or a function; an array of 4 or 8 numbers, a function or a method name | A tree renderer's icon. Revision 14. |
+| `tooltipHyperlink` | string, or a function | A hyperlink a renderer's tooltip shows instead of `desc`. Revision 14. |
+| `width` (all but `group`) | `"normal"`, `"half"`, `"double"`, `"full"`, a positive number (units of 170 px) or a function | How wide a renderer draws the control. Revision 14. |
+| `relWidth` (all but `group`) | number, `0 < relWidth <= 1` | A share of the row. Revision 14. |
+| `dialogControl`, `control` (all but `group`) | non-empty string | A widget type name for a renderer to use instead of its default. Revision 14. |
+
+Every presentation field is a hint for renderers, kept in the option's hints table: an option that sets none of them holds nothing more than it did in revision 13. `dropdownHidden`, `dropdownInline` and `dropdownControl` are refused: Ace3 has no dropdown interface that reads them.
 
 A predicate's answer is tested for truth only after `issecretvalue` says it is not a secret: a secret answer (Retail 12.x) counts as `false`, so the option stays enabled and shown rather than an error being raised inside OptionsKit. `disabled` and `hidden` are renderer concerns: `Get`, `Set` and `Execute` work on hidden and disabled options exactly as on any other, so an addon can still change a value its UI hides. A renderer, or CommandKit, asks `IsDisabled` / `IsHidden` before offering an option.
 
@@ -268,26 +293,26 @@ Value options are `toggle`, `range`, `select`, `multiselect`, `input`, `color` a
 
 | Field | Type | Meaning |
 |---|---|---|
-| `get` | `fun(info): any` | Returns the current value. With `set`. |
-| `set` | `fun(info, value)` | Stores a value that passed the schema and `validate`. With `get`. |
-| `bind` | string | `"<scope>.<key>[.<key>...]"` into `options.db`, instead of `get` and `set`. `<scope>` is `global`, `char`, `realm`, `class`, `faction` or `profile`; every segment is an identifier. |
-| `validate` | `fun(info, value): boolean, string?` | Runs after the schema accepted the value. Anything but `true` refuses, a secret result included (it is never compared); the second result is the message (`"refused by validate"` when there is none). |
+| `get` | `fun(info): any`, a method name, or `false` | Returns the current value. With `set`; both may come from a group above ([inheritance](#method-names-and-inheritance)). |
+| `set` | `fun(info, value)`, a method name, or `false` | Stores a value that passed the schema and `validate`. With `get`. |
+| `bind` | string | `"<scope>.<key>[.<key>...]"` into `options.db`, instead of `get` and `set`. `<scope>` is `global`, `char`, `realm`, `class`, `faction`, `profile`, or (SettingsKit revision 15, revision 14 here) `race`, `factionrealm`, `factionrealmregion` or `locale`; every segment is an identifier. `"ns:<name>.<scope>.<key>..."` binds into the SettingsKit namespace `<name>` of `options.db` ([Namespaces](#namespaces)). |
+| `validate` | `fun(info, value): boolean, string?`, a method name, or `false` | Runs after the schema accepted the value. Anything but `true` refuses, a secret result included (it is never compared); the second result is the message (`"refused by validate"` when there is none). |
 
 ### Kinds and their schemas
 
 | Kind | Own fields | Schema built at `Define` |
 |---|---|---|
-| `group` | `args` (table of key → option, required), `inline` (boolean: draw inside the parent), `childGroups` (`"tab"`, `"tree"` or `"select"`: how a renderer shows the group's non-inline child groups, Ace3's three layouts) | none |
-| `toggle` | `tristate` (boolean: `nil` is a third state) | `SchemaKit.boolean()`, wrapped in `optional` when `tristate` |
+| `group` | `args` (table of key → option, required), `inline` (boolean: draw inside the parent), `childGroups` (`"tab"`, `"tree"` or `"select"`: how a renderer shows the group's non-inline child groups, Ace3's three layouts), `plugins` (`{ [pluginName] = { [key] = option } }`, merged into `args`; a key defined twice is refused), `guiInline`, `dialogInline`, `cmdInline` (booleans, [Per interface](#per-interface)), and `get`, `set`, `validate`, `func` passed down ([inheritance](#method-names-and-inheritance)) | none |
+| `toggle` | `tristate` (boolean: `nil` is a third state), `image`, `imageCoords` | `SchemaKit.boolean()`, wrapped in `optional` when `tristate` |
 | `range` | `min`, `max` (required numbers, `min <= max`), `step`, `bigStep` (numbers `> 0`), `softMin`, `softMax` (between `min` and `max`, `softMin <= softMax`), `isPercent` (boolean) | `SchemaKit.number{ min = min, max = max }` |
-| `select` | `values` (table of key → label, or `fun(info): table`), `sorting` (array of keys: display order) | table: `SchemaKit.enum` of its keys; function: `SchemaKit.custom` accepting a string or number key of the table the function returns at check time |
-| `multiselect` | `values`, `sorting`, as `select` | `SchemaKit.map{ keys = <the select key schema>, values = SchemaKit.boolean(), max = <number of keys> }`; with a values function `max` is the tree's `maxDynamicEntries` (1024 by default; 2147483647 when unbounded, since the map needs an integer and the function's own table is then the bound) |
-| `input` | `pattern` (Lua pattern the text must contain; anchor it with `^`/`$`), `multiline` (boolean), `usage` (string: what to type, for a command line) | `SchemaKit.string{ pattern = pattern }`, or `SchemaKit.string()` |
+| `select` | `values` (table of key → label, a function or a method name), `sorting` (array of keys: display order; or a function or method name returning one, checked by `Describe`), `style` (`"dropdown"` or `"radio"`), `itemControl` (a widget type name for the items) | table: `SchemaKit.enum` of its keys; function: `SchemaKit.custom` accepting a string or number key of the table the function returns at check time |
+| `multiselect` | `values`, `sorting`, as `select`; `tristate` (boolean: a key's absence is a third state, which the map schema already accepts) | `SchemaKit.map{ keys = <the select key schema>, values = SchemaKit.boolean(), max = <number of keys> }`; with a values function `max` is the tree's `maxDynamicEntries` (1024 by default; 2147483647 when unbounded, since the map needs an integer and the function's own table is then the bound) |
+| `input` | `pattern` (Lua pattern the text must contain; anchor it with `^`/`$`), `multiline` (boolean, or a positive integer: the line count), `usage` (string: what to type, for a command line) | `SchemaKit.string{ pattern = pattern }`, or `SchemaKit.string()` |
 | `color` | `hasAlpha` (boolean) | `SchemaKit.table{ fields = { r, g, b = number 0..1 } }`, plus a required `a` when `hasAlpha`; a closed table, so `a` is refused without `hasAlpha` |
 | `keybinding` | none | `SchemaKit.string()`; `""` is "unbound" |
-| `execute` | `func` (`fun(info)`, required), `confirm` (boolean, or the question as a string) | none |
+| `execute` | `func` (`fun(info)` or a method name, required, or from a group above), `image` (texture path, file ID or a function, which may also return a width and a height), `imageCoords`, `imageWidth`, `imageHeight` (positive numbers) | none |
 | `header` | none | none |
-| `description` | `fontSize` (`"small"`, `"medium"` or `"large"`); the text is `name` | none |
+| `description` | `fontSize` (`"small"`, `"medium"`, `"large"` or a function returning one); the image fields, as `execute`; the text is `name` | none |
 
 `values` tables have string or number keys and string labels, at least one entry and at most `maxDynamicEntries` (1024 by default). `sorting` entries must be keys of a `values` table.
 
@@ -303,6 +328,10 @@ Every callback — `get`, `set`, `validate`, `disabled`, `hidden`, a `values` fu
 | `info.path` | The dotted path, `"general.scale"`; `""` for the root group. |
 | `info.kind` | The option's kind. |
 | `info.tree` | The tree handle, so a callback can `Get` a sibling. |
+| `info.arg` | The option's own `arg`, when it has one (revision 14). |
+| `info.handler` | The handler in force, when there is one (revision 14). |
+
+AceConfig's `info.option`, `info.options`, `info.appName` and `info.uiType` are not provided: OptionsKit keeps no copy of your table and does not know which interface called. BridgeKit's converted callbacks receive them.
 
 **One `info` table per option, built at `Define` and reused for every call.** That is what keeps `Get` and `Set` free of allocation. Do not keep it after the callback returns and do not modify it: the next call for that option receives the very same table. Copy what you need (`local path = info.path`).
 
@@ -394,20 +423,32 @@ A fresh plain table describing the whole tree, built on every call and safe to e
 | `disabled`, `hidden` | every node | Effective booleans, evaluated now (`IsDisabled` / `IsHidden`); a bound option is also disabled while its database is read-only. |
 | `addonName` | the root | |
 | `children` | `group` | Child nodes, sorted as `Walk` visits them. |
-| `inline` | `group` | When defined. |
+| `inline` | `group` | When defined; for `interface`, the first of its flags that is set ([Per interface](#per-interface)). |
 | `childGroups` | `group` | When defined. |
 | `value` | value kinds | The current value, as `Get` returns it, except that a table is copied: a bound value that SettingsKit returns as a view is copied through `db:Pairs`, defaults included, so the description never holds the getter's table or a view that writes through to the saved variable. A table nested deeper than 8 levels appears as the string `"<depth exceeded>"`, and a table that contains itself as `"<cycle>"`. A secret value is passed through without being copied (see [Secret values](#secret-values)). |
 | `schema` | value kinds | `schema:Describe()` of the option's SchemaKit schema. |
 | `bind` | bound options | The bind path. |
 | `values` | `select`, `multiselect` | A copy of the values table; a values function is called and its result copied. |
 | `sorting` | `select`, `multiselect` | A copy, when defined. |
-| `tristate` · `min`, `max`, `step`, `bigStep`, `softMin`, `softMax`, `isPercent` · `pattern`, `multiline`, `usage` · `hasAlpha` · `confirm` · `fontSize` | their kinds | As defined. |
+| `tristate` · `min`, `max`, `step`, `bigStep`, `softMin`, `softMax`, `isPercent` · `pattern`, `multiline`, `usage` · `hasAlpha` · `fontSize` | their kinds | As defined; a `fontSize` function resolved. |
+| `confirm` | when one is in force | The option's or the nearest group's; `true` for a function. |
+| `confirmText`, `descStyle`, `width`, `relWidth`, `dialogControl`, `control`, `itemControl`, `style`, `image`, `imageCoords`, `imageWidth`, `imageHeight`, `icon`, `iconCoords`, `tooltipHyperlink` | when defined | As defined, a function resolved with the option's `info` (a result of the wrong type raises at the caller: `OptionsKit.Tree:Describe width function of "frame.scale" returned no string or number`), a table copied. An `image` function's second and third results become `imageWidth` and `imageHeight`. Revision 14. |
+
+`arg`, `handler`, a group's `get`, `set`, `validate` and `func`, and the per-interface flags never appear in a node. With a function `name` or `order` among siblings, `Describe` sorts their nodes again on the resolved values.
 
 Functions never appear in a description. Everything a renderer does goes back through the tree by `path`.
 
 ## `tree:DescribeOption(path)`
 
 The node `Describe` would build for the option at `path`, built alone: the same fields, a `group` with its `children`, and `path` `""` answering exactly what `Describe` answers (the root, with `addonName`). Only the callbacks of that option, or of that group and everything below it, run: its getter, `desc`, values function, and the `disabled` and `hidden` predicates of it and its ancestors. A path the tree does not have answers `nil`; a path that is not a string, or is secret, raises at your line (`OptionsKit.Tree:DescribeOption path must be a string`). A `desc` function that returns no string and a values function that returns no table raise as they do in `Describe`, naming `OptionsKit.Tree:DescribeOption`. Added in revision 7 (version 0.3.0) for a command line that works on one option and for a renderer that refreshes one widget; a caller that must also work with an older OptionsKit tests `type(tree.DescribeOption) == "function"` and falls back to `Describe`, as CommandKit's `BindOptions` does.
+
+### Per interface
+
+AceConfig lets an option hide from one interface only. `tree:IsHidden(path, interface)`, `tree:Describe(interface)` and `tree:DescribeOption(path, interface)` take `"dialog"` (WidgetKit, PanelKit) or `"cmd"` (CommandKit). For each option on the way to the root, the first of the interface's own flags that is set replaces `hidden`: `dialogHidden`, then `guiHidden`, for `"dialog"`; `cmdHidden` for `"cmd"`. A group's `inline` for the interface is likewise the first set of `dialogInline`, `guiInline`, `inline`, or of `cmdInline`, `inline`. Without an interface every answer is the one of revision 13. Any other value raises `OptionsKit.Tree:IsHidden interface must be "dialog" or "cmd"`.
+
+### Confirmation
+
+`tree:GetConfirmation(path, value?)` answers the question a renderer asks before `Set(path, value)` or `Execute(path)`, or `nil` for none: the option's `confirm`, else the nearest group's. A string is the question; `true` gives `confirmText`, else the resolved `name` followed by `" - "` and the resolved `desc` when there is one (AceConfigDialog's question); a function is called with `(info, value)`, and a string it returns is the question, `true` gives the question above, anything else asks nothing (a secret that is not a string included). `Set` and `Execute` never ask. A `confirm` string is the question, not a method name, as it has been since revision 1; write a function to ask a method.
 
 ### How a renderer consumes `Describe`
 
@@ -420,7 +461,49 @@ This is the contract WidgetKit's `RenderOptions` and CommandKit's `BindOptions` 
 
 A command line needs no widgets: `Walk` lists the paths, `DescribeOption` gives the typed path's help (`name`, `desc`, `usage`, `values`), `Validate` answers a typed value and `Set` stores it.
 
+## Method names and inheritance
+
+Revision 14, after [ADR 0003](../../../docs/decisions/0003-method-name-callbacks.md). In `get`, `set`, `validate`, `func`, `disabled`, `hidden`, the three per-interface flags, `values`, `sorting`, `order`, `iconCoords` and `imageCoords`, a string names a method of the **handler in force**: the option's own `handler`, else the nearest group's. Elsewhere a string is the value (`name`, `desc`, `usage`, `width`, `image`, `icon`, `fontSize`, `tooltipHyperlink`, as in AceConfig, and `confirm`).
+
+- At `Define` the handler in force must have the method, or the field is refused at your line: `OptionsKit:Define tree.args.x.get names method "GetX", which the handler in force does not have`, and without a handler `... is a method name ("GetX"), but no handler is in force`.
+- The method is looked up on every call, so replacing it on the handler takes effect at once, and is called with the handler first: `method(handler, info, ...)`, where `method` is `handler[name]`. A method removed after `Define` raises `OptionsKit (MyAddon) general.scale: handler method "GetX" is missing` when called.
+- The lookup is a small function made at `Define`, one per handler and name in a `Define`, stored where a function would be: `Get`, `Set` and the predicates take the same path for both.
+
+**Inheritance**, resolved at `Define`: `get`, `set`, `validate` and `func` written on a group apply to every option below it that has none of its own (an own `bind` counts as its own accessor); the nearest group wins, and `false` stops the search. `handler` is found the same way. `confirm` is inherited too, but read when asked (`Describe`, `GetConfirmation`), so a group's `confirm` adds nothing to its children. `disabled` and `hidden` keep their own rule: every group above applies.
+
+## Namespaces
+
+Revision 14, for SettingsKit revision 15's namespaces: `bind = "ns:Bars.profile.size"` binds into the namespace `Bars` of `options.db`. At `Define` the namespace is asked once (`db:GetNamespace(name, { missingOk = true })`) and its scope checked; every later call reads and writes through that child database, reading its scope table per call, so a profile switch the parent passes on is seen at once, and the read-only rule is the child's. `<name>` is an identifier; a namespace with any other name is bound by passing its child database as `options.db`. Refused at your line: a database without namespaces (`... needs options.db with namespaces (SettingsKit revision 15 or later)`, also when SettingsKit's Namespaces part is not loaded), a namespace not registered (`... namespace "Bars" is not registered in options.db`), and a scope the namespace does not provide. A namespace registered after `Define` is reached by defining again, or by `NotifyChange`.
+
+## Dynamic trees
+
+The Dynamic part (revision 15) lets a tree change shape after `Define`, as AceConfig addons build theirs.
+
+- **`tree:NotifyChange()`** only marks the tree dirty. The next method that reads the structure (`Get`, `Set`, `Validate`, `Reset`, `Execute`, `IsDisabled`, `IsHidden`, `Walk`, `Describe`, `DescribeOption`, `GetConfirmation`, `Replace`, `Remove`) reads the source again once: the builder, or the table passed to `Define`. It is checked in full as `Define` checks it, under the limits and the database `Define` received, and swapped in: the same handle, the same `OnChange` and structure listeners, the same `info` table for every path that survives with the same kind, `arg` and handler, and profile groups kept attached, attached or detached as they appear. Calls before that read coalesce into one rebuild. The table passed to `Define` is held weakly: while you hold it, `NotifyChange` reads it again; once you dropped it, or for a tree defined before revision 15, `NotifyChange` raises `OptionsKit.Tree:NotifyChange has no source to read again: keep the table passed to Define, or define the tree with a builder`.
+- **A refused rebuild** (the builder raises, returns no table, or the checks refuse a field) does not raise in the method that triggered it: the previous structure is kept, and one report goes to `geterrorhandler()`: `OptionsKit (MyAddon) NotifyChange: OptionsKit.Tree:NotifyChange tree.args.x.min must not be greater than max`, or the builder's own message with its position. The method then answers from the kept structure. A builder may read the tree (the structure before the rebuild) and call `NotifyChange` again, which leaves the tree dirty for one more rebuild.
+- **`tree:Replace(path, option)`** checks one option and its subtree at `path` and puts it there, replacing the option there or adding one under the group the path's parent names; **`tree:Remove(path)`** removes one and returns `true`, or `false` when the tree has no such path. Only the subtree is checked, against the tree's limits, with the accessors and handler of the groups above it; a refusal (`OptionsKit.Tree:Replace option.args.r.min must not be greater than max`) changes nothing. The root cannot be replaced or removed. A later `NotifyChange` reads the source again, which wins over earlier `Replace` and `Remove` calls.
+- **`tree:OnStructureChanged(callback)`** (core) runs `callback(tree, path)` after a `Replace` or `Remove` (`path` the option's) and when `NotifyChange` makes a clean tree dirty (`path` `""`, before the rebuild, which the listener's own read triggers).
+
+**What a renderer does** (WidgetKit's `RenderOptions`, PanelKit, CommandKit):
+
+1. Connect `tree:OnStructureChanged` once per rendering or binding, and disconnect it when the rendering is released. A static tree never fires it.
+2. In the listener, only schedule: rebuild at most once per frame (SchedulerKit's next frame when it is registered, else at the next show). Calling `Describe` inside the listener rebuilds the tree once per `NotifyChange` of a burst.
+3. On the scheduled rebuild, describe `path` again (`DescribeOption`, or `Describe` for `""`) and rebuild that part of the screen; `nil` from `DescribeOption` means the option is gone. Keep the selected page or tab by path and fall back to the first child when that path is gone.
+4. Hold no path across a structure change without describing again: `Get` and `Set` on a removed path raise as for any unknown path.
+5. CommandKit gathers its paths with `Walk` again on the signal; PanelKit refreshes a shown page and needs nothing for a hidden one, which looks the tree up when shown.
+
+## Parts
+
+| Part | File | Members | Without it |
+|---|---|---|---|
+| Profiles | `parts/OptionsKit-Profiles.lua` | `OptionsKit:ProfileOptions` | `OptionsKit:ProfileOptions is in OptionsKit's Profiles part, which is not loaded: add optionsKit\parts\OptionsKit-Profiles.lua to embeds.xml (or rebuild it with python3 -m tooling.package.embeds)`, at your line. A `ProfileOptions` an older single-file revision installed is kept instead. |
+| Dynamic | `parts/OptionsKit-Dynamic.lua` | `tree:NotifyChange`, `Replace`, `Remove`; `Define` with a builder | The same form, naming the member and the Dynamic part. |
+
+The core keeps what every tree needs whoever built it: the profile-group map that lets `Define` recognise a group, the attach and detach of a group's link, `OnStructureChanged`, `GetTrees` and `IsPartLoaded`. A part loads after its core, raises `MoltenCodes OptionsKit part Dynamic requires OptionsKit API 1 to be loaded first` without it, and keeps its record in the core's state; the highest part revision serves every addon, and a newer core hands each loaded part its helpers again.
+
 ## Profile options: `OptionsKit:ProfileOptions(db, options?)`
+
+In the Profiles part since revision 15; its behaviour and errors are unchanged.
 
 The group AceDBOptions gives an AceDB database, over a SettingsKit database: the user sees and chooses the profile this character uses, creates one by name, copies another profile's settings into the current one, resets the current one and deletes one. It is built from the existing kinds only, so WidgetKit, CommandKit and any other renderer show it without knowing what a profile is. `db` is the database `SettingsKit:Open` returned.
 
@@ -587,10 +670,13 @@ The nine-point plan in `docs/ROADMAP.md` is followed except where recorded here:
 - **`Reset` clears the stored value** instead of writing a default read from the SettingsKit schema. The SettingsKit database surface does not expose its schema, and a cleared value is exactly what SettingsKit's default fallback answers for — without ever writing the default into the saved variables. `Reset` on an option with `get`/`set` raises, since no default exists for OptionsKit to restore.
 - **`options.db` is checked structurally**: `Registry:Find("settingsKit", 1)` must find SettingsKit, and the database must be a table with `OnChange` and `Validate` methods whose bound scopes are tables. SettingsKit API 1 publishes no predicate that recognises its databases.
 - **Additions:** `tree:Validate`, `tree:Execute`, `tree:IsDisabled`, `tree:IsHidden` and `tree:DescribeOption` (revision 7) — a renderer and a command line need to check typed input, run a button, re-evaluate predicates and describe one option without rebuilding the whole description — and `OptionsKit:Undefine`, `OptionsKit.MAX_OPTIONS`, `OptionsKit.MAX_DEPTH`, `OptionsKit.UNBOUNDED` and the `maxOptions`, `maxDepth` and `maxDynamicEntries` options of `Define`; `OptionsKit:ProfileOptions` (revision 2) and, for it, `desc` as a function evaluated by `Describe`.
-- **Not carried over from AceConfig:** `order` and `name` as functions (no user code inside a sort), inherited `get`/`set`/`handler` (each value option names its own reader and writer or `bind`), `width`, `arg`, and validation at render time (everything is checked once at `Define`). `desc` is the one text a function may supply, because it is read by `Describe` alone.
+- **Not carried over from AceConfig:** `hasAlpha` as a function (it shapes the schema, fixed at `Define`), a `confirm` string as a method name (it is the question), the `dropdown*` fields (no Ace3 interface reads them), `info.option`, `info.options`, `info.appName` and `info.uiType`, `validate` on `execute`, a plugin key that silently wins over an `args` key (refused instead), and validation at render time (everything is checked once at `Define`). Revision 14 added `name` and `order` as functions (resolved before any sort), method names and inheritance, `width`, `arg` and AceConfig's other presentation fields.
+- **`GetFields(kind)`** rather than a published `FIELDS` table: a table per kind would stay resident in every addon for a converter that asks once.
 
 ## Embedded copies and upgrades
 
 Several addons may embed OptionsKit; Registry selects the newest compatible revision and every copy shares one facade. An upgrade happens in place: trees defined under an older copy stay registered, keep their records, `info` tables, schemas and `OnChange` listeners, and gain the newer copy's methods through the shared `OptionsKit.Tree` prototype. Revision 2 added the profile group map to the package state and a link list to every tree; a tree built by revision 1 gets an empty one when a later revision loads over it. Revisions 3 to 6 changed no layout; a predicate recorded by an older revision is answered secret-aware as soon as revision 5 loads. Revision 7 builds lighter records (no prebuilt `Set` label, absent fields left out, `info` built on first use, shared schemas and hints) and reads an older record's layout as it is: its `info` table and schema stay the ones it was built with. A profile group defined before an upgrade keeps its database connections and the callbacks of the revision that built it: `ProfileOptions` builds them as closures, so a newer copy's fixes reach the groups built after it loads. Revision 8 adds the per-database group cache to the package state; groups built earlier are not in it, and the first call after the upgrade builds the one later calls return. Revision 9 keeps one group per database: it reduces a revision 8 cache to the last group built for each database, and lets the profile group map release groups nobody holds; groups built earlier keep working. Revision 10 accepts the `childGroups` hint and publishes `CHILD_GROUPS`; it changes no layout, and trees defined earlier keep theirs. Revision 11 adds the spec-profile selects to profile groups and the link field `specProfiles`: a link an older revision cached has no such field, so the first `ProfileOptions` call after the upgrade builds a new group, with the selects, and caches it; the older group keeps working wherever it is held. Revision 12 changes no layout: a cached link built without the selects while SettingsKit lacked spec profiles is replaced as soon as SettingsKit offers them.
+
+Revision 14 changes no layout: records gain hint keys only, and a record an older revision built (no new hint, never a function name) is read as before. Revision 15 makes the tree layout 3: it keeps `_maxOptions`, `_maxDepth` and `_maxDynamicEntries` (an older tree gets the defaults, or the values revisions 8 and earlier wrote) and, for a builder, `_builder`; the state gains `parts`, `helpers`, `treeSources` and, after a single-file revision, `legacyMembers`. A tree defined before revision 15 has no source to read again, so `NotifyChange` raises for it; `Replace` and `Remove` work.
 
 Nothing survives `/reload`: trees are defined again when the addon loads.

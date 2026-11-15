@@ -183,7 +183,7 @@ Returns a **conversion**:
 
 | Option | Default | Meaning |
 |---|---|---|
-| `uiType` | `"dialog"` | `"dialog"`, `"dropdown"` or `"cmd"`: passed to a source function, set as `info.uiType`, and which per-interface flags fold into `hidden` and `inline`. |
+| `uiType` | `"dialog"` | `"dialog"`, `"dropdown"` or `"cmd"`: passed to a source function, set as `info.uiType`, and, with an OptionsKit before revision 14, which per-interface flags fold into `hidden` and `inline` (revision 14 and later take them as they are; `"dropdown"` still folds `dropdownHidden` and `dropdownInline`). |
 | `uiName` | `"BridgeKit-1"` | `info.uiName`; must have the shape AceConfigRegistry requires (`[A-Za-z]%-[0-9]`, `AceConfigRegistry-3.0.lua:307`). |
 | `bind` | none | `{ [path] = "<scope>.<key>..." }`: that option is bound to the SettingsKit database instead of calling its Ace `get` and `set`. Paths are the converted ones. |
 | `replace` | none | `{ [path] = option }`: that option or group is replaced by the OptionsKit option given, used as it is: `replace = { profiles = OptionsKit:ProfileOptions(db) }` in place of an AceDBOptions-3.0 group. `ProfileOptions` returns one cached group per database and options, and `Define` refuses a group another defined tree holds. |
@@ -228,7 +228,25 @@ Ace's own message,
 A `color` or `multiselect` getter allocates a table per `Get`, where
 OptionsKit's own getters allocate nothing; an options screen is no hot path.
 
-**Fields.** `name` and `order` given as a function or method are called once,
+**Fields carried over (revision 8).** With an OptionsKit that publishes `GetFields` (revision 14 and later), the conversion asks it once per kind and carries over every field the registered OptionsKit lists for that kind, in OptionsKit's form; with an older OptionsKit, or none, every rule below applies as before.
+
+| Ace field | Carried as | Reported |
+|---|---|---|
+| `width`, `relWidth` | the value; a `width` string Ace does not know or a `relWidth` outside `0 < x <= 1` is dropped | `malformedField` for a bad value |
+| `descStyle` | `"inline"` or `"tooltip"` | `presentation` for any other string |
+| `confirm`, `confirmText` on every kind | `true` as it is; a function or method as a function `GetConfirmation` calls with the value about to be set, passing Ace's arguments (a colour's four numbers, a multiselect's first key that changes and its state): a string answer is the question, `true` asks with the default question, anything else asks nothing | none (`confirmOnValue` and `dynamicConfirm` appear only with an older OptionsKit) |
+| `name`, `order`, `fontSize`, `sorting` given as a function or method | a live function OptionsKit's `Describe` calls; a wrong answer gives the key, `100`, `"medium"`, or the keys the current values hold | none (`evaluatedOnce` with an older OptionsKit) |
+| `image`, `imageCoords`, `imageWidth`, `imageHeight`, `icon`, `iconCoords`, `tooltipHyperlink` | the value, or a live function for a callback (an `image` callback answers Ace's three values) | `malformedField` for a bad value |
+| `guiHidden`, `dialogHidden`, `cmdHidden`; `guiInline`, `dialogInline`, `cmdInline` | themselves (predicates wrapped; inline flags booleans) | none |
+| `style` on `select` | `"radio"` or `"dropdown"` | `presentation` otherwise |
+| `multiline` as a line count | the count | none (`lineCount` with an older OptionsKit) |
+| `tristate` on `multiselect` | `true`; the getter leaves out a key whose Ace state is `nil` | none (`multiselectTristate` with an older OptionsKit) |
+| `control`, `dialogControl`, `itemControl` (on `select`) | the string | `malformedField` for an empty one |
+| `dropdownHidden`, `dropdownInline`, `dropdownControl` | not carried | nothing, with any OptionsKit, unless `uiType` is `"dropdown"`, where the flags fold as before: Ace3 has no dropdown interface |
+
+`arg` and `handler` are not carried: the wrappers already hand every Ace callback Ace's own `info`. `plugins` keep Ace's rule below. `hasAlpha` callbacks stay evaluated once.
+
+**Fields.** With an older OptionsKit, `name` and `order` given as a function or method are called once,
 with the option's Ace `info`, and their result kept, because OptionsKit's
 `name` is a string and its `order` a number; a name function that gives no
 string leaves the option named by its key. `desc` stays live. Fields that only
@@ -286,7 +304,7 @@ names.
 | `identifier` | renamed | a key that is not an identifier | `AceConfigRegistry-3.0.lua:197-205` |
 | `boundToDatabase` | changed | an option `bind` names | |
 | `replaced` | changed | an option `replace` names | |
-| `sourceFunction` | changed | `source` was a function, converted as one snapshot | `AceConfigRegistry-3.0.lua:331-341` |
+| `sourceFunction` | changed | `source` was a function, converted as one snapshot; not reported by `DefineAceConfig` with OptionsKit's Dynamic part, which converts it again on every `NotifyChange` | `AceConfigRegistry-3.0.lua:331-341` |
 
 ### Errors
 
@@ -318,9 +336,13 @@ with OptionsKit's message after `BridgeKit:DefineAceConfig `.
 
 What the adapter deliberately does not do: re-validate the table per interface
 type (OptionsKit checks once at `Define`), reproduce
-`AceConfigRegistry:NotifyChange` (a renderer refreshes from `tree:OnChange`),
+`AceConfigRegistry:NotifyChange` itself (with OptionsKit's Dynamic part,
+`tree:NotifyChange()` converts the source again, below; a renderer refreshes
+values from `tree:OnChange`),
 or convert an AceDBOptions-3.0 group (pass `replace` with
 `OptionsKit:ProfileOptions(db)` instead).
+
+**Rebuilt conversions (revision 8).** When the registered OptionsKit has its Dynamic part (`OptionsKit:IsPartLoaded("Dynamic")`), `DefineAceConfig` defines the tree from a builder: the first conversion is the one made by the call, and every `tree:NotifyChange()` converts the same source (a table you keep editing, or a function) again with the same options, as AceConfigRegistry reads its table again. The returned report is the first conversion's; a rebuild's report is not kept, and under `strict` a rebuild that would report raises inside the builder, which OptionsKit reports through `geterrorhandler()` while the tree stays as it was. The tree is defined with `options.maxDepth` (default 8) rather than the first conversion's depth, so a rebuilt tree may grow deeper. Without the part the tree is one snapshot, as before.
 
 ## The AceDB importer
 
@@ -406,8 +428,8 @@ bounded by `maxImportEntries`, a table reached twice copied once.
 | `profileKeys[key]` | `profileKeys[key]` | Kept when it names an imported profile, under its new name; otherwise dropped (`danglingProfileKey`), and that character starts on the default profile. A secret choice is dropped (`secretValue`) without being looked up. |
 | `char[key]`, `realm[key]`, `class[key]`, `faction[key]` | the same | `char` keys through `renameCharacter`. |
 | `global` | `global` | |
-| `race`, `factionrealm`, `factionrealmregion`, `locale` | the map field `plan.scopes` names, or dropped | `unsupportedScope`. |
-| `namespaces[n]` | each section under `plan.namespaces[n].field`, or dropped | `unmappedNamespace`; a section whose scope does not declare the field is dropped (`undeclaredScope`). Where the field already holds an entry (from the main sections or another namespace), the entry already there is kept and the newcomer dropped (`keyCollision`); a map field stops at its `max` (`mapFull`). LibDualSpec-1.0's spec assignments are not imported (a later item of the roadmap's settingsKit spec profiles record): what that library saved is dropped like any unmapped namespace, and the addon assigns spec profiles again with SettingsKit's `db:SetSpecProfile` (SettingsKit 0.4.0). |
+| `race`, `factionrealm`, `factionrealmregion`, `locale` | With SettingsKit revision 15 and later (its published `REVISION`; revision 8): copied as they are into the same-named sections, every table bounded by `maxDepth` and refused when it holds what cannot be stored. Before it: the map field `plan.scopes` names, or dropped | `nativeScope` (`changed`) for a `plan.scopes` entry that is no longer needed; `unsupportedScope` with an older SettingsKit. |
+| `namespaces[n]` | With SettingsKit revision 15 and later (revision 8): copied as it is into `namespaces[n]`, in AceDB's layout, which is SettingsKit's: the ten sections `profiles`, `char`, `realm`, `class`, `race`, `faction`, `factionrealm`, `factionrealmregion`, `locale` and `global`, the keys of `profiles` renamed as the main profiles are (`renameProfile`) and those of `char` as the main characters are (`renameCharacter`), every table bounded by `maxDepth` and refused when it holds what cannot be stored (`notStorable`, `secretValue`, `tooDeep`); a `plan.namespaces` entry is not needed and is reported once (`nativeNamespace`, `changed`). Values are not checked against a schema: a namespace's schema is the one the addon registers at runtime, and SettingsKit checks what it opens. Before revision 15: each section under `plan.namespaces[n].field`, or dropped | `unmappedNamespace`; a section whose scope does not declare the field is dropped (`undeclaredScope`). Where the field already holds an entry (from the main sections or another namespace), the entry already there is kept and the newcomer dropped (`keyCollision`); a map field stops at its `max` (`mapFull`). LibDualSpec-1.0's spec assignments are not imported (a later item of the roadmap's settingsKit spec profiles record): what that library saved is dropped like any unmapped namespace, and the addon assigns spec profiles again with SettingsKit's `db:SetSpecProfile` (SettingsKit 0.4.0). |
 | a scope the schema does not declare | dropped | `undeclaredScope`. |
 | any other top-level key | dropped | `unknownTopLevelKey`; the backup keeps it. |
 
@@ -489,7 +511,8 @@ it never changes what a field reads.
 | `renamedProfile`, `renamedCharacter` | renamed / dropped | `renameProfile` or `renameCharacter` gave another name, or `nil` |
 | `danglingProfileKey` | dropped | a profile choice naming no imported profile |
 | `currentCharacterMissing`, `characterKeyMismatch`, `realmKeyMismatch` | changed | character and realm keys that will not line up |
-| `unsupportedScope`, `unmappedNamespace`, `undeclaredScope`, `unknownTopLevelKey` | dropped | sections the plan or the schema gives no destination |
+| `unsupportedScope`, `unmappedNamespace`, `undeclaredScope`, `unknownTopLevelKey` | dropped | sections the plan or the schema gives no destination (`unsupportedScope` and `unmappedNamespace` only with a SettingsKit before revision 15) |
+| `nativeScope`, `nativeNamespace` | changed | a `plan.scopes` or `plan.namespaces` entry the importer did not need, because SettingsKit revision 15 keeps that section as AceDB saved it |
 
 ## The AceComm channel
 
@@ -715,7 +738,10 @@ channel and counter, and the next conversion checks `childGroups` against
 Ace's three layouts. Revision 7 changes no state either: the writer's
 clean-string cache and the reader's replacement function are file-local, so
 each revision builds its own; an upgrade over revision 6 writes and reads the
-same text.
+same text. Revision 8 changes no state: the field cache lives in each
+conversion's work table and the rebuilding builder in the closure
+`DefineAceConfig` hands OptionsKit, so an upgrade over revision 7 keeps every
+limit, channel and counter, and trees defined before stay snapshots.
 
 ## Testing
 

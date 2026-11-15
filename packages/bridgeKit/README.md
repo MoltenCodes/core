@@ -34,8 +34,8 @@ local imported = BridgeKit:ImportAceDB("MyAddonDB", "MyAddonSettings", {
 | Part | Status | Files an addon embeds |
 |---|---|---|
 | **AceSerializer-3.0**: `AceSerialize` and `AceDeserialize`, byte for byte with Ace3 | revision 1 | 2: `Registry.lua`, `BridgeKit.lua` |
-| **AceConfig-3.0**: options tables to OptionsKit trees, the Ace callbacks wrapped, with a report; `childGroups` layouts kept since revision 5 | revision 2 | 2 for `ConvertAceConfig`; 5 with OptionsKit for `DefineAceConfig` |
-| **AceDB-3.0**: saved variables rebuilt in the SettingsKit layout, checked against the schema, with a backup | revision 3 | 3: Registry, SchemaKit, BridgeKit (SettingsKit is the addon's own) |
+| **AceConfig-3.0**: options tables to OptionsKit trees, the Ace callbacks wrapped, with a report; `childGroups` layouts kept since revision 5; every field the registered OptionsKit accepts carried over, and trees rebuilt on `NotifyChange` with OptionsKit's Dynamic part, since revision 8 | revision 2 | 2 for `ConvertAceConfig`; 5 with OptionsKit for `DefineAceConfig` (6 with its Dynamic part for rebuilds) |
+| **AceDB-3.0**: saved variables rebuilt in the SettingsKit layout, checked against the schema, with a backup; namespaces and AceDB's four extra scopes copied as they are into SettingsKit revision 15's layout since revision 8 | revision 3 | 3: Registry, SchemaKit, BridgeKit (SettingsKit is the addon's own) |
 | **AceComm-3.0**: messages framed and reassembled as AceComm does, through CommKit's queue, with bounds | revision 4 | 2 plus CommKit (which the addon embeds for its own traffic) |
 
 The current release is 0.5.1, implementation revision 6.
@@ -51,6 +51,9 @@ recipes in [`docs/MIGRATING_FROM_ACE3.md`](../../docs/MIGRATING_FROM_ACE3.md).
 | `AceSerializer:Serialize(...)` | `BridgeKit:AceSerialize(...)` → `true, text` or `false, reason` |
 | `AceSerializer:Deserialize(text)` | `BridgeKit:AceDeserialize(text)` → `true, ...` or `false, reason` |
 | `AceConfig:RegisterOptionsTable(appName, options)` | `BridgeKit:DefineAceConfig(appName, options[, { db = db }])` → OptionsKit tree and report |
+| `AceConfigRegistry:NotifyChange(appName)` after editing the table | `tree:NotifyChange()` on the tree `DefineAceConfig` returned, with OptionsKit's Dynamic part loaded |
+| `width`, `confirm`, `image`, `dialogHidden` and AceConfig's other presentation fields | carried over when the registered OptionsKit accepts them (revision 14 and later), reported dropped before |
+| `db:RegisterNamespace(name, defaults)` data already saved | copied as it is by `ImportAceDB` when SettingsKit is revision 15 or later; read with `db:RegisterNamespace(name, schema)` |
 | `AceDB:New("MyAddonDB", defaults)` with data already saved | `BridgeKit:ImportAceDB(...)` into a new saved variable, or `BridgeKit:AceDBMigration(plan)` as a SettingsKit migration step |
 | `AceComm:RegisterComm(prefix, handler)` / `SendCommMessage` | `BridgeKit:OpenAceComm(scope, prefix, callback)` / `channel:Send(request)` |
 

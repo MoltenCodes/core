@@ -152,11 +152,16 @@ describe("OptionsKit:Define", function()
     assertRefused("tree.args.option must be an option table", rootWith(true))
     assertRefused("tree.args.option.name must be a string", rootWith({ type = "header" }))
     assertRefused(
-      "tree.args.option.order must be a number",
-      rootWith({ type = "header", name = "h", order = "1" })
+      "tree.args.option.order must be a number, a function or a method name",
+      rootWith({ type = "header", name = "h", order = true })
     )
     assertRefused(
-      "tree.args.option.disabled must be a boolean or a function",
+      "tree.args.option.disabled must be a boolean, a function or a method name",
+      rootWith({ type = "header", name = "h", disabled = 1 })
+    )
+    -- A string names a method of the handler in force (revision 14).
+    assertRefused(
+      'tree.args.option.disabled is a method name ("yes"), but no handler is in force',
       rootWith({ type = "header", name = "h", disabled = "yes" })
     )
     assertRefused("tree.args must be a table", { type = "group" })
@@ -222,7 +227,11 @@ describe("OptionsKit:Define", function()
         )
       )
     end
-    assertRefused("values must be a table or a function", select({ values = "a" }))
+    assertRefused("values must be a table, a function or a method name", select({ values = 1 }))
+    assertRefused(
+      'values is a method name ("a"), but no handler is in force',
+      select({ values = "a" })
+    )
     assertRefused("values must not be empty", select({ values = {} }))
     assertRefused("values labels must be strings", select({ values = { a = 1 } }))
     assertRefused("values keys must be strings or numbers", select({ values = { [true] = "yes" } }))
@@ -234,7 +243,8 @@ describe("OptionsKit:Define", function()
     end
     assertRefused("pattern is not a valid Lua pattern", input({ pattern = "[a" }))
     assertRefused("pattern must be a string", input({ pattern = 1 }))
-    assertRefused("multiline must be a boolean", input({ multiline = 1 }))
+    assertRefused("multiline must be a boolean or a positive integer", input({ multiline = 0 }))
+    assertRefused("multiline must be a boolean or a positive integer", input({ multiline = 1.5 }))
 
     assertRefused(
       "hasAlpha must be a boolean",
@@ -242,11 +252,11 @@ describe("OptionsKit:Define", function()
     )
     assertRefused("func must be a function", rootWith({ type = "execute", name = "e" }))
     assertRefused(
-      "confirm must be a boolean or a string",
+      "confirm must be a boolean, a string or a function",
       rootWith({ type = "execute", name = "e", func = function() end, confirm = 1 })
     )
     assertRefused(
-      'fontSize must be "small", "medium" or "large"',
+      'fontSize must be "small", "medium", "large" or a function',
       rootWith({ type = "description", name = "d", fontSize = "huge" })
     )
     assertRefused(

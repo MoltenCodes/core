@@ -213,7 +213,7 @@ describe("OptionsKit bind to a SettingsKit database", function()
     assertBindRefused("profile", 'bind "profile" must name a value inside the scope')
     assertBindRefused(
       "session.value",
-      "must start with global, char, realm, class, faction or profile"
+      "must start with global, char, realm, class, faction, profile, race, factionrealm, factionrealmregion or locale"
     )
     assertBindRefused("profile..value", "must be dot-separated identifiers")
     assertBindRefused("profile.2x", "must be dot-separated identifiers")

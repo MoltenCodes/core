@@ -15,6 +15,12 @@ This document describes implementation invariants for maintainers. It is not an 
 | `unbounded` | The `OptionsKit.UNBOUNDED` sentinel, created once so every revision publishes the same table. |
 | `profileGroups` | Weak in keys and values (revision 9; weak-keyed before): the group table `ProfileOptions` returned to its link record (below). Revision 2. |
 | `profileLinksByDatabase` | Weak-keyed: a database to the link record of the group last built for it (below). Revision 8 held an array, one link per distinct set of options; revision 9 holds one link. |
+| `parts` | Revision 15: each loaded part's record, by part name: `revision`, `bind` (takes the helpers), `members` (the facade and prototype functions it provides) and, for Dynamic, `rebuild`. |
+| `helpers` | Revision 15: the core functions the parts call, rewritten by every core revision; each loaded part's `bind` receives them at its load and again whenever a newer core loads. Additive inside API 1. |
+| `treeSources` | Revision 15, weak in values: a tree to the table passed to `Define`, so `NotifyChange` can read it again while the addon holds it. |
+| `legacyMembers` | Set once by the upgrade from a single-file revision (14 or older): the `ProfileOptions` it installed, kept as the member while no Profiles part is loaded. |
+
+**Members of parts.** The facade and the prototype stay complete whichever parts are loaded: at its commit the core installs, for each member `PART_MEMBERS` lists, the loaded part's function, else (for `ProfileOptions`) `legacyMembers`, else a stub raising `<member> is in OptionsKit's <Part> part, which is not loaded: ...` at the caller's line. A part installs its own members when it loads, and the core's validation never requires a part.
 
 The tree prototype is published as `OptionsKit.Tree`. OptionsKit hands out no closures that outlive a call except the dynamic key checks inside schemas (below) and the callbacks and signal listener of a profile group, so it needs no dispatch table: an upgrade replaces the prototype's methods and every existing tree sees them at once. A profile group's callbacks close over its link record, the database and the file-local helpers of the revision that built them, so they keep working after an upgrade with that revision's behaviour; only groups built after a newer copy loads get its helpers.
 
@@ -24,9 +30,13 @@ A tree is one table created by `define`:
 
 | Field | Meaning |
 |---|---|
-| `_schema` | The tree layout version, `2`. Layout 1 (revision 1) had no `_profileLinks`. |
+| `_schema` | The tree layout version, `3`. Layout 1 (revision 1) had no `_profileLinks`; layout 2 (revisions 2 to 14) no kept limits. |
 | `_addonName` | The addon the tree belongs to. |
-| `_defined` | `true` from the end of `Define` until `Undefine`. Every method refuses a tree without it. |
+| `_defined` | `true` from the end of `Define` until `Undefine`, `"dirty"` while a rebuild `NotifyChange` asked for is pending (revision 15). Every method tests the field for `true` already, so a clean tree pays nothing: `validateTree` hands a dirty tree to the Dynamic part's `rebuild` and refuses anything else. |
+| `_maxOptions`, `_maxDepth`, `_maxDynamicEntries` | Revision 15 (layout 3): the limits of `Define`, `math.huge` for unbounded, which a rebuild and a `Replace` check against. An older tree gets the defaults. |
+| `_builder` | Revision 15: the builder passed to `Define`, absent for a table. |
+| `_structureChanged` | Revision 15: the SignalKit signal behind `OnStructureChanged`, created on the first connection. |
+| `_groupConfirm` | Revision 14: `true` when a group of the tree has a `confirm`, so `DescribeOption` looks up the groups above for one; absent otherwise. |
 | `_db` | The SettingsKit database, or `false`. |
 | `_root` | The root group's record. |
 | `_records` | The path index: dotted path to record, for every option below the root. |
@@ -46,13 +56,13 @@ One record per option, created by `buildOption`:
 | `_parent` | all | The parent record, or `false` for the root. `IsDisabled` and `IsHidden` follow it. |
 | `_tree` | the root | The tree, which `infoOf` reads when it builds an `info` (below). |
 | `_info` | all, once used | The option's `info` table (below), built on first use; absent until then. |
-| `_name` | all | The label and a sort key, which `compareRecords` reads, so it cannot be a function. |
+| `_name` | all | The label and a sort key. Revision 14: a function `name` is kept here as it is; `Describe` calls it, and `compareDynamicRecords` sorts the option by its key (the plain `compareRecords` runs when no sibling has a function name or order). |
 | `_hints` | all that set one | Revision 13: the presentation fields `desc`, `order`, `disabled` and `hidden` (read through `presentationOf`) and the kind's plain fields that are set, for `Describe` (`min`, `pattern`, `confirm`, …); absent when the option sets none. `desc` is the string, the `desc` function or absent, `disabled` and `hidden` absent, `false`, `true` or the predicate. Revisions 12 and earlier kept `_desc`, `_order`, `_disabled` and `_hidden` on the record and an empty shared `NO_HINTS`; `presentationOf` reads those fields first, so such records read the same. |
 | `_children` | `group` | Child records, sorted. |
 | `_schema` | value kinds | The sealed SchemaKit schema, shared (see [Shared schemas](#shared-schemas)). |
 | `_validate` | value kinds | The `validate` function, or absent. |
 | `_get`, `_set` | unbound value kinds | The accessors. |
-| `_bindScope`, `_bindKeys` | bound value kinds | The bind path's scope and its remaining keys as an array. Revision 13 rebuilds the bind text from them (`bindTextOf`, for `Describe` and a failure) and counts the keys with `#` instead of storing `_bind` and `_bindCount`; the path was split on its dots, so the rebuilt text is the one written. |
+| `_bindScope`, `_bindKeys` | bound value kinds | The bind path's scope and its remaining keys as an array. Revision 14: for an `ns:` bind, `_bindKeys[0]` is `{ db = <namespace child>, name = <namespace> }`, outside the array part, so `#keys` and `db:Validate(scope, keys)` see the keys alone; `bindDatabaseOf` answers that child or the tree's database. Revision 13 rebuilds the bind text from them (`bindTextOf`, for `Describe` and a failure) and counts the keys with `#` instead of storing `_bind` and `_bindCount`; the path was split on its dots, so the rebuilt text is the one written. |
 | `_values`, `_sorting` | `select`, `multiselect` | The copied values table (shared by the options of one `Define` that name the same table) or the values function; the copied sorting array, or absent. |
 | `_func` | `execute` | The function `Execute` calls. |
 
@@ -61,6 +71,26 @@ A field is absent rather than `false` when the option does not set it, and there
 **Labels on failure only (revision 13).** Every `Define` check takes the field's owner (the option's record, or a literal label such as `OptionsKit:ProfileOptions options`) and the field name, and builds the label (`labelOf`, `optionLabel`: `OptionsKit:Define tree` and `.args.<key>` for each key of the path) only on the branch that raises. Revision 12 built `label .. ".args." .. key` and every `label .. ".<field>"` on success, about 10% of `Define`'s allocation. Messages and levels are unchanged.
 
 Records are never modified after `Define`, except for `_info`, written once on first use, which is what "the tree is sealed at Define" means here: the consumer's tables are read once and nothing refers back to them except the functions they contained.
+
+## Fields and hints (revision 14)
+
+`Fields` holds what an option may carry: `common` (every kind), `control` (every kind but `group`), `value` (value kinds) and `kind[<kind>]`, read in that order by `checkKnownFields`, plus `notDescribed`, `method`, `interfaces` and the forms string `GetFields` parses (a string rather than tables, so nothing is resident for it beyond one constant). `Hints.roles` says in one lookup what a field is: `"record"` (kept in a record field), `"accessor"` (`get`, `set`, `validate`, `func`: record fields on the kinds that use them, hints on a group, which passes them down), a check function (a presentation field of revision 14, run only when an option sets it; it returns the value to keep, a copy for coordinates), or absent (a plain hint). Every accepted field that is not a record field is a hint, so an option that sets none keeps no hints table, and one that sets some keeps them in its one table.
+
+The build context records whether the tree uses method names (`usesMethodNames`, so `Hints.resolve` runs at all) and whether a group passes accessors down (`inheritsAccessors`, so an option without its own accessor looks up the groups above at all); a tree using neither does no work for them.
+
+**Method names.** `Hints.callback` turns a method name into the caller of that method of the handler in force (`Hints.handlerInForce`: the nearest `hints.handler` up the parent chain), checking that the method exists then. The caller is a closure over the handler and the name, cached per handler and name in `context.methodCallers`, and looks the method up on every call. It is stored where a function would be (`_get`, `_set`, `_validate`, `_func`, `_values`, `_sorting`, a hint), so no reader tests for a string.
+
+**Inheritance.** `Hints.accessor` resolves an accessor an option lacks from the nearest group's hint, `false` stopping the search, then turns a name into a caller against the option's own handler in force. The reference is copied into the record, which already has slots for `_get`, `_set` and `_func`; an inherited `validate` costs the ninth field, as an own one does. `confirm` is not copied: `confirmOf` reads it up the chain when asked, and `describeRecord` hands each child the confirm in force.
+
+**Describe.** `describeRecord` copies plain hints as they are and hands functions and tables to `Resolve.hint`, which calls a presentation function with the option's `info` and checks the result (`RESOLVERS`), and copies tables. A function `name` or `order` is resolved before any sort; when a sibling has one, `Resolve.sortNodes` sorts the described nodes on their plain values. Per interface, `hiddenFlagOf` and `Resolve.inline` pick the first flag of `Fields.interfaces[interface]` that is set.
+
+## Parts and rebuilds (revision 15)
+
+The Profiles part holds the group builder (strings, choices, spec selects, the cache lookup); the core keeps `collectProfileLink`, `attachProfileLink` and `detachProfileLink`, so a tree can hold a group whoever built it, and records the group's path on its link (`link.path`) for `Remove`. The Dynamic part holds `NotifyChange`, `Replace`, `Remove` and `rebuild`.
+
+`NotifyChange` sets `_defined` to `"dirty"` and fires the structure signal when the tree was clean. `rebuild` sets `_defined` back to `true` first (a builder may read the tree, and its own `NotifyChange` marks it dirty again), reads the source (the builder under `pcall`, or `treeSources[tree]`), builds a fresh structure with `helpers.buildStructure` in a context carrying the tree's limits and database and `rebuilding = tree` (so `collectProfileLink` accepts the tree's own groups), attaches the links not attached yet, detaches the ones that left, gives each surviving record with the same kind, `arg` and handler its predecessor's `info`, and swaps `_root`, `_records`, `_walk` and `_profileLinks`. Any failure is reported through `geterrorhandler()` and leaves the structure as it was. `LabelBase` names the fields from `OptionsKit.Tree:NotifyChange tree`, or, for a `Replace`, from `OptionsKit.Tree:Replace option` and the replaced path; every build sets it before it starts.
+
+`Replace` builds one option under its parent with `helpers.buildOption`, the count starting at the tree's count minus the old subtree's, then updates the path index, the parent's children (sorted with `compareDynamicRecords`) and the walk array; `Remove` drops a subtree and detaches the groups whose link path lies in it.
 
 ## The path index
 
@@ -126,4 +156,4 @@ The `desc` fields of the group are functions, evaluated by `describeRecord`, and
 
 ## Upgrades
 
-A newer revision inherits `state` as it is: the tree metatable, the prototype and every tree. It rewrites the prototype's methods and `runtimeRevision`. Records carry no methods and no behaviour of their own beyond the consumer's functions and the schema closures, so nothing else needs migrating. A revision that changes the record or tree layout reads `_schema` to upgrade old trees: revision 2 and later add `state.profileGroups` when it is missing and give every layout 1 tree an empty `_profileLinks` (a revision 1 tree cannot hold a profile group), then stamp it layout 2. Revisions 3 to 6 changed no layout. Revision 7 changes the record layout without migrating old records (above): every reader accepts both. Revision 8 adds `state.profileLinksByDatabase` when it is missing; links older revisions built have no `group` field and are not in it, so they keep working and are never returned by a cached call. Revision 9 reduces each revision 8 array (an entry without a `db` field) to its last link and sets the `profileGroups` metatable to `{ __mode = "kv" }` on every load. Revision 9 also stops writing the tree fields `_maxOptions`, `_maxDepth` and `_maxDynamicEntries`, which nothing read; older trees keep them, unused. `validateStateBase` checks the fields every revision shares; `validateCurrentState` also requires `profileGroups` and `profileLinksByDatabase`, which is what tells a finished state from one still being committed.
+A newer revision inherits `state` as it is: the tree metatable, the prototype and every tree. It rewrites the prototype's methods and `runtimeRevision`. Records carry no methods and no behaviour of their own beyond the consumer's functions and the schema closures, so nothing else needs migrating. A revision that changes the record or tree layout reads `_schema` to upgrade old trees: revision 2 and later add `state.profileGroups` when it is missing and give every layout 1 tree an empty `_profileLinks` (a revision 1 tree cannot hold a profile group), then stamp it layout 2. Revisions 3 to 6 changed no layout. Revision 7 changes the record layout without migrating old records (above): every reader accepts both. Revision 8 adds `state.profileLinksByDatabase` when it is missing; links older revisions built have no `group` field and are not in it, so they keep working and are never returned by a cached call. Revision 9 reduces each revision 8 array (an entry without a `db` field) to its last link and sets the `profileGroups` metatable to `{ __mode = "kv" }` on every load. Revision 9 also stops writing the tree fields `_maxOptions`, `_maxDepth` and `_maxDynamicEntries`, which nothing read; revision 15 writes them again, for rebuilds, and gives every older tree the defaults (or keeps the values revisions 8 and earlier wrote), stamping it layout 3. Revision 14 changes no layout. Revision 15 adds `parts`, `helpers`, `treeSources` and, over a single-file revision, `legacyMembers`, and calls each loaded part's `bind` with its helpers. `validateStateBase` checks the fields every revision shares; `validateCurrentState` also requires `profileGroups` and `profileLinksByDatabase`, which is what tells a finished state from one still being committed.

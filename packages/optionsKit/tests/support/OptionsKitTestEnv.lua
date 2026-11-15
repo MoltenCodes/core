@@ -15,7 +15,14 @@
 local FrameworkTestEnv = require("FrameworkTestEnv")
 
 local OptionsKitTestEnv = FrameworkTestEnv.New({
-  modules = { "Registry", "SignalKit", "SchemaKit", "OptionsKit" },
+  modules = {
+    "Registry",
+    "SignalKit",
+    "SchemaKit",
+    "OptionsKit",
+    "OptionsKit-Profiles",
+    "OptionsKit-Dynamic",
+  },
 })
 
 --- The scopes a SettingsKit database exposes.
@@ -67,6 +74,42 @@ function OptionsKitTestEnv.NewDatabase(defaults)
   return db
 end
 
+---Reset and load OptionsKit's core without its parts, the way an addon that
+---embeds the core alone loads it.
+---@return table OptionsKit
+---@return table Registry
+function OptionsKitTestEnv.NewCorePackage()
+  OptionsKitTestEnv.Reset()
+  OptionsKitTestEnv.InstallWowApi()
+  local Registry = require("Registry")
+  require("SignalKit")
+  require("SchemaKit")
+  return require("OptionsKit"), Registry
+end
+
+---Build a SettingsKit-shaped database with namespaces, as SettingsKit
+---revision 15 offers them: `GetNamespace(name, { missingOk = true })` answers
+---the child database registered under `name`, or `nil`.
+---@param defaults table? defaults per scope of the parent
+---@param namespaces table<string, table> name to that namespace's defaults per scope
+---@return table db
+---@return table<string, table> children
+function OptionsKitTestEnv.NewDatabaseWithNamespaces(defaults, namespaces)
+  local db = OptionsKitTestEnv.NewDatabase(defaults)
+  local children = {}
+  for name, childDefaults in pairs(namespaces) do
+    children[name] = OptionsKitTestEnv.NewDatabase(childDefaults)
+  end
+  function db:GetNamespace(name, options)
+    local child = children[name]
+    if child == nil and not (type(options) == "table" and options.missingOk == true) then
+      error("SettingsKit.Database:GetNamespace name names no registered namespace", 2)
+    end
+    return child
+  end
+  return db, children
+end
+
 ---Measure the allocation a workload causes, in kilobytes, with the collector
 ---stopped so that a collection cycle cannot hide or invent growth.
 ---@param workload fun()
@@ -82,7 +125,9 @@ function OptionsKitTestEnv.AllocatedKilobytes(workload)
 end
 
 ---Load the OptionsKit source again as a copy carrying `revision`, the way a
----newer embedded copy loads over an older one in the client.
+---newer embedded copy loads over an older one in the client. A revision
+---older than 15 stands in for a single-file copy, so the Profiles part loads
+---with it.
 ---@param revision integer
 ---@return table OptionsKit
 function OptionsKitTestEnv.LoadRevision(revision)
@@ -113,7 +158,13 @@ function OptionsKitTestEnv.LoadRevision(revision)
   end
 
   local chunk = assert(loadstring(patched, "@" .. path))
-  return chunk()
+  local loaded = chunk()
+  -- Revisions 14 and older were one file holding `ProfileOptions`; a copy
+  -- standing in for one loads the Profiles part with it.
+  if revision < 15 and package.loaded["OptionsKit-Profiles"] == nil then
+    require("OptionsKit-Profiles")
+  end
+  return loaded
 end
 
 return OptionsKitTestEnv

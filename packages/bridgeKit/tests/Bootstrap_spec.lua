@@ -61,10 +61,29 @@ describe("BridgeKit bootstrap", function()
     package.loaded["BridgeKit"] = nil
     local upgraded = require("BridgeKit")
     assert.are.equal(older, upgraded)
-    assert.are.equal(7, upgraded.REVISION)
+    assert.are.equal(8, upgraded.REVISION)
     assert.are.equal(6, upgraded:GetLimits().maxDepth)
     assert.are.same({ true, text }, { upgraded:AceSerialize(value) })
     assert.are.same({ true, value }, { upgraded:AceDeserialize(text) })
+  end)
+
+  it("upgrades a revision 7 copy in place, its limits and conversions kept", function()
+    Env.Reset()
+    require("Registry")
+    local older = Env.LoadRevision(7)
+    assert.are.equal(7, older.REVISION)
+    older:SetLimits({ maxDepth = 5 })
+    package.loaded["BridgeKit"] = nil
+    local upgraded = require("BridgeKit")
+    assert.are.equal(older, upgraded)
+    assert.are.equal(8, upgraded.REVISION)
+    assert.are.equal(5, upgraded:GetLimits().maxDepth)
+    local conversion = upgraded:ConvertAceConfig("MyAddon", {
+      type = "group",
+      args = { a = { type = "header", name = "a", width = "full" } },
+    })
+    -- Without OptionsKit a field is still reported dropped, as before.
+    assert.are.equal("presentation", conversion.report.entries[1].reason)
   end)
 
   it("lets a newer revision publish a new baseline through the same table", function()

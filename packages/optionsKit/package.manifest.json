@@ -2,10 +2,11 @@
   "name": "optionsKit",
   "displayName": "OptionsKit",
   "description": "A typed, validated, introspectable options tree for World of Warcraft addons, bound to getters and setters or to a SettingsKit database, with no renderer.",
-  "version": "0.6.2",
+  "summary": "A typed, validated, introspectable options tree bound to getters or a SettingsKit database, with no renderer.",
+  "version": "0.8.0",
   "license": "MIT",
   "api": 1,
-  "revision": 13,
+  "revision": 15,
   "dependencies": {
     "registry": {
       "api": 2
@@ -20,6 +21,24 @@
   "optionalDependencies": {
     "settingsKit": {
       "api": 1
+    }
+  },
+  "parts": {
+    "Profiles": {
+      "description": "OptionsKit:ProfileOptions: the ready-made group over a SettingsKit database's profiles, with the per-specialization choices.",
+      "revision": 1,
+      "dependencies": {},
+      "optionalDependencies": {
+        "settingsKit": {
+          "api": 1
+        }
+      }
+    },
+    "Dynamic": {
+      "description": "Trees that change shape after Define: builder functions, tree:NotifyChange(), tree:Replace and tree:Remove.",
+      "revision": 1,
+      "dependencies": {},
+      "optionalDependencies": {}
     }
   }
 }
