@@ -246,3 +246,169 @@ Moved from `docs/ROADMAP.md` (Package O — memory, performance and ease of use 
    remove 2.31x to 1.65x. The AceBucket-equivalent set holds 370.1 KB against
    Ace3's 63.4 KB (8.4x before, 5.8x now).
 
+**eventKit (core slimming): unit events and the combat log as parts, SignalKit off the core, the upgrade floor** — a change to facade `EventKit`
+
+Measurements, classification, the upgrade floor and the part contract:
+`core-runtime.md`.
+
+1. Package `eventKit`, facade `EventKit`, API generation 1 (additive),
+   version 0.12.0 (from 0.11.0), implementation revision 23 (from 22). New
+   parts `Units` and `CombatLog`, revision 1; part `Coalescing` revision 2
+   (from 1).
+2. Purpose: EventKit's core is 87.1 KB resident (56.5 KB of live
+   prototypes) against 17.3 KB for AceEvent-3.0 with CallbackHandler-1.0.
+   AceEvent registers regular events and messages only; a typical addon
+   needs `Connect`, `Once`, scopes and connection handles. The changes, each
+   measured on a research copy with the bodies in question emptied:
+   - **Units part** (`src/parts/EventKit-Units.lua`): `ConnectUnit` and
+     `OnceUnit` on the facade and the scope prototype, unit-filter
+     normalisation, the unit-group Frames and their reuse, unit channels
+     and unit dispatch (`normalizeUnits`, `acquireUnitFrame`,
+     `ensureUnitGroup`, `releaseUnitGroup`, `createUnitChannel`,
+     `subscribeUnitMethod`, `attachUnitSubscription`, `dispatchUnit` and the
+     four public wrappers): −8.6 KB in the core. AceEvent has no unit
+     events. The `maxUnitFrames` limit keeps its place in the core's limits
+     table, so `SetLimits`/`GetLimits` keep one shape; the part enforces it.
+   - **CombatLog part** (`src/parts/EventKit-CombatLog.lua`):
+     `ConnectCombatLog` on the facade and the scope, the routes by
+     sub-event, the router and its single reader call per event
+     (`acquireCombatLogRoute`, `releaseCombatLogRoute`,
+     `attachCombatLogRouter`, `detachCombatLogRouter`,
+     `routeCombatLogEvent`, `dispatchCombatLog`, `onCombatLogEvent`,
+     `subscribeCombatLog`, `validateSubEvent`, `connectToRoute`): −7.6 KB.
+     `IsCombatLogAvailable` and the reader probe (`findCombatLogReader`)
+     stay in the core: they answer for the client, not for the part, and
+     Retail 12 gives addon code no reader at all, so on Retail the part is
+     dead weight an addon should not have to carry. The earlier split
+     record kept both in the core on the ground that the interface would
+     cost more than it saves; measured, each saves 7 to 9 KB against about
+     1 KB of stubs and interface.
+   - **Closing Coalesce and Derive handles moves into the Coalescing part**
+     (`closeCompositeHandle`, `closeUnservedComposite`): −2.3 KB in the core.
+     Such a handle exists only when the part made it; the scope sweep calls
+     `state.composites.close`, which the part fills, as it already does for
+     the timing.
+   - **SignalKit leaves the core's dependencies.** Past its load-time facade
+     check, the core reads SignalKit only to release connections that
+     revisions before 17 made (`_inner`). `Derive`'s change listeners in the
+     Coalescing part are the only real use, so `signalKit` API 1 moves to the
+     part's `dependencies`. An addon that embeds EventKit without the
+     Coalescing part no longer needs SignalKit (`core-runtime.md`, the set
+     without buses).
+   - **The upgrade floor**: handles with named fields from revisions before
+     21 (`disconnectLegacyConnection`, `releaseNamedHandle`,
+     `isNamedConnectionHandle`, the `_inner` and `_connected` branches of
+     `disconnectHandle` and `IsConnected`), the state migrations of schemas
+     before 10, and handles of the whole revision 21 with SchedulerKit timing
+     that the Coalescing part adopts: −1.6 KB resident plus main-chunk code.
+   - **Logout route 2 goes** (the `OnShutdown` subscription for a
+     LifecycleKit before revision 13): `subscribeToShutdown`,
+     `closeOnShutdown`, `releaseLogoutSubscription`: −1.7 KB. The
+     LifecycleKit route and EventKit's own `PLAYER_LOGOUT` connection stay.
+   - **Plain indexing** on `state`, its sub-tables, channels and scopes
+     (metatables with a method-table `__index` only) instead of literal-key
+     `rawget`/`rawset`: −1.7 to −3.4 KB (upper bound measured on 357 sites).
+     Connection handles keep their array slots; the facade and prototypes
+     keep `rawset`.
+   - **Shared helper blocks**: `describeKey` (`EventKit.lua:2788`, 424 B →
+     504 B) and `limits` (`EventKit.lua:3088`, `validateLimitUpdate`,
+     `applyLimits`, `copyLimits`, 2,408 B → 3,296 B with one `LIMIT_RULES`
+     entry for `maxUnitFrames`, `unboundedReason` "the client never frees a
+     Frame"): +1.0 KB. These are the two copies `tooling.shared.sync --list`
+     names for eventKit; the conversion buys the drift gate, not memory.
+   Non-goals: changing dispatch, listener storage, isolation, the
+   method-name form or any message of the remaining surface.
+3. Dependencies: core registry API 2; lifecycleKit API 1 optional;
+   **signalKit removed**. Part `Units`: none beyond its core. Part
+   `CombatLog`: none beyond its core. Part `Coalescing`: `dependencies`
+   `signalKit` API 1 (new), `optionalDependencies` unchanged (timerKit;
+   schedulerKit with its Coalescing and Lanes parts for `lane`).
+4. Surface:
+   - `ConnectUnit`, `OnceUnit` (facade and scope) and `ConnectCombatLog`
+     (facade and scope) stay as members; without their part each raises at
+     the caller's line, for example `EventKit:ConnectUnit is in EventKit's
+     Units part, which is not loaded: add eventKit\parts\EventKit-Units.lua
+     to embeds.xml after eventKit\EventKit.lua`.
+   - `HasPart` answers for `"Units"` and `"CombatLog"` as for
+     `"Coalescing"`.
+   - `IsCombatLogAvailable`, `SetLimits{ maxUnitFrames }` and `GetLimits`
+     work without either part.
+   - Embedding: SignalKit is no longer listed for EventKit alone; the
+     Coalescing part lists it.
+   - Other Kits: SettingsKit's spec listener tests
+     `type(rawget(EventKit, "ConnectUnit")) == "function"`
+     (`SettingsKit.lua:5266-5277`), which a stub satisfies. It must ask
+     `EventKit:HasPart("Units")` (falling back to the member test for an
+     EventKit without `HasPart`), and its manifest's optional `eventKit`
+     contract names `"parts": ["Units"]`. That is SettingsKit's change, given
+     to its owner; until it lands, an addon that embeds SettingsKit's spec
+     profiles must also embed the Units part.
+5. Ownership: unchanged. Unit and combat-log connections join their EventKit
+   scope like any connection; the core's channel release, scope sweep and
+   connection disconnect call `state.dispatch` entries the parts fill
+   (`releaseUnitChannel`, `releaseRoute`); the core's defaults do nothing,
+   which is exact, since no such connection exists without its part.
+   Unit-group Frames and routes live in the core's state, so an upgraded
+   part takes them over.
+6. Performance and memory (resident, measured unless marked priced):
+
+   | Change | Saving |
+   |---|---:|
+   | Units to a part (core side; stubs priced at +0.4 KB) | −8.2 KB |
+   | CombatLog to a part (core side; stubs priced at +0.2 KB) | −7.4 KB |
+   | Composite-handle closing to the Coalescing part | −2.3 KB |
+   | Upgrade floor | −1.6 KB |
+   | Logout route 2 | −1.7 KB |
+   | Plain indexing on internal tables (priced) | −1.7 to −3.4 KB |
+   | Shared blocks (priced) | +1.0 KB |
+   | Part interface for two more parts (priced) | +0.6 KB |
+   | **EventKit core** | **87.1 → ≈ 65 KB** (AceEvent + CallbackHandler 17.3 KB: 5.0× → 3.8×) |
+   | EventKit-Units, when embedded (priced) | ≈ 11 KB |
+   | EventKit-CombatLog, when embedded (priced) | ≈ 10 KB |
+   | EventKit-Coalescing (priced) | 37.4 → ≈ 40 KB |
+
+   All emptied together measure 65.3 KB, before the priced items. Per
+   object unchanged (a connection 169 B; AceEvent 71 B on a pre-embedded
+   object). Dispatch, connect and disconnect paths are unchanged apart from
+   the `rawget` calls they lose; phase 2 runs the event bench cases against
+   AceEvent in one run. An addon embedding the core alone no longer loads
+   SignalKit's 90.3 KB.
+7. Tests: Bootstrap and Manifest for the two new parts; the UnitEvents,
+   CombatLog and existing unit-related Limits specs run with their part
+   loaded, unchanged; without each part, its stubs raise at the caller's line
+   (facade and scope forms) and `HasPart` answers `false`;
+   `IsCombatLogAvailable` and `SetLimits{ maxUnitFrames }` without the parts;
+   a scope holding unit, combat-log and coalesced connections closes all of
+   them; EventKit loads and serves `Connect` with no SignalKit registered;
+   the Coalescing part refuses to load without SignalKit, naming it. In-place
+   upgrade from revision 22, using a byte copy of today's `EventKit.lua` as
+   the fixture: regular, unit and combat-log connections and a coalesce
+   handle made by revision 22 keep delivering when the parts are loaded;
+   when a part is absent, its connections are disconnected at takeover and
+   reported once through `geterrorhandler()` with the file to embed (the
+   rule the earlier splits use). Removed with their code: the cases that
+   seed handles or state of revisions before 22 (in `Bootstrap_spec`,
+   `Coalesce_spec` and `Parts_spec`) and the route 2 cases of
+   `LogoutCoverage_spec`. EventKit opts into KitConformance (limits with
+   `maxUnitFrames`, receivers, arguments, upgrade).
+8. Docs: README (dependencies without SignalKit, the minimum footprint of
+   two files, the parts, migration rows for `RegisterUnitEvent`-style use
+   naming the Units part), `docs/API.md` (Parts, the three parts, "At
+   logout" without route 2, Cost tables, the `docs/CONTRIBUTING.md` section
+   skeleton), `docs/INTERNALS.md` (the dispatch entries the parts fill, no
+   named handles), `CHANGELOG.md` 0.12.0 (the upgrade floor and the
+   SignalKit change named), `tests/README.md`, the client suite (`.toc`
+   lists the parts; `EXPECTED.md`). Shared, for the maintainer:
+   `docs/EMBEDDING.md` footprint rows and load-order lists (EventKit without
+   SignalKit), `docs/MIGRATING_FROM_ACE3.md` (unit events and the combat log
+   name their parts), the example addon's `embeds.xml` if it uses unit
+   events.
+9. Status: recorded 2026-11-16; code follows.
+
+**Not recorded (owner decisions, priced):**
+- Drop EventKit's own `PLAYER_LOGOUT` route for addon scopes when no
+  LifecycleKit is loaded: about −4 KB; the addon would call
+  `CloseAddonScopes` itself.
+- `C_EventUtils.IsEventValid` checks (`validateEventName`,
+  `refuseUnknownEvent`, about 1.5 KB) are a newcomer guarantee AceEvent does
+  not give; they stay.

@@ -734,3 +734,349 @@ Moved from `docs/ROADMAP.md` (Package O — memory, performance and ease of use 
 9. Status: implemented 2026-11-15, part revision 1, 33.9 KB held only by
    addons that embed it.
 
+**settingsKit Defaults part: plain AceDB-style defaults without SchemaKit** — a change to facade `SettingsKit` and a new part `Defaults`
+
+1. Package `settingsKit`, facade `SettingsKit`, API generation 1 (additive),
+   version 0.7.0 (from 0.6.0), implementation revision 16 (from 15), plan
+   layout 3 (record 3). New part `Defaults`, file
+   `src/parts/SettingsKit-Defaults.lua`, part revision 1, needs the core at
+   revision 16 or later. Manifest `parts.Defaults`:
+   `{ "description": "SettingsKit:Open and db:RegisterNamespace from plain AceDB-style defaults: the write rules inferred from each default, checked without SchemaKit.", "revision": 1, "dependencies": {}, "optionalDependencies": { "schemaKit": { "api": 1 } } }`.
+   The core's `schemaKit` dependency moves from `dependencies` to
+   `optionalDependencies`.
+2. Purpose: a database opened from plain defaults validates its writes
+   without SchemaKit being loaded, and costs no schema nodes. Today such a
+   database is MC:Database's job: AddonKit's Database part infers a SchemaKit
+   schema (two nodes per field, about 0.8 KB per field) and the session needs
+   SchemaKit (82.7 KB) although the inferred schema uses only a handful of
+   rules, every one of which SettingsKit's write fast path already
+   reproduces for scalars (`passesFastCheck`).
+   a. **Plain scopes.** A scope value of `Open`'s second argument that is a
+      plain table (no SchemaKit metatable tag) is a defaults table. Its rules
+      are exactly AddonKit's inference rules today, so a database opened
+      either way accepts and refuses the same writes:
+      `true`/`1`/`"text"` an optional boolean, number (not integer) or string
+      of at most `max(4096, #default)` characters; `{ a = ..., b = ... }` a
+      closed record of those fields; `{}` a free-form bag with string keys of
+      at most 256 characters or number keys, at most 1024 entries, values
+      unchecked (the secret scan and `maxScannedEntries` still apply);
+      `{ ["*"] = d }` a keyed section of at most 1024 entries whose keys are
+      as the bag's and whose entries read `d`; `{ 1, 2, 3 }` an array of one
+      primitive type of at most `max(1024, #default)` elements. Refused at
+      the caller's line, with the same reasons AddonKit gives today:
+      `["**"]`, `["*"]` beside named keys, a non-string record key, a mixed
+      or table-valued list, a non-table scope, nesting deeper than 16
+      tables, a value that is not a boolean, number, string or table.
+      The scope names are SettingsKit's, all ten.
+   b. **SchemaKit leaves.** A SchemaKit node or sealed schema inside a
+      defaults table (AddonKit's `MC.Range`, `MC.Enum`, or an author's own
+      node) is kept as written: the part seals it, splices its
+      `Describe()` output into the scope's description, and the checker
+      hands that subtree to the sealed leaf's `Check`, prefixing the path.
+      Only such a leaf needs SchemaKit, and it cannot exist without it. A
+      leaf that is not optional is made optional, as AddonKit does now.
+   c. **One checker, plain tables in, the same failure out.** The part builds
+      the description `schema:Describe()` would return for the inferred
+      schema, so `compilePlan` compiles it unchanged, and a small checker
+      object takes the sealed schema's place in `scope.schema`: its
+      `Check(value)` answers `true` or `false, failure` with SchemaKit's
+      failure shape (`path`, `rule`, `expected`, `found`) and SchemaKit's
+      wording for each rule it implements, so write refusals, `Validate`
+      and their messages read the same as with an inferred SchemaKit schema.
+      The core calls `scope.schema:Check(probe)` as now and never asks which
+      kind it holds.
+   d. **Without the part**, `Open` (and `RegisterNamespace`) given a plain
+      defaults scope raises at the caller's line:
+      `SettingsKit:Open plain defaults are in SettingsKit's Defaults part, which is not loaded: add settingsKit\parts\SettingsKit-Defaults.lua`.
+      A SchemaKit scope never needs the part.
+   e. `SettingsKit:HasPart(name)` → `true` when part `name` is loaded (as
+      EventKit, SchedulerKit, CodecKit and CommKit answer), so AddonKit and
+      OptionsKit can ask without raising.
+   **Core or part (weighed).** In the core the plain path costs every schema
+   user about 18 KB they never run; as a part it costs plain-defaults users
+   one embed line, which the builder and `tooling.package.embeds` write from
+   the manifest. A database needs exactly one source of rules: SchemaKit
+   for schemas, this part for plain defaults, each embedded by those who use
+   it. The part is the smaller total for every kind of user, so it is a part.
+   If the owner prefers `Open` to accept plain defaults with nothing added to
+   the embed list, the same code goes in the core instead (core about
+   192 KB, no Defaults part), and nothing else in this record changes.
+   Non-goals: AceDB's `["**"]` (no SettingsKit form, refused as today),
+   `RegisterDefaults` (schemas are fixed at `Open` by design), inferring
+   integer numbers or enums from values (a range or choice is written as a
+   leaf), native range and enum leaves that avoid SchemaKit (a later record
+   if wanted; `MC.Range` and `MC.Enum` keep returning SchemaKit nodes).
+3. Dependencies: core: registry API 2, signalKit API 1; schemaKit API 1 and
+   eventKit API 1 optional. SchemaKit is resolved at `Open` through
+   `Registry:Find` when a scope (or leaf) is a SchemaKit schema, not at file
+   scope, so the file loads without it. The depth limit reads
+   `SchemaKit:GetLimit("maxDepth")` when SchemaKit is present and
+   SettingsKit's own 16 (SchemaKit's default) when it is not. Part: the core
+   at revision 16; schemaKit API 1 optional (leaves). No host API.
+4. Surface: `SettingsKit:Open(savedVariable, schemaOrDefaults, options)` and
+   `db:RegisterNamespace(name, schemaOrDefaults)` accept plain defaults per
+   scope (a table that `Open` refused until now: additive);
+   `SettingsKit:HasPart(name)`. Behaviour changes, in CHANGELOG and
+   `docs/API.md`: SettingsKit loads without SchemaKit; the refusal "must be a
+   SchemaKit schema node or sealed schema" becomes, for a plain table, the
+   not-loaded message (part absent) or a defaults refusal (part present).
+   Embedding: a database-only addon with plain defaults embeds Registry,
+   SignalKit, SettingsKit and `SettingsKit-Defaults.lua`; one with SchemaKit
+   schemas embeds SchemaKit as before.
+5. Ownership: the part keeps its state in `state.parts.Defaults` with its
+   `PART_REVISION`, and installs its compiler entry in `state.dispatch`
+   (`compileDefaults`), never overwritten by a core revision; the core's
+   default entry raises the not-loaded message. Compiled defaults are cached
+   per defaults table (weak-keyed), as `compiledScopes` caches schemas, so
+   namespaces and databases opened with the same table share one plan. In-place
+   upgrade from revision 15: no saved data changes; databases revision 15
+   opened keep their sealed schemas and plans; `compiledScopes` is per copy,
+   so revision 16 compiles its own; nothing about SchemaKit's presence is
+   stored. A revision 15 copy loaded after revision 16 yields as usual and
+   never sees the part.
+6. Performance and memory (host Lua; AceDB in the same run):
+
+   | Case | Today | Expected | Basis |
+   |---|---|---|---|
+   | Database-only set, plain defaults | 395.2 KB (SchemaKit loaded) | about 315 KB | measured parts; Defaults part estimated from AddonKit's inference (9.4 KB prototypes) plus a checker the size of SchemaKit's `checkTable`, `checkMap`, `checkArray` (4.5 KB) and failure text, times 1.29 |
+   | Bench-shaped defaults, schema plus first Open | 55,046 B | about 27 KB (AceDB 5,584 B) | measured: nodes 20,426 B gone, sparse Open 26,940 B; minus two seals (about 1.6 KB) |
+   | read-*, write-scalar | unchanged | unchanged | reads never touch the rules; scalar writes take the same fast checks |
+   | write of a table | SchemaKit `Check` of the probe chain | the part's checker over the same chain | estimate: no slower (fewer rules per node) |
+   | open-empty, open-populated | as revision 15 | within noise | the description is built once per defaults table |
+
+   No allocation on reads or writes; a refused write allocates its failure
+   once per checker, as SchemaKit's reused failure table does.
+7. Tests: a differential spec: for a corpus of defaults tables (every rule
+   above, nested records, bags, keyed sections, arrays, leaves), open one
+   database through the part and one through a SchemaKit schema inferred by
+   the same rules, write the same accepted and refused values, compare
+   results and messages exactly; each refusal of 2a at the caller's line
+   (ErrorLevels); leaves: `MC.Range`-style node accepted and refused with the
+   leaf's own message and the prefixed path; the not-loaded message without
+   the part; loading SettingsKit without SchemaKit (KitConformance's
+   dependency group: only registry and signalKit are required); a SchemaKit
+   scope with the part absent; `RegisterNamespace` with defaults (Namespaces
+   part unchanged); the plan cache shared per defaults table; `Validate`,
+   `Pairs`, `Getter`, `Compact` on a plain database; `HasPart`; upgrade from
+   revision 15 with an open schema database, a write after the upgrade;
+   `Allocation_spec` for plain databases. Client suite (never run): a plain
+   database opened in `OnInitialize` without SchemaKit embedded.
+8. Docs: README (plain defaults first, the AceDB migration table row for
+   `AceDB:New(name, defaults)`), `docs/API.md` (*Opening a database* both
+   forms, the rule table of 2a, *Embedding* lists, *Error behaviour*,
+   `HasPart`, revision 16 under *Embedded copies and upgrades*),
+   `docs/INTERNALS.md` (description built from defaults, the checker object,
+   `state.dispatch.compileDefaults`), CHANGELOG 0.7.0, `tests/README.md`,
+   client suite `EXPECTED.md`. Outside the package, the maintainer's:
+   EMBEDDING.md database-only row (no SchemaKit), MIGRATING_FROM_ACE3.md
+   AceDB rows, and AddonKit's Database part (report).
+9. Status: recorded 2026-11-16; code follows.
+
+---
+
+**settingsKit SpecProfiles part: spec profiles out of the core** — a new part `SpecProfiles` of facade `SettingsKit`
+
+1. Package `settingsKit`, facade `SettingsKit`, part `SpecProfiles`, file
+   `src/parts/SettingsKit-SpecProfiles.lua`, part revision 1, needs the core
+   at revision 16 or later (raises
+   `MoltenCodes SettingsKit part SpecProfiles requires SettingsKit API 1 to be loaded first`
+   without it). Core 0.7.0, revision 16 (with records 1 and 3). Manifest
+   `parts.SpecProfiles`:
+   `{ "description": "Profiles assigned per specialization or talent group: SettingsKit:GetSpecIndex, db:SetSpecProfile, db:GetSpecProfile and db:ApplySpecProfile, switched by itself on spec changes while EventKit is embedded.", "revision": 1, "dependencies": {}, "optionalDependencies": { "eventKit": { "api": 1 } } }`.
+2. Purpose: LibDualSpec's job is a separate library in Ace3; here it is
+   12.5 KB of live prototypes (about 16 KB resident) in every SettingsKit
+   core, used only by addons that assign profiles per spec. The body of
+   `installSpecProfiles` moves to the part as it is: the client reading
+   (`GetSpecIndex`), assignments, the shared listener, `Open`'s immediate
+   apply. The core keeps what keeps the saved table consistent without the
+   part: the `specProfiles` section in the layout (created and checked as
+   today), `ResetDatabase` emptying it, and `DeleteProfile` removing
+   assignments that name the deleted profile (moved into the core, about
+   0.6 KB), so data stays right in a session that does not load the part.
+   Non-goals: any change of behaviour of spec profiles themselves.
+3. Dependencies: part: the core; eventKit API 1 optional (found through
+   `Registry:Find`, as today). Host API unchanged and only in the part:
+   `C_SpecializationInfo` (`GetSpecialization`, `GetActiveSpecGroup`,
+   `IsInitialized`, `GetNumSpecializationsForClassID`), `UnitClass`,
+   `GetNumTalentGroups`, `WOW_PROJECT_ID`, as the revision 11 record cites;
+   every guard and secret probe moves with them (the flavour gate then runs
+   on the part file).
+4. Surface: unchanged when the part is loaded. Without it the facade and the
+   database prototype stay complete (an older copy's surface check runs on
+   the newer facade when it yields, `Registry.lua:840-847`), with stubs that
+   raise at the caller's line:
+   `SettingsKit:GetSpecIndex is in SettingsKit's SpecProfiles part, which is not loaded: add settingsKit\parts\SettingsKit-SpecProfiles.lua`,
+   and the existing `databaseIndex` form for `SetSpecProfile`,
+   `GetSpecProfile`, `ApplySpecProfile` (added to `PART_METHODS`).
+   `SettingsKit:HasPart("SpecProfiles")` (record 1) answers without raising.
+   Embedding: OptionsKit's `Profiles` part shows spec selects whenever
+   `GetSpecIndex` exists, so its manifest must name this part as a
+   dependency (`"settingsKit": { "api": 1, "parts": ["SpecProfiles"] }`
+   in its `optionalDependencies`) and test `HasPart`; both are the OptionsKit
+   owner's change (report).
+5. Ownership: part state in `state.parts.SpecProfiles` with its
+   `PART_REVISION`; `state.specListenerConnected` and the dispatch entries
+   `onSpecEvent`, `onDatabaseOpened` stay where they are, so the listener
+   connected by any revision calls the newest entry. The core installs
+   no-op defaults for `onSpecEvent` and `onDatabaseOpened` and its own
+   `forgetSpecProfiles`, and never overwrites an entry the part installed.
+   In-place upgrade from revision 15 with the part absent: revision 15's
+   spec members (`GetSpecIndex`, `SetSpecProfile`, `GetSpecProfile`,
+   `ApplySpecProfile`) and its `onSpecEvent` and `onDatabaseOpened` entries
+   are kept instead of the stubs, as WidgetKit revision 14 kept a
+   single-file copy's members; they read only saved tables and database
+   fields and switch through `rawget(Database, "SetProfile")`, so they run
+   against revision 16 objects (proved with a byte copy of revision 15 as
+   fixture). The part replaces them when it loads. Known limit, documented
+   as WidgetKit's: revision 16 loaded first and a revision 15 copy after it,
+   the older copy yields and that addon's spec calls raise the not-loaded
+   message until some addon embeds the part.
+6. Performance and memory:
+
+   | Case | Today | Expected | Basis |
+   |---|---|---|---|
+   | core | 189.8 KB | about -15 KB | measured 12.5 KB prototypes x 1.29, less about 1.5 KB of stubs and `forgetSpecProfiles` |
+   | part | | about 17 KB | the same prototypes plus about 1 KB part state and residue (the Namespaces part's root table is 704 B, measured) |
+   | spec switch, reads, writes | unchanged | unchanged | same code, same dispatch |
+
+7. Tests: the 37 spec-profile specs (`SpecProfiles_spec.lua`) run with the part loaded; without it,
+   each stub raises at the caller's line with its message (ErrorLevels);
+   `DeleteProfile` and `ResetDatabase` keep the section right without the
+   part; `Open` does not apply assignments without it and does once it is
+   loaded at the next `Open`; `HasPart`; part manifest and `PART_REVISION`;
+   load without the core raises; upgrade from revision 15 (byte-copy
+   fixture) with the part absent keeps switching on a spec event, then the
+   part loading takes over; revision 16 first, revision 15 after, the
+   documented limit; flavour gate on the part. Client suite: the existing
+   `specProfiles` suite gains the part in its `.toc` (never run).
+8. Docs: README (parts list, LibDualSpec migration table names the part),
+   `docs/API.md` (*Spec profiles* says which file, *Embedded copies and
+   upgrades*), `docs/INTERNALS.md` (the part, the kept members),
+   CHANGELOG 0.7.0, `tests/README.md`, client suite. Outside: EMBEDDING.md
+   and MIGRATING_FROM_ACE3.md LibDualSpec rows (the maintainer's),
+   OptionsKit-Profiles manifest and `HasPart` test (its owner's).
+9. Status: recorded 2026-11-16; code follows.
+
+---
+
+**settingsKit core trims: sparse plans, SchemaKit fallbacks, option rules, shared helper blocks** — a change to facade `SettingsKit`
+
+1. Package `settingsKit`, facade `SettingsKit`, API generation 1, version
+   0.7.0, implementation revision 16 (with records 1 and 2), plan layout 3
+   (from 2). Database layout 4 and node layout 4 unchanged.
+2. Purpose: what stays in the core costs less, per file and per database.
+   a. **Sparse plans** (measured prototype). `compilePlan` sets `layout`,
+      `proxied`, `default` and `defaultKind`, and only the fields a record or
+      keyed section uses (`fieldNames`, `fields`, `ownDefaults`, `ownKinds`,
+      `fastChecks`, `values`, `max`, `keyKind`); `compileFastCheck` sets only
+      the bounds a field declares; `passesFastCheck` and the two other
+      readers test those fields for truth, which reads layout 2 plans and
+      layout 3 plans alike.
+   b. **SchemaKit fallbacks.** The depth probes for a SchemaKit older than
+      revision 6 (`depthProbes`, `ensureDepthProbe` and their branch of
+      `depthAllows`) go: without `GetLimit` the fast path answers "not
+      known" and the write takes the full check, where SchemaKit enforces
+      its own depth. `readMaxDepth` keeps one fallback, SettingsKit's own 16,
+      for a database with no SchemaKit (record 1).
+   c. **Option rules.** `readOptions`, `readMaxScannedEntries`,
+      `readAllowNewerData`, `DatabaseHelpers.readMaxNamespaces` and
+      `readMissingOk` (6.7 KB) become one rule table (`OPTION_RULES`: kind,
+      bounds, `UNBOUNDED` allowed or not, what it requires) read by one
+      function, with every message and error level unchanged (pinned by the
+      existing ErrorLevels and Open specs). Taken only if the phase 2
+      prototype measures at least 2 KB saved.
+   d. **Shared helper blocks** for every copy `tooling.shared.sync --list`
+      names: `isSecret`, `reportError`, `validateFacade`, `describeKey`
+      (required by `limits`) and `limits` (`LIMIT_RULES` replaces
+      `LIMIT_NAMES`, `LIMIT_MINIMUMS`, `LIMIT_CEILINGS`, `UNBOUNDED_REFUSALS`;
+      both limits refuse `UNBOUNDED` with today's reasons). `readIsSecret`
+      stays for the hot paths that pass a probe along.
+   **Weighed and kept in the core** (moving them would cost more than it
+   saves or break an older embedder):
+   - *Migrations* (about 6.3 KB prototypes, 8 KB resident). An addon that
+     embeds revision 15 and calls `Open` with `migrations` must keep
+     opening when another addon's revision 16 core without the part takes
+     over: the migration runner is internal to `Open`, so unlike a member it
+     cannot be kept from the older copy, and that addon's `Open` would raise.
+     Versioned migrations are one of the Kit's stated purposes.
+   - *`Getter` and `Validate`* (about 6.2 KB prototypes). `Validate` is called
+     by OptionsKit's core for every bound option, so most option-using
+     addons would load the part anyway; an older copy's `Validate` kept as a
+     member would read layout 3 plans with `== false` tests and fail; a part
+     costs about 1 KB of its own and an embed line for a saving of about
+     7 KB to database-only addons. `Getter` alone (2 KB) is below a part's
+     worth.
+   - *The generation scheme* under the chains (about 3.2 KB): writes resolve
+     their saved table through it. Replacing it with the chains' binding is
+     possible but unmeasured; not in this record.
+   Non-goals: shortening messages (6.9 KB in all, pinned by specs), an
+   unvalidated database mode (see the diagnosis), rebuilding plans of
+   databases opened before an upgrade (they keep layout 2 until reload).
+3. Dependencies: as record 1. `GetLimit` is still read when present.
+4. Surface: no new method. Behaviour changes, in CHANGELOG and
+   `docs/API.md`: `SetLimits` refusal messages take the shared wording
+   (`SettingsKit:SetLimits limits.x must be an integer from 64 to 1024`,
+   `... is not a recognised limit; it accepts maxProfileNameLength, pathKeyLimit`);
+   `validateFacade`'s message gains the `; use SettingsKit:Open(...)` hint; a
+   host error handler that raises while a logout compaction failure is
+   reported now falls back to `print` instead of propagating.
+5. Ownership: unchanged. In-place upgrade from revision 15: plans compiled
+   by revision 15 (layout 2, `false` fields) stay on their databases and are
+   read by the truthiness tests; new plans are layout 3; `depthProbes` built
+   by revision 15 are dropped with their file-local table; limits in
+   `state.limits` keep their values.
+6. Performance and memory:
+
+   | Case | Today | Expected | Basis |
+   |---|---|---|---|
+   | bench schema, first Open | 34,620 B | 26,940 B (-22%) | measured, prototype, 370/370 specs |
+   | plans / fast checks of the bench schema | 13,376 / 4,992 B | 5,696 / 2,032 B | measured, prototype |
+   | depth-probe fallback | about 1.3 KB prototypes | 0 | measured function sizes |
+   | option readers | 6.7 KB prototypes | about 3.5 KB | estimate, prototype first (2c) |
+   | shared helper blocks | | about +3.8 KB resident | measured canonical bodies |
+   | core with records 1 to 3 | 189.8 KB | about 174 KB | sum of the rows above and record 2, plus about 1.5 KB part interface for two new parts |
+   | write-scalar, read-* | unchanged | unchanged, or faster by one table slot test | sparse fast checks test absent fields as fast as `false` |
+
+   Main-chunk locals stay at or below 193 (the ratchet); the four limit
+   tables fold into `LIMIT_RULES`.
+7. Tests: the 370 specs pass on layout 3 plans (the prototype already does);
+   plan sizes (a scalar field plan at most 4 hash slots, a fast check at most
+   4); a database opened by revision 15 then written and compacted after the
+   upgrade (layout 2 plans read by revision 16, byte-copy fixture);
+   writes deeper than SchemaKit's `maxDepth` refused with and without
+   `GetLimit`; option refusals unchanged at the caller's line; the shared
+   blocks (`--check`); `SetLimits` messages; reportError with a raising
+   handler; KitConformance opt-in (`tests/Conformance_spec.lua`: manifest,
+   limits `maxProfileNameLength` 64..1024 and `pathKeyLimit` 32 in 1..1024,
+   receivers, the `Open` and `SetProfile` arguments ADR 0002 names, upgrade
+   seeding an open database).
+8. Docs: `docs/API.md` (*Limits* messages, *Performance* table, revision 16),
+   `docs/INTERNALS.md` (plan layout 3, the depth rule, `OPTION_RULES`, the
+   shared blocks), CHANGELOG 0.7.0, `tests/README.md`; the API.md section
+   skeleton of `docs/CONTRIBUTING.md`.
+9. Status: recorded 2026-11-16; code follows.
+
+---
+
+**Report items for the maintainer (outside settingsKit)**
+
+- AddonKit Database part (its owner): with record 1, `MC:Database` can pass
+  its defaults straight to `SettingsKit:Open` and drop its Inference section
+  (9.4 KB of live prototypes, 15.5 KB for the whole part); its manifest then
+  names `"settingsKit": { "api": 1, "parts": ["Defaults"] }` and keeps
+  `schemaKit` optional for `MC.Range` and `MC.Enum`. Side finding: its
+  `SCOPE_NAMES` lists six scopes, so `MC:Database` refuses `race`,
+  `factionrealm`, `factionrealmregion` and `locale`, which SettingsKit
+  accepts since revision 15.
+- OptionsKit-Profiles (its owner): name the SpecProfiles part in its
+  dependency contract and test `SettingsKit:HasPart("SpecProfiles")`
+  (record 2, point 4).
+- BridgeKit: unaffected (migrations stay in the core); it may compute the
+  character key through `GetCharacterKey` as today.
+- `tooling/shared/lua/limits.lua`: the canonical block is about 4.4 KB of
+  live prototypes against 1.9 KB hand-written here and 1.8 KB in SchemaKit;
+  converting every Kit to it adds about 2.5 KB to each. Shrinking the source
+  (for example one loop instead of `applyLimitUpdate` plus `copyLimits`) is
+  the maintainer's call.
+- EMBEDDING.md footprint tables and the database-only row change with
+  record 1 (no SchemaKit); exact text in phase 2 after measuring.

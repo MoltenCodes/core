@@ -211,3 +211,129 @@ Moved from `docs/ROADMAP.md` (Package O — memory, performance and ease of use 
    ones at load, the rest on first use); the start is two Lua frames, the
    public method and a shared launcher.
 
+**timerKit (core slimming): pausing as a part, the upgrade floor, one logout route fewer** — a change to facade `TimerKit`
+
+Measurements, classification, the upgrade floor and the part contract:
+`core-runtime.md`.
+
+1. Package `timerKit`, facade `TimerKit`, API generation 1 (additive),
+   version 0.10.0 (from 0.9.0), implementation revision 15 (from 14). Part
+   `Pausing`, revision 1.
+2. Purpose: make TimerKit's core what every timer user needs and nothing
+   else. TimerKit is 60.2 KB resident (41.0 KB of live prototypes) against
+   8.1 KB for AceTimer-3.0. The changes, each measured on a research copy
+   with the bodies in question emptied:
+   - **Pausing becomes a part** (`src/parts/TimerKit-Pausing.lua`):
+     `Timer:Pause`, `Timer:Resume`, `Timer:IsPaused` and the paused fire and
+     re-arm paths (`pauseTimer`, `armRemainder`, `fireResumedTimer`): −3.0 KB
+     resident in the core. AceTimer has no pause, and no other Kit calls it
+     (BarKit keeps its own). The core keeps the `"paused"` state wherever
+     it already handles it (`Cancel`, `Restart`, `CancelAll`, `Close`,
+     `GetState`, `GetRemaining`, `GetDeadline`, `IsPending`), which costs no
+     extra code: those branches compare a state string.
+   - **The upgrade floor** (`core-runtime.md`): the conversion of timers
+     revision 13 and older built with named fields (`adoptLegacyTimer`,
+     `fireLegacyTimer`, `adoptReachableLegacyTimers`, the
+     `LEGACY_TIMER_METATABLE` checks on the refusal branches), the release of
+     revision 5's shutdown subscriptions and the revision 7 and 14 field
+     fills: −2.3 KB resident, and the matching main-chunk code (transient).
+   - **Logout route 2 goes**: the `OnShutdown` subscription per addon scope
+     for a LifecycleKit without `CLOSES_ADDON_SCOPES` (revisions before 13,
+     never published): `subscribeToShutdown`, `closeOnShutdown`,
+     `releaseLogoutSubscription` and the `_logoutSubscription` field:
+     −2.1 KB. Routes 1 (LifecycleKit closes), 3 (one EventKit `PLAYER_LOGOUT`
+     connection) and 4 (the addon calls `CloseAddonScopes`) stay unchanged.
+   - **Plain indexing** instead of `rawget`/`rawset` with a literal key on
+     `state`, `state.dispatch`, `state.addonScopes` and on scope and timer
+     records (metatables with a method-table `__index` only): −0.8 to
+     −1.5 KB (the upper bound is measured on all 183 sites), and one C call
+     fewer per access on the start, cancel and fire paths. The facade and
+     the prototypes keep `rawset` (Registry seals them).
+   - **Shared helper blocks**: `isSecret` replaces `isSecretValue` and
+     `readLateProbe` (`TimerKit.lua:497-516`, 656 B → 464 B) and
+     `describeKey` replaces the hand-written copy (`TimerKit.lua:572`,
+     416 B → 504 B): net −0.1 KB. These are the two copies
+     `python3 -m tooling.shared.sync --list` names for timerKit.
+   Non-goals: changing the fast start paths (the package-level `After` and
+   `Every` keep their own inline copy, see "Not recorded"), the record layout,
+   the host style, or any message of the remaining surface.
+3. Dependencies: core unchanged (registry API 2; eventKit and lifecycleKit
+   optional). Part `Pausing`: no dependencies beyond its core.
+   `GetTimePreciseSec` stays an optional host function of the core, which
+   the part reads through the core's helpers.
+4. Surface:
+   - New: `TimerKit:HasPart(name)` (`true` when the named part is installed;
+     a non-string or secret name raises `TimerKit:HasPart name must be a part
+     name string` at the caller's line).
+   - `Pause`, `Resume` and `IsPaused` stay on the `Timer` prototype. Without
+     the part each raises at the caller's line:
+     `TimerKit.Timer:Pause is in TimerKit's Pausing part, which is not
+     loaded: add timerKit\parts\TimerKit-Pausing.lua to embeds.xml after
+     timerKit\TimerKit.lua` (and the same for `Resume`, `IsPaused`).
+   - Unchanged: every other method, message, level, state and the "no
+     limits" rule.
+   - Embedding: an addon that pauses timers adds one line, which
+     `python3 -m tooling.package.embeds` writes.
+5. Ownership: unchanged. A paused timer stays in its scope's active set.
+   The part reads and writes the same nine timer slots; the core's
+   `state.dispatch` gains `fireResumed` and `pause`, which the part fills,
+   so host callbacks made by either resolve the current code at fire time.
+6. Performance and memory (resident, measured unless marked priced):
+
+   | Change | Saving |
+   |---|---:|
+   | Pausing to a part (core side, stubs priced at +0.4 KB) | −2.6 KB |
+   | Upgrade floor | −2.3 KB |
+   | Logout route 2 | −2.1 KB |
+   | Plain indexing on internal tables (priced, half to all of the measured upper bound) | −0.8 to −1.5 KB |
+   | Shared blocks (priced) | −0.1 KB |
+   | Part interface and `HasPart` (priced) | +0.8 KB |
+   | **TimerKit core** | **60.2 → ≈ 53 KB** (AceTimer 8.1 KB: 7.4× → 6.5×) |
+   | TimerKit-Pausing, when embedded (priced) | ≈ 5 KB |
+
+   Per object unchanged: a pending one-shot timer 693 B (AceTimer 629 B, of
+   which 306 B is the host stub's `NewTimer` handle on our side). Start,
+   cancel and fire paths lose their `rawget` calls; phase 2 runs the timer
+   bench cases against AceTimer in one run and records them. Transient
+   allocation while loading (189.6 KB today) falls with the removed
+   main-chunk upgrade code; measured in phase 2.
+7. Tests: Bootstrap and Manifest for the part; the Pausing specs
+   (`Pause_spec`) run with the part loaded, unchanged; without the part, the
+   three stubs raise at the caller's line and `HasPart` answers `false`; a
+   paused timer made with the part is cancelled by `CancelAll`, `Close` and
+   `Restart` (core paths); in-place upgrade from revision 14, using a byte
+   copy of today's `TimerKit.lua` as the fixture: running, repeating and
+   paused timers survive and fire through the new `state.dispatch`, with and
+   without the part loaded (a timer paused by revision 14 with the part
+   absent stays paused, answers `GetRemaining`, and `Resume` raises the stub
+   message). Removed with their code: the cases that seed state of
+   revisions older than 14 (the `ToLegacyLayout` cases of
+   `RecordLayout_spec`, the older-revision cases of `Bootstrap_spec`) and the
+   route 2 cases of `LogoutCoverage_spec` (a LifecycleKit without
+   `CLOSES_ADDON_SCOPES`). The Arguments and
+   ErrorLevels specs keep every remaining case. TimerKit opts into
+   `tests/support/KitConformance.lua` (receivers, arguments, upgrade; no
+   limits group, since TimerKit has none).
+8. Docs: README (parts, the migration table unchanged except a note that
+   pausing is a part), `docs/API.md` (Parts, `HasPart`, Pausing moved under
+   it, "At logout" without route 2, Cost, the section skeleton of
+   `docs/CONTRIBUTING.md`), `docs/INTERNALS.md` (no legacy layout; the
+   dispatch entries the part fills), `CHANGELOG.md` 0.10.0 (the upgrade
+   floor named), `tests/README.md`, the client suite `EXPECTED.md` (pause
+   test needs the part file in its `.toc`). Shared, for the maintainer:
+   `docs/MIGRATING_FROM_ACE3.md` timer rows unchanged; `docs/EMBEDDING.md`
+   footprint table rows for TimerKit and TimerKit-Pausing.
+9. Status: recorded 2026-11-16; code follows.
+
+**Not recorded (owner decisions, priced):**
+- Drop logout route 3 (TimerKit's own EventKit `PLAYER_LOGOUT` connection
+  when no LifecycleKit is loaded): −4 KB (`ensureLogoutConnection`,
+  `hasLogoutConnection`, `closeOnLogout` and their state). An addon without
+  LifecycleKit would then call `CloseAddonScopes` itself, which weakens
+  "closed whenever the framework can observe logout".
+- Package-level `After`/`Every` delegate to the default scope's fast path
+  instead of carrying their own inline copy: −1.9 KB, one Lua frame more per
+  package-level start.
+- Nothing short of dropping a documented guarantee (handles, scopes, the
+  logout routes, `New(options)` validation, introspection) brings the core
+  near AceTimer's 8.1 KB.

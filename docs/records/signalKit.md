@@ -229,3 +229,222 @@ Moved from `docs/ROADMAP.md` (Package O — memory, performance and ease of use 
    KB. One listener per topic rather than per handle, because a message with
    no first argument is keyed by its topic.
 
+**Minimal core (2026-11-16)**
+
+Status: recorded 2026-11-16; code follows.
+
+Measured on host Lua 5.1.5 (64-bit), debug information kept as the client keeps
+it, on the shared fake client, string table pre-grown (the method of the
+2026-11-15 memory diagnosis). "Measured" means a research copy with the change
+applied was loaded and executed; "priced" means summed from measured prototype
+sizes.
+
+**Diagnosis**
+
+**What SignalKit holds today (0.9.0, revision 12)**
+
+| | SignalKit core | Coalescing part | CallbackHandler-1.0 (Ace3 `5e2e0d3b`) |
+|---|---:|---:|---:|
+| Resident after load, debug kept | 90,379 B | 17,698 B | 10,422 B |
+| Resident, `luac -s` | 63,221 B | 11,823 B | about 6 KB |
+| Live prototype arrays | 58,672 B | 13,528 B | 7,640 B |
+| Transient while loading (per embedding addon) | 287,396 B | 54,850 B | 25,446 B |
+| Constant strings in live code | 9,300 B (60 prose strings, 4,036 B) | 2,999 B (19, 1,231 B) | 1,407 B (9, 760 B) |
+| Source lines: code / comments / LuaCATS / blank | 1,693 / 442 / 732 / 253 | 325 / 56 / 105 / 45 | |
+
+Core is 8.7x CallbackHandler. Live prototypes by section: Facade methods 9,248 B,
+Listener storage 7,784 B, Bus methods 7,616 B, Signal methods 7,608 B, Logout
+close 6,288 B, Bus scopes 6,024 B, Journals 5,288 B, Bus validation 3,792 B, Bus
+topics 2,664 B. Largest functions: `obtainBus` 1,952 B, `busPublish` 1,896 B,
+`subscribe` 1,896 B, `busUnsubscribe` 1,752 B, `journalFire` 1,336 B,
+`busDeclareTopic` 1,248 B, `fire` 1,240 B, `readTopicOptions` 1,232 B,
+`LogoutClose.arrange` 1,232 B. The schema upgrades (`upgradeSchemaOne` to
+`Five`), the surface and state validators and `installPartMethods` run only at
+load and are freed (27,488 B); they are not a resident cost.
+
+Per object (400 kept, after a warm-up object):
+
+| Object | SignalKit | CallbackHandler | |
+|---|---:|---:|---|
+| Signal / registry | 468 B (`New`) | 1,212 B (`CallbackHandler:New`, closures per registry) | 0.4x |
+| Connection, function | 169 B | 72 B (pre-made owner object) | 2.3x |
+| Connection, method form | 305 B | 208 B | 1.5x |
+| Bus subscription, one topic | 112 B | | |
+| Bus subscription, new topic each | 574 B | 208 B (new event each) | |
+| Bus scope | 468 B | | |
+| Journal, capacity 128 | 37,716 B | | |
+
+**Classification**
+
+Usage read from every `src/` file: the Kits that depend on SignalKit
+(LifecycleKit, EventKit, CommKit, OptionsKit, SettingsKit, MediaKit, the
+EventKit and WidgetKit parts) use raw signals only: `New`, `Connect`, `Once`,
+`Fire`, `DisconnectAll`, `Connection`. LifecycleKit also calls `CloseAddonBus`
+at each addon's shutdown, and ModuleKit calls `ForAddon` for a module's
+`Messages` scope when one is asked for. Nothing outside SignalKit calls
+`NewJournal`, `Bus`, `SetLimits` or `GetLimits`. Since LifecycleKit requires
+SignalKit, nearly every addon loads the core for raw signals alone.
+
+The eventKit and lifecycleKit core records of the same date take SignalKit off
+both cores (LifecycleKit keeps calling `CloseAddonBus` when SignalKit is
+loaded). The cut here holds either way: with them, SignalKit drops out of the
+smallest set altogether and is loaded by the Kits that use raw signals (CommKit,
+OptionsKit, SettingsKit, MediaKit, the EventKit Coalescing and WidgetKit
+Position parts), which then pay for the core only, and by authors who want
+messages, who add the Bus part.
+
+| Class | Members | Live prototypes |
+|---|---|---:|
+| Every user: raw signals (CallbackHandler's counterpart) | `New`, `Connect`, `Once`, `Fire`, `DisconnectAll`, `GetGeneration`, the connection handle, listener storage, method-name binding, the `onFirst`/`onLast` hooks, receiver checks | 14,464 B |
+| Every user, cold: handles in the named-field layout (signals revisions 10 and older created) | `convertToArrayLayout`, `isNamedLayoutHandle`, `connectedKeyOf`, `tombstoneCount`, and the layout branches in the hot functions | 1,816 B plus the branches |
+| Every user: package limits (they guard part memory, but `SetLimits`/`GetLimits` keep one shape) | `SetLimits`, `GetLimits`, `validateLimitEntry`, `validateLimitUpdate`, `isIntegerUpTo`, `describeKey`, `refuseSecret` | 3,576 B |
+| Some users: named buses (AceEvent-3.0's messages) | `Bus`, topics, `DeclareTopic`, `Publish`, `Subscribe`, `SubscribeOnce`, `Unsubscribe`, `Topics`, `CloseAddonBus`, isolated delivery | 20,376 B |
+| Some users: bus scopes | `CreateScope` and the scope methods | 6,352 B |
+| Some users: logout close of an addon's bus | `ForAddon`, `LogoutClose.*` | 6,800 B |
+| Some users: journals | `NewJournal`, `Fire`, `History`, the ring | 5,288 B |
+
+Duplicated helpers (`tooling.shared.sync --list`): `SignalKit.lua:695 isSecret`,
+`:1649 validateFacade`, `:2929 describeKey`, `:2976 limits`;
+`SignalKit-Coalescing.lua:124 isSecret`, `:138 reportError`, `:181 describeKey`.
+What converting saves, priced from the shared sources: nothing. `isSecret` is the
+same size (464 B), `validateFacade` +56 B, `describeKey` +80 B (it asks
+`isSecret` first), the `limits` block (3,296 B for its four functions) with
+the shorter `SetLimits`/`GetLimits` it allows comes to about +800 B over the
+hand-written seven; the Coalescing part's three copies about +130 B. The gain is
+one body per helper under the `--check` gate, not memory.
+
+**signalKit: raw-signal core, Bus and Journal parts** — a change to facade `SignalKit`
+
+1. Package `signalKit`, facade `SignalKit`, API generation 1 (unchanged, the
+   facade gains `HasPart`), version 0.10.0 (from 0.9.0), implementation
+   revision 13 (from 12). Minor. New parts, revision 1 each: `Bus`
+   (`src/parts/SignalKit-Bus.lua`) and `Journal`
+   (`src/parts/SignalKit-Journal.lua`). `Coalescing` goes to part revision 2.
+2. Purpose: the core every addon loads holds raw signals only, the counterpart
+   of CallbackHandler-1.0; the message bus, the counterpart of AceEvent-3.0's
+   messages, and the journals are parts.
+   - **S1 Bus part**: named buses, topics and their argument policies,
+     `Publish`/`Subscribe`/`SubscribeOnce`/`Unsubscribe`/`Topics`, bus scopes,
+     `ForAddon` with the logout close, and isolated delivery
+     (`securecallfunction`, or the `xpcall` staging buffer elsewhere). The
+     scopes and the logout close stay in this part rather than parts of their
+     own: ModuleKit's `Messages` scope and `ForAddon` are how buses are used.
+   - **S2 Journal part**: `NewJournal`, `Journal:Fire`, `Journal:History`.
+   - **S3 Parts plumbing** (the ADR 0001 contract as the other split Kits keep
+     it): `SignalKit:HasPart(name)`; `_state.parts` (exists since revision
+     12), `_state.helpers` (the core functions a part calls: `attach`,
+     `disconnectConnection`, `disconnectEveryListener`, `newSignalTable`,
+     `bindMethod`, `reportError`, `describeKey`, read at call time on cold
+     paths) and `_state.partInterface = 1`; a commit that reinstalls installed
+     parts' methods (as `installPartMethods` does for Coalescing today).
+     `CloseAddonBus` without the Bus part answers `false` after its argument
+     checks, which is exact (no addon bus can exist), so LifecycleKit's
+     shutdown keeps working unchanged. `Fire` on an `_isolated` signal calls
+     the Bus part's isolated walk through `_state.parts.Bus`; only topic
+     signals carry the flag, and they exist only with the part.
+   - **S4 Cold named-field layout.** The handling of handles in the
+     named-field layout becomes functions created only when this copy inherits
+     state from revision 12 or older, recorded as `_state.namedLayouts = true`
+     (sticky, so a later revision that inherits from 13 still knows). The hot
+     functions keep one `_layout ~= 2` test and call through
+     `_state.namedLayout` for such a signal. In a session where no revision
+     older than 13 was loaded, the code is freed after load.
+   - **S5 Shared helper blocks**: `isSecret`, `validateFacade` and
+     `describeKey` in the core; the parts take `isSecret` and `reportError`
+     blocks (`isSecret` is on the Coalescing and Bus delivery paths) and read
+     `describeKey` through `_state.helpers`. `limits` stays hand-written and
+     SignalKit is pinned out of it in `tooling/shared/pins.json` with the
+     reason the other Kits' opt-outs give (the block measures more resident
+     than the Kit's own loop; kept until a leaner revision of the block). Its
+     messages already match the block's, so converting later changes no text.
+   - **S6 State created by its owner.** A fresh state no longer creates the
+     journal prototype and metatable or the logout watcher; the parts create
+     them on install. The bus and scope prototypes and metatables stay core
+     state, so Coalescing part revision 1, which checks them at file scope, and
+     every inherited bus keep working.
+   Non-goals: any change of bus, signal or journal semantics, of per-object
+   layouts, or of the hot paths' order of checks.
+3. Dependencies: core unchanged (registry API 2; optional eventKit and
+   lifecycleKit, now only through the Bus part's logout close, so they move to
+   that part's `optionalDependencies`). Manifest parts:
+   `"Bus": { "revision": 1, "optionalDependencies": { "eventKit": { "api": 1 }, "lifecycleKit": { "api": 1 } } }`,
+   `"Journal": { "revision": 1 }`, and `Coalescing` gains `"parts": ["Bus"]`
+   and `"revision": 2`. Other owners (text in the report): ModuleKit names
+   `signalKit` parts `["Bus"]` for its `Messages` scope and asks
+   `SignalKit:HasPart("Bus")` so its error is raised at the author's line with
+   the file to add.
+4. Surface: unchanged names. `Bus`, `ForAddon`, `NewJournal` stay on the facade
+   (older copies' `validatePublicSurface` tests them); without their part each
+   raises at the caller's line:
+   `SignalKit:Bus is in SignalKit's Bus part, which is not loaded: add signalKit\parts\SignalKit-Bus.lua to embeds.xml after signalKit\SignalKit.lua`.
+   `SetLimits` and `GetLimits` keep all three limits whichever parts are
+   loaded. New: `SignalKit:HasPart(name)`. Embedding: an addon that uses buses
+   adds `SignalKit-Bus.lua` (the generated `embeds.xml` does, from a manifest
+   or a selection); one that uses journals adds `SignalKit-Journal.lua`. The
+   migration guide's `SendMessage`/`RegisterMessage` rows name the Bus part.
+5. Ownership: unchanged. Each part keeps `_state.parts.<Part>` with its
+   `PART_REVISION`; the highest wins and upgrades in place. In-place upgrade
+   from revision 12 (the shared rule for splits): with the Bus part loaded,
+   it adopts the buses, topic records, signals, subscriptions and scopes as
+   they are (layouts unchanged) and every held handle keeps working; without
+   it, the core closes every inherited bus at takeover (the terminal close
+   `CloseAddonBus` performs), installs the stubs, and reports once through
+   `geterrorhandler()` which part to embed. Inherited journals keep their
+   slots and work again when the Journal part loads; without it, a journal's
+   `Fire` (on its own prototype) is a stub naming the part, and it still fires
+   as a signal through `SignalKit.Fire`. A revision 12 copy loaded after
+   revision 13 yields and its addon gets the stub's error. No revision was
+   ever published.
+6. Performance and memory (resident, debug kept):
+
+   | Change | Resident | Basis |
+   |---|---:|---|
+   | core today | 90,379 B | measured |
+   | S1 + S2 + S3 stubs | 36,876 B (-53,503 B, -59%) | measured (research copy) |
+   | S4 | about -2,500 B | priced (1,816 B of prototypes plus the branches) |
+   | S5 | about +400 B | priced from the shared sources (`limits` not converted) |
+   | S6 | about -900 B | priced (journal tables, watcher table) |
+   | core target | at most 35,000 B (CallbackHandler 10,422 B) | |
+   | Bus part, when loaded | about 52,000 B | priced (33,528 B of prototypes plus its header) |
+   | Journal part, when loaded | about 9,500 B | priced |
+   | Coalescing part revision 2 | about 17,800 B | priced |
+
+   Transient per embedding addon: 287,396 to about 138,000 B (measured for the
+   research copy). The smallest set (Registry, SignalKit, EventKit,
+   LifecycleKit, TimerKit) with the Registry record: 341,282 to 279,799 B
+   measured (Ace3: 54,010 B). An addon that uses everything pays about 7%
+   more than today (one header and bootstrap per part). Per object nothing
+   changes; a signal stays at 468 B against a CallbackHandler registry's
+   1,212 B. What stays above CallbackHandler buys the documented guarantees:
+   explicit connection handles, amortised O(1) disconnect with tombstones,
+   re-entrant dispatch without a per-`Fire` snapshot, argument errors at the
+   caller's line, the method form checked at registration, secret-value
+   refusal. Bench cases `signals` and `message` against Ace3 in phase 2;
+   publish and subscribe paths are moved, not changed, so the message ratios
+   should stay within noise.
+7. Tests: the moved specs (`Bus_spec`, `BusIsolation_spec`, `BusScope_spec`,
+   `LogoutClose_spec`, `Journal_spec`, `Coalescing_spec`) run with the parts
+   loaded and pass unchanged; without each part, each moved member raises at
+   the caller with the file to add, `CloseAddonBus` answers `false`, and
+   `HasPart` answers `false`; either load order of core and part; a part
+   without its core raises the ADR 0001 message; Coalescing without the Bus
+   part refuses at load; in-place upgrade from revision 12 (byte copy of the
+   current file as the fixture) with live buses, subscriptions, a scope, an
+   addon bus arranged for logout and a journal: with the parts every handle
+   keeps working; without them the buses are closed and reported once; S4
+   with a named-field signal inherited through revision 12, and a 13-to-14
+   in-place upgrade keeping `namedLayouts`; `SetLimits`/`GetLimits` messages
+   unchanged. Conformance: opt in with all
+   groups (`manifest` with each part's revision, `limits` for the three limits,
+   `receivers`, `arguments`, `upgrade`). Client suites
+   (`tests/client/MoltenCodesTest_SignalKit/`, never run): the `.toc` loads the
+   parts; one stub error with the core alone.
+8. Docs: README (parts, embedding, migration rows for CallbackHandler and
+   AceEvent messages), `docs/API.md` (each bus and journal section names its
+   part; `HasPart`; the section skeleton `docs/CONTRIBUTING.md` defines),
+   `docs/INTERNALS.md` (part state, helpers, the cold named-field layout),
+   `CHANGELOG.md` 0.10.0, `tests/README.md`, `src/.luarc.json`. Shared files (kept by their owner): `docs/MIGRATING_FROM_ACE3.md` (the `SendMessage`,
+   `RegisterMessage`, `RegisterBucketMessage` rows name the parts),
+   `docs/EMBEDDING.md` footprint and load order, `packages/README.md`,
+   coverage floors for the new part files if they are tracked per file.
+9. Status: recorded 2026-11-16; code follows.

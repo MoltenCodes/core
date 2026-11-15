@@ -299,3 +299,185 @@ Moved from `docs/ROADMAP.md` (Package O — memory, performance and ease of use 
    keyed: Lua 5.1 has no ephemeron tables, so a weak key would not free a
    prototype. The main chunk is down to 193 locals.
 
+**moduleKit (core slimming): injection, implements contracts and required addons as parts, the upgrade floor** — a change to facade `ModuleKit`
+
+Measurements, classification, the upgrade floor and the part contract:
+`core-runtime.md`.
+
+1. Package `moduleKit`, facade `ModuleKit`, API generation 1 (additive),
+   version 0.11.0 (from 0.10.0), implementation revision 24 (from 23). New
+   parts `Injection`, `Implements` and `RequiredAddons`, revision 1.
+2. Purpose: ModuleKit is the largest file of the runtime set, 150.7 KB
+   resident (103.0 KB of live prototypes), against 27.0 KB for AceAddon-3.0,
+   which also holds the lifecycle; a container costs 4,203 B on top of its
+   LifecycleKit instance (AceAddon's `NewAddon` 1,771 B for both). What every
+   ModuleKit user needs: containers, modules and their hooks, the module
+   graph and its policies (AddonKit's every `NewModule` depends on `"Main"`,
+   `AddonKit.lua:944-962`, so the graph is part of the entry point of ADR
+   0004), module scopes, intent versus fact, the AceAddon conveniences
+   (default state, prototypes, `FindAddon`, the created notice) and the
+   reaction to the addon's own halt (a halt can come from any addon that
+   embeds LifecycleKit's Halt part, so this reaction cannot live in an
+   optional part of ModuleKit). The changes, each measured on a research copy
+   with the bodies in question emptied unless marked priced:
+   - **Injection part** (`src/parts/ModuleKit-Injection.lua`): the four
+     provider kinds (`ProvideValue`, `ProvideSingleton`, `ProvideModule`,
+     `ProvideTransient`), `Resolve` on the container and the module,
+     `Inject` and the `inject` definition field, provider conflicts,
+     resolution records and the resolution cycle stack (`resolveProvider`,
+     `addInjections`, `resolveInjections`, `registerProvider`,
+     `providerConflict`, `validateFactory`, `resolutionRecordMatches`,
+     `resolutionLabel` and the public wrappers): −15.7 KB in the core.
+     AceAddon has no injection. A hook still receives its `injections`
+     argument; without the part it is the module's empty injection table,
+     as today for a module that declares none, and `GetInjections` stays in
+     the core (an empty snapshot without the part).
+   - **Implements part** (`src/parts/ModuleKit-Implements.lua`): the
+     `implements` contracts of module definitions and of provider options
+     (`compileImplements`, `compileImplementsNames`,
+     `compileImplementsSchema`, `checkImplements`, `isSchemaLike`,
+     `describeSchemaFailure`, `readProvideOptions`): −8.4 KB. Its SchemaKit
+     form keeps SchemaKit optional, as today.
+   - **RequiredAddons part** (`src/parts/ModuleKit-RequiredAddons.lua`): the
+     `requiresAddons` definition field and everything that follows another
+     addon's halt (`addRequiredAddon`, `declareRequiredAddons`,
+     `moduleRequiredAddons`, `requiresAddon`, `isOtherAddonHalted`,
+     `subscribeToDependencyHalts`, `dependencyHaltedInternal`,
+     `blockForHaltedAddon`): −5.5 KB (the emptied copy measured −6.3 KB with
+     `lifecycleDependencyCeiling`, which stays in the core with `SetLimits`).
+     `requiresAddons` declares LifecycleKit `DependsOn` edges, so this part
+     requires LifecycleKit's Halt part. `maxRequiredAddons` keeps its place
+     in the core's limits table and its ceiling check against LifecycleKit's
+     `maxDependencies`.
+   - **The upgrade floor**: the per-container and per-module fills for
+     revisions before 23 (`ensureContainerRuntimeFields`,
+     `ensureModuleRuntimeFields`: the dispatched-phase set rebuilt from
+     LifecycleKit, `_passDepth`, `_pendingCatchUp`, `_wantedEnabled`,
+     `_scopeOpen` for revisions before 6, scope creation for old modules):
+     priced −2.9 KB resident. New containers are built complete by
+     `createAddon`; the upgrade from revision 23 adopts containers that are
+     already complete.
+   - **Lazy container tables**: `_providers` and `_resolutionStack` are
+     created by the Injection part on first use, `_pendingCatchUp` on the
+     first deferred catch-up: priced −0.3 KB per container. With
+     LifecycleKit's own phase lists (lifecycleKit record) each of the
+     container's subscriptions loses its SignalKit connection: priced about
+     −0.8 KB per container. Container 4,203 → ≈ 3,100 B.
+   - **Plain indexing** on `state`, `state.addons`, containers, modules and
+     module scopes (metatables the Kit owns) instead of literal-key
+     `rawget`/`rawset`: −2.8 to −5.6 KB (upper bound measured on 349 sites).
+     Module definitions, prototypes and providers' values are the author's
+     tables and keep raw access; the facade and prototypes keep `rawset`.
+   - **Shared helper blocks**: `isSecret` (`ModuleKit.lua:377`, 448 B →
+     464 B), `describeKey` (`ModuleKit.lua:397`, 416 B → 504 B), `limits`
+     (`ModuleKit.lua:4527`, `validateLimitUpdate` and the copy loops of
+     `setLimits`/`getLimits` → the block with one `LIMIT_RULES` entry,
+     `maxRequiredAddons`, whose `check` is the LifecycleKit ceiling): priced
+     +1.4 KB. These are the three copies `tooling.shared.sync --list` names
+     for moduleKit.
+   Non-goals: moving the graph, the dependency policies, module scopes, the
+   AceAddon conveniences or intent versus fact (see "Not recorded");
+   changing any message of the remaining surface.
+3. Dependencies: core unchanged (registry API 2, lifecycleKit API 1;
+   commKit, commandKit, hookKit, schedulerKit, schemaKit, signalKit and
+   timerKit optional). Part `Injection`: none beyond the core; it uses the
+   Implements part when loaded (`optionalDependencies` cannot name a sibling
+   part, so the core's `HasPart("Implements")` decides at call time). Part
+   `Implements`: `optionalDependencies` `schemaKit` API 1. Part
+   `RequiredAddons`: `dependencies` `lifecycleKit` API 1 with `"parts":
+   ["Halt"]`.
+4. Surface:
+   - New: `ModuleKit:HasPart(name)`.
+   - Stubs without their part, raising at the caller's line with the file to
+     embed: `Addon:ProvideValue`, `ProvideSingleton`, `ProvideModule`,
+     `ProvideTransient`, `Addon:Resolve`, `Module:Resolve`, `Module:Inject`
+     (Injection). For example `ModuleKit.Addon:ProvideSingleton is in
+     ModuleKit's Injection part, which is not loaded: add
+     moduleKit\parts\ModuleKit-Injection.lua to embeds.xml after
+     moduleKit\ModuleKit.lua`.
+   - Definition fields: `CreateModule` with `inject`, `implements` or
+     `requiresAddons` and the matching part absent raises at the caller's
+     line with the same message form, naming the field
+     (`ModuleKit.Addon:CreateModule definition field "inject" is in
+     ModuleKit's Injection part, ...`). An `implements` provider option
+     without the Implements part raises the same way.
+   - Unchanged: every other member, `SetLimits`/`GetLimits` with
+     `maxRequiredAddons`, `UNBOUNDED`, `FindAddon`, `GetAddons`, the
+     created notice, the error messages of the remaining surface.
+   - Embedding: the example addon uses `ProvideSingleton`, `ProvideValue`
+     and `Resolve` (`examples/Settings.lua:67`, `Commands.lua:48`,
+     `Window.lua:99`), so its `embeds.xml` gains the Injection part.
+5. Ownership: unchanged. Providers, resolution records and required-addon
+   lists stay in the container and module records, created by their part on
+   first use, so an upgraded part takes them over; the core's
+   `state.dispatch` gains the entries the parts fill (`resolveForHook`,
+   `dependencyHalted`), whose defaults do nothing, which is exact.
+6. Performance and memory (resident):
+
+   | Change | Saving |
+   |---|---:|
+   | Injection to a part (core side; 7 stubs priced at +0.7 KB) | −15.0 KB |
+   | Implements to a part (core side; field check priced at +0.2 KB) | −8.2 KB |
+   | RequiredAddons to a part (core side; field check priced at +0.2 KB) | −5.3 KB |
+   | Upgrade floor (priced) | −2.9 KB |
+   | Plain indexing on internal tables (priced) | −2.8 to −5.6 KB |
+   | Shared blocks (priced) | +1.4 KB |
+   | Part interface for three parts (priced) | +0.9 KB |
+   | **ModuleKit core** | **150.7 → ≈ 117 KB** (AceAddon 27.0 KB: 5.6× → 4.3×) |
+   | ModuleKit-Injection, when embedded (priced) | ≈ 18 KB |
+   | ModuleKit-Implements, when embedded (priced) | ≈ 10 KB |
+   | ModuleKit-RequiredAddons, when embedded (priced) | ≈ 8.5 KB |
+   | Per container (priced) | 4,203 → ≈ 3,100 B; with its LifecycleKit instance 7,535 → ≈ 4,100 B |
+
+   The three parts emptied together measure 121.7 KB, before the priced
+   items. The main chunk's locals (193 today, the `lua_limits` ratchet entry)
+   fall by about 20 with the moved helpers; phase 2 updates the ratchet.
+   Lifecycle passes are unchanged; phase 2 runs the module bench cases
+   against AceAddon in one run.
+7. Tests: Bootstrap and Manifest for the three parts; the Injection,
+   Implements, Halted and DependencyPolicy specs run with their parts
+   loaded, unchanged; without each part, every stub and every refused
+   definition field raises at the caller's line (`ErrorLevels_spec` style)
+   and `HasPart` answers `false`; hooks receive an empty injection table
+   without the Injection part; a container whose own addon halts disables
+   its modules with no ModuleKit part loaded; `SetLimits{
+   maxRequiredAddons }` and the LifecycleKit ceiling without the
+   RequiredAddons part; `Allocation_spec` gains the lazy container tables.
+   In-place upgrade from revision 23, using a byte copy of today's
+   `ModuleKit.lua` as the fixture: containers with providers, resolved
+   singletons, `implements` contracts and `requiresAddons` made by revision
+   23 keep working when the parts are loaded; when a part is absent, its
+   members raise the stub message and the state it would serve is left in
+   place, reported once through `geterrorhandler()`. Removed with their
+   code: the cases that seed containers or modules of revisions before 23.
+   ModuleKit opts into KitConformance (limits with `maxRequiredAddons`,
+   receivers, arguments, upgrade).
+8. Docs: README (parts; migration table rows for AceAddon unchanged,
+   injection named as a part), `docs/API.md` (Parts, the Dependency
+   injection, Implements and Halted addons sections split by part, Cost,
+   the `docs/CONTRIBUTING.md` skeleton), `docs/INTERNALS.md` (dispatch
+   entries, lazy container tables, no runtime-field fills), `CHANGELOG.md`
+   0.11.0 (the upgrade floor named), `tests/README.md`, client suite (`.toc`
+   and `EXPECTED.md`). Shared, for the maintainer: the example addon's
+   `embeds.xml` (`moduleKit\parts\ModuleKit-Injection.lua` after
+   `moduleKit\ModuleKit.lua`), `docs/GETTING_STARTED.md` and
+   `docs/COOKBOOK.md` where they use providers, `docs/EMBEDDING.md`
+   footprint rows, `tooling/validation/lua_limits.json` (ModuleKit's
+   `mainLocals` after the change, lower).
+9. Status: recorded 2026-11-16; code follows.
+
+**Not recorded (owner decisions, priced):**
+- **The module graph as a part** (dependency edges, ordering constraints,
+  cycle reports, `ValidateGraph`, `GetActivationOrder`, the policies'
+  recursion): about −20 to −25 KB from the core (Graph section 12.7 KB of
+  prototypes plus the policy recursion). The core would order by creation,
+  as AceAddon does. AddonKit would have to stop declaring `dependsOn =
+  { "Main" }` for every module and rely on creation order, which changes
+  what a targeted `module:Enable()` does when `Main` is disabled. This is
+  the only remaining lever of AceAddon's order of magnitude; it is a
+  decision about AddonKit's module model, not a measurement.
+- The `strict` dependency policy as a part: a few KB, but it is woven into
+  the same recursive paths as `automatic`, so the split would cost about
+  what it saves.
+- Composed error prose (101 resident strings, 6.8 KB): about −1.5 to
+  −2.5 KB, wording changes in every message family.
