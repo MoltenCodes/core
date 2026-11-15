@@ -2786,15 +2786,15 @@ recorded in `docs/decisions/`. Each record below is written before its code.
    addon loads only what it uses (core decision 19a). Scope: (`tooling/`, `tests/support/framework/`, `docs/TOOLING.md`,
    `docs/decisions/`, `.github/workflows/`, the manifest schema). No Kit is
    split by this record: every Kit stays single-file and behaves exactly as
-   today. Splitting a Kit is its owner's record (wave 2 starts with
+   today. Splitting a Kit is its owner's record (a later package O record starts with
    widgetKit).
-2. Purpose: the memory diagnosis (`improve/memory.md`, fix 12) measured
+2. Purpose: the memory diagnosis (the diagnosis prototype, fix 12) measured
    339 KB of resident code in optional sections a typical addon never runs
    (SchedulerKit and EventKit coalescing, CodecKit compression, CommKit
    reassembly and SyncSet, CommandKit options binding, SettingsKit views and
    spec profiles, ModuleKit halted addons, the WidgetKit renderer and widget
    types). It is the only lever that brings a typical addon near Ace3, and it
-   needs the tooling first. The usability diagnosis (`improve/usability.md`,
+   needs the tooling first. The usability diagnosis (the diagnosis prototype,
    cause 3 and F6) found that embedding means copying a 46-line load order by
    hand and that the builder writes no `embeds.xml`. This record gives both:
    parts in the manifest and every gate, and a generated `embeds.xml`.
@@ -2964,7 +2964,7 @@ recorded in `docs/decisions/`. Each record below is written before its code.
 2. Purpose. Lua 5.1 allows 200 active locals and 60 upvalues per function,
    and nothing measures either today: CommKit and CommandKit sit at 198 of
    200 main-chunk locals, which nobody could see until the architecture
-   diagnosis counted them (`improve/architecture-plan.md` 2.2, 5.4). The
+   diagnosis counted them (the diagnosis prototype 2.2, 5.4). The
    gate turns that into a number at review time and holds every file to it.
    Separately, 14 specs pin the SemVer string, so every documentation patch
    edits a spec, while the invariant the pin was after (the manifest version
@@ -3254,7 +3254,7 @@ copied.
    string-keyed table of facade name to generation, the package ID derived
    by lower-casing the first letter and the file path built only when an
    error needs it).
-   Expected numbers, from the prototype and `improve/memory/exec.lua` (host
+   Expected numbers, from the prototype and the diagnosis prototype (host
    Lua 5.1.5, debug info kept, measured 2026-11-15):
 
    | Measure | Ace3 | MC today | Prototype | AddonKit target (phase 2 measures) |
@@ -3273,7 +3273,7 @@ copied.
    target despite the Bootstrap, state validation and limits a real Kit
    adds. Phase 2 measures each file and the per-addon cost with the same
    script and reports them against the rows above. The ten-task line count
-   is re-counted with `usability/prototype/count_lines.py`.
+   is re-counted with the diagnosis prototype.
 
    Mistakes a newcomer makes, before and after (messages measured by the
    prototype's specs; phase 2 asserts each):
@@ -3473,7 +3473,7 @@ Client facts used, read 2026-11-15 from Gethe/wow-ui-source
       reader around.
    Non-goals: lazy layout sections (above), lazy record children under
    chains, splitting views or spec profiles into a part file (decision 18a,
-   wave 2), WoW Forever's regional unique names (not a supported client; see
+   a later package O record), WoW Forever's regional unique names (not a supported client; see
    the report), a plan built from SchemaKit's compiled nodes instead of
    `Describe` copies (not measured).
 3. Dependencies: registry API 2, schemaKit API 1 (uses `GetLimit` when
@@ -3568,7 +3568,7 @@ Client facts used, read 2026-11-15 from Gethe/wow-ui-source
 2. Purpose: a compiled schema node holds only the fields its kind uses, and a
    consumer on a hot path can read one shared limit without allocating.
    a. **Sparse nodes** (memory.md fix 1, perf-settings fix 3, prototype
-      `memory/proto/schemaKit/SchemaKit.lua`): `newCompiledNode` sets
+      the diagnosis prototype): `newCompiledNode` sets
       `layout`, `kind` and `expected`; every other field is set only by the
       builder that uses it. The seven `~= false` tests become truthiness
       tests, which read old fixed nodes and new sparse nodes alike;
@@ -3702,6 +3702,643 @@ Client facts used, read 2026-11-15 from Gethe/wow-ui-source
    `TakenCheck_spec.lua:123` ("reads every alias live") unchanged.
 8. Docs: `docs/INTERNALS.md` (the kept lookup and why a miss may be kept),
    CHANGELOG, `tests/README.md`.
+9. Status: recorded 2026-11-15 under core decisions 18 and 19; code follows.
+
+**timerKit (package O): fixed-cost trims, the probe rule, scope reopening and method-name callbacks** — a change to facade `TimerKit`
+
+1. Package `timerKit`, facade `TimerKit`, API generation 1 (additive),
+   version 0.9.0 (from 0.8.2), implementation revision 14 (from 13).
+2. Purpose: close the measured gap to AceTimer-3.0 on the start, cancel
+   and fire paths (the decision 18 diagnosis,
+   section timerKit, prototype the diagnosis prototype),
+   apply package O's secret-probe rule, give ModuleKit a way to keep a
+   module's timer scope across enable cycles (`Scope:Reopen`, see the
+   moduleKit record), and add Ace3's method-name callback form under core
+   decision 19c. The fixes:
+   - **One-frame start.** `Scope:After` and `Scope:Every`, and the
+     package-level `TimerKit:After` and `TimerKit:Every`, test the receiver,
+     the closed state, the callback, the delay (`delay >= 0 and delay <
+     HUGE`, which also refuses NaN and infinity; `> 0` for `Every`) and the
+     probe in one condition, then build, arm and record the timer inline.
+     When any test fails they hand over, with a non-tail call, to the
+     existing `startTimerInScope`, which raises the same message at the
+     caller's line as today.
+   - **One-frame cancel.** `Timer:Cancel` holds the cancel body inline.
+   - **One-frame fire.** `dispatch.fireStarted` merges the stale-callback
+     check with the delivery (no `dispatchFire` → `fireTimer` →
+     `deliverTimer` → `detachActive` chain on the hot path).
+   - **No `type()` before the private-metatable checks** (`TimerKit.lua`
+     `:574`, `:583`, `:1011`, `:1408`, `:1708`): `getmetatable(x) ~=
+     METATABLE` already refuses everything but a record, because the
+     metatable's `__metatable` field hides it from foreign code.
+   - **`_userData` layout.** The constructors stop naming `_userData =
+     nil`. A one-shot timer stays at 8 hash nodes either way (a wasted store
+     only); a repeating timer drops from 16 nodes to 8, and the first
+     `SetUserData` on a repeating timer pays the one rehash instead of every
+     repeating timer paying the larger table.
+   - **Probe rule.** `issecretvalue` is resolved once at load (today, too,
+     at `:445`); when it was absent at load, each check reads
+     `rawget(_G, "issecretvalue")` and accepts it only as a function, so a
+     probe installed later is honoured (today it never is).
+   - **Method-name callbacks (decision 19c).** `After(delay, receiver,
+     methodName)` and `Every(interval, receiver, methodName)` on scopes and
+     on the facade, the counterpart of AceTimer's
+     `self:ScheduleTimer("Method", delay)`. The method is looked up once, at
+     the call: `receiver` must be a table, `methodName` a non-empty,
+     non-secret string, and `receiver[methodName]` a function, or the call
+     raises at the caller's line. The resolved function is wrapped in one
+     closure, `function(timer) return method(receiver, timer) end`, which
+     becomes the timer's callback, so the method runs as
+     `method(receiver, timer)`.
+   Non-goals: AceTimer's extra callback argument (`ScheduleTimer(f, delay,
+   arg)`; `SetUserData` is the counterpart), late binding (see point 4),
+   a method form on `New(options)`, changing the host style (`NewTimer`
+   handles stay: they are what lets a cancelled timer leave nothing pending).
+3. Dependencies: unchanged, registry API 2. Host requirements unchanged.
+4. Surface:
+   - `scope:After(delay, receiver, methodName)`,
+     `scope:Every(interval, receiver, methodName)`, and the same on the
+     facade. The method name is required (AceTimer has no default either).
+     Errors, each at the caller's line: `<method> callback must be a
+     function, or a receiver table followed by a method name` (replacing
+     `<method> callback must be a function`, whose text it still
+     contains), `<method> methodName must not be a secret value`,
+     `<method> methodName must be a non-empty string`, `<method> receiver
+     has no method "<name>"` (also when the field is not a function), and
+     `<method> receiver must not be a secret value`.
+   - **Recorded deviation from AceTimer: early binding.** AceTimer reads
+     `obj[func]` when the timer fires; TimerKit reads it once when the timer
+     starts (the decision asks for the check at registration, and the
+     resolved function is cheaper per fire). Replacing the method on the
+     receiver afterwards does not change a timer already started; `Restart`
+     keeps the resolved function too. The docs say so in the migration
+     table.
+   - `scope:Reopen()` → `true` when it reopened a closed manual scope,
+     `false` when the scope was open. A reopened scope is empty and usable
+     like a new one; timers cancelled by the close stay cancelled and can
+     be started again. An addon scope (`ForAddon`) raises at the caller:
+     `TimerKit.Scope:Reopen cannot reopen an addon scope`, because closing
+     an addon scope is its addon's teardown and stays terminal.
+   - Unchanged: every other method, message, level, state and limit.
+5. Ownership: unchanged. A method-name timer is owned by its scope like any
+   other; the receiver is held by the wrapper closure while the timer is
+   held, exactly as a closure callback holds its upvalues.
+6. Performance and memory (host bench, ratios against AceTimer-3.0 from the
+   same run, prototype numbers from `perf-runtime.md`):
+
+   | Case | Before | Expected after |
+   |---|---:|---:|
+   | oneshot-create-cancel | 2.46× | 1.84× |
+   | oneshot-create-fire | 1.86× | 1.42× |
+   | repeat-tick | 1.08× | 1.01× |
+
+   Instructions per create + cancel 188 → 138, calls 22 → 15. Bytes per
+   pending one-shot unchanged at 877 B (AceTimer 629 B, of which 306 B is
+   the host stub's `NewTimer` handle on our side); a repeating timer's
+   record 704 → 384 B (measured, the decision 18 diagnosis). The probe rule saves one global read and one
+   `type` per check in the client; on the bench host, which defines no
+   `issecretvalue`, the fallback costs what today's code costs, so the
+   table above already excludes any probe gain.
+   Method-name form (measured in the diagnosis prototype):
+   one closure of two upvalues, 136 B, at start; per fire one extra Lua
+   frame, 31.7 ns against 19.2 ns for a closure callback (Ace3's late-bound
+   lookup costs 35.1 ns on the same host). The closure form is unchanged:
+   the method form leaves the fast path at its callback test and is built
+   on the existing slow path. `Reopen` adds nothing to any hot path.
+   Not reached by these fixes: a timer well below AceTimer's bytes. The
+   remaining 248 B gap is the host handle and the two-upvalue fire closure,
+   both bought by documented guarantees; an array-part timer record (176 B
+   instead of 384 B, measured) would close most of it and is left for an
+   owner decision because every record read changes.
+7. Tests: the fast paths keep every existing error message and level
+   (Arguments spec gains one case per fast-path test that fails, each
+   asserting the caller's line); `fireStarted` stale-callback and repeating
+   specs; a repeating timer without user data has 8 hash nodes (internal
+   spec through the record layout), and `SetUserData` on it still works;
+   the probe rule (a probe installed after load is honoured; a probe present
+   at load is called without a global read); receiver checks without `type`
+   (a string, a number, a table with a foreign metatable, a table with a
+   `__metatable` field all raise the receiver message); method form on
+   `After`/`Every` of scope and facade: fires as `method(receiver, timer)`,
+   each refusal at the caller's line, missing and non-function method,
+   secret method name, early binding (replacing the method after start does
+   not change the call), `Restart` keeps it; `Reopen` on a closed and an
+   open manual scope, on an addon scope (raises), timers of the closed
+   period stay cancelled; an in-place upgrade from revision 13 keeps running
+   one-shot and repeating timers firing through the new `fireStarted`, and
+   their callbacks created by revision 13 resolve it at fire time. Client
+   suite additions (never run): a method-name timer fires; `getmetatable`
+   on a secret value does not raise (the receiver checks rely on it for a
+   meaningless secret receiver only).
+8. Docs: API.md (method form, early binding, `Reopen`, the errors table,
+   the revised "allocates nothing" note for `SetUserData` on a repeating
+   timer, the probe rule), INTERNALS.md (one-frame paths and their
+   hand-over to the validators, record layout), CHANGELOG, README (migration
+   table row for `ScheduleTimer("Method", delay)`), tests/README. For the shared documents:
+   the `MIGRATING_FROM_ACE3.md` timer row and the closures-only paragraph.
+9. Status: recorded 2026-11-15 under core decisions 18 and 19; code follows.
+
+**eventKit (package O): fixed-cost trims, smaller connections, scope reopening and method-name callbacks** — a change to facade `EventKit`
+
+1. Package `eventKit`, facade `EventKit`, API generation 1 (additive),
+   version 0.10.0 (from 0.9.8), implementation revision 21 (from 20).
+2. Purpose: the measured EventKit fixes of
+   the decision 18 diagnosis (sections lifecycleKit
+   and moduleKit F1/F4, eventKit and signalKit, schedulerKit P1; prototypes
+   the diagnosis prototype,
+   the diagnosis prototype, the diagnosis prototype), the memory fix for connection handles from
+   `memory.md`, package O's probe rule, and decision 19c's method-name form.
+   - **Plain fields in the scope links.** `linkToScope` and
+     `unlinkFromScope` use plain indexing: neither metatable has
+     `__newindex` and every field written exists on the record.
+   - **The second `pcall` only while a channel needs it.** `fireChannel`
+     walks unprotected unless the channel holds a legacy signal (connections
+     from revision 16 and older) or a one-shot listener, whose release talks
+     to the host. A per-channel count `onceCount`, created on first use and
+     kept by `Once`/`OnceUnit` connect, disconnect and delivery, says so.
+     Listener calls already run through `securecallfunction` or `xpcall`,
+     neither of which propagates a listener error
+     (`docs/EMBEDDING.md`, "Secure calls and secure variables"), so the
+     unprotected walk cannot leave `dispatchDepth` raised.
+   - **Smaller connection handles.** A connection becomes an array-part
+     record: `[1]` callback, `[2]` connected, `[3]` once, `[4]` fan-out
+     (channel or combat-log route), and for a scoped connection `[5]` scope,
+     `[6]` previous, `[7]` next. The fan-out kind is told by the fan-out
+     record itself. The connection metatable moves into shared state, so
+     `Disconnect`/`IsConnected` check the receiver by metatable identity
+     (one C call instead of `type`, `rawget`, `type`). Connections an older
+     revision made are converted in place when this revision loads (the
+     same tables, so handles held by addons keep working), walking every
+     channel, unit group, combat-log route and scope list once; the hot
+     path then reads one layout only. Any closure of an older revision that
+     reads connection fields directly is found and covered before the
+     conversion is written (phase 2 audits SchedulerKit's and LifecycleKit's
+     uses; only methods are called on handles today, as far as read).
+   - **Probe rule.** `isSecret` (`:718`) and the dispatch check (`:1996`)
+     use `issecretvalue` resolved at load, and fall back to
+     `rawget(_G, "issecretvalue")` per call, accepted only as a function,
+     when it was absent at load.
+   - **No `type()` before the private-metatable checks** (`:818`, `:2898`).
+   - **`Scope:Reopen()`** for ModuleKit's kept scopes (moduleKit record).
+   - **Method-name callbacks (decision 19c)**, the counterpart of AceEvent's
+     `self:RegisterEvent("X", "OnX")` and `self:RegisterEvent("X")`.
+   Non-goals: the method form on `ConnectCombatLog`, `Coalesce` and
+   `Derive` (no Ace3 counterpart for the first two besides AceBucket, whose
+   coalescing moves to a part in a later package O record and gets the form there); late
+   binding; flattening the four-frame regular dispatch (P4, a later package O record with the
+   coalescing part).
+3. Dependencies: unchanged, registry API 2, signalKit API 1.
+4. Surface:
+   - `Connect(eventName, receiver[, methodName])`,
+     `Once(eventName, receiver[, methodName])` on the facade and on scopes;
+     `methodName` defaults to `eventName`, as AceEvent's does.
+     `ConnectUnit(eventName, receiver, methodName, unit1[, unit2])` and
+     `OnceUnit(...)` the same, with `methodName` required (a unit token in
+     its place would be ambiguous). The method runs as
+     `method(receiver, eventName, ...)`, what AceEvent passes.
+   - Resolved and checked at the call: `receiver` a table, `methodName` a
+     non-empty, non-secret string, `receiver[methodName]` a function;
+     otherwise raises at the caller's line: `<method> callback must be a
+     function, or a receiver table followed by a method name` (still
+     containing today's `callback must be a function`), `<method>
+     methodName must be a non-empty string`, `<method> methodName must not
+     be a secret value`, `<method> receiver has no method "<name>"`.
+   - **Recorded deviation from AceEvent: early binding.** AceEvent reads
+     `self[method]` on every event; EventKit reads it once at connect.
+     Replacing the method on the receiver afterwards (including another
+     addon's HookKit `Hook` on that method) is not seen by an existing
+     connection; reconnect to pick it up. Stated in API.md and the
+     migration table.
+   - `scope:Reopen()` → `true` when it reopened a closed manual scope,
+     `false` when it was open; empty afterwards; an addon scope raises at
+     the caller (`EventKit.Scope:Reopen cannot reopen an addon scope`).
+     During a dispatch, a scope closed and reopened in the same dispatch is
+     open again at once, and the sweep of its earlier connections still
+     runs when the outermost dispatch returns.
+5. Ownership: unchanged; a method-form connection is owned like any other.
+6. Performance and memory (host bench against AceEvent-3.0, same run):
+
+   | Case | Before | Expected after |
+   |---|---:|---:|
+   | event dispatch-1 | 1.13× | 1.07× (measured without the `pcall`) |
+   | event churn-warm / churn-cold | 1.33× / 1.53× | about 1.2× / 1.4× (estimate: handle 224 → 128 B and fewer C calls on disconnect) |
+   | disable-enable-all-listening (moduleKit) | 2.21× | 1.58× with ModuleKit's reuse (6,740 → 6,130 instructions from the links alone) |
+   | buckets record-event (via schedulerKit) | 1.90× | 1.73× in the client; on the bench host, which has no `issecretvalue`, the fallback keeps today's cost |
+
+   Connection bytes (measured, the diagnosis prototype):
+   unscoped 224 → 128 B, scoped 384 → 176 B. Per marginal connection that is
+   still above AceEvent's 71 B on a pre-embedded object, which stores one
+   hash entry and returns no handle; an EventKit scope (404 B) stays below
+   an AceEvent embed (455 B). Method form: one closure of two upvalues,
+   136 B, at connect; one extra Lua frame per delivery (31.7 against
+   19.2 ns, Ace3's late-bound 35.1 ns). The closure form's paths are
+   unchanged. The conversion of old connections runs once per upgrade.
+7. Tests: dispatch with and without a one-shot (`onceCount` kept through
+   connect, disconnect, delivery, `DisconnectAll`, close during dispatch);
+   a legacy signal still protected; dispatch depth restored after a host
+   failure in a one-shot release; array-layout handles: every method, the
+   receiver message for a string, a table with a foreign metatable and an
+   old-layout imitation; scope links after many connect/disconnect orders;
+   the in-place upgrade from revision 20 converting regular, unit,
+   combat-log and scoped connections, held handles still disconnecting,
+   connection order kept; probe rule (installed after load honoured);
+   method form on the four methods of facade and scope (default name,
+   required name on the unit forms, each refusal at the caller's line,
+   early binding, `method(receiver, eventName, ...)`); `Reopen` (manual,
+   open, addon scope, inside a dispatch). Client suite additions (never
+   run): a method-name connection on `PLAYER_ENTERING_WORLD`;
+   `securecallfunction` does not propagate a listener error.
+8. Docs: API.md (method form, early binding, `Reopen`, connection cost,
+   errors), INTERNALS.md (handle layout and its conversion, `onceCount`,
+   when the walk is protected), CHANGELOG, README (migration rows for
+   `RegisterEvent("X", "OnX")` and `RegisterEvent("X")`), tests/README.
+9. Status: recorded 2026-11-15 under core decisions 18 and 19; code follows.
+
+**signalKit (package O): publish and subscribe trims, smaller connections, bus scope reopening and method-name callbacks** — a change to facade `SignalKit`
+
+1. Package `signalKit`, facade `SignalKit`, API generation 1 (additive),
+   version 0.8.0 (from 0.7.7), implementation revision 11 (from 10).
+2. Purpose: the measured SignalKit fixes of
+   the decision 18 diagnosis (section eventKit and
+   signalKit; prototype the diagnosis prototype), the handle
+   memory fix, package O's probe rule, `Scope:Reopen` for ModuleKit's kept
+   `Messages` scope, and decision 19c's method-name form.
+   - **Fixed cost of `bus:Publish` and `subscribe`.** No `type(self)` in
+     front of `getmetatable(self) ~= BUS_METATABLE` (also `:1393`, `:1402`,
+     `:1950`); the probe resolved by the rule below; `type(topic)` and
+     `topic == ""` only when the topic-table lookup misses (a topic record
+     exists only under a validated non-empty string). The validators still
+     raise every message at the caller's line.
+   - **Probe rule** at `isSecret` (`:1364`), `subscribe` (`:1734`) and
+     `busPublish` (`:1888`): resolved at load, per-call
+     `rawget(_G, "issecretvalue")` (accepted only as a function) when it was
+     absent at load.
+   - **Smaller connection handles.** `{ callback, connected, once, signal }`
+     in the array part, `[5]` the bus scope for a scope's subscription;
+     `_busCallback` (revision 8 and older) is kept by the conversion only.
+     Raw signals are not listed anywhere SignalKit can walk, so conversion
+     is lazy: a signal created by this revision carries `_layout = 2`, and
+     `Fire`, `Connect`, `Once`, `DisconnectAll` and a connection's
+     `Disconnect` convert an older signal's listener array in place the
+     first time they touch it (the same tables, so held handles keep
+     working). `Fire` pays one field read for the marker.
+   - **`Scope:Reopen()`** on bus scopes.
+   - **Method-name callbacks (decision 19c)**: the counterpart of
+     AceEvent's `RegisterMessage("Name", "Method")` / `RegisterMessage("Name")`
+     on buses, and of CallbackHandler's `RegisterCallback(self, "event",
+     "method")` on raw signals.
+   Non-goals: late binding; a method form for `Unsubscribe` (a method-form
+   subscription is released by its handle or its scope, since
+   `Unsubscribe(topic, callback)` matches functions); journals.
+3. Dependencies: unchanged, registry API 2.
+4. Surface:
+   - `bus:Subscribe(topic, receiver[, methodName])`,
+     `bus:SubscribeOnce(topic, receiver[, methodName])`, and the same on bus
+     scopes; `methodName` defaults to `topic`, as AceEvent's does. The
+     method runs as `method(receiver, ...)` with the published arguments;
+     unlike AceEvent, the topic is not passed (a bus subscriber never gets
+     it today), which the migration table states.
+   - `signal:Connect(receiver, methodName)`, `signal:Once(receiver,
+     methodName)`: name required (a raw signal has no name to default to).
+   - Checks and errors as in the other runtime Kits, at the caller's line:
+     `<method> callback must be a function, or a receiver table followed
+     by a method name`, `<method> methodName must be a non-empty string`,
+     `<method> methodName must not be a secret value`, `<method> receiver
+     has no method "<name>"`.
+   - **Early binding** (recorded deviation from AceEvent and
+     CallbackHandler, which look the method up per call): the method is
+     resolved at subscribe.
+   - `scope:Reopen()` → `true` when it reopened a closed bus scope, `false`
+     when it was open; refused with `false, "closed"` when its bus is
+     closed (an addon bus closed at logout stays closed).
+5. Ownership: unchanged.
+6. Performance and memory (host bench against AceEvent-3.0 messages, same
+   run):
+
+   | Case | Before | Expected after |
+   |---|---:|---:|
+   | message dispatch-1 | 1.57× | 1.39× in the prototype; 1.42-1.47× expected on the bench host, where the probe fallback keeps its read |
+   | message dispatch-10 | 1.06× | 0.98× |
+   | message churn-warm / churn-cold | 1.56× / 1.64× | about 1.3× / 1.4× (estimate: handle 224 → 128 B) |
+
+   Subscription bytes (measured): 224 → 128 B, a bus scope's 384 → 144 B.
+   Still above AceEvent's 71 B per extra message on a pre-embedded object
+   (no handle there). Method form: 136 B closure at subscribe, one extra
+   Lua frame per delivery (31.7 against 19.2 ns; Ace3 late-bound 35.1 ns).
+7. Tests: publish and subscribe refusals at the caller's line for every
+   reordered test (secret topic, non-string, empty, unknown topic, wrong
+   receiver: string, number, foreign-metatable table); probe installed
+   after load honoured; array-layout handles and every connection method;
+   lazy conversion of a revision 10 signal on `Fire`, `Connect` and a held
+   handle's `Disconnect`, including a conversion during a dispatch of that
+   signal; bus subscriptions converted; the in-place upgrade from revision
+   10 keeping order and tombstone counts; method form on bus, bus scope and
+   raw signal (default topic name, required name on signals, refusals,
+   early binding, the arguments passed); `Reopen` on open, closed, and
+   closed-bus scopes.
+8. Docs: API.md (method form, `Reopen`, handle cost, conversion note),
+   INTERNALS.md (layout, `_layout` marker), CHANGELOG, README (migration
+   rows for `RegisterMessage` and `RegisterCallback` with a method name),
+   tests/README.
+9. Status: recorded 2026-11-15 under core decisions 18 and 19; code follows.
+
+**hookKit (package O): counted hook bound, inline isolation, scope reopening and method-name handlers** — a change to facade `HookKit`
+
+1. Package `hookKit`, facade `HookKit`, API generation 1 (additive),
+   version 0.4.0 (from 0.3.2), implementation revision 8 (from 7).
+2. Purpose: the measured HookKit fixes of
+   the decision 18 diagnosis (section hookKit;
+   prototype the diagnosis prototype), `Scope:Reopen` for
+   ModuleKit's kept `Hooks` scope, and decision 19c's method-name form.
+   - **Counted upper bound instead of a walk.** `hasRoom` (`:1090`) today
+     calls `countRecords` on every install, so installing n hooks is
+     quadratic. Each scope keeps `_recordBound`, raised by one at every
+     record added and lowered at `removeRecord` (`:819`, the only place a
+     record is removed). A real count runs only when the bound reaches
+     `maxHooks`; it also forgets records of collected objects and resets the
+     bound. A scope an older revision built has no bound and is counted on
+     first use.
+   - **`pcall` inline in the hook closures.** Pre-hook and secure post-hook
+     closures call `pcall(record._handler, ...)` and pass a failure to
+     `dispatch.reportFailure`, instead of going through
+     `dispatch.isolatedCall`, which stays published for closures older
+     revisions installed.
+   - **No `type()` before the private-metatable checks** (`:512`, `:967`).
+   - Probe: HookKit already follows package O's rule (`isSecret`, `:486`).
+   - **`Scope:Reopen()`.**
+   - **Method-name handlers (decision 19c)**, the counterpart of AceHook's
+     `self:Hook(obj, "Method", "Handler")` and its default handler name.
+   Non-goals: AceHook's `hookSecure` flag, late binding, AceHook's
+   `self.hooks` table (`scope:Original` is the counterpart).
+3. Dependencies: unchanged, registry API 2.
+4. Surface: in the handler position of `Hook`, `RawHook`, `SecureHook`,
+   `HookScript`, `RawHookScript` and `SecureHookScript`, a receiver table
+   followed by an optional handler name:
+   - `Hook(object, method, receiver[, handlerName][, options])` and
+     `Hook(globalName, receiver[, handlerName][, options])`; the script
+     forms `HookScript(frame, script, receiver[, handlerName][, options])`.
+     After the receiver, a string is the handler name and anything else is
+     the options table. The default handler name is the hooked method's or
+     script's name, as in AceHook (`AceHook-3.0.lua:119` at the bench's
+     pinned commit, read for behaviour only).
+   - The handler runs as `handler(receiver, ...)` with what the closure form
+     receives: the call's arguments, and for `RawHook`/`RawHookScript` the
+     original first (`handler(receiver, original, ...)`), which differs from
+     AceHook (it passes `self` and keeps originals in `self.hooks`); the
+     migration table says so.
+   - Resolved and checked at the call, errors at the caller's line:
+     `<method> handler must be a function, or a receiver table followed by
+     an optional handler name` (containing today's `handler must be a
+     function`), `<method> handlerName must be a non-empty string`,
+     `<method> handlerName must not be a secret value`, `<method> receiver
+     has no method "<name>"`.
+   - **Early binding** (recorded deviation from AceHook, which looks the
+     handler up per call).
+   - `scope:Reopen()` → `true` when it reopened a closed manual scope,
+     `false` when it was open; its limit is kept; closures left inert by the
+     close stay inert (a new hook installs a new closure). An addon scope
+     raises at the caller (`HookKit.Scope:Reopen cannot reopen an addon
+     scope`).
+5. Ownership: unchanged.
+6. Performance and memory (host bench against AceHook-3.0, same run):
+
+   | Case | Before | Expected after |
+   |---|---:|---:|
+   | call through a pre-hooked script / method | 1.89× / 1.81× | 1.47× / 1.39× |
+   | call through a post-hooked method | 1.64× | 1.31× |
+   | install with 200 hooks resident | 11,331 ns | 1,298 ns, flat in n |
+   | install with 0 resident | 1,341 ns | 1,276 ns |
+
+   One number field per scope for the bound, no per-hook bytes. Method
+   form: a 136 B closure per hook and one extra Lua frame per hooked call
+   (about 12.5 ns, measured in the diagnosis prototype).
+7. Tests: installs up to `maxHooks` and the refusal past it with the bound;
+   the bound after `Unhook`, `UnhookAll`, `Close`, and with records of
+   collected objects (recount frees room); a revision 7 scope without a
+   bound; inline isolation reports a handler error and still runs the
+   original, results and `nil` counts unchanged; closures installed by
+   revision 7 keep working after the in-place upgrade; receiver checks
+   without `type`; method form on all six methods with and without a
+   handler name and with options, refusals at the caller's line, the raw
+   form's `original` argument, early binding; `Reopen`.
+8. Docs: API.md (method form, raw-form argument order, `Reopen`, the install
+   cost), INTERNALS.md (`_recordBound`, inline isolation), CHANGELOG, README
+   (migration rows for `Hook(obj, "Method", "Handler")` and the default
+   handler), tests/README.
+9. Status: recorded 2026-11-15 under core decisions 18 and 19; code follows.
+
+**schedulerKit (package O): the probe rule, one-pass key validation, receiver checks and scope reopening** — a change to facade `SchedulerKit`
+
+1. Package `schedulerKit`, facade `SchedulerKit`, API generation 1
+   (additive), version 0.9.0 (from 0.8.9), implementation revision 21
+   (from 20).
+2. Purpose: the SchedulerKit items of
+   the decision 18 diagnosis (section schedulerKit
+   coalescing, P1 and P2), package O's probe rule, the private-metatable
+   checks, `Scope:Reopen` for ModuleKit's kept `Jobs` scope, and the
+   decision 19b removals that fall in this file.
+   - **Probe rule.** `issecretvalue` is resolved at load (today at `:530`,
+     inside a `do` block, with no fallback). The resolved probe moves out of
+     the block so the hot paths see it, and when it was absent at load each
+     check reads `rawget(_G, "issecretvalue")`, accepted only as a function.
+   - **One-pass key validation in a coalesce handle's `__call`**
+     (`coalesceCall`, `:3640`): the probe, the `nil` test and the NaN test
+     run in one inline condition, and the existing validator raises the
+     message (unchanged, same level) only when that condition fails. One Lua
+     call fewer per key; no message string is built on success.
+   - **No `type()` before the private-metatable checks** (`:1299`, `:1307`,
+     `:1315`, `:2406`, `:2415`, `:3105`, `:5387`).
+   - **Decision 19b.** The two option-name checks that only keep a secret
+     key away from an internal table read (`:1150`, `:2362`, "a secret key
+     would raise at the table read below") guard what the client already
+     refuses. They go only if the maintainer confirms the reading below; see point 7.
+   - **`Scope:Reopen()`.**
+   Non-goals, a later package O record with the coalescing part (decision 19a): EventKit
+   calling a trusted SchedulerKit entry that skips the key re-check (P3),
+   slimming the coalesce member to 8 fields or fewer (P5, about −376 B per
+   bucket), the method-name form for buckets (AceBucket's
+   `RegisterBucketEvent(events, interval, "Method")`) and the move of
+   `Debounce`/`Coalesce`/`Watch`/lanes into a part file. SchedulerKit gets
+   no method-name form in (package O): Ace3 has no counterpart to its jobs.
+3. Dependencies: unchanged, registry API 2, timerKit API 1.
+4. Surface: `scope:Reopen()` → `true` when it reopened a closed manual scope,
+   `false` when it was open; an addon scope raises at the caller
+   (`SchedulerKit.Scope:Reopen cannot reopen an addon scope`). Jobs and
+   handles the close cancelled or closed stay so. Nothing else changes.
+5. Ownership: unchanged.
+6. Performance and memory (host bench against AceBucket-3.0, same run):
+
+   | Case | Before | Expected after |
+   |---|---:|---:|
+   | buckets record-event | 1.90× | 1.73× in the client from the probe (EventKit and SchedulerKit); about 1.85× on the bench host, whose missing `issecretvalue` keeps the fallback's read, minus P2's call |
+   | buckets burst | 1.93× | 1.79× in the client, as above |
+   | buckets register-remove | 2.34× | unchanged (P5 is a later package O record) |
+
+   No bytes change. `Reopen` adds nothing to any hot path.
+7. Tests: coalesce key refusals unchanged in text and level (secret, `nil`,
+   NaN) through the one-pass check, including `SecretValues_spec:241`,
+   which needs the probe visible outside the `do` block; probe installed
+   after load honoured on every path that checks one; receiver checks
+   without `type` for scopes, jobs, contexts, members and lanes; `Reopen`;
+   in-place upgrade from revision 20 keeping queued jobs and coalesce
+   handles. Decision 19b: removing the option-name checks assumes that no
+   caller table can hold a secret key. The measurement in
+   `docs/EMBEDDING.md` shows that reading `t[secret]` raises; that writing
+   one raises too, so `pairs` never yields one, is not measured. Until the
+   client suite asserts `t[secretwrap(1)] = true` raises, these two checks
+   stay; with the maintainer's yes they go and the client suite gains that test.
+8. Docs: API.md (`Reopen`, the probe rule), INTERNALS.md (the one-pass key
+   check), CHANGELOG, tests/README; the README's scope table.
+9. Status: recorded 2026-11-15 under core decisions 18 and 19; code follows.
+
+**lifecycleKit (package O): the probe rule and the halted field as a record field** — a change to facade `LifecycleKit`
+
+1. Package `lifecycleKit`, facade `LifecycleKit`, API generation 1,
+   version 0.6.9 (from 0.6.8, internal fix and documentation), implementation
+   revision 18 (from 17).
+2. Purpose: the LifecycleKit side of the moduleKit fix F3 in
+   the decision 18 diagnosis (section lifecycleKit
+   and moduleKit) and package O's probe rule.
+   - **`_halted` becomes a documented, stable generation-1 field of an
+     instance.** ModuleKit reads it on every enable instead of calling
+     `IsHalted` twice. It is exact because LifecycleKit writes
+     `_halted = true` before it notifies anyone (`LifecycleKit.lua:1973`),
+     and every instance gets `_halted = false` at creation (`:674`). An
+     instance of a revision older than the halted state has no field and
+     reads as not halted, which is what it is. INTERNALS-level promise in
+     API.md: the field is written only by LifecycleKit, is `true` from the
+     moment the halt begins, and keeps its name and meaning for API 1.
+   - **Probe rule.** `isSecret` (`:344`) reads `rawget(_G,
+     "issecretvalue")` on every call today. It resolves it once at load and
+     falls back to the per-call read, accepted only as a function, when it
+     was absent at load.
+   - **Decision 19b candidate.** `describeKey` (`:358`) checks a caller
+     table's key for a secret before naming it; a table cannot be indexed
+     with a secret key on Retail 12.1.0 (`docs/EMBEDDING.md`). The check
+     stays until the client suite proves a secret key cannot be written
+     either (see the schedulerKit record, point 7), then goes.
+   Non-goals: any change to phases, halts, the combat gate or their costs.
+3. Dependencies: unchanged, registry API 2, signalKit API 1, eventKit API 1.
+4. Surface: no new methods. API.md documents the `_halted` field as above.
+5. Ownership: unchanged.
+6. Performance and memory: one global read and one `type` fewer per secret
+   check in the client; nothing on the bench host, which has no probe. The
+   ModuleKit gain the field enables is in the moduleKit record (about 22
+   instructions per halt check, twice per enable). No bytes change.
+7. Tests: a probe installed after load is honoured; `_halted` is `true`
+   inside the first halt listener and before `OnHalted` subscribers run;
+   in-place upgrade from revision 17 keeps instances, phases and halts.
+8. Docs: API.md (the field, under "Halted state"), CHANGELOG, tests/README.
+9. Status: recorded 2026-11-15 under core decisions 18 and 19; code follows.
+
+**moduleKit (package O): kept module scopes, cheaper enables, the probe rule and an opt-in missing-Kit error** — a change to facade `ModuleKit`
+
+1. Package `moduleKit`, facade `ModuleKit`, API generation 1 (additive),
+   version 0.9.0 (from 0.8.8), implementation revision 22 (from 21).
+2. Purpose: the moduleKit fixes F1-F3 of
+   the decision 18 diagnosis (section lifecycleKit
+   and moduleKit; prototype the diagnosis prototype),
+   package O's probe rule, decision 19b where it applies here, and the
+   AddonKit's request for an opt-in error when a module reads a
+   scope field whose Kit is not loaded (2026-11-15).
+   - **F1, kept scopes.** A module's Kit scopes are closed on disable, as
+     today, but kept on the module (`_parkedScopes`, created on first use).
+     On the next enable, the first read of a field reopens the kept scope
+     with its Kit's `Scope:Reopen()` when the Kit has it (TimerKit, EventKit,
+     SignalKit bus scopes, HookKit and SchedulerKit after this package), and
+     otherwise creates a new one as today (CommKit and CommandKit until
+     their owners add `Reopen`; any older revision). This skips the
+     Registry lookup (`findOptionalPackage`) and the construction on every
+     enable after the first. A kept scope whose `Reopen` answers `false` or
+     raises is dropped and a new one created, so a reopen failure never
+     reaches the module.
+   - **F2, flag before the blocked-dependents scan.** `recoverBlockedDependents`
+     (`:2357`) scans every module on every `Enable` and nearly always finds
+     nothing. The container keeps `_mayHaveBlocked`, set to `true` at each of
+     the 12 places `_enableBlockedBy` is written and to `false` when a scan
+     finds nothing; `false` skips the scan, and `nil` (a container an older
+     revision made) scans as today.
+   - **F3, halt read from the record.** The two halt checks per enable read
+     `rawget(lifecycle, "_halted") == true` instead of calling `IsHalted`;
+     LifecycleKit documents the field in its own record of package O.
+   - **Probe rule.** `issecretvalue` stays resolved at load (`:342`) and
+     gains the per-call fallback (`rawget(_G, ...)`, accepted only as a
+     function) when it was absent at load.
+   - **Decision 19b.** `scopeIndex` (`:1777`), the scope's `__index`,
+     refuses a secret key before `SCOPE_PACKAGES[key]`. The client raises on
+     `scope[secret]` before `__index` runs (`docs/EMBEDDING.md`, measured on
+     Retail 12.1.0), so the check never runs there; it goes. The checks on
+     keys of caller tables read with `next` (`:1355`, `:1530`, `:3259`,
+     `:3316`, `:4047`) wait for the client proof described in the
+     schedulerKit record, point 7.
+   - **Missing scope Kits as an error, opt-in.** See point 4.
+   Non-goals: one `pcall` per transition in whole-addon passes (F5, at most
+   5%), the other AceAddon conveniences of the Ace3 gap list (a later package O record), any
+   method-name form (AceAddon calls `OnInitialize`/`OnEnable`/`OnDisable` by
+   name already, as ModuleKit does through definitions).
+3. Dependencies: unchanged, registry API 2, lifecycleKit API 1; the scope
+   Kits stay optional and are found through `Registry:Find`.
+4. Surface:
+   - **Scope identity (behaviour change).** `module.scope.Events` (and every
+     field whose Kit has `Reopen`) is the same object across enable cycles;
+     today it is a new one each time. A reference kept from an earlier
+     enabled period raises while the module is disabled, as now, and works
+     again after re-enable. The module-scope rules in API.md change from
+     "the next enable starts with fresh scopes" to "the next enable starts
+     with empty scopes, the same objects where the Kit can reopen them".
+   - **`addon:SetMissingScopePolicy(policy)`** → previous policy, and
+     **`addon:GetMissingScopePolicy()`**; `policy` is `"nil"` (default,
+     today's behaviour) or `"raise"`. Under `"raise"`, reading a scope
+     field whose Kit is not loaded, or is a revision without owner scopes,
+     raises at the reading line (the `__index` raises at level 2):
+     `ModuleKit module "<module>" scope.Timers needs TimerKit API 1, which is
+     not loaded; add timerKit/TimerKit.lua to your embeds.xml`. The file
+     named is the Kit's facade file under the release layout's package
+     folder; phase 2 takes the folder names from `.pkgmeta` and, if the
+     tooling's generated `embeds.xml` changes them, from its output.
+     `Messages` with SignalKit loaded but its bus full or closed keeps
+     reading `nil` under either policy: that is a runtime state, not a
+     missing file. A secret or non-string policy raises at the caller.
+     AddonKit sets `"raise"` on its addon objects. A definition field
+     `missingScopePolicy` is not added (one way to set it).
+5. Ownership: a disabled module retains its kept, closed, empty scopes until
+   the module is collected with its container (containers live for the
+   session, as today).
+6. Performance and memory (host bench `addonModules` against AceAddon-3.0,
+   same run; the host's Lua `xpcall` stand-in flatters AceAddon, see the
+   diagnosis):
+
+   | Case | Before | Expected after |
+   |---|---:|---:|
+   | disable-enable-module | 1.54× | 1.21× (F2 + F3: 323 → 253 instructions per cycle) |
+   | disable-enable-all | 1.31× | 1.18× |
+   | disable-enable-all-listening | 2.21× | 1.58× (with EventKit's plain links); 7,784 → 3,944 B per cycle, to fall further when every scope Kit reopens |
+   | create-addon / load-addon | 0.77× / 0.99× | unchanged |
+
+   Held memory: a disabled module keeps up to 7 empty scopes (a TimerKit
+   scope 308 B, an EventKit scope 404 B), where today it keeps none; an
+   enable cycle allocates nothing for a reopened scope instead of a new
+   scope each time. The policy is one field on the container, written only
+   when set; its test runs only on the branch that answers `nil` today, so
+   the default costs nothing.
+7. Tests: the same scope object across enable cycles for each reopening Kit,
+   a fresh one for a Kit without `Reopen` (a stand-in), a `Reopen` that
+   raises or answers `false`; a reference kept across a disable raising,
+   then working after re-enable; scopes still closed in the fixed order on
+   every way out (disable, failed `OnEnable`, shutdown, halt);
+   `_mayHaveBlocked` through each of the 12 writes (blocked dependencies,
+   strict policy, halts, late modules) and a container of revision 21
+   scanning; halt checks through `_halted`, and a LifecycleKit stand-in
+   without it; probe installed after load honoured; the missing-scope
+   policy: default `nil` unchanged, `"raise"` raising at the reader's line
+   with the file name for each of the seven fields, `Messages` with a full
+   bus still `nil`, policy argument errors; in-place upgrade from revision
+   21 keeping modules, states and open scopes.
+8. Docs: API.md (module scopes: identity and kept scopes, the missing-scope
+   policy, the surface table, errors), INTERNALS.md (`_parkedScopes`,
+   `_mayHaveBlocked`, the halt read), CHANGELOG, README, tests/README. For
+   the shared documents: `MIGRATING_FROM_ACE3.md`'s module-scope paragraph if it says
+   scopes are new per enable.
 9. Status: recorded 2026-11-15 under core decisions 18 and 19; code follows.
 
 #### Package N — bridgeKit, migrating from Ace3
