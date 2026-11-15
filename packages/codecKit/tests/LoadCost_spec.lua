@@ -48,7 +48,15 @@ describe("CodecKit load cost", function()
   ---@param name string
   ---@return any
   local function flag(method, name)
-    local value, found = findUpvalue(CodecKit[method], name)
+    -- The compression stage is the Compression part's, reached through the
+    -- entries it fills in the core's state.
+    local root = CodecKit[method]
+    if method == "Compress" then
+      root = CodecKit._state.compression.compress
+    elseif method == "Decompress" then
+      root = CodecKit._state.compression.decompress
+    end
+    local value, found = findUpvalue(root, name)
     assert.is_true(found, name .. " not reachable from " .. method)
     return value
   end

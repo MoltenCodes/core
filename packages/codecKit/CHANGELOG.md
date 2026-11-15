@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.3.0 — 2026-11-15
+
+Compression becomes an optional part, as recorded in docs/ROADMAP.md (package O, "codecKit (package O): compression as a part") under ADR 0001. The wire format is unchanged, and with the part loaded every frame, refusal and limit is byte for byte what revision 9 gave.
+
+- **Core and part.** `src/CodecKit.lua` is the core: serialiser, frames, the addon and print channels, the asynchronous variants. `src/parts/CodecKit-Compression.lua` holds the DEFLATE tables, the Huffman codes, the compressor, the inflater and the native compressor (part revision 1, declared under `parts` in the manifest). Resident on the host (Lua 5.1, debug information kept): core 97.4 KB, part 59.3 KB, against 149.4 KB for revision 9; an addon that embeds the core alone holds 52 KB less.
+- **Without the part**, `Compress`, `Decompress`, and `Encode`, `EncodeMany` and `EncodeAsync` with `compress = "deflate"`, raise at the caller's line: `CodecKit:Compress is in CodecKit's Compression part, which is not loaded: add codecKit\parts\CodecKit-Compression.lua to embeds.xml after codecKit\CodecKit.lua`. Decoding a compressed frame does not raise: `Decode` and `DecodeMany` return, and `DecodeAsync` calls back with, `false, "compressionUnavailable"`, a new reason.
+- Added: `CodecKit:HasPart(name)`.
+- State: `parts`, `compression`, `helpers` and `partInterface` (1). An in-place upgrade from revision 9, the whole file, keeps the limits, the sentinel and the pool; with the part loaded nothing changes for a caller, and an asynchronous compression revision 9 scheduled finishes either way (it runs revision 9's own code). A revision 9 copy loaded after a core-only revision 10 yields.
+- Implementation revision 10.
+- Specs: 165 → 184 (`Parts_spec.lua`; the upgrade specs load a verbatim copy of revision 9, `tests/fixtures/CodecKit-revision9.lua`, as the older copy, and add the part after the core).
+
 ## 0.2.2 — 2026-11-15
 
 - Fixed: `validateOptionKeys` and `SetLimits` built their refusal with `tostring(key)`, so a table key with a `__tostring` metamethod ran the caller's code inside CodecKit, which could raise its own error or answer a secret. A key is now named as itself (a string), as written (a number or boolean) or by its type: `CodecKit:Encode options.<table> is not a recognised option`, `CodecKit:SetLimits limits.<table> is not a recognised limit`. A secret key is refused first, before it is used to look the name up, with `options must not have a secret key` or `limits must not have a secret key`. `KeyDescriptions_spec.lua` holds the regression specs; the client suite gains the same check.

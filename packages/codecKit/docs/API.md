@@ -2,7 +2,7 @@
 
 CodecKit API generation **1** turns Lua values into transport-safe strings and back in three composable stages — serialise, compress, channel-encode — behind a two-byte, self-describing header. Decoding never raises on malformed input.
 
-Implementation revision: **9**. Wire format version: **1** (`CodecKit.FORMAT_VERSION`).
+Implementation revision: **10**. Parts: Compression revision **1**. Wire format version: **1** (`CodecKit.FORMAT_VERSION`).
 
 ## Loading
 
@@ -12,9 +12,10 @@ Runtime files must be loaded in dependency order:
 Registry.lua
 PoolKit.lua
 CodecKit.lua
+parts/CodecKit-Compression.lua   (optional)
 ```
 
-CodecKit depends on Registry API 2 and PoolKit API 1. Portable WoW code resolves the package through Registry:
+CodecKit depends on Registry API 2 and PoolKit API 1. The Compression part is optional: embed it when the addon compresses or must read compressed frames (see [Parts](#parts)). `python3 -m tooling.package.embeds codecKit/Compression` prints the `embeds.xml` lines for both. Portable WoW code resolves the package through Registry:
 
 ```lua
 local CodecKit = MoltenCodes.Registry:Get("codecKit", 1)
@@ -28,7 +29,7 @@ CodecKit does not rely on `require()` at runtime. Loading it without Registry ra
 |---|---|---|
 | SchedulerKit API 1 | `EncodeAsync`, `DecodeAsync` | Both raise at the caller: `CodecKit:EncodeAsync requires SchedulerKit API 1, which is not loaded (absent)`. Everything else works. |
 | `issecretvalue` | refusing secret values | Nothing is treated as secret. |
-| `C_EncodingUtil.CompressString` | the compression stage, for inputs of 64 bytes or more (see [Compression](#compression)) | Every input is compressed in Lua, byte for byte as revision 6 did. |
+| `C_EncodingUtil.CompressString` | the Compression part, for inputs of 64 bytes or more (see [Compression](#compression)) | Every input is compressed in Lua, byte for byte as revision 6 did. |
 
 SchedulerKit is found with `Registry:Find("schedulerKit", 1)` when an asynchronous method is called, so it may load in any order. `C_EncodingUtil` is looked up at every call. `issecretvalue` is resolved once when CodecKit loads (the client defines it before any addon runs) and, when it was absent then, looked up at every call, so a probe installed later is still honoured. `C_EncodingUtil` is documented on Retail since 11.1.5, on Mists of Pandaria Classic since 5.5.0 and on Classic Era since 1.15.8, so every supported client has it.
 
@@ -42,12 +43,13 @@ SchedulerKit is found with `Registry:Find("schedulerKit", 1)` when an asynchrono
 | `DecodeMany(text[, options])` | `true, ...` or `false, reason` | Decode a list into as many values as were encoded; a single-value frame gives one value. Never raises on malformed text. |
 | `Serialize(value)` | `true, bytes` or `false, reason` | Stage 1 alone, without a header. |
 | `Deserialize(bytes)` | `true, value` or `false, reason` | Its inverse. |
-| `Compress(bytes[, options])` | `true, bytes` or `false, reason` | Stage 2 alone: raw DEFLATE, by the client's encoder where it has one (see [Compression](#compression)). `options.level` from 1 to 9. |
-| `Decompress(bytes)` | `true, bytes` or `false, reason` | Its inverse; also inflates raw DEFLATE from other encoders. |
+| `Compress(bytes[, options])` | `true, bytes` or `false, reason` | Stage 2 alone: raw DEFLATE, by the client's encoder where it has one (see [Compression](#compression)). `options.level` from 1 to 9. Compression part. |
+| `Decompress(bytes)` | `true, bytes` or `false, reason` | Its inverse; also inflates raw DEFLATE from other encoders. Compression part. |
 | `EncodeForAddon(bytes)` / `DecodeForAddon(text)` | `true, string` or `false, reason` | Stage 3 for the addon channel. |
 | `EncodeForPrint(bytes)` / `DecodeForPrint(text)` | `true, string` or `false, reason` | Stage 3 for chat and export strings. |
 | `EncodeAsync(value, options, scope, callback)` | the SchedulerKit job | `Encode` in slices on a SchedulerKit scope; `callback(ok, textOrReason)`. |
 | `DecodeAsync(text, options, scope, callback)` | the SchedulerKit job | `Decode` in slices; `callback(ok, valueOrReason)`. |
+| `HasPart(name)` | boolean | Whether the named part (`"Compression"`) is loaded in this session. |
 | `SetLimits(limits)` | nothing | Change any subset of the shared limits. |
 | `GetLimits()` | a fresh table | The five limits; `UNBOUNDED` where one was lifted. |
 | `UNBOUNDED` | a table | The sentinel `SetLimits` accepts for `maxValues` and `maxStringLength` (see [Limits](#limits)). |
@@ -59,7 +61,7 @@ SchedulerKit is found with `Registry:Find("schedulerKit", 1)` when an asynchrono
 
 | Option | Accepted by | Values | Default |
 |---|---|---|---|
-| `compress` | `Encode`, `EncodeMany`, `EncodeAsync` | `"none"`, `"deflate"` | `"none"` |
+| `compress` | `Encode`, `EncodeMany`, `EncodeAsync` | `"none"`, `"deflate"` (Compression part) | `"none"` |
 | `channel` | the same | `"none"`, `"addon"`, `"print"` | `"none"` |
 | `level` | the same, and `Compress` | integer 1 (fastest) to 9 (smallest) | 6 |
 | `channel` | `Decode`, `DecodeMany`, `DecodeAsync` | `"none"`, `"addon"`, `"print"` | not checked |
@@ -70,7 +72,7 @@ A decoder does not need options: the header says which stages to reverse. `optio
 
 Every method returns `false, reason` for a value it cannot encode and for any string it cannot decode, whatever the string contains: truncated, corrupted, random, hostile or made by a future version. Nothing a string can contain makes a decoder raise, run unbounded, or allocate beyond the limits.
 
-What does raise, at the caller's line, is a programming error: a method called with `.` instead of `:`, a non-string where a string is required, an unknown option, a limit out of range, a secret value (see [Secret values](#secret-values)), and the asynchronous methods without SchedulerKit or with something other than an open SchedulerKit scope.
+What does raise, at the caller's line, is a programming error: a method called with `.` instead of `:`, a non-string where a string is required, an unknown option, a limit out of range, a secret value (see [Secret values](#secret-values)), the asynchronous methods without SchedulerKit or with something other than an open SchedulerKit scope, and a method that compresses while the Compression part is not loaded (see [Parts](#parts)). A compressed frame reaching a session without the part is data, not a programming error, so decoding it returns `false, "compressionUnavailable"`.
 
 The reasons form a fixed vocabulary:
 
@@ -97,6 +99,7 @@ The reasons form a fixed vocabulary:
 | `"duplicateKey"` | decode | The same key twice in one table. |
 | `"nilValue"` | decode | `nil` as an array element or a map value. |
 | `"multipleValues"` | decode | `Decode` or `Deserialize` given an argument list; use `DecodeMany`. |
+| `"compressionUnavailable"` | decode | The frame is compressed and this session's CodecKit has no Compression part (revision 10 and later). |
 | `"secret"` | `EncodeAsync` callback only | The value was changed after the call and now holds a secret. |
 
 ## Wire format
@@ -195,7 +198,7 @@ Nothing else is checked. In particular the reader accepts, and decodes to the va
 
 ### Compression
 
-Raw DEFLATE (RFC 1951): no zlib or gzip wrapper, no checksum. The decoder is CodecKit's own Lua inflater on every client and inflates stored, fixed-Huffman and dynamic-Huffman blocks from any conforming encoder.
+Compression is the Compression part's (`parts/CodecKit-Compression.lua`); without it, see [Parts](#parts). Raw DEFLATE (RFC 1951): no zlib or gzip wrapper, no checksum. The decoder is CodecKit's own Lua inflater on every client and inflates stored, fixed-Huffman and dynamic-Huffman blocks from any conforming encoder.
 
 **Which encoder runs.** On a client with `C_EncodingUtil.CompressString`, an input of 64 bytes or more is compressed there with `Enum.CompressionMethod.Deflate`, which is raw DEFLATE: `EncodingUtilDocumentation.lua` lists `Zlib` and `Gzip` as the wrapped methods, and the real-client interoperability tests inflated `CompressString` output with CodecKit, and CodecKit's output with `DecompressString`, at all three client levels on Retail 12.1.0 build 69933 (2026-09-25). The four tests of the native path itself, and both Classic flavours, have not run on a client yet (`tests/client/RESULTS.md`). `level` maps onto the client's three levels: 1 to 3 to `OptimizeForSpeed`, 4 to 6 to `Default`, 7 to 9 to `OptimizeForSize`. The method and level numbers are read from the client's `Enum` and, when it has no such number or reports it secret, are the documented ones (`Deflate` 0; `Default` 0, `OptimizeForSpeed` 1, `OptimizeForSize` 2). `EncodeAsync` uses the client's encoder for at most 256 KiB of serialised bytes, because one native call cannot yield, and the Lua encoder above that. If the client's function raises, returns nothing, returns anything but a non-empty string, returns a value `issecretvalue` reports, or returns more than `maxOutputBytes`, the Lua encoder runs instead, so a refusal is always the Lua encoder's. Everywhere else, and always below 64 bytes, the Lua encoder runs: it writes stored, fixed-Huffman and dynamic-Huffman blocks, choosing per block whichever is smallest.
 
@@ -362,6 +365,36 @@ The nine-point plan in `docs/ROADMAP.md` is followed except where recorded here:
 - **Revision 7 compresses with the client's encoder** where `C_EncodingUtil.CompressString` exists and inflates in Lua everywhere. Native inflation is left for a later revision: a frame carries no declared length or checksum that could show the client's inflater accepted a stream the Lua inflater refuses, such as bytes after the final block; [`INTERNALS.md`](INTERNALS.md#native-compressor) names the client checks that come first.
 - **Additions:** `EncodeMany` and `DecodeMany` for argument lists (at most `maxListValues` entries, 4096 by default and at most 7900, because `DecodeMany` returns them through `unpack`, which Lua 5.1 bounds), `CodecKit.UNBOUNDED` for `maxValues` and `maxStringLength`, `PRINT_ALPHABET`, and the `"channelMismatch"` assertion.
 
+## Parts
+
+CodecKit is a core file and one optional part ([ADR 0001](../../../docs/decisions/0001-kit-core-and-parts.md)). The core serialises, channel-encodes, runs the asynchronous variants and decodes every uncompressed frame. The **Compression** part adds the compression stage: `Compress`, `Decompress`, `compress = "deflate"` on `Encode`, `EncodeMany` and `EncodeAsync`, the inflation of compressed frames, and the client's encoder. An addon that only exchanges serialised values, as CommKit's documented send does, embeds the core alone.
+
+| Resident after load (host Lua 5.1, debug information kept) | |
+|---|---:|
+| Core, `CodecKit.lua` | 97.4 KB |
+| Compression part | 59.3 KB, plus about 59 KB of DEFLATE tables built on the first Lua compression or decompression |
+| Revision 9, the whole file, for comparison | 149.4 KB |
+
+Without the part:
+
+- `Compress`, `Decompress`, and `Encode`, `EncodeMany` or `EncodeAsync` with `compress = "deflate"` raise at the caller's line with the file to embed:
+
+  ```text
+  CodecKit:Compress is in CodecKit's Compression part, which is not loaded: add codecKit\parts\CodecKit-Compression.lua to embeds.xml after codecKit\CodecKit.lua
+  ```
+
+  For the encoders the subject is the option: `CodecKit:Encode options.compress "deflate" is in CodecKit's Compression part, ...`. Every other option error comes first, unchanged.
+- `Decode`, `DecodeMany` and `DecodeAsync` of a compressed frame return (or call back with) `false, "compressionUnavailable"`. A peer can therefore never make an addon raise by sending it a compressed frame.
+- Every member stays on the facade, so another copy's check of the public surface still accepts it. Code that uses compression only when it is there asks `CodecKit:HasPart("Compression")`; testing `type(CodecKit.Compress) == "function"` is always true.
+
+The part loads after the core, finds it through `Registry:Get("codecKit", 1)` and raises `MoltenCodes CodecKit part Compression requires CodecKit API 1 to be loaded first` when the core is missing or older than revision 10. It keeps its revision in the core's state; when two addons embed different revisions of the part, the highest serves the session, as for a Kit.
+
 ## Upgrades
 
 The package state (`_state`) holds the shared limits, the `UNBOUNDED` sentinel and the table pool, and all three are kept across an in-place upgrade: a newer compatible revision replaces the facade's functions, inherits the limits a consumer set, and keeps leasing from the same pool. The wire format belongs to the format version, not to the revision, so frames written by any revision of API generation 1 decode in every other, the frames revisions 7 and later compress with the client's encoder included. Revisions 7, 8 and 9 add nothing to `_state`; revision 9's lazily built tables and its clean-string cache are file-local, so each revision builds its own on first use.
+
+Revision 10 adds the part interface: `_state.parts` (which parts are loaded), `_state.compression` (the two entries the Compression part fills, `false` until it loads), `_state.helpers` (what the core offers its parts, refilled by every core revision) and `_state.partInterface`. Upgrading from revision 9 or older, the whole file:
+
+- With the Compression part loaded too, nothing changes for any caller: frames, refusals and limits are as before, byte for byte.
+- Without it, compression is simply absent from then on (the errors above). Nothing of the old revision's compression stage outlives a call, so there is nothing to close: an asynchronous call the old revision scheduled runs its own code to the end and calls back with its result.
+- A revision 9 copy loaded after a core-only revision 10 yields to it, as an older revision always does; its addon then gets the errors above when it compresses.

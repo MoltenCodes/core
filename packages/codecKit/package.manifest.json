@@ -2,10 +2,11 @@
   "name": "codecKit",
   "displayName": "CodecKit",
   "description": "Serialise, compress and channel-encode Lua values into transport-safe strings behind a self-describing header, with decoding that never raises, for World of Warcraft addons.",
-  "version": "0.2.2",
+  "summary": "Serialise, compress and channel-encode values behind a self-describing header; decoding never raises.",
+  "version": "0.3.0",
   "license": "MIT",
   "api": 1,
-  "revision": 9,
+  "revision": 10,
   "dependencies": {
     "registry": {
       "api": 2
@@ -17,6 +18,14 @@
   "optionalDependencies": {
     "schedulerKit": {
       "api": 1
+    }
+  },
+  "parts": {
+    "Compression": {
+      "description": "Raw DEFLATE compression and inflation: Compress, Decompress, compress = \"deflate\" on the encoders and compressed frames on decode, natively through C_EncodingUtil.CompressString where the client has it.",
+      "revision": 1,
+      "dependencies": {},
+      "optionalDependencies": {}
     }
   }
 }

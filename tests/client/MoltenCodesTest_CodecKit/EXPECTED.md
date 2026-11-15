@@ -31,8 +31,9 @@ seconds together:
 
 ```text
 MoltenCodes Test: running codecKit: 10 suites. Results follow when every test has finished.
-MoltenCodes Test: PASS codecKit.facade: Registry:Get('codecKit', 1) is the CodecKit facade with API 1, its sixteen methods, FORMAT_VERSION 1, the 85-character PRINT_ALPHABET and UNBOUNDED
+MoltenCodes Test: PASS codecKit.facade: Registry:Get('codecKit', 1) is the CodecKit facade with API 1, its seventeen methods, FORMAT_VERSION 1, the 85-character PRINT_ALPHABET and UNBOUNDED
 MoltenCodes Test: PASS codecKit.facade: the installed CodecKit carries the revision of the committed manifest
+MoltenCodes Test: PASS codecKit.facade: the installed bundle carries the Compression part (revision 10 and later): HasPart('Compression') is true and the part's revision is logged
 MoltenCodes Test: PASS codecKit.facade: the client's Lua has string.byte, string.char, math.floor, math.frexp, math.ldexp and unpack, all CodecKit computes with; bit, C_EncodingUtil, SendAddonMessage, issecretvalue and SchedulerKit logged
 MoltenCodes Test: PASS codecKit.values: Serialize writes the bytes docs/API.md spells out for 300, 1.5, -0, 2^-1074, NaN of either sign, {} and { 1, x = 2 } on the client's math.frexp and string.char
 MoltenCodes Test: PASS codecKit.values: every kind of number round-trips bit for bit through Serialize and Deserialize on the client: integers to 2^53, fractions, 2^53 + 2, both infinities, NaN, -0 and subnormals
@@ -68,7 +69,7 @@ MoltenCodes Test: PASS codecKit.secrets: EncodeMany and Serialize refuse a secre
 MoltenCodes Test: PASS codecKit.secrets: EncodeAsync refuses a secret deep in the value at the calling line, schedules no job and never calls back
 MoltenCodes Test: PASS codecKit.secrets: a secret string handed to Decode, DecodeMany, Deserialize, Decompress, DecodeForAddon and DecodeForPrint is refused at the calling line before anything reads it
 MoltenCodes Test: PASS codecKit.secrets: a secret options.level, a secret options.channel and a secret SetLimits maxDepth are refused at the calling line and the limits stay as they were
-MoltenCodes Test: codecKit: 37 passed, 0 failed, 0 skipped, 0 timed out (37 tests)
+MoltenCodes Test: codecKit: 38 passed, 0 failed, 0 skipped, 0 timed out (38 tests)
 MoltenCodes Test: results saved in MoltenCodesTestResults; /reload or log out to write them to disk.
 ```
 
@@ -130,8 +131,8 @@ MoltenCodes Test: SKIP codecKit.native: CompressString at Default and OptimizeFo
 ```
 
 With both missing, the totals line reads
-`25 passed, 0 failed, 12 skipped, 0 timed out (37 tests)`; with only one
-missing, `32 passed, 0 failed, 5 skipped` or `30 passed, 0 failed, 7 skipped`.
+`26 passed, 0 failed, 12 skipped, 0 timed out (38 tests)`; with only one
+missing, `33 passed, 0 failed, 5 skipped` or `31 passed, 0 failed, 7 skipped`.
 On Retail 12.1 any `SKIP` is unexpected.
 
 ## Per flavour
@@ -153,7 +154,7 @@ client.
 ### Retail (12.1)
 
 The lines above:
-`MoltenCodes Test: codecKit: 37 passed, 0 failed, 0 skipped, 0 timed out (37 tests)`,
+`MoltenCodes Test: codecKit: 38 passed, 0 failed, 0 skipped, 0 timed out (38 tests)`,
 with no `SKIP` line.
 
 ### Classic Era (1.15) and Mists of Pandaria Classic (5.5)
@@ -167,17 +168,17 @@ suite reads them at load).
 
 - With both functions, and secrets made with them, the totals line is
   Retail's:
-  `MoltenCodes Test: codecKit: 37 passed, 0 failed, 0 skipped, 0 timed out (37 tests)`.
+  `MoltenCodes Test: codecKit: 38 passed, 0 failed, 0 skipped, 0 timed out (38 tests)`.
 - Without them, the five lines under
   [On a client without secret values](#on-a-client-without-secret-values)
   are `SKIP` and the totals line is
-  `MoltenCodes Test: codecKit: 32 passed, 0 failed, 5 skipped, 0 timed out (37 tests)`.
+  `MoltenCodes Test: codecKit: 33 passed, 0 failed, 5 skipped, 0 timed out (38 tests)`.
 
 A client that has both functions but makes no secret with them
 (`issecretvalue` does not report what `secretwrap` returns as secret;
 `Harness:CanMakeSecrets` measures this once at load) skips the same five
 tests with another reason, and the totals line is again
-`MoltenCodes Test: codecKit: 32 passed, 0 failed, 5 skipped, 0 timed out (37 tests)`:
+`MoltenCodes Test: codecKit: 33 passed, 0 failed, 5 skipped, 0 timed out (38 tests)`:
 
 ```text
 MoltenCodes Test: SKIP codecKit.secrets: Encode refuses a secretwrap value at the top, in an array, as a map value and three tables deep, each at the calling line, and leaves no pooled table leased -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
@@ -234,7 +235,7 @@ are unexpected there too.
 ## What counts as unexpected
 
 - Any `FAIL` or `TIMEOUT` line, a `SKIP` line on Retail 12.1, or a totals
-  line other than `37 passed, 0 failed, 0 skipped, 0 timed out (37 tests)`
+  line other than `38 passed, 0 failed, 0 skipped, 0 timed out (38 tests)`
   (on a Classic client, other than the two totals lines under
   [Per flavour](#per-flavour)).
 - No login line, or `Expected.lua is missing`: the harness or the installer

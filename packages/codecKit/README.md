@@ -1,6 +1,6 @@
 # CodecKit
 
-CodecKit turns Lua values into strings that survive the addon channel, a chat window or a copy-paste box, and back. It works in three stages behind a two-byte header that says which stages ran: **serialise** (exact for every number, string, boolean, `nil` and acyclic table), **compress** (raw DEFLATE in pure Lua), and **channel-encode** (escaped for the addon channel, or printable for export strings). Decoding never raises on malformed input.
+CodecKit turns Lua values into strings that survive the addon channel, a chat window or a copy-paste box, and back. It works in three stages behind a two-byte header that says which stages ran: **serialise** (exact for every number, string, boolean, `nil` and acyclic table), **compress** (raw DEFLATE, in the optional Compression part), and **channel-encode** (escaped for the addon channel, or printable for export strings). Decoding never raises on malformed input.
 
 ```lua
 local CodecKit = MoltenCodes.Registry:Get("codecKit", 1)
@@ -32,6 +32,8 @@ What each piece promises:
 - **Re-entrant and cheap.** Serialising reuses one work record and writes the frame straight into one buffer, and the compression and print stages lease their buffers from a PoolKit table pool and return them on every path; encoding a small value again allocates nothing.
 - **Secrets refused.** A secret value anywhere in the value raises at your line.
 
+**Core and part.** `CodecKit.lua` serialises and channel-encodes; compression is the optional Compression part, `parts/CodecKit-Compression.lua`, so an addon that only sends serialised values (as CommKit's documented send does) does not carry it. Resident after load on the host: core 97.4 KB, part 59.3 KB (plus about 59 KB of DEFLATE tables from the first Lua compression), against 149.4 KB for revision 9, the whole file, and 11.5 KB for AceSerializer-3.0. Without the part, the methods that compress raise at your line naming the file to embed, and a compressed frame decodes to `false, "compressionUnavailable"`; `CodecKit:HasPart("Compression")` says which you have.
+
 Decoded data is untrusted: validate it with SchemaKit before using it. See [`docs/API.md`](docs/API.md) for the wire format byte by byte, the escape table, the print alphabet and the limits, and [`docs/INTERNALS.md`](docs/INTERNALS.md) for the compressor.
 
 ## Migrating from AceSerializer-3.0 and LibDeflate
@@ -42,7 +44,7 @@ CodecKit replaces the usual AceSerializer-3.0 plus LibDeflate pipeline. The form
 |---|---|
 | `AceSerializer:Serialize(...)` | `CodecKit:EncodeMany(options, ...)`, or `CodecKit:Encode(value, options)` for one value |
 | `AceSerializer:Deserialize(text)` (`success, ...`) | `CodecKit:DecodeMany(text, options)` (`true, ...` or `false, reason`) |
-| `LibDeflate:CompressDeflate(bytes, { level = n })` | `CodecKit:Compress(bytes, { level = n })` (levels 1 to 9; raw DEFLATE either way) |
+| `LibDeflate:CompressDeflate(bytes, { level = n })` | `CodecKit:Compress(bytes, { level = n })` (levels 1 to 9; raw DEFLATE either way; embed the Compression part) |
 | `LibDeflate:DecompressDeflate(bytes)` (`nil` on failure) | `CodecKit:Decompress(bytes)` (`false, reason` on failure) |
 | `LibDeflate:EncodeForWoWAddonChannel` / `DecodeForWoWAddonChannel` | `CodecKit:EncodeForAddon` / `DecodeForAddon`, or `channel = "addon"` on `Encode` |
 | `LibDeflate:EncodeForPrint` / `DecodeForPrint` | `CodecKit:EncodeForPrint` / `DecodeForPrint`, or `channel = "print"` on `Encode`; a different alphabet, so old export strings need the old decoder |
@@ -58,7 +60,13 @@ troubleshooting. This package's load order inside a consuming addon is:
 Libs\MoltenCodes\registry\Registry.lua
 Libs\MoltenCodes\poolKit\PoolKit.lua
 Libs\MoltenCodes\codecKit\CodecKit.lua
+Libs\MoltenCodes\codecKit\parts\CodecKit-Compression.lua
 ```
+
+The last line is the optional Compression part: leave it out when the addon
+never compresses and never reads a compressed frame.
+`python3 -m tooling.package.embeds codecKit/Compression` prints these lines as
+`embeds.xml`.
 
 Minimum footprint: embed 3 files: `registry/Registry.lua`, `poolKit/PoolKit.lua`, `codecKit/CodecKit.lua`.
 
@@ -72,6 +80,7 @@ load in any order; without it those two methods raise at the caller and
 everything else works. CodecKit reads two host facilities: `issecretvalue`, resolved once
 at load and looked up at every call only when it was absent then (on a client
 without it nothing is treated as secret), and `C_EncodingUtil.CompressString`,
-looked up at every call (without it every input is compressed in Lua; every
-supported client documents it). The byte, print and DEFLATE tables are built
-on first use, so loading CodecKit costs about 87 KB less until a stage runs.
+looked up at every call by the Compression part (without it every input is
+compressed in Lua; every supported client documents it). The byte, print and
+DEFLATE tables are built on first use, so loading CodecKit costs about 87 KB
+less until a stage runs.

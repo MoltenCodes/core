@@ -606,7 +606,7 @@ end
 local facade = newSuite("facade")
 
 facade:Test(
-  "Registry:Get('codecKit', 1) is the CodecKit facade with API 1, its sixteen methods, FORMAT_VERSION 1, the 85-character PRINT_ALPHABET and UNBOUNDED",
+  "Registry:Get('codecKit', 1) is the CodecKit facade with API 1, its seventeen methods, FORMAT_VERSION 1, the 85-character PRINT_ALPHABET and UNBOUNDED",
   function(ctx)
     ctx:Expect(type(CodecKit)):ToBe("table")
     ctx:Expect(rawget(CodecKit, "API")):ToBe(CODEC_KIT_API)
@@ -627,6 +627,7 @@ facade:Test(
       "DecodeAsync",
       "SetLimits",
       "GetLimits",
+      "HasPart",
     }) do
       ctx:Expect(type(CodecKit[methodName])):ToBe("function")
     end
@@ -665,6 +666,22 @@ facade:Test("the installed CodecKit carries the revision of the committed manife
   end
   ctx:Fail("Expected.lua does not list codecKit")
 end)
+
+facade:Test(
+  "the installed bundle carries the Compression part (revision 10 and later): HasPart('Compression') is true and the part's revision is logged",
+  function(ctx)
+    -- The client installer builds the whole framework bundle, every part
+    -- included, so compression is available to every test below.
+    ctx:Expect(CodecKit:HasPart("Compression")):ToBe(true)
+    ctx:Expect(CodecKit:HasPart("NoSuchPart")):ToBe(false)
+    local parts = rawget(rawget(CodecKit, "_state") or {}, "parts") or {}
+    local record = rawget(parts, "Compression")
+    ctx:Log(
+      "Compression part revision: "
+        .. tostring(type(record) == "table" and rawget(record, "revision") or nil)
+    )
+  end
+)
 
 ---The sorted names of a library table's functions, for the log.
 ---@param library table

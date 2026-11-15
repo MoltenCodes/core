@@ -17,21 +17,36 @@
 local FrameworkTestEnv = require("FrameworkTestEnv")
 
 local CodecKitTestEnv = FrameworkTestEnv.New({
-  modules = { "Registry", "PoolKit", "CodecKit" },
+  modules = { "Registry", "PoolKit", "CodecKit", "CodecKit-Compression" },
   wowApi = false,
 })
 
---- The module chain the asynchronous specs load, CodecKit last.
+--- The module chain the asynchronous specs load, CodecKit and its part last.
 local ASYNC_MODULES = {
   "Registry",
   "PoolKit",
   "TimerKit",
   "SchedulerKit",
   "CodecKit",
+  "CodecKit-Compression",
 }
 
 local Async = FrameworkTestEnv.New({ modules = ASYNC_MODULES })
 CodecKitTestEnv.Async = Async
+
+--- The core without its Compression part, as an addon that embeds only
+--- `codecKit\CodecKit.lua` loads it.
+local Core = FrameworkTestEnv.New({
+  modules = { "Registry", "PoolKit", "CodecKit" },
+  wowApi = false,
+})
+CodecKitTestEnv.Core = Core
+
+--- The asynchronous chain without the Compression part.
+local CoreAsync = FrameworkTestEnv.New({
+  modules = { "Registry", "PoolKit", "TimerKit", "SchedulerKit", "CodecKit" },
+})
+CodecKitTestEnv.CoreAsync = CoreAsync
 
 ---Write a host global. The fixture stands in for the World of Warcraft client,
 ---whose API only exists in the global table.
@@ -59,6 +74,19 @@ end
 ---@return table CodecKit
 ---@return table SchedulerKit
 function Async.NewPackageWithTickingClock(stepMs)
+  Async.PrepareTickingClock(stepMs)
+  local loaded = {}
+  for index = 1, #ASYNC_MODULES do
+    loaded[ASYNC_MODULES[index]] = require(ASYNC_MODULES[index])
+  end
+  return loaded.CodecKit, loaded.SchedulerKit
+end
+
+---Reset, install the WoW stubs and a CPU clock that advances by `stepMs` on
+---every read, loading nothing: a spec then loads the chain itself, for
+---example with an older CodecKit revision first.
+---@param stepMs number
+function Async.PrepareTickingClock(stepMs)
   Async.Reset()
   Async.InstallWowApi()
   local baseClock = getGlobal("debugprofilestop")
@@ -66,11 +94,6 @@ function Async.NewPackageWithTickingClock(stepMs)
     Async.AdvanceProfileMs(stepMs)
     return baseClock()
   end)
-  local loaded = {}
-  for index = 1, #ASYNC_MODULES do
-    loaded[ASYNC_MODULES[index]] = require(ASYNC_MODULES[index])
-  end
-  return loaded.CodecKit, loaded.SchedulerKit
 end
 
 ---Tick the scheduler until `isDone()` or `maxTicks`, and return how many
@@ -273,7 +296,7 @@ local function clearEncodingGlobals()
   setGlobal("Enum", nil)
 end
 
-for _, environment in ipairs({ CodecKitTestEnv, Async }) do
+for _, environment in ipairs({ CodecKitTestEnv, Async, Core, CoreAsync }) do
   local frameworkReset = environment.Reset
   environment.Reset = function()
     clearEncodingGlobals()
@@ -431,16 +454,40 @@ local function replaceOnce(text, find, replacement)
   return text:sub(1, first - 1) .. replacement .. text:sub(first + #find)
 end
 
+-- The last revision that carried the compression stage in CodecKit.lua
+-- itself. Its file is kept verbatim as a fixture, so an "older copy" in the
+-- upgrade specs is the whole file an addon of that time embedded.
+local LAST_WHOLE_REVISION = 9
+local SUPPORT_DIRECTORY = debug.getinfo(1, "S").source:match("^@(.*[/\\])") or "./"
+local WHOLE_FIXTURE = SUPPORT_DIRECTORY .. "../fixtures/CodecKit-revision9.lua"
+
+---Read the whole-file revision 9 fixture.
+---@return string text
+---@return string path
+local function readWholeSource()
+  local file = assert(io.open(WHOLE_FIXTURE, "r"))
+  local text = file:read("*a")
+  file:close()
+  return text, WHOLE_FIXTURE
+end
+
 ---Load the CodecKit source again as a copy carrying `revision`, the way a
 ---newer embedded copy loads over an older one in the client. `find` and
 ---`replacement`, when given, replace one more piece of source text, to model
----what that older revision did differently.
+---what that older revision did differently. A revision up to 9 is loaded from
+---the whole-file fixture (compression included, no parts); a later one from
+---the core in `src/`.
 ---@param revision integer
 ---@param find string? plain source text that must occur exactly once
 ---@param replacement string?
 ---@return table CodecKit
 function CodecKitTestEnv.LoadRevision(revision, find, replacement)
-  local text, path = readSource()
+  local text, path
+  if revision <= LAST_WHOLE_REVISION then
+    text, path = readWholeSource()
+  else
+    text, path = readSource()
+  end
   local patched, replacements =
     text:gsub("local IMPLEMENTATION_REVISION = %d+", "local IMPLEMENTATION_REVISION = " .. revision)
   if replacements ~= 1 then
@@ -466,6 +513,47 @@ function CodecKitTestEnv.LoadPatched(find, replacement)
   local text, path = readSource()
   local chunk = assert(loadstring(replaceOnce(text, find, replacement), "@" .. path))
   return chunk()
+end
+
+---Run the core file again over the state it already published, as a second
+---addon embedding the same revision does. (`ReloadPackage` reruns the last
+---module of the chain, which is the Compression part.)
+---@return table CodecKit
+function CodecKitTestEnv.ReloadCore()
+  package.loaded["CodecKit"] = nil
+  return require("CodecKit")
+end
+
+---Load the Compression part again, after a `Reset` or an upgrade that
+---cleared it, as the next file of an addon's `embeds.xml` would.
+---@return table CodecKit
+function CodecKitTestEnv.LoadPart()
+  package.loaded["CodecKit-Compression"] = nil
+  return require("CodecKit-Compression")
+end
+
+---Load the Compression part's source as a copy carrying `revision`.
+---@param revision integer
+---@return table CodecKit
+function CodecKitTestEnv.LoadPartRevision(revision)
+  local path = nil
+  for template in package.path:gmatch("[^;]+") do
+    local candidate = template:gsub("%?", "CodecKit-Compression")
+    local file = io.open(candidate, "r")
+    if file ~= nil then
+      file:close()
+      path = candidate
+      break
+    end
+  end
+  assert(path ~= nil, "CodecKitTestEnv could not find CodecKit-Compression.lua on package.path")
+  local file = assert(io.open(path, "r"))
+  local text = file:read("*a")
+  file:close()
+  local patched, count =
+    text:gsub("local PART_REVISION = %d+", "local PART_REVISION = " .. revision)
+  assert(count == 1, "the part declares PART_REVISION once")
+  return assert(loadstring(patched, "@" .. path))()
 end
 
 return CodecKitTestEnv

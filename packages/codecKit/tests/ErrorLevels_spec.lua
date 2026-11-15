@@ -38,6 +38,7 @@ local FACADE_METHODS = {
   "DecodeAsync",
   "SetLimits",
   "GetLimits",
+  "HasPart",
 }
 
 describe("CodecKit error levels", function()
