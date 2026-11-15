@@ -59,6 +59,34 @@ describe("BindingKit bootstrap", function()
     end
   )
 
+  it("upgrades revision 1 in place: its scopes retire buttons unbound in combat", function()
+    -- Install the host stand-ins, then start over with a copy carrying
+    -- revision 1, the way an older addon's embedded copy loads first.
+    TestEnv.NewPackage()
+    TestEnv.SetGlobal("MoltenCodes", nil)
+    package.loaded.Registry = nil
+    package.loaded.BindingKit = nil
+    require("Registry")
+    local old = TestEnv.LoadRevision(1)
+    local scope = old:CreateScope("MyAddon")
+    scope:BindFunction("F5", function() end)
+    -- A revision 1 record has no list of retired buttons.
+    local record = old._state.records[scope]
+    record.retiredButtons = nil
+
+    local upgraded = TestEnv.ReloadPackage()
+    assert.are.equal(old, upgraded)
+    assert.is_true(upgraded.REVISION > 1)
+    local first = TestEnv.Bindings(record.owner)["F5"].click
+    TestEnv.SetCombat()
+    scope:Unbind("F5")
+    scope:BindFunction("F6", function() end)
+    TestEnv.EndCombat()
+    assert.are_not.equal(first, TestEnv.Bindings(record.owner)["F6"].click)
+    scope:BindFunction("F7", function() end)
+    assert.are.equal(first, TestEnv.Bindings(record.owner)["F7"].click)
+  end)
+
   it("refuses shared state whose limits hold an invalid value", function()
     local BindingKit = TestEnv.NewPackage()
     rawset(BindingKit._state.limits, "maxFunctionKeys", 513)

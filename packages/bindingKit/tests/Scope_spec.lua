@@ -107,6 +107,32 @@ describe("BindingKit scopes", function()
     assert.is_nil(BindingKit._state.eventFrame.registrations.PLAYER_REGEN_ENABLED)
   end)
 
+  it("keeps a button unbound in combat out of reuse until the client lets it go", function()
+    local scope = BindingKit:CreateScope("MyAddon")
+    local pressed = {}
+    scope:BindFunction("F5", function()
+      pressed[#pressed + 1] = "F5"
+    end)
+    local first = TestEnv.Bindings(ownerOf(scope))["F5"].click
+    TestEnv.SetCombat()
+    scope:Unbind("F5")
+    scope:BindFunction("F6", function()
+      pressed[#pressed + 1] = "F6"
+    end)
+    -- In combat the client still clicks the first button on F5: the change
+    -- waits. That press must not run the function F6 was given.
+    local button = TestEnv.GetGlobal(first)
+    button:GetScript("OnClick")(button, "LeftButton")
+    assert.are.same({}, pressed)
+    TestEnv.EndCombat()
+    local second = TestEnv.Bindings(ownerOf(scope))["F6"].click
+    assert.are_not.equal(first, second)
+    assert.is_nil(TestEnv.Bindings(ownerOf(scope))["F5"])
+    -- Once the client has let go of it, the button is reused.
+    scope:BindFunction("F7", function() end)
+    assert.are.equal(first, TestEnv.Bindings(ownerOf(scope))["F7"].click)
+  end)
+
   it("clears every binding with ClearAll and counts them", function()
     local scope = BindingKit:CreateScope("MyAddon")
     scope:BindCommand("F1", "A")

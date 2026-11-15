@@ -2,7 +2,7 @@
 
 BindingKit API generation **1** keeps an addon's key bindings as override bindings in named scopes: binding commands, button clicks and Lua functions, applied after combat when set during it, never saved over the player's own.
 
-Implementation revision: **1**.
+Implementation revision: **2**.
 
 ## Loading
 
@@ -41,7 +41,7 @@ The client's documentation tables do not describe the override binding functions
 | `SetLimits(limits)` / `GetLimits()` | Change or read `maxScopes` and `maxFunctionKeys`; `GetLimits` returns a fresh table. |
 | `MAX_SCOPES`, `SCOPES_CEILING` | `32`, `256`. |
 | `MAX_FUNCTION_KEYS`, `FUNCTION_KEYS_CEILING` | `64`, `512`. |
-| `API`, `REVISION` | `1`, `1`. |
+| `API`, `REVISION` | `1`, `2`. |
 
 A scope:
 
@@ -66,7 +66,7 @@ While `InCombatLockdown()` answers `true`, the change is recorded but not applie
 
 ## Function keys
 
-`BindFunction` takes a hidden `Button` named `MoltenCodesBindingKitButton<n>` from a free list (making one when the list is empty), gives it to the key through `SetOverrideBindingClick`, and calls `func(key)` when it is clicked, protected: a function that raises is reported through `geterrorhandler`. Unbinding or replacing the key puts the button back on the free list, so the number of buttons never grows past the most function keys bound at once. A function key runs insecure addon code: protected actions (casting, targeting, using items) are blocked by the client.
+`BindFunction` takes a hidden `Button` named `MoltenCodesBindingKitButton<n>` from a free list (making one when the list is empty), gives it to the key through `SetOverrideBindingClick`, and calls `func(key)` when it is clicked, protected: a function that raises is reported through `geterrorhandler`. Unbinding or replacing the key puts the button back on the free list, so out of combat the number of buttons never grows past the most function keys bound at once. A button given up in combat is not reused until combat ends: until its scope is rebuilt the client still clicks it on the old key, which then does nothing, and handing it to another key would run that key's function there. It is retired with its scope and goes back on the free list when the scope is rebuilt (revision 2). So in combat the buttons can number up to the function keys bound plus those given up since combat began. A function key runs insecure addon code: protected actions (casting, targeting, using items) are blocked by the client.
 
 ## Secret values
 
@@ -84,6 +84,28 @@ Lowering a limit keeps what exists and refuses the next. The limits are shared b
 ## Error behaviour
 
 Argument errors raise at the caller's line: `BindingKit.Scope:BindFunction func must be a function`; methods called on anything but a scope raise `BindingKit.Scope:ClearAll must be called on a BindingKit scope; use scope:ClearAll(...)`. What the client calls (a function key's button, the end of combat) never raises.
+
+Every message, raised at the caller's line. `<method>` is the public name called, such as `BindingKit:CreateScope` or `BindingKit.Scope:BindCommand`.
+
+| Message | Raised by |
+|---|---|
+| `<method> must be called on the BindingKit facade; use <method>(...)` | a facade method called on anything but `BindingKit` |
+| `<method> must be called on a BindingKit scope; use scope:<name>(...)` | a scope method called on anything but a scope handle |
+| `<method> <argument> must not be a secret value` | a secret name, key, command, button name or mouse button |
+| `<method> <argument> must be a non-empty string` | the same arguments, of another type or empty |
+| `BindingKit.Scope:BindFunction func must be a function` | |
+| `BindingKit.Scope:BindFunction holds at most <n> function keys; raise maxFunctionKeys with BindingKit:SetLimits` | a new function key past `maxFunctionKeys` (replacing one does not count) |
+| `BindingKit:CreateScope options must be a table or nil` | |
+| `BindingKit:CreateScope options holds an unknown field; it accepts priority` | |
+| `BindingKit:CreateScope options.priority must be a boolean` | also a secret one |
+| `BindingKit:CreateScope holds at most <n> scopes; raise maxScopes with BindingKit:SetLimits` | a new scope past `maxScopes` |
+| `BindingKit:CreateScope needs the client's override binding functions, which this host does not have` | |
+| `BindingKit:SetLimits limits must be a table` | |
+| `BindingKit:SetLimits limits holds an unknown field; it accepts maxScopes and maxFunctionKeys` | |
+| `BindingKit:SetLimits limits.<name> must not be a secret value` | |
+| `BindingKit:SetLimits limits.<name> must be an integer from 1 to <ceiling>` | `256` for `maxScopes`, `512` for `maxFunctionKeys` |
+
+Loading raises `MoltenCodes BindingKit requires Registry API 2 to be loaded first`, `MoltenCodes BindingKit requires a valid Registry API 2 facade` or `MoltenCodes BindingKit package state is corrupted or incomplete`.
 
 ## Performance
 

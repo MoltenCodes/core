@@ -34,7 +34,7 @@
 
 local PACKAGE_NAME = "bindingKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 1
+local IMPLEMENTATION_REVISION = 2
 local REQUIRED_REGISTRY_API = 2
 local STATE_SCHEMA = 1
 
@@ -424,6 +424,15 @@ local function apply(record)
     end
   end
   record.pending = false
+  -- The client no longer clicks the buttons this scope gave up, so they are
+  -- free for other keys now (see `remove`).
+  local retired = record.retiredButtons
+  if retired then
+    for index = #retired, 1, -1 do
+      freeButtons[#freeButtons + 1] = retired[index]
+      retired[index] = nil
+    end
+  end
 end
 
 ---The end of combat: apply every waiting scope, then stop listening.
@@ -480,9 +489,25 @@ local function remove(record, key)
   end
   record.bindings[key] = nil
   if binding.kind == KIND_FUNCTION then
-    buttons[binding.button] = nil
-    freeButtons[#freeButtons + 1] = binding.button
+    local button = binding.button
+    buttons[button] = nil
     rawset(state, "functionKeyCount", rawget(state, "functionKeyCount") - 1)
+    if inCombat() then
+      -- The change waits for the end of combat, and until then the client
+      -- still clicks this button on the old key. Handing it to another key
+      -- now would run that key's function on the old one, so it is retired
+      -- with the scope and freed when `apply` has cleared the owner.
+      -- Revision 1 records have no list yet.
+      local retired = record.retiredButtons
+      if not retired then
+        retired = {}
+        record.retiredButtons = retired
+      end
+      retired[#retired + 1] = button
+    else
+      -- The `apply` that follows every removal clears the owner now.
+      freeButtons[#freeButtons + 1] = button
+    end
   end
   return true
 end
@@ -690,6 +715,8 @@ local function packageCreateScope(self, name, options)
     priority = priority,
     bindings = {},
     pending = false,
+    -- Function-key buttons removed in combat, freed once `apply` runs.
+    retiredButtons = {},
   }
   scopes[name] = record
   records[handle] = record
