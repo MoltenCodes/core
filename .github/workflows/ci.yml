@@ -392,6 +392,38 @@ jobs:
       - name: Compile Python tooling
         run: python3 -m compileall -q tooling
 
+  # Lua 5.1 refuses a function with more than 200 active locals or 60
+  # upvalues. This gate measures every runtime function with `luac` and fails
+  # well before either limit, holding the files already close to the values in
+  # tooling/validation/lua_limits.json, which may only go down (docs/TOOLING.md,
+  # "Lua limits"). It needs the Lua toolchain, which the repository job does not
+  # install, so it is a job of its own; the gate's unit tests run here too,
+  # because they compile calibration files with the real `luac`.
+  limits:
+    name: Lua limits
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.14"
+
+      - name: Set up Lua 5.1
+        uses: ./.github/actions/setup-lua
+
+      - name: Check locals and upvalues of every runtime function
+        run: python3 -m tooling.validation.lua_limits
+
+      - name: Run the gate's unit tests against the real compiler
+        run: python3 -m unittest tooling.tests.test_lua_limits
+
   commits:
     name: Commit subjects
     # Only a pull request has a range of new commits and a title to judge.
@@ -495,7 +527,7 @@ jobs:
   ci:
     name: ci
     if: always()
-    needs: [test, coverage, types, format, lint, package, spell, repository, commits, secrets, workflows]
+    needs: [test, coverage, types, format, lint, package, spell, repository, limits, commits, secrets, workflows]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions: {}

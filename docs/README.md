@@ -22,6 +22,7 @@ This directory is the entry point for repository-wide documentation.
 ## Architecture and contracts
 
 - [`DESIGN_CONSTITUTION.md`](DESIGN_CONSTITUTION.md) defines the principles that package and tooling changes must preserve.
+- [`decisions/`](decisions/README.md) records why the framework is built the way it is, one record per decision.
 - [`ARCHITECTURE.md`](ARCHITECTURE.md) explains package boundaries, the dependency graph, API generations, embedded package identity, how a Kit bootstraps, the conventions every Kit shares, and each package's place in the graph.
 - [`PACKAGE_MANIFEST.md`](PACKAGE_MANIFEST.md) defines the canonical machine-readable package metadata contract.
 - [`ROADMAP.md`](ROADMAP.md) records what was decided and delivered in each phase, the nine-point record of every planned Kit, and the standing obligations.

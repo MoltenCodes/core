@@ -189,7 +189,7 @@ and why it is there.
 
 ## Documentation
 
-Start with [`docs/README.md`](docs/README.md), the documentation map.
+Start with [`docs/README.md`](docs/README.md), the documentation map. Why the framework is built the way it is: [`docs/decisions/`](docs/decisions/README.md), one record per decision.
 
 - [`docs/EMBEDDING.md`](docs/EMBEDDING.md) — how an addon embeds and loads the framework.
 - [`docs/MIGRATING_FROM_ACE3.md`](docs/MIGRATING_FROM_ACE3.md) — moving an addon from Ace3 to the Kits, library by library, and from the libraries that travel with Ace3 (LibDataBroker, LibDBIcon, LibSharedMedia, LibQTip, LibDualSpec and others).

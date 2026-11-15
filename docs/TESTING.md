@@ -151,9 +151,25 @@ A package's suite runs with these source directories on `LUA_PATH`, in this
 order:
 
 1. the package under test;
-2. its required dependency closure, from `dependencies`;
-3. each package named in `optionalDependencies`, together with that package's
-   own required closure.
+2. its required dependency closure, from `dependencies`, and what its
+   [parts](PACKAGE_MANIFEST.md#parts) require;
+3. each package named in `optionalDependencies` (the package's own and its
+   parts'), together with that package's own required closure.
+
+Each of those packages contributes both `src/` and `src/parts/`. A spec
+therefore loads a Kit's core by its facade name and a part by its file name,
+which carries the facade, so it is unique on the path:
+
+```lua
+local EventKitTestEnv = FrameworkTestEnv.New({
+  modules = { "Registry", "SignalKit", "EventKit", "EventKit-Coalescing" },
+})
+-- or, in a spec: local coalescing = require("EventKit-Coalescing")
+```
+
+A part is loaded after its core, as the client loads it. Every declared part
+has to be loaded by at least one spec of its own package: coverage fails a
+part no spec loaded ([`TOOLING.md`](TOOLING.md#coverage)).
 
 The order makes a module-name collision resolve in favour of the package under
 test. Step 3 exists because an optional dependency is found at call time

@@ -14,6 +14,8 @@ import sys
 from pathlib import Path
 from typing import Any, Sequence
 
+from tooling.package import parts as kit_parts
+
 
 ROOT = Path(__file__).resolve().parents[2]
 PACKAGES = ROOT / "packages"
@@ -28,11 +30,13 @@ SEMVER_RE = re.compile(
 )
 
 REQUIRED = {"name", "displayName", "description", "version", "license", "dependencies"}
-OPTIONAL = {"api", "revision", "optionalDependencies", "distribution"}
+OPTIONAL = {"api", "revision", "optionalDependencies", "distribution", "parts"}
 ALLOWED = REQUIRED | OPTIONAL
 
-#: The two dependency maps a manifest can carry. Both have the same shape,
-#: ``{"<packageId>": {"api": <n>}}``. A required dependency is loaded before the
+#: The two dependency maps a manifest (or a part entry) can carry. Both have the
+#: same shape, ``{"<packageId>": {"api": <n>}}``, and a contract may also ask
+#: for parts of that package: ``{"api": <n>, "parts": ["Part"]}``. A required
+#: dependency is loaded before the
 #: package and resolved at file scope; an optional one is found at call time
 #: through ``Registry:Find`` and is never part of the load order or the bundle.
 #: See docs/PACKAGE_MANIFEST.md.
@@ -63,12 +67,28 @@ def positive_integer(value: Any) -> bool:
     return isinstance(value, int) and not isinstance(value, bool) and value > 0
 
 
+#: The keys a dependency contract may carry; ``api`` is required.
+CONTRACT_KEYS = frozenset({"api", "parts"})
+
+
+def valid_part_list(value: Any) -> bool:
+    """Return whether ``value`` is a non-empty list of distinct part names."""
+    return (
+        isinstance(value, list)
+        and bool(value)
+        and all(isinstance(item, str) and kit_parts.PART_NAME_RE.fullmatch(item) for item in value)
+        and len(set(value)) == len(value)
+    )
+
+
 def valid_dependency_contract(contract: Any) -> bool:
-    """Return whether a dependency contract has the canonical ``{api}`` shape."""
+    """Return whether a dependency contract has the canonical ``{api, parts?}`` shape."""
     return (
         isinstance(contract, dict)
-        and set(contract) == {"api"}
+        and "api" in contract
+        and set(contract) <= CONTRACT_KEYS
         and positive_integer(contract.get("api"))
+        and ("parts" not in contract or valid_part_list(contract["parts"]))
     )
 
 
@@ -180,6 +200,7 @@ def load_manifests() -> tuple[dict[str, dict[str, Any]], list[str]]:
             errors.append(error(path, '"revision" must be a positive integer'))
 
         errors.extend(validate_optional_dependency_position(path, data))
+        errors.extend(validate_parts_position(path, data))
 
         if "distribution" in data and data["distribution"] not in DISTRIBUTIONS:
             errors.append(
@@ -191,18 +212,94 @@ def load_manifests() -> tuple[dict[str, dict[str, Any]], list[str]]:
                 continue
             errors.extend(validate_dependency_map(path, field, data.get(field)))
 
+        if "parts" in data:
+            errors.extend(validate_part_entries(path, data["parts"]))
+
     return manifests, errors
 
 
-def validate_dependency_map(path: Path, field: str, value: Any) -> list[str]:
-    """Validate the shape of one dependency map (`dependencies` or `optionalDependencies`).
+def validate_parts_position(path: Path, data: dict[str, Any]) -> list[str]:
+    """Require `parts` to come after the top-level `api` and `revision` fields.
 
-    Both fields map a package ID to a contract of exactly ``{"api": <n>}``.
-    Whether the named packages exist, and whether the graph they form is
-    acyclic, is `validate_graph`'s job.
+    Every `tests/Manifest_spec.lua` reads the package's API generation and
+    revision with the first `"api"` and `"revision"` in the file. A part entry
+    carries a `revision` and its contracts carry an `api`, so a `parts` object
+    above the top-level fields would hand those specs a part's numbers.
+    """
+    keys = list(data)
+    if "parts" not in keys:
+        return []
+    position = keys.index("parts")
+    for field in ("api", "revision"):
+        if field in keys and position < keys.index(field):
+            return [
+                error(
+                    path,
+                    f'"parts" must come after the top-level "{field}" field '
+                    f'(Manifest specs read the first "{field}" in the file)',
+                )
+            ]
+    return []
+
+
+def validate_part_entries(path: Path, value: Any) -> list[str]:
+    """Validate the shape of a manifest's `parts` object.
+
+    Each key is a PascalCase part name; each entry has a non-empty
+    `description`, a positive `revision`, and optionally `dependencies`,
+    `optionalDependencies` (the package dependency shape) and `parts` (the
+    sibling parts it needs). Whether the named packages and parts exist is
+    `validate_graph`'s job; whether the files exist is repository validation's.
     """
     if not isinstance(value, dict):
-        return [error(path, f'"{field}" must be an object')]
+        return [error(path, '"parts" must be an object')]
+
+    errors: list[str] = []
+    for name, entry in value.items():
+        if not isinstance(name, str) or not kit_parts.PART_NAME_RE.fullmatch(name):
+            errors.append(error(path, f'part name "{name}" must match ^[A-Z][A-Za-z0-9]*$'))
+            continue
+        where = f"parts.{name}"
+        if not isinstance(entry, dict):
+            errors.append(error(path, f'"{where}" must be an object'))
+            continue
+        for field in sorted(kit_parts.PART_REQUIRED_FIELDS - entry.keys()):
+            errors.append(error(path, f'"{where}" is missing required field "{field}"'))
+        allowed = kit_parts.PART_REQUIRED_FIELDS | kit_parts.PART_OPTIONAL_FIELDS
+        for field in sorted(set(entry) - allowed):
+            errors.append(error(path, f'"{where}" has unknown field "{field}"'))
+        description = entry.get("description")
+        if "description" in entry and (not isinstance(description, str) or not description.strip()):
+            errors.append(error(path, f'"{where}.description" must be a non-empty string'))
+        if "revision" in entry and not positive_integer(entry.get("revision")):
+            errors.append(error(path, f'"{where}.revision" must be a positive integer'))
+        for field in DEPENDENCY_FIELDS:
+            if field in entry:
+                errors.extend(
+                    validate_dependency_map(path, field, entry[field], prefix=f"{where}.")
+                )
+        if "parts" in entry:
+            siblings = entry["parts"]
+            if not valid_part_list(siblings):
+                errors.append(
+                    error(path, f'"{where}.parts" must be a non-empty list of distinct part names')
+                )
+            elif name in siblings:
+                errors.append(error(path, f'part "{name}" must not list itself in "parts"'))
+    return errors
+
+
+def validate_dependency_map(path: Path, field: str, value: Any, prefix: str = "") -> list[str]:
+    """Validate the shape of one dependency map (`dependencies` or `optionalDependencies`).
+
+    Both fields map a package ID to a contract of ``{"api": <n>}``, optionally
+    with ``"parts": ["Part", ...]`` naming parts of that package. ``prefix``
+    names the part entry the map belongs to (``"parts.Coalescing."``), empty
+    for the manifest's own maps. Whether the named packages exist, and whether
+    the graph they form is acyclic, is `validate_graph`'s job.
+    """
+    if not isinstance(value, dict):
+        return [error(path, f'"{prefix}{field}" must be an object')]
 
     label = dependency_label(field)
     errors: list[str] = []
@@ -210,11 +307,23 @@ def validate_dependency_map(path: Path, field: str, value: Any) -> list[str]:
         if not isinstance(dep, str) or not NAME_RE.fullmatch(dep):
             errors.append(error(path, f'invalid {label} name "{dep}"'))
             continue
-        if not isinstance(contract, dict) or set(contract) != {"api"}:
-            errors.append(error(path, f'{label} "{dep}" must contain exactly "api"'))
+        if not isinstance(contract, dict) or "api" not in contract or not set(contract) <= CONTRACT_KEYS:
+            errors.append(
+                error(
+                    path,
+                    f'{prefix}{label} "{dep}" must contain exactly "api" and optionally "parts"',
+                )
+            )
             continue
         if not positive_integer(contract.get("api")):
-            errors.append(error(path, f"{field}.{dep}.api must be positive"))
+            errors.append(error(path, f"{prefix}{field}.{dep}.api must be positive"))
+        if "parts" in contract and not valid_part_list(contract["parts"]):
+            errors.append(
+                error(
+                    path,
+                    f"{prefix}{field}.{dep}.parts must be a non-empty list of distinct part names",
+                )
+            )
     return errors
 
 
@@ -273,7 +382,7 @@ def dependency_names(data: dict[str, Any], field: str) -> list[str]:
 
 
 def validate_graph(manifests: dict[str, dict[str, Any]]) -> list[str]:
-    """Validate dependency existence, API contracts, self-edges, and cycles.
+    """Validate dependency existence, API contracts, self-edges, parts and cycles.
 
     Required and optional dependencies are checked the same way: each must name
     an existing package that exposes the requested API generation, and neither
@@ -281,7 +390,13 @@ def validate_graph(manifests: dict[str, dict[str, Any]]) -> list[str]:
     both maps. A release package may not depend, in either map, on a
     development package; a development package may depend on anything.
 
-    Cycles are searched for in the *required* graph only. A required edge means
+    A part entry's own dependency maps are held to the same rules, with "the
+    package itself" meaning the part's own Kit: a part always needs its core,
+    so naming it is redundant and naming its own parts belongs in the part's
+    `parts` list. Every part a contract or a `parts` list names must exist.
+
+    Cycles are searched for in the *required* graph only, over cores and
+    parts alike (`tooling.package.parts.node_needs`). A required edge means
     "loaded first and resolved at file scope", so a required cycle can never
     load. An optional edge is resolved at call time through ``Registry:Find``,
     after every file has loaded, so a cycle that passes through at least one
@@ -291,60 +406,107 @@ def validate_graph(manifests: dict[str, dict[str, Any]]) -> list[str]:
 
     for name, data in manifests.items():
         path = PACKAGES / name / "package.manifest.json"
-        required = set(dependency_names(data, "dependencies"))
-
-        for field in DEPENDENCY_FIELDS:
-            label = dependency_label(field)
-            contracts = data.get(field, {})
-            for dep in dependency_names(data, field):
-                if dep == name:
-                    errors.append(error(path, f'package "{name}" must not {_depend_verb(field)} itself'))
-                    continue
-
-                if field == "optionalDependencies" and dep in required:
+        errors.extend(_validate_holder(path, name, data, data, None, manifests))
+        declared = kit_parts.part_entries(data)
+        for part, entry in declared.items():
+            where = f"parts.{part}."
+            errors.extend(_validate_holder(path, name, data, entry, part, manifests))
+            for sibling in kit_parts.sibling_parts(entry):
+                if sibling not in declared:
                     errors.append(
-                        error(
-                            path,
-                            f'"{dep}" is listed in both "dependencies" and '
-                            '"optionalDependencies"; keep only one',
-                        )
-                    )
-                    continue
-
-                dependency = manifests.get(dep)
-                if dependency is None:
-                    errors.append(error(path, f'{label} "{dep}" does not exist'))
-                    continue
-
-                # A release bundle can never contain a development package, so
-                # a release package that needed one could not load (required)
-                # or could never find it (optional) in any shipped bundle.
-                if not is_development(data) and is_development(dependency):
-                    errors.append(
-                        error(
-                            path,
-                            f'release package "{name}" must not use development package '
-                            f'"{dep}" as {"an" if label.startswith("o") else "a"} {label}',
-                        )
-                    )
-                    continue
-
-                required_api = contracts[dep]["api"]
-                exposed_api = dependency.get("api")
-                if not positive_integer(exposed_api):
-                    errors.append(error(path, f'{label} "{dep}" does not expose an API generation'))
-                    continue
-
-                if required_api != exposed_api:
-                    errors.append(
-                        error(
-                            path,
-                            f'{label} "{dep}" requires API {required_api}, '
-                            f"but exposes API {exposed_api}",
-                        )
+                        error(path, f'{where}parts names "{sibling}", which "{name}" does not declare')
                     )
 
     errors.extend(_find_cycles(manifests))
+    return errors
+
+
+def _validate_holder(
+    path: Path,
+    name: str,
+    data: dict[str, Any],
+    holder: dict[str, Any],
+    part: str | None,
+    manifests: dict[str, dict[str, Any]],
+) -> list[str]:
+    """Check the dependency maps of one manifest (``part`` is ``None``) or one part entry.
+
+    ``data`` is the package's whole manifest, which decides whether the
+    package is a development one; ``holder`` is where the maps are read from.
+    """
+    errors: list[str] = []
+    required = set(dependency_names(holder, "dependencies"))
+    if part is None:
+        prefix = ""
+        subject = f'package "{name}"'
+        own = "itself"
+    else:
+        prefix = f"parts.{part}."
+        subject = f'part "{name}/{part}"'
+        own = "its own Kit"
+
+    for field in DEPENDENCY_FIELDS:
+        label = prefix + dependency_label(field)
+        contracts = holder.get(field, {})
+        for dep in dependency_names(holder, field):
+            if dep == name:
+                errors.append(error(path, f"{subject} must not {_depend_verb(field)} {own}"))
+                continue
+
+            if field == "optionalDependencies" and dep in required:
+                errors.append(
+                    error(
+                        path,
+                        f'"{dep}" is listed in both "{prefix}dependencies" and '
+                        f'"{prefix}optionalDependencies"; keep only one',
+                    )
+                )
+                continue
+
+            dependency = manifests.get(dep)
+            if dependency is None:
+                errors.append(error(path, f'{label} "{dep}" does not exist'))
+                continue
+
+            # A release bundle can never contain a development package, so
+            # a release package that needed one could not load (required)
+            # or could never find it (optional) in any shipped bundle.
+            if not is_development(data) and is_development(dependency):
+                errors.append(
+                    error(
+                        path,
+                        f'release package "{name}" must not use development package '
+                        f'"{dep}" as {"an" if dependency_label(field).startswith("o") else "a"} '
+                        f"{label}",
+                    )
+                )
+                continue
+
+            required_api = contracts[dep]["api"]
+            exposed_api = dependency.get("api")
+            if not positive_integer(exposed_api):
+                errors.append(error(path, f'{label} "{dep}" does not expose an API generation'))
+                continue
+
+            if required_api != exposed_api:
+                errors.append(
+                    error(
+                        path,
+                        f'{label} "{dep}" requires API {required_api}, '
+                        f"but exposes API {exposed_api}",
+                    )
+                )
+                continue
+
+            available = kit_parts.part_entries(dependency)
+            for wanted in kit_parts.contract_parts(contracts[dep]):
+                if wanted not in available:
+                    errors.append(
+                        error(
+                            path,
+                            f'{label} "{dep}" names part "{wanted}", which "{dep}" does not declare',
+                        )
+                    )
     return errors
 
 
@@ -354,40 +516,45 @@ def _depend_verb(field: str) -> str:
 
 
 def _find_cycles(manifests: dict[str, dict[str, Any]]) -> list[str]:
-    """Report every cycle in the graph of required dependencies.
+    """Report every cycle in the graph of required dependencies, over cores and parts.
 
     Optional edges are not followed: a cycle that needs one to close is legal.
+    A package naming itself is reported by `validate_graph` instead, so that
+    self-edge is skipped here. Without parts the nodes are the packages and the
+    messages are the package names joined by arrows, as they always were.
     """
     errors: list[str] = []
-    visiting: set[str] = set()
-    visited: set[str] = set()
-    stack: list[str] = []
+    visiting: set[kit_parts.Node] = set()
+    visited: set[kit_parts.Node] = set()
+    stack: list[kit_parts.Node] = []
 
-    def visit(name: str) -> None:
-        if name in visited:
+    def visit(node: kit_parts.Node) -> None:
+        if node in visited:
             return
-        if name in visiting:
-            start = stack.index(name)
-            cycle = stack[start:] + [name]
+        if node in visiting:
+            start = stack.index(node)
+            cycle = stack[start:] + [node]
             errors.append(
                 error(
-                    PACKAGES / name / "package.manifest.json",
-                    "dependency cycle detected: " + " -> ".join(cycle),
+                    PACKAGES / node.package / "package.manifest.json",
+                    "dependency cycle detected: " + " -> ".join(item.label for item in cycle),
                 )
             )
             return
 
-        visiting.add(name)
-        stack.append(name)
-        for dep in dependency_names(manifests[name], "dependencies"):
-            if dep != name and dep in manifests:
-                visit(dep)
+        visiting.add(node)
+        stack.append(node)
+        for need in kit_parts.node_needs(node, manifests):
+            if need != node:
+                visit(need)
         stack.pop()
-        visiting.remove(name)
-        visited.add(name)
+        visiting.remove(node)
+        visited.add(node)
 
     for name in sorted(manifests):
-        visit(name)
+        visit(kit_parts.Node(name))
+        for part in kit_parts.part_names(manifests[name]):
+            visit(kit_parts.Node(name, part))
 
     return errors
 

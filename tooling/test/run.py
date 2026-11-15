@@ -24,6 +24,7 @@ import sys
 from pathlib import Path
 from typing import Any, NamedTuple, Sequence
 
+from tooling.package import parts as kit_parts
 from tooling.validation.validate_manifests import load_manifests, validate_graph
 
 
@@ -156,25 +157,34 @@ def dependency_closure(package_name: str, manifests: ManifestMap) -> list[str]:
 def suite_source_packages(package_name: str, manifests: ManifestMap) -> list[str]:
     """Return every package whose source a package's suite needs on ``LUA_PATH``.
 
-    The order is: the package under test, then its required dependency closure,
-    then each optional dependency's own required closure (the optional package
-    last within it), without repeats. Optional dependencies are resolved at call
+    The order is: the package under test, then the required closure of its
+    core and of every one of its parts (a suite tests its parts too, ADR 0001),
+    then each optional dependency's own required closure, of the core and of
+    each part, without repeats. Optional dependencies are resolved at call
     time through ``Registry:Find`` and are absent from the load order, but a
-    suite that exercises the "present" path has to be able to ``require`` them,
-    so the runner puts them on the path instead of each test environment adding
-    source directories by hand. A suite that exercises the "absent" path simply
-    does not load them.
+    suite that exercises the "present" path has to be able to ``require``
+    them, so the runner puts them on the path instead of each test environment
+    adding source directories by hand. A suite that exercises the "absent"
+    path simply does not load them.
     """
     ordered = [package_name]
     ordered.extend(
         name for name in dependency_closure(package_name, manifests) if name != package_name
     )
 
+    own_nodes = [kit_parts.Node(package_name)] + [
+        kit_parts.Node(package_name, part)
+        for part in kit_parts.part_names(manifests[package_name])
+    ]
+    ordered.extend(node.package for node in kit_parts.walk(own_nodes, manifests))
+
     optional = manifests[package_name].get("optionalDependencies", {})
     if isinstance(optional, dict):
         for dependency in sorted(optional):
             if dependency in manifests:
                 ordered.extend(dependency_closure(dependency, manifests))
+    for node in own_nodes[1:]:
+        ordered.extend(kit_parts.optional_closure_packages(node, manifests))
 
     unique: list[str] = []
     seen: set[str] = set()
@@ -190,7 +200,13 @@ def build_lua_path(
     support_packages: Sequence[str],
     inherited: str | None = None,
 ) -> str:
-    """Build Lua paths for runtime source, shared and per-package test support."""
+    """Build Lua paths for runtime source, shared and per-package test support.
+
+    Each source package contributes its ``src/`` and its ``src/parts/``, so a
+    spec loads a Kit's core as ``require("EventKit")`` and one of its parts as
+    ``require("EventKit-Coalescing")``: a part's file name carries its facade,
+    so the name is unique across every package on the path.
+    """
     segments: list[str] = []
 
     for name in source_packages:
@@ -199,6 +215,7 @@ def build_lua_path(
             [
                 str(package_dir / "src" / "?.lua"),
                 str(package_dir / "src" / "?" / "init.lua"),
+                str(package_dir / "src" / kit_parts.PARTS_DIRECTORY / "?.lua"),
             ]
         )
 

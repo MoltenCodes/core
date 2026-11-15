@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import datetime
 import fnmatch
 import json
 import re
@@ -14,6 +15,8 @@ from urllib.parse import unquote
 from tooling.api import flavours
 from tooling.package import toc
 from tooling.package import build
+from tooling.package import embeds
+from tooling.package import parts as kit_parts
 from tooling.package.build import top_level_lua_files
 from tooling.release import pkgmeta
 from tooling.validation.interface_numbers import (
@@ -269,21 +272,19 @@ def validate_required_root_files() -> list[str]:
 
 
 def _dependency_closure(package_name: str, manifests: dict[str, dict[str, object]]) -> list[str]:
-    """Return the transitive runtime dependencies of one package, dependency-first."""
+    """Return the transitive runtime dependencies of one package, dependency-first.
+
+    The closure is that of the package's core and of every one of its parts:
+    the package's `src/` workspace holds the parts too, so the language server
+    has to resolve what they need. Without parts this is the core's closure.
+    """
+    own_nodes = [kit_parts.Node(package_name)] + [
+        kit_parts.Node(package_name, part) for part in kit_parts.part_names(manifests[package_name])
+    ]
     resolved: list[str] = []
-    seen: set[str] = set()
-
-    def visit(name: str) -> None:
-        dependencies = manifests[name].get("dependencies", {})
-        if not isinstance(dependencies, dict):
-            return
-        for dependency in sorted(dependencies):
-            if dependency in manifests and dependency not in seen:
-                seen.add(dependency)
-                visit(dependency)
-                resolved.append(dependency)
-
-    visit(package_name)
+    for node in kit_parts.walk(own_nodes, manifests):
+        if node.package != package_name and node.package not in resolved:
+            resolved.append(node.package)
     return resolved
 
 
@@ -511,7 +512,63 @@ def validate_package_layout() -> list[str]:
                 api_doc = package_dir / "docs" / "API.md"
                 if not api_doc.is_file():
                     errors.append(error(api_doc, "API package is missing docs/API.md"))
+            if isinstance(manifest, dict):
+                errors.extend(validate_part_files(package_dir, manifest))
 
+    return errors
+
+
+#: The part revision every part file declares, `local PART_REVISION = <n>`.
+PART_REVISION_RE = re.compile(r"^local\s+PART_REVISION\s*=\s*(\d+)\s*$", re.MULTILINE)
+
+
+def validate_part_files(package_dir: Path, manifest: dict[str, object]) -> list[str]:
+    """Hold a package's `src/parts/` directory to its manifest's `parts`, one to one.
+
+    Every declared part has its file, `src/parts/<displayName>-<Part>.lua`,
+    every file there is a declared part's, and each part file declares
+    `local PART_REVISION = <n>` equal to the manifest's `revision` for it, the
+    way a core's `IMPLEMENTATION_REVISION` matches the manifest (ADR 0001).
+    """
+    display_name = manifest.get("displayName")
+    if not isinstance(display_name, str):
+        return []
+    parts_dir = package_dir / "src" / kit_parts.PARTS_DIRECTORY
+    declared = kit_parts.part_entries(manifest)
+    expected = {
+        kit_parts.part_file_name(display_name, part).split("/", 1)[1]: part for part in declared
+    }
+
+    errors: list[str] = []
+    present = sorted(path for path in parts_dir.rglob("*") if path.is_file()) if parts_dir.is_dir() else []
+    for path in present:
+        relative = path.relative_to(parts_dir).as_posix()
+        if relative not in expected:
+            errors.append(
+                error(
+                    path,
+                    "not a declared part: every file under src/parts/ is "
+                    f'"{display_name}-<Part>.lua" for a part named in the manifest\'s "parts"',
+                )
+            )
+
+    for file_name, part in expected.items():
+        path = parts_dir / file_name
+        if not path.is_file():
+            errors.append(error(path, f'part "{part}" is declared in the manifest but has no file'))
+            continue
+        found = PART_REVISION_RE.findall(path.read_text(encoding="utf-8"))
+        revision = declared[part].get("revision")
+        if len(found) != 1:
+            errors.append(error(path, "a part file declares `local PART_REVISION = <n>` exactly once"))
+        elif int(found[0]) != revision:
+            errors.append(
+                error(
+                    path,
+                    f"PART_REVISION is {found[0]} but the manifest gives part "
+                    f'"{part}" revision {revision}',
+                )
+            )
     return errors
 
 
@@ -922,10 +979,7 @@ def validate_documented_load_order(manifests: dict[str, dict[str, object]]) -> l
         return [error(path, f'no fenced load order follows "{LOAD_ORDER_INTRODUCTION}"')]
 
     try:
-        ordered = build.select_packages(manifests).ordered
-        expected = [
-            f"{name}/{relative}" for name in ordered for relative in build.runtime_files(name)
-        ]
+        expected = build.load_order_paths(build.select_packages(manifests))
     except build.BuildError:
         # The manifest and layout checks report why the order cannot be computed.
         return []
@@ -938,6 +992,100 @@ def validate_documented_load_order(manifests: dict[str, dict[str, object]]) -> l
             + "\n".join(expected),
         )
     ]
+
+
+def validate_documented_footprint(manifests: dict[str, dict[str, object]]) -> list[str]:
+    """Check the generated footprint and parts tables of `docs/EMBEDDING.md`.
+
+    Both tables are rendered from the manifests (`tooling.package.embeds`)
+    and stand between `<!-- generated:footprint -->` and
+    `<!-- generated:parts -->` markers. A missing or stale block is reported
+    with the exact text to put in its place, which
+    `python3 -m tooling.package.embeds --footprint` also prints.
+    """
+    path = ROOT / LOAD_ORDER_DOCUMENT
+    if not path.is_file():
+        # `validate_required_root_files` already reports the missing file.
+        return []
+    text = path.read_text(encoding="utf-8")
+    try:
+        expected_blocks = {
+            embeds.FOOTPRINT_BLOCK: embeds.render_footprint_table(manifests),
+            embeds.PARTS_BLOCK: embeds.render_parts_table(manifests),
+        }
+    except build.BuildError:
+        # The manifest and layout checks report why the tables cannot be rendered.
+        return []
+
+    errors: list[str] = []
+    for name, expected in expected_blocks.items():
+        found = embeds.read_generated_block(text, name)
+        if found == expected:
+            continue
+        problem = "has no" if found is None else "has a stale"
+        errors.append(
+            error(
+                path,
+                f'{problem} generated "{name}" block; put this in its place:\n'
+                + embeds.generated_block(name, expected),
+            )
+        )
+    return errors
+
+
+#: The first release heading of a package changelog: `## 0.1.1 — 2026-11-15`.
+CHANGELOG_HEADING_RE = re.compile(
+    r"^## (?P<version>\S+) [\u2014-] (?P<date>\d{4}-\d{2}-\d{2})\s*$", re.MULTILINE
+)
+
+
+def validate_changelog_versions(
+    manifests: dict[str, dict[str, object]], today: datetime.date | None = None
+) -> list[str]:
+    """Check that each manifest's `version` is the release its `CHANGELOG.md` names first.
+
+    The first `## <version> — <date>` heading of a package changelog is the
+    newest release; the manifest must carry exactly that version, and the
+    date must not lie after ``today`` (UTC by default). This is what the
+    version pins once kept by `Manifest_spec.lua` files were reaching for: a
+    version raised without a changelog entry, or an entry without the raise.
+    """
+    today = today or datetime.datetime.now(datetime.timezone.utc).date()
+    errors: list[str] = []
+    for name in sorted(manifests):
+        path = ROOT / "packages" / name / "CHANGELOG.md"
+        if not path.is_file():
+            # The layout check reports the missing file.
+            continue
+        first = next(
+            (line for line in path.read_text(encoding="utf-8").splitlines() if line.startswith("## ")),
+            None,
+        )
+        heading = CHANGELOG_HEADING_RE.match(first or "")
+        if heading is None:
+            errors.append(
+                error(path, 'the first "## " heading must read "## <version> — <YYYY-MM-DD>"')
+            )
+            continue
+        version = manifests[name].get("version")
+        if heading.group("version") != version:
+            errors.append(
+                error(
+                    path,
+                    f'the newest entry is {heading.group("version")} but the manifest version '
+                    f"is {version}; the two must name the same release",
+                )
+            )
+        try:
+            released = datetime.date.fromisoformat(heading.group("date"))
+        except ValueError:
+            errors.append(error(path, f'"{heading.group("date")}" is not a calendar date'))
+            continue
+        if released > today:
+            errors.append(
+                error(path, f"the newest entry is dated {released}, after today ({today})")
+            )
+    return errors
 
 
 def quoted_block_after_heading(text: str, heading: str) -> str | None:
@@ -1121,6 +1269,8 @@ def validate_repository() -> tuple[dict[str, dict[str, object]], list[str]]:
     errors.extend(validate_pkgmeta_root_entries())
     errors.extend(validate_navigation_indexes(manifests))
     errors.extend(validate_documented_load_order(manifests))
+    errors.extend(validate_documented_footprint(manifests))
+    errors.extend(validate_changelog_versions(manifests))
     errors.extend(validate_quoted_example_files())
     errors.extend(validate_github_kit_lists(manifests))
     errors.extend(validate_markdown_links())

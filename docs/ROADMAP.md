@@ -2952,7 +2952,10 @@ recorded in `docs/decisions/`. Each record below is written before its code.
    blocks, a "Choosing parts" paragraph, the generator command), `README.md`
    and `docs/README.md` (a link to `docs/decisions/`), `docs/ROADMAP.md`
    (this record).
-9. Status: recorded 2026-11-15 under core decisions 18 and 19; code follows.
+9. Status: implemented 2026-11-15 under core decisions 18 and 19: the tooling,
+   43 unit tests, no Kit split yet, bundles byte-identical to before; the
+   release `manifest.json` stays schema 1, with `parts` added only where a
+   Kit declares them; ADRs 0001 to 0004 in `docs/decisions/`.
 
 **Lua limits gate and version check (architecture plan items 1 and 2)** — repository tooling, no facade
 
@@ -3027,7 +3030,10 @@ recorded in `docs/decisions/`. Each record below is written before its code.
    Shared files, exact text in the phase 2 report: `docs/ROADMAP.md` (this
    record), `docs/CONTRIBUTING.md` if it lists the gates (`python3 -m
    tooling.validation.lua_limits`).
-9. Status: recorded 2026-11-15 under core decisions 18 and 19; code follows.
+9. Status: implemented 2026-11-15: the `lua_limits` gate (21 unit tests, CI
+   job `limits`, ratchet `tooling/validation/lua_limits.json`); the 14
+   version pins in Manifest specs replaced by the manifest-against-
+   CHANGELOG check.
 
 **addonKit** — facade `AddonKit`, entry point `MoltenCodes:For(...)`
 

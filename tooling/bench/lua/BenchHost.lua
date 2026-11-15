@@ -38,12 +38,15 @@
 ---                      `strsplit` / `string.split`
 ---   language           `xpcall(f, handler, ...)` forwarding its extra
 ---                      arguments, as the client's Lua does
+---   secret values      `issecretvalue`, always `false` (`installSecretProbe`)
 ---
---- No fake-client profile is selected, so there is no `issecretvalue` and no
---- `C_EventUtils`: the Kits take their path for a client without secret values,
---- which the host can price, instead of calling a Lua stand-in for a native
---- check on every value. `docs/BENCHMARKS.md` lists every stub and why none of
---- them favours either side.
+--- Every client flavour the framework supports defines `issecretvalue`, and the
+--- Kits resolve it once at load and take their "the client has secret values"
+--- path from then on. Without it the host would only ever measure the fallback
+--- path for clients without the probe, which no supported client takes, so the
+--- stub is installed for both sides. No fake-client profile is selected, so
+--- there is no `C_EventUtils`. `docs/BENCHMARKS.md` lists every stub and why
+--- none of them favours either side.
 
 local FrameworkTestEnv = require("FrameworkTestEnv")
 local SimulatedTimers = require("SimulatedTimers")
@@ -452,6 +455,21 @@ end
 
 ---Build the host: the fake client, then everything this module adds.
 ---@return table host
+---Install `issecretvalue`, answering `false` for every value.
+---
+---Every supported client defines it (`packages/apiKit/metadata/<flavour>/`
+---`namespaces.json` lists it for every flavour), and no benchmark value is
+---secret, so `false`
+---is the client's answer. A Lua function stands in for a native one, so each
+---call costs more here than in the client; the in-client `nativeCalls`
+---workload prices the native call. Of the Ace3 libraries measured only
+---AceGUI-3.0's `Heading` calls it, and that widget is not compared.
+local function installSecretProbe()
+  setGlobal("issecretvalue", function()
+    return false
+  end)
+end
+
 function BenchHost.New()
   local environment = FrameworkTestEnv.New({})
   environment.Reset()
@@ -467,6 +485,7 @@ function BenchHost.New()
   installWidgetHost()
   installUnregisterAllEvents()
   installHookHost()
+  installSecretProbe()
   installClientXpcall()
   host.chatFrame = installSlashCommandHost()
 

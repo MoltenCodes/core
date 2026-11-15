@@ -262,31 +262,75 @@ apiKit/flavours/Retail.lua
 ```
 
 
+### Choosing Kits and parts
+
+You do not have to write this list by hand. Name the Kits your addon uses, and
+the parts of them it needs, and let the builder copy them with everything they
+depend on and write the `embeds.xml`:
+
+```sh
+python3 -m tooling.package.build --package moduleKit --package settingsKit \
+  --part 'widgetKit/*' --out Libs --embeds
+```
+
+That writes `Libs/MoltenCodes-Custom/` and `Libs/MoltenCodes-Custom/embeds.xml`;
+your `.toc` then lists one line, `Libs\MoltenCodes-Custom\embeds.xml`. To print
+the list for a folder you already have, use the generator:
+
+```sh
+python3 -m tooling.package.embeds moduleKit settingsKit             # embeds.xml
+python3 -m tooling.package.embeds moduleKit --toc                   # .toc lines instead
+python3 -m tooling.package.embeds moduleKit --root 'Libs\MoltenCodes'
+```
+
+`kitId` selects a Kit's core, `kitId/Part` one of its parts with the core, and
+`kitId/*` every part. A Kit's core works on its own; a part adds a feature, and
+a core method whose part you did not embed raises at your line and names the
+part (see [Optional parts](#optional-parts)). Regenerate the file when you add
+a Kit or a part rather than editing it: the order matters and the generator
+keeps it.
+
 ## Minimum footprint per Kit
 
 Registry is the one file every Kit needs, and SignalKit is the accepted second
 one for Kits whose contract includes callbacks. Everything else a Kit can use is
-optional and found at call time, so embedding one Kit costs this many files:
+optional and found at call time, so embedding one Kit's core costs this many
+files:
 
+<!-- generated:footprint -->
 | Files | Kit | Alongside `registry/Registry.lua` |
 |---|---|---|
-| 2 | `clientKit`, `cacheKit`, `compatKit`, `profileKit`, `schemaKit`, `localeKit`, `hookKit`, `interopKit`, `bridgeKit`, `menuKit`, `dialogKit`, `bindingKit`, `editModeKit`, `rangeKit`, `unitFrameKit`, `poolKit`, `signalKit`, `timerKit` | nothing |
-| 3 | `apiKit` | nothing; the third file is the flavour file of the client you support (one more per further flavour) |
-| 3 | `codecKit`, `tooltipKit`, `barKit`, `toastKit`, `glowKit` | `poolKit` |
-| 3 | `commandKit` | `schemaKit` |
+| 2 | `apiKit`, `poolKit`, `bindingKit`, `bridgeKit`, `signalKit`, `cacheKit`, `clientKit`, `timerKit`, `schemaKit`, `compatKit`, `dialogKit`, `editModeKit`, `hookKit`, `interopKit`, `localeKit`, `menuKit`, `profileKit`, `rangeKit`, `unitFrameKit` | nothing |
+| 3 | `barKit`, `codecKit`, `glowKit`, `toastKit`, `tooltipKit` | `poolKit` |
 | 3 | `brokerKit`, `eventKit`, `logKit`, `mediaKit` | `signalKit` |
-| 3 | `readinessKit`, `schedulerKit` | `timerKit` |
+| 3 | `schedulerKit`, `readinessKit` | `timerKit` |
+| 3 | `commandKit` | `schemaKit` |
+| 4 | `widgetKit` | `poolKit`, `signalKit` |
+| 4 | `launcherKit` | `signalKit`, `brokerKit` |
 | 4 | `lifecycleKit` | `signalKit`, `eventKit` |
 | 4 | `optionsKit`, `settingsKit` | `schemaKit`, `signalKit` |
-| 4 | `launcherKit` | `signalKit`, `brokerKit` |
-| 4 | `widgetKit` | `poolKit`, `signalKit` |
 | 5 | `moduleKit` | `signalKit`, `eventKit`, `lifecycleKit` |
-| 7 | `panelKit` | `signalKit`, `poolKit`, `schemaKit`, `optionsKit`, `widgetKit` |
-| 7 | `commKit` | `signalKit`, `eventKit`, `timerKit`, `schedulerKit`, `poolKit` |
+| 7 | `commKit` | `signalKit`, `eventKit`, `poolKit`, `timerKit`, `schedulerKit` |
 | 7 | `testKit` (development only) | `signalKit`, `eventKit`, `lifecycleKit`, `timerKit`, `schedulerKit` |
+| 7 | `panelKit` | `schemaKit`, `signalKit`, `optionsKit`, `poolKit`, `widgetKit` |
 
-The release artifact's `manifest.json` records the same closures, and
+Each Kit counts as one file here. `apiKit` also carries 5 further core files under `apiKit/flavours/`.
+<!-- /generated:footprint -->
+
+The table is rendered from the manifests (`python3 -m tooling.package.embeds
+--footprint`) and repository validation keeps it current. The release
+artifact's `manifest.json` records the same closures, and
 `python3 -m tooling.package.build --package <id>` ships exactly that set.
+
+### Optional parts
+
+A Kit may also carry optional parts, files an addon embeds only when it uses
+what they add (see [Choosing Kits and parts](#choosing-kits-and-parts)). Each
+part loads after its Kit's core and brings in what it needs:
+
+<!-- generated:parts -->
+No Kit has optional parts yet: every Kit is its core file.
+<!-- /generated:parts -->
 
 ## A complete example addon
 

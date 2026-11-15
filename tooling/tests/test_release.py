@@ -400,10 +400,6 @@ class NotesTests(ReleaseRepository):
 class LibraryTocTests(unittest.TestCase):
     """The standalone addon's .toc, generated from the real repository."""
 
-    def release_load_order(self):
-        manifests = build.load_valid_manifests()
-        return build.select_packages(manifests).ordered
-
     def test_carries_the_supported_interface_line_and_the_fields(self):
         from tooling.validation.interface_numbers import load_supported_clients
 
@@ -428,10 +424,11 @@ class LibraryTocTests(unittest.TestCase):
         from tooling.package import toc
 
         text = library_toc.standalone_toc().text
-        ordered = self.release_load_order()
+        manifests = build.load_valid_manifests()
 
         expected = [
-            toc.toc_entry(name, relative) for name in ordered for relative in build.runtime_files(name)
+            toc.toc_entry(*path.split("/", 1))
+            for path in build.load_order_paths(build.select_packages(manifests))
         ]
         self.assertEqual(expected, toc.listed_files(text))
         self.assertEqual("registry\\Registry.lua", toc.listed_files(text)[0])

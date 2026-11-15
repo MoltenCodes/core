@@ -17,9 +17,9 @@
 --- `Label`, `Button`, `CheckBox`, `Slider` and `EditBox`, and WidgetKit's
 --- `Group` (an inline group with a title) against AceGUI's `InlineGroup`.
 --- `Heading` is left out: AceGUI's at this commit calls the Retail 12
---- `issecretvalue` global on every `SetText`, and the host installs none on
---- purpose (a Lua stand-in would then also run on every WidgetKit text
---- setter, pricing a native check the host cannot price). AceGUI's `Frame`,
+--- `issecretvalue` global on every `SetText`, which the host answers with a
+--- Lua stand-in for a native call, so the comparison would mostly price the
+--- stand-in. AceGUI's `Frame`,
 --- `ScrollFrame` and `SimpleGroup` load, but a window or a scroll area adds
 --- nothing a group does not already show on these frames.
 ---

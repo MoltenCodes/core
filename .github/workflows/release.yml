@@ -236,7 +236,9 @@ jobs:
           (cd dist/framework && sha256sum --check --strict CHECKSUMS.txt)
 
       # Kits are independently publishable, so a bundle release also carries a
-      # bundle per Kit (with its dependency closure). The list comes from the
+      # bundle per Kit (with its dependency closure). A single-Kit release is
+      # the whole Kit: its core and every part (`--part "<id>/*"`), as the
+      # packager ships it (docs/RELEASES.md). The list comes from the
       # manifests through tooling and leaves out development packages, which
       # are tested but never bundled.
       - name: Build one bundle per package
@@ -246,17 +248,19 @@ jobs:
           package_ids="$(python3 -m tooling.package.list --release)"
           for package_id in ${package_ids}; do
             python3 -m tooling.package.build --package "${package_id}" \
+              --part "${package_id}/*" \
               --out "dist/packages/${package_id}" --zip --verify
             (cd "dist/packages/${package_id}" && sha256sum --check --strict CHECKSUMS.txt)
           done
 
-      # Package release: that Kit and the packages it requires, as the addon
-      # "MoltenCodes-<Facade>".
+      # Package release: that Kit, with every part, and the packages it
+      # requires, as the addon "MoltenCodes-<Facade>".
       - name: Build the package bundle
         if: env.KIND == 'package'
         run: |
           set -euo pipefail
           python3 -m tooling.package.build --package "${PACKAGE_ID}" \
+            --part "${PACKAGE_ID}/*" \
             --out "dist/release/${PACKAGE_ID}" --zip --verify
           (cd "dist/release/${PACKAGE_ID}" && sha256sum --check --strict CHECKSUMS.txt)
 

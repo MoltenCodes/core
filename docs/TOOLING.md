@@ -45,7 +45,9 @@ tooling/
 │   └── saved_variables.py         # reads a saved-variables file as Lua literals, without running Lua
 ├── package/
 │   ├── build.py                   # assembles a checksummed bundle that installs as an addon
+│   ├── embeds.py                  # writes an addon's embeds.xml (or .toc lines) for chosen Kits and parts
 │   ├── list.py                    # prints package IDs from the manifests
+│   ├── parts.py                   # the Kit parts model: nodes, contracts, the load-order walk
 │   └── toc.py                     # renders and reads the generated addon .toc
 ├── release/
 │   ├── check_tag.py               # checks a bundle or package tag against RELEASES.md and the manifests
@@ -64,6 +66,8 @@ tooling/
     ├── flavour_api_allowlist.json # reviewed exceptions to flavour_api, each with its guard and reason
     ├── host_names.json            # Lua library, framework globals and undocumented client names, with evidence
     ├── interface_numbers.py       # reads the supported-client table, prints the .toc line
+    ├── lua_limits.py              # active locals and upvalues of every runtime function, against Lua 5.1's limits
+    ├── lua_limits.json            # the ratchet: files allowed above a fail line, at their measured value
     ├── lua_references.py          # finds host references in Lua and decides whether each use is guarded
     ├── lua_syntax.py              # Lua 5.1 lexer and parser; `python3 -m tooling.validation.lua_syntax FILE...` checks files
     ├── supported_clients.json     # the supported `## Interface` numbers, by flavour
@@ -132,7 +136,109 @@ are read by the same code, but the tools use them differently:
 | `validate_repository.py` (`src/.luarc.json`) | closure listed | ignored |
 
 The semantics are defined in
-[`PACKAGE_MANIFEST.md`](PACKAGE_MANIFEST.md#optional-dependencies).
+[`PACKAGE_MANIFEST.md`](PACKAGE_MANIFEST.md#optional-dependencies). A part's
+own `dependencies` and `optionalDependencies` (next section) are treated the
+same way.
+
+## Kit parts
+
+A Kit is a core file plus optional part files
+([ADR 0001](decisions/0001-kit-core-and-parts.md)); the manifest declares the
+parts ([`PACKAGE_MANIFEST.md`](PACKAGE_MANIFEST.md#parts)) and a part's file is
+`src/parts/<Facade>-<Part>.lua`. One module, `tooling/package/parts.py`, holds
+the rules every tool shares, so none of them can disagree about which file a
+part is or when it loads:
+
+- a **node** is a Kit's core or one of its parts;
+- a core needs the cores of its required dependencies, each followed by the
+  parts its contract names (`{"api": 1, "parts": ["Renderer"]}`); a part
+  needs its own core, then its required dependencies the same way, then the
+  sibling parts its `parts` list names;
+- the load order is a depth-first walk: the selected Kits in sorted order,
+  each core followed by its selected parts in manifest order, every node after
+  what it needs. Without parts this is exactly the walk the builder always
+  made, so a repository of single-file Kits loads, builds and checksums as it
+  did before parts existed.
+
+What each tool does with parts:
+
+| Tool | What changes |
+|---|---|
+| `validation/validate_manifests.py` | the `parts` object (names, `description`, `revision`, maps, sibling lists) after the top-level `api` and `revision`; every named part exists; a part names neither its own Kit nor itself; no required cycle over cores and parts |
+| `validation/validate_repository.py` | `src/parts/` holds exactly the declared parts' files, each declaring `local PART_REVISION = <n>` equal to its manifest `revision`; `src/.luarc.json` covers the closure of the core and every part |
+| `package/build.py` | `--package ID` selects a core, `--part ID/Part` or `--part 'ID/*'` adds parts, `--all` takes every part; a bundle carries only its selected part files |
+| `package/embeds.py` | writes the `embeds.xml` or `.toc` lines for a selection |
+| `test/run.py` | `src/parts/` of every source package is on the suite's `LUA_PATH`, so a spec loads a part with `require("EventKit-Coalescing")`; what a package's parts need is on its suite's path too |
+| `test/coverage.py` | a part's lines count towards its package; the summary shows a row per part; a declared part that no spec loaded fails the run |
+| `lint.py`, StyLua, lua-language-server, `flavour_api.py` | nothing: they already read every file under `src/` |
+
+### Writing an addon's `embeds.xml`
+
+```sh
+python3 -m tooling.package.build --package moduleKit --package settingsKit \
+  --part 'widgetKit/*' --out Libs --embeds
+```
+
+copies the selection, with every dependency, to `Libs/MoltenCodes-Custom/`
+and writes `Libs/MoltenCodes-Custom/embeds.xml`, so the addon's `.toc` names
+one file, `Libs\MoltenCodes-Custom\embeds.xml`. Without a bundle,
+`python3 -m tooling.package.embeds` prints the same list for a folder of the
+author's choosing:
+
+```sh
+python3 -m tooling.package.embeds moduleKit settingsKit eventKit/Coalescing
+python3 -m tooling.package.embeds moduleKit --root 'Libs\MoltenCodes-Custom' --toc
+python3 -m tooling.package.embeds moduleKit --out embeds.xml
+```
+
+A selector is a Kit ID (its core), `ID/Part` (one part with its core) or
+`ID/*` (every part). Unknown Kits and parts are refused with the closest known
+name: a Kit ID typed in the wrong case, for example, is answered with
+`did you mean "timerKit"?`. Both commands
+use the builder's selection and walk, so the generated file and a bundle
+built from the same selection list the same files in the same order.
+`--footprint` prints the two tables
+[`EMBEDDING.md`](EMBEDDING.md#minimum-footprint-per-kit) carries between
+`<!-- generated:footprint -->` and `<!-- generated:parts -->` markers;
+repository validation holds those blocks to the manifests and prints the
+replacement when they drift.
+
+## Lua limits
+
+Lua 5.1 refuses to compile a function with more than 200 active locals or more
+than 60 upvalues, so a file that crosses either limit does not load at all.
+`python3 -m tooling.validation.lua_limits` measures every function of every
+runtime file (`packages/*/src/**/*.lua`, parts included) from the compiler's
+own listing, `luac -p -l -l`, and fails well before either limit:
+
+| Measure | Warns | Fails |
+|---|---|---|
+| main-chunk active locals | above 180 | above 190 |
+| any other function's active locals | | above 190 |
+| upvalues of any function | | above 50 |
+
+"Active" is the peak number alive at one instruction, which is what the
+compiler counts, not the number declared: locals of a finished `do` block no
+longer count. A file at exactly the limit reports exactly 200; the unit tests
+hold that calibration against the real `luac`.
+
+The margin of 10 below the limit leaves room for the fix that needs one more
+local; the warning at 180 says a file should be split (into `do` blocks or, for
+a Kit, into parts) before that happens.
+
+Files that were already above a fail line when the gate arrived are held by
+`tooling/validation/lua_limits.json` at their measured value, and the value
+can only go down. A measurement above its entry fails; a measurement below its
+entry fails too and asks for the entry to be lowered, so an entry always
+equals the measurement and raising one can never pass unseen; an entry for a
+file that is no longer above the line fails as stale. After making a file
+smaller, run `python3 -m tooling.validation.lua_limits --update`, which
+lowers or removes entries and refuses to raise any, and commit the file. The
+output names the file, the function's first line, the value and how many are
+left before Lua refuses the file.
+
+The CI job `limits` runs the gate and its unit tests with the Lua toolchain;
+the `repository` job has no Lua.
 
 ## Release and development packages
 
@@ -180,8 +286,18 @@ where there is one, the line to add:
   addon-site zip carries only the Kits and the licence, like the builder's
   bundle (root entries `.gitignore` names are local output and skipped);
 - the load order quoted in [`EMBEDDING.md`](EMBEDDING.md#load-order) equals the
-  one the builder computes from the manifests, file by file, and the example
-  `.toc` and `embeds.xml` it quotes equal the files in `examples/`;
+  one the builder computes from the manifests, file by file, parts included,
+  and the example `.toc` and `embeds.xml` it quotes equal the files in
+  `examples/`;
+- the footprint and parts tables of
+  [`EMBEDDING.md`](EMBEDDING.md#minimum-footprint-per-kit), between their
+  `<!-- generated:... -->` markers, equal what `tooling.package.embeds`
+  renders from the manifests (see "Kit parts");
+- every package's part files against its manifest (see "Kit parts");
+- every manifest `version` equals the version of the first
+  `## <version> — <date>` heading of the package's `CHANGELOG.md`, and that
+  date is not after today (UTC), so a version is never raised without its
+  changelog entry or the reverse;
 - the indexes: [`README.md`](README.md) in `docs/` links every other document
   there and every package README, and
   [`../packages/README.md`](../packages/README.md) links every package;
@@ -735,9 +851,12 @@ file with an entry the command must skip with a warning.
 package's runtime sources and package-owned documentation into the layout an
 addon embeds, writes the bundle's own `.toc` so the bundle also installs as an
 addon (`MoltenCodes/MoltenCodes.toc` for `--all`,
-`MoltenCodes-<Facade>/MoltenCodes-<Facade>.toc` for `--package <id>`), writes a
-`manifest.json` describing versions, revisions, licences, the load order and
-the `.toc`, and writes SHA-256 checksums into `CHECKSUMS.txt`.
+`MoltenCodes-<Facade>/MoltenCodes-<Facade>.toc` for a selection within one Kit,
+`MoltenCodes-Custom/MoltenCodes-Custom.toc` or the `--name` given for any other
+selection), writes a `manifest.json` describing versions, revisions, licences,
+parts, the load order and the `.toc`, with `--embeds` an `embeds.xml`, and
+writes SHA-256 checksums into `CHECKSUMS.txt`. What a selection is and how it
+loads is described under "Kit parts".
 `tooling/package/toc.py` holds the `.toc` field conventions and renders the
 text; which packages it lists, and in what order, comes from the builder.
 
@@ -754,7 +873,8 @@ any of them. Bundles from earlier builds that the checksum file does not
 describe are left alone, so a single-package bundle sitting beside the full one
 is not mistaken for an unrecorded file. It then checks the bundle's `.toc`: its
 file lines must equal `manifest.json`'s `loadOrder`, in order, and every `.lua`
-file in the bundle must be listed.
+file in the bundle must be listed. A bundle built with `--embeds` has its
+`embeds.xml` held to the same `loadOrder`.
 
 CI builds the whole framework into a temporary directory on every run and checks
 the result twice: once with `--verify`, and once with `sha256sum --check
@@ -827,7 +947,14 @@ the table as Markdown, which is how CI fills its job summary.
 It needs LuaCov in the same Lua 5.1 tree as Busted (`luarocks install luacov
 0.17.0-1`, see [`DEVELOPMENT.md`](DEVELOPMENT.md)).
 
-The run is a gate, in two parts.
+A Kit's part files are part of its package: their lines count towards the
+package's figure, and the summary shows each measured part on a row of its
+own under its package. LuaCov reports only the files a run executed, so a part
+no spec loads would otherwise be invisible rather than at 0 %; a declared part
+of a judged package that no spec loaded therefore fails the run, naming the
+`require` that would load it.
+
+The run is a gate, in two parts (three, for a Kit with parts).
 
 - **Every spec passes.** LuaCov's line hook allocates on every line it counts,
   so the allocation specs, which prove that a hot path allocates nothing, would
@@ -877,6 +1004,7 @@ timeout:
 | `package` | `tooling.package.build --all --verify`, then `sha256sum --check --strict`; on a push to `main`, the bundle is uploaded as the artefact `MoltenCodes-<commit>` |
 | `spell` | `python3 -m tooling.spell --require` and the cspell integration tests |
 | `repository` | repository validation, `tooling.api.generate --all --check`, `python3 -m tooling.validation.flavour_api`, the tooling unit tests, `compileall` |
+| `limits` | `python3 -m tooling.validation.lua_limits` and its unit tests, with the Lua 5.1 toolchain (see "Lua limits") |
 | `commits` | pull requests only: `python3 -m tooling.ci.check_commits` over the new commits and the title |
 | `secrets` | gitleaks over the whole history, with found values redacted from the log |
 | `workflows` | actionlint (and the shellcheck it runs) over every workflow |

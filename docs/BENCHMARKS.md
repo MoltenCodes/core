@@ -131,10 +131,17 @@ client lacks, **for both sides, whether or not a side uses it**:
 | `CreateFrame` of a type the fake client lacks (`GameTooltip`) builds a plain `Frame` | AceGUI-3.0, once at load (its shared tooltip) | One frame at load; no case creates one. |
 | No-op `SetBackdrop`, `SetBackdropColor`, `SetBackdropBorderColor` (the client's `BackdropTemplate` mixin), `SetHitRectInsets`, `EditBox:SetTextColor`, `FontString:SetVertexColor`, added to the fake client's shared method tables the first time a frame of each type is created (only when absent) | AceGUI-3.0 widgets (`InlineGroup`, `Slider`, `EditBox`, `Label`); WidgetKit calls none | Empty methods that change nothing a layout or check reads; installed once per type, no per-frame cost. The font-string hook wraps `CreateFontString`, one extra call per region at construction only, on both sides. |
 
-No fake-client profile is selected, so there is no `issecretvalue` and no
-`C_EventUtils`: the Kits take their path for a client without secret values.
-On Retail 12.x they also call `issecretvalue` on the values they handle; the
-host cannot price a native call, so that cost is left to the in-client runner.
+`issecretvalue` is installed too, for both sides, answering `false` for every
+value. Every client flavour the framework supports defines it (apiKit's
+metadata lists it for every flavour), and the Kits
+resolve it once at load: without it the host measured only the fallback path
+for a client without the probe, which no supported client takes, and hid
+what resolving the probe at load gains. No benchmark value is secret, so
+`false` is the client's answer. The stub is a Lua function where the client's
+is native, so each call costs more here than in a client; the in-client
+`nativeCalls` workload prices the native call. Of the Ace3 libraries measured,
+only AceGUI-3.0's `Heading` calls it, and `Heading` is not compared. No
+fake-client profile is selected, so there is no `C_EventUtils`.
 
 Events are delivered by calling the `OnEvent` script of the frame the library
 registered, the way the client calls it, rather than through the fake client's

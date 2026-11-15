@@ -52,6 +52,13 @@ FRAMEWORK_NOTES = (
 )
 
 
+#: What a hand-picked selection of Kits is, in one sentence.
+CUSTOM_NOTES = (
+    "A selection of Kits and parts from the MoltenCodes framework for World of "
+    "Warcraft addons, built for embedding."
+)
+
+
 def addon_name(facade: str | None = None) -> str:
     """Return the addon (and folder, and `.toc`) name of a bundle.
 

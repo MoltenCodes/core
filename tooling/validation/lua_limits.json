@@ -1,0 +1,22 @@
+{
+  "files": {
+    "packages/commKit/src/CommKit.lua": {
+      "mainLocals": 198
+    },
+    "packages/commandKit/src/CommandKit.lua": {
+      "mainLocals": 198
+    },
+    "packages/eventKit/src/EventKit.lua": {
+      "mainLocals": 191
+    },
+    "packages/moduleKit/src/ModuleKit.lua": {
+      "mainLocals": 195
+    },
+    "packages/schedulerKit/src/SchedulerKit.lua": {
+      "mainLocals": 194
+    },
+    "packages/settingsKit/src/SettingsKit.lua": {
+      "mainLocals": 196
+    }
+  }
+}

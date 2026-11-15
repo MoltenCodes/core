@@ -23,6 +23,12 @@ floor fails the run, and so does a measured package without a floor.
 `--update-floors` is the ratchet: it raises each judged package's floor to its
 measured coverage rounded down, adds the missing ones and never lowers one.
 
+A Kit's parts (`src/parts/`, ADR 0001) count towards their package's
+figure, and the table shows each part on a row of its own under its
+package. A declared part whose file no spec loaded fails the run: LuaCov
+reports only the files a run executed, so an untested part would otherwise
+be invisible rather than at 0 %.
+
 Only the packages the run was asked for are judged: a run of `timerKit` also
 executes some of `registry`, but not `registry`'s own specs, so `registry`'s
 partial figure is shown without a floor verdict. A run of every target also
@@ -45,6 +51,7 @@ import sys
 from pathlib import Path
 from typing import NamedTuple, Sequence
 
+from tooling.package import parts as kit_parts
 from tooling.test import run as test_run
 
 
@@ -65,6 +72,11 @@ SUMMARY_ROW_RE = re.compile(r"^(?P<path>\S+)\s+(?P<hits>\d+)\s+(?P<missed>\d+)\s
 
 #: The package a measured file belongs to.
 PACKAGE_SOURCE_RE = re.compile(r"(?:^|/)packages/(?P<package>[^/]+)/src/")
+
+#: A measured part file: `packages/<id>/src/parts/<Facade>-<Part>.lua`.
+PART_SOURCE_RE = re.compile(
+    r"(?:^|/)packages/(?P<package>[^/]+)/src/parts/[A-Za-z0-9]+-(?P<part>[A-Za-z0-9]+)\.lua$"
+)
 
 MISSING_LUACOV_MESSAGE = """\
 error: luacov was not found on PATH.
@@ -103,6 +115,21 @@ class PackageCoverage(NamedTuple):
     def meets(self, floor: int) -> bool:
         """Whether the coverage is at or above a whole-percent floor."""
         return 100 * self.hits >= floor * (self.hits + self.missed)
+
+
+class PartCoverage(NamedTuple):
+    """The measured lines of one part file; they also count towards its package."""
+
+    package: str
+    part: str
+    hits: int
+    missed: int
+
+    @property
+    def percent(self) -> float:
+        """Covered lines as a percentage of measured lines; 0 when nothing was measured."""
+        total = self.hits + self.missed
+        return 100.0 * self.hits / total if total else 0.0
 
 
 class FloorsError(Exception):
@@ -232,6 +259,49 @@ def parse_report(text: str) -> list[PackageCoverage]:
     return [PackageCoverage(name, hits, missed) for name, (hits, missed) in sorted(totals.items())]
 
 
+def parse_part_rows(text: str) -> list[PartCoverage]:
+    """Return one row per measured part file, sorted by package and part."""
+    _, separator, summary = text.rpartition("\nSummary\n")
+    if not separator:
+        return []
+    rows: list[PartCoverage] = []
+    for line in summary.splitlines():
+        row = SUMMARY_ROW_RE.match(line.strip())
+        if row is None:
+            continue
+        source = PART_SOURCE_RE.search(row.group("path").replace("\\", "/"))
+        if source is None:
+            continue
+        rows.append(
+            PartCoverage(
+                source.group("package"),
+                source.group("part"),
+                int(row.group("hits")),
+                int(row.group("missed")),
+            )
+        )
+    return sorted(rows)
+
+
+def unloaded_parts(
+    judged: Sequence[PackageCoverage],
+    part_rows: Sequence[PartCoverage],
+    manifests: dict[str, dict[str, object]],
+) -> list[str]:
+    """Return a message for each declared part of a judged package that no spec loaded."""
+    measured = {(row.package, row.part) for row in part_rows}
+    messages: list[str] = []
+    for row in judged:
+        manifest = manifests.get(row.package, {})
+        for part in kit_parts.part_names(manifest):
+            if (row.package, part) not in measured:
+                messages.append(
+                    f"{row.package}/{part}: no spec loaded this part; require "
+                    f'"{manifest.get("displayName")}-{part}" in a spec of {row.package}'
+                )
+    return messages
+
+
 def floor_cell(row: PackageCoverage, floors: dict[str, int], judged: set[str]) -> str:
     """The floor column of one row: the floor and, when it failed, why.
 
@@ -254,8 +324,13 @@ def render_markdown(
     floors: dict[str, int] | None = None,
     judged: set[str] | None = None,
     failures: Sequence[str] = (),
+    part_rows: Sequence[PartCoverage] = (),
 ) -> str:
-    """The job summary: one row per package with its floor, the total and the verdict."""
+    """The job summary: one row per package with its floor, the total and the verdict.
+
+    Each measured part follows its package on a row of its own; its lines are
+    already in the package's row, so the total does not count them twice.
+    """
     floors = floors or {}
     judged = {row.package for row in rows} if judged is None else judged
     lines = [
@@ -269,6 +344,12 @@ def render_markdown(
             f"| `{row.package}` | {row.hits} | {row.missed} | {row.percent:.1f}% "
             f"| {floor_cell(row, floors, judged)} |"
         )
+        for part in part_rows:
+            if part.package == row.package:
+                lines.append(
+                    f"| `{part.package}/{part.part}` (part) | {part.hits} | {part.missed} "
+                    f"| {part.percent:.1f}% | in `{part.package}` |"
+                )
     total = PackageCoverage(
         "total", sum(row.hits for row in rows), sum(row.missed for row in rows)
     )
@@ -373,6 +454,10 @@ def run(
         print("error: luacov.report.out has no package rows in its summary", file=sys.stderr)
         return 1
 
+    report_text = REPORT_FILE.read_text(encoding="utf-8")
+    part_rows = parse_part_rows(report_text)
+    manifests, _ = test_run.load_valid_manifests()
+
     tests_passed = suite_status == 0
     judged = judged_packages(rows, package_names)
     if update_floors:
@@ -387,8 +472,9 @@ def run(
 
     verdicts = check_floors(judged, floors, full_run=not package_names)
     failures = [verdict.message for verdict in verdicts if not verdict.passed]
+    failures.extend(unloaded_parts(judged, part_rows, manifests))
     markdown = render_markdown(
-        rows, tests_passed, floors, {row.package for row in judged}, failures
+        rows, tests_passed, floors, {row.package for row in judged}, failures, part_rows
     )
     print()
     print(markdown, end="")

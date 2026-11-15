@@ -8,7 +8,11 @@ installs as the addon `MoltenCodes`, a single Kit as `MoltenCodes-<Facade>`.
 ## Versioning
 
 Package versions use Semantic Versioning and live in
-`packages/<name>/package.manifest.json`.
+`packages/<name>/package.manifest.json`. The newest entry of the package's
+`CHANGELOG.md`, its first `## <version> — <date>` heading, names the same
+version, and its date is not in the future; repository validation holds the
+two together, so a version is never raised without its changelog entry or the
+reverse. Specs do not pin the version string.
 
 A release artifact carries the `version` from the manifest it was built from.
 Runtime `api` and `revision` mean different things, described in
@@ -72,23 +76,47 @@ so a half-done bump cannot be tagged from a green tree.
 python3 -m tooling.package.build --all --out dist
 ```
 
-builds every release package into one bundle. To build one package:
+builds every release package, with every [part](PACKAGE_MANIFEST.md#parts),
+into one bundle. To build one package:
 
 ```bash
 python3 -m tooling.package.build --package signalKit --out dist
+```
+
+To build exactly what one addon embeds, name its Kits and parts and ask for an
+`embeds.xml` beside them:
+
+```bash
+python3 -m tooling.package.build --package moduleKit --package settingsKit \
+  --part 'widgetKit/*' --out Libs --embeds
 ```
 
 Other options:
 
 | Option | Effect |
 |---|---|
-| `--all` | include every release package (packages marked `distribution: development` are skipped and listed in `manifest.json`) |
-| `--package NAME` | include `NAME` and its runtime dependencies |
+| `--all` | include every release package with every part (packages marked `distribution: development` are skipped and listed in `manifest.json`) |
+| `--package NAME` | include the core of `NAME` and its runtime dependencies; repeat it for several Kits |
+| `--part NAME/PART` | include one part of `NAME` (`NAME/*` for every part), its core and what it needs; repeatable |
+| `--name BUNDLE` | the name of a selection of several Kits, `MoltenCodes-<Suffix>` (default `MoltenCodes-Custom`) |
+| `--embeds` | additionally write `embeds.xml` into the bundle root, loading its files in load order |
 | `--out DIR` | output directory; created if missing |
 | `--zip` | additionally write `<bundle>.zip` |
 | `--verify` | re-read `CHECKSUMS.txt` and the `.toc` afterwards and check them against the build |
 
-`--all` and `--package` are mutually exclusive and one of them is required.
+Either `--all` or at least one `--package` or `--part` is required, and
+`--all` takes neither of the others. The bundle is named `MoltenCodes` for
+`--all`, `MoltenCodes-<Facade>` when everything named belongs to one Kit, and
+`MoltenCodes-Custom` (or `--name`) otherwise; `MoltenCodes` itself is never
+given to a partial bundle, because it would install as the complete
+framework addon. `python3 -m tooling.package.embeds` prints the same
+`embeds.xml` without building a bundle ([`TOOLING.md`](TOOLING.md#kit-parts)).
+
+A Kit's release (a package tag, and the per-Kit bundles of a bundle release)
+is the whole Kit: the release workflow builds `--package <id> --part '<id>/*'`,
+and `python3 -m tooling.release.library_toc --package <id>` lists every part,
+because the packager moves the whole `src/` directory. For a Kit without
+parts that is the same as `--package <id>`.
 
 A single-package build includes that package's runtime dependency closure. A
 bundle that cannot load is not a release artifact, so `--package schedulerKit`
@@ -154,13 +182,19 @@ also the layout of the installed addon, so copying the bundle folder into
 Written at the bundle root. It records, for every package in the bundle: display
 name, description, `version`, `license`, `api`, `revision`, its declared runtime
 dependencies, the files it published, and its `role` in this bundle (`subject`,
-`dependency`, or `member` for an `--all` build).
+`dependency`, `selected` for a Kit named in a custom selection, or `member`
+for an `--all` build). A package that declares parts also carries `parts`:
+each part the bundle contains, with its `description`, `revision`, `file`,
+`dependencies`, `optionalDependencies` and sibling `parts`. A package without
+parts carries no such key, so its entry is what it was before parts existed.
 
 It also records `loadOrder`: the bundle-relative Lua files in a valid
-dependency-first order. That list is exactly what a consuming addon puts in its
+dependency-first order. A part loads after everything it needs, which can be
+another Kit's core, so one package's files need not be next to each other. That list is exactly what a consuming addon puts in its
 `.toc`, which is why it is generated rather than written by hand. `toc` names
 the bundle's own `.toc` (`"MoltenCodes.toc"`), whose file lines are the same
-list with the client's backslashes.
+list with the client's backslashes, and `embeds`, present only for a build with
+`--embeds`, names the bundle's `embeds.xml`, which loads the same list.
 
 ### `CHECKSUMS.txt`
 
@@ -189,7 +223,8 @@ given and a file left out of them passes silently.
 `--verify` also holds the bundle's `.toc` against the bundle: its file lines
 must be `manifest.json`'s `loadOrder`, in that order, and every `.lua` file in
 the bundle must be listed. A file the `.toc` misses would never load in an
-installed copy; a listed file that is missing would stop the addon's load.
+installed copy; a listed file that is missing would stop the addon's load. A
+bundle with an `embeds.xml` has it held to the same list.
 
 The two checksum checks answer different questions and CI runs both:
 `--verify` proves the checksum file describes the bundle beside it exactly, and
