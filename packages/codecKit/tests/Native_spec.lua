@@ -250,6 +250,45 @@ describe("CodecKit native compression", function()
     assert.are.equal(0, CodecKit._state.pool:GetActiveCount())
   end)
 
+  it("falls back to the Lua compressor when CompressString answers a secret", function()
+    -- Regression for revision 7, which measured the answer with `#` and
+    -- returned it as the frame body without asking `issecretvalue`.
+    local _, expected = CodecKit:Compress(TEXT)
+    local _, expectedFrame = CodecKit:Encode(TEXT, { compress = "deflate", channel = "addon" })
+    local secretAnswers = {}
+    local record = TestEnv.InstallEncodingUtil({
+      compress = function(source)
+        local answer = TestEnv.StoredDeflate(source)
+        secretAnswers[answer] = true
+        return answer
+      end,
+    })
+    TestEnv.InstallSecretProbe(secretAnswers)
+    assert.are.same({ true, expected }, { CodecKit:Compress(TEXT) })
+    assert.are.same(
+      { true, expectedFrame },
+      { CodecKit:Encode(TEXT, { compress = "deflate", channel = "addon" }) }
+    )
+    assert.are.equal(2, #record.compressCalls)
+    assert.are.equal(0, CodecKit._state.pool:GetActiveCount())
+  end)
+
+  it("uses the documented numbers when an Enum field is a secret", function()
+    local record = TestEnv.InstallEncodingUtil({
+      enum = {
+        CompressionMethod = { Deflate = 10 },
+        CompressionLevel = { Default = 20, OptimizeForSpeed = 21, OptimizeForSize = 22 },
+      },
+    })
+    TestEnv.InstallSecretProbe({ [10] = true, [22] = true })
+    CodecKit:Compress(TEXT, { level = 9 })
+    CodecKit:Compress(TEXT, { level = 1 })
+    assert.are.equal(0, record.compressCalls[1].method)
+    assert.are.equal(SIZE, record.compressCalls[1].level)
+    assert.are.equal(0, record.compressCalls[2].method)
+    assert.are.equal(21, record.compressCalls[2].level)
+  end)
+
   it("refuses exactly as the Lua compressor does when the output limit is too small", function()
     local random = TestEnv.NewRandom(64)
     local incompressible = TestEnv.RandomBytes(random, 200)

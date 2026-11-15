@@ -22,7 +22,7 @@
 --     `C_EncodingUtil.CompressString` output inflated by CodecKit, with the
 --     client's Base64 and CBOR logged next to CodecKit's print channel and
 --     serialiser for the same input (sizes and milliseconds);
---   * the native compression path of revision 7: `Compress` byte for byte
+--   * the native compression path (revision 7 and later): `Compress` byte for byte
 --     the client's `CompressString` from 64 bytes on, the roster round trip
 --     through it, `EncodeAsync` on the Lua encoder past 256 KiB, what
 --     `DecompressString` does with trailing bytes and a truncated stream
@@ -1269,8 +1269,8 @@ interopTest(
 
 -- codecKit.native ---------------------------------------------------------------------------
 --
--- Revision 7 compresses inputs of 64 bytes or more with the client's
--- CompressString and keeps inflating in Lua. These tests prove the native
+-- Revisions 7 and later compress inputs of 64 bytes or more with the client's
+-- CompressString and keep inflating in Lua. These tests prove the native
 -- path runs, that its frames read back, and log what a later revision needs
 -- before it inflates natively: what DecompressString does with bytes after
 -- the final block and with a truncated stream.

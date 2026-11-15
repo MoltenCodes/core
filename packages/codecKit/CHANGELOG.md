@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.1 — 2026-11-15
+
+Review fix. The wire format is unchanged, and every frame any revision wrote decodes as before.
+
+- **A secret answer from the client's compressor is no longer used.** Revision 7 measured what `C_EncodingUtil.CompressString` returned with `#` and made it the frame body without asking `issecretvalue`, against the rule that every value the client answers is asked about first; a secret there would have made the whole frame a secret no peer could receive. The answer is now asked about after its type check, and a secret falls back to the Lua compressor like every other answer CodecKit cannot trust. The `Enum.CompressionMethod` and `Enum.CompressionLevel` numbers are asked about too, and a secret one is replaced by the documented number. The client never answers a secret for the non-secret input CodecKit hands it, so no frame a client wrote changes.
+- Implementation revision 8. The state layout is unchanged: `Bootstrap_spec.lua` loads a revision 7 copy without the new check, upgrades it in place, keeps the state table, the limits and the pool, and falls back to Lua for a secret answer afterwards.
+- Specs: `Native_spec.lua` adds the fallback for a secret answer and the documented numbers for a secret `Enum` field. 149 specs.
+- Docs: API.md states revision 8, the secret fallback and the `Enum` fallback, and says exactly which client runs proved the native format (the interoperability tests on Retail 12.1.0 build 69933, 2026-09-25) and which have not run (the four native tests, both Classic flavours). INTERNALS.md records the secret checks and a host fuzz run of 873 zlib raw streams the Lua inflater read without a failure. The README gains the migration table from AceSerializer-3.0 and LibDeflate, and no longer promises a client speed nobody measured. tests/README lists the new specs; the client suite's comments name revision 7 and later.
+
 ## 0.2.0 — 2026-11-15
 
 Native compression, as recorded in docs/ROADMAP.md ("codecKit native DEFLATE", core decision 16). The wire format is unchanged: frames are version 1, and every frame any revision wrote decodes as before.

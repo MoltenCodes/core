@@ -283,6 +283,51 @@ describe("CodecKit bootstrap", function()
     assert.are.equal(0, pool:GetActiveCount())
   end)
 
+  it("upgrades a revision 7 copy in place and refuses a secret native answer afterwards", function()
+    TestEnv.Reset()
+    require("Registry")
+    require("PoolKit")
+    local text = string.rep("an upgrade keeps every frame readable; ", 8)
+    local _, luaBytes = require("CodecKit"):Compress(text)
+    TestEnv.Reset()
+    require("Registry")
+    require("PoolKit")
+    -- Revision 7 handed the client's answer on without asking the probe.
+    local older = TestEnv.LoadRevision(
+      7,
+      "    if isSecret and isSecret(result) then\n      return nil\n    end\n",
+      ""
+    )
+    assert.are.equal(7, older.REVISION)
+    older:SetLimits({ maxOutputBytes = 65536 })
+    local state = older._state
+    local pool = state.pool
+    local secretAnswers = {}
+    local record = TestEnv.InstallEncodingUtil({
+      compress = function(source)
+        local answer = TestEnv.StoredDeflate(source)
+        secretAnswers[answer] = true
+        return answer
+      end,
+    })
+    TestEnv.InstallSecretProbe(secretAnswers)
+    local _, olderBytes = older:Compress(text)
+    assert.is_true(secretAnswers[olderBytes] == true)
+
+    package.loaded["CodecKit"] = nil
+    local CodecKit = require("CodecKit")
+    assert.are.equal(older, CodecKit)
+    assert.are.equal(8, CodecKit.REVISION)
+    assert.are.equal(state, CodecKit._state)
+    assert.are.equal(CodecKit.REVISION, CodecKit._state.runtimeRevision)
+    assert.are.equal(pool, CodecKit._state.pool)
+    assert.are.equal(65536, CodecKit:GetLimits().maxOutputBytes)
+
+    assert.are.same({ true, luaBytes }, { CodecKit:Compress(text) })
+    assert.are.equal(2, #record.compressCalls)
+    assert.are.equal(0, pool:GetActiveCount())
+  end)
+
   it("requires Registry", function()
     TestEnv.Reset()
     local ok, value = pcall(require, "CodecKit")

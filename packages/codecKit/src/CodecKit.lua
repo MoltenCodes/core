@@ -57,7 +57,7 @@
 
 local PACKAGE_NAME = "codecKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 7
+local IMPLEMENTATION_REVISION = 8
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_POOLKIT_API = 1
 local OPTIONAL_SCHEDULERKIT_API = 1
@@ -2814,18 +2814,21 @@ do
   local DOCUMENTED_DEFLATE_METHOD = 0
 
   ---Read `Enum.<enumName>.<fieldName>` from the client, or `documented` when
-  ---the client has no such number.
+  ---the client has no such number. A value the secret probe reports is never
+  ---handed on: like every value the client answers, it is asked about before
+  ---anything uses it.
+  ---@param isSecret function|false the call's `issecretvalue`, if any
   ---@param enumName string
   ---@param fieldName string
   ---@param documented integer
   ---@return integer
-  local function readEnumValue(enumName, fieldName, documented)
+  local function readEnumValue(isSecret, enumName, fieldName, documented)
     -- Enum is a World of Warcraft client table reachable only through the global table.
     -- selene: allow(global_usage)
     local enums = rawget(_G, "Enum")
     local enum = type(enums) == "table" and rawget(enums, enumName) or nil
     local value = type(enum) == "table" and rawget(enum, fieldName) or nil
-    if type(value) == "number" then
+    if type(value) == "number" and not (isSecret and isSecret(value)) then
       return value
     end
     return documented
@@ -2835,16 +2838,17 @@ do
   ---favour speed, as the greedy Lua levels do, 4 to 6 are the client's
   ---default, and 7 to 9 favour size. Each field is named literally, with the
   ---number `EncodingUtilDocumentation.lua` documents for it.
+  ---@param isSecret function|false the call's `issecretvalue`, if any
   ---@param level integer 1 to 9
   ---@return integer
-  local function readClientLevel(level)
+  local function readClientLevel(isSecret, level)
     if level <= 3 then
-      return readEnumValue("CompressionLevel", "OptimizeForSpeed", 1)
+      return readEnumValue(isSecret, "CompressionLevel", "OptimizeForSpeed", 1)
     end
     if level <= 6 then
-      return readEnumValue("CompressionLevel", "Default", 0)
+      return readEnumValue(isSecret, "CompressionLevel", "Default", 0)
     end
-    return readEnumValue("CompressionLevel", "OptimizeForSize", 2)
+    return readEnumValue(isSecret, "CompressionLevel", "OptimizeForSize", 2)
   end
 
   ---Return the client's `C_EncodingUtil.CompressString`, or `nil`. Read at
@@ -2869,9 +2873,9 @@ do
   ---Lua compressor must run instead: a short input, an asynchronous call over
   ---`ASYNC_NATIVE_MAXIMUM_BYTES`, a client without the function, or a native
   ---call that raised, returned nothing, returned something other than a
-  ---non-empty string, or returned more than `maxOutputBytes`. In the last
-  ---case the Lua compressor decides, so a refusal is exactly the one the Lua
-  ---path gives.
+  ---non-empty string, returned a secret, or returned more than
+  ---`maxOutputBytes`. In every such case the Lua compressor decides, so a
+  ---refusal is exactly the one the Lua path gives.
   ---@param work table
   ---@param bytes string
   ---@param level integer 1 to 9
@@ -2888,12 +2892,19 @@ do
     if type(compressString) ~= "function" then
       return nil
     end
-    local method = readEnumValue("CompressionMethod", "Deflate", DOCUMENTED_DEFLATE_METHOD)
-    local nativeLevel = readClientLevel(level)
+    local isSecret = work.isSecret
+    local method =
+      readEnumValue(isSecret, "CompressionMethod", "Deflate", DOCUMENTED_DEFLATE_METHOD)
+    local nativeLevel = readClientLevel(isSecret, level)
     -- The function and its arguments go to pcall directly, so no closure is
     -- made per call. The client documents that it may return nothing.
     local ok, result = pcall(compressString, bytes, method, nativeLevel)
     if not ok or type(result) ~= "string" then
+      return nil
+    end
+    -- The answer is asked about before `#` or the frame touches it: a secret
+    -- body would make the whole frame a secret no peer could send.
+    if isSecret and isSecret(result) then
       return nil
     end
     local resultLength = #result
