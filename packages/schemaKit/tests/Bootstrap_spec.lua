@@ -93,6 +93,20 @@ describe("SchemaKit bootstrap", function()
     assert.is_true(schema:Check({ x = 1 }))
     local _, again = schema:Check({ x = "a" })
     assert.are.equal(failure, again)
+    local converted = false
+    local key = setmetatable({}, {
+      __tostring = function()
+        converted = true
+        return "converted"
+      end,
+    })
+    TestEnv.expectErrorContaining(
+      "SchemaKit:SetLimits limits.<table> is not a recognised limit",
+      function()
+        current:SetLimits({ [key] = 1 })
+      end
+    )
+    assert.is_false(converted)
   end
 
   it("upgrades a revision 1 package in place to the working file", function()

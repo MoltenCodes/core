@@ -35,7 +35,7 @@
 
 local PACKAGE_NAME = "schemaKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 4
+local IMPLEMENTATION_REVISION = 5
 local REQUIRED_REGISTRY_API = 2
 local STATE_SCHEMA = 1
 
@@ -2116,6 +2116,25 @@ local function packageSeal(facade, node, options)
   return schema
 end
 
+---Name a caller's table key in a refusal without running its `__tostring`.
+---
+---`tostring` on a table or userdata runs the key's `__tostring`, foreign code
+---that can raise or answer a secret and so replace the real refusal. A string
+---is shown as written and a number or boolean through `tostring`, which runs
+---no foreign code for them; anything else is named by its type, as `<table>`.
+---@param key any a table key, which `next` never returns as `nil`
+---@return string
+local function describeKey(key)
+  local keyType = type(key)
+  if keyType == "string" then
+    return key
+  end
+  if keyType == "number" or keyType == "boolean" then
+    return tostring(key)
+  end
+  return "<" .. keyType .. ">"
+end
+
 ---Refuse a `SetLimits` argument before anything is written, so a refused
 ---call changes no limit.
 ---@param limits any
@@ -2127,7 +2146,10 @@ local function validateLimitUpdate(limits, level)
   local isSecret = currentSecretProbe()
   for key, value in next, limits do
     if type(key) ~= "string" or rawget(sharedLimits, key) == nil then
-      error("SchemaKit:SetLimits limits." .. tostring(key) .. " is not a recognised limit", level)
+      error(
+        "SchemaKit:SetLimits limits." .. describeKey(key) .. " is not a recognised limit",
+        level
+      )
     end
     local ceiling = LIMIT_CEILINGS[key]
     -- The secret check runs before the value meets the sentinel or a

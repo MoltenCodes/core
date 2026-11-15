@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.1.6 — 2026-11-15
+
+- Fixed: `SetLimits` built its unknown-limit message with `tostring(key)`, so a key that is a table or userdata with a `__tostring` metamethod ran that foreign code inside SchemaKit. The metamethod could raise or answer a secret value, and the caller then saw its error instead of the real refusal. A string key is still shown as written and a number or boolean key through `tostring` (no foreign code runs for those, so `limits.1` is unchanged); any other key is named by its type: `SchemaKit:SetLimits limits.<table> is not a recognised limit`, at the caller's line, with no limit changed. `docs/API.md` documents the form under *Limits*.
+- Implementation revision 5. No state changed: an in-place upgrade from revision 4 keeps every node, schema, failure table and limit and replaces the methods only; the upgrade specs check the new message after the upgrade.
+- Specs: a table key whose `__tostring` raises is refused by its type at the caller without running it. 132 → 133 specs.
+
+## 0.1.5 — 2026-11-15
+
+- `docs/API.md` listed every builder, method and limit message but none of the three raised at load; *Loading* now gives them (`requires Registry API 2 to be loaded first`, `requires a valid Registry API 2 facade`, `package state is corrupted or incomplete`).
+- `tests/README.md` named only the upgrade from revision 1 to the working file; `Bootstrap_spec.lua` also upgrades the previous revision in place, and the list now says so.
+- The README's list of limits left out `maxPatternCaptures`, the fourth limit `SetLimits` accepts (lower only, 32 being Lua 5.1's own capture limit); it now names it.
+- Documentation only: implementation revision 4 is unchanged.
+
 ## 0.1.4 — 2026-09-24
 
 - A secret builder argument or `Assert` argument (Retail 12.x) is refused at the caller's line, with the message an invalid value of that argument gets, before SchemaKit compares it, uses it as a key or does arithmetic on it. Measured on Retail 12.1.0 (build 69933): comparing a secret with a value of its own type and using it as a table key raise in tainted code. The sites were the `min` and `max` of `SchemaKit.string`, `SchemaKit.number` and `SchemaKit.array` (the NaN test, the integer test and `min > max`), `SchemaKit.map`'s `max`, `SchemaKit.string`'s `pattern` (the empty-string test), the literals of `SchemaKit.string{ oneOf }` and `SchemaKit.enum` (the NaN test and the set lookup), `SchemaKit.custom`'s `description`, and `Assert`'s `argumentName` (the empty-string test) and `level` (the integer test and `level + 1`). `docs/API.md` lists each message under "Secret values", and its implementation revision line, which still said 2, says 4.

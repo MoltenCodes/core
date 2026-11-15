@@ -258,6 +258,29 @@ describe("SchemaKit limits", function()
     }, S:GetLimits())
   end)
 
+  it("names a table key by its type without running its __tostring", function()
+    local converted = false
+    local key = setmetatable({}, {
+      __tostring = function()
+        converted = true
+        error("foreign __tostring ran", 0)
+      end,
+    })
+    local line
+    local ok, value = pcall(function()
+      line = currentLine() + 1
+      S:SetLimits({ [key] = 1 })
+    end)
+    assertReportedAt(
+      line,
+      "SchemaKit:SetLimits limits.<table> is not a recognised limit",
+      ok,
+      value
+    )
+    assert.is_false(converted)
+    assert.are.equal(16, S:GetLimits().maxDepth)
+  end)
+
   it("keeps the limits a consumer set and the sentinel across an in-place upgrade", function()
     local sentinel = S.UNBOUNDED
     S:SetLimits({ maxDepth = 4, pathKeyLimit = 5, defaultArrayMax = sentinel })

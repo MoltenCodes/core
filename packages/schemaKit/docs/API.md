@@ -2,7 +2,7 @@
 
 SchemaKit API generation **1** provides value schemas: builders that describe a value, a seal that makes the description immutable, and a checker that reports structured failures which never contain the checked value.
 
-Implementation revision: **4**.
+Implementation revision: **5**.
 
 ## Loading
 
@@ -19,7 +19,7 @@ Portable WoW code resolves the package through Registry:
 local SchemaKit = MoltenCodes.Registries[2]:Get("schemaKit", 1)
 ```
 
-SchemaKit does not rely on `require()` at runtime.
+SchemaKit does not rely on `require()` at runtime. Loaded without Registry API 2, `SchemaKit.lua` raises `MoltenCodes SchemaKit requires Registry API 2 to be loaded first`; over a Registry whose facade has no `Bootstrap`, `MoltenCodes SchemaKit requires a valid Registry API 2 facade`. A shared package state or facade that fails validation, such as one an earlier failed load left incomplete, raises `MoltenCodes SchemaKit package state is corrupted or incomplete`.
 
 ### Optional host facilities
 
@@ -248,7 +248,7 @@ SchemaKit:SetLimits({ maxDepth = 24, defaultArrayMax = SchemaKit.UNBOUNDED })
 local limits = SchemaKit:GetLimits() -- a fresh table
 ```
 
-`SetLimits` accepts any subset and checks every entry before it changes anything, so a refused call changes no limit. It raises at the caller's line on a non-table, an unknown name (`SchemaKit:SetLimits limits.maxWidth is not a recognised limit`), a value outside 1 to the ceiling (`SchemaKit:SetLimits limits.maxDepth must be an integer from 1 to 64`, with `: <reason>` appended when the value is an integer above the ceiling), a `defaultArrayMax` that is neither a positive integer nor the sentinel (`SchemaKit:SetLimits limits.defaultArrayMax must be a positive integer or SchemaKit.UNBOUNDED`), `SchemaKit.UNBOUNDED` where the table says no (`SchemaKit:SetLimits limits.maxDepth cannot be SchemaKit.UNBOUNDED: <reason>`), and a dot call. A secret value (Retail 12.x) is refused before it is compared with anything, with the message an invalid value of that limit gets: `SchemaKit:SetLimits limits.maxDepth must be an integer from 1 to 64` for a limit with a ceiling, `SchemaKit:SetLimits limits.defaultArrayMax must be a positive integer or SchemaKit.UNBOUNDED` otherwise. `GetLimits` returns a new table on every call; `defaultArrayMax` reads back as `SchemaKit.UNBOUNDED` when it was set to it.
+`SetLimits` accepts any subset and checks every entry before it changes anything, so a refused call changes no limit. It raises at the caller's line on a non-table, an unknown name (`SchemaKit:SetLimits limits.maxWidth is not a recognised limit`; a key that is not a string, number or boolean is named by its type, as `limits.<table>`, so its `__tostring` never runs), a value outside 1 to the ceiling (`SchemaKit:SetLimits limits.maxDepth must be an integer from 1 to 64`, with `: <reason>` appended when the value is an integer above the ceiling), a `defaultArrayMax` that is neither a positive integer nor the sentinel (`SchemaKit:SetLimits limits.defaultArrayMax must be a positive integer or SchemaKit.UNBOUNDED`), `SchemaKit.UNBOUNDED` where the table says no (`SchemaKit:SetLimits limits.maxDepth cannot be SchemaKit.UNBOUNDED: <reason>`), and a dot call. A secret value (Retail 12.x) is refused before it is compared with anything, with the message an invalid value of that limit gets: `SchemaKit:SetLimits limits.maxDepth must be an integer from 1 to 64` for a limit with a ceiling, `SchemaKit:SetLimits limits.defaultArrayMax must be a positive integer or SchemaKit.UNBOUNDED` otherwise. `GetLimits` returns a new table on every call; `defaultArrayMax` reads back as `SchemaKit.UNBOUNDED` when it was set to it.
 
 **The limits are shared by every consumer in the session**: every embedded copy and every addon uses one set. A library should rely on the defaults; an addon that changes a limit changes it for everybody. `maxDepth` and `pathKeyLimit` apply from the next check, to every schema. `maxPatternCaptures` and `defaultArrayMax` apply to nodes built after the change; a node keeps what it was built with. A pattern refused by a lowered `maxPatternCaptures` raises `SchemaKit.string pattern is not a valid Lua pattern`.
 
