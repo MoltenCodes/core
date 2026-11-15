@@ -24,6 +24,7 @@ describe("SettingsKit:Open", function()
       class = {},
       faction = {},
       namespaces = {},
+      specProfiles = {},
     }, raw)
   end)
 

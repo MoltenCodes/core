@@ -10,7 +10,9 @@
 --   writes     are checked against the field's SchemaKit schema at the
 --              writer's line, refuse secret values, then fire `OnChange`;
 --   profiles   one current profile per character, with copy, reset, delete
---              and change signals;
+--              and change signals, and spec profiles: a profile assigned to
+--              each specialization (or talent group), switched to by itself
+--              when the player changes it, while EventKit is embedded;
 --   versions   `options.migrations` run once each, in ascending order, from
 --              the stored version to `options.version`, each on a copy of
 --              the saved table that replaces it only when the step returns;
@@ -21,7 +23,8 @@
 --
 -- SettingsKit requires Registry API 2, SchemaKit API 1 and SignalKit API 1.
 -- EventKit API 1 is optional: it is found through `Registry:Find` when a
--- database is opened, and without it `db:Compact()` is the addon's to call.
+-- database is opened, and without it `db:Compact()` and
+-- `db:ApplySpecProfile()` are the addon's to call.
 --
 -- Contents
 -- --------
@@ -40,6 +43,7 @@
 --   Saved table ........... layout, migrations, profile selection
 --   Database methods ...... the handle `Open` returns
 --   Package public API .... the facade published through Registry
+--   Spec profiles ......... profiles assigned per specialization or talent group
 --   Upgrades .............. repairs of state an older revision built
 --   Commit ................ prototype/facade assignment and self-check
 --
@@ -49,7 +53,7 @@
 
 local PACKAGE_NAME = "settingsKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 10
+local IMPLEMENTATION_REVISION = 11
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_SCHEMAKIT_API = 1
 local REQUIRED_SIGNALKIT_API = 1
@@ -136,9 +140,19 @@ local SCOPE_SET =
   { global = true, char = true, realm = true, class = true, faction = true, profile = true }
 
 -- Every section of the saved table, created at Open when missing.
--- `namespaces` is reserved for API 1's second version (module namespaces).
-local LAYOUT_SECTIONS =
-  { "global", "profiles", "profileKeys", "char", "realm", "class", "faction", "namespaces" }
+-- `namespaces` is reserved for API 1's second version (module namespaces);
+-- `specProfiles` (revision 11) holds each character's spec assignments.
+local LAYOUT_SECTIONS = {
+  "global",
+  "profiles",
+  "profileKeys",
+  "char",
+  "realm",
+  "class",
+  "faction",
+  "namespaces",
+  "specProfiles",
+}
 
 -- The complete set of fields an options table accepts.
 local OPTION_KEYS = {
@@ -154,7 +168,7 @@ local OPTION_KEYS = {
 local KIND_RECORD = "record"
 local KIND_MAP = "map"
 
-local FACADE_METHODS = { "Open", "SetLimits", "GetLimits" }
+local FACADE_METHODS = { "Open", "SetLimits", "GetLimits", "GetSpecIndex" }
 local DATABASE_METHODS = {
   "GetProfile",
   "SetProfile",
@@ -175,6 +189,9 @@ local DATABASE_METHODS = {
   "IsReadOnly",
   "Resync",
   "Getter",
+  "SetSpecProfile",
+  "GetSpecProfile",
+  "ApplySpecProfile",
 }
 
 -- How a record view answers a read of one declared field, decided once per
@@ -303,6 +320,9 @@ local WEAK_VALUES = { __mode = "v" }
 ---@field IsReadOnly fun(self: SettingsKit.Database): boolean
 ---@field Resync fun(self: SettingsKit.Database)
 ---@field Getter fun(self: SettingsKit.Database, source: SettingsKit.ScopeName|table, key: any): fun(): any
+---@field SetSpecProfile fun(self: SettingsKit.Database, index: integer, name: string?): boolean
+---@field GetSpecProfile fun(self: SettingsKit.Database, index: integer): string?
+---@field ApplySpecProfile fun(self: SettingsKit.Database): boolean
 
 ---The SettingsKit package facade published through Registry.
 ---@class SettingsKit
@@ -315,6 +335,7 @@ local WEAK_VALUES = { __mode = "v" }
 ---@field Open fun(self: SettingsKit, savedVariable: string, schema: SettingsKit.Schema?, options: SettingsKit.Options?): SettingsKit.Database
 ---@field SetLimits fun(self: SettingsKit, limits: table)
 ---@field GetLimits fun(self: SettingsKit): SettingsKit.Limits
+---@field GetSpecIndex fun(self: SettingsKit): integer?, integer, "specialization"|"talentGroup"
 
 ---What `Open` compiles once per scope from `schema:Describe()`. Private.
 ---@class SettingsKit.Plan
@@ -3114,6 +3135,7 @@ local function databaseDeleteProfile(self, name)
       rawset(profileKeys, character, nil)
     end
   end
+  dispatch.forgetSpecProfiles(raw, name)
   detachProfileView(db, name)
   bumpGeneration(db)
   fireProfileSignal(db, "profileDeleted", self, name)
@@ -3759,6 +3781,7 @@ local function open(self, savedVariable, schema, options)
 
   connectLogout(db)
   rawset(databases, savedVariable, db)
+  dispatch.onDatabaseOpened(db)
   return db --[[@as SettingsKit.Database]]
 end
 
@@ -3835,6 +3858,410 @@ local function getLimits(self)
     maxProfileNameLength = rawget(sharedLimits, "maxProfileNameLength"),
     pathKeyLimit = rawget(sharedLimits, "pathKeyLimit"),
   }
+end
+
+-- Spec profiles --------------------------------------------------------------
+--
+-- A character assigns a profile to a *spec index*; when the index changes, the
+-- database switches to that profile through its own `SetProfile`. The index is
+-- the specialization on clients that have them (Retail, Mists of Pandaria
+-- Classic) and the active talent group elsewhere (Classic Era, Season of
+-- Discovery, Hardcore, Burning Crusade Classic), where dual talent
+-- specialization is the switching mechanism. The research behind the client
+-- facts is recorded in `docs/ROADMAP.md`, "settingsKit spec profiles".
+--
+-- Everything lives inside `installSpecProfiles`, a function of its own, so its
+-- helpers do not count against the main chunk's 200 locals. It publishes the
+-- facade and database methods and the dispatch entries `Open`,
+-- `DeleteProfile` and the shared event listener call.
+do
+  local function installSpecProfiles()
+    -- The highest spec index an assignment may name. No class has more than
+    -- four specializations and no client more than two talent groups; eight
+    -- leaves room without letting a typo create a large saved table.
+    local MAX_SPEC_INDEX = 8
+
+    -- `WOW_PROJECT_ID` values whose clients key by specialization, compared
+    -- as literals as ClientKit does (a missing `WOW_PROJECT_*` constant would
+    -- otherwise match `nil`): 1 is Retail, 19 is Mists of Pandaria Classic.
+    -- Every other client, and a host without the constant, keys by talent
+    -- group, which every client answers.
+    local SPECIALIZATION_PROJECTS = { [1] = true, [19] = true }
+
+    local KIND_SPECIALIZATION = "specialization"
+    local KIND_TALENT_GROUP = "talentGroup"
+
+    -- The events after which the index may have changed. `PLAYER_ENTERING_WORLD`
+    -- catches up when the client had no specialization data yet at `Open`;
+    -- `PLAYER_LEVEL_CHANGED` covers Retail's starter specialization becoming a
+    -- real one. All four are documented on Retail, Mists of Pandaria Classic
+    -- and Classic Era.
+    local PLAIN_EVENTS =
+      { "PLAYER_ENTERING_WORLD", "ACTIVE_TALENT_GROUP_CHANGED", "PLAYER_LEVEL_CHANGED" }
+    local UNIT_EVENT = "PLAYER_SPECIALIZATION_CHANGED"
+
+    ---A client answer usable as a spec index or count: a non-secret whole
+    ---number of at least `minimum`, else `nil`.
+    ---@param value any
+    ---@param minimum integer
+    ---@return integer|nil
+    local function usableNumber(value, minimum)
+      if isSecret(value) or not isIntegerAtLeast(value, minimum) then
+        return nil
+      end
+      return value
+    end
+
+    ---The class's specialization count, from the class ID `UnitClass` answers.
+    ---@param specializationInfo table
+    ---@return integer
+    local function readSpecializationCount(specializationInfo)
+      local countFor = rawget(specializationInfo, "GetNumSpecializationsForClassID")
+      local unitClass = readGlobal("UnitClass")
+      if type(countFor) ~= "function" or type(unitClass) ~= "function" then
+        return 0
+      end
+      local classID = usableNumber((select(3, unitClass("player"))), 1)
+      if classID == nil then
+        return 0
+      end
+      return usableNumber(countFor(classID), 0) or 0
+    end
+
+    ---The current specialization index and the class's count.
+    ---@param specializationInfo table
+    ---@return integer|nil index, integer count
+    local function readSpecialization(specializationInfo)
+      local count = readSpecializationCount(specializationInfo)
+      local getSpecialization = rawget(specializationInfo, "GetSpecialization")
+      if type(getSpecialization) ~= "function" then
+        return nil, count
+      end
+      local index = usableNumber(getSpecialization(), 1)
+      -- An index above the class's count is Retail's starter specialization,
+      -- which no player chose and no assignment names.
+      if index == nil or index > count then
+        return nil, count
+      end
+      return index, count
+    end
+
+    ---The active talent group and the number of groups the character has.
+    ---@param specializationInfo table
+    ---@return integer|nil index, integer count
+    local function readTalentGroup(specializationInfo)
+      local getActiveSpecGroup = rawget(specializationInfo, "GetActiveSpecGroup")
+      if type(getActiveSpecGroup) ~= "function" then
+        return nil, 0
+      end
+      local index = usableNumber(getActiveSpecGroup(), 1)
+      -- `GetNumTalentGroups` is not in the generated documentation; Blizzard's
+      -- Classic talent frame calls it. Without it, the active group is the
+      -- only one known.
+      local count = nil
+      local getNumTalentGroups = readGlobal("GetNumTalentGroups")
+      if type(getNumTalentGroups) == "function" then
+        count = usableNumber(getNumTalentGroups(), 0)
+      end
+      count = count or index or 0
+      if index == nil or index > MAX_SPEC_INDEX then
+        return nil, count
+      end
+      if count < index then
+        count = index
+      end
+      return index, count
+    end
+
+    ---Which kind of index this client keys by.
+    ---@return "specialization"|"talentGroup"
+    local function readKind()
+      local projectId = readGlobal("WOW_PROJECT_ID")
+      if type(projectId) == "number" and SPECIALIZATION_PROJECTS[projectId] == true then
+        return KIND_SPECIALIZATION
+      end
+      return KIND_TALENT_GROUP
+    end
+
+    ---The current spec index, the number of indexes and their kind. The index
+    ---is `nil` while the client has no specialization data or the player has
+    ---no specialization.
+    ---@return integer|nil index, integer count, "specialization"|"talentGroup" kind
+    local function readSpecIndex()
+      local kind = readKind()
+      local specializationInfo = readGlobal("C_SpecializationInfo")
+      if type(specializationInfo) ~= "table" then
+        return nil, 0, kind
+      end
+      local isInitialized = rawget(specializationInfo, "IsInitialized")
+      if type(isInitialized) == "function" then
+        local initialized = isInitialized()
+        if isSecret(initialized) or initialized ~= true then
+          return nil, 0, kind
+        end
+      end
+      local index, count
+      if kind == KIND_SPECIALIZATION then
+        index, count = readSpecialization(specializationInfo)
+      else
+        index, count = readTalentGroup(specializationInfo)
+      end
+      return index, count, kind
+    end
+
+    ---Refuse anything but a spec index an assignment may name.
+    ---@param value any
+    ---@param methodName string
+    ---@param level integer stack level the failure is reported at
+    local function validateSpecIndex(value, methodName, level)
+      if isSecret(value) then
+        error(methodName .. " index must not be a secret value", level)
+      end
+      if not isIntegerAtLeast(value, 1) or value > MAX_SPEC_INDEX then
+        error(methodName .. " index must be an integer from 1 to " .. MAX_SPEC_INDEX, level)
+      end
+    end
+
+    ---This character's assignments, or `nil` when it has none (or the saved
+    ---entry is corrupted).
+    ---@param db table
+    ---@return table|nil
+    local function readAssignments(db)
+      local charKey = rawget(db, "_charKey")
+      local section = rawget(rawget(db, "_raw"), "specProfiles")
+      if charKey == false or type(section) ~= "table" then
+        return nil
+      end
+      local entry = rawget(section, charKey)
+      if type(entry) ~= "table" then
+        return nil
+      end
+      return entry
+    end
+
+    ---The profile this character assigned to `index`, or `nil`. A stored
+    ---value that is not a usable profile name is ignored.
+    ---@param db table
+    ---@param index integer
+    ---@return string|nil
+    local function readAssignment(db, index)
+      local entry = readAssignments(db)
+      if entry == nil then
+        return nil
+      end
+      local name = rawget(entry, index)
+      if not isStoredProfileName(name) then
+        return nil
+      end
+      return name
+    end
+
+    ---Switch `db` to the profile assigned to `index`, remembering the index
+    ---as applied. A read-only database never switches.
+    ---@param db table
+    ---@param index integer|nil
+    ---@return boolean switched
+    local function applyIndex(db, index)
+      if index == nil or rawget(db, "_readOnly") == true then
+        return false
+      end
+      rawset(db, "_specIndex", index)
+      local name = readAssignment(db, index)
+      if name == nil or name == rawget(db, "_profile") then
+        return false
+      end
+      rawget(Database, "SetProfile")(db, name)
+      return true
+    end
+
+    ---The one listener every database shares, connected to the spec events.
+    ---It calls through the dispatch table, so an upgrade replaces it.
+    local function specListener()
+      local onSpecEvent = rawget(dispatch, "onSpecEvent")
+      onSpecEvent()
+    end
+
+    ---Connect the shared listener the first time a database needs it, when
+    ---EventKit is embedded. Without EventKit the addon calls
+    ---`db:ApplySpecProfile()` itself.
+    local function connectSpecListener()
+      if rawget(state, "specListenerConnected") == true then
+        return
+      end
+      local findPackage = rawget(Registry, "Find")
+      if type(findPackage) ~= "function" then
+        return
+      end
+      local EventKit = findPackage(Registry, "eventKit", OPTIONAL_EVENTKIT_API)
+      if
+        type(EventKit) ~= "table"
+        or type(rawget(EventKit, "Connect")) ~= "function"
+        or type(rawget(EventKit, "ConnectUnit")) ~= "function"
+      then
+        return
+      end
+      for index = 1, #PLAIN_EVENTS do
+        EventKit:Connect(PLAIN_EVENTS[index], specListener)
+      end
+      EventKit:ConnectUnit(UNIT_EVENT, specListener, "player")
+      rawset(state, "specListenerConnected", true)
+    end
+
+    ---After a spec event: apply the current index to every open database whose
+    ---character has an assignment, unless that database already applied it,
+    ---so an event that changes nothing never undoes a manual `SetProfile`.
+    local function onSpecEvent()
+      local index = readSpecIndex()
+      if index == nil then
+        return
+      end
+      for _, db in next, databases do
+        if rawget(db, "_specIndex") ~= index and readAssignments(db) ~= nil then
+          applyIndex(db, index)
+        end
+      end
+    end
+
+    ---Called by `Open`: a character with assignments gets the listener and
+    ---its assignment for the current index at once.
+    ---@param db table
+    local function onDatabaseOpened(db)
+      if readAssignments(db) == nil then
+        return
+      end
+      connectSpecListener()
+      applyIndex(db, (readSpecIndex()))
+    end
+
+    ---Called by `DeleteProfile`: forget every assignment naming `name`.
+    ---@param raw table the saved table
+    ---@param name string
+    local function forgetSpecProfiles(raw, name)
+      local section = rawget(raw, "specProfiles")
+      if type(section) ~= "table" then
+        return
+      end
+      for character, entry in next, section do
+        if type(entry) == "table" then
+          for index, profile in next, entry do
+            -- A saved value is asked about secrecy before it is compared.
+            if not isSecret(profile) and profile == name then
+              rawset(entry, index, nil)
+            end
+          end
+          if next(entry) == nil then
+            rawset(section, character, nil)
+          end
+        end
+      end
+    end
+
+    ---@param self SettingsKit
+    ---@return integer|nil index, integer count, "specialization"|"talentGroup" kind
+    local function getSpecIndex(self)
+      validateFacade(self, "SettingsKit:GetSpecIndex", 3)
+      return readSpecIndex()
+    end
+
+    ---Assign profile `name` to spec index `index` for this character, or
+    ---clear the assignment with `nil`, and apply it at once when `index` is
+    ---the current one.
+    ---@param self SettingsKit.Database
+    ---@param index integer
+    ---@param name string|nil
+    ---@return boolean recorded `false` when the character key is unavailable
+    local function databaseSetSpecProfile(self, index, name)
+      validateDatabase(self, "SettingsKit.Database:SetSpecProfile", 3)
+      refuseReadOnly(self, "SettingsKit.Database:SetSpecProfile", 3)
+      validateSpecIndex(index, "SettingsKit.Database:SetSpecProfile", 3)
+      if type(name) ~= "nil" then
+        validateProfileName(name, "SettingsKit.Database:SetSpecProfile name", 3)
+      end
+
+      local db = self --[[@as table]]
+      local charKey = rawget(db, "_charKey")
+      if charKey == false then
+        return false
+      end
+      local raw = rawget(db, "_raw")
+      local section = rawget(raw, "specProfiles")
+      if type(section) == "nil" then
+        -- A database an older revision opened has no section yet.
+        section = {}
+        rawset(raw, "specProfiles", section)
+      elseif type(section) ~= "table" then
+        error(
+          "SettingsKit.Database:SetSpecProfile "
+            .. rawget(db, "_name")
+            .. ".specProfiles must be a table",
+          2
+        )
+      end
+
+      local entry = rawget(section, charKey)
+      if type(name) == "nil" then
+        if type(entry) == "table" then
+          rawset(entry, index, nil)
+          if next(entry) == nil then
+            rawset(section, charKey, nil)
+          end
+        end
+        return true
+      end
+      if type(entry) ~= "table" then
+        -- A corrupted entry is replaced, as a corrupted profile choice is.
+        entry = {}
+        rawset(section, charKey, entry)
+      end
+      rawset(entry, index, name)
+
+      connectSpecListener()
+      local current = readSpecIndex()
+      if current == index then
+        applyIndex(db, index)
+      end
+      return true
+    end
+
+    ---@param self SettingsKit.Database
+    ---@param index integer
+    ---@return string|nil name the profile assigned to `index` for this character
+    local function databaseGetSpecProfile(self, index)
+      validateDatabase(self, "SettingsKit.Database:GetSpecProfile", 3)
+      validateSpecIndex(index, "SettingsKit.Database:GetSpecProfile", 3)
+      return readAssignment(self --[[@as table]], index)
+    end
+
+    ---Switch to the profile assigned to the current spec index, for an addon
+    ---without EventKit or one that wants to apply it at a moment of its own.
+    ---@param self SettingsKit.Database
+    ---@return boolean switched
+    local function databaseApplySpecProfile(self)
+      validateDatabase(self, "SettingsKit.Database:ApplySpecProfile", 3)
+      return applyIndex(self --[[@as table]], (readSpecIndex()))
+    end
+
+    rawset(SettingsKit, "GetSpecIndex", getSpecIndex)
+    rawset(Database, "SetSpecProfile", databaseSetSpecProfile)
+    rawset(Database, "GetSpecProfile", databaseGetSpecProfile)
+    rawset(Database, "ApplySpecProfile", databaseApplySpecProfile)
+    rawset(dispatch, "onSpecEvent", onSpecEvent)
+    rawset(dispatch, "onDatabaseOpened", onDatabaseOpened)
+    rawset(dispatch, "forgetSpecProfiles", forgetSpecProfiles)
+
+    -- Revision 11 added the flag; state an older revision built gets it.
+    if type(rawget(state, "specListenerConnected")) ~= "boolean" then
+      rawset(state, "specListenerConnected", false)
+    end
+    -- A database an older revision opened over a saved table a newer copy
+    -- wrote in an earlier session may already hold assignments.
+    if previousRevision ~= nil then
+      for _, db in next, databases do
+        onDatabaseOpened(db)
+      end
+    end
+  end
+  installSpecProfiles()
 end
 
 -- Upgrades -------------------------------------------------------------------

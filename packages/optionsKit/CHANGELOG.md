@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.0 — 2026-11-15
+
+- Added: `ProfileOptions` carries one profile choice per specialization, LibDualSpec-1.0's `EnhanceOptions` counterpart over SettingsKit's spec profiles (SettingsKit 0.4.0, revision 11): a `specs` description and the selects `spec1` to `spec8`, each shown while the character has more than one spec index and at least that many, labelled with the specialization's name (or `talent group <n>` on clients without specializations), offering every profile and `None`, and calling `db:SetSpecProfile` / `db:GetSpecProfile`. They are added only when the database and the SettingsKit facade offer those methods and `GetSpecIndex`; an older SettingsKit gets the group as before. Six new `localize` keys (`specs.intro`, `spec.name`, `spec.desc`, `spec.none`, `spec.specialization`, `spec.talentGroup`).
+- Implementation revision 11. An in-place upgrade over revision 10 keeps every tree; a profile group revision 10 cached is replaced by a new one, with the selects, at the next `ProfileOptions` call, and keeps working wherever it is held.
+- Specs: 13 more (`SpecProfileOptions_spec.lua`, 202 in all); the group-shape and `localize`-keys cases of `ProfileOptions_spec.lua` list the new options and keys.
+
 ## 0.5.0 — 2026-11-15
 
 - Added: a `group` accepts the renderer hint `childGroups`, `"tab"`, `"tree"` or `"select"` (Ace3's three layouts for a group's non-inline child groups); `Define` refuses any other value at the caller, and `Describe` carries it. WidgetKit's renderer draws it from WidgetKit revision 11. The facade publishes `CHILD_GROUPS`, the accepted values, so another Kit can tell a revision that knows the hint.

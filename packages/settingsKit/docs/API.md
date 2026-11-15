@@ -1,8 +1,8 @@
 # SettingsKit API
 
-SettingsKit API generation **1** opens a database over an addon's saved variable: scoped views whose reads fall back to schema defaults and whose writes are validated at the writer's line, profiles, change signals, versioned migrations and compaction.
+SettingsKit API generation **1** opens a database over an addon's saved variable: scoped views whose reads fall back to schema defaults and whose writes are validated at the writer's line, profiles (also switched by specialization), change signals, versioned migrations and compaction.
 
-Implementation revision: **10**.
+Implementation revision: **11**.
 
 ## Loading
 
@@ -32,7 +32,8 @@ SettingsKit does not rely on `require()` at runtime. Loading it without one of i
 | `UnitFactionGroup("player")` | the `faction` scope key (`"Alliance"`, `"Horde"`, `"Neutral"`) | The `faction` scope is unavailable. |
 | `issecretvalue` | every read and validated write through a view, the key of `Getter`, `Validate`, `Compact`, profile names, the scope keys | Nothing is treated as secret, which is correct on clients without secret values. Read at every call. |
 | `geterrorhandler` | reporting a logout compaction that failed | Falls back to `print`. |
-| EventKit API 1 | compaction on `PLAYER_LOGOUT` | `db:Compact()` is the addon's to call. |
+| EventKit API 1 | compaction on `PLAYER_LOGOUT`; switching [spec profiles](#spec-profiles) on the spec events | `db:Compact()` and `db:ApplySpecProfile()` are the addon's to call. |
+| `C_SpecializationInfo`, `UnitClass`, `GetNumTalentGroups`, `WOW_PROJECT_ID` | [spec profiles](#spec-profiles): the current specialization or talent group | No spec index: assignments are kept, nothing switches. |
 
 The four identity functions are called once per `Open`. A function that is missing, or returns `nil`, an empty string or a secret, makes its scope **unavailable**: reading `db.class` then raises at the reading line, for example `SettingsKit (MyAddonDB) db.class is unavailable: UnitClass("player") returned no class when the database was opened`. The identity is read once, so a database opened before the client knows the player (at file scope, say) stays without those scopes; open it in the loaded phase.
 
@@ -47,6 +48,7 @@ Package facade:
 | `Open(savedVariable, schema?, options?)` | Open (or return the open) database over a saved variable. |
 | `SetLimits(limits)` | Change any subset of the shared limits (see [Limits](#limits)). |
 | `GetLimits()` | A fresh table of the shared limits. |
+| `GetSpecIndex()` | The current spec index, the number of indexes and their kind (see [Spec profiles](#spec-profiles)). |
 | `UNBOUNDED` | Sentinel `maxScannedEntries` accepts to lift the scan bound. |
 | `DEFAULT_PROFILE` | `"Default"`, the shared profile's name. |
 | `MAX_PROFILE_NAME_LENGTH` | `64`: the default longest profile name, in bytes; `GetLimits().maxProfileNameLength` is the current one. |
@@ -73,6 +75,7 @@ Databases:
 | `IsReadOnly()` | Whether the database refuses every write because a newer version of the addon saved the data (see [Newer stored data](#newer-stored-data-read-only-databases)). |
 | `Resync()` | Make every view see direct edits of the saved variable (see [Views hold their saved tables](#views-hold-their-saved-tables)). |
 | `Getter(source, key)` | A function reading one field, for hot loops (see [`db:Getter`](#dbgettersource-key)). |
+| `SetSpecProfile(index, name?)`, `GetSpecProfile(index)`, `ApplySpecProfile()` | Assign a profile to a specialization or talent group, read it, apply it (see [Spec profiles](#spec-profiles)). |
 
 The `On*` methods return SignalKit connections; `connection:Disconnect()` stops the listener.
 
@@ -226,6 +229,7 @@ MyAddonDB = {
   class = { MAGE = { ... } },
   faction = { Alliance = { ... } },
   namespaces = {},
+  specProfiles = { ["Tester - Silvermoon"] = { "Healing", "Damage" } },
 }
 ```
 
@@ -240,6 +244,7 @@ MyAddonDB = {
 | `class` | table | the class file name, the second return of `UnitClass("player")` (`"MAGE"`) | One record per class. |
 | `faction` | table | `UnitFactionGroup("player")` (`"Alliance"`, `"Horde"`, `"Neutral"`) | One record per faction. |
 | `namespaces` | table | module name | Reserved: SettingsKit writes nothing here in generation 1. Leave it empty. |
+| `specProfiles` | table | `"<name> - <realm>"` | Revision 11: each character's [spec profiles](#spec-profiles), a table from spec index (1 to 8) to profile name. An entry that is not a table, and a value that is not a usable profile name, is ignored. |
 
 Every section is optional in what you write: `Open` creates the missing ones
 in a writable database. A present section that is not a table is refused, as
@@ -381,6 +386,61 @@ Deletes a profile other than the current one and fires `OnProfileDeleted(db, nam
 ### `db:ResetDatabase()`
 
 Empties the saved variable in place, stamps `options.version` again when the database was opened with one, recreates the layout, switches to the default profile, fires `OnProfileReset(db, name)` and, when the profile name changed, `OnProfileChanged(db, name, previous)`. Every profile view obtained before is detached, and `db.profile` is a new view. The scope views of `global`, `char` and the rest stay valid.
+
+## Spec profiles
+
+Revision 11, what LibDualSpec-1.0 gives AceDB-3.0 databases. A character assigns a profile to a **spec index**; when the index changes, the database switches to that profile with its own `SetProfile`, so `db.profile`, getters and `OnProfileChanged` follow as for any switch.
+
+```lua
+db:SetSpecProfile(1, "Healing")  -- the first specialization (Retail), or the first talent group (Classic Era)
+db:SetSpecProfile(2, "Damage")
+db:SetSpecProfile(2, nil)        -- clear the assignment
+```
+
+The spec index is:
+
+| Client (`WOW_PROJECT_ID`) | Index | Read with |
+|---|---|---|
+| Retail (`1`), Mists of Pandaria Classic (`19`) | the specialization, 1 to the class's count | `C_SpecializationInfo.GetSpecialization()`, count from `C_SpecializationInfo.GetNumSpecializationsForClassID` and the class ID `UnitClass("player")` answers third |
+| every other client, also without `WOW_PROJECT_ID`: Classic Era, Season of Discovery, Hardcore, Burning Crusade Classic | the active talent group, where dual talent specialization is the switching mechanism | `C_SpecializationInfo.GetActiveSpecGroup()`, count from `GetNumTalentGroups()` (at least the active group) |
+
+There is no index while `C_SpecializationInfo.IsInitialized()` answers anything but `true`, while the player has no specialization (Retail's starter specialization, whose index is above the class's count), for a talent group above 8, without `C_SpecializationInfo`, or when the client answers a secret value. Without an index nothing switches.
+
+**Switching** needs EventKit (found with `Registry:Find("eventKit", 1)`). One listener for the session is connected the first time a database has an assignment, at `Open` or `SetSpecProfile`, so an addon that never uses spec profiles costs EventKit nothing. It runs on `PLAYER_ENTERING_WORLD`, `ACTIVE_TALENT_GROUP_CHANGED`, `PLAYER_LEVEL_CHANGED` and `PLAYER_SPECIALIZATION_CHANGED` for the unit `player` (all four documented on Retail, Mists of Pandaria Classic and Classic Era), reads the index once and applies it to every open database whose character has an assignment, unless that database already applied that index. So an event that changes nothing never undoes a manual `SetProfile`; the next change of index applies the assignment again. `Open` applies the assignment for the current index at once, so after `/reload` the assignment wins over a manual choice. A database without an assignment for the new index keeps its profile. A read-only database never switches. Without EventKit, call `db:ApplySpecProfile()` yourself, for example from your own `PLAYER_SPECIALIZATION_CHANGED` handler.
+
+The switch runs the database's `OnProfileChanged` listeners inside the event; a listener that touches protected frames must wait for the end of combat itself.
+
+### `SettingsKit:GetSpecIndex()`
+
+Returns `index|nil, count, kind`: the current index, the number of indexes this character has (`0` when unknown) and `"specialization"` or `"talentGroup"`. An options screen offers one choice per index from 1 to `count`; `OptionsKit:ProfileOptions` does that (see OptionsKit's API).
+
+### `db:SetSpecProfile(index, name?)`
+
+Assigns profile `name` to `index` (an integer from 1 to 8) for this character, or clears the assignment when `name` is `nil`, and applies it at once when `index` is the current index (creating the profile, as `SetProfile` does). Returns `true`, or `false` without recording anything when the character key is unavailable (see [Host facilities](#host-facilities)). Raises at the caller's line for a bad index or profile name, a secret one, a read-only database, and a `specProfiles` section that is not a table. Recording an assignment changes no current profile unless its index is the current one.
+
+### `db:GetSpecProfile(index)`
+
+The profile assigned to `index` for this character, or `nil`. Works on a read-only database.
+
+### `db:ApplySpecProfile()`
+
+Switches to the profile assigned to the current index; returns `true` when it switched, `false` when there is no index, no assignment, the assignment already is the current profile, or the database is read-only.
+
+### Assignments and the other profile methods
+
+`DeleteProfile` removes every character's assignments naming the deleted profile, `ResetDatabase` empties `specProfiles`, `CopyProfile` and `ResetProfile` leave assignments alone, and a manual `SetProfile` changes none.
+
+### Migrating from LibDualSpec-1.0
+
+| LibDualSpec-1.0 | SettingsKit |
+|---|---|
+| `LibDualSpec:EnhanceDatabase(db, name)` | Nothing to call: every database has the methods. |
+| `db:SetDualSpecProfile(name, spec)` | `db:SetSpecProfile(spec, name)` (the order of the arguments differs). |
+| `db:GetDualSpecProfile(spec)` | `db:GetSpecProfile(spec)`; `nil` instead of the current profile when nothing is assigned. |
+| `db:SetDualSpecEnabled(true)`, `db:IsDualSpecEnabled()` | No flag: an assignment is what enables switching for its index; clear assignments to stop. |
+| `db:CheckDualSpecState()` | `db:ApplySpecProfile()`, needed only without EventKit. |
+| `LibDualSpec:EnhanceOptions(options, db)` | `OptionsKit:ProfileOptions(db)` shows one choice per index (OptionsKit revision 11). |
+| Stored in the AceDB namespace `LibDualSpec-1.0`, `char.enabled` and `char[spec]` | Stored in `specProfiles["<name> - <realm>"][spec]`; not imported automatically. |
 
 ## Change signals
 
@@ -536,6 +596,8 @@ The nine-point plan in `docs/ROADMAP.md` is followed except where recorded here:
 - **A view holds its saved table until a SettingsKit mutation may have changed it** (revision 7). Revisions 1 to 6 found the table through each nesting level on every access, which also showed direct edits of the saved variable at once; revision 7 finds it again only after a mutation or `db:Resync()`, which halves the cost of a read. Every view stays valid across `ResetProfile`, `CopyProfile`, `ResetDatabase` and the rest; direct edits after `Open` need `Resync` (see [Views hold their saved tables](#views-hold-their-saved-tables)).
 - **The profile choice is recorded by `SetProfile`**, not at `Open`, so a character that never switches writes nothing.
 - **Views are refused as values**, together with any table carrying a metatable. A stored view would alias another view's data and be written through without validation, because Lua 5.1 calls `__newindex` only for absent keys.
+- **Spec profiles keep no enabled flag** (revision 11), unlike LibDualSpec-1.0: an assignment is what enables switching for its index, which keeps one rule for the saved table and the options screen.
+- **The spec index kind is read on every call**, not once: `WOW_PROJECT_ID` is a constant of the session, so the answer is the same, and a call costs one table read.
 - **Additions:** `db:Validate(scope, path, value)`, for an options layer that checks a value before it writes it (optionsKit binds options to database paths); `db:Pairs(view)`, because Lua 5.1 cannot iterate a proxy with `pairs`; `OnProfileCopied`, `OnProfileReset` and `OnProfileDeleted` methods; a fifth `path` argument to `OnChange` listeners; `db:GetSavedVariable()`; `db:Resync()` and `db:Getter(source, key)` (revision 7); `Compact` returns a count; `SettingsKit.DEFAULT_PROFILE` and `SettingsKit.MAX_PROFILE_NAME_LENGTH`; `SetLimits`, `GetLimits`, `UNBOUNDED` and the `maxScannedEntries` option (principle 4a, *Bounded by default, opened on purpose*).
 
 ## Embedded copies and upgrades
@@ -553,5 +615,7 @@ Revision 8 changes no documented behaviour: a getter's fast path compares the sa
 Revision 9 fixes two faults and changes no other documented behaviour: a keyed-section view read with a NaN key reads `nil` instead of raising `table index is NaN`, and `Open` refuses a receiver other than the facade, as `SetLimits` and `GetLimits` do. An in-place upgrade from any revision builds the depth probes of the nested views an older copy built, so writes through them keep the fast path.
 
 Revision 10 fixes an in-place upgrade over revisions 1 to 6: a view of a deleted or reset-away profile stays detached even when the collector removed that profile's root view before the upgrade ran, so writes through it are still refused.
+
+Revision 11 adds [spec profiles](#spec-profiles): `GetSpecIndex`, `SetSpecProfile`, `GetSpecProfile`, `ApplySpecProfile` and the `specProfiles` section. A database an older revision opened gains the methods through the shared prototype; its section is created at its first `SetSpecProfile`, and a character whose saved table already holds assignments (written by a newer copy in an earlier session) gets the listener and its assignment when the upgrade runs.
 
 Nothing survives `/reload` except the saved variable itself: open the database again in the loaded phase.

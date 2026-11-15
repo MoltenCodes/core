@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.4.0 — 2026-11-15
+
+Spec profiles, the LibDualSpec-1.0 counterpart (roadmap record "settingsKit spec profiles", core decision 16). API generation 1, additive.
+
+- Added: `db:SetSpecProfile(index, name?)`, `db:GetSpecProfile(index)`, `db:ApplySpecProfile()` and `SettingsKit:GetSpecIndex()`. A character assigns a profile to a spec index, the specialization on Retail and Mists of Pandaria Classic and the active talent group elsewhere (decided from `WOW_PROJECT_ID`), and the database switches to it with its own `SetProfile` when the index changes. With EventKit embedded, one shared listener on `PLAYER_ENTERING_WORLD`, `ACTIVE_TALENT_GROUP_CHANGED`, `PLAYER_LEVEL_CHANGED` and `PLAYER_SPECIALIZATION_CHANGED` (unit `player`) does it, connected only once a database has an assignment; an event that leaves the index unchanged switches nothing.
+- Added: the saved-table section `specProfiles`, keyed by character, created at `Open` like the other sections and refused there when it is not a table. `DeleteProfile` removes assignments naming the deleted profile; `ResetDatabase` empties it.
+- Implementation revision 11. An in-place upgrade over revision 10 gives every open database the methods; their sections are created on first use.
+- Specs: 33 more (`SpecProfiles_spec.lua`, 268 in all), and the full-layout case of `Open_spec.lua` lists the new section.
+
 ## 0.3.4 — 2026-11-15
 
 - Fixed: an in-place upgrade over revisions 1 to 6 could make a view of a deleted or reset-away profile writable again. Revision 7 turned a detached root's `dead` flag into its `DETACHED` generation by walking the live views, a table weak-keyed by proxy; a root whose proxy nothing held any more had already been collected from it, although the views below still named it as their parent, so it was never converted and read as attached. The migration now walks each view's parents too, every node once. Found by a spec that failed only when a collection ran at that moment (under coverage).

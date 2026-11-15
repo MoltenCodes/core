@@ -27,6 +27,10 @@
 --   * that view reads, a validated write of an existing key and Validate
 --     allocate nothing on the client's own collector;
 --   * argument errors pointing at this file as the client names it;
+--   * spec profiles (revision 11): the spec index the live client answers,
+--     an assignment for it switching at once, and, after the owner changes
+--     specialization (or talent group) and runs the suite again in the same
+--     session, the database having followed through EventKit;
 --   * secret values made by the client's `secretwrap`: a secret already in
 --     the saved table reads back through a view still secret, a secret value
 --     or key is refused, and every secret argument is refused before it is
@@ -87,8 +91,17 @@ local CHARACTER_DB_VERSION = 1
 local ACCOUNT_PREFIX = "SettingsKit (" .. ACCOUNT_DB_NAME .. ") "
 
 --- The sections `Open` creates in every saved table (docs/INTERNALS.md).
-local LAYOUT_SECTIONS =
-  { "global", "profiles", "profileKeys", "char", "realm", "class", "faction", "namespaces" }
+local LAYOUT_SECTIONS = {
+  "global",
+  "profiles",
+  "profileKeys",
+  "char",
+  "realm",
+  "class",
+  "faction",
+  "namespaces",
+  "specProfiles",
+}
 
 --- The value the first persistence step writes to `profile.scale`; not the default (1).
 local PERSISTED_SCALE = 1.25
@@ -735,11 +748,11 @@ end
 local facade = newSuite("facade")
 
 facade:Test(
-  "Registry:Get('settingsKit', 1) is the SettingsKit facade with API 1, Open, SetLimits, GetLimits, UNBOUNDED, DEFAULT_PROFILE 'Default', MAX_PROFILE_NAME_LENGTH 64 and the Database prototype's nineteen methods",
+  "Registry:Get('settingsKit', 1) is the SettingsKit facade with API 1, Open, SetLimits, GetLimits, UNBOUNDED, DEFAULT_PROFILE 'Default', MAX_PROFILE_NAME_LENGTH 64 and the Database prototype's twenty-two methods, and GetSpecIndex",
   function(ctx)
     ctx:Expect(type(SettingsKit)):ToBe("table")
     ctx:Expect(rawget(SettingsKit, "API")):ToBe(SETTINGS_KIT_API)
-    for _, functionName in ipairs({ "Open", "SetLimits", "GetLimits" }) do
+    for _, functionName in ipairs({ "Open", "SetLimits", "GetLimits", "GetSpecIndex" }) do
       ctx:Expect(type(rawget(SettingsKit, functionName))):ToBe("function")
     end
     ctx:Expect(type(rawget(SettingsKit, "UNBOUNDED"))):ToBe("table")
@@ -767,6 +780,9 @@ facade:Test(
       "IsReadOnly",
       "Resync",
       "Getter",
+      "SetSpecProfile",
+      "GetSpecProfile",
+      "ApplySpecProfile",
     }) do
       ctx:Expect(type(rawget(prototype, methodName))):ToBe("function")
     end
@@ -1874,6 +1890,95 @@ persistence:Test(
     ctx:Log("restored profile keys: " .. table.concat(sortedKeys(profile), ", "))
     ctx:Expect(rawField(profile, "scale")):ToBe(PERSISTED_SCALE)
     ctx:Expect(rawField(profile, "anchor")):ToBeNil()
+  end
+)
+
+-- settingsKit.specProfiles -------------------------------------------------------------------------
+--
+-- Spec profiles over a scratch global that is not a saved variable, under a
+-- fixed name so a second run in the same session finds the same database in
+-- SettingsKit's package state. It is not removed by the After hook; /reload
+-- forgets it. Nothing here changes the character's specialization: the owner
+-- does that between two runs (EXPECTED.md).
+
+local specProfiles = newSuite("specProfiles")
+
+--- The scratch global the spec-profile tests open, kept for the session.
+local SPEC_SCRATCH_GLOBAL = SCRATCH_GLOBAL_PREFIX .. "_specProfiles"
+
+--- The profile assigned to spec index `index` by these tests.
+---@param index integer
+---@return string
+local function specScratchProfile(index)
+  return SCRATCH_PROFILE_PREFIX .. "spec " .. index
+end
+
+---Open the spec-profile scratch database, and skip when the client has no
+---spec index yet.
+---@param ctx table
+---@return table db, integer index, integer count, string kind
+local function openSpecDatabase(ctx)
+  local db = SettingsKit:Open(SPEC_SCRATCH_GLOBAL, SCRATCH_SCHEMA)
+  local index, count, kind = SettingsKit:GetSpecIndex()
+  ctx:Log("spec index " .. tostring(index) .. " of " .. tostring(count) .. ", kind " .. kind)
+  if type(index) == "nil" then
+    Harness:SkipTest(
+      ctx,
+      "the client answers no spec index (no specialization chosen yet, or the data is not ready)"
+    )
+  end
+  ---@cast index integer
+  return db, index, count, kind
+end
+
+specProfiles:Test(
+  "GetSpecIndex answers the kind of this flavour: specialization on Retail and Mists of Pandaria Classic, talent group on Classic Era",
+  function(ctx)
+    local projectId = readHost("WOW_PROJECT_ID")
+    local _, count, kind = SettingsKit:GetSpecIndex()
+    ctx:Log("WOW_PROJECT_ID " .. tostring(projectId) .. ", count " .. tostring(count))
+    if projectId == 1 or projectId == 19 then
+      ctx:Expect(kind):ToBe("specialization")
+    else
+      ctx:Expect(kind):ToBe("talentGroup")
+    end
+    ctx:Expect(type(count)):ToBe("number")
+  end
+)
+
+specProfiles:Test(
+  "after a specialization change between two runs, the database already switched to the profile assigned to the new index",
+  function(ctx)
+    local db, index = openSpecDatabase(ctx)
+    if type(db:GetSpecProfile(index)) == "nil" then
+      Harness:SkipTest(
+        ctx,
+        "first run of this session: the next test assigns a profile to every index; change specialization and run again"
+      )
+    end
+    if type(Registry:Find("eventKit", EVENT_KIT_API)) == "nil" then
+      Harness:SkipTest(ctx, "EventKit is not loaded, so SettingsKit switches only when asked")
+    end
+    ctx:Expect(db:GetProfile()):ToBe(specScratchProfile(index))
+  end
+)
+
+specProfiles:Test(
+  "SetSpecProfile for the current index switches at once; every other index is recorded without switching",
+  function(ctx)
+    local db, index, count = openSpecDatabase(ctx)
+    db:SetProfile("Default")
+    for other = 1, count do
+      if other ~= index then
+        ctx:Expect(db:SetSpecProfile(other, specScratchProfile(other))):ToBe(true)
+      end
+    end
+    ctx:Expect(db:GetProfile()):ToBe("Default")
+    ctx:Expect(db:SetSpecProfile(index, specScratchProfile(index))):ToBe(true)
+    ctx:Expect(db:GetProfile()):ToBe(specScratchProfile(index))
+    ctx:Expect(db:GetSpecProfile(index)):ToBe(specScratchProfile(index))
+    ctx:Expect(db:ApplySpecProfile()):ToBe(false)
+    ctx:Log("assigned " .. count .. " index(es); change specialization and run again")
   end
 )
 

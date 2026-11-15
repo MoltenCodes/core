@@ -39,6 +39,7 @@ What each piece promises:
 - **Writes are validated where they happen.** `db.profile.scale = 7` raises at that line with SchemaKit's failure text, and nothing is stored. A secret value is refused the same way: saved variables never hold one.
 - **Scopes.** `db.global`, `db.char`, `db.realm`, `db.class`, `db.faction` and `db.profile`, keyed from `UnitName`, `GetRealmName`, `UnitClass` and `UnitFactionGroup` read once at `Open`.
 - **Profiles.** `SetProfile`, `GetProfiles` (sorted), `CopyProfile`, `ResetProfile`, `DeleteProfile`, `ResetDatabase`, with a signal for each change.
+- **Spec profiles.** `db:SetSpecProfile(index, name)` assigns a profile to a specialization (Retail, Mists of Pandaria Classic) or a talent group (Classic Era, Season of Discovery, Hardcore), and the database switches to it when the player changes specialization, while EventKit is embedded; `db:ApplySpecProfile()` does it by hand. See *Spec profiles* in the API.
 - **Change notifications.** `db:OnChange(scope, callback)` returns a SignalKit connection called after every validated write.
 - **Versioned migrations.** `options.migrations[n]` runs once, in ascending order, from the stored version to `options.version`, each on a copy of the saved table that replaces it only when the step returns, so a failing step leaves nothing half-applied and is retried on untouched data.
 - **Newer data is read-only.** A saved table a newer version of the addon wrote (stored version above `options.version`) opens read-only: reads work, every write raises at the writer's line, and `db:IsReadOnly()` says so. `allowNewerData = true` opts in to writing it.
@@ -46,6 +47,18 @@ What each piece promises:
 - **Views hold their saved tables.** A view keeps the table it reads until a SettingsKit mutation may have changed it. After editing the saved variable yourself once the database is open, call `db:Resync()`.
 - **Getters for hot loops.** `db:Getter("profile", "scale")` returns a function answering exactly what `db.profile.scale` does, defaults included, without the metamethod call or a per-call probe of the key.
 - **Bounded by default, opened on purpose.** The secret-value scan of a written table (`maxScannedEntries`, an `Open` option that accepts `SettingsKit.UNBOUNDED`), profile-name length and path-key length (`SettingsKit:SetLimits`) each have a documented default; see *Limits* in the API.
+
+## Migrating from LibDualSpec-1.0
+
+| LibDualSpec-1.0 | SettingsKit |
+|---|---|
+| `LibDualSpec:EnhanceDatabase(db, "MyAddon")` | Nothing: every database has spec profiles. |
+| `db:SetDualSpecProfile(name, spec)` | `db:SetSpecProfile(spec, name)` |
+| `db:GetDualSpecProfile(spec)` | `db:GetSpecProfile(spec)` (`nil` when nothing is assigned) |
+| `db:SetDualSpecEnabled(enabled)`, `db:IsDualSpecEnabled()` | No flag: assigning a profile enables switching for that index; clearing it (`db:SetSpecProfile(spec, nil)`) disables it. |
+| `db:CheckDualSpecState()` | `db:ApplySpecProfile()`, only needed without EventKit. |
+| `LibDualSpec:EnhanceOptions(options, db)` | `OptionsKit:ProfileOptions(db)` already includes one choice per specialization or talent group. |
+| The `LibDualSpec-1.0` AceDB namespace | `specProfiles` in the saved variable; existing LibDualSpec choices are not imported. |
 
 See [`docs/API.md`](docs/API.md) for the complete contract with a full addon example, and [`docs/INTERNALS.md`](docs/INTERNALS.md) for the layout of the saved table and the view design.
 
@@ -69,8 +82,9 @@ Every file above is required; omitting one makes this package raise at
 load.
 
 Optional: EventKit API 1, found with `Registry:Find` when a database is opened,
-to compact it on `PLAYER_LOGOUT`. Without it, call `db:Compact()` yourself at
-logout. Load EventKit before your addon opens its database if you want the
+to compact it on `PLAYER_LOGOUT` and to switch spec profiles on the spec
+events. Without it, call `db:Compact()` yourself at logout and
+`db:ApplySpecProfile()` after a specialization change. Load EventKit before your addon opens its database if you want the
 automatic compaction.
 
 Declare the saved variable in your `.toc`, and open the database no earlier than

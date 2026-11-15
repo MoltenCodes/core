@@ -1029,6 +1029,25 @@ profiles:Test(
   end
 )
 
+profiles:Test(
+  "ProfileOptions carries one spec-profile select per index SettingsKit:GetSpecIndex() counts, named after the live specialization or talent group, and shows them only when the character has more than one",
+  function(ctx)
+    local db = freshDatabase(ctx)
+    local tree = defineProfileTree(db)
+    local _, count, kind = SettingsKit:GetSpecIndex()
+    ctx:Log("spec index count " .. tostring(count) .. ", kind " .. tostring(kind))
+    local description = tree:Describe()
+    local first = requireNode(ctx, description, "profiles.spec1")
+    ctx:Log("first spec select: " .. tostring(first.name))
+    ctx:Expect(first.kind):ToBe("select")
+    for index = 1, 8 do
+      local shown = count > 1 and index <= count
+      ctx:Expect(tree:IsHidden("profiles.spec" .. index)):ToBe(not shown)
+    end
+    ctx:Expect(tree:IsHidden("profiles.specs")):ToBe(count < 2)
+  end
+)
+
 -- optionsKit.clientLua ------------------------------------------------------------------------
 
 local clientLua = newSuite("clientLua")

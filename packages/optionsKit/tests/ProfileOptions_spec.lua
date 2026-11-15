@@ -35,6 +35,11 @@ local DOCUMENTED_KEYS = {
   "reset.confirm",
   "reset.desc",
   "reset.name",
+  "spec.desc",
+  "spec.name",
+  "spec.none",
+  "spec.talentGroup",
+  "specs.intro",
 }
 
 ---Write a host global: the client API lives only in the global table.
@@ -162,6 +167,15 @@ describe("OptionsKit ProfileOptions", function()
       { "reset", "execute" },
       { "deleteTarget", "select" },
       { "delete", "execute" },
+      { "specs", "description" },
+      { "spec1", "select" },
+      { "spec2", "select" },
+      { "spec3", "select" },
+      { "spec4", "select" },
+      { "spec5", "select" },
+      { "spec6", "select" },
+      { "spec7", "select" },
+      { "spec8", "select" },
     }, shape)
 
     assert.are.equal("medium", group.children[1].fontSize)
@@ -175,7 +189,7 @@ describe("OptionsKit ProfileOptions", function()
       "Delete the chosen profile? Its settings cannot be recovered.",
       group.children[8].confirm
     )
-    assert.are.equal(9, tree:Walk(function() end))
+    assert.are.equal(18, tree:Walk(function() end))
   end)
 
   it("offers every profile and the character profile, and switches on Set", function()

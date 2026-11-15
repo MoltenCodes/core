@@ -1968,7 +1968,7 @@ documentation and the libraries it replaces (ideas only), written before its
 code and treated as agreed as under decision 15.
 
 - [x] **clientKit** deprecation warnings (W13) (2026-11-15; client suite not run).
-- [ ] **settingsKit** spec profiles, with OptionsKit's `ProfileOptions` choice.
+- [x] **settingsKit** spec profiles, with OptionsKit's `ProfileOptions` choice: settingsKit 0.4.0 revision 11, optionsKit 0.6.0 revision 11 (2026-11-15; client suites not run).
 - [ ] **widgetKit** virtualised lists (`ScrollList`).
 - [x] **rangeKit** — unit range estimates (2026-11-15; client suite not run).
 - [x] **unitFrameKit** — the unit frame shown for a unit (2026-11-15; client suite not run).
@@ -2163,7 +2163,22 @@ code and treated as agreed as under decision 15.
    INTERNALS.md (the shared listener and the section), README (a
    migration table from LibDualSpec-1.0), CHANGELOG, tests/README;
    ROADMAP's settingsKit record and package M checklist (Friday's).
-9. Status: recorded 2026-11-15 under core decision 16; code follows.
+9. Status: implemented 2026-11-15 under core decision 16, settingsKit
+   0.4.0, revision 11, 33 specs (268 in all), with two additions decided
+   while building: `PLAYER_LEVEL_CHANGED` is listened to as well
+   (documented on all three flavours), and OptionsKit's `ProfileOptions`
+   carries the per-spec choice in the same work (optionsKit 0.6.0, revision
+   11, 13 specs: selects `spec1` to `spec8` over
+   `db:SetSpecProfile`/`GetSpecProfile`, shown while
+   `SettingsKit:GetSpecIndex()` counts more than one index). Deviations:
+   the kind is read from `WOW_PROJECT_ID` on every call (same answer, one
+   table read); each database remembers the index it last applied, and
+   `Open` applies the assignment at once, so after `/reload` the assignment
+   wins over a manual choice, as LibDualSpec does; an in-place upgrade also
+   connects the listener for characters whose saved table already holds
+   assignments. Client-suite tests are written in
+   `MoltenCodesTest_SettingsKit` (suite `specProfiles`) and
+   `MoltenCodesTest_OptionsKit` and have not been run in a client.
 
 **widgetKit virtualised lists** — an addition to facade `WidgetKit`
 

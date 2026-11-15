@@ -10,6 +10,10 @@
 ---                        from, set by `SetPlayer`;
 ---   `issecretvalue`      installed by `InstallSecretProbe`, reporting the
 ---                        tables `NewSecret` returns;
+---   `C_SpecializationInfo`, `GetNumTalentGroups`
+---                        the specialization and talent-group answers spec
+---                        profiles read, installed by `SetSpecialization`
+---                        from a table a spec keeps changing;
 ---   saved variables      globals a spec names, removed by `Reset`.
 ---
 --- These globals are not among the ones the shared fixture owns, so `Reset`
@@ -27,6 +31,10 @@ local SettingsKitTestEnv = FrameworkTestEnv.New({
 
 --- The player identity host functions this environment installs and removes.
 local IDENTITY_GLOBALS = { "UnitName", "GetRealmName", "UnitClass", "UnitFactionGroup" }
+
+--- The specialization host surface `SetSpecialization` installs and `Reset`
+--- removes. `WOW_PROJECT_ID` is owned, and cleared, by the shared fixture.
+local SPECIALIZATION_GLOBALS = { "C_SpecializationInfo", "GetNumTalentGroups" }
 
 --- The identity a fresh environment reports.
 local DEFAULT_PLAYER =
@@ -100,6 +108,46 @@ function SettingsKitTestEnv.SetPlayer(player)
   end or nil)
 end
 
+---Install the specialization surface of a client and return the table it
+---answers from, so a spec changes the player's specialization by writing a
+---field and then emitting the event the client would send.
+---
+---Fields: `projectId` (`WOW_PROJECT_ID`; `nil` leaves it unset),
+---`initialized` (`C_SpecializationInfo.IsInitialized`, default `true`),
+---`specialization` (`GetSpecialization`), `classCount`
+---(`GetNumSpecializationsForClassID`, answered only for class ID 8, the one
+---`SetPlayer` reports), `talentGroup` (`GetActiveSpecGroup`) and
+---`talentGroups` (`GetNumTalentGroups`; `false` leaves the function out).
+---@param client table
+---@return table client the same table, read on every call
+function SettingsKitTestEnv.SetSpecialization(client)
+  if client.initialized == nil then
+    client.initialized = true
+  end
+  setGlobal("WOW_PROJECT_ID", client.projectId)
+  setGlobal("C_SpecializationInfo", {
+    IsInitialized = function()
+      return client.initialized
+    end,
+    GetSpecialization = function()
+      return client.specialization
+    end,
+    GetNumSpecializationsForClassID = function(classID)
+      if classID == 8 then
+        return client.classCount
+      end
+      return 0
+    end,
+    GetActiveSpecGroup = function()
+      return client.talentGroup
+    end,
+  })
+  setGlobal("GetNumTalentGroups", client.talentGroups ~= false and function()
+    return client.talentGroups
+  end or nil)
+  return client
+end
+
 ---Set a saved-variable global, as the client does before `ADDON_LOADED`.
 ---`Reset` removes it.
 ---@param name string
@@ -145,6 +193,9 @@ function SettingsKitTestEnv.Reset()
   baseReset()
   for index = 1, #IDENTITY_GLOBALS do
     setGlobal(IDENTITY_GLOBALS[index], nil)
+  end
+  for index = 1, #SPECIALIZATION_GLOBALS do
+    setGlobal(SPECIALIZATION_GLOBALS[index], nil)
   end
   for name in pairs(savedVariables) do
     setGlobal(name, nil)

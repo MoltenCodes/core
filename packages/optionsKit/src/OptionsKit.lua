@@ -14,7 +14,8 @@
 -- "profile.path.to.value"`, which walks a SettingsKit database passed to
 -- `Define` as `options.db`. `ProfileOptions(db)` returns a ready-made group
 -- over a SettingsKit database's profiles, built from these same kinds once per
--- database and options.
+-- database and options; with SettingsKit revision 11 it also carries one
+-- profile choice per specialization (SettingsKit's spec profiles).
 --
 -- OptionsKit requires Registry API 2, SchemaKit API 1 and SignalKit API 1.
 -- SettingsKit API 1 is optional and found through `Registry:Find` only when
@@ -46,7 +47,7 @@
 
 local PACKAGE_NAME = "optionsKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 10
+local IMPLEMENTATION_REVISION = 11
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_SCHEMAKIT_API = 1
 local REQUIRED_SIGNALKIT_API = 1
@@ -2057,7 +2058,26 @@ local PROFILE_STRINGS = {
   ["delete.desc"] = "Delete the profile chosen above. Characters that used it start on the "
     .. "default profile next time.",
   ["delete.confirm"] = "Delete the chosen profile? Its settings cannot be recovered.",
+  -- Revision 11, spec profiles. In `spec.name` and `spec.desc`, `%s` is the
+  -- specialization's name or the `spec.specialization` / `spec.talentGroup`
+  -- label; in those two, it is the index.
+  ["specs.intro"] = "Choose a profile for each specialization. This character switches to it "
+    .. "by itself when the specialization changes; None keeps the profile in use.",
+  ["spec.name"] = "Profile for %s",
+  ["spec.desc"] = "The profile this character switches to in %s.",
+  ["spec.none"] = "None",
+  ["spec.specialization"] = "specialization %s",
+  ["spec.talentGroup"] = "talent group %s",
 }
+
+-- Revision 11: the most spec-profile selects the group carries, SettingsKit's
+-- highest assignable spec index. Each is hidden unless the character has that
+-- many indexes, so a renderer shows exactly one per specialization.
+local MAX_SPEC_OPTIONS = 8
+
+-- The `select` key meaning "no assignment". SettingsKit refuses a profile
+-- name without a character other than whitespace, so it is never a profile.
+local NO_SPEC_PROFILE = ""
 
 -- The keys of the group's options, so the paths built at attach and the
 -- messages that name them agree.
@@ -2341,6 +2361,130 @@ local function refuseUnchosen(info, selectKey)
   )
 end
 
+-- Spec profiles (revision 11) ------------------------------------------------
+--
+-- The LibDualSpec-1.0 `EnhanceOptions` counterpart: one select per spec index
+-- over SettingsKit's `db:SetSpecProfile` and `db:GetSpecProfile`, shown while
+-- `SettingsKit:GetSpecIndex()` says the character has more than one index.
+-- Added only when the database and the SettingsKit facade offer those methods
+-- (SettingsKit revision 11 and later); an older SettingsKit gets the group
+-- without them.
+
+---Whether the link's database and SettingsKit support spec profiles.
+---@param link table
+---@return boolean
+local function supportsSpecProfiles(link)
+  local db = link.db
+  return type(rawget(link.SettingsKit, "GetSpecIndex")) == "function"
+    and type(db.SetSpecProfile) == "function"
+    and type(db.GetSpecProfile) == "function"
+end
+
+---The name the client gives specialization `index` of the player's class, or
+---`nil`. Read once, when the group is built: class specialization names need
+---no player data.
+---@param index integer
+---@return string|nil
+local function readSpecializationName(index)
+  -- UnitClass and GetSpecializationInfoForClassID are World of Warcraft client APIs reachable only through the global table.
+  -- selene: allow(global_usage)
+  local unitClass = rawget(_G, "UnitClass")
+  -- selene: allow(global_usage)
+  local infoForClass = rawget(_G, "GetSpecializationInfoForClassID")
+  if type(unitClass) ~= "function" or type(infoForClass) ~= "function" then
+    return nil
+  end
+  local classID = select(3, unitClass("player"))
+  if isSecret(classID) or type(classID) ~= "number" then
+    return nil
+  end
+  local _, name = infoForClass(classID, index)
+  if isSecret(name) or type(name) ~= "string" or name == "" then
+    return nil
+  end
+  return name
+end
+
+---The label of spec index `index`: the specialization's name, or the
+---translated `spec.specialization` / `spec.talentGroup` label with the index.
+---@param link table
+---@param kind string `SettingsKit:GetSpecIndex()`'s third answer
+---@param index integer
+---@return string
+local function specLabel(link, kind, index)
+  if kind == "specialization" then
+    local name = readSpecializationName(index)
+    if name ~= nil then
+      return name
+    end
+    return fill(translate(link, "spec.specialization"), tostring(index))
+  end
+  return fill(translate(link, "spec.talentGroup"), tostring(index))
+end
+
+---How many spec indexes this character has now; `0` when unknown.
+---@param link table
+---@return integer
+local function specCount(link)
+  local _, count = link.SettingsKit:GetSpecIndex()
+  if isSecret(count) or type(count) ~= "number" then
+    return 0
+  end
+  return count
+end
+
+---Add the spec-profile description and selects to `args`.
+---@param link table
+---@param args table the group's `args`, typed loosely as `buildProfileArgs` builds it
+---@param whileReadOnly fun(): boolean
+local function addSpecProfileArgs(link, args, whileReadOnly)
+  local db = link.db
+  local _, _, kind = link.SettingsKit:GetSpecIndex()
+  args.specs = {
+    type = KIND_DESCRIPTION,
+    name = translate(link, "specs.intro"),
+    order = 9,
+    hidden = function()
+      return specCount(link) < 2
+    end,
+  }
+  for index = 1, MAX_SPEC_OPTIONS do
+    local label = specLabel(link, kind, index)
+    args["spec" .. index] = {
+      type = KIND_SELECT,
+      name = fill(translate(link, "spec.name"), label),
+      desc = fill(translate(link, "spec.desc"), label),
+      order = 9 + index,
+      disabled = whileReadOnly,
+      hidden = function()
+        local count = specCount(link)
+        return count < 2 or index > count
+      end,
+      -- Every profile, the one assigned to this index (which a deletion
+      -- elsewhere may have left without a profile table) and None.
+      values = function()
+        local choices = currentChoices(link)
+        local assigned = db:GetSpecProfile(index)
+        if assigned ~= nil then
+          choices[assigned] = assigned
+        end
+        choices[NO_SPEC_PROFILE] = translate(link, "spec.none")
+        return choices
+      end,
+      get = function()
+        return db:GetSpecProfile(index) or NO_SPEC_PROFILE
+      end,
+      set = function(_, name)
+        if name == NO_SPEC_PROFILE then
+          db:SetSpecProfile(index, nil)
+        else
+          db:SetSpecProfile(index, name)
+        end
+      end,
+    }
+  end
+end
+
 ---Build the group's options. Every callback closes over `link` only, so the
 ---group works in whichever tree `Define` places it.
 ---@param link table
@@ -2353,7 +2497,7 @@ local function buildProfileArgs(link)
   local function otherProfiles()
     return otherChoices(link)
   end
-  return {
+  local args = {
     intro = {
       type = KIND_DESCRIPTION,
       name = link.description or translate(link, "intro"),
@@ -2482,6 +2626,10 @@ local function buildProfileArgs(link)
       end,
     },
   }
+  if link.specProfiles then
+    addSpecProfileArgs(link, args, whileReadOnly)
+  end
+  return args
 end
 
 -- The database methods a link connects to, in connection order.
@@ -2559,6 +2707,9 @@ local function findCachedProfileLink(db, name, order, description, localize)
     and link.order == order
     and link.description == description
     and link.localize == localize
+    -- A link an older revision built has no `specProfiles` field and no spec
+    -- selects; it is replaced, as a link with other options is.
+    and type(link.specProfiles) == "boolean"
   then
     return link
   end
@@ -2642,7 +2793,10 @@ local function profileOptions(_, db, options)
     -- Set by `attachProfileLink`, cleared by `detachProfileLink`.
     tree = false,
     connections = false,
+    -- Revision 11: whether the group carries the spec-profile selects.
+    specProfiles = false,
   }
+  link.specProfiles = supportsSpecProfiles(link)
   return buildProfileGroup(link)
 end
 

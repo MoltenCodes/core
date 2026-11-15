@@ -84,9 +84,17 @@ What each piece promises:
 - **Cheap where it is called often.** `Get`, `Set`, `Walk`, `IsDisabled` and `IsHidden` look paths up in a map built at `Define` and allocate nothing (the profile group's options aside, which ask the database for its profiles); `Describe` allocates by design, and `DescribeOption(path)` describes one option or group when that is all a caller needs. Options of one kind with the same inputs share one schema.
 - **Bounded.** At most 1024 options per tree and 8 keys per path by default, refused at `Define`; `maxOptions`, `maxDepth` (up to 32) and `maxDynamicEntries` open them per tree, and `OptionsKit.UNBOUNDED` lifts the first and last (see *Limits* in the API).
 - **Secrets refused.** `Set` refuses a secret value at your line.
-- **Profiles, ready-made.** `ProfileOptions(db)` returns a group over a SettingsKit database's profiles — choose the current one (the existing profiles and this character's own), create one by name, copy another into it, reset it, delete one, with confirmations and the current profile's name in the descriptions — built from the kinds above, so every renderer shows it. One group per database and options: later calls return the same table, as AceDBOptions does. The tree fires `OnChange` when the database's profile changes anywhere. Every string goes through a `localize(key, default)` hook.
+- **Profiles, ready-made.** `ProfileOptions(db)` returns a group over a SettingsKit database's profiles — choose the current one (the existing profiles and this character's own), create one by name, copy another into it, reset it, delete one, with confirmations and the current profile's name in the descriptions — built from the kinds above, so every renderer shows it. With SettingsKit's spec profiles it also offers one profile per specialization (or talent group), as LibDualSpec-1.0's `EnhanceOptions` does for AceDBOptions. One group per database and options: later calls return the same table, as AceDBOptions does. The tree fires `OnChange` when the database's profile changes anywhere. Every string goes through a `localize(key, default)` hook.
 
 See [`docs/API.md`](docs/API.md) for every kind's fields and schema, the `Describe` shape and how a renderer consumes it, and [`docs/INTERNALS.md`](docs/INTERNALS.md) for the index, the sorted arrays, the shared schemas and the reused `info` tables.
+
+## Migrating from LibDualSpec-1.0's options
+
+| LibDualSpec-1.0 | OptionsKit |
+|---|---|
+| `LibDualSpec:EnhanceOptions(AceDBOptions:GetOptionsTable(db), db)` | `OptionsKit:ProfileOptions(db)`: the group already holds the spec-profile selects when SettingsKit has spec profiles (SettingsKit 0.4.0). |
+| The "Enable spec profiles" toggle | None: choosing a profile for a specialization enables switching for it, `None` disables it. |
+| One select per specialization, named after it | `profiles.spec1` to `profiles.spec8`, shown for the character's specializations (or talent groups) only. |
 
 ## Embedding
 

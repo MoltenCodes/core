@@ -71,8 +71,8 @@ full garbage collection first, which can make the client stutter for a
 moment:
 
 ```text
-MoltenCodes Test: running settingsKit: 9 suites. Results follow when every test has finished.
-MoltenCodes Test: PASS settingsKit.facade: Registry:Get('settingsKit', 1) is the SettingsKit facade with API 1, Open, SetLimits, GetLimits, UNBOUNDED, DEFAULT_PROFILE 'Default', MAX_PROFILE_NAME_LENGTH 64 and the Database prototype's nineteen methods
+MoltenCodes Test: running settingsKit: 10 suites. Results follow when every test has finished.
+MoltenCodes Test: PASS settingsKit.facade: Registry:Get('settingsKit', 1) is the SettingsKit facade with API 1, Open, SetLimits, GetLimits, UNBOUNDED, DEFAULT_PROFILE 'Default', MAX_PROFILE_NAME_LENGTH 64 and the Database prototype's twenty-two methods, and GetSpecIndex
 MoltenCodes Test: PASS settingsKit.facade: the installed SettingsKit carries the revision of the committed manifest
 MoltenCodes Test: PASS settingsKit.facade: GetLimits answers a fresh table holding the session's shared limits at their defaults: maxProfileNameLength 64 and pathKeyLimit 32
 MoltenCodes Test: PASS settingsKit.savedVariables: Open over the two saved variables of the toc, after the loaded phase, uses each global as the raw table, stamps its version, creates every layout section, and a second Open returns the same database
@@ -111,12 +111,15 @@ MoltenCodes Test: PASS settingsKit.secrets: OnChange and Validate refuse a secre
 MoltenCodes Test: PASS settingsKit.persistence: persistence step one: profile.scale 1.25, profile.anchor at its default, char.note, the per-character global.note and a marker are written through the views and stored in both raw saved tables
 MoltenCodes Test: SKIP settingsKit.persistence: persistence step two: after /reload the client restored both saved tables after this file ran (nil at file scope) and before the loaded phase, and the views read back the marker, scale 1.25, char.note and the per-character note -- run again after /reload: no marker from an earlier session yet (step one wrote it now)
 MoltenCodes Test: SKIP settingsKit.persistence: persistence step two: the PLAYER_LOGOUT compaction removed profile.anchor, written equal to its default in step one, before the client wrote the file, and kept scale -- run again after /reload: no marker from an earlier session yet (step one wrote it now)
+MoltenCodes Test: PASS settingsKit.specProfiles: GetSpecIndex answers the kind of this flavour: specialization on Retail and Mists of Pandaria Classic, talent group on Classic Era
+MoltenCodes Test: SKIP settingsKit.specProfiles: after a specialization change between two runs, the database already switched to the profile assigned to the new index -- first run of this session: the next test assigns a profile to every index; change specialization and run again
+MoltenCodes Test: PASS settingsKit.specProfiles: SetSpecProfile for the current index switches at once; every other index is recorded without switching
 MoltenCodes Test: SKIP settingsKit.cleanup: cleanup: once persistence step two passed, both saved variables are emptied so the files hold no data after the next /reload -- persistence step two has not passed yet; the saved tables are kept for the run after /reload
-MoltenCodes Test: settingsKit: 37 passed, 0 failed, 3 skipped, 0 timed out (40 tests)
+MoltenCodes Test: settingsKit: 39 passed, 0 failed, 4 skipped, 0 timed out (43 tests)
 MoltenCodes Test: results saved in MoltenCodesTestResults; /reload or log out to write them to disk.
 ```
 
-The totals line reads `37 passed, 0 failed, 3 skipped, 0 timed out (40 tests)`.
+The totals line reads `39 passed, 0 failed, 4 skipped, 0 timed out (43 tests)`.
 The step-one test logs `marker written: <date> #<number>; now /reload and run
 /mct run settingsKit again`.
 
@@ -138,6 +141,7 @@ MoltenCodesTest_SettingsKitDB = {
   ["profiles"] = { ["<name> - <realm>"] = { ["scale"] = 1.25 } },
   ["char"] = { ["<name> - <realm>"] = { ["note"] = "<date> #<number>" } },
   ["profileKeys"] = {}, ["realm"] = {}, ["class"] = {}, ["faction"] = {}, ["namespaces"] = {},
+  ["specProfiles"] = {},
 }
 ```
 
@@ -149,8 +153,8 @@ The client may order the keys differently.
 ## Run 2: after `/reload` and the second `/mct run settingsKit`
 
 ```text
-MoltenCodes Test: running settingsKit: 9 suites. Results follow when every test has finished.
-MoltenCodes Test: PASS settingsKit.facade: Registry:Get('settingsKit', 1) is the SettingsKit facade with API 1, Open, SetLimits, GetLimits, UNBOUNDED, DEFAULT_PROFILE 'Default', MAX_PROFILE_NAME_LENGTH 64 and the Database prototype's nineteen methods
+MoltenCodes Test: running settingsKit: 10 suites. Results follow when every test has finished.
+MoltenCodes Test: PASS settingsKit.facade: Registry:Get('settingsKit', 1) is the SettingsKit facade with API 1, Open, SetLimits, GetLimits, UNBOUNDED, DEFAULT_PROFILE 'Default', MAX_PROFILE_NAME_LENGTH 64 and the Database prototype's twenty-two methods, and GetSpecIndex
 MoltenCodes Test: PASS settingsKit.facade: the installed SettingsKit carries the revision of the committed manifest
 MoltenCodes Test: PASS settingsKit.facade: GetLimits answers a fresh table holding the session's shared limits at their defaults: maxProfileNameLength 64 and pathKeyLimit 32
 MoltenCodes Test: PASS settingsKit.savedVariables: Open over the two saved variables of the toc, after the loaded phase, uses each global as the raw table, stamps its version, creates every layout section, and a second Open returns the same database
@@ -189,12 +193,15 @@ MoltenCodes Test: PASS settingsKit.secrets: OnChange and Validate refuse a secre
 MoltenCodes Test: SKIP settingsKit.persistence: persistence step one: profile.scale 1.25, profile.anchor at its default, char.note, the per-character global.note and a marker are written through the views and stored in both raw saved tables -- a marker from an earlier session is present; step two reads it, so nothing is rewritten
 MoltenCodes Test: PASS settingsKit.persistence: persistence step two: after /reload the client restored both saved tables after this file ran (nil at file scope) and before the loaded phase, and the views read back the marker, scale 1.25, char.note and the per-character note
 MoltenCodes Test: PASS settingsKit.persistence: persistence step two: the PLAYER_LOGOUT compaction removed profile.anchor, written equal to its default in step one, before the client wrote the file, and kept scale
+MoltenCodes Test: PASS settingsKit.specProfiles: GetSpecIndex answers the kind of this flavour: specialization on Retail and Mists of Pandaria Classic, talent group on Classic Era
+MoltenCodes Test: SKIP settingsKit.specProfiles: after a specialization change between two runs, the database already switched to the profile assigned to the new index -- first run of this session: the next test assigns a profile to every index; change specialization and run again
+MoltenCodes Test: PASS settingsKit.specProfiles: SetSpecProfile for the current index switches at once; every other index is recorded without switching
 MoltenCodes Test: PASS settingsKit.cleanup: cleanup: once persistence step two passed, both saved variables are emptied so the files hold no data after the next /reload
-MoltenCodes Test: settingsKit: 39 passed, 0 failed, 1 skipped, 0 timed out (40 tests)
+MoltenCodes Test: settingsKit: 41 passed, 0 failed, 2 skipped, 0 timed out (43 tests)
 MoltenCodes Test: results saved in MoltenCodesTestResults; /reload or log out to write them to disk.
 ```
 
-The totals line reads `39 passed, 0 failed, 1 skipped, 0 timed out (40 tests)`.
+The totals line reads `41 passed, 0 failed, 2 skipped, 0 timed out (43 tests)`.
 Step two logs `marker restored by the client: <token>` and `verified at
 <date>`; the compaction test logs `restored profile keys: scale`; the cleanup
 test logs `both saved variables are empty; /reload or log out to write the
@@ -205,12 +212,28 @@ empty files`. Now `/reload` once more (step 4 above).
 After the cleanup test, every test that needs the two databases ends as
 `SKIP` with `the cleanup test emptied both saved variables in this session;
 /reload to test again`, and the cleanup test with `already emptied in this
-session; /reload writes the empty files`: the totals read `11 passed, 0 failed,
-29 skipped, 0 timed out (40 tests)` (the facade and migration tests still
-run). After the next `/reload` the procedure starts again at run 1.
+session; /reload writes the empty files`: the totals read `14 passed, 0 failed,
+29 skipped, 0 timed out (43 tests)` (the facade, migration and spec-profile
+tests still run; the spec-profile switching test passes, since run 2 assigned
+the profiles in this session). After the next `/reload` the procedure starts again at run 1.
 
 Running run 1 a second time before the `/reload` prints the run 1 lines again;
 step one rewrites the marker with a new token.
+
+### Spec profiles: changing specialization between two runs
+
+The spec-profile switching test needs a specialization change inside one
+session, which only the player can make. After any run in which `SetSpecProfile
+for the current index switches at once ...` passed (it logs `assigned <n>
+index(es); change specialization and run again`), change specialization (on
+Retail and Mists of Pandaria Classic) or activate the other talent group (on
+Classic Era with dual talent specialization), out of combat, without
+`/reload`, and run `/mct run settingsKit` again. `after a specialization change
+between two runs ...` must then `PASS`: SettingsKit switched the scratch
+database to `MoltenCodesTest scratch spec <index>` on the change, through
+EventKit. Its log line gives the new index. A character with a single talent
+group (no dual specialization) can only show the at-once switch; the test then
+passes trivially on the unchanged index, which the log makes visible.
 
 ## Visible side effects
 
@@ -239,6 +262,10 @@ the three full garbage collections. On disk, the two
   variables; the After hook removes the globals, but SettingsKit keeps each
   database it opened in its package state for the session (a few small tables
   per test; `/reload` releases them).
+- The spec-profile tests open one more database, over the scratch global
+  `MoltenCodesTest_SettingsKitScratch_specProfiles`, under a fixed name so a
+  later run in the session finds it; the After hook leaves it, and SettingsKit
+  keeps it with its assignments and its shared spec listener until `/reload`.
 - SettingsKit's shared limits are never changed: the only `SetLimits` call is
   a refusal the test checks against `GetLimits()` before and after.
 
@@ -247,7 +274,7 @@ the three full garbage collections. On disk, the two
 The 6 `settingsKit.secrets` tests need the client's `issecretvalue` and
 `secretwrap`, which Retail 12.1 has. Without them they print `SKIP ... -- the
 client has no issecretvalue and secretwrap; the secret path was not
-exercised`, and the totals read 31 and 33 passed with 9 and 7 skipped.
+exercised`, and the totals read 33 and 35 passed with 10 and 8 skipped.
 
 ## Per flavour
 
@@ -257,14 +284,14 @@ metadata for `retail`, `classic-era` and `classic-mop`), the `PLAYER_LOGOUT`
 event EventKit connects the compaction to (in `events.json` of all three),
 `## SavedVariables` and `## SavedVariablesPerCharacter`, and the core global
 `date`. The metadata of all three flavours also documents `issecretvalue` and
-`secretwrap`. No test depends on the flavour itself.
+`secretwrap`. The spec-profile tests also read `WOW_PROJECT_ID` and the `C_SpecializationInfo` functions all three document; the kind test is the one that depends on the flavour (`specialization` on Retail and Mists of Pandaria Classic, `talentGroup` on Classic Era), and the switching test needs EventKit's `PLAYER_SPECIALIZATION_CHANGED` and `ACTIVE_TALENT_GROUP_CHANGED`, in `events.json` of all three.
 
 ### Retail (12.1)
 
 The lines above: run 1 ends with
-`MoltenCodes Test: settingsKit: 37 passed, 0 failed, 3 skipped, 0 timed out (40 tests)`
+`MoltenCodes Test: settingsKit: 39 passed, 0 failed, 4 skipped, 0 timed out (43 tests)`
 and run 2 with
-`MoltenCodes Test: settingsKit: 39 passed, 0 failed, 1 skipped, 0 timed out (40 tests)`,
+`MoltenCodes Test: settingsKit: 41 passed, 0 failed, 2 skipped, 0 timed out (43 tests)`,
 with the persistence and cleanup skips listed there and no other.
 
 ### Classic Era (1.15) and Mists of Pandaria Classic (5.5)
@@ -281,8 +308,8 @@ document them), and whether it actually makes secrets, which
 `issecretvalue(secretwrap(true)) == true`.
 
 - The client makes secrets: the totals lines are Retail's,
-  run 1 `MoltenCodes Test: settingsKit: 37 passed, 0 failed, 3 skipped, 0 timed out (40 tests)`,
-  run 2 `MoltenCodes Test: settingsKit: 39 passed, 0 failed, 1 skipped, 0 timed out (40 tests)`.
+  run 1 `MoltenCodes Test: settingsKit: 39 passed, 0 failed, 4 skipped, 0 timed out (43 tests)`,
+  run 2 `MoltenCodes Test: settingsKit: 41 passed, 0 failed, 2 skipped, 0 timed out (43 tests)`.
 - The client has both functions but makes no secrets: in both runs the six
   tests print these lines in place of their `PASS` lines, and the totals
   lines are
@@ -321,7 +348,7 @@ and in every case, since the six secrets tests skip there either way.
 | `Registry:Get('settingsKit', 1) is the SettingsKit facade ...` | The facade the client loaded is API 1 with `Open`, `SetLimits`, `GetLimits`, `UNBOUNDED`, `DEFAULT_PROFILE` `"Default"`, `MAX_PROFILE_NAME_LENGTH` 64 and a `Database` prototype carrying all nineteen documented methods, `IsReadOnly`, `Resync` and `Getter` included. |
 | `the installed SettingsKit carries the revision ...` | Registry's selected revision and the facade's `REVISION` are both the committed manifest's (8), not an older or newer embedded copy. |
 | `GetLimits answers a fresh table ...` | A new table per call holding `maxProfileNameLength` 64 and `pathKeyLimit` 32; a difference means another addon changed the shared limits. |
-| `Open over the two saved variables of the toc ...` | After the loaded phase, `Open` works on the tables the client restored (or creates them on a first install), stamps `version` 2 and 1, creates all eight layout sections, `GetSavedVariable` names each global, a second `Open` (with or without the schema) returns the same database, and views report `getmetatable` `"SettingsKit.View"`. The log says what the client restored at the loaded phase. |
+| `Open over the two saved variables of the toc ...` | After the loaded phase, `Open` works on the tables the client restored (or creates them on a first install), stamps `version` 2 and 1, creates all nine layout sections, `GetSavedVariable` names each global, a second `Open` (with or without the schema) returns the same database, and views report `getmetatable` `"SettingsKit.View"`. The log says what the client restored at the loaded phase. |
 | `the current profile and the char scope are keyed '<name> - <realm>' ...` | With `defaultProfile = "char"`, the current profile is `UnitName("player") .. " - " .. GetRealmName()` from the live client, its table exists in the saved `profiles`, and a write through `db.char` lands in `char["<name> - <realm>"]`. The log gives the key. |
 | `the realm, class and faction scopes are keyed ...` | Writes through `db.realm`, `db.class` and `db.faction` land under the live realm, the class file (`"MAGE"`) and the faction group. The log gives the three keys. |
 | `reading defaults writes nothing ...` | Reading record, keyed-section (wildcard) and scalar defaults leaves the raw profile, `global` and `char` tables with exactly the keys they had. |
@@ -357,6 +384,9 @@ and in every case, since the six secrets tests skip there either way.
 | `persistence step one: ...` | Run 1: `scale` 1.25, `anchor` at its default `"CENTER"`, `char.note`, the per-character `global.note` and the marker `global.persistence` are written through the views and are in both raw saved tables, `anchor` included (a write of a default-equal value is stored until compaction). Run 2: `SKIP`, keeping the restored marker. |
 | `persistence step two: after /reload the client restored both saved tables ...` | Run 2: both globals were `nil` when this file ran and tables at the loaded phase (so a database opened at file scope would have been replaced), the restored tables carry `version` 2 and 1, the current profile is still `"<name> - <realm>"`, and the views read back the marker's token, `scale` 1.25, `char.note` and the per-character `global.note` the client wrote to disk. It then records `verifiedAt` in the marker. Run 1: `SKIP`. |
 | `persistence step two: the PLAYER_LOGOUT compaction removed profile.anchor ...` | Run 2: in the table the client restored, `anchor` (default-equal in step one) is gone and `scale` stays, so the EventKit `PLAYER_LOGOUT` compaction ran before the client wrote the file. Run 1: `SKIP`. |
+| `GetSpecIndex answers the kind of this flavour ...` | `"specialization"` where `WOW_PROJECT_ID` is 1 or 19, `"talentGroup"` elsewhere, and a number for the count. The log gives the index, the count and the kind the live client answers. |
+| `after a specialization change between two runs ...` | Run after a specialization change in the same session: the scratch database already uses the profile assigned to the new index, so SettingsKit's shared listener reacted to the client's own events. `SKIP` on the first run of a session. |
+| `SetSpecProfile for the current index switches at once ...` | Assigning every other index changes nothing; assigning the current index switches at once, `GetSpecProfile` reads it back and `ApplySpecProfile` then answers `false`. `SKIP` when the client answers no index (a Retail character without a specialization). |
 | `cleanup: once persistence step two passed ...` | Run 2: sets both saved-variable globals to `nil`, so the next `/reload` writes files without them. Run 1: `SKIP`, keeping the tables for run 2. |
 
 ## What counts as unexpected

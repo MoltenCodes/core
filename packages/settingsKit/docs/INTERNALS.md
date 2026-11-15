@@ -30,7 +30,8 @@ MyAddonDB = {
 | `profiles` | profile name | `Open` and `SetProfile` create the current profile's table; writes through `db.profile` fill it. |
 | `profileKeys` | `"<name> - <realm>"` | `SetProfile` records the character's choice; `DeleteProfile` removes choices naming the deleted profile. |
 | `char`, `realm`, `class`, `faction` | the scope key read at `Open` | The first write through that scope creates the entry. |
-| `namespaces` | module name | Nothing in v1. It exists from v1 so v2 (spec-aware profiles and namespaces) adds data without a layout change. |
+| `namespaces` | module name | Nothing in v1. It exists from v1 so module namespaces add data without a layout change. |
+| `specProfiles` | `"<name> - <realm>"` | Revision 11. `SetSpecProfile` writes the character's entry `{ [index] = profileName }` and removes it with its last assignment; `DeleteProfile` removes assignments naming the deleted profile; `ResetDatabase` recreates it empty. A database an older revision opened gets the section at its first `SetSpecProfile`. |
 
 Inside a scope, values are stored by field name exactly as the schema declares them; a keyed section is a table keyed by the consumer's keys. Defaults are never stored, except the first-read copy of a plain table default (an array, say), which `Compact` removes while it is unchanged.
 
@@ -51,6 +52,7 @@ Inside a scope, values are stored by field name exactly as the schema declares t
 | `limits` | The shared limits `SetLimits` writes: `maxProfileNameLength` and `pathKeyLimit`. |
 | `logoutDatabases` | Revision 6: the databases the shared `PLAYER_LOGOUT` listener compacts, in the order they were opened. An upgrade over an older revision adds it empty. |
 | `logoutConnected` | Revision 6: whether the shared listener is connected to EventKit. |
+| `specListenerConnected` | Revision 11: whether the one shared spec listener is connected to EventKit. An upgrade over an older revision adds it `false`. |
 
 ## Databases
 
@@ -72,6 +74,7 @@ A database is a table carrying its views as plain fields (`global`, `char`, ...,
 | `_readOnly` | `true` when `_newerVersion` is set and `allowNewerData` was not. Read with `rawget` by every write path. |
 | `_maxScannedEntries` | `options.maxScannedEntries`: how many entries the scan of a written table visits before refusing it (65536 by default), or `math.huge` when opened with `SettingsKit.UNBOUNDED`. |
 | `_signals` | The four profile signals, each created by the first `OnProfile*` call that connects to it; a signal nobody connected to is absent and not fired. |
+| `_specIndex` | Revision 11, absent until set: the spec index whose assignment the database last applied (at `Open`, `SetSpecProfile`, `ApplySpecProfile` or a spec event). A spec event skips a database that already applied the event's index, so an event that changes nothing never undoes a manual `SetProfile`. Absent reads as `nil`, so no layout number changed. |
 | `_generation` | Revision 7: a counter every SettingsKit mutation that can change which saved table a view resolves to increments (`bumpGeneration`); a node's cached table is current while the node's `generation` equals it (see [Resolution](#resolution)). |
 
 A scope record holds the scope's `name`, SettingsKit's sealed `schema` (shared by every database opened with the same schema node, see [Plans](#plans)), its compiled `plan`, the `sectionName` and `sectionKey` of its saved table, whether it is `available`, and its `OnChange` `signal`: `false` until the first `OnChange` of the scope creates it, so a write nobody listens to fires nothing. An undeclared scope has no record.
@@ -230,6 +233,14 @@ Revision 7 added database layout 4 (`_generation`) and node layout 3 (`cache` an
 Revision 8 changes no layout: only the closure `plainGetter` returns (see [The nil-rule exception](#getters)). Getters revision 7 made keep their own closure, which reads the same fields, and keep working; `Getter_spec.lua` makes getters under revision 7, upgrades in place and checks them and a getter made afterwards.
 
 Revision 9 changes no layout. Every in-place upgrade, from any revision, walks `state.views` once and builds the depth probe of every live record view below a scope root: `depthProbes` is file-local, so a newer copy starts without the probes the older one built, and before revision 9 only an upgrade over revisions 1 to 5 rebuilt them, which sent writes through nested views to the full check after an upgrade over revisions 6 to 8. `FastPaths_spec.lua` upgrades in place and counts SchemaKit checks of nested writes.
+
+## Spec profiles
+
+Everything spec profiles add lives in `installSpecProfiles`, a function called once from a `do` block near the end of the file, because the main chunk is at 197 of Lua 5.1's 200 register slots: its helpers are locals of that function, not of the main chunk. It publishes `GetSpecIndex` on the facade, `SetSpecProfile`, `GetSpecProfile` and `ApplySpecProfile` on the prototype, and three dispatch entries: `onDatabaseOpened(db)`, which `Open` calls last, `forgetSpecProfiles(raw, name)`, which `DeleteProfile` calls, and `onSpecEvent()`, which the shared listener calls, so an upgrade replaces all three.
+
+`readSpecIndex` decides the kind from `WOW_PROJECT_ID` (`1` and `19`, the literals ClientKit uses, mean specialization), asks `C_SpecializationInfo.IsInitialized`, and then reads either the specialization (refused above the class's count, which is Retail's starter specialization) or the active talent group (refused above 8). Every answer is tested with `issecretvalue` before it is compared. The facts behind these choices (which functions and events each flavour documents, and why Classic Era keys by talent group: there `GetSpecialization` stands for the primary talent tree, which moves with talent points) are in `docs/ROADMAP.md`, "settingsKit spec profiles".
+
+The shared listener is connected the first time a database has an assignment; `state.specListenerConnected` records it, and the connections EventKit returns are not kept, as for the logout listener. `onSpecEvent` reads the index once and walks `state.databases`, applying it to each database with an assignment whose `_specIndex` differs. Applying calls the prototype's `SetProfile`, so the switch is exactly a `SetProfile`. An upgrade from an older revision adds the flag and runs `onDatabaseOpened` for every open database, which connects the listener and applies the assignment for a character whose saved table already holds one.
 
 ## Error levels
 

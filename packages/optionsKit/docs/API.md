@@ -2,7 +2,7 @@
 
 OptionsKit API generation **1** provides a typed, validated, introspectable options tree with no renderer: what an addon exposes as configurable, how each option is read and written, and what a dialog or a command line needs to present it.
 
-Implementation revision: **10**.
+Implementation revision: **11**.
 
 ## Loading
 
@@ -458,12 +458,24 @@ The cache holds one group per database for the session: SettingsKit keeps every 
 | `reset` | `execute`, `confirm` | `db:ResetProfile()`: every setting of the current profile reads its default again. |
 | `deleteTarget` | `select` | Every profile but the current one. Remembers the choice for `delete`, with the same `nil` rule. |
 | `delete` | `execute`, `confirm` | Forgets the choice, then `db:DeleteProfile(deleteTarget)`, so a target chosen while the deletion is announced is kept. Disabled until `deleteTarget` names a profile that exists and is not current. |
+| `specs` | `description` | Revision 11, [spec profiles](#spec-profiles): explains the selects below. Hidden while the character has fewer than two spec indexes. |
+| `spec1` to `spec8` | `select` | Revision 11: the profile assigned to spec index 1 to 8. Each is hidden unless the character has at least that many indexes and more than one. |
 
 **A read-only database** (SettingsKit opens data a newer version of the addon saved read-only; `db:IsReadOnly()`, SettingsKit revision 5 and later) disables every option of the group but `intro`: `current`, `new`, `copySource`, `copy`, `reset`, `deleteTarget` and `delete` answer `disabled` with `true` while `db:IsReadOnly()` does, and are enabled again as the rules above say otherwise. The group still reads: `current` shows the profile in use and the selects list the profiles. As for any `disabled` option, `Set` and `Execute` still run, and SettingsKit then refuses the change at the caller with its read-only message. A database without `IsReadOnly` (an older SettingsKit) counts as writable.
 
 The `select` options take their choices from a values function, so `Describe` and every check see the profiles as they are now; the group's `desc` and those of `current`, `copySource`, `copy`, `reset` and `deleteTarget` are `desc` functions that name the current profile (`Return every setting of "Raid" to its default.`). Both are read when `Describe` runs: a renderer that redraws from `Describe` shows the current names, one that caches its last description shows them as of that call.
 
 The three buttons carry `confirm` questions; whether the user is asked is the renderer's concern, as for any `execute`. `Execute` of `copy` or `delete` while its select is unset raises at your line (`OptionsKit.Tree:Execute profiles.copy needs "profiles.copySource" to be set first`); a renderer that honours `disabled` never gets there. A refusal by SettingsKit while switching (or an error raised by one of the database's own profile listeners) propagates from `Set` unchanged.
+
+### Spec profiles
+
+Revision 11, LibDualSpec-1.0's `EnhanceOptions` counterpart. When the database and the SettingsKit facade offer SettingsKit's spec-profile methods (`db:SetSpecProfile`, `db:GetSpecProfile` and `SettingsKit:GetSpecIndex`, SettingsKit revision 11), the group carries one `select` per spec index, `spec1` to `spec8`, after the profile options (orders 10 to 17), and the `specs` description before them (order 9). With an older SettingsKit the group is built without them.
+
+They reach SettingsKit only through those three methods: each select's `hidden` predicate asks `SettingsKit:GetSpecIndex()` for the character's count (a select is shown when the count is at least 2 and at least its index), its `get` answers `db:GetSpecProfile(index)` or `""`, and its `set` calls `db:SetSpecProfile(index, name)`, or `db:SetSpecProfile(index, nil)` for `""`. The choices are those of `current` (every profile and this character's own), the profile already assigned to the index, and `""`, labelled `None`: no assignment, so the character keeps whatever profile is in use. `""` can never be a profile name, since SettingsKit refuses one without a character other than whitespace. Every select is `disabled` while the database is read-only, as the other changing options are.
+
+Assigning a profile to the current index switches to it at once (SettingsKit does), so the tree's `OnChange` fires twice: `profiles.current` from the database's signal, then `profiles.spec<n>` from the `Set`. Switching by a later specialization change is SettingsKit's, with EventKit embedded; see SettingsKit's API, *Spec profiles*.
+
+The labels are fixed when the group is built: `Profile for <name>`, where the name is the specialization's on Retail and Mists of Pandaria Classic, from `GetSpecializationInfoForClassID` with the class ID `UnitClass("player")` answers third (class specialization names need no player data), and the `spec.talentGroup` label (`talent group 2`) elsewhere. A specialization the client does not name, or names with a secret or an empty string, gets the `spec.specialization` label (`specialization 2`).
 
 ### Refresh
 
@@ -484,7 +496,7 @@ Unknown fields and wrong types are refused at your line: `OptionsKit:ProfileOpti
 
 ### Strings and their keys
 
-`%s` is replaced by the current profile's name in quotes, except in `new.long`, where it is the byte limit.
+`%s` is replaced by the current profile's name in quotes, except in `new.long`, where it is the byte limit, and in the `spec` keys, as their rows say.
 
 | Key | English default |
 |---|---|
@@ -511,6 +523,12 @@ Unknown fields and wrong types are refused at your line: `OptionsKit:ProfileOpti
 | `delete.name` | `Delete profile` |
 | `delete.desc` | `Delete the profile chosen above. Characters that used it start on the default profile next time.` |
 | `delete.confirm` | `Delete the chosen profile? Its settings cannot be recovered.` |
+| `specs.intro` | `Choose a profile for each specialization. This character switches to it by itself when the specialization changes; None keeps the profile in use.` |
+| `spec.name` | `Profile for %s` (`%s` is the specialization's label) |
+| `spec.desc` | `The profile this character switches to in %s.` (`%s` is the specialization's label) |
+| `spec.none` | `None` |
+| `spec.specialization` | `specialization %s` (`%s` is the index) |
+| `spec.talentGroup` | `talent group %s` (`%s` is the index) |
 
 ### Errors
 
@@ -573,6 +591,6 @@ The nine-point plan in `docs/ROADMAP.md` is followed except where recorded here:
 
 ## Embedded copies and upgrades
 
-Several addons may embed OptionsKit; Registry selects the newest compatible revision and every copy shares one facade. An upgrade happens in place: trees defined under an older copy stay registered, keep their records, `info` tables, schemas and `OnChange` listeners, and gain the newer copy's methods through the shared `OptionsKit.Tree` prototype. Revision 2 added the profile group map to the package state and a link list to every tree; a tree built by revision 1 gets an empty one when a later revision loads over it. Revisions 3 to 6 changed no layout; a predicate recorded by an older revision is answered secret-aware as soon as revision 5 loads. Revision 7 builds lighter records (no prebuilt `Set` label, absent fields left out, `info` built on first use, shared schemas and hints) and reads an older record's layout as it is: its `info` table and schema stay the ones it was built with. A profile group defined before an upgrade keeps its database connections and the callbacks of the revision that built it: `ProfileOptions` builds them as closures, so a newer copy's fixes reach the groups built after it loads. Revision 8 adds the per-database group cache to the package state; groups built earlier are not in it, and the first call after the upgrade builds the one later calls return. Revision 9 keeps one group per database: it reduces a revision 8 cache to the last group built for each database, and lets the profile group map release groups nobody holds; groups built earlier keep working. Revision 10 accepts the `childGroups` hint and publishes `CHILD_GROUPS`; it changes no layout, and trees defined earlier keep theirs.
+Several addons may embed OptionsKit; Registry selects the newest compatible revision and every copy shares one facade. An upgrade happens in place: trees defined under an older copy stay registered, keep their records, `info` tables, schemas and `OnChange` listeners, and gain the newer copy's methods through the shared `OptionsKit.Tree` prototype. Revision 2 added the profile group map to the package state and a link list to every tree; a tree built by revision 1 gets an empty one when a later revision loads over it. Revisions 3 to 6 changed no layout; a predicate recorded by an older revision is answered secret-aware as soon as revision 5 loads. Revision 7 builds lighter records (no prebuilt `Set` label, absent fields left out, `info` built on first use, shared schemas and hints) and reads an older record's layout as it is: its `info` table and schema stay the ones it was built with. A profile group defined before an upgrade keeps its database connections and the callbacks of the revision that built it: `ProfileOptions` builds them as closures, so a newer copy's fixes reach the groups built after it loads. Revision 8 adds the per-database group cache to the package state; groups built earlier are not in it, and the first call after the upgrade builds the one later calls return. Revision 9 keeps one group per database: it reduces a revision 8 cache to the last group built for each database, and lets the profile group map release groups nobody holds; groups built earlier keep working. Revision 10 accepts the `childGroups` hint and publishes `CHILD_GROUPS`; it changes no layout, and trees defined earlier keep theirs. Revision 11 adds the spec-profile selects to profile groups and the link field `specProfiles`: a link an older revision cached has no such field, so the first `ProfileOptions` call after the upgrade builds a new group, with the selects, and caches it; the older group keeps working wherever it is held.
 
 Nothing survives `/reload`: trees are defined again when the addon loads.

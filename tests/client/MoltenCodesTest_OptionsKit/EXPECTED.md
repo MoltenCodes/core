@@ -42,6 +42,7 @@ MoltenCodes Test: PASS optionsKit.profiles: Set of profiles.current to the chara
 MoltenCodes Test: PASS optionsKit.profiles: profiles.new creates and switches to a typed profile with OnChange for profiles.current then profiles.new, and answers a blank or an over-long name with a message instead of raising
 MoltenCodes Test: PASS optionsKit.profiles: copy and delete stay disabled until their select names another profile, Execute of copy before that raises at OptionsKitSuite.lua:<line>, copying brings the other profile's bound value and deleting removes the profile
 MoltenCodes Test: PASS optionsKit.profiles: a switch made directly on the database reaches the tree's OnChange as profiles.current with the new name, and after Undefine the database's switches reach the tree no more
+MoltenCodes Test: PASS optionsKit.profiles: ProfileOptions carries one spec-profile select per index SettingsKit:GetSpecIndex() counts, named after the live specialization or talent group, and shows them only when the character has more than one
 MoltenCodes Test: PASS optionsKit.clientLua: Validate of three inputs with a pattern agrees with the client's own string.find on empty, ASCII, UTF-8, colour-escaped and control-byte text
 MoltenCodes Test: PASS optionsKit.clientLua: Validate answers SchemaKit's phrases as the client prints them: range bounds 2 and 0.33333333333333, a select's sorted keys, a multiselect key, a colour's nested field and a toggle's type
 MoltenCodes Test: PASS optionsKit.allocation: Get and Set of a range with validate, a toggle, a select and a colour through getters, with an OnChange listener connected, allocate nothing over 5000 cycles
@@ -57,7 +58,7 @@ MoltenCodes Test: PASS optionsKit.secrets: Get and Describe pass a getter's secr
 MoltenCodes Test: PASS optionsKit.secrets: a secret true from disabled and hidden predicates counts as false in IsDisabled, IsHidden and Describe, and a secret true from validate refuses the value as refused by validate
 MoltenCodes Test: PASS optionsKit.secrets: Define refuses a secret disabled field and a secret maxDepth, and ProfileOptions a secret options.name, at OptionsKitSuite.lua:<line>
 MoltenCodes Test: PASS optionsKit.secrets: a colour holding a secret red is refused by the schema: Set raises tint.r expected number, found secret value at OptionsKitSuite.lua:<line> and Validate answers the same without the prefix
-MoltenCodes Test: optionsKit: 29 passed, 0 failed, 0 skipped, 0 timed out (29 tests)
+MoltenCodes Test: optionsKit: 30 passed, 0 failed, 0 skipped, 0 timed out (30 tests)
 MoltenCodes Test: results saved in MoltenCodesTestResults; /reload or log out to write them to disk.
 ```
 
@@ -110,7 +111,7 @@ documentation (`FrameScriptDocumentation`, mirrored in
 `packages/apiKit/metadata/retail/namespaces.json`) lists it with no
 restriction, and it only converts the values handed to it. Retail 12.1 has
 both. A client without them prints these 6 lines instead, and the totals line
-reads `23 passed, 0 failed, 6 skipped, 0 timed out (29 tests)`:
+reads `24 passed, 0 failed, 6 skipped, 0 timed out (30 tests)`:
 
 ```text
 MoltenCodes Test: SKIP optionsKit.secrets: Set of a secret true on the chatBubbles toggle raises at OptionsKitSuite.lua:<line> before the setter runs, Validate answers secret value, and the CVar is unchanged -- the client has no issecretvalue and secretwrap; the secret path was not exercised
@@ -141,7 +142,7 @@ the flavour itself.
 
 ### Retail (12.1)
 
-The lines above: `MoltenCodes Test: optionsKit: 29 passed, 0 failed, 0 skipped, 0 timed out (29 tests)`,
+The lines above: `MoltenCodes Test: optionsKit: 30 passed, 0 failed, 0 skipped, 0 timed out (30 tests)`,
 with no `SKIP` line.
 
 ### Classic Era (1.15) and Mists of Pandaria Classic (5.5)
@@ -155,10 +156,10 @@ document them), and whether it actually makes secrets, which
 `issecretvalue(secretwrap(true)) == true`.
 
 - The client makes secrets: the totals line is Retail's,
-  `MoltenCodes Test: optionsKit: 29 passed, 0 failed, 0 skipped, 0 timed out (29 tests)`.
+  `MoltenCodes Test: optionsKit: 30 passed, 0 failed, 0 skipped, 0 timed out (30 tests)`.
 - The client has both functions but makes no secrets: the six tests print
   these lines, and the totals line is
-  `MoltenCodes Test: optionsKit: 23 passed, 0 failed, 6 skipped, 0 timed out (29 tests)`:
+  `MoltenCodes Test: optionsKit: 24 passed, 0 failed, 6 skipped, 0 timed out (30 tests)`:
 
 ```text
 MoltenCodes Test: SKIP optionsKit.secrets: Set of a secret true on the chatBubbles toggle raises at OptionsKitSuite.lua:<line> before the setter runs, Validate answers secret value, and the CVar is unchanged -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
@@ -172,12 +173,13 @@ MoltenCodes Test: SKIP optionsKit.secrets: a colour holding a secret red is refu
 - The client lacks either function: the six lines listed under
   [On a client without secret values](#on-a-client-without-secret-values)
   are `SKIP`, with the same totals line
-  `MoltenCodes Test: optionsKit: 23 passed, 0 failed, 6 skipped, 0 timed out (29 tests)`.
+  `MoltenCodes Test: optionsKit: 24 passed, 0 failed, 6 skipped, 0 timed out (30 tests)`.
 
 ## What each test proves
 
 | Test | Proves in the real client |
 |---|---|
+| `ProfileOptions carries one spec-profile select per index ...` | The group built over the real SettingsKit (revision 11) has `profiles.spec1` to `spec8`, and exactly as many are shown as `SettingsKit:GetSpecIndex()` counts for this character when that is more than one (none otherwise, with `profiles.specs`). The log gives the count, the kind and the first select's label, which on Retail and Mists of Pandaria Classic names the class's first specialization (`Profile for Arcane`) and on Classic Era `Profile for talent group 1`. |
 | `Registry:Get('optionsKit', 1) is the OptionsKit facade ...` | The facade the client loaded is API 1 with `Define`, `Get`, `Undefine`, `ProfileOptions`, `MAX_OPTIONS` 1024, `MAX_DEPTH` 8, the `UNBOUNDED` sentinel and a `Tree` prototype carrying `Get`, `Set`, `Validate`, `Reset`, `Execute`, `IsDisabled`, `IsHidden`, `Walk`, `Describe`, `DescribeOption` (revision 7) and `OnChange`. |
 | `the installed OptionsKit carries the revision ...` | Registry's selected revision and the facade's `REVISION` are both the committed manifest's (8), not an older or newer embedded copy. |
 | `the host facilities OptionsKit finds at call time ...` | `Registry:Find("settingsKit", 1)` finds the SettingsKit the bundle ships (the same table the suite uses), and the client answers `UnitName("player")` and `GetRealmName()` with plain non-empty strings. The log gives SettingsKit's revision, the character profile `"<name> - <realm>"` and whether `issecretvalue` and `secretwrap` exist. |
@@ -211,7 +213,7 @@ MoltenCodes Test: SKIP optionsKit.secrets: a colour holding a secret red is refu
 ## What counts as unexpected
 
 - Any `FAIL` or `TIMEOUT` line, a `SKIP` line on Retail 12.1, or a totals
-  line other than `29 passed, 0 failed, 0 skipped, 0 timed out (29 tests)`
+  line other than `30 passed, 0 failed, 0 skipped, 0 timed out (30 tests)`
   (on a Classic client, other than the two totals lines under
   [Per flavour](#per-flavour)).
 - No login line, or `Expected.lua is missing`: the harness or the installer
