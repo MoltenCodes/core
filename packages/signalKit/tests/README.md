@@ -103,7 +103,7 @@ Spec files:
 | `Bus_spec.lua` | buses, topic policy, subscriptions, bus dispatch semantics |
 | `BusIsolation_spec.lua` | listener isolation on both paths, the `Publish` allocation guard |
 | `BusScope_spec.lua` | bus scopes, `ForAddon`, `CloseAddonBus` |
-| `Limits_spec.lua` | bus limit options, `UNBOUNDED`, `SetLimits`/`GetLimits` for all three package-wide limits, refusal at the caller |
+| `Limits_spec.lua` | bus limit options, `UNBOUNDED`, `SetLimits`/`GetLimits` for all three package-wide limits, refusal at the caller, a table key named by its type without running its `__tostring` |
 | `LogoutClose_spec.lua` | who closes an addon's bus at logout, in each of the four cases, and across upgrades |
 | `SecretValues_spec.lua` | secret capacities, bus options, limits, argument counts, validator verdicts and dot-call receivers refused at the caller before a comparison |
 | `Bootstrap_spec.lua` | Registry bootstrap, duplicate embedding, revision upgrades (the previous revision included), limits, sentinel and journals carried |

@@ -4,7 +4,7 @@ local expectErrorContaining = TestEnv.expectErrorContaining
 
 ---The implementation revision `src/SignalKit.lua` carries; `Manifest_spec.lua`
 ---pins the same number against `package.manifest.json`.
-local CURRENT_REVISION = 9
+local CURRENT_REVISION = 10
 
 ---The package-wide limits a fresh session starts with.
 local DEFAULT_LIMITS = { maxBuses = 64, maxJournalCapacity = 1024, maxJournalArguments = 8 }
@@ -281,6 +281,20 @@ describe("SignalKit package bootstrap", function()
     assert.are.equal(bus, upgraded:Bus("Kept", { maxTopics = 3 }))
     assert.are.same({ "after upgrade" }, received)
     assert.are.equal(1, journal:GetGeneration())
+    local converted = false
+    local key = setmetatable({}, {
+      __tostring = function()
+        converted = true
+        return "converted"
+      end,
+    })
+    TestEnv.expectErrorContaining(
+      "SignalKit:SetLimits limits.<table> is not a recognised limit",
+      function()
+        upgraded:SetLimits({ [key] = 10 })
+      end
+    )
+    assert.is_false(converted)
   end)
 
   it("upgrades revision-6 state in place: journal prototype, limits, generation", function()

@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.7.7 — 2026-11-15
+
+- Fixed: `SetLimits` built its unknown-limit message with `tostring(key)`, so a key that is a table or userdata with a `__tostring` metamethod ran that foreign code inside SignalKit. The metamethod could raise or answer a secret value, and the caller then saw its error instead of the real refusal. A string key is still shown as written and a number or boolean key through `tostring` (no foreign code runs for those, so `limits.1` is unchanged); any other key is named by its type: `SignalKit:SetLimits limits.<table> is not a recognised limit`, at the caller's line, with no limit changed. `docs/API.md` documents the form under *Error messages*.
+- Implementation revision 10, state schema 5 unchanged. No state changed: an in-place upgrade from revision 9 keeps every signal, bus, journal and limit and replaces the methods; the previous-revision upgrade spec checks the new message.
+- Specs: a table key whose `__tostring` raises is refused by its type at the caller without running it. 241 → 242 specs.
+
+## 0.7.6 — 2026-11-15
+
+- `docs/API.md` documents the facade constants `SignalKit.API` and `SignalKit.REVISION` (under Access), which the public surface requires but the contract never named, and the three load-time errors (`requires Registry API 2 to be loaded first`, `requires a valid Registry API 2 facade`, `package state is corrupted or incomplete`) under Error messages.
+- `README.md` gains a "Moving from CallbackHandler-1.0" table (`New`, `Fire`, `RegisterCallback`, `UnregisterCallback`, `UnregisterAllCallbacks`, `OnUsed`/`OnUnused`, and AceEvent-3.0 messages) with the two porting differences; it had no migration section.
+- Documentation only: the implementation revision stays 9.
+
 ## 0.7.5 — 2026-11-15
 
 - `docs/API.md` (At logout) no longer says that a bus obtained only through `SignalKit:Bus(name)` always stays open at logout. That holds for the closes SignalKit arranges itself (cases b and c); `CloseAddonBus(name)` closes whatever bus carries the name, so in case (a), where LifecycleKit calls it for every addon it tracks, such a bus is closed when that addon shuts down.

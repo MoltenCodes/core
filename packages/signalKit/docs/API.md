@@ -2,7 +2,7 @@
 
 Package: `signalKit`  
 API generation: `1`  
-Implementation revision: `9`
+Implementation revision: `10`
 
 SignalKit provides deterministic callback dispatch with explicit connection lifetimes, and named message buses built on the same signals. A signal can tell its owner when it becomes observed ([hooks](#hooks-onfirst-and-onlast)), counts its firings ([`GetGeneration`](#signalgetgeneration)) and, as a [journal](#journals), keeps its last firings for explicit pull.
 
@@ -20,6 +20,11 @@ local SignalKit = Registry:Get("signalKit", 1)
 ```
 
 The source file also returns the same shared package table for pure-Lua test/module environments. Runtime code must not require module loading as its bootstrap mechanism.
+
+The facade carries two read-only constants: `SignalKit.API`, the API
+generation (`1`), and `SignalKit.REVISION`, the implementation revision of the
+copy that is active in the session (`9` for this one). A newer embedded copy
+replaces `REVISION` when it upgrades the facade in place.
 
 ## `SignalKit:New(options)`
 
@@ -815,7 +820,12 @@ passes through them untouched.
 | `CreateScope` | `SignalKit.Bus:CreateScope cannot create a scope on the closed bus "<bus>"` |
 | a scope method without a scope | `SignalKit.BusScope:<Method> must be called on a SignalKit bus scope` |
 | a scope subscription after `Close` | `SignalKit.BusScope:<Method> cannot subscribe in a closed scope` |
-| `SetLimits` | `SignalKit:SetLimits limits must be a table`; `SignalKit:SetLimits limits.<key> is not a recognised limit`; `SignalKit:SetLimits limits.<name> must be an integer from 1 to <ceiling>`; `SignalKit:SetLimits limits.<name> cannot be SignalKit.UNBOUNDED: <reason>` |
+| `SetLimits` | `SignalKit:SetLimits limits must be a table`; `SignalKit:SetLimits limits.<key> is not a recognised limit` (a string, number or boolean key as written, any other key by its type, as `limits.<table>`, so its `__tostring` never runs); `SignalKit:SetLimits limits.<name> must be an integer from 1 to <ceiling>`; `SignalKit:SetLimits limits.<name> cannot be SignalKit.UNBOUNDED: <reason>` |
+
+Loading `SignalKit.lua` raises `MoltenCodes SignalKit requires Registry API 2 to be loaded first`,
+`MoltenCodes SignalKit requires a valid Registry API 2 facade`, or
+`MoltenCodes SignalKit package state is corrupted or incomplete` when the
+state an embedded copy left behind fails validation.
 
 ## Embedded copies and revision upgrades
 
@@ -887,5 +897,9 @@ callback without isolation. Signals revision 9 creates carry a dispatch depth
 (`_firing`) and are edited in place outside a dispatch; a signal an older
 revision created carries none and keeps compacting by replacement, for the same
 reason.
+
+Revision 10 keeps state schema 5. `SetLimits` names an unknown key that is not
+a string, number or boolean by its type instead of converting it with
+`tostring`; an upgrade over revision 9 changes no state.
 
 As with every Registry-managed package, a revision is selected before package initialization completes. Package initialization is therefore written so that all fallible dependency validation occurs before registration and the post-registration commit path performs only local deterministic mutations.

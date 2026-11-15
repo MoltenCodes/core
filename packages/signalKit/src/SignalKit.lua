@@ -48,7 +48,7 @@
 
 local PACKAGE_NAME = "signalKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 9
+local IMPLEMENTATION_REVISION = 10
 local REQUIRED_REGISTRY_API = 2
 
 -- Schema of the private `_state` table. Revisions 1 to 3 carried no state at
@@ -2613,6 +2613,25 @@ local function facadeCloseAddonBus(self, addonName)
   return true
 end
 
+---Name a caller's table key in a refusal without running its `__tostring`.
+---
+---`tostring` on a table or userdata runs the key's `__tostring`, foreign code
+---that can raise or answer a secret and so replace the real refusal. A string
+---is shown as written and a number or boolean through `tostring`, which runs
+---no foreign code for them; anything else is named by its type, as `<table>`.
+---@param key any a table key, which `next` never returns as `nil`
+---@return string
+local function describeKey(key)
+  local keyType = type(key)
+  if keyType == "string" then
+    return key
+  end
+  if keyType == "number" or keyType == "boolean" then
+    return tostring(key)
+  end
+  return "<" .. keyType .. ">"
+end
+
 ---Validate one `SetLimits` entry: a recognised name, an integer within the
 ---limit's ceiling, never `UNBOUNDED` (each limit names its reason).
 ---@param key any
@@ -2621,7 +2640,7 @@ end
 local function validateLimitEntry(key, value, level)
   local ceiling = LIMIT_CEILINGS[key]
   if ceiling == nil then
-    error("SignalKit:SetLimits limits." .. tostring(key) .. " is not a recognised limit", level)
+    error("SignalKit:SetLimits limits." .. describeKey(key) .. " is not a recognised limit", level)
   end
   refuseSecret(value, "SignalKit:SetLimits limits." .. key, level + 1)
   if value == UNBOUNDED then

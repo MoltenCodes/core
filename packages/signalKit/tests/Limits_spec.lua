@@ -297,6 +297,23 @@ describe("SignalKit limits", function()
       end)
     end)
 
+    it("names a table key by its type without running its __tostring", function()
+      local converted = false
+      local key = setmetatable({}, {
+        __tostring = function()
+          converted = true
+          error("foreign __tostring ran", 0)
+        end,
+      })
+      expectRefusalAtCaller(
+        "SignalKit:SetLimits limits.<table> is not a recognised limit",
+        function()
+          SignalKit:SetLimits({ [key] = 10 })
+        end
+      )
+      assert.is_false(converted)
+    end)
+
     it("is atomic: one invalid entry changes nothing", function()
       expectRefusalAtCaller("is not a recognised limit", function()
         SignalKit:SetLimits({ maxBuses = 10, unknown = 1 })
