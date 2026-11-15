@@ -4,10 +4,10 @@ This guide moves an addon from Ace3 to the MoltenCodes Kits, one Ace3
 library at a time. Each section shows the Ace3 code first, then the same
 thing with the Kits, then the differences that change behaviour. Every
 MoltenCodes sample uses the API as documented in the Kit's `docs/API.md`
-today. **BridgeKit** ships in parts: its AceSerializer-3.0 reader and writer
-and its AceConfig-3.0 adapter are current (revision 2), and the samples that
-use its AceDB importer or AceComm channel are marked *planned*, because those
-parts are designed but not implemented yet (see
+today. **BridgeKit** ships in parts: its AceSerializer-3.0 reader and writer,
+its AceConfig-3.0 adapter and its AceDB-3.0 importer are current (revision 3),
+and the sample that uses its AceComm channel is marked *planned*, because that
+part is designed but not implemented yet (see
 [`BRIDGE_KIT_DESIGN.md`](BRIDGE_KIT_DESIGN.md)).
 
 The Ace3 behaviour described here was read from Ace3 at commit
@@ -82,7 +82,7 @@ show the addon form, which works without ModuleKit.
 | AceConsole-3.0 | CommandKit | [AceConsole](#aceconsole-30) |
 | AceTab-3.0 | CommandKit completion, for your own commands | [AceTab](#acetab-30) |
 | AceLocale-3.0 | LocaleKit | [AceLocale](#acelocale-30) |
-| AceDB-3.0 | SettingsKit (schema: SchemaKit); data import: BridgeKit (planned) | [AceDB](#acedb-30) |
+| AceDB-3.0 | SettingsKit (schema: SchemaKit); data import: BridgeKit (`ImportAceDB`, `AceDBMigration`) | [AceDB](#acedb-30) |
 | AceDBOptions-3.0 | `OptionsKit:ProfileOptions` | [AceDBOptions](#acedboptions-30) |
 | AceConfig-3.0, AceConfigRegistry-3.0 | OptionsKit; table conversion: BridgeKit (`DefineAceConfig`) | [AceConfig](#aceconfig-30-aceconfigregistry-aceconfigdialog-aceconfigcmd) |
 | AceConfigDialog-3.0 | WidgetKit `RenderOptions` | [AceConfig](#aceconfig-30-aceconfigregistry-aceconfigdialog-aceconfigcmd) |
@@ -636,7 +636,7 @@ end)
   saved table written by a newer version of the addon opens read-only.
 - Profile names are at most 64 bytes by default (Ace3 allows 50 characters,
   which can be more bytes).
-- **Existing AceDB data** is carried over by BridgeKit's importer (planned):
+- **Existing AceDB data** is carried over by BridgeKit's importer:
   see [below](#importing-an-acedb-saved-variable).
 
 ## AceDBOptions-3.0
@@ -907,10 +907,10 @@ local handle, refused = comm:Send({
 Three things cannot be rewritten by hand without risk: the saved variable
 your players' settings live in, a large options table, and a wire format
 peers still speak. BridgeKit is designed for exactly these three
-([`BRIDGE_KIT_DESIGN.md`](BRIDGE_KIT_DESIGN.md)). **The AceSerializer and
-AceConfig recipes below run today**; the AceDB and AceComm ones show the
-planned API so an addon can plan its migration, and each is made current when
-its part ships.
+([`BRIDGE_KIT_DESIGN.md`](BRIDGE_KIT_DESIGN.md)). **The AceSerializer, AceDB
+and AceConfig recipes below run today**; the AceComm one shows the planned API
+so an addon can plan its migration, and it is made current when its part
+ships.
 
 ### Reading and writing AceSerializer text
 
@@ -943,15 +943,14 @@ local written, text = BridgeKit:AceSerialize("sync", 3, { a = 1 })
 
 ### Importing an AceDB saved variable
 
-*Planned API.* Keep the old global listed in the TOC during the transition
-and add a backup global:
+*Current API* (BridgeKit revision 3). Keep the old global listed in the TOC
+during the transition and add a backup global:
 
 ```toc
 ## SavedVariables: MyAddonDB, MyAddonSettings, MyAddonDB_Backup
 ```
 
 ```lua
--- Planned API: BridgeKit does not exist yet.
 LifecycleKit:ForAddon(ADDON_NAME):OnLoaded(function()
   if type(MyAddonSettings) == "nil" then
     local report, reason = BridgeKit:ImportAceDB("MyAddonDB", "MyAddonSettings", {
@@ -982,7 +981,26 @@ end)
   value, so every setting reads what it read under Ace3.
 - `BridgeKit:PreviewAceDB(source, plan)` returns the same report without
   writing anything. `BridgeKit:AceDBMigration(plan)` does the import inside a
-  SettingsKit migration when the addon keeps its saved-variable name.
+  SettingsKit migration when the addon keeps its saved-variable name:
+
+  ```lua
+  MyAddon.db = SettingsKit:Open("MyAddonDB", schema, {
+    version = 1,
+    migrations = { [1] = BridgeKit:AceDBMigration({
+      schema = schema,
+      aceDefaults = defaults,
+      backup = "MyAddonDB_Backup",
+    }) },
+  })
+  ```
+
+- Putting the old data back is your decision; the backup global holds it:
+
+  ```lua
+  MyAddonDB = MyAddonDB_Backup.data
+  MyAddonDB_Backup = nil
+  -- then /reload with the Ace3 version of the addon
+  ```
 
 ### Converting an AceConfig table
 

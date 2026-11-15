@@ -1482,7 +1482,9 @@ starts only after the owner has answered the design's open questions (section
    0.3.2 publishes its saved-table layout. N1 is done (2026-11-15):
    bridgeKit 0.1.0 writes and reads AceSerializer-3.0 text, held to output
    recorded from Ace3. N2 is done (2026-11-15): bridgeKit 0.2.0 converts
-   AceConfig-3.0 tables to OptionsKit trees.
+   AceConfig-3.0 tables to OptionsKit trees. N3 is done (2026-11-15):
+   bridgeKit 0.3.0 imports AceDB-3.0 saved variables into the SettingsKit
+   layout.
 
 ### Standing obligations
 
@@ -1546,7 +1548,7 @@ duplicating those specifications.
 
 Last roadmap baseline update: 2026-11-15 (phases 0 through 4 and packages F,
 G and H complete; phase 5 packages I, J, K and L complete; package N, bridgeKit,
-in delivery: steps N0, N1 and N2 done, so 29 packages, 28 of them release
+in delivery: steps N0 to N3 done, so 29 packages, 28 of them release
 packages, every gate green; the user-interface phase (package M) follows
 package N by the owner's decision; the standing obligations continue).
 Previous baseline: 2026-09-25.
