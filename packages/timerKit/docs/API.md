@@ -435,7 +435,7 @@ What a host that breaks this promise now sees:
 
 Revision 10 and older raised `MoltenCodes TimerKit host returned an invalid native timer handle` at the start for a handle without `Cancel`, and `MoltenCodes TimerKit native timer handle is invalid` at a cancellation whose handle had lost it.
 
-LifecycleKit API 1 and EventKit API 1 are optional. TimerKit finds them through `Registry:Find` (an older Registry's `Get` is the equivalent fallback) only inside `ForAddon`, to arrange the logout closing described under [At logout](#at-logout); nothing else reads them.
+LifecycleKit API 1 and EventKit API 1 are optional. TimerKit finds them through `Registry:Find` (an older Registry's `Get` is the equivalent fallback) only for the logout closing described under [At logout](#at-logout): inside `ForAddon`, to arrange it; during an in-place upgrade, to arrange it for the addon scopes an older revision created without a route; and at shutdown, where the `OnShutdown` callback of route 2 asks whether a LifecycleKit that closes TimerKit's scopes itself has replaced the older one. Nothing else reads them.
 
 The native boundary is intentionally narrow so TimerKit behavior can be tested with a deterministic adapter outside the game client.
 

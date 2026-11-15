@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.7.1 — 2026-11-15
+
+- `docs/API.md` (Native boundary) no longer says that LifecycleKit and EventKit are looked up only inside `ForAddon`. They are also looked up during an in-place upgrade, to give the addon scopes an older revision created their logout route, and at shutdown, where route 2's `OnShutdown` callback asks whether a LifecycleKit that closes TimerKit's scopes has replaced the older one. Documentation only; the implementation revision stays 11.
+
 ## 0.7.0 — 2026-09-25
 
 - Contract change, approved by the owner: TimerKit trusts the handle `C_Timer.NewTimer` and `C_Timer.NewTicker` return. A start no longer reads the handle's `Cancel` field under `pcall` to check that it is a function, and a cancellation no longer reads it again, protected, before calling it: it calls `handle:Cancel()` directly. A start still refuses a missing handle (`nil` or `false`) with `MoltenCodes TimerKit host returned an invalid native timer handle`, because the stale-callback check could not tell it from "not started yet". What a host that breaks the promise now sees is documented under "Trusting the host handle" in `docs/API.md`: a handle without `Cancel` starts, and cancelling it raises Lua's own missing-method error after the logical cancellation, instead of `MoltenCodes TimerKit native timer handle is invalid`; every other error keeps its message and position. Every supported client returns a FunctionContainer with `Cancel` from both constructors.
