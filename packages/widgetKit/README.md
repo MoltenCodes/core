@@ -1,6 +1,6 @@
 # WidgetKit
 
-WidgetKit gives World of Warcraft addons pooled, versioned widgets on frames it creates itself, containers whose layout runs only when you ask for it, a saveable anchor value type with position persistence, and a renderer that turns an [OptionsKit](../optionsKit/) tree into a working options window.
+WidgetKit gives World of Warcraft addons pooled, versioned widgets on frames it creates itself, containers whose layout runs only when you ask for it, a virtualised list for long lists, a saveable anchor value type with position persistence, and a renderer that turns an [OptionsKit](../optionsKit/) tree into a working options window.
 
 ```lua
 local Registry = MoltenCodes.Registries[2]
@@ -32,7 +32,8 @@ What each piece promises:
 - **Versioned.** `RegisterType(name, constructor, version)` ignores a lower version and, for a higher one, retires every pooled widget the older constructor built, so a widget is never reused with a shape its type no longer has.
 - **A released widget is clean.** `Release` fires `OnRelease`, releases children last first, clears callbacks, user data, size requests and anchors, hides the frame and re-parents it. Releasing twice, or releasing something that is not a widget, is refused at your line. `IsReleasing()` sees a release anywhere above the widget.
 - **Explicit layout.** `List`, `Fill` and `Flow` run when a child is added or when you call `PerformLayout`, never from `OnSizeChanged`; a layout pass inside a pass of the same container is refused rather than looped. Containers hold at most 256 children.
-- **Bounded by default, opened on purpose.** Every cap has a documented default and a way to open it: `maxCallbacks` per type, `container:SetMaxChildren` (both accept `WidgetKit.UNBOUNDED`), `WidgetKit:SetLimits{ maxDropdownEntries }` (accepts `UNBOUNDED`) and `WidgetKit:SetLimits{ maxCreatedCeiling }` (up to 16384; frames are never freed, so never unbounded). See *Limits* in the API.
+- **Long lists cost only the rows on display.** A `ScrollList` is built on the client's own ScrollBox framework (the same code on Retail, Mists of Pandaria Classic and Classic Era): ten thousand elements in a 200-pixel list of 20-pixel rows make 11 row frames, reused as it scrolls. Hand it an array of tables, a formatter returning each row's text and icon, and listen for `OnValueChanged` (a left click selects) and `OnClick`.
+- **Bounded by default, opened on purpose.** Every cap has a documented default and a way to open it: `maxCallbacks` per type, `container:SetMaxChildren` (both accept `WidgetKit.UNBOUNDED`), `WidgetKit:SetLimits{ maxDropdownEntries }` and `WidgetKit:SetLimits{ maxListElements }` (both accept `UNBOUNDED`) and `WidgetKit:SetLimits{ maxCreatedCeiling }` (up to 16384; frames are never freed, so never unbounded). See *Limits* in the API.
 - **Anchors you can save.** `WidgetKit.Anchor` elects the nearest of the nine points (`FromRect`), normalises any `SetPoint` argument form (`Normalize`), and applies and reads anchors. `BindPosition` saves a frame's anchor into any table, a SettingsKit scope view included, or into the table a function returns at each save (`function() return db.profile end` follows a profile switch), debounced through SchedulerKit when it is present. A save that fails is reported, never raised, and an anchor the client refuses leaves the frame where it was.
 - **Options, rendered.** Every OptionsKit kind has a widget; `order`, `disabled` and `hidden` are honoured, writes go through `Validate` and `Set`, a refusal is shown in a line below the widget, and `OnChange` refreshes the widgets in place.
 - **Secrets stay the caller's decision.** Text setters refuse a secret value unless you pass `{ allowSecret = true }` (an `EditBox` refuses one always: the client's edit box takes a secret only from untainted code), and a released widget never carries a secret into its next use.
@@ -67,8 +68,13 @@ order:
 | MediaKit API 1 | `CreateMediaPicker`, `RenderOptions` with `options.media` | `CreateMediaPicker` raises at the caller; the renderer shows the option's own `values`. |
 | SettingsKit API 1 | nothing directly: a scope view, or a function returning one, is a valid `BindPosition` storage | Any plain table works. |
 
-Taint, in short: WidgetKit creates every frame it scripts, never sets a script
-on a frame it did not create, never writes a field onto a client frame, and
+`ScrollList` also needs the client's ScrollBox framework (`Blizzard_SharedXML`,
+on every supported client); without it `Create("ScrollList")` raises at the
+caller and the other widgets work as before.
+
+Taint, in short: WidgetKit creates every frame it scripts, except a
+`ScrollList`'s rows, which Blizzard's ScrollBox view creates inside the list's
+own calls and hands to it; it never writes a field onto a client frame and
 calls no protected function. Its frames are ordinary insecure frames: use them
 for configuration and display, never for protected actions. The client's
 `ColorPickerFrame` is only opened through its own `SetupColorPickerAndShow`

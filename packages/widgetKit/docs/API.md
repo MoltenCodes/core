@@ -1,8 +1,8 @@
 # WidgetKit API
 
-WidgetKit API generation **1** provides pooled, versioned widgets on frames WidgetKit creates itself, containers with explicit layouts, a normalised anchor value type with position persistence, and a renderer for OptionsKit trees.
+WidgetKit API generation **1** provides pooled, versioned widgets on frames WidgetKit creates itself, containers with explicit layouts, a virtualised list over the client's ScrollBox framework, a normalised anchor value type with position persistence, and a renderer for OptionsKit trees.
 
-Implementation revision: **11**.
+Implementation revision: **12**.
 
 ## Loading
 
@@ -38,6 +38,7 @@ WidgetKit does not rely on `require()` at runtime. Loading it without one of its
 | `ColorPickerFrame` with `SetupColorPickerAndShow` | `ColorPicker` | A click fires `OnValueChanged` with the current colour. |
 | `IsAltKeyDown`, `IsControlKeyDown`, `IsShiftKeyDown` | `Button` key capture | Captured keys carry no modifier. |
 | `ACCEPT`, `NOT_BOUND` global strings | `EditBox` accept button, rendered key bindings | English fallbacks. |
+| The ScrollBox framework (`Blizzard_SharedXML`): the templates `WowScrollBoxList` and `MinimalScrollBar`, `CreateScrollBoxListLinearView`, `ScrollUtil.InitScrollBoxListWithScrollBar`, `CreateDataProvider` | `ScrollList` | `Create("ScrollList")` raises at the caller before any frame is made (`WidgetKit:Create ScrollList needs the client's ScrollBox framework (Blizzard_SharedXML), which this host does not have`). Retail, Mists of Pandaria Classic and Classic Era all ship it. |
 
 ## Public surface
 
@@ -59,9 +60,9 @@ Package facade:
 | `Anchor` | `FromRect`, `Normalize`, `Apply`, `Read`, `POINTS`. |
 | `Widget`, `Container`, `Binding`, `Rendering` | The shared prototypes, for introspection. |
 | `MAX_CREATED`, `MAX_CHILDREN`, `MAX_CALLBACKS` | `256`, `256`, `16`: the defaults. See [Limits](#limits). |
-| `SetLimits(limits)` / `GetLimits()` | Change or read the package-wide limits `maxCreatedCeiling` and `maxDropdownEntries`; `GetLimits` returns a fresh table. |
-| `UNBOUNDED` | Sentinel `maxCallbacks`, `SetMaxChildren` and the `maxDropdownEntries` limit accept to lift a bound. |
-| `API`, `REVISION` | `1`, `11`. |
+| `SetLimits(limits)` / `GetLimits()` | Change or read the package-wide limits `maxCreatedCeiling`, `maxDropdownEntries` and `maxListElements`; `GetLimits` returns a fresh table. |
+| `UNBOUNDED` | Sentinel `maxCallbacks`, `SetMaxChildren` and the `maxDropdownEntries` and `maxListElements` limits accept to lift a bound. |
+| `API`, `REVISION` | `1`, `12`. |
 
 Widget base (`WidgetKit.Widget`), on every widget:
 
@@ -169,7 +170,7 @@ A constructor that raises, or breaks the author contract, after it called `Creat
 
 ## Limits
 
-Every retained collection WidgetKit keeps is bounded by default. A bound on something you create is an option on it; the one package-wide bound is set with `SetLimits`.
+Every retained collection WidgetKit keeps is bounded by default. A bound on something you create is an option on it; the package-wide bounds are set with `SetLimits`.
 
 | Limit | Default | How to open | `UNBOUNDED` allowed? | Ceiling and reason |
 |---|---|---|---|---|
@@ -179,6 +180,7 @@ Every retained collection WidgetKit keeps is bounded by default. A bound on some
 | `maxChildren`, children per container | `256` | `container:SetMaxChildren(n)` | yes | none: the children are widgets you created |
 | layout nesting depth | `32` | not configurable | no | a hard ceiling: each level is a nested Lua call chain through a layout and its hooks, and one scratch table per level is retained; past it `PerformLayout` returns `false, "depth"` |
 | `maxDropdownEntries`, entries in one `Dropdown` list | `1024` | `WidgetKit:SetLimits({ maxDropdownEntries = n })`, read by each `SetList` | yes | none: the list keeps a fixed 16 row frames and scrolls, so an entry is two array slots of your own keys and labels, never a frame; 1024 matches OptionsKit's default `values` bound, so open both together |
+| `maxListElements`, elements in one `ScrollList` | `16384` | `WidgetKit:SetLimits({ maxListElements = n })`, read by each `SetElements` and `Insert` | yes | none: an element is one array slot holding your own table in Blizzard's data provider, never a frame; a list makes frames only for the rows it shows |
 
 ```lua
 WidgetKit:SetLimits({ maxCreatedCeiling = 8192 })
@@ -320,11 +322,11 @@ The page shown is a `Group` titled with its name, rendered like any group. The b
 
 ## Base widgets
 
-The twelve base types are registered at version 4 (`Frame`, `CheckBox`, `Slider`, `EditBox`, `Dropdown`, `ColorPicker`), version 3 (`Group`, `Label`, `Button`, `Heading`) or version 1 (`ScrollFrame`, `Spacer`) (see [Embedded copies and upgrades](#embedded-copies-and-upgrades)).
+The thirteen base types are registered at version 4 (`Frame`, `CheckBox`, `Slider`, `EditBox`, `Dropdown`, `ColorPicker`), version 3 (`Group`, `Label`, `Button`, `Heading`) or version 1 (`ScrollFrame`, `Spacer`, `ScrollList`) (see [Embedded copies and upgrades](#embedded-copies-and-upgrades)).
 
 Text setters take `(text, options?)`: a string or a number is shown, `nil` clears the text, anything else raises, and a secret is refused unless `options.allowSecret` is `true` (`EditBox:SetText` refuses one even then). Text getters return what the widget shows, `""` once cleared: the client's font strings and buttons answer an empty text with `nil` (measured on Retail 12.1.0 b69933, 2026-09-25), and every getter turns that into `""`. Every argument error is raised at the caller's line and names the method, as in `WidgetKit Slider:SetSliderValues minimum must not be greater than maximum`.
 
-`SetDisabled(disabled?)` greys a widget out and, where it takes input, ignores it. `Group`, `Label` and `Heading` grey their text; `Button`, `CheckBox`, `Slider`, `EditBox`, `Dropdown` and `ColorPicker` also stop taking input (a disabled `Button` leaves key capture, a disabled `Dropdown` closes its list, a disabled `EditBox` loses the keyboard). `Frame`, `ScrollFrame` and `Spacer` use the base method, which only checks its argument.
+`SetDisabled(disabled?)` greys a widget out and, where it takes input, ignores it. `Group`, `Label` and `Heading` grey their text; `Button`, `CheckBox`, `Slider`, `EditBox`, `Dropdown`, `ColorPicker` and `ScrollList` also stop taking input (a disabled `ScrollList` greys its rows and ignores clicks) (a disabled `Button` leaves key capture, a disabled `Dropdown` closes its list, a disabled `EditBox` loses the keyboard). `Frame`, `ScrollFrame` and `Spacer` use the base method, which only checks its argument.
 
 | Type | Method | Returns, and what it refuses |
 |---|---|---|
@@ -367,12 +369,21 @@ Text setters take `(text, options?)`: a string or a number is shown, `nil` clear
 | | `SetLabel(text, options?)`, `GetLabel()` | The text beside the swatch. |
 | `Heading` | `SetText(text, options?)`, `GetText()` | A centred title between two lines; full width from `Create` on. |
 | `Spacer` | — | Empty space, 10 × 8 until resized. |
+| `ScrollList` | `SetElements(elements, retainScroll?)` | `elements` is an array of tables, copied; at most `maxListElements` (16384 unless `SetLimits` opened it). Every element is checked before anything changes: a table, not secret, at most once (the view tells rows apart by their element); a refused array leaves the list as it was. The selection is kept when its element is in the new list. Without `retainScroll` the list goes back to its first row. 300 × 200 from `Create` on. |
+| | `Insert(element, index?)`, `Remove(element)`, `Clear()` | `Insert` adds a table not yet in the list, at the end or at a positive integer `index` up to the count plus one, and raises at `maxListElements`. `Remove` answers `true`, or `false` when the element was not in the list; removing the selected element clears the selection. `Clear` removes every element and the selection. Each is one change of Blizzard's data provider, which walks the whole list (see [Performance](#performance)): set many changes at once with `SetElements`. |
+| | `GetNumElements()`, `GetElement(index)` | The count, and the element at a positive integer `index` or `nil` past the last. |
+| | `SetFormatter(callback?)` | `callback(element, index)` returns the row's text (a string, a number or `nil`) and an optional icon (a texture path or file ID). `nil` restores the default, `element.text` and `element.icon`. A formatter that raises, or returns anything else or a secret, is reported through the host error handler and the row shows an empty text: it runs inside Blizzard's update, which must not break. |
+| | `Refresh()` | Draws the rows on display again, asking the formatter: for elements you changed in place. |
+| | `ScrollToElement(element, alignment?)` | Scrolls so the element is on display, with `alignment` `"begin"`, `"center"` (default), `"end"` or `"nearest"`; `true`, or `false` when the element is not in the list. |
+| | `SetValue(element?)`, `GetValue()` | The selected element: a table or `nil`. It need not be in the list; the selected row shows a gold band. |
+| | `SetRowHeight(pixels)` | A finite number of at least 8; 20 from `Create` on. The rows on display are acquired again at the new height. |
 
 | Type | Callbacks, fired by user input |
 |---|---|
 | `Frame` | `OnClose` (the close button, after the frame hid), `OnMoved` (a drag ended, after a bound position was captured), `OnResize(width, height)` (a resize ended, after the window was laid out) |
 | `Button` | `OnClick(mouseButton)`; with key capture `OnKeyCaptured(key)` (`"ALT-CTRL-SHIFT-"` prefixes as held; `""` from a right click, to unbind) and `OnKeyCaptureCancelled` (`ESCAPE`) |
 | `CheckBox`, `Slider`, `Dropdown` | `OnValueChanged(value)` |
+| `ScrollList` | `OnValueChanged(element)` (a left click on a row whose element was not selected; the selection changes first), then `OnClick(element, mouseButton)` (every click on a row, left or right, unless the `OnValueChanged` callback released the list) |
 | `EditBox` | `OnEnterPressed(text)`, `OnTextChanged(text)`, `OnEscapePressed` |
 | `ColorPicker` | `OnValueChanged(red, green, blue, alpha)` |
 
@@ -382,7 +393,20 @@ Every widget also fires `OnRelease` when it is released. Programmatic setters (`
 
 **ColorPicker** callbacks from the client picker reach only the use of the widget that opened it: a release disarms them. Without `SetHasAlpha(true)` the stored alpha is kept.
 
-**Types in the editor.** `Create` is annotated as returning `WidgetKit.Widget`. Each base type has its own class — `WidgetKit.Window` (the `Frame` type), `WidgetKit.Group`, `WidgetKit.ScrollFrame`, `WidgetKit.Label`, `WidgetKit.Button`, `WidgetKit.CheckBox`, `WidgetKit.Slider`, `WidgetKit.EditBox`, `WidgetKit.Dropdown`, `WidgetKit.ColorPicker`, `WidgetKit.Heading`, `WidgetKit.Spacer` — reached with a cast:
+**ScrollList** is a virtualised list on Blizzard's ScrollBox framework, the same code on Retail, Mists of Pandaria Classic and Classic Era: a `WowScrollBoxList` frame with a `MinimalScrollBar` beside it (hidden while nothing scrolls), a linear view and a data provider. Only the rows the list shows exist as frames: a 200-pixel list of 20-pixel rows has 11, whether it holds 10 elements or 10000, and the mouse wheel points them at other elements. Row frames come from the view's own frame pool, are kept for the widget's life and serve its next use, so they do not count against [the frame cap](#the-frame-cap); they are at most the list's height over 8, plus one. Every row is a standard row (text, an optional icon, a highlight and a selected band): custom row frames are not offered, because a pooled list's rows go to the next consumer of the widget, and rows one addon built would carry their children into another's list. Elements stay yours: the list holds them only between `SetElements` and its release, and a release drops every one of them with the data provider.
+
+```lua
+local list = WidgetKit:Create("ScrollList") --[[@as WidgetKit.ScrollList]]
+list:SetFormatter(function(entry)
+  return entry.name, entry.icon
+end)
+list:SetElements(entries) -- one table per row, e.g. { name = "Thunderfury", icon = 135349 }
+list:SetCallback("OnValueChanged", function(_, _, entry)
+  print("chose", entry.name)
+end)
+```
+
+**Types in the editor.** `Create` is annotated as returning `WidgetKit.Widget`. Each base type has its own class — `WidgetKit.Window` (the `Frame` type), `WidgetKit.Group`, `WidgetKit.ScrollFrame`, `WidgetKit.Label`, `WidgetKit.Button`, `WidgetKit.CheckBox`, `WidgetKit.Slider`, `WidgetKit.EditBox`, `WidgetKit.Dropdown`, `WidgetKit.ColorPicker`, `WidgetKit.Heading`, `WidgetKit.Spacer`, `WidgetKit.ScrollList` — reached with a cast:
 
 ```lua
 local slider = WidgetKit:Create("Slider") --[[@as WidgetKit.Slider]]
@@ -439,11 +463,16 @@ Every argument failure and refusal reports the line that called WidgetKit and na
 
 | Operation | Cost |
 |---|---|
-| `Create` / `Release` of a warm widget | LIFO pool operations, the type's hooks, the frame shown, or anchors cleared, hidden and re-parented; no allocation (guarded by a spec for every simple type, and for the `Label`, `Button`, `CheckBox`, `Slider` and `EditBox` filled as an options dialog fills them). |
+| `Create` / `Release` of a warm widget | LIFO pool operations, the type's hooks, the frame shown, or anchors cleared, hidden and re-parented; no allocation (guarded by a spec for every simple type, and for the `Label`, `Button`, `CheckBox`, `Slider` and `EditBox` filled as an options dialog fills them). A `ScrollList` allocates nothing in WidgetKit either, but its release flushes Blizzard's view, which replaces its frame list with a new table. |
 | Text setters (`SetText`, `SetLabel`, `SetTitle`) | One check of the widget, the options and the text, `issecretvalue` read once; a plain text goes straight to the region that shows it. No allocation. |
 | `PerformLayout` with unchanged children | One scratch table borrowed and returned, anchors re-set, each sized child's `OnWidthSet` hook called; `issecretvalue` read once per pass of `List`. No allocation. |
 | `Fire` | One table read and a protected call; no allocation. |
 | `Anchor.FromRect` with `into` | Nine distance computations; no allocation. |
+| `ScrollList` row drawing (scroll, `Refresh`) | Per row on display: one protected call of the formatter, the texts and textures set. No allocation in WidgetKit (guarded by a spec); Blizzard's view allocates a few tables per change of the rows on display and writes accessor closures on each row it acquires. Nothing runs per frame. |
+| `ScrollList:SetElements` | One pass over the elements to check them, with one set allocated for the duplicate check, one Blizzard data provider allocated (it copies the array), and one update of the scroll box. |
+| `ScrollList:Insert`, `Remove`, `Clear` | One change of the data provider. Blizzard's update walks every element on each change (its `RecalculateExtent` rebuilds its template cache even with a fixed row height), and `Remove` and the duplicate check of `Insert` search the list, so each is O(n): batch changes into one `SetElements`. |
+| `ScrollList:ScrollToElement` | One search of the list for the index, then a scroll by index. |
+| `ScrollList:SetValue`, a click | One field; the rows on display are redrawn for the selection without the formatter. |
 | `BindPosition` | One binding, one SignalKit signal and, with SchedulerKit, one debounce handle. Each save allocates the saved anchor table. |
 | `Anchor.Apply`, `Binding:Restore` | The frame's current points and scale are kept in a scratch table borrowed from the layouts' pool and returned, so a refused anchor can be undone; no allocation once the pool holds a table. |
 | `RenderOptions`, `Rebuild` | Proportional to the tree: one `Describe`, the widgets and one record per option. `Refresh` allocates only what `Get` returns. |
@@ -525,7 +554,7 @@ To change `MyAddonProgress` later, register the new constructor with version `2`
 
 ## Embedded copies and upgrades
 
-Several addons may embed WidgetKit; Registry selects the newest compatible revision and every copy shares one facade. An upgrade happens in place: the widget and container prototypes, the type registry, the pools, every live widget's record, and the binding and rendering prototypes are kept, and gain the newer copy's methods. Pools call through a shared dispatch table, so a newer copy's build and retire steps run for pools an older copy created. Built-in layouts are resolved by name on every pass, so they are replaced for existing containers too. Base widget types are registered again with this copy's versions: an equal version keeps the older constructor, a higher one retires the older widgets. Revisions 2, 3, 4 and 5 keep the revision 1 state as it is and replace the methods only; every base widget stays at version 1. Revision 6 keeps the state too and raises `Frame`, `Group`, `Label`, `Button`, `CheckBox`, `Slider`, `EditBox`, `Dropdown`, `ColorPicker` and `Heading` to version 2, because it changed their constructors: an upgrade from an older revision retires their pooled widgets at once and their borrowed ones when they are released (the frame cap grows by what is retired, as [The frame cap](#the-frame-cap) says), so every `Create` after it hands out a widget with the revision 6 behaviour. `ScrollFrame` and `Spacer` stay at version 1. Revision 7 keeps the state as well and raises the same ten types to version 3, because it changed their text methods (secret texts on a font string of their own): an upgrade from revision 6 or older retires their pooled widgets at once, among them any whose font string showed a secret and would measure every later text as one, and their borrowed ones when they are released. `ScrollFrame` and `Spacer` stay at version 1. Revision 8 keeps the state too and raises `Frame` alone to version 4, because the window's `BindPosition`, stored on each window by its constructor, now accepts a storage function: an upgrade from revision 7 or older retires pooled windows at once and borrowed ones when they are released. A binding an older revision made keeps working and runs this revision's methods (`Capture`, `Restore`, `Release` and the saves `Capture` makes at once); only its SchedulerKit debounce keeps the older copy's save until the binding is made again. A binding this revision makes debounces through the shared `dispatch` table, so a later revision replaces its save as well. The other nine text-bearing types stay at version 3. Revision 9 keeps the state and every base widget version: it makes `Create`, `Release`, the text setters, `SetCallback` and the `List` layout cheaper without changing what they do, so an upgrade from revision 8 keeps every pooled and borrowed widget. The shared routines (`Create`, `Release`, layouts, the widget base) take over at once; a widget an older revision built keeps that revision's type methods, which behave the same, for its life (its type version is unchanged, so it is never retired). Revision 10 keeps the state and raises `CheckBox`, `Slider`, `EditBox`, `Dropdown` and `ColorPicker` to version 4, because their `SetLabel` and `GetLabel` now name the widget's type in their errors and the slider's `SetSliderValues` refuses a secret `step` at the caller: an upgrade from revision 9 or older retires their pooled widgets at once and their borrowed ones when they are released. The other base types keep their versions; `Widget:GetPoint` and `WidgetKit:SetFocus` are shared methods and take over at once. Revision 11 keeps the state and every base widget version: it adds [pages](#pages) to the renderer. A rendering made by an older revision gets its page selection the first time it rebuilds a group with `childGroups`.
+Several addons may embed WidgetKit; Registry selects the newest compatible revision and every copy shares one facade. An upgrade happens in place: the widget and container prototypes, the type registry, the pools, every live widget's record, and the binding and rendering prototypes are kept, and gain the newer copy's methods. Pools call through a shared dispatch table, so a newer copy's build and retire steps run for pools an older copy created. Built-in layouts are resolved by name on every pass, so they are replaced for existing containers too. Base widget types are registered again with this copy's versions: an equal version keeps the older constructor, a higher one retires the older widgets. Revisions 2, 3, 4 and 5 keep the revision 1 state as it is and replace the methods only; every base widget stays at version 1. Revision 6 keeps the state too and raises `Frame`, `Group`, `Label`, `Button`, `CheckBox`, `Slider`, `EditBox`, `Dropdown`, `ColorPicker` and `Heading` to version 2, because it changed their constructors: an upgrade from an older revision retires their pooled widgets at once and their borrowed ones when they are released (the frame cap grows by what is retired, as [The frame cap](#the-frame-cap) says), so every `Create` after it hands out a widget with the revision 6 behaviour. `ScrollFrame` and `Spacer` stay at version 1. Revision 7 keeps the state as well and raises the same ten types to version 3, because it changed their text methods (secret texts on a font string of their own): an upgrade from revision 6 or older retires their pooled widgets at once, among them any whose font string showed a secret and would measure every later text as one, and their borrowed ones when they are released. `ScrollFrame` and `Spacer` stay at version 1. Revision 8 keeps the state too and raises `Frame` alone to version 4, because the window's `BindPosition`, stored on each window by its constructor, now accepts a storage function: an upgrade from revision 7 or older retires pooled windows at once and borrowed ones when they are released. A binding an older revision made keeps working and runs this revision's methods (`Capture`, `Restore`, `Release` and the saves `Capture` makes at once); only its SchedulerKit debounce keeps the older copy's save until the binding is made again. A binding this revision makes debounces through the shared `dispatch` table, so a later revision replaces its save as well. The other nine text-bearing types stay at version 3. Revision 9 keeps the state and every base widget version: it makes `Create`, `Release`, the text setters, `SetCallback` and the `List` layout cheaper without changing what they do, so an upgrade from revision 8 keeps every pooled and borrowed widget. The shared routines (`Create`, `Release`, layouts, the widget base) take over at once; a widget an older revision built keeps that revision's type methods, which behave the same, for its life (its type version is unchanged, so it is never retired). Revision 10 keeps the state and raises `CheckBox`, `Slider`, `EditBox`, `Dropdown` and `ColorPicker` to version 4, because their `SetLabel` and `GetLabel` now name the widget's type in their errors and the slider's `SetSliderValues` refuses a secret `step` at the caller: an upgrade from revision 9 or older retires their pooled widgets at once and their borrowed ones when they are released. The other base types keep their versions; `Widget:GetPoint` and `WidgetKit:SetFocus` are shared methods and take over at once. Revision 11 keeps the state and every base widget version: it adds [pages](#pages) to the renderer. A rendering made by an older revision gets its page selection the first time it rebuilds a group with `childGroups`. Revision 12 adds the `ScrollList` type at version 1 and the `maxListElements` limit, which an upgrade from revision 11 or older writes into the kept state at its default; every other base widget keeps its version and every pooled and borrowed widget is kept. A list's row drawing and row clicks call through the shared `dispatch` table, so a later revision draws the rows of a list this one built.
 
 Nothing survives `/reload`: widgets are created again when the addon loads.
 
@@ -533,7 +562,7 @@ Nothing survives `/reload`: widgets are created again when the addon loads.
 
 The nine-point plan in `docs/ROADMAP.md` is followed except where recorded here:
 
-- **One runtime file.** The package ships `WidgetKit.lua` alone, because the release builder lists one facade file per package in `loadOrder`. The core, bases, layouts, anchors, the twelve base widgets and the renderer are sections of that file. Widget sets beyond the base set, and a split of the base widgets themselves, belong in sibling packages in generation 2, as the plan's first point foresees.
+- **One runtime file.** The package ships `WidgetKit.lua` alone, because the release builder lists one facade file per package in `loadOrder`. The core, bases, layouts, anchors, the thirteen base widgets and the renderer are sections of that file. Widget sets beyond the base set, and a split of the base widgets themselves, belong in sibling packages in generation 2, as the plan's first point foresees.
 - **Widget callbacks are one function per name, not SignalKit signals.** A signal per callback name per widget would allocate on every acquire. SignalKit carries a binding's `OnMoved` listeners instead, and the renderer listens through OptionsKit's SignalKit connection.
 - **`RegisterType` reports an equal version** with `false, "current"`, beside the planned `false, "older"` for a lower one.
 - **`Trim` is not exposed.** The pool retains every released widget; trimming would free widget tables while their frames, which the client never frees, stay counted against the cap.
@@ -543,4 +572,6 @@ The nine-point plan in `docs/ROADMAP.md` is followed except where recorded here:
 - **A SettingsKit scope view is passed directly as the storage table**, or returned by a storage function (revision 8) so the binding follows the current profile; WidgetKit never looks SettingsKit up, which is why it appears among the optional dependencies only as a documented storage shape, and why re-applying a position after a profile switch is the consumer's `OnProfileChanged` connection rather than an option.
 - **The `execute` confirmation text is a render option (`confirmText`),** not an option field: OptionsKit refuses fields its kinds do not declare. A `confirm` string on the option is still asked as it is.
 - **Additions:** `IsWidget`, `GetFocus`, `GetParentContainer`, `GetChildren`, `GetNumChildren`, `GetContent`, `GetLayoutName`, `IsLayoutPaused`, `Anchor.POINTS`, `SetLimits`, `GetLimits`, `UNBOUNDED`, `SetMaxChildren`, `GetMaxChildren`, an `into` table for `FromRect`, `binding:Capture`, `Restore`, `Flush`, `IsReleased`, `rendering:Rebuild`, `IsReleased`, `GetWidget`, `GetMessage`, `CreateMediaPicker`, and `options.allowSecret` / `options.media` for the renderer.
+- **`ScrollList` keeps its selection itself** (recorded in the nine points, "widgetKit virtualised lists"): one field rather than Blizzard's `ScrollUtil.AddSelectionBehavior`, whose every select walks the whole data provider and allocates, and which reads an element's own `selected` field as selected. Its rows are standard rows, never consumer-built frames, and grid, tree and horizontal views, drag and drop, multi-selection, variable row heights and sorting are not offered.
+- **`ScrollList` row frames are made by Blizzard's view, not by WidgetKit.** The view creates them from its own frame pool inside the list's own calls, and WidgetKit builds their parts and sets their click script the first time the view hands it one, as Blizzard's initializer pattern intends. They are the only frames WidgetKit scripts without having called `CreateFrame` for them itself; it writes no field on them (Blizzard writes its accessors).
 - **Not rendered in generation 1:** an option's `desc` (there is no tooltip widget), `softMin` / `softMax`, `bigStep`, and `usage`. Groups are always nested `Group`s; tabs and trees of pages wait for a widget set that provides them.

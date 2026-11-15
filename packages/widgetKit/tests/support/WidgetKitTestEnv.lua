@@ -13,6 +13,9 @@
 ---   allocation      `AllocatedKilobytes` measures a workload with the
 ---                   collector stopped;
 ---   upgrades        `LoadRevision` loads the source again as another revision;
+---   ScrollBox       `InstallScrollBox` installs the stand-in for the client's
+---                   ScrollBox framework (`WidgetKitScrollBox`) that the
+---                   `ScrollList` specs use; `Reset` removes its globals;
 ---   client rules    `InstallClientRules` applies what the client does and the
 ---                   shared stub does not (`WidgetKitClientRules`): secret
 ---                   arguments refused by frame setters, `nil` for an empty
@@ -26,6 +29,7 @@
 --- `WidgetKitHostTestEnv`.
 local FrameworkTestEnv = require("FrameworkTestEnv")
 local WidgetKitClientRules = require("WidgetKitClientRules")
+local WidgetKitScrollBox = require("WidgetKitScrollBox")
 
 local WidgetKitTestEnv = FrameworkTestEnv.New({
   modules = { "Registry", "SignalKit", "PoolKit", "SchemaKit", "OptionsKit", "WidgetKit" },
@@ -72,6 +76,24 @@ end
 ---from now on, until the next `Reset`.
 function WidgetKitTestEnv.InstallClientRules()
   WidgetKitClientRules.Install(WidgetKitTestEnv.SetGlobal)
+end
+
+---Install the ScrollBox framework stand-in of `WidgetKitScrollBox`, until the
+---next `Reset`. Call it after a `NewPackage` loader.
+function WidgetKitTestEnv.InstallScrollBox()
+  WidgetKitScrollBox.Install(WidgetKitTestEnv.SetGlobal)
+end
+
+--- The stand-in itself, for `ScrollTo` and its globals.
+WidgetKitTestEnv.ScrollBox = WidgetKitScrollBox
+
+local sharedReset = WidgetKitTestEnv.Reset
+
+---The shared `Reset`, which also removes the ScrollBox stand-in's globals: the
+---shared fixture does not know them.
+function WidgetKitTestEnv.Reset()
+  WidgetKitScrollBox.Remove(WidgetKitTestEnv.SetGlobal)
+  sharedReset()
 end
 
 local sharedNewPackage = WidgetKitTestEnv.NewPackage

@@ -5,16 +5,17 @@
 -- stores points and sizes in tables; these prove, inside the game client with
 -- the installed MoltenCodes addon, what that fixture can only simulate:
 --
---   * the installed facade and its committed revision, the twelve base types at
---     the versions docs/API.md gives, and the client facilities WidgetKit
+--   * the installed facade and its committed revision, the thirteen base types
+--     at the versions docs/API.md gives, and the client facilities WidgetKit
 --     builds on;
---   * each of the twelve base widget types on real frames: `Create` acquires it
---     with the documented defaults, setters and getters round-trip through the
---     client's frames, programmatic setters fire no callback while the
---     documented stand-ins for user input do (`Dropdown:PickIndex`, `Click` on
---     the widget's own buttons, the client's own slider and edit-box scripts),
---     and a release hides the frame, re-parents it to `UIParent`, and the next
---     `Create` hands back the same widget on the same frame at its defaults;
+--   * each of the twelve base widget types other than `ScrollList` on real
+--     frames: `Create` acquires it with the documented defaults, setters and
+--     getters round-trip through the client's frames, programmatic setters
+--     fire no callback while the documented stand-ins for user input do
+--     (`Dropdown:PickIndex`, `Click` on the widget's own buttons, the client's
+--     own slider and edit-box scripts), and a release hides the frame,
+--     re-parents it to `UIParent`, and the next `Create` hands back the same
+--     widget on the same frame at its defaults;
 --   * the `List`, `Fill` and `Flow` layouts, read back with `GetPoint` and
 --     `GetRect` from real frames, with the client's own font metrics (string
 --     widths and heights are logged);
@@ -26,7 +27,13 @@
 --   * the media picker over MediaKit's real font and status-bar lists;
 --   * `RenderOptions` of a small OptionsKit tree into a hidden container, with
 --     writes through the widgets, an inline refusal and in-place refreshes;
---   * the allocation-free `Create`/`Release` cycle of every base type, and
+--   * the virtualised `ScrollList` on the client's own ScrollBox framework:
+--     10000 elements make only the rows on display, scrolling reuses them, a
+--     real click selects, and a release gives every row back to the view so the
+--     next use makes no new row frame; a combat suite (`widgetKit.scrollListCombat`,
+--     `/mct run widgetKit combat`) does the same in combat lockdown;
+--   * the allocation-free `Create`/`Release` cycle of every base type but
+--     `ScrollList` (whose release flushes Blizzard's view, which allocates), and
 --     `PerformLayout` and `Fire`, on the client's collector;
 --   * argument errors pointing at this file as the client names it, and
 --     secret values made by the client's `secretwrap` refused or shown as
@@ -47,6 +54,9 @@
 -- rendered. No key, click or mouse movement of the player is needed or
 -- intercepted.
 --
+-- The `ScrollList` tests show nothing either: the list sits on the off-screen
+-- stage at alpha 0 like every other widget.
+--
 -- The suites run unchanged on Retail, Classic Era and Mists of Pandaria
 -- Classic: every function, widget method and event they use that the Retail
 -- apiKit metadata documents is documented for both Classic flavours too; the
@@ -65,7 +75,9 @@
 -- unclamped gets its alpha and clamping back once it is in its pool again.
 -- What stays in the session: the frames WidgetKit's pools built (the client
 -- never frees a frame; they are pooled for the next `Create`), the dropdown
--- catcher and the sixteen list rows of a `Dropdown` once opened, and ten
+-- catcher and the sixteen list rows of a `Dropdown` once opened, the row
+-- frames the `ScrollList`'s view made (at most eleven, kept by the view for
+-- the widget's next use), and ten
 -- plain frames of this file's own (the stage, eight probes for the anchor,
 -- binding and secret tests, and the event listener below), created once and
 -- reused by later runs. The event listener
@@ -98,7 +110,10 @@ local PACKAGE_ID = "widgetKit"
 --- this file.
 local THIS_FILE = "WidgetKitSuite.lua"
 
---- The twelve base widget types docs/API.md ("Base widgets") lists.
+--- Twelve of the base widget types docs/API.md ("Base widgets") lists: every
+--- one but `ScrollList`, whose tests are its own suite (its release flushes
+--- Blizzard's view, which allocates, so it is not one of the allocation-free
+--- types).
 local BASE_TYPES = {
   "Frame",
   "Group",
@@ -133,7 +148,16 @@ local BASE_TYPE_VERSIONS = {
   ColorPicker = 4,
   Heading = 3,
   Spacer = 1,
+  ScrollList = 1,
 }
+
+--- How many elements the `ScrollList` tests hand the list: far more rows than
+--- any screen shows, so a row frame per element would be unmistakable.
+local SCROLL_LIST_ELEMENTS = 10000
+
+--- The rows a 200-pixel `ScrollList` of 20-pixel rows shows: the ten that fit,
+--- plus one for a row cut in half while scrolled.
+local SCROLL_LIST_MAXIMUM_ROWS = 11
 
 --- The stage every root widget is placed on: its top-left corner this far
 --- left of and above the screen's top-left corner, so nothing on it is on
@@ -447,9 +471,10 @@ end
 
 ---Register a suite of this package whose tests all end cleaned up.
 ---@param part string
+---@param options table? the harness's suite options (`combat = true`)
 ---@return TestKit.Suite
-local function newSuite(part)
-  local suite = Harness:Suite(PACKAGE_ID, part, addonName)
+local function newSuite(part, options)
+  local suite = Harness:Suite(PACKAGE_ID, part, addonName, options)
   suite:After(cleanUp)
   return suite
 end
@@ -790,7 +815,7 @@ end
 local facade = newSuite("facade")
 
 facade:Test(
-  "Registry:Get('widgetKit', 1) is the WidgetKit facade with API 1, its sixteen methods, the four Anchor functions, the defaults 256/256/16 and UNBOUNDED, and the twelve base types at their documented versions (Frame 4, five at 4, four at 3, ScrollFrame and Spacer 1)",
+  "Registry:Get('widgetKit', 1) is the WidgetKit facade with API 1, its sixteen methods, the four Anchor functions, the defaults 256/256/16 and UNBOUNDED, and the thirteen base types at their documented versions (Frame 4, five at 4, four at 3, ScrollFrame, Spacer and ScrollList 1)",
   function(ctx)
     ctx:Expect(rawget(WidgetKit, "API")):ToBe(WIDGET_KIT_API)
     for _, methodName in ipairs({
@@ -827,12 +852,14 @@ facade:Test(
     for _, typeName in ipairs(BASE_TYPES) do
       ctx:Expect(WidgetKit:GetTypeVersion(typeName)):ToBe(BASE_TYPE_VERSIONS[typeName])
     end
+    ctx:Expect(WidgetKit:GetTypeVersion("ScrollList")):ToBe(BASE_TYPE_VERSIONS.ScrollList)
 
     local limits = WidgetKit:GetLimits()
     ctx:Log(
-      ("limits in this session: maxCreatedCeiling %s, maxDropdownEntries %s"):format(
+      ("limits in this session: maxCreatedCeiling %s, maxDropdownEntries %s, maxListElements %s"):format(
         tostring(limits.maxCreatedCeiling),
-        tostring(limits.maxDropdownEntries)
+        tostring(limits.maxDropdownEntries),
+        tostring(limits.maxListElements)
       )
     )
     local statistics = WidgetKit:GetStatistics()
@@ -2500,7 +2527,7 @@ renderer:Test(
 local allocation = newSuite("allocation")
 
 allocation:Test(
-  "Create and Release of each of the twelve base types again allocate nothing and hand back the same widget, 500 cycles each",
+  "Create and Release of each base type but ScrollList again allocate nothing and hand back the same widget, 500 cycles each",
   function(ctx)
     for _, typeName in ipairs(BASE_TYPES) do
       local widget = create(ctx, typeName)
@@ -3110,6 +3137,171 @@ secretTest(
     local input = rendering:GetWidget("password")
     ctx:Expect(input:GetText()):ToBe("<secret value>")
     ctx:Expect(input.singleBox:IsEnabled() == true):ToBe(false)
+  end
+)
+
+-- widgetKit.scrollList --------------------------------------------------------------------
+--
+-- A `ScrollList` on the client's own ScrollBox framework. The tests read the
+-- widget's documented fields `scrollBox` and `view` (Blizzard's objects) and
+-- its `_rowParts` table (row frame to the parts WidgetKit built for it), to
+-- count the row frames the view handed the list.
+
+---`SCROLL_LIST_ELEMENTS` elements `{ text = "row <index>" }`.
+---@return table[]
+local function scrollListElements()
+  local elements = {}
+  for index = 1, SCROLL_LIST_ELEMENTS do
+    elements[index] = { text = "row " .. index }
+  end
+  return elements
+end
+
+---How many distinct row frames the view has handed `list` over its life.
+---@param list any
+---@return integer
+local function rowFramesSeen(list)
+  local count = 0
+  for _ in pairs(list._rowParts) do
+    count = count + 1
+  end
+  return count
+end
+
+---The row on display showing `element`, or `nil`.
+---@param list any
+---@param element table
+---@return any
+local function scrollListRowOf(list, element)
+  for row in pairs(list._rowParts) do
+    if
+      row:IsShown()
+      and type(row.GetElementData) == "function"
+      and row:GetElementData() == element
+    then
+      return row
+    end
+  end
+  return nil
+end
+
+---Fill a placed list, scroll it, click a row and check what docs/API.md
+---promises of each step. Shared by the normal and the combat suite.
+---@param ctx TestKit.Context
+---@return any list
+---@return table[] elements
+local function exerciseScrollList(ctx)
+  local list = createPlaced(ctx, "ScrollList")
+  ctx:Expect(list:GetWidth()):ToBe(300)
+  ctx:Expect(list:GetHeight()):ToBe(200)
+  local elements = scrollListElements()
+  list:SetElements(elements)
+  ctx:Expect(list:GetNumElements()):ToBe(SCROLL_LIST_ELEMENTS)
+  local shown = list.view:GetFrameCount()
+  local seen = rowFramesSeen(list)
+  ctx:Log(
+    ("rows on display %d, row frames seen %d, data range %s to %s"):format(
+      shown,
+      seen,
+      tostring(list.scrollBox:GetDataIndexBegin()),
+      tostring(list.scrollBox:GetDataIndexEnd())
+    )
+  )
+  ctx:Expect(shown >= 10 and shown <= SCROLL_LIST_MAXIMUM_ROWS):ToBe(true)
+  ctx:Expect(seen <= SCROLL_LIST_MAXIMUM_ROWS):ToBe(true)
+  local firstRow = scrollListRowOf(list, elements[1])
+  ctx:Expect(firstRow ~= nil):ToBe(true)
+  ctx:Expect(list._rowParts[firstRow].text:GetText()):ToBe("row 1")
+  ctx:Expect(firstRow:GetHeight()):ToBe(20)
+
+  ctx:Expect(list:ScrollToElement(elements[5000], "begin")):ToBe(true)
+  ctx:Log(
+    ("after ScrollToElement: data range %s to %s, row frames seen %d"):format(
+      tostring(list.scrollBox:GetDataIndexBegin()),
+      tostring(list.scrollBox:GetDataIndexEnd()),
+      rowFramesSeen(list)
+    )
+  )
+  local middleRow = scrollListRowOf(list, elements[5000])
+  ctx:Expect(middleRow ~= nil):ToBe(true)
+  ctx:Expect(list._rowParts[middleRow].text:GetText()):ToBe("row 5000")
+  ctx:Expect(rowFramesSeen(list) <= SCROLL_LIST_MAXIMUM_ROWS):ToBe(true)
+
+  local calls, callback = recorder()
+  list:SetCallback("OnValueChanged", callback)
+  list:SetCallback("OnClick", callback)
+  middleRow:Click("LeftButton")
+  ctx:Expect(#calls):ToBe(2)
+  ctx:Expect(calls[1].name):ToBe("OnValueChanged")
+  ctx:Expect(calls[1].args[1]):ToBe(elements[5000])
+  ctx:Expect(calls[2].name):ToBe("OnClick")
+  ctx:Expect(calls[2].args[2]):ToBe("LeftButton")
+  ctx:Expect(list:GetValue()):ToBe(elements[5000])
+  ctx:Expect(list._rowParts[middleRow].selected:IsShown() == true):ToBe(true)
+  return list, elements
+end
+
+local scrollList = newSuite("scrollList")
+
+scrollList:Test(
+  "ScrollList: 10000 elements in the default 300x200 list make at most 11 row frames of 20 pixels from the client's ScrollBox view; ScrollToElement shows row 5000 on those frames; a real Click on its row selects it and fires OnValueChanged, then OnClick",
+  function(ctx)
+    exerciseScrollList(ctx)
+  end
+)
+
+scrollList:Test(
+  "ScrollList: a release gives every row back to the view and drops the data provider; the next use is the same widget at its defaults and shows 10000 elements again without a new row frame",
+  function(ctx)
+    local list = exerciseScrollList(ctx)
+    local seen = rowFramesSeen(list)
+    releaseNow(list)
+    ctx:Expect(list.view:GetFrameCount()):ToBe(0)
+    ctx:Expect(list.scrollBox:HasDataProvider() == true):ToBe(false)
+
+    local again = createPlaced(ctx, "ScrollList")
+    ctx:Expect(again):ToBe(list)
+    ctx:Expect(again:GetValue()):ToBeNil()
+    ctx:Expect(again:GetNumElements()):ToBe(0)
+    again:SetElements(scrollListElements())
+    ctx:Log(
+      ("row frames seen before the release %d, after the next use %d"):format(
+        seen,
+        rowFramesSeen(again)
+      )
+    )
+    ctx:Expect(rowFramesSeen(again)):ToBe(seen)
+  end
+)
+
+-- widgetKit.scrollListCombat ----------------------------------------------------------------
+--
+-- A combat suite: `/mct run widgetKit combat` waits for the player to attack a
+-- training dummy and runs it in combat lockdown (EXPECTED.md, "Combat run").
+-- It is passive: it only uses the list on the off-screen stage. The
+-- framework is insecure and nothing in it is protected, which this proves on
+-- the client: the steps above work and the client reports no blocked action.
+
+local scrollListCombat = newSuite("scrollListCombat", { combat = true })
+
+scrollListCombat:Test(
+  "in combat, a ScrollList fills, scrolls, selects on a real Click and releases as out of combat, and the client reports no blocked or forbidden action",
+  function(ctx)
+    local inCombatLockdown = readHost("InCombatLockdown")
+    local lockdown = type(inCombatLockdown) == "function" and inCombatLockdown() or nil
+    ctx:Log("InCombatLockdown() answered " .. tostring(lockdown))
+    if lockdown ~= true then
+      Harness:SkipTest(
+        ctx,
+        "not in combat; type /mct run widgetKit combat and attack a training dummy to run it (EXPECTED.md, Combat run)"
+      )
+      return
+    end
+    local blockedBefore = #blockedActions
+    local list = exerciseScrollList(ctx)
+    releaseNow(list)
+    ctx:Expect(list.view:GetFrameCount()):ToBe(0)
+    ctx:Expect(#blockedActions):ToBe(blockedBefore)
   end
 )
 

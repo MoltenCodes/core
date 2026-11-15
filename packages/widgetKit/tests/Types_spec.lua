@@ -95,7 +95,7 @@ describe("WidgetKit type registry", function()
     statistics = WidgetKit:GetStatistics()
     assert.are.equal(0, statistics.byType.Counter.active)
     assert.are.equal(2, statistics.byType.Counter.available)
-    assert.are.equal(13, statistics.types)
+    assert.are.equal(14, statistics.types)
   end)
 
   it("calls OnAcquire on every acquire and OnRelease on every release", function()

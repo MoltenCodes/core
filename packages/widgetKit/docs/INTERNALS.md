@@ -12,11 +12,11 @@ an upgrade hangs off it, under `_state`, and is never replaced:
 | Field | Holds |
 |---|---|
 | `schema`, `runtimeRevision` | the state layout version (`1`) and the revision that last committed its functions |
-| `unbounded`, `limits` | the `UNBOUNDED` sentinel and the package-wide limits `maxCreatedCeiling` and `maxDropdownEntries` |
+| `unbounded`, `limits` | the `UNBOUNDED` sentinel and the package-wide limits `maxCreatedCeiling`, `maxDropdownEntries` and `maxListElements` (written at its default by revision 12 when a kept state has none) |
 | `types` | type name → type record `{ name, version, constructor, maxCallbacks, pool, borrowed }`; `maxCallbacks` is `math.huge` for `UNBOUNDED`, and `borrowed` counts the widgets of each version currently acquired |
 | `layouts` | layout name → layout function |
 | `records` | widget → widget record, weak-keyed |
-| `dispatch` | `build` and `retire`, the pool callbacks, `closeOpenDropdown`, the catcher's script, and `saveBinding`, the save a binding's SchedulerKit debounce calls (since revision 8); rewritten by every copy |
+| `dispatch` | `build` and `retire`, the pool callbacks, `closeOpenDropdown`, the catcher's script, `saveBinding`, the save a binding's SchedulerKit debounce calls (since revision 8), and `initializeScrollListRow` and `clickScrollListRow`, a `ScrollList`'s row drawing and row clicks (since revision 12); rewritten by every copy |
 | `widgetMetatable`, `containerMetatable` | `{ __index = Widget }`, `{ __index = Container }` |
 | `bindingMetatable`, `renderingMetatable` | the metatables of bindings and renderings |
 | `scratch` | the PoolKit table pool layouts borrow from |
@@ -293,6 +293,80 @@ copy created. The widget's own frame closes its list from `OnHide`.
 
 The entries themselves are two parallel arrays, `_keys` and `_labels`; the rows only show a window of them from `_offset`. That is why `state.limits.maxDropdownEntries` (1024 by default) may be `UNBOUNDED`: a longer list costs array slots, never frames. `SetList` reads the limit once when it starts, so a `SetLimits` applies to the next list and never cuts one already set.
 
+## ScrollList
+
+A `ScrollList` wraps Blizzard's ScrollBox framework rather than rebuilding it,
+because every promised client ships it with the same code: the `live`,
+`classic` and `classic_era` branches of Blizzard's UI source (12.1.5, 5.5.4
+and 1.15.9, read 2026-11-15) have the same 22 files in
+`Blizzard_SharedXML/Shared/Scroll/`, the same `DataProvider.lua` and the same
+`FrameFactory.lua`; the differences are Retail's narration hooks and a return
+value in the tree view, neither of which a linear list uses.
+
+The constructor checks for `CreateScrollBoxListLinearView`,
+`ScrollUtil.InitScrollBoxListWithScrollBar` and `CreateDataProvider` before it
+creates a frame, and leaves its refusal in `state.buildProblem` so `Create`
+raises it at the caller. It then builds, once per widget:
+
+- the widget's frame, and inside it a `WowScrollBoxList` frame inset by the
+  bar's width plus 4 pixels, and a `MinimalScrollBar` (an `EventFrame`, 8
+  pixels wide, hidden while nothing scrolls) beside it. `MinimalScrollBar`
+  rather than `WowTrimScrollBar`, because the Classic branches load a Classic
+  look for the trim bar (`Classic\Scroll\TrimScrollBar.xml`);
+- a linear view with `SetElementExtent(20)` and
+  `SetElementInitializer("Button", initializer)`. A native frame type has no
+  template info, so the extent must be set: the view cannot read it from a
+  template. The initializer is a closure made once that calls
+  `dispatch.initializeScrollListRow(widget, row, element)`;
+- the binding, `ScrollUtil.InitScrollBoxListWithScrollBar(box, bar, view)`.
+
+The data provider is made by the first `SetElements` or `Insert` and replaced
+by every `SetElements` (`CreateDataProvider(elements)` copies the array), so an
+empty list holds none. `Insert`, `Remove` and `Clear` change the provider in
+place (`Insert` / `InsertAtIndex`, `Remove`, `Flush`); each change makes the
+scroll box update at once.
+
+**Rows.** The view makes row frames from its own pool (a `FramePoolCollection`
+keyed by the frame type), parented to the box's scroll target, acquires one per
+row on display, sizes it to the extent and anchors it, and calls the
+initializer for each row it acquired once layout is done. Rows whose element
+stays on display are kept, which Blizzard does only when every element is a
+table: that, and the view telling rows apart by their element, is why
+elements are tables and each appears once. The initializer builds a row's
+parts the first time it sees that frame (`buildRowParts`: a highlight, a
+selected band, an icon texture and a text font string, `RegisterForClicks`
+for both buttons and an `OnClick` that calls
+`dispatch.clickScrollListRow`), keeps them in `widget._rowParts[row]`, and
+draws the row: the formatter's text and icon through `pcall`, the text
+re-anchored only when the icon appears or goes, the colour for the disabled
+state, and the band for the selection. The element's index is the row's order
+index (`GetOrderIndex`), which the view keeps; `GetElementDataIndex` would
+search the list. Row frames are never freed and stay with the widget: the next
+use of the widget is handed the same frames, so their parts are standard and
+never a consumer's.
+
+**Selection** is `widget._value`. A click or `SetValue` redraws the band of
+every row on display (`refreshRowStates`, rows whose `GetElementData` accessor
+the view has removed skipped), without asking the formatter. Blizzard's
+`SelectionBehaviorMixin` is not used: its single select runs
+`DeselectByPredicate` over the whole provider, allocating a table and a
+closure per select, and `IsElementDataSelected` treats an element with its own
+`selected` field as selected.
+
+**Release** calls the box's `Flush`, which releases every row to the view's
+pool and removes the provider, clears the row texts, icons and bands, and drops
+the provider, the selection and the formatter. `OnAcquire` restores the
+default size and the 20-pixel extent when a previous use changed it.
+
+**Cost of a data change.** Blizzard's update rebuilds its template cache over
+every element on each change (`RebuildTemplateInfoCache` asks the element
+factory once per element; for a native type the cache never holds an entry,
+so each element asks the client for template info again), and `Remove` uses
+`tIndexOf`. A data change is therefore O(n) in Blizzard's code whatever the
+row height. WidgetKit does not work around it (a provider marked virtual would
+skip the walk, but that is Blizzard's private contract); `docs/API.md` tells
+consumers to batch changes into `SetElements`.
+
 ## Frames WidgetKit creates
 
 Every base widget builds its frames in its constructor with `CreateFrame`,
@@ -322,8 +396,11 @@ text, again after `SetDisabled`.
 
 The
 templates used are `UIPanelButtonTemplate`, `UIPanelCloseButton`,
-`UICheckButtonTemplate` and `InputBoxTemplate`, present on every supported
-client; everything else is drawn with `SetColorTexture`. No widget sets a script
-on, or writes a field onto, a frame it did not create. The `ColorPicker` reads
+`UICheckButtonTemplate`, `InputBoxTemplate`, `WowScrollBoxList` and
+`MinimalScrollBar`, present on every supported client; everything else is drawn
+with `SetColorTexture`. No widget writes a field onto a frame it did not
+create, and the only frames a widget scripts without having created them are a
+`ScrollList`'s rows, which Blizzard's view creates inside the list's own calls
+and hands to it (see [ScrollList](#scrolllist)). The `ColorPicker` reads
 the client's `ColorPickerFrame` and calls its `SetupColorPickerAndShow` with an
 info table the widget owns.

@@ -48,7 +48,10 @@ describe("WidgetKit limits", function()
 
   it("publishes one UNBOUNDED sentinel and the default limits", function()
     assert.are.equal("table", type(WidgetKit.UNBOUNDED))
-    assert.are.same({ maxCreatedCeiling = 4096, maxDropdownEntries = 1024 }, WidgetKit:GetLimits())
+    assert.are.same(
+      { maxCreatedCeiling = 4096, maxDropdownEntries = 1024, maxListElements = 16384 },
+      WidgetKit:GetLimits()
+    )
     assert.are_not.equal(WidgetKit:GetLimits(), WidgetKit:GetLimits())
   end)
 
@@ -165,7 +168,10 @@ describe("WidgetKit limits", function()
       WidgetKit:SetLimits(8192)
     end)
     assertReportedAt(tableLine, "WidgetKit:SetLimits limits must be a table", tableOk, tableValue)
-    assert.are.same({ maxCreatedCeiling = 4096, maxDropdownEntries = 1024 }, WidgetKit:GetLimits())
+    assert.are.same(
+      { maxCreatedCeiling = 4096, maxDropdownEntries = 1024, maxListElements = 16384 },
+      WidgetKit:GetLimits()
+    )
 
     WidgetKit:SetLimits({ maxCreatedCeiling = 16384 })
     WidgetKit:SetLimits({})
@@ -293,7 +299,7 @@ describe("WidgetKit limits", function()
     assert.are.equal(sentinel, upgraded.UNBOUNDED)
     assert.are.equal(sentinel, upgraded._state.unbounded)
     assert.are.same(
-      { maxCreatedCeiling = 10000, maxDropdownEntries = sentinel },
+      { maxCreatedCeiling = 10000, maxDropdownEntries = sentinel, maxListElements = 16384 },
       upgraded:GetLimits()
     )
     assert.are.equal(sentinel, group:GetMaxChildren())
@@ -359,6 +365,9 @@ describe("WidgetKit limits", function()
         value
       )
     end
-    assert.are.same({ maxCreatedCeiling = 4096, maxDropdownEntries = 1024 }, WidgetKit:GetLimits())
+    assert.are.same(
+      { maxCreatedCeiling = 4096, maxDropdownEntries = 1024, maxListElements = 16384 },
+      WidgetKit:GetLimits()
+    )
   end)
 end)

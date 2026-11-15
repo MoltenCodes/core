@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.0 — 2026-11-15
+
+- Added: `ScrollList`, a virtualised list on the client's ScrollBox framework (`WowScrollBoxList`, `MinimalScrollBar`, `CreateScrollBoxListLinearView`, `ScrollUtil.InitScrollBoxListWithScrollBar`, `CreateDataProvider`; the same code on Retail, Mists of Pandaria Classic and Classic Era). Only the rows on display exist as frames, made by the view's own pool and reused as the list scrolls. `SetElements`, `Insert`, `Remove`, `Clear`, `GetNumElements`, `GetElement`, `Refresh`, `ScrollToElement`, `SetValue` / `GetValue`, `SetRowHeight`, `SetFormatter`, `SetDisabled`; callbacks `OnValueChanged(element)` and `OnClick(element, mouseButton)`. Single selection is kept by WidgetKit, not by `ScrollUtil.AddSelectionBehavior`. `docs/API.md`, *Base widgets*; recorded in `docs/ROADMAP.md`, "widgetKit virtualised lists".
+- Added: the package limit `maxListElements` (16384 by default, `UNBOUNDED` allowed) in `SetLimits` and `GetLimits`.
+- Changed: the base constructors are kept in one table and registered from `BASE_TYPE_VERSIONS`, so the main chunk stays under Lua 5.1's 200 locals. No behaviour changed.
+- Implementation revision 12. `ScrollList` is a new base type at version 1; no other base widget version moved. An upgrade over revision 11 keeps every widget and writes `maxListElements` into the kept state at its default.
+- Specs: `ScrollList_spec.lua` against a package-local stand-in for the ScrollBox framework (`tests/support/WidgetKitScrollBox.lua`), and an upgrade from revision 11.
+
 ## 0.3.0 — 2026-11-15
 
 - Added: pages in `RenderOptions`. A `group` with OptionsKit's `childGroups` hint (`"tab"`, `"tree"` or `"select"`, OptionsKit revision 10) shows its non-inline child groups one at a time behind a row of buttons, a column of buttons beside the page, or a dropdown; its options and inline groups render above as before. The chosen page is kept per group for as long as the rendering lives, and choosing one rebuilds the rendering. A group without the hint renders as before. `docs/API.md`, *Pages*.

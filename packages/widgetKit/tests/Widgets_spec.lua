@@ -616,7 +616,10 @@ describe("WidgetKit secret values", function()
         WidgetKit:SetLimits({ maxDropdownEntries = secret })
       end
     )
-    assert.are.same({ maxCreatedCeiling = 4096, maxDropdownEntries = 1024 }, WidgetKit:GetLimits())
+    assert.are.same(
+      { maxCreatedCeiling = 4096, maxDropdownEntries = 1024, maxListElements = 16384 },
+      WidgetKit:GetLimits()
+    )
   end)
 end)
 

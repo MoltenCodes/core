@@ -9,7 +9,8 @@ on Classic Era, or with
 on Mists of Pandaria Classic, and nothing else from the MoltenCodes framework
 enabled in the client. Run it out of combat, with no options window of another
 addon and no colour picker open. The lines below are Retail's;
-[Per flavour](#per-flavour) gives the two Classic clients.
+[Per flavour](#per-flavour) gives the two Classic clients, and
+[Combat run](#combat-run) the one combat test.
 
 ## At login
 
@@ -26,8 +27,8 @@ in the client). The allocation tests run full garbage collections, so the
 client may stutter for a moment; the List test waits for one rendered frame:
 
 ```text
-MoltenCodes Test: running widgetKit: 10 suites. Results follow when every test has finished.
-MoltenCodes Test: PASS widgetKit.facade: Registry:Get('widgetKit', 1) is the WidgetKit facade with API 1, its sixteen methods, the four Anchor functions, the defaults 256/256/16 and UNBOUNDED, and the twelve base types at their documented versions (Frame 4, five at 4, four at 3, ScrollFrame and Spacer 1)
+MoltenCodes Test: running widgetKit: 12 suites. Results follow when every test has finished.
+MoltenCodes Test: PASS widgetKit.facade: Registry:Get('widgetKit', 1) is the WidgetKit facade with API 1, its sixteen methods, the four Anchor functions, the defaults 256/256/16 and UNBOUNDED, and the thirteen base types at their documented versions (Frame 4, five at 4, four at 3, ScrollFrame, Spacer and ScrollList 1)
 MoltenCodes Test: PASS widgetKit.facade: the installed WidgetKit carries the revision of the committed manifest
 MoltenCodes Test: PASS widgetKit.facade: the client has CreateFrame and UIParent, and OptionsKit, MediaKit and SchedulerKit are registered; ColorPickerFrame, the secret functions, ACCEPT, NOT_BOUND and UIParent's rect and scale are logged
 MoltenCodes Test: PASS widgetKit.types: text getters answer "" once cleared, as docs/API.md says, on the client's font strings, buttons and edit boxes: Label, Heading, Button, EditBox and Dropdown texts, Frame and Group titles and a CheckBox label, after a fresh Create and after SetText(nil)
@@ -54,7 +55,7 @@ MoltenCodes Test: PASS widgetKit.media: CreateMediaPicker lists MediaKit's font 
 MoltenCodes Test: PASS widgetKit.renderer: RenderOptions draws one widget per visible option into a hidden container, in order, hidden ones skipped, each showing the value Get returns
 MoltenCodes Test: PASS widgetKit.renderer: user input through the rendered widgets reaches tree:Set, a Validate refusal is shown in a Label right below the edit box and cleared by the next accepted write, tree:Set from code refreshes the widget in place, and a real click on the execute Button runs func
 MoltenCodes Test: PASS widgetKit.renderer: Release gives every rendered widget back and empties the container; releasing a container releases a rendering drawn into it first
-MoltenCodes Test: PASS widgetKit.allocation: Create and Release of each of the twelve base types again allocate nothing and hand back the same widget, 500 cycles each
+MoltenCodes Test: PASS widgetKit.allocation: Create and Release of each base type but ScrollList again allocate nothing and hand back the same widget, 500 cycles each
 MoltenCodes Test: PASS widgetKit.allocation: PerformLayout of a List of ten children again and Fire of a set callback allocate nothing, 500 calls each
 MoltenCodes Test: PASS widgetKit.errors: Create called with a dot, a second Release, Release of a plain table and a method of a released widget are refused at the calling line; an unknown type answers nil and unknownType
 MoltenCodes Test: PASS widgetKit.errors: bad arguments to widget methods are refused at the calling line with docs/API.md's wording: SetSliderValues with minimum over maximum, SetText with a table, SetRelativeWidth(0), an unregistered layout and a beforeWidget that is no child
@@ -67,12 +68,17 @@ MoltenCodes Test: PASS widgetKit.secrets: Anchor.Normalize and Anchor.Apply refu
 MoltenCodes Test: PASS widgetKit.secrets: a layout function that returns secret sizes is ignored like any non-number, so the group keeps its insets; the client's answer to SetWidth with a secret from addon code is logged
 MoltenCodes Test: PASS widgetKit.secrets: RenderOptions shows a secret input value as '<secret value>' and disables it, disables a toggle whose value is secret, and refuses a secret options.allowSecret at the calling line
 MoltenCodes Test: PASS widgetKit.secrets: EditBox:SetText refuses a secret at the calling line even with allowSecret, as the client's edit box refuses one from addon code (logged), and RenderOptions with allowSecret shows a secret input value as '<secret value>', disabled
+MoltenCodes Test: PASS widgetKit.scrollList: ScrollList: 10000 elements in the default 300x200 list make at most 11 row frames of 20 pixels from the client's ScrollBox view; ScrollToElement shows row 5000 on those frames; a real Click on its row selects it and fires OnValueChanged, then OnClick
+MoltenCodes Test: PASS widgetKit.scrollList: ScrollList: a release gives every row back to the view and drops the data provider; the next use is the same widget at its defaults and shows 10000 elements again without a new row frame
+MoltenCodes Test: SKIP widgetKit.scrollListCombat: in combat, a ScrollList fills, scrolls, selects on a real Click and releases as out of combat, and the client reports no blocked or forbidden action -- not in combat; type /mct run widgetKit combat and attack a training dummy to run it (EXPECTED.md, Combat run)
 MoltenCodes Test: PASS widgetKit.taint: the client reported no ADDON_ACTION_BLOCKED or ADDON_ACTION_FORBIDDEN for a MoltenCodes addon since this addon loaded; every report and the security of the client globals WidgetKit reads are logged
-MoltenCodes Test: widgetKit: 41 passed, 0 failed, 0 skipped, 0 timed out (41 tests)
+MoltenCodes Test: widgetKit: 43 passed, 0 failed, 1 skipped, 0 timed out (44 tests)
 MoltenCodes Test: results saved in MoltenCodesTestResults; /reload or log out to write them to disk.
 ```
 
-Running it again in the same session prints the same lines.
+Running it again in the same session prints the same lines. The one `SKIP`
+is the combat test, which a run out of combat skips by design; the
+[combat run](#combat-run) exercises it.
 
 ## Visible side effects
 
@@ -103,7 +109,8 @@ is in its pool again. What stays:
 - the frames WidgetKit's pools built for the base types (the client never
   frees a frame; they wait in their pools for the next `Create`), the
   session's dropdown catcher and the sixteen list rows of the dropdown the test
-  opened;
+  opened, and the row frames the `ScrollList`'s view made (at most eleven,
+  kept by the view for the widget's next use);
 - ten plain frames of this addon's own, created once and reused by later runs:
   the stage, eight 10 by 10 probes for the anchor, binding and secret tests
   (alpha 0, no texture, hidden after each test) and a hidden listener registered for
@@ -122,7 +129,7 @@ written to a global or a saved variable other than the harness's own results.
 The seven `widgetKit.secrets` tests need the client's `issecretvalue` and
 `secretwrap`. Retail 12.1 has both. A client without them prints these seven
 lines instead, and the totals line reads
-`34 passed, 0 failed, 7 skipped, 0 timed out (41 tests)`:
+`36 passed, 0 failed, 8 skipped, 0 timed out (44 tests)`:
 
 ```text
 MoltenCodes Test: SKIP widgetKit.secrets: text setters refuse a secretwrap string at the calling line; with allowSecret a Label shows it one line high on a font string of its own, and the next use of the same Label shows a plain empty text and measures plain texts again, wrapped ones included -- the client has no issecretvalue and secretwrap; the secret path was not exercised
@@ -134,8 +141,8 @@ MoltenCodes Test: SKIP widgetKit.secrets: RenderOptions shows a secret input val
 MoltenCodes Test: SKIP widgetKit.secrets: EditBox:SetText refuses a secret at the calling line even with allowSecret, as the client's edit box refuses one from addon code (logged), and RenderOptions with allowSecret shows a secret input value as '<secret value>', disabled -- the client has no issecretvalue and secretwrap; the secret path was not exercised
 ```
 
-On Retail 12.1 any `SKIP` is unexpected, except the `ColorPicker` test when
-the colour picker was open: `SKIP widgetKit.types: ColorPicker: ... -- the
+On Retail 12.1 any `SKIP` is unexpected, except the combat test out of
+combat, and the `ColorPicker` test when the colour picker was open: `SKIP widgetKit.types: ColorPicker: ... -- the
 client's ColorPickerFrame is open; it was not touched`. Close it and run again.
 
 ### On a client without `ColorPickerFrame:SetupColorPickerAndShow`
@@ -146,7 +153,7 @@ docs/API.md lists the client's `ColorPickerFrame` with
 The `ColorPicker` test proves the client picker path, so a client without that
 function (it is FrameXML, which the apiKit metadata does not cover; the
 facade test logs whether the client has it) prints this line instead, and the
-totals line reads `40 passed, 0 failed, 1 skipped, 0 timed out (41 tests)`:
+totals line reads `42 passed, 0 failed, 2 skipped, 0 timed out (44 tests)`:
 
 ```text
 MoltenCodes Test: SKIP widgetKit.types: ColorPicker: white and opaque; SetColor fires nothing; OpenPicker opens the client's ColorPickerFrame with the colour, its swatch and cancel callbacks fire OnValueChanged, a disabled picker opens nothing, and a release disarms the callbacks of the previous use -- the client has no ColorPickerFrame:SetupColorPickerAndShow; the client picker path was not exercised
@@ -166,22 +173,27 @@ registers at load, and `issecretvalue` and `secretwrap`. The rest are core
 client globals and FrameXML the metadata does not cover and every flavour
 has: `CreateFrame`, `UIParent`, `geterrorhandler` and `seterrorhandler`,
 `issecurevariable`, the templates `UIPanelButtonTemplate`,
-`UIPanelCloseButton`, `UICheckButtonTemplate` and `InputBoxTemplate`, the font
+`UIPanelCloseButton`, `UICheckButtonTemplate`, `InputBoxTemplate`,
+`WowScrollBoxList` and `MinimalScrollBar`, the ScrollBox framework's
+`CreateScrollBoxListLinearView`, `ScrollUtil` and `CreateDataProvider` (the
+same `Blizzard_SharedXML` code on all three branches of Blizzard's UI source,
+read 2026-11-15), the font
 objects `GameFontNormal`, `GameFontHighlight`, `GameFontHighlightSmall` and
 `GameFontHighlightLarge`, and `ColorPickerFrame`. Only
 `ColorPickerFrame:SetupColorPickerAndShow` is asked of the client when the
 test runs. So nothing the addon reads at load is missing on a Classic client.
-The suite needs no combat, so it has no combat suite.
+`InCombatLockdown`, which the combat test reads, is documented on all three.
+One suite is a combat suite; see [Combat run](#combat-run).
 
 ### Retail (12.1)
 
 The lines above:
-`MoltenCodes Test: widgetKit: 41 passed, 0 failed, 0 skipped, 0 timed out (41 tests)`,
-with no `SKIP` line.
+`MoltenCodes Test: widgetKit: 43 passed, 0 failed, 1 skipped, 0 timed out (44 tests)`,
+with the combat test's `SKIP` line only.
 
 ### Classic Era (1.15) and Mists of Pandaria Classic (5.5)
 
-The `running` line (10 suites) and every test line are the same as Retail's,
+The `running` line (12 suites) and every test line are the same as Retail's,
 in the same order. Two answers only the running client gives decide the
 totals line: whether it makes secret values (it has the global functions
 `issecretvalue` and `secretwrap`, which both Classic flavours document and the
@@ -192,10 +204,12 @@ logs it).
 
 | Secret values | `SetupColorPickerAndShow` | Totals line |
 |---|---|---|
-| made | present | `MoltenCodes Test: widgetKit: 41 passed, 0 failed, 0 skipped, 0 timed out (41 tests)` |
-| made | absent | `MoltenCodes Test: widgetKit: 40 passed, 0 failed, 1 skipped, 0 timed out (41 tests)` |
-| not made | present | `MoltenCodes Test: widgetKit: 34 passed, 0 failed, 7 skipped, 0 timed out (41 tests)` |
-| not made | absent | `MoltenCodes Test: widgetKit: 33 passed, 0 failed, 8 skipped, 0 timed out (41 tests)` |
+| made | present | `MoltenCodes Test: widgetKit: 43 passed, 0 failed, 1 skipped, 0 timed out (44 tests)` |
+| made | absent | `MoltenCodes Test: widgetKit: 42 passed, 0 failed, 2 skipped, 0 timed out (44 tests)` |
+| not made | present | `MoltenCodes Test: widgetKit: 36 passed, 0 failed, 8 skipped, 0 timed out (44 tests)` |
+| not made | absent | `MoltenCodes Test: widgetKit: 35 passed, 0 failed, 9 skipped, 0 timed out (44 tests)` |
+
+Each count includes the combat test's `SKIP` of a run out of combat.
 
 Where the row says absent, the `ColorPicker` test prints the line under
 [On a client without `ColorPickerFrame:SetupColorPickerAndShow`](#on-a-client-without-colorpickerframesetupcolorpickerandshow).
@@ -227,7 +241,7 @@ with the client's own measure of that text.
 
 | Test | Proves in the real client |
 |---|---|
-| `Registry:Get('widgetKit', 1) is the WidgetKit facade ...` | The facade the client loaded is API 1 with its sixteen methods, the four `Anchor` functions and nine points, the defaults and `UNBOUNDED`, the three built-in layouts and the twelve base types at the versions docs/API.md gives (`Frame`, `CheckBox`, `Slider`, `EditBox`, `Dropdown` and `ColorPicker` 4, the other four at 3; `ScrollFrame` and `Spacer` 1). The log gives the session's limits and pool statistics before the run. |
+| `Registry:Get('widgetKit', 1) is the WidgetKit facade ...` | The facade the client loaded is API 1 with its sixteen methods, the four `Anchor` functions and nine points, the defaults and `UNBOUNDED`, the three built-in layouts and the thirteen base types at the versions docs/API.md gives (`Frame`, `CheckBox`, `Slider`, `EditBox`, `Dropdown` and `ColorPicker` 4, the other four at 3; `ScrollFrame`, `Spacer` and `ScrollList` 1). The log gives the session's limits (`maxListElements` among them) and pool statistics before the run. |
 | `the installed WidgetKit carries the revision ...` | Registry's selected revision and the facade's `REVISION` are both the committed manifest's. The log gives `REVISION`. |
 | `the client has CreateFrame and UIParent, ...` | What WidgetKit builds on exists, and its optional Kits are registered. The log records `ColorPickerFrame` and its methods, the secret functions, the `ACCEPT` and `NOT_BOUND` strings, and `UIParent`'s rect and effective scale. |
 | `text getters answer "" once cleared ...` | docs/API.md's "Text getters return what the widget shows (`""` once cleared)" against the client's font strings, buttons and edit boxes. Every answer is logged before any is checked; the other type tests read a `nil` answer as `""`, so only this test fails if a getter answers `nil`. The run of 2026-09-25 (revision 5) failed here: the client's font strings and buttons answer `nil` for an empty text, and revision 6 turns that into `""`. |
@@ -255,7 +269,7 @@ with the client's own measure of that text.
 | `RenderOptions draws one widget per visible option ...` | The widget type of every kind, full width, in `Describe` order, the hidden option skipped, the inline group nested, and every value read with `Get`. The container stays hidden throughout. |
 | `user input through the rendered widgets reaches tree:Set, ...` | `PickIndex`, real clicks on the check box, the multiselect's second box and the execute button, and the client's slider write through `Validate` and `Set`; the edit box's Enter script with `bad` shows `no bad names` in a `Label` right below it, keeps the stored value, and the next accepted text removes the message; `tree:Set` from code refreshes the slider and the dropdown in place. |
 | `Release gives every rendered widget back ...` | `Release` answers `true` then `false`, the container is empty, the 13 rendered widgets are no longer active (`GetStatistics`), and releasing the container releases a second rendering first. |
-| `Create and Release of each of the twelve base types again ...` | docs/API.md's "`Create` / `Release` of a warm widget: no allocation", on the client's collector, per type: after a full collection in its own step and one unmeasured cycle, 500 cycles move `collectgarbage("count")` by at most 1 KB, and every cycle hands back the same widget. The log gives each delta. |
+| `Create and Release of each base type but ScrollList again ...` | docs/API.md's "`Create` / `Release` of a warm widget: no allocation", on the client's collector, per type (`ScrollList` is left out: its release flushes Blizzard's view, which allocates a table): after a full collection in its own step and one unmeasured cycle, 500 cycles move `collectgarbage("count")` by at most 1 KB, and every cycle hands back the same widget. The log gives each delta. |
 | `PerformLayout of a List of ten children again and Fire ...` | The same for a layout pass over unchanged children and for `Fire`. |
 | `Create called with a dot, ...` | Receiver and release refusals at this file's calling line with docs/API.md's wording, and `nil, "unknownType"`. |
 | `bad arguments to widget methods ...` | Six argument refusals at the calling line, including a container added to itself. |
@@ -268,14 +282,18 @@ with the client's own measure of that text.
 | `a layout function that returns secret sizes ...` | A custom layout returning secret width and height is ignored: `PerformLayout` answers `true` and the group is 16 high. The log records whether the client accepts `SetWidth` with a secret from addon code, on a probe frame of this addon, and whether `GetWidth` then answers a secret. |
 | `RenderOptions shows a secret input value as '<secret value>' ...` | An `input` option whose `get` returns a secret shows the placeholder and is disabled; a `toggle` whose `get` returns a secret boolean is disabled and unchecked; a secret `options.allowSecret` is refused at the calling line. |
 | `EditBox:SetText refuses a secret at the calling line even with allowSecret, ...` | `EditBox:SetText(secret, { allowSecret = true })` is refused at the calling line and the box stays empty; the client's own edit box is then handed the secret directly and its answer is logged (on 2026-09-25 it refused: `Secret values are only allowed during untainted execution for this argument`); `RenderOptions` with `allowSecret` renders the secret `input` as `<secret value>`, disabled, without raising. |
+| `ScrollList: 10000 elements in the default 300x200 list ...` | docs/API.md's "only the rows the list shows exist as frames" on the client's own ScrollBox view: the list is 300 by 200, 10000 elements give between 10 and 11 rows on display and at most 11 row frames, 20 pixels high, the first showing `row 1`; `ScrollToElement(element, "begin")` answers `true` and row 5000 is shown on those same frames; a real `Click` on its row fires `OnValueChanged` with the element and then `OnClick` with `LeftButton`, and the row shows its selected band. The log gives the rows on display, the row frames seen and the view's data range before and after the scroll. |
+| `ScrollList: a release gives every row back ...` | After the steps above, the release leaves the view with no frame and no data provider; the next `Create` hands back the same widget with no selection and no element, and 10000 elements again use exactly the row frames seen before (logged), none new. |
+| `in combat, a ScrollList fills, scrolls, ...` | The same steps as the first `ScrollList` test, in combat lockdown (`InCombatLockdown()` logged), then a release with no frame left in the view, and no `ADDON_ACTION_BLOCKED` or `ADDON_ACTION_FORBIDDEN` reported meanwhile. Skipped out of combat. |
 | `the client reported no ADDON_ACTION_BLOCKED ...` | Everything the client reported as blocked or forbidden since this addon loaded is logged with the addon and function it named, and none names a `MoltenCodes` addon. The log also gives `issecurevariable` for `UIParent`, `ColorPickerFrame`, `CreateFrame` and `GameFontNormal`. |
 
 ## What counts as unexpected
 
 - Any `FAIL` or `TIMEOUT` line, a `SKIP` line on Retail 12.1 (other than the
-  open colour picker), or a totals line other than
-  `41 passed, 0 failed, 0 skipped, 0 timed out (41 tests)` on Retail, or than
-  one of the four [Per flavour](#per-flavour) gives on a Classic client.
+  combat test out of combat and the open colour picker), or a totals line
+  other than `43 passed, 0 failed, 1 skipped, 0 timed out (44 tests)` on
+  Retail, or than one of the four [Per flavour](#per-flavour) gives on a
+  Classic client.
 - No login line, or `Expected.lua is missing`: the harness or the installer
   did not run as intended.
 - Anything appearing on screen: a window, a list, the colour picker, a flicker
@@ -299,12 +317,52 @@ with the client's own measure of that text.
   callbacks the client's picker made itself.
 - The allocation tests failing: their log gives the deltas per type. Say which
   other addons are enabled.
+- A `ScrollList` test failing on the row count or on row 5000: the log gives
+  the rows on display and the view's data range; a count above 11 would mean
+  the view makes rows the list does not show.
 - The first secrets test failing on the reused label: its log says whether
   `GetText` or `GetStringHeight` still answered a secret, which would mean
   `ClearText` does not remove the secret aspect on this client.
 - The last secrets test logging `accepted` for the client's own
   `EditBox:SetText(secret)`: the client changed, and `EditBox:SetText` could
   take a secret again; send its log.
+
+## Combat run
+
+This proves that a `ScrollList` works in combat lockdown: Blizzard's ScrollBox
+framework is insecure and nothing in it is protected, but only a run in
+combat shows the client agrees. The combat suite `widgetKit.scrollListCombat`
+holds one passive test: it attacks nothing, casts nothing and moves nothing;
+it only uses a list on the off-screen stage while you are in combat. It needs
+no preparation out of combat.
+
+1. Install as above, log in, and stand at a training dummy (any capital city
+   or your class hall; on Classic Era, a low-level creature), out of combat,
+   with nothing else pulled.
+2. Type `/mct run widgetKit combat`. The harness prints:
+
+   ```text
+   MoltenCodes Test: waiting up to 60 seconds for combat: attack a training dummy now. The combat suites of widgetKit start when combat begins.
+   ```
+
+3. Attack the dummy within 60 seconds (auto-attack is enough). When combat
+   begins:
+
+   ```text
+   MoltenCodes Test: running widgetKit (combat suites): 1 suites. Results follow when every test has finished.
+   MoltenCodes Test: PASS widgetKit.scrollListCombat: in combat, a ScrollList fills, scrolls, selects on a real Click and releases as out of combat, and the client reports no blocked or forbidden action
+   MoltenCodes Test: widgetKit:combat: 1 passed, 0 failed, 0 skipped, 0 timed out (1 tests)
+   MoltenCodes Test: results saved in MoltenCodesTestResults; /reload or log out to write them to disk.
+   ```
+
+4. Stop attacking; the test does not wait for combat to end. `/reload` as
+   after any run. The results are saved under `widgetKit:combat` and never
+   replace the default run's. Typed while already in combat, the run starts at
+   once, without the waiting line.
+
+A `FAIL` here, or a taint message from the client during the run, is
+unexpected: send the log, which gives `InCombatLockdown()` and the rows the
+list showed.
 
 ## What to send back
 

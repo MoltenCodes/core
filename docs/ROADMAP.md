@@ -1969,7 +1969,7 @@ code and treated as agreed as under decision 15.
 
 - [x] **clientKit** deprecation warnings (W13) (2026-11-15; client suite not run).
 - [x] **settingsKit** spec profiles, with OptionsKit's `ProfileOptions` choice: settingsKit 0.4.0 revision 11, optionsKit 0.6.0 revision 11 (2026-11-15; client suites not run).
-- [ ] **widgetKit** virtualised lists (`ScrollList`).
+- [x] **widgetKit** virtualised lists (`ScrollList`): widgetKit 0.4.0 revision 12 (2026-11-15; client suite not run).
 - [x] **rangeKit** — unit range estimates (2026-11-15; client suite not run).
 - [x] **unitFrameKit** — the unit frame shown for a unit (2026-11-15; client suite not run).
 - [x] **codecKit** native DEFLATE through `C_EncodingUtil`: compression only, codecKit 0.2.0 revision 7 (2026-11-15; client suite not run).
@@ -2276,7 +2276,16 @@ code and treated as agreed as under decision 15.
    view's pool, the row-parts table), CHANGELOG, tests/README, the client
    suite's EXPECTED.md; EMBEDDING's host-requirements row and package M's
    checklist (Friday).
-9. Status: recorded 2026-11-15 under core decision 16; code follows.
+9. Status: implemented 2026-11-15 under core decision 16, 0.4.0, revision
+   12, 30 specs in `ScrollList_spec.lua`; the client cases
+   (`widgetKit.scrollList` and the combat suite `widgetKit.scrollListCombat`
+   in `tests/client/MoltenCodesTest_WidgetKit`) are written and have not been
+   run in a client. Deviations: the base constructors moved into one table
+   (the main chunk's 200-local limit); duplicate elements are refused,
+   because Blizzard's view tells rows apart by their element; the formatter
+   may return a number as the text; `ScrollToElement` finds the index and
+   scrolls by it; a released `ScrollList` is not allocation-free in the
+   client, since Blizzard's `Flush` allocates one table.
 
 **rangeKit** — facade `RangeKit`
 

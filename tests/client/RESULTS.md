@@ -139,4 +139,5 @@ No failed or timed-out test recorded.
 - **Classic Era**: not run: no client session available; the owner has no active game time.
 - **Mists Classic**: not run: no client session available; the owner has no active game time.
 - **TBC Anniversary** (optional, not promised): no run recorded yet.
+- **Retail combat runs**: no `/mct run <package> combat` recorded for `widgetKit`; their combat tests are skips in the default run.
 - **Skip reasons**: 12 rows were recorded without the names and reasons of their skipped tests; the next run of each package records them.
