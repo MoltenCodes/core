@@ -163,3 +163,5 @@ move-folders:
   MoltenCodes/packages/barKit/docs: MoltenCodes/barKit/docs
   MoltenCodes/packages/dialogKit/src: MoltenCodes/dialogKit
   MoltenCodes/packages/dialogKit/docs: MoltenCodes/dialogKit/docs
+  MoltenCodes/packages/toastKit/src: MoltenCodes/toastKit
+  MoltenCodes/packages/toastKit/docs: MoltenCodes/toastKit/docs

@@ -1402,8 +1402,8 @@ its code. Order:
       - **bridgeKit**: `ConvertAceConfig` carries `childGroups` over when
         the registered OptionsKit publishes `CHILD_GROUPS`, and reports it
         dropped as before otherwise.
-- [ ] **barKit** (status and timer bars) and **dialogKit**: implemented,
-      client suites not run; toastKit, bindingKit, glow,
+- [ ] **barKit** (status and timer bars), **dialogKit** and **toastKit**:
+      implemented, client suites not run; bindingKit, glow,
       Edit Mode integration, timerKit's engine-driven ticker (W15).
 
 **panelKit** — facade `PanelKit`
@@ -1769,7 +1769,9 @@ its code. Order:
    their frames reused.
 8. Docs: README, API.md, CHANGELOG, tests/README; EMBEDDING rows;
    ARCHITECTURE's package list.
-9. Status: recorded 2026-11-15 under core decision 15; code follows.
+9. Status: implemented 2026-11-15 under core decision 15, 0.1.0, revision
+   1, 23 specs; the client suite (`tests/client/MoltenCodesTest_ToastKit`) is
+   written and has not been run in a client.
 
 #### Package N — bridgeKit, migrating from Ace3
 

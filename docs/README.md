@@ -66,6 +66,7 @@ Current package entry points:
 - [`CompatKit`](../packages/compatKit/README.md) — versioned shims with a host opt-out, provider registries with a fallback cascade, the taint catalogue as data.
 - [`CommKit`](../packages/commKit/README.md) — addon messaging with bounded reassembly, refusing queues, a session bandwidth budget and sync sets.
 - [`WidgetKit`](../packages/widgetKit/README.md) — pooled, versioned widgets, explicit layouts, anchors and an options renderer.
+- [`ToastKit`](../packages/toastKit/README.md) — short notifications that stack, hold under the cursor and fade out.
 - [`DialogKit`](../packages/dialogKit/README.md) — confirmation and input dialogs on a frame of their own, queued, closed with Escape.
 - [`BarKit`](../packages/barKit/README.md) — status and timer bars with secret values passed through and pausable countdowns.
 - [`TooltipKit`](../packages/tooltipKit/README.md) — multi-column tooltips, keyed and pooled, with scrolling, smart anchoring and auto-hide.

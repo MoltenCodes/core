@@ -138,6 +138,10 @@
   - changed-files:
       - any-glob-to-any-file: "packages/timerKit/**"
 
+"kit: toastKit":
+  - changed-files:
+      - any-glob-to-any-file: "packages/toastKit/**"
+
 "kit: tooltipKit":
   - changed-files:
       - any-glob-to-any-file: "packages/tooltipKit/**"

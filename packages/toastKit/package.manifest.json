@@ -1,0 +1,17 @@
+{
+  "name": "toastKit",
+  "displayName": "ToastKit",
+  "description": "Short notifications for World of Warcraft addons: titled toasts with icons and click handlers, stacked at one anchor, held under the cursor, fading out, pooled and bounded.",
+  "version": "0.1.0",
+  "license": "MIT",
+  "api": 1,
+  "revision": 1,
+  "dependencies": {
+    "registry": {
+      "api": 2
+    },
+    "poolKit": {
+      "api": 1
+    }
+  }
+}

@@ -80,6 +80,7 @@ body:
         - signalKit
         - testKit
         - timerKit
+        - toastKit
         - tooltipKit
         - widgetKit
         - Not sure

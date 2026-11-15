@@ -32,6 +32,7 @@
   "signalKit": 97,
   "testKit": 96,
   "timerKit": 96,
+  "toastKit": 96,
   "tooltipKit": 96,
   "widgetKit": 95
 }
