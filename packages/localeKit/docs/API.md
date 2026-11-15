@@ -2,7 +2,7 @@
 
 LocaleKit API generation **1** provides translations per addon and locale: write proxies for translation files, one read table per addon with a chosen missing-key behaviour, a report of the keys read but never defined, and a formatter with indexed specifiers.
 
-Implementation revision: **4**.
+Implementation revision: **5**.
 
 ## Loading
 
@@ -29,7 +29,7 @@ LocaleKit reads three host functions, each at call time rather than at load, and
 |---|---|---|
 | `GetLocale` | `NewLocale`, to learn the client locale | The client locale is `enUS`. An answer that is not a locale code is treated the same way. |
 | `geterrorhandler` | the `"report"` missing-key mode | The report is passed to `print`. |
-| `issecretvalue` | every argument check (`addonName`, `locale`, `isDefault`, `missing`, `maxMissingKeys`), `Format`, and a read of an undefined key in `"report"` or `"silent"` mode | Nothing is treated as secret. |
+| `issecretvalue` | every argument check (`addonName`, `locale`, `isDefault`, `missing`, `maxMissingKeys`) and `Format` | Nothing is treated as secret. |
 
 ## Public surface
 
@@ -121,7 +121,7 @@ Raises when the addon registered nothing yet (`LocaleKit:GetLocale found no loca
 | `"silent"` | The same without the report. |
 | `"raw"` | Returns `nil`. The table has no metatable and records nothing. |
 
-A **secret key** (Retail 12.x; a unit name read in combat, say) never reaches LocaleKit. The client refuses a secret used as a table key at the index itself, before the table's `__index` runs, even on a table that has one: measured on Retail 12.1.0 b69933, `L[secretKey]` on a read table raised `attempted to index a table that cannot be indexed with secret keys` at the caller's line. So `L[secretKey]` raises the client's error at your line, and nothing is stored, recorded or reported. Check `issecretvalue` before indexing the table with runtime data, and do not index it with a secret. (`readMissing` still hands back a key `issecretvalue` reports as secret without storing or reporting it, for a host that lets the read reach `__index`; Retail 12.1 does not.)
+A **secret key** (Retail 12.x; a unit name read in combat, say) never reaches LocaleKit. The client refuses a secret used as a table key at the index itself, before the table's `__index` runs, even on a table that has one: measured on Retail 12.1.0 b69933, `L[secretKey]` on a read table raised `attempted to index a table that cannot be indexed with secret keys` at the caller's line. So `L[secretKey]` raises the client's error at your line, and nothing is stored, recorded or reported. Check `issecretvalue` before indexing the table with runtime data, and do not index it with a secret. Because the client refuses first, the read table's `__index` asks `issecretvalue` nothing (revision 5 and later, core decision 19b); the client suite's secret-key test proves the refusal.
 
 Because the key is stored on the first read, each key is reported once per session and costs a plain table read afterwards. A key that is not a string reads as `nil` and is not recorded. When a translation or default file defines a key after it was read as missing, the new text replaces the stored key and the key leaves `MissingKeys`.
 
@@ -177,7 +177,7 @@ Raised at the caller's line:
 
 On Retail 12.x the client hands tainted code secret values that raise when compared, tested as a boolean or used as table keys, and formatting one produces a secret result. `Format` asks `issecretvalue` about the template and every argument before formatting and refuses a secret one at the caller, so a secret never becomes part of a translated message by accident and `string.gsub` never runs over a secret template (a secret string from the host passed as the template, say). A read table cannot produce a secret template: the client already refuses `L[secretKey]` at the index (see [Missing keys](#missing-keys)).
 
-The other methods ask `issecretvalue` about each argument before comparing it, testing it or using it as a table key, each of which raises for a secret: `NewLocale`'s `addonName`, `locale` and `options.isDefault`, `GetLocale`'s `addonName`, `options.missing` and `options.maxMissingKeys`, `MissingKeys`' `addonName` and `SetLocaleOverride`'s `locale`. A secret one is refused at the caller with `LocaleKit:<Method> <argument> must not be a secret value` (`LocaleKit:NewLocale addonName must not be a secret value`, `LocaleKit:GetLocale missing must not be a secret value`; a secret `maxMissingKeys` gets the limit's own message, see [Limits](#limits)), and the call changes nothing. `issecretvalue` is looked up at every call; without it nothing is secret. See [`docs/EMBEDDING.md`](../../../docs/EMBEDDING.md#secret-values-retail-12x).
+The other methods ask `issecretvalue` about each argument before comparing it, testing it or using it as a table key, each of which raises for a secret: `NewLocale`'s `addonName`, `locale` and `options.isDefault`, `GetLocale`'s `addonName`, `options.missing` and `options.maxMissingKeys`, `MissingKeys`' `addonName` and `SetLocaleOverride`'s `locale`. A secret one is refused at the caller with `LocaleKit:<Method> <argument> must not be a secret value` (`LocaleKit:NewLocale addonName must not be a secret value`, `LocaleKit:GetLocale missing must not be a secret value`; a secret `maxMissingKeys` gets the limit's own message, see [Limits](#limits)), and the call changes nothing. `issecretvalue` is resolved once when LocaleKit loads (the client defines it before any addon runs); when it was absent then, it is looked up again at every call, so a probe installed later is still honoured. Without it nothing is secret. See [`docs/EMBEDDING.md`](../../../docs/EMBEDDING.md#secret-values-retail-12x).
 
 ## `LocaleKit:SetLocaleOverride(locale?)`
 

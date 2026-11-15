@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.7 — 2026-11-15
+
+- Performance: `NewLocale` for a locale the client does not need, the call nearly every translation file makes, answers before its full checks. With no options it asks `issecretvalue` about the addon name and the locale, then finds the addon's record and the locale among the client codes; when both are found and the locale is not the addon's, it returns `nil`. Everything else takes the full path, with every message and error level unchanged. Host benchmark (`python3 -m tooling.bench.run --workload locale`): `unneeded-locale` 190 ns → 104 ns, from 4.02× to 2.07× AceLocale-3.0's in the same run (2026-11-15, a machine that was not idle); `lookup` stays at parity and nothing allocates.
+- The secret probe follows the rule every Kit follows: `issecretvalue` is resolved once when the file loads, and looked up again on each call only when it was absent then, so a probe installed later is still honoured.
+- Core decision 19b: a read of an undefined key asks `issecretvalue` nothing. The client refuses a secret key at the index, before `__index` runs (measured on Retail 12.1.0 b69933), so `L[secretKey]` raises at the caller's line and never reaches LocaleKit; the client suite's secret-key test proves it (`EXPECTED.md` says so). `docs/API.md` (*Host facilities*, *Missing keys*, *Secret values*) and `docs/INTERNALS.md` follow.
+- Implementation revision 5. No state changed: an upgrade over revision 4 replaces the methods and keeps every read table, mode, limit, missing key, proxy and the override.
+- Specs: 119 → 124. `FastPaths_spec.lua`: the unneeded-locale fast path, its refusals at the caller, the probe asked first, and the fast path after an in-place upgrade. `SecretValues_spec.lua`: the probe resolved at load is kept; the defensive read-table spec is replaced by one that pins that a read asks the probe nothing.
+
 ## 0.1.6 — 2026-11-15
 
 - Fixed: on Retail 12.x a secret `addonName` (`NewLocale`, `GetLocale`, `MissingKeys`), `locale` (`NewLocale`, `SetLocaleOverride`), `options.isDefault` or `options.missing` raised inside LocaleKit instead of being refused at the caller's line. LocaleKit compared each with a value of its own type (`addonName == ""`, `flag == true`) or used it as a table key (`CLIENT_LOCALE_CODES[locale]`, `MISSING_MODES[requested]`) before asking `issecretvalue`, and a secret compared that way or used as a key raises (measured on Retail 12.1.0 b69933). Every argument is now asked about first and a secret one is refused with `LocaleKit:<Method> <argument> must not be a secret value` (for example `LocaleKit:NewLocale addonName must not be a secret value`); the call changes nothing. `GetLocale`'s `options.maxMissingKeys` already was. The probe is looked up at call time; without it nothing is secret. `docs/API.md` documents the refusals under *Secret values*, *Host facilities* and *Error behaviour*.
@@ -16,7 +24,7 @@
 
 ## 0.1.4 — 2026-09-25
 
-- Performance. Registering an addon, skipping a locale the client does not need and the first read of a missing key cost less, and an addon's record takes 376 bytes instead of 696 (plus 56 for an empty missing-key set it no longer creates up front). Measured with the host benchmark (`python3 -m tooling.bench.run --workload locale --rounds 3`, before and after this change, median ns per operation with AceLocale-3.0 measured in the same run; other agents' benchmarks and specs ran on the machine at the same time, load average about 2.5 before and 3 after, so compare the ratios and the allocation, which is deterministic):
+- Performance. Registering an addon, skipping a locale the client does not need and the first read of a missing key cost less, and an addon's record takes 376 bytes instead of 696 (plus 56 for an empty missing-key set it no longer creates up front). Measured with the host benchmark (`python3 -m tooling.bench.run --workload locale --rounds 3`, before and after this change, median ns per operation with AceLocale-3.0 measured in the same run; other benchmarks and specs ran on the machine at the same time, load average about 2.5 before and 3 after, so compare the ratios and the allocation, which is deterministic):
 
   | Case | Before | After | AceLocale (before / after) | Ratio before → after | Allocated before → after (AceLocale) |
   |---|---:|---:|---:|---|---|

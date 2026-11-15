@@ -54,7 +54,7 @@ A proxy is an empty table per call. Nothing is ever stored in it, so `__newindex
 
 `GetLocale` sets `reportMetatable` or `silentMetatable` on `strings` when it fixes the mode (`"raw"` sets none). Their `__index` functions, `readMissingReported` and `readMissingSilently`, both call `readMissing`, which stores the key as its own value (a plain assignment, raw for the same reason), adds it to `missing`, and reports it in `"report"` mode. The store is what makes the report happen once and later reads plain table reads. A write that defines a missing key removes it from `missing`.
 
-A key `issecretvalue` reports as secret is returned before any of this, because storing it or concatenating it into the report would raise. On Retail 12.1.0 b69933 the branch is not reached: the client refuses a secret key at the index, before `__index` runs, so `L[secretKey]` raises at the caller. It stays for a host that lets such a read through.
+`readMissing` asks `issecretvalue` nothing (revision 5 and later, core decision 19b). The client refuses a secret key at the index, before `__index` runs (measured on Retail 12.1.0 b69933), so `L[secretKey]` raises at the caller and a secret never gets here; the client suite's secret-key test is the proof. Revision 4 and earlier kept a defensive check for a host that lets such a read through.
 
 Past the record's `maxMissingKeys` (default `MAX_MISSING_KEYS`, 1024; never for the `unbounded` sentinel) `readMissing` returns the key without storing it, so `__index` runs on every read of such a key; that costs a call but no allocation, and it bounds the table's growth.
 
@@ -80,6 +80,8 @@ The error-level spec pins every one of these.
 The upgrade specs load the same source a second time with `IMPLEMENTATION_REVISION` raised to the shipped revision plus one and check that read tables, modes, missing keys, older proxies and the override survive. A further spec loads the source as revision 1 and then the working file through `require`, the upgrade a client meets when an addon ships the previous release.
 
 Revision 3 changes no state field. It builds records in layout 2 and reads layout-1 records unchanged (see [Addon records](#addon-records)); the spec `FastPaths_spec.lua` turns a record into layout 1 before an upgrade and checks recording, the cap report, clearing and the limit comparison.
+
+Revision 5 changes no state field. `NewLocale` gains a fast path in front of its checks: with no options, it asks the probe about `addonName` and `locale`, then reads `addons[addonName]` and `CLIENT_LOCALE_CODES[locale]`; when both hit and the locale is not the record's, it returns `nil`. `addons` holds only validated non-empty names and `CLIENT_LOCALE_CODES` only valid codes, so the two hits prove what the type checks prove, and every other call takes the full path with its messages. The probe is resolved once at load (`loadedSecretProbe`); `readSecretProbe` looks the global up per call only when it was absent then, so a probe installed after load is still honoured.
 
 Revision 4 changes no state field either. It asks `issecretvalue` about every argument before it is compared, tested or used as a key (`refuseSecret`), so a secret is refused at the caller's line instead of raising inside LocaleKit; a spec in `Bootstrap_spec.lua` loads revision 3, upgrades it to the working file and checks that the facade the older copy published refuses a secret `addonName`.
 

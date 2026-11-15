@@ -22,10 +22,10 @@ The shared fixture does not stub `GetLocale`, so `support/LocaleKitTestEnv.lua` 
 | `MissingKeys_spec.lua` | the coverage report |
 | `Limits_spec.lua` | `options.maxMissingKeys`, `LocaleKit.UNBOUNDED`, invalid values |
 | `Format_spec.lua` | specifiers, indexes, template and argument errors |
-| `SecretValues_spec.lua` | secret templates, arguments and keys; secret `addonName`, `locale`, `isDefault` and `missing` refused at the caller |
+| `SecretValues_spec.lua` | secret templates and arguments; secret `addonName`, `locale`, `isDefault` and `missing` refused at the caller; the probe resolved at load kept, a probe installed after load honoured; a read-table read asks the probe nothing (the client refuses a secret key first) |
 | `ClientLocale_spec.lua` | `enGB` folding, a missing `GetLocale`, the override |
 | `Allocation_spec.lua` | allocation guards |
-| `FastPaths_spec.lua` | revision 3 fast paths: known and pattern-checked locale codes, inline proxy checks, the eight-field record (layout 2), layout-1 records after an upgrade, allocation of an unneeded locale and a new addon |
+| `FastPaths_spec.lua` | revision 3 fast paths: known and pattern-checked locale codes, inline proxy checks, the eight-field record (layout 2), layout-1 records after an upgrade, allocation of an unneeded locale and a new addon; revision 5's unneeded-locale fast path, its refusals and its answer after an upgrade |
 | `ErrorLevels_spec.lua` | errors reported at the caller's line |
 | `Bootstrap_spec.lua` | publication, duplicate loads, upgrades |
 | `Manifest_spec.lua` | manifest and runtime metadata |

@@ -8,10 +8,11 @@
 -- but never defined are available as a coverage report. `Format` understands
 -- indexed specifiers (`%2$s`) so a translator can reorder arguments.
 --
--- LocaleKit is pure Lua apart from three optional host facilities, all read at
--- call time: `GetLocale` (without it the client locale is `enUS`),
--- `geterrorhandler` (without it reports are printed) and `issecretvalue`
--- (without it nothing is secret).
+-- LocaleKit is pure Lua apart from three optional host facilities:
+-- `GetLocale` (read at call time; without it the client locale is `enUS`),
+-- `geterrorhandler` (read at call time; without it reports are printed) and
+-- `issecretvalue` (resolved once at load, and looked up at call time only
+-- when it was absent then; without it nothing is secret).
 --
 -- Contents
 -- --------
@@ -36,7 +37,7 @@
 
 local PACKAGE_NAME = "localeKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 4
+local IMPLEMENTATION_REVISION = 5
 local REQUIRED_REGISTRY_API = 2
 local STATE_SCHEMA = 1
 
@@ -275,6 +276,32 @@ local REPORT_METATABLE = rawget(state, "reportMetatable")
 local SILENT_METATABLE = rawget(state, "silentMetatable")
 local UNBOUNDED = rawget(state, "unbounded")
 
+-- The client defines `issecretvalue` before any addon loads, so it is resolved
+-- once here. When it is absent at load, `readSecretProbe` looks the global up
+-- on every call instead, so a probe installed later is still honoured.
+-- issecretvalue is a World of Warcraft client API reachable only through the global table.
+-- selene: allow(global_usage)
+local loadedSecretProbe = rawget(_G, "issecretvalue")
+if type(loadedSecretProbe) ~= "function" then
+  loadedSecretProbe = nil
+end
+
+---The secret probe: the one resolved at load, else the global's current value
+---when it is a function, else `nil` (nothing is secret).
+---@return (fun(value: any): boolean)|nil
+local function readSecretProbe()
+  if loadedSecretProbe ~= nil then
+    return loadedSecretProbe
+  end
+  -- issecretvalue is a World of Warcraft client API reachable only through the global table.
+  -- selene: allow(global_usage)
+  local probe = rawget(_G, "issecretvalue")
+  if type(probe) == "function" then
+    return probe
+  end
+  return nil
+end
+
 -- Argument checks ------------------------------------------------------------
 --
 -- Argument validation raises with an explicit stack level so the reported
@@ -285,16 +312,14 @@ local UNBOUNDED = rawget(state, "unbounded")
 ---Refuse a value the client reports as secret (Retail 12.x). A secret
 ---compared with a value of its own type, tested as a boolean or used as a
 ---table key raises (measured on Retail 12.1.0 b69933), which would report the
----failure inside LocaleKit; asking first reports it at the caller's line. The
----probe is looked up at call time; without it nothing is secret.
+---failure inside LocaleKit; asking first reports it at the caller's line.
+---Without a probe nothing is secret.
 ---@param value any
 ---@param label string argument description, used in the argument error
 ---@param level integer stack level the failure is reported at
 local function refuseSecret(value, label, level)
-  -- issecretvalue is a World of Warcraft client API reachable only through the global table.
-  -- selene: allow(global_usage)
-  local isSecretValue = rawget(_G, "issecretvalue")
-  if type(isSecretValue) == "function" and isSecretValue(value) == true then
+  local isSecretValue = loadedSecretProbe or readSecretProbe()
+  if isSecretValue ~= nil and isSecretValue(value) == true then
     error(label .. " must not be a secret value", level)
   end
 end
@@ -362,17 +387,15 @@ local function isPositiveInteger(value)
 end
 
 ---Refuse anything but a positive integer or `UNBOUNDED`. A secret raises on
----comparison, so it is refused before any is made; the probe is looked up at
----call time, and without it nothing is secret.
+---comparison, so it is refused before any is made; without a probe nothing
+---is secret.
 ---@param value any
 ---@param label string argument description, used in the argument error
 ---@param level integer stack level the failure is reported at
 local function validateLimit(value, label, level)
   -- The secret check runs before the value meets the sentinel or a number.
-  -- issecretvalue is a World of Warcraft client API reachable only through the global table.
-  -- selene: allow(global_usage)
-  local isSecretValue = rawget(_G, "issecretvalue")
-  local secret = type(isSecretValue) == "function" and isSecretValue(value) == true
+  local isSecretValue = loadedSecretProbe or readSecretProbe()
+  local secret = isSecretValue ~= nil and isSecretValue(value) == true
   if not secret and rawequal(value, UNBOUNDED) then
     return
   end
@@ -626,19 +649,10 @@ end
 ---@param reports boolean
 ---@return string|nil
 local function readMissing(strings, key, reports)
-  -- A secret (Retail 12.x) raises when used as a table key or concatenated
-  -- into the report, so it is handed back untouched: not stored, recorded
-  -- or reported. Retail 12.1.0 b69933 never gets here with one: the client
-  -- refuses a secret key at the index, before `__index` runs, so
-  -- `L[secretKey]` raises at the caller. The check stays for a host that
-  -- lets the read through. The probe is looked up at call time; without it
-  -- nothing is secret.
-  -- issecretvalue is a World of Warcraft client API reachable only through the global table.
-  -- selene: allow(global_usage)
-  local isSecretValue = rawget(_G, "issecretvalue")
-  if type(isSecretValue) == "function" and isSecretValue(key) then
-    return key
-  end
+  -- No secret check here (core decision 19b): the client refuses a secret
+  -- key at the index, before `__index` runs (measured on Retail 12.1.0
+  -- b69933), so `L[secretKey]` raises at the caller and never gets here. The
+  -- client suite asserts that refusal.
   if type(key) ~= "string" then
     return nil
   end
@@ -811,15 +825,31 @@ end
 ---@param options LocaleKit.NewLocaleOptions?
 ---@return LocaleKit.WriteProxy? proxy
 local function packageNewLocale(_, addonName, locale, options)
+  -- Fast path, for the call nearly every translation file makes on a client
+  -- that does not need its locale: no options, an addon already registered,
+  -- a valid locale code that is not the addon's. The probe runs before either
+  -- string is used as a key. `addons` holds only validated non-empty names
+  -- and `CLIENT_LOCALE_CODES` only valid codes, so the two hits prove what
+  -- the type checks below would; anything else takes the full path.
+  if type(options) == "nil" then
+    local isSecretValue = loadedSecretProbe or readSecretProbe()
+    if
+      isSecretValue == nil
+      or (isSecretValue(addonName) ~= true and isSecretValue(locale) ~= true)
+    then
+      local known = addons[addonName]
+      if known ~= nil and CLIENT_LOCALE_CODES[locale] == true and locale ~= known.locale then
+        return nil
+      end
+    end
+  end
   -- `validateNonEmptyString` and the common case of `validateLocaleCode`,
   -- inline: a translation file for every locale an addon ships calls this, and
   -- on most clients it only learns that the locale is not needed. The secret
   -- checks (`refuseSecret`, inline: one probe lookup for both) come first,
   -- before either string is compared or used as a key.
-  -- issecretvalue is a World of Warcraft client API reachable only through the global table.
-  -- selene: allow(global_usage)
-  local isSecretValue = rawget(_G, "issecretvalue")
-  if type(isSecretValue) == "function" then
+  local isSecretValue = loadedSecretProbe or readSecretProbe()
+  if isSecretValue ~= nil then
     if isSecretValue(addonName) == true then
       error("LocaleKit:NewLocale addonName must not be a secret value", 2)
     end
@@ -1011,10 +1041,8 @@ local function packageFormat(_, template, ...)
   end
 
   local count = select("#", ...)
-  -- issecretvalue is a World of Warcraft client API reachable only through the global table.
-  -- selene: allow(global_usage)
-  local isSecretValue = rawget(_G, "issecretvalue")
-  if type(isSecretValue) == "function" then
+  local isSecretValue = loadedSecretProbe or readSecretProbe()
+  if isSecretValue ~= nil then
     -- A secret template (a host string, say) must never reach
     -- `string.gsub`. A read table cannot supply one: the client refuses
     -- a secret key at the index, before `__index` runs.

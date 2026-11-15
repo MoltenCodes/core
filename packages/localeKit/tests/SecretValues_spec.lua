@@ -58,29 +58,44 @@ describe("LocaleKit:Format and secret values", function()
   end)
 
   it(
-    "hands a secret key back without storing or reporting it on a host that lets the read reach __index",
+    "asks no probe about a key read from a read table (the client refuses a secret key first)",
     function()
       local default = LocaleKit:NewLocale("MyAddon", "enUS", { isDefault = true })
       default["Hello"] = true
       local L = LocaleKit:GetLocale("MyAddon")
       TestEnv.TakeReportedErrors()
-      TestEnv.InstallSecretProbe("Secret Name")
+      local asked = 0
+      -- issecretvalue is a World of Warcraft client global; the fixture owns and clears it.
+      -- selene: allow(global_usage)
+      rawset(_G, "issecretvalue", function()
+        asked = asked + 1
+        return false
+      end)
 
-      -- Retail 12.1.0 b69933 refuses a secret key at the index, before
-      -- __index runs; this stub host lets the read through, which is the
-      -- defensive branch of readMissing.
-      assert.are.equal("Secret Name", L["Secret Name"])
-      assert.are.equal("Secret Name", L["Secret Name"])
-      assert.is_nil(rawget(L, "Secret Name"))
-      assert.are.equal(0, #TestEnv.TakeReportedErrors())
-      assert.are.same({}, LocaleKit:MissingKeys("MyAddon"))
-
-      -- Ordinary keys keep the usual behaviour while the probe exists.
-      assert.are.equal("Hello", L.Hello)
+      -- Retail 12.1.0 b69933 refuses a secret key at the index, before __index
+      -- runs (the client suite's secret-key test), so readMissing needs no check.
       assert.are.equal("Other", L.Other)
+      assert.are.equal("Hello", L.Hello)
+      assert.are.equal(0, asked)
       assert.are.equal(1, #TestEnv.TakeReportedErrors())
     end
   )
+
+  it("keeps the probe it resolved at load when the global changes later", function()
+    -- A fresh load with the probe present: Reset clears the published state.
+    TestEnv.Reset()
+    TestEnv.InstallSecretProbe("x")
+    package.loaded["Registry"] = nil
+    package.loaded["LocaleKit"] = nil
+    require("Registry")
+    local loaded = require("LocaleKit")
+    -- issecretvalue is a World of Warcraft client global; the fixture owns and clears it.
+    -- selene: allow(global_usage)
+    rawset(_G, "issecretvalue", nil)
+    TestEnv.expectErrorContaining("argument 1 must not be a secret value", function()
+      loaded:Format("%s", "x")
+    end)
+  end)
 end)
 
 describe("LocaleKit arguments and secret values", function()

@@ -120,7 +120,9 @@ table that has one. `strings[secretKey]` on a read table therefore raises the
 client's error, `attempted to index a table that cannot be indexed with
 secret keys`, at the line of the index in this file, and LocaleKit never sees
 the key: nothing is stored, recorded in `MissingKeys` or reported.
-`docs/API.md` ("Missing keys") documents this. Should a later client let the
+`docs/API.md` ("Missing keys") documents this. Since LocaleKit 0.1.7 the
+read table's `__index` has no secret check of its own (core decision 19b): this
+test is the proof that it needs none. Should a later client let the
 read reach `__index`, the test fails at `readSucceeded`; send the whole line
 and the log, because the documentation would then need to change.
 
