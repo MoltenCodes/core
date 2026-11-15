@@ -1268,7 +1268,8 @@ package M below.
       data-package kinds stay unbuilt until a consumer needs them.
       Done 2026-09-24 (clientKit 0.2.0, revision 2; revised in 0.2.1, revision 3).
 - [ ] Deferred to the user-interface phase: **timerKit** engine-driven
-      pausable ticker (W15, needs an animation host), **frameKit** (W14,
+      pausable ticker (W15, needs an animation host; built in package M on
+      `C_Timer` handles instead, see "timerKit pausable timers"), **frameKit** (W14,
       folded into widgetKit's anchors), Registry deprecation warnings (W13).
 
 #### Package J — brokerKit
@@ -1907,6 +1908,48 @@ its code. Order:
    is written and has not been run in a client. Overlays given back by
    `Unregister` are kept on a free list of the state rather than a PoolKit
    pool, so the dependency stays registry only.
+
+**timerKit pausable timers (W15)** — an addition to facade `TimerKit`
+
+1. Package `timerKit`, facade `TimerKit`, API generation 1 (additive),
+   version 0.8.0, implementation revision 12.
+2. Purpose: pause a running timer and resume it later with what was left
+   of its delay, what worklist item W15 asked of an "engine-driven
+   pausable ticker". Recorded deviation: it is built on `C_Timer` handles,
+   not on an animation host. `Pause` cancels the host handle and keeps the
+   remainder; `Resume` asks the host for a fresh one-shot of that
+   remainder, and a repeating timer returns to its interval after that
+   first fire. TimerKit therefore stays registry only, with no frame and
+   no per-frame work. Non-goals: frame-accurate ticks, per-frame updates
+   (BarKit draws timer bars), pausing a whole scope.
+3. Dependencies: unchanged, registry API 2. `GetTimePreciseSec` measures
+   the remainder; without it a paused timer keeps its full delay.
+4. Surface: `timer:Pause()` → `true`, or `false` unless it was running;
+   `timer:Resume()` → `true`, or `false` unless it was paused, raising at
+   the caller in a closed scope; `timer:IsPaused()`. `GetState` may answer
+   the new state `"paused"`; `GetRemaining` answers the kept remainder
+   while paused, `GetDeadline` `nil`, `IsPending` `false`. `Start` on a
+   paused timer answers `false`; `Cancel`, `Restart`, `CancelAll` and
+   `Close` treat a paused timer as running.
+5. Ownership: a paused timer stays in its scope's active set, so
+   `GetActiveCount` counts it and `CancelAll` and `Close` cancel it. Pausing
+   unbinds the host callback first, so a stale callback never fires a paused
+   timer.
+6. Performance and memory: `Pause` is one host `Cancel`, `Resume` one host
+   constructor and one closure. The remainder is kept in the timer's
+   existing `_deadline` field, so pausing adds no field and never rehashes
+   the timer. Nothing new on the start, cancel or fire paths of a timer
+   that is never paused.
+7. Tests: pause and resume of one-shot and repeating timers with exact
+   remainders, a repeating timer back on its interval, a stale callback of
+   the paused handle ignored, pause without a clock, the methods' `false`
+   answers, cancel, restart, `CancelAll` and `Close` of a paused timer,
+   resume in a closed scope, receiver errors at the caller, an upgrade from
+   revision 11 keeping timers and a timer paused after it.
+8. Docs: API.md (pausing, the state table, the methods), INTERNALS.md (the
+   `_deadline` field while paused, the resume closure), CHANGELOG, README,
+   tests/README; Package I's deferred item and package M's checklist.
+9. Status: recorded 2026-11-15 under core decision 15; code follows.
 
 #### Package N — bridgeKit, migrating from Ace3
 
