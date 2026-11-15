@@ -1011,6 +1011,37 @@ secretTest(
   end
 )
 
+secretTest(
+  "NewLocale and GetLocale refuse a genuine secret addonName, locale or missing mode at LocaleKitSuite.lua's calling line and register nothing",
+  function(ctx)
+    -- Each of these was compared or used as a table key before LocaleKit
+    -- revision 4 asked issecretvalue, which raised inside LocaleKit.
+    local probeName = freshAddonName("SecretArgument")
+    local secretName = makeSecret(ctx, probeName)
+    local lineHolder = { start = 0 }
+    expectErrorAtNextLine(ctx, function()
+      lineHolder.start = currentLine()
+      LocaleKit:NewLocale(secretName, FALLBACK_LOCALE, { isDefault = true })
+    end, lineHolder, "LocaleKit:NewLocale addonName must not be a secret value")
+
+    local secretLocale = makeSecret(ctx, FALLBACK_LOCALE)
+    expectErrorAtNextLine(ctx, function()
+      lineHolder.start = currentLine()
+      LocaleKit:NewLocale(probeName, secretLocale, { isDefault = true })
+    end, lineHolder, "LocaleKit:NewLocale locale must not be a secret value")
+
+    local secretMode = makeSecret(ctx, "silent")
+    expectErrorAtNextLine(ctx, function()
+      lineHolder.start = currentLine()
+      LocaleKit:GetLocale(probeName, { missing = secretMode })
+    end, lineHolder, "LocaleKit:GetLocale missing must not be a secret value")
+
+    -- Nothing was registered under the probe's name.
+    local found = pcall(LocaleKit.GetLocale, LocaleKit, probeName)
+    ctx:Expect(found):ToBe(false)
+  end
+)
+
 --- The client's refusal of a secret key, measured on Retail 12.1.0 b69933. It
 --- is raised at the index itself, before the read table's `__index` runs.
 local SECRET_KEY_REFUSAL = "attempted to index a table that cannot be indexed with secret keys"

@@ -81,6 +81,8 @@ The upgrade specs load the same source a second time with `IMPLEMENTATION_REVISI
 
 Revision 3 changes no state field. It builds records in layout 2 and reads layout-1 records unchanged (see [Addon records](#addon-records)); the spec `FastPaths_spec.lua` turns a record into layout 1 before an upgrade and checks recording, the cap report, clearing and the limit comparison.
 
+Revision 4 changes no state field either. It asks `issecretvalue` about every argument before it is compared, tested or used as a key (`refuseSecret`), so a secret is refused at the caller's line instead of raising inside LocaleKit; a spec in `Bootstrap_spec.lua` loads revision 3, upgrades it to the working file and checks that the facade the older copy published refuses a secret `addonName`.
+
 ## Locale codes
 
 `CLIENT_LOCALE_CODES` lists the twelve codes clients report. `NewLocale`, `SetLocaleOverride` and the client-locale read accept one of them without running the `^%l%l%u%u$` pattern, and check any other string against the pattern as before, so the set of accepted codes is unchanged. The type is checked before the table is indexed.

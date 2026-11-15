@@ -45,6 +45,21 @@ Non-goals: plural rules, grammatical gender, runtime locale switching, and shipp
 
 See [`docs/API.md`](docs/API.md) for the complete contract and [`docs/INTERNALS.md`](docs/INTERNALS.md) for the layout.
 
+### Moving from AceLocale-3.0
+
+| AceLocale-3.0 | LocaleKit |
+|---|---|
+| `LibStub("AceLocale-3.0"):NewLocale("MyAddon", "enUS", true)` | `LocaleKit:NewLocale("MyAddon", "enUS", { isDefault = true })` |
+| `NewLocale("MyAddon", "deDE")`, `nil` when the client does not need it | `LocaleKit:NewLocale("MyAddon", "deDE")`, the same `nil` |
+| `NewLocale(..., true, true)`: no warning for a missing key | `LocaleKit:GetLocale("MyAddon", { missing = "silent" })`: the mode belongs to the first `GetLocale`, not to the first `NewLocale` |
+| `NewLocale(..., true, "raw")`: `nil` for a missing key | `LocaleKit:GetLocale("MyAddon", { missing = "raw" })` |
+| `GetLocale("MyAddon")` | `LocaleKit:GetLocale("MyAddon")` |
+| `GetLocale("MyAddon", true)`: `nil` when nothing is registered | No equivalent: `GetLocale` raises, because a read table that is missing is a load-order mistake. |
+| `GAME_LOCALE = "deDE"` before the translation files load | `LocaleKit:SetLocaleOverride("deDE")` before the translation files load |
+| `string.format(L["%s has %d items"], name, count)` | `LocaleKit:Format(L["%s has %d items"], name, count)`, which also takes `%2$d` so a translation can reorder its arguments |
+
+[`docs/MIGRATING_FROM_ACE3.md`](../../docs/MIGRATING_FROM_ACE3.md#acelocale-30) walks through a whole addon.
+
 ## Embedding
 
 [`../../docs/EMBEDDING.md`](../../docs/EMBEDDING.md) is the addon author's guide:

@@ -2,7 +2,7 @@
 
 LocaleKit API generation **1** provides translations per addon and locale: write proxies for translation files, one read table per addon with a chosen missing-key behaviour, a report of the keys read but never defined, and a formatter with indexed specifiers.
 
-Implementation revision: **3**.
+Implementation revision: **4**.
 
 ## Loading
 
@@ -19,7 +19,7 @@ Portable WoW code resolves the package through Registry:
 local LocaleKit = MoltenCodes.Registries[2]:Get("localeKit", 1)
 ```
 
-LocaleKit does not rely on `require()` at runtime.
+LocaleKit does not rely on `require()` at runtime. Loaded without Registry API 2, `LocaleKit.lua` raises `MoltenCodes LocaleKit requires Registry API 2 to be loaded first`; over a Registry whose facade has no `Bootstrap`, `MoltenCodes LocaleKit requires a valid Registry API 2 facade`. A shared package state that fails validation raises `MoltenCodes LocaleKit package state is corrupted or incomplete` instead of being overwritten.
 
 ### Host facilities
 
@@ -29,7 +29,7 @@ LocaleKit reads three host functions, each at call time rather than at load, and
 |---|---|---|
 | `GetLocale` | `NewLocale`, to learn the client locale | The client locale is `enUS`. An answer that is not a locale code is treated the same way. |
 | `geterrorhandler` | the `"report"` missing-key mode | The report is passed to `print`. |
-| `issecretvalue` | `Format`, `GetLocale`'s `options.maxMissingKeys`, and a read of an undefined key in `"report"` or `"silent"` mode | Nothing is treated as secret. |
+| `issecretvalue` | every argument check (`addonName`, `locale`, `isDefault`, `missing`, `maxMissingKeys`), `Format`, and a read of an undefined key in `"report"` or `"silent"` mode | Nothing is treated as secret. |
 
 ## Public surface
 
@@ -175,7 +175,9 @@ Raised at the caller's line:
 
 ### Secret values
 
-On Retail 12.x the client hands tainted code secret values that raise when compared, tested as a boolean or used as table keys, and formatting one produces a secret result. `Format` asks `issecretvalue` about the template and every argument before formatting and refuses a secret one at the caller, so a secret never becomes part of a translated message by accident and `string.gsub` never runs over a secret template (a secret string from the host passed as the template, say). A read table cannot produce a secret template: the client already refuses `L[secretKey]` at the index (see [Missing keys](#missing-keys)). `issecretvalue` is looked up at every call; without it nothing is secret. See [`docs/EMBEDDING.md`](../../../docs/EMBEDDING.md#secret-values-retail-12x).
+On Retail 12.x the client hands tainted code secret values that raise when compared, tested as a boolean or used as table keys, and formatting one produces a secret result. `Format` asks `issecretvalue` about the template and every argument before formatting and refuses a secret one at the caller, so a secret never becomes part of a translated message by accident and `string.gsub` never runs over a secret template (a secret string from the host passed as the template, say). A read table cannot produce a secret template: the client already refuses `L[secretKey]` at the index (see [Missing keys](#missing-keys)).
+
+The other methods ask `issecretvalue` about each argument before comparing it, testing it or using it as a table key, each of which raises for a secret: `NewLocale`'s `addonName`, `locale` and `options.isDefault`, `GetLocale`'s `addonName`, `options.missing` and `options.maxMissingKeys`, `MissingKeys`' `addonName` and `SetLocaleOverride`'s `locale`. A secret one is refused at the caller with `LocaleKit:<Method> <argument> must not be a secret value` (`LocaleKit:NewLocale addonName must not be a secret value`, `LocaleKit:GetLocale missing must not be a secret value`; a secret `maxMissingKeys` gets the limit's own message, see [Limits](#limits)), and the call changes nothing. `issecretvalue` is looked up at every call; without it nothing is secret. See [`docs/EMBEDDING.md`](../../../docs/EMBEDDING.md#secret-values-retail-12x).
 
 ## `LocaleKit:SetLocaleOverride(locale?)`
 
@@ -210,6 +212,18 @@ LocaleKit has no package-wide limit and no other retained collection that grows 
 ## Error behaviour
 
 Argument failures report the line that called the public method, and write-proxy failures report the assignment line, never a line inside LocaleKit. Messages name the method (`LocaleKit:NewLocale`, `LocaleKit:GetLocale`, `LocaleKit:Format`) or `LocaleKit translation` for a proxy write. Option tables refuse unknown fields and name the alphabetically first one; a key that is not a string is named by its type (`<number key>`), so no `__tostring` runs.
+
+Besides the messages given in the sections above (`Format`, the default locale, the missing mode and the limit), these are raised:
+
+| Raised by | Messages |
+|---|---|
+| `NewLocale`, `GetLocale`, `MissingKeys` | `LocaleKit:<Method> addonName must be a non-empty string` |
+| `NewLocale`, `SetLocaleOverride` | `LocaleKit:<Method> locale must be a client locale code such as "deDE"` |
+| `NewLocale`, `GetLocale` | `LocaleKit:<Method> options must be a table`; `LocaleKit:<Method> options contains unknown field "<field>"` |
+| `NewLocale` | `LocaleKit:NewLocale isDefault must be a boolean`; `LocaleKit:NewLocale MyAddon already has default locale enUS` |
+| `GetLocale` | `LocaleKit:GetLocale missing must be "report", "silent" or "raw"`; `LocaleKit:GetLocale found no locale registered for MyAddon; load its translation files first`; the mode and limit refusals under [The mode is fixed by the first call](#the-mode-is-fixed-by-the-first-call) and [Limits](#limits) |
+| `NewLocale`, `GetLocale`, `MissingKeys`, `SetLocaleOverride` | `LocaleKit:<Method> <argument> must not be a secret value`, see [Secret values](#secret-values) |
+| A proxy write | `LocaleKit translation key must be a non-empty string`; `LocaleKit translation "<key>" must be a string or true`; `LocaleKit translation target is not a proxy returned by LocaleKit:NewLocale` |
 
 ## Performance
 

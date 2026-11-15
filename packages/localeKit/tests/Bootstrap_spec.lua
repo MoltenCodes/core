@@ -131,6 +131,37 @@ describe("LocaleKit bootstrap", function()
     assert.are.equal("Goodbye", L.Goodbye)
   end)
 
+  it(
+    "upgrades a revision 3 package in place to a working file that refuses secret arguments",
+    function()
+      local previousRevision = 3
+      local workingRevision = TestEnv.NewPackage().REVISION
+      TestEnv.Reset()
+      TestEnv.InstallWowApi()
+      TestEnv.SetClientLocale("deDE")
+      require("Registry")
+      local previous = TestEnv.LoadRevision(previousRevision)
+      assert.are.equal(previousRevision, previous.REVISION)
+      previous:NewLocale("MyAddon", "deDE")["Hello"] = "Hallo"
+      local L = previous:GetLocale("MyAddon")
+      local state = previous._state
+
+      local current = require("LocaleKit")
+      assert.are.equal(previous, current)
+      assert.are.equal(workingRevision, current.REVISION)
+      assert.are.equal(state, current._state)
+      assert.are.equal(L, current:GetLocale("MyAddon"))
+      assert.are.equal("Hallo", L.Hello)
+      TestEnv.InstallSecretProbe("MyAddon")
+      TestEnv.expectErrorContaining(
+        "LocaleKit:GetLocale addonName must not be a secret value",
+        function()
+          current:GetLocale("MyAddon")
+        end
+      )
+    end
+  )
+
   it("requires Registry", function()
     TestEnv.Reset()
     TestEnv.InstallWowApi()

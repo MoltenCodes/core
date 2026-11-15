@@ -125,15 +125,18 @@ describe("LocaleKit limits", function()
   end)
 
   it("asks the secret probe before comparing maxMissingKeys with UNBOUNDED", function()
-    local asked = {}
+    -- The probe is also asked about `addonName` and the absent `missing`
+    -- mode; the limit is the last value it sees.
+    local asked, askedCount = {}, 0
     -- selene: allow(global_usage)
     rawset(_G, "issecretvalue", function(value)
-      asked[#asked + 1] = value
+      askedCount = askedCount + 1
+      asked[askedCount] = value
       return false
     end)
     LocaleKit:GetLocale("MyAddon", { maxMissingKeys = LocaleKit.UNBOUNDED })
-    assert.are.equal(1, #asked)
-    assert.are.equal(LocaleKit.UNBOUNDED, asked[1])
+    assert.are.equal(3, askedCount)
+    assert.are.equal(LocaleKit.UNBOUNDED, asked[askedCount])
   end)
 
   it("refuses a secret maxMissingKeys at the caller", function()

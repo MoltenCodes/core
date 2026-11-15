@@ -36,7 +36,7 @@
 
 local PACKAGE_NAME = "localeKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 3
+local IMPLEMENTATION_REVISION = 4
 local REQUIRED_REGISTRY_API = 2
 local STATE_SCHEMA = 1
 
@@ -282,10 +282,28 @@ local UNBOUNDED = rawget(state, "unbounded")
 -- LocaleKit. `level` is always the value `error` needs *inside the function
 -- that receives it*, so every further hop towards `error` adds exactly one.
 
+---Refuse a value the client reports as secret (Retail 12.x). A secret
+---compared with a value of its own type, tested as a boolean or used as a
+---table key raises (measured on Retail 12.1.0 b69933), which would report the
+---failure inside LocaleKit; asking first reports it at the caller's line. The
+---probe is looked up at call time; without it nothing is secret.
+---@param value any
+---@param label string argument description, used in the argument error
+---@param level integer stack level the failure is reported at
+local function refuseSecret(value, label, level)
+  -- issecretvalue is a World of Warcraft client API reachable only through the global table.
+  -- selene: allow(global_usage)
+  local isSecretValue = rawget(_G, "issecretvalue")
+  if type(isSecretValue) == "function" and isSecretValue(value) == true then
+    error(label .. " must not be a secret value", level)
+  end
+end
+
 ---@param value any
 ---@param label string argument description, used in the argument error
 ---@param level integer stack level the failure is reported at
 local function validateNonEmptyString(value, label, level)
+  refuseSecret(value, label, level + 1)
   if type(value) ~= "string" or value == "" then
     error(label .. " must be a non-empty string", level)
   end
@@ -295,6 +313,7 @@ end
 ---@param label string argument description, used in the argument error
 ---@param level integer stack level the failure is reported at
 local function validateLocaleCode(value, label, level)
+  refuseSecret(value, label, level + 1)
   if type(value) ~= "string" then
     error(label .. ' must be a client locale code such as "deDE"', level)
   end
@@ -794,7 +813,20 @@ end
 local function packageNewLocale(_, addonName, locale, options)
   -- `validateNonEmptyString` and the common case of `validateLocaleCode`,
   -- inline: a translation file for every locale an addon ships calls this, and
-  -- on most clients it only learns that the locale is not needed.
+  -- on most clients it only learns that the locale is not needed. The secret
+  -- checks (`refuseSecret`, inline: one probe lookup for both) come first,
+  -- before either string is compared or used as a key.
+  -- issecretvalue is a World of Warcraft client API reachable only through the global table.
+  -- selene: allow(global_usage)
+  local isSecretValue = rawget(_G, "issecretvalue")
+  if type(isSecretValue) == "function" then
+    if isSecretValue(addonName) == true then
+      error("LocaleKit:NewLocale addonName must not be a secret value", 2)
+    end
+    if isSecretValue(locale) == true then
+      error("LocaleKit:NewLocale locale must not be a secret value", 2)
+    end
+  end
   if type(addonName) ~= "string" or addonName == "" then
     error("LocaleKit:NewLocale addonName must be a non-empty string", 2)
   end
@@ -805,6 +837,7 @@ local function packageNewLocale(_, addonName, locale, options)
   if type(options) ~= "nil" then
     validateOptionKeys(options, NEW_LOCALE_OPTION_KEYS, "LocaleKit:NewLocale", 3)
     local flag = rawget(options, "isDefault")
+    refuseSecret(flag, "LocaleKit:NewLocale isDefault", 3)
     if type(flag) ~= "nil" and type(flag) ~= "boolean" then
       error("LocaleKit:NewLocale isDefault must be a boolean", 2)
     end
@@ -867,6 +900,7 @@ local function packageGetLocale(_, addonName, options)
   if type(options) ~= "nil" then
     validateOptionKeys(options, GET_LOCALE_OPTION_KEYS, "LocaleKit:GetLocale", 3)
     requested = rawget(options, "missing")
+    refuseSecret(requested, "LocaleKit:GetLocale missing", 3)
     if type(requested) ~= "nil" and MISSING_MODES[requested] ~= true then
       error('LocaleKit:GetLocale missing must be "report", "silent" or "raw"', 2)
     end

@@ -56,11 +56,12 @@ MoltenCodes Test: PASS localeKit.allocation: repeating one indexed Format 10000 
 MoltenCodes Test: PASS localeKit.secrets: Format refuses a genuine secret argument at LocaleKitSuite.lua's calling line
 MoltenCodes Test: PASS localeKit.secrets: Format refuses a genuine secret template at LocaleKitSuite.lua's calling line before string.gsub sees it
 MoltenCodes Test: PASS localeKit.secrets: GetLocale refuses a genuine secret maxMissingKeys at LocaleKitSuite.lua's calling line and fixes neither the limit nor the mode
+MoltenCodes Test: PASS localeKit.secrets: NewLocale and GetLocale refuse a genuine secret addonName, locale or missing mode at LocaleKitSuite.lua's calling line and register nothing
 MoltenCodes Test: PASS localeKit.secrets: a read table indexed with a genuine secret key raises the client's refusal at LocaleKitSuite.lua's calling line, before __index runs, and stores, records and reports nothing
 MoltenCodes Test: SKIP localeKit.session: nothing LocaleKit holds survives /reload, and translation files register again -- a /reload ends the run; the Busted upgrade and bootstrap specs cover a fresh load
 MoltenCodes Test: SKIP localeKit.session: without the client's geterrorhandler a missing-key report is printed -- the client always has geterrorhandler, and replacing that global would taint it for Blizzard code
 MoltenCodes Test: SKIP localeKit.session: a newer LocaleKit embedded by another addon upgrades read tables, modes, missing keys and the override in place -- needs a second LocaleKit copy loaded by another addon; the Busted upgrade specs cover it
-MoltenCodes Test: localeKit: 29 passed, 0 failed, 3 skipped, 0 timed out (32 tests)
+MoltenCodes Test: localeKit: 30 passed, 0 failed, 3 skipped, 0 timed out (33 tests)
 MoltenCodes Test: results saved in MoltenCodesTestResults; /reload or log out to write them to disk.
 ```
 
@@ -101,7 +102,7 @@ argument itself), so it does not depend on the answer; the test records it.
 Retail 12.1.0 b69933 accepts positional specifiers (`%2$s %1$s` and
 `%3$.2f %1$s %2$05d` were measured), so on Retail 12.1 the test passes. A
 client whose `string.format` refuses all four prints this line instead, and
-the totals read `28 passed, 0 failed, 4 skipped`:
+the totals read `29 passed, 0 failed, 4 skipped`:
 
 ```text
 MoltenCodes Test: SKIP localeKit.format: Format gives the text the client's own string.format gives for fully indexed templates, where the client accepts them -- the client's string.format refuses indexed specifiers, so there is nothing to compare; LocaleKit:Format does not need them
@@ -125,13 +126,13 @@ and the log, because the documentation would then need to change.
 
 ### On a client without secret values
 
-The four `localeKit.secrets` tests need the client's `issecretvalue` and
+The five `localeKit.secrets` tests need the client's `issecretvalue` and
 `secretwrap`. `secretwrap` is the one documented way to obtain a genuine secret
 out of combat without side effects: the client's own API documentation
 (`FrameScriptDocumentation`, mirrored in
 `packages/apiKit/metadata/retail/namespaces.json`) lists it with no
 restriction, and it only converts the values handed to it. Retail 12.1 has
-both. A client without them prints the four tests as
+both. A client without them prints the five tests as
 `SKIP ... -- the client has no issecretvalue and secretwrap; the secret path was not exercised`.
 
 ### When another addon set a locale override
@@ -155,7 +156,7 @@ itself; three answers only the running client gives decide the outcome.
 
 ### Retail (12.1)
 
-The lines above: `MoltenCodes Test: localeKit: 29 passed, 0 failed, 3 skipped, 0 timed out (32 tests)`,
+The lines above: `MoltenCodes Test: localeKit: 30 passed, 0 failed, 3 skipped, 0 timed out (33 tests)`,
 with the three `localeKit.session` skips and no other.
 
 ### Classic Era (1.15) and Mists of Pandaria Classic (5.5)
@@ -165,19 +166,20 @@ are the same as Retail's, in the same order, when the client answers as
 Retail 12.1 does. These answers cannot be read from the metadata, so each
 variant is given:
 
-- **Secret values.** Whether the four `localeKit.secrets` tests run depends on answers only the
+- **Secret values.** Whether the five `localeKit.secrets` tests run depends on answers only the
 running client gives, measured when the suite loads: whether it has the
 global functions `issecretvalue` and `secretwrap` (both Classic flavours
 document them), and whether it actually makes secrets, which
 `Harness:CanMakeSecrets()` measures once as
 `issecretvalue(secretwrap(true)) == true`. When it makes
-  secrets, the four tests run. When it has both functions but makes no
+  secrets, the five tests run. When it has both functions but makes no
   secrets, they print these lines in place of their `PASS` lines:
 
 ```text
 MoltenCodes Test: SKIP localeKit.secrets: Format refuses a genuine secret argument at LocaleKitSuite.lua's calling line -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
 MoltenCodes Test: SKIP localeKit.secrets: Format refuses a genuine secret template at LocaleKitSuite.lua's calling line before string.gsub sees it -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
 MoltenCodes Test: SKIP localeKit.secrets: GetLocale refuses a genuine secret maxMissingKeys at LocaleKitSuite.lua's calling line and fixes neither the limit nor the mode -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
+MoltenCodes Test: SKIP localeKit.secrets: NewLocale and GetLocale refuse a genuine secret addonName, locale or missing mode at LocaleKitSuite.lua's calling line and register nothing -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
 MoltenCodes Test: SKIP localeKit.secrets: a read table indexed with a genuine secret key raises the client's refusal at LocaleKitSuite.lua's calling line, before __index runs, and stores, records and reports nothing -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
 ```
 
@@ -187,6 +189,7 @@ MoltenCodes Test: SKIP localeKit.secrets: a read table indexed with a genuine se
 MoltenCodes Test: SKIP localeKit.secrets: Format refuses a genuine secret argument at LocaleKitSuite.lua's calling line -- the client has no issecretvalue and secretwrap; the secret path was not exercised
 MoltenCodes Test: SKIP localeKit.secrets: Format refuses a genuine secret template at LocaleKitSuite.lua's calling line before string.gsub sees it -- the client has no issecretvalue and secretwrap; the secret path was not exercised
 MoltenCodes Test: SKIP localeKit.secrets: GetLocale refuses a genuine secret maxMissingKeys at LocaleKitSuite.lua's calling line and fixes neither the limit nor the mode -- the client has no issecretvalue and secretwrap; the secret path was not exercised
+MoltenCodes Test: SKIP localeKit.secrets: NewLocale and GetLocale refuse a genuine secret addonName, locale or missing mode at LocaleKitSuite.lua's calling line and register nothing -- the client has no issecretvalue and secretwrap; the secret path was not exercised
 MoltenCodes Test: SKIP localeKit.secrets: a read table indexed with a genuine secret key raises the client's refusal at LocaleKitSuite.lua's calling line, before __index runs, and stores, records and reports nothing -- the client has no issecretvalue and secretwrap; the secret path was not exercised
 ```
 
@@ -201,10 +204,10 @@ The totals line is one of these four:
 
 | Secret values | Indexed specifiers | Totals line |
 |---|---|---|
-| made | accepted | `MoltenCodes Test: localeKit: 29 passed, 0 failed, 3 skipped, 0 timed out (32 tests)` |
-| made | refused | `MoltenCodes Test: localeKit: 28 passed, 0 failed, 4 skipped, 0 timed out (32 tests)` |
-| not made, or a function absent | accepted | `MoltenCodes Test: localeKit: 25 passed, 0 failed, 7 skipped, 0 timed out (32 tests)` |
-| not made, or a function absent | refused | `MoltenCodes Test: localeKit: 24 passed, 0 failed, 8 skipped, 0 timed out (32 tests)` |
+| made | accepted | `MoltenCodes Test: localeKit: 30 passed, 0 failed, 3 skipped, 0 timed out (33 tests)` |
+| made | refused | `MoltenCodes Test: localeKit: 29 passed, 0 failed, 4 skipped, 0 timed out (33 tests)` |
+| not made, or a function absent | accepted | `MoltenCodes Test: localeKit: 25 passed, 0 failed, 8 skipped, 0 timed out (33 tests)` |
+| not made, or a function absent | refused | `MoltenCodes Test: localeKit: 24 passed, 0 failed, 9 skipped, 0 timed out (33 tests)` |
 
 `docs/EMBEDDING.md` records that Classic Era 1.15.9 and Mists Classic 5.5.4
 expose `issecretvalue`; whether they make secrets, and whether their
@@ -244,6 +247,7 @@ indexed template.
 | `Format refuses a genuine secret argument ...` | A secret made by `secretwrap` is refused at this file's calling line with a message that contains no secret, and the next `Format` works. |
 | `Format refuses a genuine secret template ...` | A secret template is refused at the calling line before `string.gsub` runs over it. |
 | `GetLocale refuses a genuine secret maxMissingKeys ...` | The refusal comes before any comparison (no client error about a secret), and the refused call fixed neither its mode nor a limit: the next call chooses `silent`, and the limit is the default 1024. |
+| `NewLocale and GetLocale refuse a genuine secret addonName, locale or missing mode ...` | Each secret is refused at this file's calling line before LocaleKit compares it or uses it as a key (no client error about a secret), and nothing is registered under the probe's name. |
 | `a read table indexed with a genuine secret key ...` | The client refuses the secret key at the index, naming this file at the indexing line with `attempted to index a table that cannot be indexed with secret keys`; the collector receives no report, `MissingKeys` stays empty and the defined key still reads (see above). |
 | the three `localeKit.session` skips | Registered skips for what a run cannot observe. |
 
@@ -251,7 +255,7 @@ indexed template.
 
 - Any `FAIL` or `TIMEOUT` line, a `SKIP` line other than the ones described
   above, or a totals line
-  other than `29 passed, 0 failed, 3 skipped, 0 timed out (32 tests)` (or one
+  other than `30 passed, 0 failed, 3 skipped, 0 timed out (33 tests)` (or one
   of the variants above and under [Per flavour](#per-flavour)).
 - No login line, or `Expected.lua is missing`: the harness or the installer
   did not run as intended.
