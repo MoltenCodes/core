@@ -5,8 +5,17 @@ library at a time. Each section shows the Ace3 code first, then the same
 thing with the Kits, then the differences that change behaviour. Every
 MoltenCodes sample uses the API as documented in the Kit's `docs/API.md`
 today. **BridgeKit**'s AceSerializer-3.0 reader and writer, AceConfig-3.0
-adapter, AceDB-3.0 importer and AceComm-3.0 channel are current (revision 4;
-see [`BRIDGE_KIT_DESIGN.md`](BRIDGE_KIT_DESIGN.md)).
+adapter, AceDB-3.0 importer and AceComm-3.0 channel are all shipped (see
+[`BRIDGE_KIT_DESIGN.md`](BRIDGE_KIT_DESIGN.md)).
+
+An Ace3 addon rarely carries Ace3 alone. The libraries that usually travel
+with it (LibDataBroker-1.1, LibDBIcon-1.0, LibSharedMedia-3.0, LibQTip-1.0,
+LibDualSpec-1.0, LibRangeCheck-3.0, LibGetFrame-1.0, LibCustomGlow-1.0,
+LibCandyBar-3.0, LibEditMode) and the Blizzard systems addons used to reach
+into (UIDropDownMenu, `StaticPopupDialogs`, `InterfaceOptions`) have Kits too;
+they are covered after the Ace3 libraries, in
+[Beyond Ace3](#beyond-ace3-the-libraries-that-travel-with-it). Each of those
+Kits also carries a field-by-field migration table in its own README.
 
 The Ace3 behaviour described here was read from Ace3 at commit
 `5e2e0d3b3fd125ef1518744c6a9dd21f68f6e773`. References such as
@@ -33,6 +42,7 @@ The Ace3 behaviour described here was read from Ace3 at commit
 - [AceSerializer-3.0](#aceserializer-30)
 - [AceComm-3.0](#acecomm-30)
 - [Moving data and peers with BridgeKit](#moving-data-and-peers-with-bridgekit)
+- [Beyond Ace3: the libraries that travel with it](#beyond-ace3-the-libraries-that-travel-with-it)
 - [What has no equivalent yet](#what-has-no-equivalent-yet)
 
 ## Before you start
@@ -81,13 +91,35 @@ show the addon form, which works without ModuleKit.
 | AceTab-3.0 | CommandKit completion, for your own commands | [AceTab](#acetab-30) |
 | AceLocale-3.0 | LocaleKit | [AceLocale](#acelocale-30) |
 | AceDB-3.0 | SettingsKit (schema: SchemaKit); data import: BridgeKit (`ImportAceDB`, `AceDBMigration`) | [AceDB](#acedb-30) |
-| AceDBOptions-3.0 | `OptionsKit:ProfileOptions` | [AceDBOptions](#acedboptions-30) |
+| AceDBOptions-3.0 | `OptionsKit:ProfileOptions` (spec-profile choices included) | [AceDBOptions](#acedboptions-30) |
 | AceConfig-3.0, AceConfigRegistry-3.0 | OptionsKit; table conversion: BridgeKit (`DefineAceConfig`) | [AceConfig](#aceconfig-30-aceconfigregistry-aceconfigdialog-aceconfigcmd) |
-| AceConfigDialog-3.0 | WidgetKit `RenderOptions` | [AceConfig](#aceconfig-30-aceconfigregistry-aceconfigdialog-aceconfigcmd) |
+| AceConfigDialog-3.0 | WidgetKit `RenderOptions` (a window); PanelKit (`AddToBlizOptions`, Blizzard's settings panel) | [AceConfig](#aceconfig-30-aceconfigregistry-aceconfigdialog-aceconfigcmd) |
 | AceConfigCmd-3.0 | CommandKit `BindOptions` | [AceConfig](#aceconfig-30-aceconfigregistry-aceconfigdialog-aceconfigcmd) |
-| AceGUI-3.0 | WidgetKit | [AceGUI](#acegui-30) |
+| AceGUI-3.0 | WidgetKit; long lists: WidgetKit `ScrollList` | [AceGUI](#acegui-30) |
 | AceSerializer-3.0 | CodecKit; Ace-format compatibility: BridgeKit (`AceSerialize`, `AceDeserialize`) | [AceSerializer](#aceserializer-30) |
 | AceComm-3.0 (with ChatThrottleLib) | CommKit; Ace-format compatibility: BridgeKit | [AceComm](#acecomm-30) |
+
+The libraries outside Ace3 that Ace3 addons usually embed, and the Blizzard
+systems they reach into:
+
+| Library or system | Kits | Notes |
+|---|---|---|
+| LibDataBroker-1.1 | BrokerKit | [LibDataBroker](#libdatabroker-11) |
+| LibDBIcon-1.0 | LauncherKit (on BrokerKit) | [LibDBIcon](#libdbicon-10) |
+| LibSharedMedia-3.0 | MediaKit | [LibSharedMedia](#libsharedmedia-30) |
+| LibQTip-1.0 | TooltipKit | [LibQTip](#libqtip-10) |
+| LibDualSpec-1.0 | SettingsKit spec profiles | [LibDualSpec](#libdualspec-10) |
+| UIDropDownMenu, `EasyMenu` | MenuKit, on Blizzard's Menu API | [Menus](#uidropdownmenu-and-easymenu) |
+| `StaticPopupDialogs` and `StaticPopup_Show` | DialogKit | [Dialogs](#staticpopupdialogs) |
+| `InterfaceOptions_AddCategory`, AceConfigDialog `AddToBlizOptions` | PanelKit, on Blizzard's Settings API | [AceConfig](#aceconfig-30-aceconfigregistry-aceconfigdialog-aceconfigcmd) |
+| LibCandyBar-3.0 | BarKit | [LibCandyBar](#libcandybar-30) |
+| LibCustomGlow-1.0 | GlowKit | [LibCustomGlow](#libcustomglow-10) |
+| LibEditMode | EditModeKit | [LibEditMode](#libeditmode) |
+| LibRangeCheck-3.0 | RangeKit | [LibRangeCheck](#librangecheck-30) |
+| LibGetFrame-1.0 | UnitFrameKit | [LibGetFrame](#libgetframe-10) |
+| `SetOverrideBinding` and its relatives, called by hand | BindingKit | [Key bindings](#override-key-bindings) |
+| hand-made notification frames | ToastKit | [Toasts](#notification-frames) |
+| AceConsole `Print` for diagnostics | LogKit | [AceConsole](#aceconsole-30) |
 
 ## LibStub
 
@@ -262,7 +294,8 @@ events:DisconnectAll()
   its own connection.
 - On clients with `C_EventUtils.IsEventValid`, an unknown event name raises at
   your line instead of failing silently.
-- `RegisterUnitEvent` is `events:ConnectUnit(event, callback, "player")`
+- AceEvent has no unit form; an addon that kept a frame of its own for
+  `Frame:RegisterUnitEvent` uses `events:ConnectUnit(event, callback, "player")`
   (at most two unit tokens, the client's limit).
 - A listener's error is reported through the error handler; the other
   listeners still run.
@@ -670,6 +703,9 @@ local tree = OptionsKit:Define(ADDON_NAME, {
   option sets (for example another `order`) or two databases.
 - Current profile, new, copy, reset and delete, with confirmations, and a
   `localize` option for every string.
+- One profile choice per specialization (or Classic Era talent group) is in
+  the group too, from SettingsKit's spec profiles: what LibDualSpec-1.0's
+  `EnhanceOptions` added (see [LibDualSpec](#libdualspec-10)).
 
 ## AceConfig-3.0, AceConfigRegistry, AceConfigDialog, AceConfigCmd
 
@@ -829,10 +865,31 @@ frame:Show()
   instead of raising; every type is pooled and bounded.
 - Callbacks receive `(widget, name, ...)` as Ace3's do; setters never fire
   them.
-- `Frame:SetStatusText`, `TreeGroup`, `TabGroup`, `DropdownGroup`, `Icon`,
-  `InteractiveLabel` and the LibSharedMedia widgets have no equivalent yet;
-  MediaKit's `WidgetKit:CreateMediaPicker(mediaType)` covers the media
-  dropdown.
+- `TreeGroup`, `TabGroup` and `DropdownGroup` are not widgets of their own.
+  In an options window, an OptionsKit group with `childGroups = "tree"`,
+  `"tab"` or `"select"` is drawn as pages by `RenderOptions`, the way
+  AceConfigDialog draws them; a window you build by hand lays its pages out
+  itself.
+- `Frame:SetStatusText`, `Icon`, `InteractiveLabel` and the LibSharedMedia
+  widgets have no equivalent; `WidgetKit:CreateMediaPicker(mediaType)`, with
+  MediaKit loaded, covers the media dropdown.
+- **Long lists** that an AceGUI addon builds as a `ScrollFrame` full of
+  `Label`s or `InteractiveLabel`s are a `ScrollList`: it holds up to 16384
+  elements by default and makes only the rows on display, on Blizzard's own
+  ScrollBox framework.
+
+  ```lua
+  local list = assert(WidgetKit:Create("ScrollList")) --[[@as WidgetKit.ScrollList]]
+  list:SetFormatter(function(entry)
+    return entry.name, entry.icon
+  end)
+  list:SetElements(MyAddon.entries) -- one table per row
+  list:SetCallback("OnValueChanged", function(_, _, entry)
+    MyAddon:Select(entry)
+  end)
+  frame:AddChild(list)
+  ```
+
 - Window positions persist with `frame:BindPosition(storage)`.
 
 ## AceSerializer-3.0
@@ -920,7 +977,7 @@ today.
 
 ### Reading and writing AceSerializer text
 
-*Current API* (BridgeKit revision 1). Export strings players saved and
+*Since BridgeKit revision 1.* Export strings players saved and
 messages an Ace3 version of the addon sends are AceSerializer text. BridgeKit
 reads and writes it byte for byte with AceSerializer-3.0, without Ace3:
 
@@ -949,7 +1006,7 @@ local written, text = BridgeKit:AceSerialize("sync", 3, { a = 1 })
 
 ### Importing an AceDB saved variable
 
-*Current API* (BridgeKit revision 3). Keep the old global listed in the TOC
+*Since BridgeKit revision 3.* Keep the old global listed in the TOC
 during the transition and add a backup global:
 
 ```toc
@@ -1010,7 +1067,7 @@ end)
 
 ### Converting an AceConfig table
 
-*Current API* (BridgeKit revision 2).
+*Since BridgeKit revision 2.*
 
 ```lua
 local OptionsKit = Registry:Get("optionsKit", 1)
@@ -1040,7 +1097,7 @@ end
 
 ### Talking to Ace3 peers during the move
 
-*Current API* (BridgeKit revision 4). Use two prefixes: the old one in Ace3's format through
+*Since BridgeKit revision 4.* Use two prefixes: the old one in Ace3's format through
 BridgeKit, a new one through CommKit and CodecKit. Release v2 sends and
 listens on both; release v3 drops the old prefix once telemetry says the Ace3
 peers are gone.
@@ -1100,12 +1157,365 @@ end
 - Validate `payload` with a SchemaKit schema in both paths: a peer can send
   anything.
 
+## Beyond Ace3: the libraries that travel with it
+
+Most Ace3 addons also embed a handful of libraries from outside Ace3, and
+some reach into Blizzard systems that later turned out to taint. Each has a
+Kit. The sections below give the shape of the move and the differences that
+change behaviour; the README of each Kit has the complete, call-by-call
+migration table, and its `docs/API.md` the contract. None of these Kits reads
+or writes the library it replaces, except where a section says so (BrokerKit
+and MediaKit can bridge to LibDataBroker-1.1 and LibSharedMedia-3.0 while
+both are loaded).
+
+### LibDataBroker-1.1
+
+```lua
+-- Before
+local LDB = LibStub("LibDataBroker-1.1")
+local status = LDB:NewDataObject("MyAddon", { type = "data source", text = "0 ms" })
+status.text = latency .. " ms"
+```
+
+```lua
+-- MoltenCodes
+local BrokerKit = Registry:Get("brokerKit", 1)
+local status = BrokerKit:New("MyAddon", { type = "data source", text = "0 ms" })
+status.text = latency .. " ms"
+
+-- Keep the LibDataBroker displays the player already runs working.
+BrokerKit:ExposeToLibDataBroker()
+```
+
+- Attributes are still plain fields, and a write fires the change signals.
+  The fifteen attributes LibDataBroker names are type-checked at your line.
+- `object:OnChange(attribute, callback)` replaces the
+  `LibDataBroker_AttributeChanged_<name>_<attribute>` callbacks.
+- `ExposeToLibDataBroker` and `AdoptFromLibDataBroker` connect the two
+  registries without echo; adopted objects are read-only.
+- See [`brokerKit/README.md`](../packages/brokerKit/README.md).
+
+### LibDBIcon-1.0
+
+```lua
+-- Before
+LibStub("LibDBIcon-1.0"):Register("MyAddon", dataObject, self.db.profile.minimap)
+```
+
+```lua
+-- MoltenCodes
+local LauncherKit = Registry:Get("launcherKit", 1)
+local launcher = LauncherKit:Register("MyAddon", function()
+  return db.profile.minimap -- read at every use
+end)
+db:OnProfileChanged(function()
+  launcher:Refresh() -- the new profile's position
+end)
+LauncherKit:AddToCompartment("MyAddon") -- Retail; nil, "unavailable" elsewhere
+```
+
+- The button belongs to a BrokerKit object of the same name, so the object is
+  made with `BrokerKit:New` first.
+- The storage table keeps LibDBIcon's field names (`minimapPos`, `hide`,
+  `lock`), so the players' button positions carry over unchanged.
+- At most 64 launchers per session by default: each button is a frame the
+  client never frees.
+- See [`launcherKit/README.md`](../packages/launcherKit/README.md#moving-from-libdbicon-10).
+
+### LibSharedMedia-3.0
+
+```lua
+-- Before
+local LSM = LibStub("LibSharedMedia-3.0")
+LSM:Register("statusbar", "MyPack Smooth", [[Interface\AddOns\MyPack\Smooth.tga]])
+bar:SetStatusBarTexture(LSM:Fetch("statusbar", db.profile.texture))
+```
+
+```lua
+-- MoltenCodes
+local MediaKit = Registry:Get("mediaKit", 1)
+MediaKit:Register("statusbar", "MyPack Smooth", [[Interface\AddOns\MyPack\Smooth.tga]])
+bar:SetStatusBarTexture(MediaKit:Fetch("statusbar", db.profile.texture))
+
+-- Media packs made for LibSharedMedia, and consumers that still read it.
+MediaKit:AdoptLibSharedMedia()
+MediaKit:MirrorToLibSharedMedia()
+```
+
+- A font declares the writing scripts it renders (`scripts = { "latin",
+  "cyrillic" }`), and a font that cannot render the client's script is not
+  offered: `Fetch` answers `nil` for it unless `anyScript` is asked for.
+- `List(type)` is a cached, sorted, read-only array; `OnRegistered` replaces
+  the `LibSharedMedia_Registered` callback.
+- Defaults belong to the consumer (`MediaKit:Defaults(ADDON_NAME)`), never to
+  the session.
+- See [`mediaKit/README.md`](../packages/mediaKit/README.md).
+
+### LibQTip-1.0
+
+```lua
+-- Before
+local tooltip = LibStub("LibQTip-1.0"):Acquire("MyAddonGuild", 3, "LEFT", "CENTER", "RIGHT")
+tooltip:AddHeader("Name", "Level", "Zone")
+tooltip:SmartAnchorTo(owner)
+tooltip:Show()
+```
+
+```lua
+-- MoltenCodes
+local TooltipKit = Registry:Get("tooltipKit", 1)
+local tooltip = TooltipKit:Acquire("MyAddonGuild", 3, "LEFT", "CENTER", "RIGHT")
+tooltip:Clear()
+tooltip:AddHeader("Name", "Level", "Zone")
+tooltip:SmartAnchorTo(owner)
+tooltip:SetAutoHideDelay(0.25, owner)
+tooltip:Show()
+```
+
+- Most calls keep their names. `SetCell` takes its font, justification and
+  span in an options table; `UpdateScrolling(maxHeight)` is
+  `SetMaxHeight(maxHeight)`.
+- Columns are fixed by `Acquire`: there are no cell providers and no
+  `SetColumnLayout` afterwards.
+- A secret text is refused unless that cell is set with
+  `{ allowSecret = true }`.
+- See [`tooltipKit/README.md`](../packages/tooltipKit/README.md#moving-from-libqtip-10).
+
+### LibDualSpec-1.0
+
+```lua
+-- Before
+LibStub("LibDualSpec-1.0"):EnhanceDatabase(self.db, "MyAddon")
+self.db:SetDualSpecProfile("Healing", 1)
+LibStub("LibDualSpec-1.0"):EnhanceOptions(options.args.profiles, self.db)
+```
+
+```lua
+-- MoltenCodes: every SettingsKit database has spec profiles
+db:SetSpecProfile(1, "Healing") -- note the order: index, then profile
+local profiles = OptionsKit:ProfileOptions(db) -- already offers one choice per specialization
+```
+
+- The database switches profile when the player changes specialization (or
+  Classic Era talent group) while EventKit is embedded; without it, call
+  `db:ApplySpecProfile()`.
+- There is no enable flag: assigning a profile to an index enables switching
+  for it, `db:SetSpecProfile(index, nil)` disables it.
+- Existing LibDualSpec choices live in an AceDB namespace and are not
+  imported.
+- See [`settingsKit/README.md`](../packages/settingsKit/README.md#migrating-from-libdualspec-10).
+
+### UIDropDownMenu and EasyMenu
+
+```lua
+-- Before
+EasyMenu({
+  { text = "My Addon", isTitle = true, notCheckable = true },
+  { text = "Open window", notCheckable = true, func = function() MyAddon:Toggle() end },
+}, menuFrame, "cursor", 0, 0, "MENU")
+```
+
+```lua
+-- MoltenCodes
+local MenuKit = Registry:Get("menuKit", 1)
+MenuKit:OpenContextMenu(owner, {
+  { kind = "title", text = "My Addon" },
+  { kind = "button", text = "Open window", onClick = function() MyAddon:Toggle() end },
+})
+```
+
+- MenuKit describes and Blizzard draws, through the Menu API (`MenuUtil`)
+  that replaced UIDropDownMenu. The shared UIDropDownMenu frames and globals,
+  which taint secure menus when insecure code writes them, are never touched.
+- A dropdown button gets its menu with `MenuKit:SetupDropdown(dropdown,
+  menu)`; a line in one of Blizzard's tagged menus is
+  `MenuKit:ExtendMenu(tag, menu)`, removable with `extension:Remove()`.
+- An entry is checked at your line, with its path, when the menu opens; a
+  misspelt field is an error, not a silently missing feature.
+- See [`menuKit/README.md`](../packages/menuKit/README.md).
+
+### StaticPopupDialogs
+
+```lua
+-- Before
+StaticPopupDialogs.MYADDON_RESET = {
+  text = "Reset the profile?",
+  button1 = YES,
+  button2 = NO,
+  OnAccept = function() db:ResetProfile() end,
+}
+StaticPopup_Show("MYADDON_RESET")
+```
+
+```lua
+-- MoltenCodes
+local DialogKit = Registry:Get("dialogKit", 1)
+DialogKit:Show({
+  key = "MYADDON_RESET",
+  text = "Reset the profile?",
+  onAccept = function()
+    db:ResetProfile()
+  end,
+})
+```
+
+- Dialogs are drawn on a frame of DialogKit's own; nothing is added to
+  `StaticPopupDialogs`, so Blizzard's popups cannot be tainted by yours.
+- One dialog is shown at a time; the others wait in a bounded queue, and a
+  `key` returns the dialog already shown or waiting under it.
+- `onCancel(data, reason)` tells a cancel button, Escape, a timeout and a
+  hide apart.
+- See [`dialogKit/README.md`](../packages/dialogKit/README.md#moving-from-staticpopup_show).
+
+### LibCandyBar-3.0
+
+```lua
+-- Before
+local bar = LibStub("LibCandyBar-3.0"):New(texture, 200, 16)
+bar:SetLabel("Pull")
+bar:SetDuration(10)
+bar:Start()
+```
+
+```lua
+-- MoltenCodes
+local BarKit = Registry:Get("barKit", 1)
+local bar = BarKit:Acquire({ texture = texture, width = 200, height = 16 })
+bar:SetLabel("Pull")
+bar:Start(10, { releaseOnFinish = true })
+```
+
+- A bar is the client's own `StatusBar`: on Retail a secret value such as a
+  unit's health goes to `SetValue` as it is and the client draws it.
+- `onFinished` in `Start`'s options replaces the `LibCandyBar_Stop`
+  callback and runs only when the time runs out; `Stop` keeps the bar.
+- See [`barKit/README.md`](../packages/barKit/README.md#moving-from-libcandybar-30).
+
+### LibCustomGlow-1.0
+
+```lua
+-- Before
+LibStub("LibCustomGlow-1.0").PixelGlow_Start(button, { 1, 0.8, 0.2, 1 }, 10, 0.5)
+LibStub("LibCustomGlow-1.0").PixelGlow_Stop(button)
+```
+
+```lua
+-- MoltenCodes
+local GlowKit = Registry:Get("glowKit", 1)
+GlowKit:Start(button, { kind = "pixel", color = { 1, 0.8, 0.2 }, lines = 10, frequency = 0.5 })
+GlowKit:Stop(button)
+```
+
+- Two effects, `pixel` and `pulse`, on an overlay frame of GlowKit's own;
+  Blizzard's spell-activation overlay (`ActionButton_ShowOverlayGlow`) is
+  never touched. The autocast and proc glows have no equivalent.
+- Options are named fields in one table instead of positional arguments.
+- See [`glowKit/README.md`](../packages/glowKit/README.md#moving-from-libcustomglow-10).
+
+### LibEditMode
+
+```lua
+-- MoltenCodes
+local EditModeKit = Registry:Get("editModeKit", 1)
+EditModeKit:Register(MyAddonBars, MyAddonDB.positions, { label = "My Bars" })
+```
+
+- EditModeKit saves and restores each frame's position per Edit Mode layout
+  itself; LibEditMode's position callback is not needed.
+- Positions LibEditMode saved use their own anchor point and are not read: a
+  frame stays where it is until it is dragged once.
+- Frame settings in the Edit Mode dialog have no equivalent; keep them in an
+  OptionsKit tree.
+- See [`editModeKit/README.md`](../packages/editModeKit/README.md#moving-from-libeditmode).
+
+### LibRangeCheck-3.0
+
+```lua
+-- Before
+local minRange, maxRange = LibStub("LibRangeCheck-3.0"):GetRange("target")
+```
+
+```lua
+-- MoltenCodes
+local RangeKit = Registry:Get("rangeKit", 1)
+local minRange, maxRange = RangeKit:GetRange("target")
+local inRange = RangeKit:IsInRange("party1", 40) -- true, false, or nil when it cannot tell
+```
+
+- The same `minRange, maxRange` shape. RangeKit checks only the player's own
+  spells and the client's interact distances, never items, so its brackets
+  can be wider.
+- The `Get*Checker` family becomes `IsInRange(unit, yards)`; there is no
+  result cache, so throttle your own calls.
+- See [`rangeKit/README.md`](../packages/rangeKit/README.md#moving-from-librangecheck-30).
+
+### LibGetFrame-1.0
+
+```lua
+-- Before
+local frame = LibStub("LibGetFrame-1.0").GetUnitFrame("party1")
+```
+
+```lua
+-- MoltenCodes
+local UnitFrameKit = Registry:Get("unitFrameKit", 1)
+local frame = UnitFrameKit:GetUnitFrame("party1")
+local connection = UnitFrameKit:OnChange(function(frame, unit, previousUnit) end)
+```
+
+- A unit token only; a GUID or a name is refused.
+- `options.priorities`, `options.ignore` and `options.kinds` replace the
+  priority list and the `ignore*Frame` toggles; `OnChange` replaces the
+  `FRAME_UNIT_*` callbacks.
+- See [`unitFrameKit/README.md`](../packages/unitFrameKit/README.md#moving-from-libgetframe-10).
+
+### Override key bindings
+
+```lua
+-- Before
+SetOverrideBindingClick(MyAddonOwner, false, "CTRL-SHIFT-B", "MyAddonToggleButton")
+```
+
+```lua
+-- MoltenCodes
+local BindingKit = Registry:Get("bindingKit", 1)
+local keys = BindingKit:CreateScope("MyAddon")
+keys:BindClick("CTRL-SHIFT-B", "MyAddonToggleButton")
+keys:BindFunction("CTRL-SHIFT-T", function()
+  MyAddon:ToggleWindow()
+end)
+keys:ClearAll()
+```
+
+- A change made in combat, which the client refuses, is kept and applied
+  when combat ends; `keys:IsPending()` says so.
+- `BindFunction` puts a Lua function on a key through a hidden button of
+  BindingKit's own; the function runs as insecure addon code.
+- The player's saved bindings are never touched.
+- See [`bindingKit/README.md`](../packages/bindingKit/README.md).
+
+### Notification frames
+
+An addon that builds its own "profile copied" or "new version" frame, or
+borrows Blizzard's alert system for it, can use ToastKit:
+
+```lua
+local ToastKit = Registry:Get("toastKit", 1)
+ToastKit:Show({ title = "Profile copied", text = "Raid → Solo", duration = 4 })
+```
+
+- Toasts stack at one anchor, hold while the cursor rests on them and fade;
+  `AlertFrame` is never touched. A `key` updates a toast instead of stacking
+  a second one.
+- See [`toastKit/README.md`](../packages/toastKit/README.md).
+
 ## What has no equivalent yet
 
-| Ace3 | Status |
+| Ace3 or library | Status |
 |---|---|
-| AceGUI `TreeGroup`, `TabGroup`, `DropdownGroup`, `Icon`, `InteractiveLabel`, `Frame:SetStatusText` | The user-interface phase. |
+| AceGUI `Icon`, `InteractiveLabel`, `Frame:SetStatusText`, the LibSharedMedia widget set | No equivalent. `TreeGroup`, `TabGroup` and `DropdownGroup` exist as `childGroups` pages in the options renderer, not as widgets of their own. |
 | AceTab completion in arbitrary edit boxes | Not planned; CommandKit completes its own commands. |
 | AceDB namespaces, and the `race`, `factionrealm`, `factionrealmregion` and `locale` scopes | Not in SettingsKit API 1; use a second database or map fields. BridgeKit's importer maps existing data. |
+| LibCustomGlow-1.0 autocast and proc glows, LibEditMode frame settings, LibRangeCheck-3.0 item checks | Not carried over; each Kit's README says why. |
 | Reading or writing AceComm and AceSerializer traffic | BridgeKit. |
 | Converting AceConfig tables and importing AceDB data | BridgeKit. |

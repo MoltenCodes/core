@@ -591,7 +591,7 @@ rendered below with `python3 -m tooling.bench.report`.
   covered all fourteen workloads after the first round (commit `e43d939`). The
   roadmap of the second round was built from it.
 - This run follows the second round. The packages changed since `e43d939`,
-  with their revisions now: commKit 0.4.0 r7 (was r5), commandKit 0.2.6 r7
+  with their revisions at that commit: commKit 0.4.0 r7 (was r5), commandKit 0.2.6 r7
   (r6), eventKit 0.9.5 r18 (r17), hookKit 0.3.0 r7 (r5), interopKit 0.1.2 r3
   (r2), lifecycleKit 0.6.5 r15 (r14), localeKit 0.1.4 r3 (r2), moduleKit
   0.8.5 r19 (r18), optionsKit 0.4.0 r8 (r6), poolKit 0.4.6 r9 (r8), registry
@@ -609,6 +609,13 @@ rendered below with `python3 -m tooling.bench.report`.
   the fourteen older workloads; only its `aceSerializer` section is quoted, at
   the end of this section. Both sides of every case still alternate in the
   same rounds, so its ratios are fairer than its absolute times.
+
+**What the catalogue covers.** A workload exists only where an Ace3 library
+does the same work, so the fifteen workloads cover the Kits with an Ace3
+counterpart. The Kits that replace libraries from outside Ace3 (BrokerKit,
+MediaKit, LauncherKit, TooltipKit, BarKit, GlowKit, EditModeKit, RangeKit,
+UnitFrameKit) or Blizzard systems (MenuKit, DialogKit, PanelKit, ToastKit,
+BindingKit) have no workload yet, and nothing here is a claim about them.
 
 **Checks stay; speed comes without dropping them.** The owner decided on
 2026-09-25 that every check a Kit makes and Ace3 skips stays: argument and
@@ -636,7 +643,7 @@ overlap or the ratio is within 1.15× either way.
 | moduleKit with lifecycleKit | AceAddon-3.0 | create faster, 0.79×; load at parity (1.04×); disable and enable all ten 1.35×, one module 1.53×; ten with a listener each 2.21× | create 17.7 KB against 19.9 KB, held 16.8 KB against 19.4 KB per addon of ten; cycles 0 against 0; with listeners 7.8 KB against 104 B | every hook under `pcall`, intent recorded apart from state, the dependency and failed-module rules on every pass; with listeners an EventKit scope per module that ModuleKit closes on disable (AceAddon's embedded AceEvent keeps its tables) |
 | hookKit | AceHook-3.0 | install and unhook slower, 1.19–1.86×; a call through a raw hook 1.23×; an unhooked post-hook 0.94× (faster); calls through pre- and post-hooks are *different work* (isolated, about 1.6–1.8×) | 480–720 B against 288–688 B per install and unhook; 0 per call on both | the receiver, handler and secret checks, the secure-target memo, the protected-frame rules, the capacity check, the per-scope record and the restore-only-when-still-ours rule per install; `pcall` isolation per hooked call |
 | commandKit | AceConsole-3.0 | slower: parse 1.5–2.0×, dispatch 2.1–2.9×, register and unregister 30× | parse and dispatch equal or less (32–97 B against 32–130 B); register 977 B against 96 B | `Register` refuses a name another addon, a chat type, a secure command or an emote holds, reading the 50 foreign commands' `SLASH_` globals on every call (most of its 11 µs), and compiles the command spec; dispatch and parse check the line's bounds and hand typed, schema-checked arguments to the handler |
-| localeKit | AceLocale-3.0 | lookup at parity (0.99×); register 1.34×; asking for an unneeded locale 2.4×; first miss 3.1× | register 5.7 KB against 5.2 KB; 5.6 KB against 5.2 KB held per addon | a write proxy per `NewLocale` call, the argument and value checks, the missing-key record behind `MissingKeys` and its bound, and the secret probe of a missing key |
+| localeKit | AceLocale-3.0 | lookup at parity (0.99×); register 1.34×; asking for an unneeded locale 2.4× (revision 3; revision 4's secret-value checks on `addonName` and `locale` raised this case from about 123 to about 180 ns on a loaded host, not yet re-measured against AceLocale); first miss 3.1× | register 5.7 KB against 5.2 KB; 5.6 KB against 5.2 KB held per addon | a write proxy per `NewLocale` call, the argument and value checks, the missing-key record behind `MissingKeys` and its bound, and the secret probe of a missing key |
 | eventKit `Coalesce` (schedulerKit, timerKit) | AceBucket-3.0 | slower: 1.9× per event and per burst, 2.4× to create and remove a bucket | burst 752 B against 528 B; create and remove 1.9 KB against 272 B | a handle, a SchedulerKit timing handle and an EventKit subscription per bucket; per event the key's secret probe and the 256-key bound; in exchange no timer stays armed after a delivery |
 | optionsKit (with commandKit's `BindOptions`) | AceConfigRegistry-3.0, AceConfigCmd-3.0, AceDBOptions-3.0 | define and check faster, 0.86–0.90×; a typed option command 1.35–2.02×; profile group 6.1×; choosing a profile by command 2.6× | define 46–174 KB against 0.2 KB; 0.8–1.6 KB against 0.7–0.9 KB per command; profile group 0 against 0 | the profile group is cached as AceDBOptions' is; what remains are the checks every call keeps (SettingsKit loaded, the database's ten profile methods, the options, secret refusals; about 1.3 µs); a command also enforces `min`/`max` (which AceConfigCmd skips), echoes the value and describes the named option; `Define` copies and indexes the tree it seals |
 | widgetKit (indicative, fake frames) | AceGUI-3.0 | pooled widget cycle from 0.66× (CheckBox, faster) and 0.81× (Label) to 1.00× (EditBox), 1.39× (Button) and 1.56× (Slider); group layout is *different work* (the fake client's anchor check dominates AceGUI's time) | 0 against 0 per cycle (AceGUI EditBox 256 B) | PoolKit's acquire and release (the pool's bound and ownership bookkeeping), the protected calls around `OnAcquire` and `OnRelease`, and the checks every setter makes (the secret probe and `type` for the nil rule); a Slider validates three numbers and its widget in `SetSliderValues` |

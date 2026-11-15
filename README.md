@@ -154,13 +154,16 @@ answers `--help`.
 ├── selene.toml              # Selene configuration for runtime Lua
 ├── selene-tests.toml        # Selene configuration for test Lua
 ├── stylua.toml              # StyLua formatting rules
+├── tests/client/            # real-client test addons: the /mct harness and one addon per Kit
 ├── tests/support/           # the shared test fixture: the fake game client
 └── tooling/                 # repository tooling; never a runtime dependency
 ```
 
 Every Kit has the same layout: `package.manifest.json`, a README, a changelog,
-`docs/API.md`, one facade under `src/` with its `.luarc.json`, and specs under
-`tests/` with a `tests/README.md` and `tests/support/<Facade>TestEnv.lua`.
+`docs/API.md` (and `docs/INTERNALS.md` where the implementation needs one),
+one facade under `src/` with its `.luarc.json`, and specs under `tests/` with
+a `tests/README.md` and `tests/support/<Facade>TestEnv.lua`. `apiKit` is the
+one package with more under `src/`: one generated file per client flavour.
 Tooling discovers the Kits from their manifests; nothing keeps a second
 hard-coded list, and repository validation enforces the layout
 ([`docs/PACKAGE_MANIFEST.md`](docs/PACKAGE_MANIFEST.md)).
@@ -189,13 +192,15 @@ and why it is there.
 Start with [`docs/README.md`](docs/README.md), the documentation map.
 
 - [`docs/EMBEDDING.md`](docs/EMBEDDING.md) — how an addon embeds and loads the framework.
-- [`docs/MIGRATING_FROM_ACE3.md`](docs/MIGRATING_FROM_ACE3.md) — moving an addon from Ace3 to the Kits, library by library.
+- [`docs/MIGRATING_FROM_ACE3.md`](docs/MIGRATING_FROM_ACE3.md) — moving an addon from Ace3 to the Kits, library by library, and from the libraries that travel with Ace3 (LibDataBroker, LibDBIcon, LibSharedMedia, LibQTip, LibDualSpec and others).
 - [`docs/BENCHMARKS.md`](docs/BENCHMARKS.md) — performance against Ace3, measured on host Lua, with regressions listed.
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — package boundaries, dependency direction and runtime architecture.
 - [`docs/DESIGN_CONSTITUTION.md`](docs/DESIGN_CONSTITUTION.md) — the design principles every change preserves.
 - [`docs/PACKAGE_MANIFEST.md`](docs/PACKAGE_MANIFEST.md) — package metadata, layout and versioning contracts.
+- [`docs/API_KIT_DESIGN.md`](docs/API_KIT_DESIGN.md) and [`docs/BRIDGE_KIT_DESIGN.md`](docs/BRIDGE_KIT_DESIGN.md) — the design documents of the two largest single packages.
 - [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) — local setup and the canonical commands.
 - [`docs/TESTING.md`](docs/TESTING.md) — test layers, conventions and orchestration.
+- [`tests/client/README.md`](tests/client/README.md) — the real-client test addons: installing, running and recording results.
 - [`docs/TOOLING.md`](docs/TOOLING.md) — repository tooling and continuous integration.
 - [`docs/CONTRIBUTING.md`](docs/CONTRIBUTING.md) — contribution workflow and annotation rules.
 - [`docs/RELEASES.md`](docs/RELEASES.md) — versioning, tags, the build and release artifacts.

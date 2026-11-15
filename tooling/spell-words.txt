@@ -34,6 +34,7 @@ strlenutf
 # shape names of the `GetMinimapShape` convention (`TRICORNER-TOPLEFT`).
 ARIALN
 assistable
+autocast
 cancelaura
 CLEU
 COMMANDKIT

@@ -50,6 +50,18 @@ those defaults when they are documented and observable.
 - [x] `logKit`
 - [x] `compatKit`
 - [x] `bridgeKit`
+- [x] `panelKit` (client suite not yet run)
+- [x] `menuKit` (client suite not yet run)
+- [x] `launcherKit` (client suite not yet run)
+- [x] `tooltipKit` (client suite not yet run)
+- [x] `barKit` (client suite not yet run)
+- [x] `dialogKit` (client suite not yet run)
+- [x] `toastKit` (client suite not yet run)
+- [x] `bindingKit` (client suite not yet run)
+- [x] `glowKit` (client suite not yet run)
+- [x] `editModeKit` (client suite not yet run)
+- [x] `rangeKit` (client suite not yet run)
+- [x] `unitFrameKit` (client suite not yet run)
 
 These entries describe packages present in this repository snapshot. A checked
 item means its implementation is part of the repository; it does not mean the
@@ -1382,12 +1394,14 @@ client ships them (the Settings API and `MenuUtil`); every item below is
 needed; each Kit gets its nine points here, agreed with the owner, before
 its code. Order:
 
-- [ ] **panelKit** — an OptionsKit tree in Blizzard's settings panel (below).
+- [ ] **panelKit** — an OptionsKit tree in Blizzard's settings panel (below):
+      implemented, client suite not run.
 - [ ] **menuKit** — a thin, bounded wrapper over Blizzard's Menu API
-      (`MenuUtil`).
+      (`MenuUtil`): implemented, client suite not run.
 - [ ] **launcherKit** — the minimap launcher for brokerKit, with an
-      AddonCompartment entry on Retail.
-- [ ] **tooltipKit** — multi-column tooltips pooled through PoolKit.
+      AddonCompartment entry on Retail: implemented, client suite not run.
+- [ ] **tooltipKit** — multi-column tooltips pooled through PoolKit:
+      implemented, client suite not run.
 - [x] widgetKit — AceConfigDialog's tab, tree and drop-down group layouts
       in the renderer. A capability of three existing Kits, agreed with the
       owner on 2026-11-15, and delivered the same day (optionsKit 0.5.0,
@@ -1406,6 +1420,10 @@ its code. Order:
       - **bridgeKit**: `ConvertAceConfig` carries `childGroups` over when
         the registered OptionsKit publishes `CHILD_GROUPS`, and reports it
         dropped as before otherwise.
+      Review fix 2026-11-15 (decision 17): bridgeKit 0.5.1, revision 6: a
+      `childGroups` value is carried over only when it is one of Ace's three
+      layouts as well as listed in OptionsKit's published `CHILD_GROUPS`,
+      which a consumer can write to; 2 specs (291 in all).
 - [ ] **barKit** (status and timer bars), **dialogKit**, **toastKit**,
       **bindingKit**, **glowKit** and **editModeKit** (Edit Mode
       integration): implemented, client suites not run.
@@ -1470,6 +1488,8 @@ its code. Order:
 9. Status: implemented 2026-11-15 after the owner's go, 0.1.0, revision 1,
    48 specs; the client suite (`tests/client/MoltenCodesTest_PanelKit`) is
    written and has not been run in a client. Ticked once it has.
+   Reviewed 2026-11-15 under core decision 17: 0.1.1, revision 1
+   (documentation and tests only), 50 specs.
 
 **menuKit** — facade `MenuKit`
 
@@ -1527,6 +1547,8 @@ its code. Order:
 9. Status: implemented 2026-11-15 after the owner's go, 0.1.0, revision 1,
    45 specs; the client suite (`tests/client/MoltenCodesTest_MenuKit`) is
    written and has not been run in a client. Ticked once it has.
+   Reviewed 2026-11-15 under core decision 17: 0.1.1, revision 2 (entry
+   fields read with `rawget` when building, as when checking), 48 specs.
 
 **launcherKit** — facade `LauncherKit` (the minimap launcher)
 
@@ -1582,6 +1604,9 @@ its code. Order:
 9. Status: implemented 2026-11-15 after the owner's go, 0.1.0, revision 1,
    39 specs; the client suite (`tests/client/MoltenCodesTest_LauncherKit`)
    is written and has not been run in a client. Ticked once it has.
+   Reviewed 2026-11-15 under core decision 17: 0.1.1, revision 2
+   (`SetLimits` read `maxLaunchers` through the table's metatable), 41
+   specs.
 
 **tooltipKit** — facade `TooltipKit`
 
@@ -1647,6 +1672,9 @@ its code. Order:
 9. Status: implemented 2026-11-15 after the owner's go, 0.1.0, revision 1,
    43 specs; the client suite (`tests/client/MoltenCodesTest_TooltipKit`)
    is written and has not been run in a client. Ticked once it has.
+   Reviewed 2026-11-15 under core decision 17: 0.1.1, revision 2, 46 specs
+   (cells measured with `GetUnboundedStringWidth`; both `GetCenter`
+   coordinates checked for secrets).
 
 **barKit** — facade `BarKit`
 
@@ -1694,6 +1722,9 @@ its code. Order:
 9. Status: implemented 2026-11-15 under core decision 15, 0.1.0, revision
    1, 29 specs; the client suite (`tests/client/MoltenCodesTest_BarKit`) is
    written and has not been run in a client.
+   Reviewed 2026-11-15 under core decision 17: 0.1.1, revision 2, 33 specs
+   (`releaseOnFinish` kept a bar restarted by `onFinished`; `ClearText`
+   before plain text over a secret and on release).
 
 **dialogKit** — facade `DialogKit`
 
@@ -1738,6 +1769,10 @@ its code. Order:
 9. Status: implemented 2026-11-15 under core decision 15, 0.1.0, revision
    1, 26 specs; the client suite (`tests/client/MoltenCodesTest_DialogKit`)
    is written and has not been run in a client.
+   Reviewed 2026-11-15 under core decision 17: 0.1.1, revision 2, 32 specs
+   (a parent's hide no longer cancels the dialog; secret button texts
+   refused without naming allowSecret, a secret `cancel` before it is
+   compared; a secret `text` drawn unconverted).
 
 **toastKit** — facade `ToastKit`
 
@@ -1778,6 +1813,7 @@ its code. Order:
 9. Status: implemented 2026-11-15 under core decision 15, 0.1.0, revision
    1, 23 specs; the client suite (`tests/client/MoltenCodesTest_ToastKit`) is
    written and has not been run in a client.
+   Reviewed 2026-11-15 under core decision 17: 0.1.1, documentation only.
 
 **bindingKit** — facade `BindingKit`
 
@@ -1826,6 +1862,9 @@ its code. Order:
 9. Status: implemented 2026-11-15 under core decision 15, 0.1.0, revision
    1, 21 specs; the client suite (`tests/client/MoltenCodesTest_BindingKit`)
    is written and has not been run in a client.
+   Reviewed 2026-11-15 under core decision 17: 0.1.1, revision 2, 23 specs
+   (a function-key button given up in combat is not reused until combat
+   ends).
 
 **glowKit** — facade `GlowKit`
 
@@ -1866,6 +1905,7 @@ its code. Order:
 9. Status: implemented 2026-11-15 under core decision 15, 0.1.0, revision
    1, 22 specs; the client suite (`tests/client/MoltenCodesTest_GlowKit`) is
    written and has not been run in a client.
+   Reviewed 2026-11-15 under core decision 17: 0.1.1, documentation only.
 
 **editModeKit** — facade `EditModeKit`
 
@@ -1912,6 +1952,9 @@ its code. Order:
    is written and has not been run in a client. Overlays given back by
    `Unregister` are kept on a free list of the state rather than a PoolKit
    pool, so the dependency stays registry only.
+   Reviewed 2026-11-15 under core decision 17: 0.1.1, revision 2, 32 specs
+   (a drag under way ends at `Unregister` and at Edit Mode's exit; the
+   user-placed flag is cleared after `StartMoving`).
 
 **timerKit pausable timers (W15)** — an addition to facade `TimerKit`
 
@@ -1957,6 +2000,8 @@ its code. Order:
 9. Status: implemented 2026-11-15 under core decision 15, 0.8.0, revision
    12, 12 specs. No client suite: pausing uses only `C_Timer` handles the
    existing TimerKit client suite already proves.
+   Reviewed 2026-11-15 under core decision 17: 0.8.1, documentation only;
+   the client suite gains a `pause` test.
 
 **Further work, decided 2026-11-15 under core decision 16.** The owner asked
 to finish the remaining roadmap work before the real-client runs, which come
@@ -2074,6 +2119,9 @@ code and treated as agreed as under decision 15.
    one-time `maxDeprecations` notice is not sent in `"silent"` mode; the
    Kit-side pattern remembers a missing ClientKit, so one that loads after
    a Kit's first deprecated call is not used for that deprecation.
+   Reviewed 2026-11-15 under core decision 17: 0.3.1, revision 7
+   (`IsAtLeast` refuses a secret interface number at the caller before
+   comparing it).
 
 **settingsKit spec profiles** — an addition to facade `SettingsKit`
 
@@ -2179,6 +2227,14 @@ code and treated as agreed as under decision 15.
    assignments. Client-suite tests are written in
    `MoltenCodesTest_SettingsKit` (suite `specProfiles`) and
    `MoltenCodesTest_OptionsKit` and have not been run in a client.
+   Review fix 2026-11-15 (decision 17): settingsKit 0.4.1, revision 12: a
+   spec event records the index for a database without an assignment,
+   switches over a snapshot so databases opened by profile listeners during
+   the event never make it skip one, and an in-place upgrade applies
+   assignments only to databases revision 10 or earlier opened; 3 specs
+   (271 in all). optionsKit 0.6.1, revision 12: a `ProfileOptions` group
+   cached without spec selects is replaced once SettingsKit offers spec
+   profiles; 1 spec (203 in all).
 
 **widgetKit virtualised lists** — an addition to facade `WidgetKit`
 
@@ -2286,6 +2342,9 @@ code and treated as agreed as under decision 15.
    may return a number as the text; `ScrollToElement` finds the index and
    scrolls by it; a released `ScrollList` is not allocation-free in the
    client, since Blizzard's `Flush` allocates one table.
+   Review fix 2026-11-15 (decision 17): widgetKit 0.4.1, revision 13,
+   `ScrollList` version 2 (the formatter is asked again with the new index
+   after `Insert` before the end and after `Remove`).
 
 **rangeKit** — facade `RangeKit`
 
@@ -2404,6 +2463,8 @@ code and treated as agreed as under decision 15.
    kind; without the spell functions RangeKit still answers from interact
    checks (`nil` only without `UnitExists`); the event frame is made at
    load, or at the first query when `CreateFrame` appears later.
+   Reviewed 2026-11-15 under core decision 17: 0.1.1, revision 2, 43 specs
+   (a change of a spell's minimum range alone now notifies listeners).
 
 Candidate spell IDs (the built-in list; reach is read from the client).
 Taken from LibRangeCheck-3.0 minor 39 (MIT), which the Kit's code does not
@@ -2543,6 +2604,10 @@ copy; spells absent from a flavour or from the player's spellbook drop out:
    accepts whichever Blizzard party style is shown rather than switching it.
    The full-scan cost is to be measured in the benchmark harness before the
    first release.
+   Reviewed 2026-11-15 under core decision 17: 0.1.1, revision 2, 68 specs
+   (Blizzard's `PetFrame` and `FocusFrameToT` rank as Blizzard's and answer
+   only for their own token; frames `CanBeAccessedInContext` refuses are
+   skipped).
 
 **codecKit native DEFLATE** — a change inside facade `CodecKit`
 
@@ -2698,6 +2763,9 @@ copy; spells absent from a flavour or from the player's spellbook drop out:
    `DecompressString` does (docs/INTERNALS.md, "Native compressor"). The
    client suite (`tests/client/MoltenCodesTest_CodecKit`, now 36 tests) is
    not run yet.
+   Reviewed 2026-11-15 under core decision 17: 0.2.1, revision 8 (a secret
+   native result or `Enum` value falls back to Lua or to the documented
+   number).
 
 #### Package N — bridgeKit, migrating from Ace3
 
@@ -2874,9 +2942,14 @@ duplicating those specifications.
 
 ---
 
-Last roadmap baseline update: 2026-11-15 (phases 0 through 4 and packages F,
+Last roadmap baseline update: 2026-11-15, later the same day (package M's
+twelve Kits implemented, decision 16's capabilities delivered: 41 packages,
+40 of them release packages; every unticked item of package M waits only for its
+real-client run, which comes last by the owner's decision; the standing
+obligations continue).
+Previous baseline: 2026-11-15 (phases 0 through 4 and packages F,
 G and H complete; phase 5 packages I, J, K and L complete; package N, bridgeKit,
 delivered: steps N0 to N5 done, so 29 packages, 28 of them release
 packages, every gate green; the user-interface phase (package M) follows
-package N by the owner's decision; the standing obligations continue).
-Previous baseline: 2026-09-25.
+package N by the owner's decision; the standing obligations continue), and before
+it 2026-09-25.

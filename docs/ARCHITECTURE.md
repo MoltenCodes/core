@@ -96,7 +96,10 @@ Cross-package behavior must use public APIs. Consumers must not reach into anoth
 
 ## Dependency direction
 
-The current runtime dependency graph is:
+The current runtime dependency graph, required edges only, is below. It is
+the same graph [`EMBEDDING.md`](EMBEDDING.md#load-order) gives addon authors;
+`python3 -m tooling.package.build` computes the load order from the manifests,
+and repository validation holds EMBEDDING's quoted order to it:
 
 ```text
 registry
@@ -114,9 +117,17 @@ registry
 ├──→ interopKit
 ├──→ bridgeKit
 ├──→ menuKit
+├──→ dialogKit
+├──→ bindingKit
+├──→ editModeKit
+├──→ rangeKit
+├──→ unitFrameKit
 ├──→ poolKit
 │       ├──→ codecKit
 │       ├──→ tooltipKit
+│       ├──→ barKit
+│       ├──→ toastKit
+│       ├──→ glowKit
 │       └──→ widgetKit   (also needs signalKit)
 │               └──→ panelKit   (also needs optionsKit)
 ├──→ timerKit
@@ -173,7 +184,7 @@ The package `version` is Semantic Versioning for distribution and release histor
 
 Framework packages can be embedded by multiple addons. Registry assigns one stable shared table to each `(package, API generation)` pair. Accepted higher revisions update that table in place rather than replacing it, so consumers do not split across old and new package identities.
 
-Portable WoW runtime access to Registry is provided through `MoltenCodes.Registry`; packages must not depend on optional or newer module-loading facilities for their fundamental bootstrap path.
+Portable WoW runtime access to Registry is the `MoltenCodes` global: `MoltenCodes.Registries[<generation>]` for a generation asked for by number, which is what every Kit and consumer should use, and `MoltenCodes.Registry` as an alias for the newest generation loaded (and for copies of Registry older than revision 5). Packages must not depend on optional or newer module-loading facilities for their fundamental bootstrap path.
 
 ## How a Kit bootstraps
 
@@ -226,10 +237,60 @@ new fields written from outside the package. The Kit itself writes its facade
 exclusively through `rawset`, which every Kit in this repository already does,
 so sealing never interferes with bootstrap or upgrade.
 
-The dependency layer directly above Registry holds the Kits that need nothing else: `signalKit`, `poolKit`, `clientKit`, `cacheKit`, `profileKit`, `schemaKit`, `localeKit`, `hookKit`, `interopKit`, `apiKit`, `compatKit` and `bridgeKit`. Of these, `signalKit` is the one the event and lifecycle branch is built on. SignalKit uses Registry only for embedded-package identity; its dispatch algorithm is pure Lua and does not depend on WoW Frames or event APIs.
+## Conventions every Kit shares
+
+Beyond the bootstrap, a handful of rules recur in every package, so that a
+reader who knows one Kit can read the next:
+
+- **Bounded by default, opened on purpose.** Every structure a Kit retains
+  has a documented default bound. Package-wide bounds go through
+  `Kit:SetLimits{}` and `Kit:GetLimits()`; per-object bounds are constructor
+  options. A Kit whose retained memory is the caller's own registrations
+  offers an `UNBOUNDED` sentinel; a Kit whose entries are frames (which the
+  client never frees) or wire formats has a ceiling instead. Each
+  `docs/API.md` has a "Limits" table naming the default, the ceiling and the
+  reason.
+- **Optional collaborators at call time.** A Kit that can use another one
+  but does not need it finds it with `Registry:Find(packageId, api)` when the
+  feature is used, and documents what happens without it (the
+  "Degrades gracefully without" column of
+  [`EMBEDDING.md`](EMBEDDING.md#what-the-framework-promises)). Such an edge is
+  declared under `optionalDependencies` in the manifest and never enters the
+  load order.
+- **Addon scopes.** The Kits that hold an addon's registrations
+  (`timerKit`, `schedulerKit`, `eventKit`, `hookKit`, `commandKit`,
+  `commKit` and SignalKit's addon bus) offer `ForAddon(addonName)`, closed at
+  that addon's shutdown by LifecycleKit when it is loaded
+  (`LifecycleKit.CLOSES_ADDON_SCOPES` names them), otherwise by the Kit's own
+  `PLAYER_LOGOUT` watcher when EventKit is loaded, otherwise by the addon's
+  `CloseAddonScopes` call. ModuleKit gives each module the same scopes as
+  `module.scope`, closed when the module is disabled.
+- **Secret values first.** Every argument, and every value the client
+  answers, is asked `issecretvalue` (looked up at call time, because older
+  clients lack it) before it is compared, indexed or formatted; a refusal
+  names the parameter, and a secret is never formatted into a message (see
+  [`EMBEDDING.md`](EMBEDDING.md#secret-values-retail-12x) for the rules and
+  where the oldest Kits still fall short of them).
+- **Errors at the caller's line.** Argument errors are raised with an
+  explicit level that points at the consumer's call, never at the Kit's
+  internals, and the specs check that level.
+- **Frame-owning Kits keep their frames and route their scripts.** The
+  client never frees a frame, so a Kit that creates frames (WidgetKit,
+  PanelKit, LauncherKit, TooltipKit, BarKit, DialogKit, ToastKit, BindingKit,
+  GlowKit, EditModeKit, RangeKit's and UnitFrameKit's event frames) keeps
+  them in PoolKit pools or for the session and caps how many exist. The
+  scripts and callbacks such a frame was given call through a dispatch table
+  in the shared `_state`, which every revision rewrites, so an upgraded copy
+  takes over frames an older copy created.
+
+## Package by package
+
+Each paragraph below gives one package's required dependencies, what it owns
+and where it deliberately stops; the package's `docs/API.md` is the contract.
+
+The dependency layer directly above Registry holds the Kits that need nothing else: `signalKit`, `poolKit`, `timerKit`, `clientKit`, `cacheKit`, `profileKit`, `schemaKit`, `localeKit`, `hookKit`, `interopKit`, `apiKit`, `compatKit`, `bridgeKit`, and the user-interface and unit Kits `menuKit`, `dialogKit`, `bindingKit`, `editModeKit`, `rangeKit` and `unitFrameKit`. Every optional collaborator is found at call time through `Registry:Find`, which is why so many Kits sit this low: an edge exists only where a Kit cannot do its job without the other one. Of these, `signalKit` is the one the event and lifecycle branch is built on. SignalKit uses Registry only for embedded-package identity; its dispatch algorithm is pure Lua and does not depend on WoW Frames or event APIs.
 
 `eventKit` is the first WoW-specific package in the dependency chain (ClientKit is WoW-specific too but stands alone). It depends on Registry API 2 and SignalKit API 1, finds SchedulerKit through `Registry:Find` for `Coalesce` and `Derive`, keeps the `CreateFrame`/Frame registration boundary narrow, routes the payload-less combat log event through one `CombatLogGetCurrentEventInfo` read per event fanned out by sub-event (`ConnectCombatLog`), and applies SignalKit's listener ordering and mutation semantics to a listener array of its own per channel, so a connection is one handle and a delivery one isolated call (since EventKit revision 17; SignalKit still backs `Derive`'s `OnChange`). Coalesce handles share one EventKit-private SchedulerKit scope (since EventKit revision 18); a handle's `Close` closes only its own timing handle, and `Derive` handles keep a SchedulerKit scope of their own. Regular events share one lazy Frame; unit-filtered events are grouped by normalized unit-token sets so `RegisterUnitEvent` registrations do not overwrite incompatible filters on the same Frame.
-
 
 `lifecycleKit` depends on Registry API 2, SignalKit API 1, and EventKit API 1. It owns per-addon phase state, converts `ADDON_LOADED`, `PLAYER_LOGIN`, and `PLAYER_LOGOUT` into replay-aware lifecycle phases, keeps one shared combat-lockdown state from `PLAYER_REGEN_DISABLED` / `PLAYER_REGEN_ENABLED` with a bounded per-addon "run when out of combat" queue, lets an addon declare itself halted for the session and announces that to the addons that depend on it, owns addon-shutdown teardown for TimerKit scopes, SchedulerKit scopes, EventKit scopes, HookKit scopes, CommandKit scopes, CommKit scopes and the SignalKit bus in that order (every step runs, the first failure wins), and leaves all WoW Frame registration inside EventKit.
 
@@ -238,7 +299,6 @@ The dependency layer directly above Registry holds the Kits that need nothing el
 `timerKit` depends only on Registry API 2; LifecycleKit, when present, closes its addon scopes at shutdown through `TimerKit:CloseAddonScopes`. It wraps only the stable `C_Timer.NewTimer` / `C_Timer.NewTicker` boundary, provides deterministic logical timer state and ownership scopes; an addon scope closes at logout through LifecycleKit when present, otherwise through one EventKit `PLAYER_LOGOUT` connection, otherwise by the addon's own `CloseAddonScopes` call. Running native callbacks dispatch through shared package state so future compatible revisions can update logical behavior without replacing Timer/Scope identity. TimerKit does not depend on ModuleKit; module code may opt into addon-owned or manually owned timer scopes without creating a package cycle.
 
 `schedulerKit` depends on Registry API 2 and TimerKit API 1; LifecycleKit, when present, closes its addon scopes at shutdown through `SchedulerKit:CloseAddonScopes`, and without LifecycleKit SchedulerKit's own EventKit `PLAYER_LOGOUT` connection does when EventKit is loaded. It owns cooperative coroutine execution, weighted priority queues, frame-budget observation, delayed/repeating scheduled work, and cancellation scopes. SchedulerKit installs an OnUpdate driver only while ready work exists and uses TimerKit for delay waiting, so delayed-only workloads do not keep a per-frame handler active. It does not depend on ModuleKit; modules may opt into addon-owned SchedulerKit scopes without coupling the two packages.
-
 
 `poolKit` depends only on Registry API 2. Its pooling algorithm is pure Lua and intentionally sits outside the lifecycle/event/scheduling branch: consumers can reuse objects without pulling in Frames, timers, coroutines, or addon lifecycle state. Retention is bounded by default, with `PoolKit.UNBOUNDED` as an explicit caller-owned escape hatch.
 

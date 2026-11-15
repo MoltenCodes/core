@@ -12,12 +12,17 @@ This directory is the entry point for repository-wide documentation.
   and type-checked on every test run.
 - [`MIGRATING_FROM_ACE3.md`](MIGRATING_FROM_ACE3.md) moves an addon from Ace3 to the
   Kits library by library: the Ace3 code, the same thing with the Kits, and what
-  behaves differently; the data, options and wire tools are BridgeKit's.
+  behaves differently; the data, options and wire tools are BridgeKit's. It
+  also covers the libraries that usually travel with Ace3 (LibDataBroker,
+  LibDBIcon, LibSharedMedia, LibQTip, LibDualSpec, LibCandyBar,
+  LibCustomGlow, LibEditMode, LibRangeCheck, LibGetFrame) and the Blizzard
+  systems addons used to reach into (UIDropDownMenu, `StaticPopupDialogs`,
+  the settings panel).
 
 ## Architecture and contracts
 
 - [`DESIGN_CONSTITUTION.md`](DESIGN_CONSTITUTION.md) defines the principles that package and tooling changes must preserve.
-- [`ARCHITECTURE.md`](ARCHITECTURE.md) explains package boundaries, dependency direction, API generations, and embedded package identity.
+- [`ARCHITECTURE.md`](ARCHITECTURE.md) explains package boundaries, the dependency graph, API generations, embedded package identity, how a Kit bootstraps, the conventions every Kit shares, and each package's place in the graph.
 - [`PACKAGE_MANIFEST.md`](PACKAGE_MANIFEST.md) defines the canonical machine-readable package metadata contract.
 - [`ROADMAP.md`](ROADMAP.md) records what was decided and delivered in each phase, the nine-point record of every planned Kit, and the standing obligations.
 - [`API_KIT_DESIGN.md`](API_KIT_DESIGN.md) is the design of `apiKit`, the flavour-aware wrapper over the WoW addon API (package H, implemented 2026-09-24): namespaces, naming rules, metadata pipeline, outputs and definition of done.
