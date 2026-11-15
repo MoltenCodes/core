@@ -1,0 +1,11 @@
+## Interface: 120105, 50504, 20506, 11509
+## Title: MoltenCodes Test: GlowKit
+## Notes: Real-client test suites for MoltenCodes GlowKit. Run them with /mct run glowKit. They show a glow for a moment.
+## Author: MoltenCodes
+## Version: 1.0.0
+## Dependencies: MoltenCodesTest
+## X-Category: Development Tools
+## X-License: MIT
+
+# Development only: never ship this addon. See tests/client/README.md.
+GlowKitSuite.lua

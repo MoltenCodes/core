@@ -1,0 +1,92 @@
+local TestEnv = require("GlowKitTestEnv")
+
+describe("GlowKit bootstrap", function()
+  after_each(TestEnv.Reset)
+
+  it("publishes through Registry", function()
+    local GlowKit, _, Registry = TestEnv.NewPackage()
+    local registered, revision = Registry:Get("glowKit", 1)
+    assert.are.equal(GlowKit, registered)
+    assert.are.equal(GlowKit.REVISION, revision)
+  end)
+
+  it("returns the same facade on a duplicate embedded load and keeps its glows", function()
+    local GlowKit = TestEnv.NewPackage()
+    local button = TestEnv.FrameAt(0, 0)
+    GlowKit:Start(button)
+    local reloaded = TestEnv.ReloadPackage()
+    assert.are.equal(GlowKit, reloaded)
+    assert.is_true(reloaded:IsGlowing(button))
+  end)
+
+  it("does not reinterpret private state owned by a newer compatible revision", function()
+    local GlowKit, _, Registry = TestEnv.NewPackage()
+    local shippedRevision = GlowKit.REVISION
+    local upgraded, previous = Registry:Register("glowKit", 1, 99)
+    assert.are.equal(GlowKit, upgraded)
+    assert.are.equal(shippedRevision, previous)
+
+    rawset(GlowKit, "REVISION", 99)
+    rawset(GlowKit, "_state", { schema = 999 })
+    package.loaded["GlowKit"] = nil
+    local reloaded = require("GlowKit")
+    assert.are.equal(GlowKit, reloaded)
+    assert.are.equal(99, reloaded.REVISION)
+  end)
+
+  it(
+    "upgrades in place: glows, their overlays' updates, the pool and the limit run the new code",
+    function()
+      local GlowKit = TestEnv.NewPackage()
+      local button = TestEnv.FrameAt(0, 0)
+      button:SetSize(40, 20)
+      local glow = GlowKit:Start(button, { lines = 1, frequency = 1 })
+      GlowKit:SetLimits({ maxGlows = 100 })
+      local overlay = rawget(glow, "_record").overlay
+
+      local upgraded = TestEnv.LoadRevision(GlowKit.REVISION + 1)
+      assert.are.equal(GlowKit, upgraded)
+      assert.are.equal(100, upgraded:GetLimits().maxGlows)
+      TestEnv.Run(overlay, "OnUpdate", 0.25)
+      assert.are.same({ "TOPLEFT", overlay, "TOPLEFT", 30, 0 }, { overlay.lines[1]:GetPoint(1) })
+      assert.is_true(upgraded:Stop(button))
+      assert.are.equal(0, upgraded._state.pool:GetActiveCount())
+    end
+  )
+
+  it("refuses shared state whose limit holds an invalid value", function()
+    local GlowKit = TestEnv.NewPackage()
+    rawset(GlowKit._state.limits, "maxGlows", 513)
+    TestEnv.expectErrorContaining("package state is corrupted or incomplete", function()
+      TestEnv.ReloadPackage()
+    end)
+  end)
+
+  it("requires Registry", function()
+    TestEnv.Reset()
+    TestEnv.InstallWowApi()
+    local ok, value = pcall(require, "GlowKit")
+    assert.is_false(ok)
+    assert.is_truthy(tostring(value):find("Registry API 2", 1, true))
+  end)
+
+  it("requires PoolKit", function()
+    TestEnv.Reset()
+    TestEnv.InstallWowApi()
+    require("Registry")
+    local ok, value = pcall(TestEnv.requireAfterFailedLoad, "GlowKit")
+    assert.is_false(ok)
+    assert.is_truthy(tostring(value):find("PoolKit API 1", 1, true))
+  end)
+
+  it("refuses an incomplete facade left by an earlier failed load", function()
+    TestEnv.Reset()
+    TestEnv.InstallWowApi()
+    local Registry = require("Registry")
+    require("PoolKit")
+    Registry:Register("glowKit", 1, 1)
+    local ok, value = pcall(TestEnv.requireAfterFailedLoad, "GlowKit")
+    assert.is_false(ok)
+    assert.is_truthy(tostring(value):find("MoltenCodes GlowKit", 1, true))
+  end)
+end)

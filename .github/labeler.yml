@@ -58,6 +58,10 @@
   - changed-files:
       - any-glob-to-any-file: "packages/eventKit/**"
 
+"kit: glowKit":
+  - changed-files:
+      - any-glob-to-any-file: "packages/glowKit/**"
+
 "kit: hookKit":
   - changed-files:
       - any-glob-to-any-file: "packages/hookKit/**"

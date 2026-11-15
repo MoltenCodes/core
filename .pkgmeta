@@ -167,3 +167,5 @@ move-folders:
   MoltenCodes/packages/toastKit/docs: MoltenCodes/toastKit/docs
   MoltenCodes/packages/bindingKit/src: MoltenCodes/bindingKit
   MoltenCodes/packages/bindingKit/docs: MoltenCodes/bindingKit/docs
+  MoltenCodes/packages/glowKit/src: MoltenCodes/glowKit
+  MoltenCodes/packages/glowKit/docs: MoltenCodes/glowKit/docs
