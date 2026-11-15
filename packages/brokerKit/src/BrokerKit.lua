@@ -128,8 +128,7 @@ local LIBDATABROKER_MAJOR = "LibDataBroker-1.1"
 local LIBDATABROKER_CREATED = "LibDataBroker_DataObjectCreated"
 local LIBDATABROKER_CHANGED = "LibDataBroker_AttributeChanged"
 
--- The `__metatable` of every object proxy. It hides the proxy's metatable and
--- is how a receiver is recognised.
+-- The `__metatable` of every object proxy. It hides the proxy's metatable.
 local OBJECT_METATABLE_TAG = "BrokerKit.Object"
 
 local FACADE_METHODS = {

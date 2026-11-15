@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.5 — 2026-11-15
+
+- Source comment: `OBJECT_METATABLE_TAG` only hides an object proxy's metatable. The comment also called it how a receiver is recognised, which `recordOf` does by looking the proxy up in the shared `records` table. Comment only: the implementation revision is unchanged.
+
 ## 0.1.4 — 2026-09-24
 
 - `SetLimits` no longer passes an unknown key to `tostring` for its message. A key `issecretvalue` reports secret is described with the fixed placeholder, `BrokerKit:SetLimits limits.<secret value> is not a recognised limit` (it was `BrokerKit:SetLimits limits must not have a secret key`), and is still asked about before it indexes the limit names; a string or number key is shown as written; any other key is shown by its type (`limits.<table> is not a recognised limit`), so a key's `__tostring`, foreign code whose answer may be secret, never runs. A key read by `next` from a Lua table cannot be secret on Retail 12.1.0 b69933, because storing a secret table key raises, so the secret branch is defensive. Documented under *Limits* and *Secret values* in `docs/API.md`.
