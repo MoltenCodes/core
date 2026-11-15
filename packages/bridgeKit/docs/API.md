@@ -653,10 +653,33 @@ checked first, and only a string is named.
 
 ## Cost
 
-`AceSerialize` builds the text from one table of pieces and allocates one
-work record per call; `AceDeserialize` first copies the text without its
-control bytes and spaces, then cuts one string per token. Both are linear in
-the text and recurse once per table level.
+`AceSerialize` writes into one piece array it reuses from call to call (a
+token and its data as separate pieces) and allocates only the result:
+198 bytes for a small record, where AceSerializer-3.0 allocates 201.
+`AceDeserialize` first copies the text without its control bytes and spaces,
+as Ace does, then cuts each token with one pattern match and allocates the
+tables and strings it returns. Both are linear in the text and recurse once
+per table level.
+
+Measured on host Lua 5.1 against AceSerializer-3.0 itself
+([`docs/BENCHMARKS.md`](../../../docs/BENCHMARKS.md), "AceSerializer-3.0
+text", the run of 2026-11-15 on a machine that was not idle), over the
+`codec` workload's payloads:
+
+| Operation | BridgeKit ÷ Ace3 | Bytes per operation (BridgeKit against Ace3) |
+|---|---|---|
+| encode a small, medium and large payload | 1.71×–1.79× | 198 / 201, 4.8 KB / 4.8 KB, 28 KB / 28 KB |
+| decode them | 1.36×–1.58× | 832 / 600, 26 KB / 20 KB, 94 KB / 71 KB |
+
+The gap is the work Ace3 does not do: the secret probe of every value and the
+value-count, string-length and depth bounds on both sides, cycle detection on
+write, and on read the refusal of every input Ace would raise on.
+
+`ConvertAceConfig`, the importer and the channel are measured by the specs'
+shape, not timed: a conversion and an import run once per load or install,
+and a channel's per-message cost is CommKit's (`docs/BENCHMARKS.md`,
+"Multipart addon messages") plus one table read per message and one
+`table.concat` per reassembled stream.
 
 ## Upgrades
 

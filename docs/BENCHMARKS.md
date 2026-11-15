@@ -601,6 +601,15 @@ rendered below with `python3 -m tooling.bench.report`.
   workload dropped `register-unregister-one-emote` (see
   [Workloads](#workloads)).
 
+- A fourth run,
+  [`2026-11-15-host.json`](../tooling/bench/results/2026-11-15-host.json), at
+  commit `d3b73c2`, covers all fifteen workloads, `aceSerializer` (BridgeKit)
+  included. The machine was not idle (load average 6 to 17 from unrelated
+  processes), so it is kept as a record and does not replace the run above for
+  the fourteen older workloads; only its `aceSerializer` section is quoted, at
+  the end of this section. Both sides of every case still alternate in the
+  same rounds, so its ratios are fairer than its absolute times.
+
 **Checks stay; speed comes without dropping them.** The owner decided on
 2026-09-25 that every check a Kit makes and Ace3 skips stays: argument and
 receiver validation, secret-value refusals, bounds, isolation of callbacks,
@@ -631,6 +640,7 @@ overlap or the ratio is within 1.15× either way.
 | eventKit `Coalesce` (schedulerKit, timerKit) | AceBucket-3.0 | slower: 1.9× per event and per burst, 2.4× to create and remove a bucket | burst 752 B against 528 B; create and remove 1.9 KB against 272 B | a handle, a SchedulerKit timing handle and an EventKit subscription per bucket; per event the key's secret probe and the 256-key bound; in exchange no timer stays armed after a delivery |
 | optionsKit (with commandKit's `BindOptions`) | AceConfigRegistry-3.0, AceConfigCmd-3.0, AceDBOptions-3.0 | define and check faster, 0.86–0.90×; a typed option command 1.35–2.02×; profile group 6.1×; choosing a profile by command 2.6× | define 46–174 KB against 0.2 KB; 0.8–1.6 KB against 0.7–0.9 KB per command; profile group 0 against 0 | the profile group is cached as AceDBOptions' is; what remains are the checks every call keeps (SettingsKit loaded, the database's ten profile methods, the options, secret refusals; about 1.3 µs); a command also enforces `min`/`max` (which AceConfigCmd skips), echoes the value and describes the named option; `Define` copies and indexes the tree it seals |
 | widgetKit (indicative, fake frames) | AceGUI-3.0 | pooled widget cycle from 0.66× (CheckBox, faster) and 0.81× (Label) to 1.00× (EditBox), 1.39× (Button) and 1.56× (Slider); group layout is *different work* (the fake client's anchor check dominates AceGUI's time) | 0 against 0 per cycle (AceGUI EditBox 256 B) | PoolKit's acquire and release (the pool's bound and ownership bookkeeping), the protected calls around `OnAcquire` and `OnRelease`, and the checks every setter makes (the secret probe and `type` for the nil rule); a Slider validates three numbers and its widget in `SetSliderValues` |
+| bridgeKit (AceSerializer-3.0 format, run of 2026-11-15) | AceSerializer-3.0 | slower: encode 1.71–1.79×, decode 1.36–1.58× | encode at parity (198 B against 201 B, 4.8 KB against 4.8 KB, 28 KB against 28 KB); decode 832 B against 600 B, 26 KB against 20 KB, 94 KB against 71 KB | the same bytes both ways; per value the secret probe and the value-count, string-length and depth bounds, cycle detection; on decode the bounds on every token and the reader's refusal of what Ace would raise on |
 
 **Ahead or at parity.** Profile switch 0.24× with no allocation (AceDB
 496 B); options define 0.86–0.90×; WidgetKit CheckBox and Label cycles 0.66×
@@ -1309,3 +1319,41 @@ Checks:
 | `list-layout-in-order` | pass: 5 labels stacked top to bottom in the order added: true | pass: 5 labels stacked top to bottom in the order added: true |
 | `children-released-last-first` | pass: release order of 5 children: 5 4 3 2 1 | fail (not promised): release order of 5 children: 1 2 3 4 5 |
 | `pool-bounded` | pass: buttons acquired of 300 asked, none released: 256 | fail (not promised): buttons acquired of 300 asked, none released: 300 |
+
+### AceSerializer-3.0 text (run of 2026-11-15)
+
+BridgeKit against AceSerializer-3.0, the same format byte for byte.
+
+Libraries: MoltenCodes: BridgeKit revision 4; Ace3: AceSerializer-3.0 minor 5.
+
+| Case | One operation | MoltenCodes ns/op | Ace3 ns/op | MoltenCodes ÷ Ace3 | MoltenCodes B/op | Ace3 B/op |
+|---|---|---:|---:|---|---:|---:|
+| `encode-small` | serialise the small payload for the addon channel | 7,372 [6,969–7,603] | 4,296 [4,066–5,273] | 1.72× (min 1.71×, slower) | 198 | 201 |
+| `decode-small` | deserialise the small payload | 6,732 [6,224–7,238] | 4,250 [4,051–4,393] | 1.58× (min 1.54×, slower) | 832 | 600 |
+| `encode-medium` | serialise the medium payload for the addon channel | 195,325 [177,139–225,713] | 109,160 [104,304–129,975] | 1.79× (min 1.70×, slower) | 4,792 | 4,786 |
+| `decode-medium` | deserialise the medium payload | 171,877 [162,392–212,738] | 125,891 [117,281–151,775] | 1.37× (min 1.38×, slower) | 26,110 | 20,384 |
+| `encode-large` | serialise the large payload for the addon channel | 1,026,110 [991,280–1,302,660] | 598,490 [573,120–764,490] | 1.71× (min 1.73×, slower) | 28,375 | 28,080 |
+| `decode-large` | deserialise the large payload | 875,170 [844,850–1,086,740] | 644,960 [612,180–802,790] | 1.36× (min 1.38×, slower) | 93,919 | 71,050 |
+
+Other measurements:
+
+| Case | Measurement | MoltenCodes | Ace3 |
+|---|---|---:|---:|
+| `encode-small` | outputBytes | 118 | 118 |
+| `decode-small` | inputBytes | 118 | 118 |
+| `encode-medium` | outputBytes | 3,675 | 3,675 |
+| `decode-medium` | inputBytes | 3,675 | 3,675 |
+| `encode-large` | outputBytes | 16,311 | 16,311 |
+| `decode-large` | inputBytes | 16,311 | 16,311 |
+
+Checks:
+
+| Check | MoltenCodes | Ace3 |
+|---|---|---|
+| `round-trip-small` | pass: decode succeeded: true | pass: decode succeeded: true |
+| `channel-safe-small` | pass: no NUL, CR or LF in the output | pass: no NUL, CR or LF in the output |
+| `round-trip-medium` | pass: decode succeeded: true | pass: decode succeeded: true |
+| `channel-safe-medium` | pass: no NUL, CR or LF in the output | pass: no NUL, CR or LF in the output |
+| `round-trip-large` | pass: decode succeeded: true | pass: decode succeeded: true |
+| `channel-safe-large` | pass: no NUL, CR or LF in the output | pass: no NUL, CR or LF in the output |
+| `truncated-input-refused` | pass: decode returned false | pass: decode returned false |
