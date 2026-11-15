@@ -2767,6 +2767,269 @@ copy; spells absent from a flavour or from the player's spellbook drop out:
    native result or `Enum` value falls back to Lua or to the documented
    number).
 
+#### Package O — memory, performance and ease of use (decisions 18 and 19)
+
+Decided 2026-11-15 with the project owner after the decision 17 review
+compared the framework with Ace3: memory and performance must be much better
+than Ace3's and usability and ease of learning better too. The measured
+diagnosis (memory, the settings Kits, the runtime Kits, usability, Ace3's
+feature gaps, maturity and architecture) found the causes; the owner then
+decided that Kits are split into a core file plus optional parts, that
+secret-value checks guarding what the client already refuses are removed,
+that method-name callbacks are allowed, checked at registration, and that a
+new optional Kit, addonKit, holds the single entry point. The decisions are
+recorded in `docs/decisions/`. Each record below is written before its code.
+
+**Kit parts and the embeds generator (core decision 19a)** — repository tooling, no facade
+
+1. Tooling for Kits made of a core file plus optional part files, so an
+   addon loads only what it uses (core decision 19a). Owner: the tooling
+   agent (`tooling/`, `tests/support/framework/`, `docs/TOOLING.md`,
+   `docs/decisions/`, `.github/workflows/`, the manifest schema). No Kit is
+   split by this record: every Kit stays single-file and behaves exactly as
+   today. Splitting a Kit is its owner's record (wave 2 starts with
+   widgetKit).
+2. Purpose: the memory diagnosis (`improve/memory.md`, fix 12) measured
+   339 KB of resident code in optional sections a typical addon never runs
+   (SchedulerKit and EventKit coalescing, CodecKit compression, CommKit
+   reassembly and SyncSet, CommandKit options binding, SettingsKit views and
+   spec profiles, ModuleKit halted addons, the WidgetKit renderer and widget
+   types). It is the only lever that brings a typical addon near Ace3, and it
+   needs the tooling first. The usability diagnosis (`improve/usability.md`,
+   cause 3 and F6) found that embedding means copying a 46-line load order by
+   hand and that the builder writes no `embeds.xml`. This record gives both:
+   parts in the manifest and every gate, and a generated `embeds.xml`.
+   Non-goals: assembling parts into one release file (architecture plan 5.3,
+   superseded by 19a, which ships parts as files); turning apiKit's flavour
+   files into parts (possible later, noted as a follow-up); per-flavour
+   `.toc` files; comment stripping; publishing releases.
+3. Dependencies: Python 3.10+ standard library only, as the rest of
+   `tooling/`; host Lua 5.1 and Busted for the runner, LuaCov for coverage,
+   as today. No runtime dependency is added to any Kit.
+4. Surface.
+   - **Layout.** A part is `packages/<id>/src/parts/<Facade>-<Part>.lua`,
+     for example `eventKit/src/parts/EventKit-Coalescing.lua`. `<Part>` is
+     PascalCase (`^[A-Z][A-Za-z0-9]*$`). The facade prefix gives every part
+     one name across the repository: one `require` name in specs, and an
+     unambiguous file name in a client error even when the client cuts the
+     path short (the Ace3 `AceGUIWidget-Button` spelling authors know).
+     `src/` keeps exactly one top-level Lua file, the core. Other
+     subdirectories of `src/` (apiKit's `flavours/`) keep today's meaning:
+     always loaded after the core.
+   - **Manifest.** An optional `parts` object, written last (after the
+     top-level `api` and `revision`, so every `Manifest_spec` that reads the
+     first `"api"`/`"revision"` keeps working):
+
+     ```json
+     "parts": {
+       "Coalescing": {
+         "description": "Coalesced and bucketed delivery.",
+         "revision": 1,
+         "dependencies": { "schedulerKit": { "api": 1 } },
+         "optionalDependencies": {},
+         "parts": ["Throttle"]
+       }
+     }
+     ```
+
+     `revision` is the part's own implementation revision (highest wins at
+     runtime, as for a Kit). `parts` names sibling parts it needs; its own
+     core is always implied. Any dependency contract, in a part or in the
+     core's `dependencies`, may carry `"parts": ["Name", ...]` to require
+     parts of another Kit. Validation: names and file exist one to one
+     (a file under `src/parts/` with no entry fails, and the reverse);
+     required parts exist; no part names its own Kit in `dependencies`; a
+     core never requires its own parts; a release Kit never requires a
+     development Kit's part; the required graph over cores and parts has no
+     cycle; the part file's `PART_REVISION = <n>` literal equals the
+     manifest `revision`.
+   - **Runtime contract** (written in ADR 0019a; implemented per Kit by its
+     owner): a part loads after its core and everything it requires, resolves
+     its core through `Registry:Get` at file scope and raises
+     `MoltenCodes <Facade> part <Part> requires <Facade> API <n> to be loaded
+     first` when it is missing; it keeps its state in the core's state
+     (`_state.parts.<Part>`) with its own `PART_REVISION`, so two addons
+     embedding different revisions of a part upgrade in place like Kits; a
+     core feature whose part is absent fails at the caller's line with an
+     error that names the part to embed.
+   - **Load order.** One rule for cores and parts: a depth-first walk over
+     nodes. A core's needs are its dependency Kits' cores (sorted by name),
+     each followed by the parts its contract names; a part's needs are its
+     own core, then its dependency cores and named parts, then its sibling
+     parts in manifest order. The top level walks the selected Kits in sorted
+     order, each core followed by its selected parts in manifest order. With
+     no parts in the repository this is exactly today's algorithm, so every
+     existing load order, `.toc` and checksum stays byte-identical.
+   - **Builder** (`python3 -m tooling.package.build`):
+     `--package ID` (repeatable) selects a Kit's core and the parts its
+     contracts require; `--part ID/Part` or `ID/*` (repeatable) adds parts and
+     implies the core; `--all` is every release Kit with every part (the
+     standalone `MoltenCodes` addon). Bundle name: `MoltenCodes` for `--all`;
+     `MoltenCodes-<Facade>` when the selection is one Kit (with any of its
+     parts); otherwise `MoltenCodes-Custom`, overridable with `--name`
+     (`^MoltenCodes(-[A-Za-z0-9]+)?$`). `--embeds` also writes `embeds.xml` in
+     the bundle root. Every file is copied, checksummed and listed in the
+     bundle `.toc` in load order; `--verify` holds `CHECKSUMS.txt`, the `.toc`
+     and `embeds.xml` to the build. `manifest.json` moves to schema 2: each
+     package entry gains `parts` (files, revision, contracts) and
+     `selectedParts`, and `loadOrder` may interleave packages (a part can load
+     after another Kit's core). The release workflow, `tooling.release.
+     library_toc --package` and `tooling.release.pkgmeta --package` build a
+     single-Kit release as the whole Kit (`--package ID --part 'ID/*'`), since
+     the packager moves the whole `src/` folder; unchanged output today.
+   - **Embeds generator** (`python3 -m tooling.package.embeds`): positional
+     selectors `ID` (core), `ID/Part`, `ID/*`; `--root 'Libs\MoltenCodes-Custom'`
+     (the folder the author copies the bundle to); prints `embeds.xml` (one
+     `<Script file=...>` per file, backslashes, dependencies deduplicated, a
+     comment naming the selection), or with `--toc` the equivalent `.toc`
+     lines; `--out FILE` writes it. Unknown Kit, unknown part, development Kit
+     and a missing dependency are refused with a message that names the fix
+     (`unknown Kit "TimerKit"; did you mean "timerKit"?`). The builder's
+     `--embeds` uses the same function, so the two never disagree.
+   - **Test runner** (`tooling.test.run`): every source package on a suite's
+     path also contributes `src/parts/?.lua`, so a spec loads a part with
+     `require("EventKit-Coalescing")`, or names it in its test environment's
+     `modules` list after the core. A suite also gets the Kits its parts
+     require and optionally use (the same rule as `optionalDependencies`
+     today).
+   - **Coverage** (`tooling.test.coverage`): a package's figure covers its
+     core and its parts; the report and the step summary show one row per
+     part; a declared part that no spec of its own package loaded fails the
+     run (a file LuaCov never saw is otherwise invisible).
+   - **lua-language-server**: a package's expected `src/.luarc.json` library
+     list is the dependency-first closure of its core and all of its parts
+     (the `src/` workspace already contains the parts). Unchanged for every
+     Kit today.
+   - **Repository validation**: the part rules above; the quoted load order
+     in `docs/EMBEDDING.md` keeps its check (now including part files); the
+     "Minimum footprint per Kit" table and a new "Optional parts" table are
+     rendered from the manifests and compared between
+     `<!-- generated:footprint -->` / `<!-- /generated:footprint -->` and
+     `<!-- generated:parts -->` / `<!-- /generated:parts -->` markers; a
+     mismatch prints the exact replacement block, as the load-order check
+     does. `python3 -m tooling.package.embeds --footprint` prints both.
+5. Ownership: the builder owns nothing at runtime. A generated `embeds.xml`
+   is the author's file once written; the generator never edits an existing
+   file unless `--out` names it. Generated documentation blocks are only the
+   marked blocks; the prose around them stays hand-written.
+6. Performance and memory, expected from the prototypes: the tooling adds no
+   runtime cost; with no Kit split yet, every bundle is byte-identical to
+   today's (baseline kept at `~/research/moltencodes/tooling/baseline-all/`:
+   189 files, 45 Lua files in load order). Once Kits are split, an addon
+   that embeds no optional part saves up to 339 KB resident (memory.md
+   fix 12), and the event-and-timer minimum set drops from about 333 KB to
+   about 313 KB without EventKit coalescing alone. For the author: generated
+   `embeds.xml` lines 19 to 0 hand-written for the nine-Kit usability
+   example (the prototype's 19 files equal the hand list), and every
+   additional addon embedding the same Kits compiles less (duplicate
+   embedding allocates 4,992 KB transient today, all of it proportional to
+   the files loaded).
+7. Tests (`tooling/tests/`, temporary repositories as the builder tests use):
+   manifest validation of `parts` (each rule above, accept and refuse); load
+   order with parts (core before part, part after another Kit's core, a core
+   requiring another Kit's part, sibling parts, cycles refused, the walk
+   identical to today's without parts, asserted on the real manifests);
+   builder selections (`--package` repeated, `--part ID/Part`, `ID/*`,
+   `--all`, names, `--name`, `--embeds`, schema 2 manifest, checksums and
+   `--verify` catching a stale `embeds.xml`); the embeds generator (XML and
+   `.toc` output, deduplication, root prefix, each refusal message); the
+   runner's path carrying `src/parts/` and a Busted run of a fixture Kit
+   whose spec requires its part; coverage failing for a part no spec
+   loaded and reporting part rows; `.luarc.json` expectations with a part
+   that adds a dependency; the EMBEDDING footprint and parts blocks;
+   `library_toc` and `pkgmeta` single-Kit output unchanged today. The full
+   `--all` build is compared with the baseline checksums.
+8. Docs: `docs/TOOLING.md` (builder options, the embeds generator, runner
+   and coverage notes); `docs/decisions/README.md` (what an ADR is here,
+   the template: Status, Date, Context, Decision, Consequences; numbering:
+   ADRs are numbered in sequence from 0001 and stand on their own, each
+   naming its date and what it decides: `0001-kit-core-and-parts.md`,
+   `0002-secret-checks-only-where-the-client-answers.md`,
+   `0003-method-name-callbacks.md`, `0004-addon-kit-entry-point.md`, in
+   plain project language. Also updated by this work: `docs/PACKAGE_MANIFEST.md` ("Parts" section
+   and the layout tree), `docs/RELEASES.md` (options table, bundle names,
+   schema 2), `docs/TESTING.md` (loading a part in a spec). Shared files,
+   exact text in the phase 2 report: `docs/EMBEDDING.md` (the two marker
+   blocks, a "Choosing parts" paragraph, the generator command), `README.md`
+   and `docs/README.md` (a link to `docs/decisions/`), `docs/ROADMAP.md`
+   (this record).
+9. Status: recorded 2026-11-15 under core decisions 18 and 19; code follows.
+
+**Lua limits gate and version check (architecture plan items 1 and 2)** — repository tooling, no facade
+
+1. Two repository gates under core decision 18, owned by the tooling agent:
+   `tooling/validation/lua_limits.py` with its ratchet file
+   `tooling/validation/lua_limits.json`, and a manifest-against-CHANGELOG
+   version check in `tooling/validation/validate_repository.py`. The second
+   replaces the version-string pins of 14 `Manifest_spec.lua` files.
+2. Purpose. Lua 5.1 allows 200 active locals and 60 upvalues per function,
+   and nothing measures either today: CommKit and CommandKit sit at 198 of
+   200 main-chunk locals, which nobody could see until the architecture
+   diagnosis counted them (`improve/architecture-plan.md` 2.2, 5.4). The
+   gate turns that into a number at review time and holds every file to it.
+   Separately, 14 specs pin the SemVer string, so every documentation patch
+   edits a spec, while the invariant the pin was after (the manifest version
+   is the one the changelog releases) is checked nowhere (5.5). Non-goals:
+   splitting any file (that is decision 19a's work, which this gate then
+   watches); a revision-against-tag history check (later, once tags exist).
+3. Dependencies: `luac` from the Lua 5.1.5 toolchain the CI action
+   `.github/actions/setup-lua` already builds (hererocks) and
+   `docs/DEVELOPMENT.md` installs locally; Python standard library.
+4. Surface.
+   - `python3 -m tooling.validation.lua_limits [--update] [paths...]`
+     compiles every runtime Lua file (`packages/*/src/**/*.lua`, parts
+     included) with `luac -p -l -l` and measures, per function: peak active
+     locals (the quantity the 200 limit counts; the prototype is calibrated
+     so a file at the limit reports exactly 200), upvalues, and constants
+     (reported only). Rules: a main chunk above **190** active locals fails,
+     above **180** warns; any other function above **190** locals or above
+     **50** upvalues fails. A file already over a fail line is allowed only
+     at the value its ratchet entry records. The ratchet can only go down: a
+     measured value above its entry fails, a value below its entry fails
+     with "lower the entry" (so an entry always equals the measurement and
+     a raise can never pass unseen), and an entry for a file under the fail
+     line fails as stale. `--update` rewrites the entries to the measured
+     values and refuses to raise any. Output names the file, the function's
+     line, the value, the limit and the headroom left.
+   - Ratchet at the start (measured 2026-11-15): CommKit 198, CommandKit 198,
+     SettingsKit 196, ModuleKit 195, SchedulerKit 194, EventKit 191 (main
+     chunk). Warnings: WidgetKit 189. No function exceeds the per-function
+     lines (largest: SchedulerKit `installCoalescingFamily` at 2317, 111
+     locals and 43 upvalues; next upvalues WidgetKit and SettingsKit 25).
+   - CI: a new `limits` job in `.github/workflows/ci.yml` (checkout, the
+     `setup-lua` action, the command), added to the `ci` summary job's
+     `needs`. The repository job has no Lua, so it does not run there.
+   - Version check in `validate_repository`: for every package, the manifest
+     `version` equals the version of the first `## <version> — <date>`
+     heading of its `CHANGELOG.md`, and that date is not later than today
+     (UTC). All 41 packages pass today.
+   - The 14 pins (barKit, bindingKit, brokerKit, compatKit, dialogKit,
+     editModeKit, glowKit, launcherKit, menuKit, panelKit, rangeKit,
+     tooltipKit, toastKit, unitFrameKit) become the shape assertion mediaKit
+     already uses, `'"version"%s*:%s*"%d+%.%d+%.%d+"'`: one line per file,
+     nothing else in those specs touched, so spec counts stay the same.
+5. Ownership: the ratchet file is data the gate owns; a contributor changes
+   it only through `--update` after making a file smaller.
+6. Performance and memory: no runtime effect. The gate compiles 45 files;
+   expected run time under 5 seconds locally. Headroom becomes visible:
+   CommKit and CommandKit 2 locals, SettingsKit 4, ModuleKit 5,
+   SchedulerKit 6, EventKit 9. Documentation-only patches no longer edit a
+   spec (14 specs freed of a pin).
+7. Tests (`tooling/tests/test_lua_limits.py`, `test_validate_repository.py`):
+   the parser on real `luac -l -l` output (peak, a zero-length local, nested
+   functions, upvalue counts); calibration (a generated file of 196 locals
+   plus a numeric `for` reports 200 and compiles; 197 fails to compile);
+   each rule (warn, fail, ratchet held, ratchet lowered, ratchet stale,
+   `--update` never raises); the gate green on the repository; the version
+   check accepting a match and refusing a mismatch, a missing heading and a
+   future date. Every package suite still passes after the pin edits.
+8. Docs: `docs/TOOLING.md` (the gate, the thresholds and why, the ratchet,
+   the version rule); `docs/decisions/` is covered by the Kit parts record.
+   Shared files, exact text in the phase 2 report: `docs/ROADMAP.md` (this
+   record), `docs/CONTRIBUTING.md` if it lists the gates, `AGENT_BRIEF.md`'s
+   command list (`python3 -m tooling.validation.lua_limits`).
+9. Status: recorded 2026-11-15 under core decisions 18 and 19; code follows.
+
 #### Package N — bridgeKit, migrating from Ace3
 
 Decided 2026-09-25 with the project owner, from the external review that
