@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.2.10 — 2026-11-15
+
+The secret question without a per-call Registry lookup (roadmap package O, "commandKit secret question", core decision 18). No surface change.
+
+- Changed (internal): `isSecret` looked ClientKit up through the Registry on every call (70 to 100 instructions, twice per `Register`, once per secret question of the options binding). It now looks it up on the first question and keeps the answer, a miss included, in the package state (`clientKitLookup`). A ClientKit registered after that question is not asked, which changes no answer on the client: ClientKit's `IsSecret` asks the same `issecretvalue`.
+- Not changed, by the owner's decision: every `Register` still reads every foreign `SLASH_<key><n>` and chat-type alias live. `docs/API.md` (*The taken check*) now says why the scan stays and what it costs.
+- Measured on host Lua 5.1 against Ace3 in the same bench run (`python3 -m tooling.bench.run --workload slashCommands --workload options`): each ratio against Ace3 in its own run, revision 9 then 10: register-unregister 29.9x to 28.3x of AceConsole-3.0; the options command line (`cmd-set-*`, `cmd-refused`) runs about 40 fewer instructions per command with OptionsKit revision 13.
+- Implementation revision 10. An in-place upgrade over revision 9 adds the empty lookup to the state; the next secret question fills it.
+- Specs: 174 → 176. One Registry lookup for many secret questions and a kept miss (`SecretValues_spec.lua`), the upgrade from revision 9 (`Bootstrap_spec.lua`).
+
 ## 0.2.9 — 2026-11-15
 
 - Fixed: `CreateScope` and `ForAddon` built their unknown-option message, and `SetLimits` the label of every limit entry, with `tostring(key)`, so a key that is a table or userdata with a `__tostring` metamethod ran that foreign code inside CommandKit (in `SetLimits` before the key was even checked). The metamethod could raise or answer a secret value, and the caller then saw its error instead of the real refusal. A string key is still shown as written and a number or boolean key through `tostring` (no foreign code runs for those, so `limits.1` is unchanged); any other key is named by its type: `CommandKit:SetLimits limits.<table> is not a recognised limit` and `CommandKit:CreateScope options.<table> is not a recognised option`, at the caller's line, with nothing created or changed. `SetLimits` now builds its per-limit label only once the key is a recognised name. `docs/API.md` documents the form under *Error behaviour* and *Limits*.
@@ -29,7 +39,7 @@
 - The foreign slash scan builds each `SLASH_<key><n>` global name once per session instead of on every `Register`, reads the values live, and compares lengths before it upper-cases a value. A command without arguments or sub-commands shares one compiled empty form instead of five empty tables.
 - The parser jumps with `string.find` to the next byte that matters (whitespace, a quote, a backslash, a pipe) instead of walking every byte in Lua, and a token that does not start with a quote is read as one bare run at once. It answers every line exactly as before: a list of lines from revision 6 is pinned in `Parse_spec.lua`, and 200,000 generated lines agreed when the change was made. Dispatch reads records, frames and contexts with plain indexing instead of `rawget`.
 - `BindOptions` describes only the option (or group) a typed command names, through OptionsKit 0.3.0's `tree:DescribeOption(path)`, so the other options' getters, `desc` and values functions no longer run; with an older OptionsKit it describes the whole tree as before.
-- Host benchmark (`python3 -m tooling.bench.run --workload slashCommands --workload options --rounds 3`; ratios from one run each, sides interleaved; the after-run under a load average of about 4.4 from other agents' work, the before-run about 2.2):
+- Host benchmark (`python3 -m tooling.bench.run --workload slashCommands --workload options --rounds 3`; ratios from one run each, sides interleaved; the after-run under a load average of about 4.4 from other benchmarks and specs running, the before-run about 2.2):
 
   | Case | Before: ratio, bytes | After: ratio, bytes |
   |---|---|---|

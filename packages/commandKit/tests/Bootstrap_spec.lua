@@ -289,6 +289,37 @@ describe("CommandKit bootstrap", function()
     assert.is_true(current:CloseAddonScopes("MyAddon"))
   end)
 
+  it(
+    "upgrades a revision 9 package in place and keeps its ClientKit lookup from then on",
+    function()
+      TestEnv.Reset()
+      TestEnv.InstallWowApi()
+      TestEnv.InstallChatApi()
+      require("Registry")
+      require("SignalKit")
+      require("SchemaKit")
+      require("OptionsKit")
+      local previous = TestEnv.LoadRevision(9)
+      -- Revision 9 kept no lookup in its state.
+      local previousState = rawget(previous, "_state")
+      rawset(previousState, "clientKitLookup", nil)
+
+      local current = require("CommandKit")
+      assert.are.equal(previous, current)
+      assert.are.same(
+        { looked = false, clientKit = false },
+        rawget(previousState, "clientKitLookup")
+      )
+      TestEnv.SetGlobal("issecretvalue", function(value)
+        return value == "hidden"
+      end)
+      TestEnv.expectErrorContaining("CommandKit:Parse text must not be a secret value", function()
+        current:Parse("hidden")
+      end)
+      assert.is_true(rawget(previousState, "clientKitLookup").looked)
+    end
+  )
+
   it("requires Registry", function()
     TestEnv.Reset()
     TestEnv.InstallWowApi()

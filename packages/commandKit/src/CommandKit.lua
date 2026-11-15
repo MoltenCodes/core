@@ -53,7 +53,7 @@
 
 local PACKAGE_NAME = "commandKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 9
+local IMPLEMENTATION_REVISION = 10
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_SCHEMAKIT_API = 1
 local OPTIONAL_OPTIONSKIT_API = 1
@@ -547,6 +547,9 @@ if previousRevision == nil then
     -- EventKit scope that owns it, the connection once made, and the
     -- trampoline handed to EventKit, which calls through `dispatch`.
     logoutWatch = { scope = false, connection = false, trampoline = false },
+    -- ClientKit as `isSecret` found it on its first question (revision 10):
+    -- `looked` once asked, `clientKit` the implementation or `false`.
+    clientKitLookup = { looked = false, clientKit = false },
   }
   rawset(CommandKit, "Scope", Scope)
   rawset(CommandKit, "Context", Context)
@@ -561,6 +564,11 @@ end
 -- next `ForAddon` do. A manual scope needs neither field and is left as built.
 if rawget(state, "logoutWatch") == nil then
   rawset(state, "logoutWatch", { scope = false, connection = false, trampoline = false })
+end
+-- Revisions before 10 looked ClientKit up on every secret question and kept
+-- nothing; the lookup starts empty and is filled by the next question.
+if rawget(state, "clientKitLookup") == nil then
+  rawset(state, "clientKitLookup", { looked = false, clientKit = false })
 end
 for _, addonScope in next, rawget(state, "addonScopes") do
   if rawget(addonScope, "_schema") == 1 then
@@ -650,14 +658,26 @@ local function reportError(failure)
 end
 
 ---Whether `value` is a secret value, asking ClientKit when one is registered
----and the host's `issecretvalue` otherwise. It looks ClientKit up on every
----call, so the allocation-free dispatch path never calls it: typed text is
----never secret. Only failures, output and the options binding do.
+---and the host's `issecretvalue` otherwise. The allocation-free dispatch path
+---never calls it: typed text is never secret. Only Register, failures, output
+---and the options binding do.
+---
+---ClientKit is looked up through the Registry on the first question only
+---(revision 10; each lookup cost 70 to 100 instructions, twice per Register),
+---and the answer is kept, a miss included. A found implementation table is
+---stable per package and API across its own upgrades. A ClientKit registered
+---after the first question is not asked, which changes no answer on the
+---client: ClientKit's `IsSecret` asks the same `issecretvalue`.
 ---@param value any
 ---@return boolean
 local function isSecret(value)
-  local ClientKit = findOptional("clientKit", OPTIONAL_CLIENTKIT_API)
-  if ClientKit ~= nil then
+  local lookup = state.clientKitLookup
+  if not lookup.looked then
+    lookup.clientKit = findOptional("clientKit", OPTIONAL_CLIENTKIT_API) or false
+    lookup.looked = true
+  end
+  local ClientKit = lookup.clientKit
+  if ClientKit then
     local clientIsSecret = rawget(ClientKit, "IsSecret")
     if type(clientIsSecret) == "function" then
       return clientIsSecret(ClientKit, value) == true

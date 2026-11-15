@@ -34,7 +34,7 @@ CommandKit does not rely on `require()` at runtime. Loaded without Registry API 
 | `geterrorhandler` | handler and completion failures | Falls back to `print`. |
 | OptionsKit API 1, through `Registry:Find` | `BindOptions` | `BindOptions` raises at the caller. |
 | LocaleKit API 1, through `Registry:Find` | `context:Printf` | `string.format`, without indexed specifiers. |
-| ClientKit API 1, through `Registry:Find` | every secret check but the taken check, which asks `issecretvalue` directly | The host's `issecretvalue`; without that, nothing is secret. |
+| ClientKit API 1, through `Registry:Find` | every secret check but the taken check, which asks `issecretvalue` directly. Looked up on the first secret question and kept, a miss included (revision 10): a ClientKit registered after that question is not asked, which changes no answer on the client, since ClientKit's `IsSecret` asks the same `issecretvalue`. | The host's `issecretvalue`; without that, nothing is secret. |
 | LifecycleKit API 1, through `Registry:Find` | closing an addon scope at logout (see [At logout](#at-logout)) | EventKit's `PLAYER_LOGOUT` closes it instead. |
 | EventKit API 1, through `Registry:Find` | closing an addon scope at logout when LifecycleKit is absent | Without either, the consumer closes it (case d). |
 
@@ -223,7 +223,7 @@ The spec is checked in full first; every problem with it raises at your line (be
 
 The lookup tables are where Retail 12.1 keeps its own commands. Its chat frame (Blizzard_ChatFrameBase, build 69933) moves every entry of `SlashCmdList`, `ChatTypeInfo` and its private secure-command list into them when it loads, and again before each typed line is parsed, then wipes the lists themselves, whose entries stay reachable only through an `__index` proxy; `SecureCmdList` is no longer a global. A scan of the lists' keys therefore finds none of the client's commands (`/reload`, `/s`, `/cast`), nor another addon's once a line has been typed; the lookup tables find them all. Revisions before 6 read only the lists and missed them.
 
-Every global is read by its constructed name with `rawget`; nothing scans the whole global table. A registration made some other way, such as a command table another library keeps, is not seen, and a command another addon registers *after* yours is outside CommandKit's reach: that addon's registration is what overwrites.
+Every global is read by its constructed name with `rawget`; nothing scans the whole global table. The aliases are read live on every `Register`, by the owner's decision (`docs/ROADMAP.md` package O): an alias another addon added a moment ago is seen. That scan is most of a `Register`'s cost where the client keeps its commands in `SlashCmdList` (about 11 µs with 50 foreign commands on host Lua, 28 times AceConsole-3.0's `RegisterChatCommand`, which checks nothing); a `Register` is a setup call, a few per addon at load, so the cost is paid once. A registration made some other way, such as a command table another library keeps, is not seen, and a command another addon registers *after* yours is outside CommandKit's reach: that addon's registration is what overwrites.
 
 ### Inert globals and re-registration
 
