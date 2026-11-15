@@ -4935,6 +4935,429 @@ Client facts used, read 2026-11-15 from Gethe/wow-ui-source
    revision 8, 4 specs (182); the client suite records whether a secret key is
    refused on assignment before `__newindex`.
 
+**widgetKit (package O): a core and parts, pools on first use, no upgrade residue, and widget cycles at AceGUI's cost** — a change to facade `WidgetKit`
+
+1. Package `widgetKit`, facade `WidgetKit`, API generation 1 (additive),
+   version 0.5.0 (from 0.4.1), implementation revision 14 (from 13). The
+   package becomes a core file `src/WidgetKit.lua` plus eleven part files
+   `src/parts/WidgetKit-<Part>.lua`, each at part revision 1 (ADR 0001).
+
+2. Purpose: an addon pays only for the widgets it uses, and the widget
+   cycles cost no more than AceGUI-3.0's.
+
+   Measured today (host Lua 5.1.5, debug information kept, shared fake
+   client): WidgetKit holds 355.1 KB resident, and an addon that embeds it
+   also loads PoolKit (78.9 KB) and SignalKit (80.8 KB), whatever it draws.
+   Of the 355.1 KB, the widget types are 73.5 KB in their six largest
+   sections alone, the renderer 37.5 KB, thirteen empty PoolKit pools built
+   at load 34.6 KB (2.7 KB each), and an older copy upgraded in place leaves
+   14.1 KB of its code reachable. The main chunk holds 189 of Lua 5.1's 200
+   locals. On the bench, the `Button` cycle costs 1.41× AceGUI's and the
+   `Slider` cycle 1.62× (456 against 269 VM instructions and 56 against 39
+   calls per `Button` cycle; 882 against 601 and 113 against 75 per
+   `Slider` cycle).
+
+   The changes:
+
+   - **Core and parts (ADR 0001).** The core keeps what every widget needs:
+     constants, the shared prototypes, Registry bootstrap, host helpers,
+     argument checks, widget records, the widget base, the container base,
+     the `List`, `Fill` and `Flow` layouts, the type registry with pooling,
+     focus, statistics, limits, the shared widget helpers (text checks,
+     `showText`, label colours) and the part machinery. Everything else
+     moves into parts:
+
+     | Part | Holds | Needs |
+     |---|---|---|
+     | `Containers` | `Frame`, `Group`, `ScrollFrame` | the core |
+     | `Text` | `Label`, `Heading`, `Spacer` | the core |
+     | `Button` | `Button`, key capture included | the core |
+     | `CheckBox` | `CheckBox` | the core |
+     | `Slider` | `Slider` | the core |
+     | `EditBox` | `EditBox`, single and multi-line | the core |
+     | `Dropdown` | `Dropdown`, its list catcher, `CreateMediaPicker` | the core; MediaKit API 1 optional |
+     | `ColorPicker` | `ColorPicker` | the core |
+     | `ScrollList` | `ScrollList` | the core |
+     | `Position` | `WidgetKit.Anchor`, `BindPosition`, the binding methods | the core; SignalKit API 1; SchedulerKit API 1 optional |
+     | `Renderer` | `RenderOptions`, the rendering methods, `childGroups` pages | parts `Containers`, `Text`, `Button`, `CheckBox`, `Slider`, `EditBox`, `Dropdown`, `ColorPicker`; OptionsKit, SchedulerKit, MediaKit API 1 optional |
+
+     Controls get a part each, as AceGUI gives each widget a file, so a
+     window with a button does not carry a slider. The three small display
+     types share `Text` and the three containers share `Containers`,
+     because a part has a fixed cost (its record, its bind function and
+     its stubs, at most 1 KB) that one tiny type would not repay. An addon
+     that embeds every part behaves as today.
+
+   - **The core needs only Registry.** PoolKit and SignalKit leave the
+     core's dependencies: SignalKit carries only a binding's `OnMoved`
+     listeners and moves to the `Position` part; PoolKit is replaced as
+     below.
+
+   - **Pooling inside the core, pools on first use.** Each type keeps its
+     own free list (an array of idle widgets), its cap, its created,
+     borrowed and discarded counts, and its version as the generation, in
+     its type record. The array is created by the first `Create` of the
+     type, never at load or at registration. This removes the second layer
+     of pool bookkeeping (WidgetKit's records plus PoolKit's maps, 105 VM
+     instructions and 8 calls per cycle measured in PoolKit alone) and the
+     34.6 KB of empty pools. Behaviour is PoolKit's as WidgetKit used it:
+     the cap counts every frame a type ever built, every released widget is
+     kept, a raised version retires idle widgets of older versions at once
+     and borrowed ones when they come back, the cap grows by what an
+     upgrade retires within `maxCreatedCeiling`, a constructor that raises
+     or breaks the author contract is raised at the caller of `Create`. The
+     constructor runs under `pcall` only when a widget is built; taking an
+     idle widget calls nothing protected. Layout scratch tables become one
+     retained table per layout depth (at most `MAX_LAYOUT_DEPTH`, 32) in
+     the core's state, replacing the PoolKit table pool.
+
+   - **No upgrade residue.** Two causes, both measured (a revision 11 copy
+     upgraded by revision 13 keeps 174 of its functions reachable): pool
+     callbacks created by the older file, and base types whose version did
+     not change keeping the older file's constructor, through which the
+     older copy's helpers stay alive. Fixes: the free lists need no
+     per-type callbacks at all; a built-in type registered by WidgetKit's
+     own part at an equal version replaces the constructor (only the public
+     `RegisterType` keeps answering `false, "current"`), so the older
+     constructor is unreferenced; and parts reach core helpers through a
+     bind step (below) instead of capturing an older core's functions.
+     Widgets an older revision built and pooled keep that revision's type
+     methods for their life, as the versioning rule has always said; an
+     addon builds its widgets after loading, so a session upgraded during
+     load has none.
+
+   - **Part machinery.** The core's state gains `parts`: part name to
+     `{ revision, bind, members }`. A part file resolves its core through
+     `Registry:Get("widgetKit", 1)` at file scope and raises
+     `MoltenCodes WidgetKit part <Part> requires WidgetKit API 1 to be loaded
+     first` without it; it returns at once when an equal or newer revision
+     of itself is installed. Otherwise it registers its types through the
+     core's internal registration, installs its members, and records itself.
+     Core helpers reach a part through `bind(helpers)`, which assigns the
+     part's local upvalues from `state.helpers`; the core calls every
+     installed part's `bind` again when a newer core revision loads, so
+     every part runs the newest helpers with no per-call lookup and no
+     older helper kept alive. `state.helpers` is additive inside API 1: a
+     helper's arguments and meaning never change; a change is a new name.
+     A part may rely on a core at least as new as the one it shipped with,
+     because an addon's own core file loads before its parts.
+
+   - **Members of parts that are not loaded.** The facade and the shared
+     prototypes stay complete, so every revision's surface check (Registry
+     calls an older copy's check on a newer facade) passes whichever parts
+     are loaded. For each member a part provides, the core installs, in
+     order of preference: the loaded part's function; a function an older
+     single-file revision installed (an upgrade from revision 13 or older
+     with the part absent keeps that copy's renderer, bindings, anchors and
+     media pickers working); a stub that raises at the caller's line
+     `WidgetKit:RenderOptions is in WidgetKit's Renderer part, which is not
+     loaded: add widgetKit\parts\WidgetKit-Renderer.lua to embeds.xml (or
+     rebuild it with python3 -m tooling.package.embeds)`. `Create` of a base
+     type whose part is absent raises the same form
+     (`WidgetKit:Create Slider is in WidgetKit's Slider part, ...`) instead
+     of answering `nil, "unknownType"`; names WidgetKit does not ship still
+     answer `nil, "unknownType"`. `GetTypeVersion` answers `nil` for an
+     absent type, so code can ask without raising. `Frame:BindPosition`
+     raises the `Position` form when that part is absent; the `Containers`
+     part does not require `Position`.
+
+   - **Renderer extension points, for the AceConfigDialog work that follows
+     on this split.** The `Renderer` part keeps, in its part state, four
+     registries a later part fills without editing the renderer:
+     `kinds` (option kind to the widget type, configure, apply and write
+     functions; a custom-control part such as `dialogControl` picks another
+     type per option), `decorators` (an ordered list called after a node's
+     widget is built and at every refresh; tooltips for `desc`, `width`,
+     inline descriptions and images attach here), `pageStyles`
+     (`childGroups` value to the page builder; a widget-set part registers
+     real tab, tree and select containers and the renderer prefers them)
+     and `confirm` (the provider asked before a confirmed write or execute;
+     the inline question is the default, a DialogKit part replaces it). Each
+     entry carries its part's revision and the highest wins. The dialog
+     layer (`OpenOptions` and its family) is a later part that adds facade
+     members, with core stubs added in that revision. Constructor changes
+     the later work needs (`OnEnter`/`OnLeave`, images, value limits,
+     radio, multiselect) are revisions of the type parts that raise those
+     types' versions, not new parts.
+
+   - **Cycles at or below AceGUI's.** On top of the pooling change:
+     - *The probe rule.* `issecretvalue` is read once at load; when it was
+       absent at load, each check reads `rawget(_G, "issecretvalue")` and
+       accepts it only as a function, so a probe installed later is
+       honoured. Today `Create`, `isSecret`, `validateNumber` and the text
+       checks read `_G` on every call (5 `rawget` per `Button` cycle, 9 per
+       `Slider` cycle).
+     - *Setters without repeated `type()` calls.* Today 16 `type` calls per
+       `Button` cycle and 27 per `Slider` cycle. A checked value is typed
+       once: the probe first, then one `type` test, then plain comparisons
+       (`validateNumber`, `checkText`, `readDisabled`, the slider's `step`).
+       Under ADR 0002 the checks that guard only a table index of a caller's
+       value go: `type(widget) == "table" and records[widget]` becomes
+       `records[widget]` (`Release`, `IsWidget`, `SetFocus`, `activeRecord`),
+       `Create` and `GetTypeVersion` index `types[name]` before testing the
+       name for their error message, and user-data keys are not probed
+       before `userData[key]`. `docs/API.md` "Secret values" lists each,
+       with the client's message (`attempted to index a table that cannot be
+       indexed with secret keys`) as what a secret key now meets.
+     - *Built-in hooks unprotected.* The `OnAcquire` and `OnRelease` hooks
+       of WidgetKit's own types are called directly (the type record
+       carries `trusted = true`, set only by the internal registration);
+       custom types keep both `pcall`s and their documented behaviour. With
+       the free list this takes the built-in cycle from three `pcall`s to
+       none; a consumer's `OnRelease` callback stays protected.
+     - *Slider text rewritten only on change.* The low and high labels are
+       written only when `SetSliderValues` changes the range; the value
+       text is formatted only when the value or the percent mode changed
+       (the widget keeps the value and the text it formatted), and the box
+       is written with that text at every store, because the user may have
+       typed into it. Today four `string.format("%.10g")` calls per cycle.
+     Non-goals: `x == nil` in place of `type(x) == "nil"` on values that
+     may be secret (whether a secret compares with `nil` is not verified in
+     the client; the guards that stay are the ones before such a
+     comparison); removing the consumer callback's `pcall`; any change to
+     what a widget draws.
+
+   Non-goals of the whole record: new widgets, new option fields or any
+   AceConfigDialog feature (the renderer round that follows builds on the
+   extension points above); a second API generation; assembling parts into
+   one file; changing PoolKit or SignalKit.
+
+3. Dependencies:
+   - Core: Registry API 2, required. Nothing else. PoolKit and SignalKit
+     leave `dependencies`; SettingsKit stays an optional dependency in name
+     only (a documented storage shape for `BindPosition`), moved to the
+     `Position` part's `optionalDependencies`. OptionsKit, SchedulerKit and
+     MediaKit move to the parts that use them.
+   - Parts, as the table in point 2; manifest `parts` entries carry them
+     (`Position`: `dependencies` signalKit API 1, `optionalDependencies`
+     schedulerKit and settingsKit; `Dropdown`: `optionalDependencies`
+     mediaKit; `Renderer`: `optionalDependencies` optionsKit,
+     schedulerKit, mediaKit, and `parts` as listed).
+   - Host requirements unchanged; the flavour gate keeps guarding every
+     client call, now per file.
+   - Dependents: PanelKit renders through `RenderOptions` and creates
+     `Label` and `ScrollFrame`. Its manifest contract becomes
+     `"widgetKit": { "api": 1, "parts": ["Renderer"] }` (the renderer's
+     parts include `Containers` and `Text`), and its load check asks
+     `WidgetKit:GetPartRevision("Renderer")` rather than the type of
+     `RenderOptions`, which the stub always satisfies. The exact text goes
+     to PanelKit's owner; until it lands PanelKit keeps loading because the
+     stub is a function, and fails at its first render with the stub's
+     message, which names the part.
+   - Load order (generated by `tooling.package.embeds`): Registry, the core,
+     then the selected parts, `Renderer` after its sibling parts, `Position`
+     after SignalKit.
+
+4. Surface:
+   - Unchanged: every API 1 member, argument error and level, every
+     `docs/API.md` behaviour, the base type versions (`Frame` 4, `Group` 3,
+     `ScrollFrame` 1, `Label` 3, `Button` 3, `CheckBox` 4, `Slider` 4,
+     `EditBox` 4, `Dropdown` 4, `ColorPicker` 4, `Heading` 3, `Spacer` 1,
+     `ScrollList` 2; no constructor changes what it builds), and
+     `GetStatistics` per type (`maxCreated`, `created`, `active`,
+     `available`, `discarded`; a type registered but never created reports
+     zeros and its cap).
+   - Added: `WidgetKit:GetPartRevision(partName)` → the installed part's
+     revision, or `nil`. `partName` must be a non-empty string; a name
+     WidgetKit does not ship answers `nil`.
+   - Changed, only where a part is missing (impossible before this
+     revision): the stubs' errors and `Create`'s error for a base type
+     whose part is absent, as in point 2. Loading the core without PoolKit
+     or SignalKit no longer raises; loading the `Position` part without
+     SignalKit raises `MoltenCodes WidgetKit part Position requires
+     SignalKit API 1 to be loaded first`.
+   - Changed by ADR 0002: a secret used as a widget receiver, a type or
+     layout name, or a user-data key meets the client's own refusal instead
+     of WidgetKit's message. Every other secret check stays.
+   - `WidgetKit.Anchor.POINTS` is `nil` until `Position` loads (the four
+     anchor functions are stubs).
+   - Files: `src/WidgetKit.lua` and `src/parts/WidgetKit-Containers.lua`,
+     `-Text`, `-Button`, `-CheckBox`, `-Slider`, `-EditBox`, `-Dropdown`,
+     `-ColorPicker`, `-ScrollList`, `-Position`, `-Renderer`, each with the
+     file header and Contents list, `PART_REVISION = 1`, LuaCATS types and
+     doc comments. Main-chunk locals: the core at most 120, each part at
+     most 60 (the `lua_limits` ratchet entry for `WidgetKit.lua`, 189
+     today, goes down).
+
+5. Ownership:
+   - The core's state keeps everything shared: types (with their free
+     lists), records, layouts, prototypes, metatables, limits, focus,
+     scratch tables, `helpers`, `parts` and `dispatch`. A part keeps its own
+     data under `state.parts.<Part>` (the renderer's extension registries,
+     the dropdown catcher, the list's dispatch entries) and never a copy of
+     core state.
+   - Frame scripts and long-lived callbacks call through `dispatch`
+     (already true for the dropdown catcher, binding saves and list rows),
+     so the newest revision of the part that wrote the entry serves widgets
+     an older one built.
+   - Upgrade from revision 13 or older, in place: the state is kept; for
+     each type that has a PoolKit pool, the idle widgets are taken out of it
+     (`Acquire` while `GetAvailableCount() > 0`, which never builds), put on
+     the new free list, and the created, discarded and cap counts copied;
+     the pool is then dropped and collected with its maps; borrowed widgets
+     return to the free list when released. `state.scratch` (the PoolKit
+     table pool) is dropped. Older revisions' members for absent parts are
+     kept, as in point 2. Upgrade of a part: the higher part revision
+     replaces members, constructors at equal versions and its extension
+     entries. Upgrade of the core with parts loaded: the new core re-binds
+     each part.
+   - Known limit, documented in `docs/API.md` "Embedded copies and
+     upgrades": when a core of revision 14 or later loads first and a
+     single-file copy of revision 13 or older loads after it, the older
+     copy yields (Registry selects the newer) and registers nothing; that
+     addon's widgets whose parts no addon loaded raise the not-loaded error
+     naming the part. Only a newer embedding of the older addon fixes it,
+     as for any Kit whose newer revision a session selects. The opposite
+     order (older first) keeps working.
+
+6. Performance and memory. Today's figures measured 2026-11-15; the
+   targets are estimates (each section's resident prototypes times 1.39,
+   WidgetKit's measured ratio of resident bytes to prototype bytes without
+   the pools) that phase 2 measures with the same scripts and reports
+   against this table.
+
+   | Resident (debug info kept) | Today | Target | AceGUI-3.0 counterpart |
+   |---|---:|---:|---|
+   | Core | 355.1 KB (everything) | at most 95 KB | AceGUI-3.0.lua 44.0 KB |
+   | `Containers` | | at most 26 KB | Frame 18.0 + InlineGroup 4.8 + SimpleGroup 2.7 + ScrollFrame 11.3 = 36.8 KB |
+   | `Text` | | at most 15 KB | Label 8.2 + Heading 3.8 = 12.0 KB |
+   | `Button` | | at most 9 KB | Button 4.7 + Keybinding 13.1 = 17.8 KB |
+   | `CheckBox` | | at most 8 KB | CheckBox 13.0 KB |
+   | `Slider` | | at most 15 KB | Slider 15.4 KB |
+   | `EditBox` | | at most 16 KB | EditBox 14.5 + MultiLineEditBox 20.1 = 34.6 KB |
+   | `Dropdown` | | at most 24 KB | DropDown 36.4 + DropDown-Items 19.6 = 56.0 KB |
+   | `ColorPicker` | | at most 13 KB | ColorPicker 11.2 KB |
+   | `ScrollList` | | at most 29 KB | none |
+   | `Position` | | at most 30 KB | none in Ace3 |
+   | `Renderer` | | at most 53 KB | AceConfigDialog-3.0 91.6 KB (with AceConfigRegistry 25.7 KB) |
+   | Core and every part | 355.1 KB | at most 335 KB | AceGUI-3.0.xml as shipped (core and 22 widget files) 347.5 KB |
+   | Empty pools at load | 34.6 KB | 0 | none |
+   | Upgrade residue | 14.1 KB | 0 (no widget built before the upgrade) | 0.2 KB |
+   | Main-chunk locals | 189 | core at most 120, parts at most 60 | |
+
+   What an addon holds, with the Kits it must embed (Registry 31.3 KB,
+   PoolKit 78.9 KB, SignalKit 80.8 KB today):
+
+   | Addon | Today | Target | Ace3 |
+   |---|---:|---:|---:|
+   | Core only (custom types) | 546.1 KB | at most 127 KB | LibStub + AceGUI core 46.6 KB; as shipped 350.1 KB |
+   | A window: `Containers`, `Text`, `Button`, `CheckBox`, `EditBox` | 546.1 KB | at most 201 KB | the same five files by hand 109.8 KB; AceGUI-3.0.xml as shipped 350.1 KB |
+   | Options rendering: `Renderer` and its parts | 546.1 KB | at most 306 KB (OptionsKit apart) | AceGUI as shipped + AceConfigDialog + AceConfigRegistry + CallbackHandler + LibStub 477.6 KB |
+
+   Where the target stays above Ace3: the core is about twice AceGUI's
+   core (validation, limits, secret checks and records that buy the
+   documented guarantees), and Registry is twelve times LibStub. Against
+   AceGUI as addons embed it (AceGUI-3.0.xml loads every widget file), every
+   addon in the table holds less; against an AceGUI trimmed by hand to the
+   same files, the window addon holds about 1.8× as much. Closing that is
+   the shared-helper and shorter-prose work, not this record.
+
+   Compile: an addon that embeds the window set compiles about a third of
+   today's source (WidgetKit allocates 910 KB transient while loading
+   today), and each further addon embedding it pays the same smaller
+   amount.
+
+   Widget cycles against AceGUI-3.0, same run (bench `widgets`, fake
+   client, indicative):
+
+   | Case | Today | Target |
+   |---|---:|---:|
+   | `cycle-label` | 0.79× | at most 0.75× |
+   | `cycle-button` | 1.41× | at most 1.00× |
+   | `cycle-checkbox` | 0.67× | at most 0.65× |
+   | `cycle-slider` | 1.62× | at most 1.00× |
+   | `cycle-editbox` | 1.02× | at most 0.95× |
+   | Bytes per cycle | 0 | 0 |
+
+   Basis: in the `Button` cycle the PoolKit layer is 105 of 456 VM
+   instructions and 8 of 56 calls, the probe 5 `rawget` and 5 `type`
+   calls, the three `pcall`s about 35 ns each beyond their bodies; the
+   earlier prototype of the probe rule and the slider text alone reached
+   1.32× on both. Phase 2 reports instruction and call counts per cycle
+   beside the ratios, and names the remaining cost of any case that stays
+   above its target.
+
+7. Tests (Busted, `packages/widgetKit/tests/`; every existing spec keeps
+   passing with the core and every part loaded; coverage floor kept, every
+   part loaded by a spec of its own):
+   - `Parts_spec.lua`: each part loaded alone after the core (types
+     registered, members installed, `GetPartRevision`), a part before its
+     core (the ADR message), `Position` without SignalKit, `Renderer`
+     without one of its parts, every stub's message and level at the
+     caller's line, `Create` of each absent base type naming its part,
+     `GetTypeVersion` answering `nil`, `Frame:BindPosition` without
+     `Position`, a part loaded twice (same revision returns), a higher part
+     revision replacing members, constructors and extension entries, and a
+     newer core re-binding loaded parts (a synthetic revision 15 copy).
+   - `Pooling_spec.lua`: no free list before the first `Create`; cap,
+     reuse, `exhausted`, version raise retiring idle and borrowed widgets,
+     the cap grown within the ceiling, `GetStatistics` before and after first
+     use, a raising and a contract-breaking constructor, the borrowed
+     counts, layout scratch tables reused per depth with nothing allocated.
+   - `Bootstrap_spec.lua` additions: upgrade from a revision 13 copy with
+     every part (pooled widgets moved off PoolKit and reused, live widgets
+     released into the free list, renderings and bindings kept, counts
+     kept), upgrade from a revision 13 copy with the core only (its
+     renderer, bindings, anchors and media pickers still serving), the
+     revision 13 copy loading after a revision 14 core (yields; surface
+     check passes; the not-loaded error for an absent part), and the
+     residue: no function of the older file reachable after an upgrade with
+     every part loaded (a reachability walk over `_G` and the registry, as
+     the residue measurement does).
+   - `Manifest_spec.lua`: runtime `REVISION`, every `PART_REVISION` and the
+     manifest agree; the core's dependencies are Registry alone.
+   - `RendererExtensions_spec.lua`: a test part registering a decorator, a
+     kind override and a page style, each used by the renderer and replaced
+     by a higher revision; the inline confirm as the default provider.
+   - `FastPaths_spec.lua` additions: the probe resolved at load and a probe
+     installed after load honoured; ADR 0002 receivers and keys (a secret
+     reaches the index, modelled by the fixture's client rules); built-in
+     hooks called without `pcall` and custom ones protected as before; the
+     slider's labels written only on a range change and its text formatted
+     only on a value change, the box written each time.
+   - `Allocation_spec.lua` additions: zero bytes per warm cycle of the five
+     bench types after the pooling change.
+   - `ErrorLevels_spec.lua`: every stub and part-loading error at the
+     caller's line.
+   - The test environment loads the core and every part by default
+     (`WidgetKitTestEnv`), with loaders for core-only and chosen parts.
+   - Client suite `tests/client/MoltenCodesTest_WidgetKit` (never run):
+     `GetPartRevision` for each part in the full bundle; a secret receiver
+     and a secret user-data key meet the client's refusal (ADR 0002,
+     consequence 3); the five bench widgets acquired, filled and released
+     on real frames; `EXPECTED.md` updated.
+   - Gates: stylua, `tooling.test.run widgetKit`, `tooling.test.coverage
+     widgetKit`, lua-language-server on `src` and on the client suite,
+     `tooling.lint`, `flavour_api --package widgetKit`, `tooling.spell`,
+     `lua_limits` (ratchet lowered), `validate_repository` for the package.
+
+8. Docs: `README.md` (what each part holds, the embeds command for the
+   common selections, the AceGUI migration table mapping each
+   `AceGUIWidget-*.lua` and `AceConfigDialog-3.0` to the part to embed),
+   `docs/API.md` (Loading with parts, the parts table, `GetPartRevision`,
+   the not-loaded errors, "Secret values" under ADR 0002, "Embedded copies
+   and upgrades" for revision 14 and the known limit, the Deviations entry
+   "One runtime file" replaced by the parts), `docs/INTERNALS.md` (free
+   lists and generations, the part machinery, `bind`, stubs and inherited
+   members, the renderer's extension points and their contract),
+   `CHANGELOG.md` (0.5.0, revision 14), `tests/README.md`,
+   `package.manifest.json` (`parts`, dependencies). Outside the package,
+   with exact text in the phase 2 report: the `docs/EMBEDDING.md` footprint
+   and parts blocks (generated), `docs/MIGRATING_FROM_ACE3.md` (AceGUI and
+   AceConfigDialog rows naming parts), the ROADMAP placement of this
+   record, the `packages/README.md` row, the coverage floor if parts change
+   it, spell words, PanelKit's manifest contract and load check (its
+   owner), and `tooling/bench` (`workloads.py` package list and the
+   `Widgets.lua` adapter loading the parts; the client window workload).
+
+9. Status: recorded 2026-11-15; code follows. Decided here and departing
+   from widgetKit's first nine points: widgets are pooled by the core's own
+   free lists rather than PoolKit pools (the measured cost of the second
+   layer and of empty pools is what keeps the cycles and a core-only addon
+   above AceGUI); PoolKit and SignalKit stop being required by the core.
+   Depends on PanelKit's owner for its manifest contract and load check
+   (point 3); nothing else blocks.
+
 #### Package N — bridgeKit, migrating from Ace3
 
 Decided 2026-09-25 with the project owner, from the external review that
