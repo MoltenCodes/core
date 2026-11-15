@@ -211,6 +211,44 @@ describe("SettingsKit write fast path", function()
     assert.are.equal(2, frame.count)
   end)
 
+  it("keeps the fast path of nested views across an in-place upgrade", function()
+    -- Revision 9: the depth probes are local to each copy of the file, and an
+    -- upgrade over revisions 6 to 8 built none for the views it inherited,
+    -- so every nested write went to SchemaKit's full check.
+    local db = SettingsKit:Open("MyAddonDB", {
+      profile = S.table({
+        fields = {
+          frame = S.optional(S.table({ fields = { x = S.optional(S.number(), 0) } }), {}),
+        },
+      }),
+    })
+    local scope = rawget(db, "_scopes").profile
+    local sealed = scope.schema
+    local checks = 0
+    scope.schema = setmetatable({}, {
+      __index = function(_, name)
+        if name == "Check" then
+          return function(_, value)
+            checks = checks + 1
+            return sealed:Check(value)
+          end
+        end
+        return sealed[name]
+      end,
+    })
+    local frame = db.profile.frame
+    frame.x = 1
+    assert.are.equal(1, checks)
+    frame.x = 2
+    assert.are.equal(1, checks)
+
+    TestEnv.LoadRevision(SettingsKit.REVISION + 1)
+    frame.x = 3
+    frame.x = 4
+    assert.are.equal(1, checks)
+    assert.are.equal(4, db.profile.frame.x)
+  end)
+
   it("refuses every write through an entry whose key the key schema refuses", function()
     local db = openDatabase()
     local entry = db.profile.auras.bogus
@@ -430,6 +468,38 @@ describe("SettingsKit read kinds", function()
     copy[1] = 9
     assert.are.same({ 1 }, profile.lists.any)
     assert.is_nil(profile.plain)
+  end)
+
+  it("reads nil for a nil or NaN key of a keyed section", function()
+    -- Revision 9: a NaN key reached `rawset` and raised "table index is NaN".
+    local db = SettingsKit:Open("MyAddonDB", {
+      profile = S.table({
+        fields = {
+          auras = S.optional(
+            S.map({
+              keys = S.number(),
+              values = S.optional(
+                S.table({ fields = { shown = S.optional(S.boolean(), true) } }),
+                {}
+              ),
+              max = 8,
+            }),
+            {}
+          ),
+          colors = S.optional(
+            S.map({ keys = S.number(), values = S.optional(S.number(), 7), max = 8 }),
+            {}
+          ),
+        },
+      }),
+    })
+    local nan = 0 / 0
+    assert.is_nil(db.profile.auras[nan])
+    assert.is_nil(db.profile.colors[nan])
+    assert.is_nil(db.profile.auras[nil])
+    assert.is_nil(db.profile.colors[nil])
+    assert.is_true(db.profile.auras[118].shown)
+    assert.are.equal(7, db.profile.colors[3])
   end)
 
   it("gives two databases opened with one schema the same answers, kept apart", function()

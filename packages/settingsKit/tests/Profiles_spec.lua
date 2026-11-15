@@ -202,6 +202,13 @@ describe("SettingsKit profiles", function()
     assert.are.equal("Default", db:GetProfile())
   end)
 
+  it("honours a stored choice naming a missing profile and creates it", function()
+    TestEnv.SavedVariable("MyAddonDB", { profileKeys = { ["Tester - Silvermoon"] = "Ghost" } })
+    local db = SettingsKit:Open("MyAddonDB", schema())
+    assert.are.equal("Ghost", db:GetProfile())
+    assert.are.same({}, saved().profiles.Ghost)
+  end)
+
   it("resets the whole database to an empty layout", function()
     local db = SettingsKit:Open("MyAddonDB", schema(), { version = 3 })
     db:SetProfile("Raid")

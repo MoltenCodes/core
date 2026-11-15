@@ -48,6 +48,13 @@ describe("SettingsKit error levels", function()
   it("points Open argument errors at the caller", function()
     local cases = {
       {
+        -- Revision 9: Open checks its receiver, as SetLimits and GetLimits do.
+        "SettingsKit:Open must be called on the SettingsKit facade; use SettingsKit:Open(...)",
+        function()
+          SettingsKit.Open("MyAddonDB", schema())
+        end,
+      },
+      {
         "SettingsKit:Open savedVariable must be the name of a saved variable",
         function()
           SettingsKit:Open("1bad", schema())

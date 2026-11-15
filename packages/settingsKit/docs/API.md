@@ -2,7 +2,7 @@
 
 SettingsKit API generation **1** opens a database over an addon's saved variable: scoped views whose reads fall back to schema defaults and whose writes are validated at the writer's line, profiles, change signals, versioned migrations and compaction.
 
-Implementation revision: **8**.
+Implementation revision: **9**.
 
 ## Loading
 
@@ -234,7 +234,7 @@ MyAddonDB = {
 | `version` | positive integer, optional | — | The saved table's version (`options.version`). Absent means a table no migration has run on: `Open` stamps it, or runs every migration from 1. |
 | `global` | table | — | The `global` scope's record. |
 | `profiles` | table | profile name | One record per profile, the `profile` scope. |
-| `profileKeys` | table | `"<name> - <realm>"` | The profile name each character chose. A character without an entry starts on `options.defaultProfile`; an entry naming a profile `profiles` lacks is ignored. |
+| `profileKeys` | table | `"<name> - <realm>"` | The profile name each character chose. A character without an entry starts on `options.defaultProfile`; an entry naming a profile `profiles` lacks still selects that profile, and `Open` creates it empty (a read-only database creates nothing and reads its defaults). An entry that is not a usable profile name (not a string, blank, or longer than `maxProfileNameLength`) is ignored. |
 | `char` | table | `"<name> - <realm>"`, from `UnitName("player")` and `GetRealmName()` | One record per character. |
 | `realm` | table | `GetRealmName()` | One record per realm. |
 | `class` | table | the class file name, the second return of `UnitClass("player")` (`"MAGE"`) | One record per class. |
@@ -293,7 +293,7 @@ The copy keeps the saved table's shape: a table reached through two keys is copi
 
 A saved value that is not a table where the schema declares a `table` or `map` (a hand-edited or corrupted file, `profiles.Default.frame = 5`) reads as if nothing were saved: the default view, or `nil` without a default. It stays in the saved table until the next write through that view replaces it with a table. A plain-table default read below it is returned without being stored, as inside an unsaved keyed-section entry.
 
-A record view reads each field from the saved table, then from the defaults: a record default filled with its own field defaults, the way `schema:Apply` fills it. A keyed-section view reads a key from the saved table, then from the section's own default entries, then from its **wildcard default** — the default of `optional(...)` on the map's `values` — so `db.profile.auras[118].shown` is `true` for a spell ID nothing was ever saved for. Views of the same record or entry are the same table every time you read them.
+A record view reads each field from the saved table, then from the defaults: a record default filled with its own field defaults, the way `schema:Apply` fills it. A keyed-section view reads a key from the saved table, then from the section's own default entries, then from its **wildcard default** — the default of `optional(...)` on the map's `values` — so `db.profile.auras[118].shown` is `true` for a spell ID nothing was ever saved for. A `nil` or NaN key reads `nil`: no saved table can hold either. Views of the same record or entry are the same table every time you read them.
 
 Reading a default never writes, with the one exception in the table: an array (or other plain table) default is copied into the saved table on first read, so that editing it in place cannot change the default for the rest of the session. `Compact` removes the copy again while it still equals the default. A [read-only database](#newer-stored-data-read-only-databases) returns the copy without storing it.
 
@@ -479,7 +479,7 @@ local limits = SettingsKit:GetLimits() -- a fresh table: { maxProfileNameLength 
 
 ## Error behaviour
 
-Argument failures report the line that called SettingsKit, never a line inside it, and name the parameter without formatting the value: `SettingsKit:Open options.version must be a positive integer`, `SettingsKit.Database:DeleteProfile cannot delete the current profile`. Calling a method on something that is not a database raises `SettingsKit.Database:SetProfile must be called on a SettingsKit database`. View refusals report the writing (or reading) line and are prefixed with the saved-variable name, `SettingsKit (MyAddonDB) ...`. Writing a field of the database object itself raises `SettingsKit databases are read-only; write through db.<scope> instead`.
+Argument failures report the line that called SettingsKit, never a line inside it, and name the parameter without formatting the value: `SettingsKit:Open options.version must be a positive integer`, `SettingsKit.Database:DeleteProfile cannot delete the current profile`. Calling `Open`, `SetLimits` or `GetLimits` on anything but the facade (`SettingsKit.Open(...)`) raises `SettingsKit:Open must be called on the SettingsKit facade; use SettingsKit:Open(...)`. Calling a method on something that is not a database raises `SettingsKit.Database:SetProfile must be called on a SettingsKit database`. View refusals report the writing (or reading) line and are prefixed with the saved-variable name, `SettingsKit (MyAddonDB) ...`. Writing a field of the database object itself raises `SettingsKit databases are read-only; write through db.<scope> instead`.
 
 Where a value can come from outside SettingsKit (an argument, an option, a saved-variable entry, a schema default), its absence is tested with `type(value) == "nil"`, never by comparing it with `nil`: that is the repository rule, which never compares anything. The one exception, approved by the owner and documented in `docs/CONTRIBUTING.md`, is a getter's fast path (revision 8), which tests the value it reads from the saved table with `value ~= nil` and only returns it. On a client with secret values a secret compared with a value of its own type raises, and so does a secret used as a key; a comparison with `nil` happens not to raise (measured on Retail 12.1.0 b69933). A saved value, a secret included, is read back as it is stored. The secret refusals above, with their exact messages, are the only new errors this adds:
 
@@ -549,5 +549,7 @@ Revision 6 changes no documented behaviour. An in-place upgrade brings the views
 Revision 7 changes one documented behaviour, by the owner's decision: a direct edit of the saved variable after `Open` that adds, replaces or removes a table shows through views only after `db:Resync()` (see [Views hold their saved tables](#views-hold-their-saved-tables)). It adds `Resync` and `Getter`. An in-place upgrade gives every database an older revision opened a generation (database layout 4) and every live view an empty cache (node layout 3), keeping detached views detached; a getter made by revision 7 keeps working under a later revision.
 
 Revision 8 changes no documented behaviour: a getter's fast path compares the saved value with `nil` instead of calling `type` (see [`db:Getter`](#dbgettersource-key)). Getters made by revision 7 keep their own closure and keep working; getters made after the upgrade use the new one.
+
+Revision 9 fixes two faults and changes no other documented behaviour: a keyed-section view read with a NaN key reads `nil` instead of raising `table index is NaN`, and `Open` refuses a receiver other than the facade, as `SetLimits` and `GetLimits` do. An in-place upgrade from any revision builds the depth probes of the nested views an older copy built, so writes through them keep the fast path.
 
 Nothing survives `/reload` except the saved variable itself: open the database again in the loaded phase.

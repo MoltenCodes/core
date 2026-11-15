@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.3.3 — 2026-11-15
+
+Fixes from an audit. API generation 1 and the saved-table layout are unchanged.
+
+- Fixed: reading a keyed-section view with a NaN key raised `table index is NaN` when the section has a wildcard default and its values are records or keyed sections; only a `nil` key was guarded. `readMap` now answers `nil` for a NaN key too, as for `nil`: no saved table can hold either. `docs/API.md` states it.
+- Fixed: after an in-place upgrade over revisions 6 to 8, writes through the nested views the older copy built lost the write fast path and ran SchemaKit's full check every time (the results were right; `docs/API.md` *Upgrades* promises the faster writes). The depth probes the fast path reads are local to each copy of the file, and only an upgrade over revisions 1 to 5 rebuilt them. Every in-place upgrade now builds the probe of every live view below a scope root.
+- Fixed: `SettingsKit.Open(...)` called without the facade as receiver was not refused; it now raises `SettingsKit:Open must be called on the SettingsKit facade; use SettingsKit:Open(...)` at the caller's line, as `SetLimits` and `GetLimits` do.
+- `docs/API.md` (*The saved table*): a `profileKeys` entry naming a profile `profiles` lacks is honoured, and `Open` creates that profile; it said the entry is ignored, which only an entry that is not a usable profile name is. Behaviour unchanged.
+- `docs/INTERNALS.md`: the databases table lists `_maxScannedEntries`, which the field count already included; the fast path and *Closures and upgrades* describe the depth probes rebuilt on upgrade.
+- Removed unreachable code: the `nil` node guards of a view's `__index` and `__newindex` (every proxy is registered in `state.views` when it is built and no entry is ever removed; the iterator `Pairs` returns keeps its guard, since a caller can call it with any table), a no-op branch of that iterator, and a test of `optional` in `compileFastCheck` that `compilePlan` already made.
+- Implementation revision 9. No layout changed: an upgrade over revision 8 keeps every database and view and builds the depth probes.
+- 233 specs (was 230): a NaN key read, the fast path across an in-place upgrade (`FastPaths_spec.lua`), the `Open` receiver error (`ErrorLevels_spec.lua`, inside an existing spec), and a stored choice of a missing profile (`Profiles_spec.lua`).
+
 ## 0.3.2 — 2026-11-15
 
 Documentation only: no runtime change, implementation revision 8 is unchanged.

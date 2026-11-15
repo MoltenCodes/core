@@ -49,7 +49,7 @@
 
 local PACKAGE_NAME = "settingsKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 8
+local IMPLEMENTATION_REVISION = 9
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_SCHEMAKIT_API = 1
 local REQUIRED_SIGNALKIT_API = 1
@@ -1305,7 +1305,8 @@ end
 local function compileFastCheck(description)
   local kind = description.kind
   local allowed = FAST_CHECK_FIELDS[kind]
-  if allowed == nil or description.optional ~= true then
+  -- `compilePlan` refuses a field that is not optional before it asks here.
+  if allowed == nil then
     return nil
   end
   for name in next, description do
@@ -1939,8 +1940,10 @@ end
 ---@param value any
 ---@return any
 local function readMap(node, key, value)
-  -- Without this, `view[nil]` would answer with the wildcard default.
-  if type(key) == "nil" then
+  -- Without this, `view[nil]` would answer with the wildcard default, and
+  -- `view[0 / 0]` would build an entry view and raise in `rawset`. Neither
+  -- key can be saved, so both read as absent.
+  if type(key) == "nil" or key ~= key then
     return nil
   end
 
@@ -2003,10 +2006,9 @@ end
 ---@param key any
 ---@return any
 local function viewIndex(proxy, key)
+  -- Every proxy is registered in `views` when it is built, and nothing
+  -- removes an entry while the proxy is reachable.
   local node = views[proxy]
-  if node == nil then
-    return nil
-  end
   -- issecretvalue is a World of Warcraft client API reachable only through the global table.
   -- selene: allow(global_usage)
   local isSecretValue = rawget(_G, "issecretvalue")
@@ -2374,11 +2376,7 @@ end
 ---@param key any
 ---@param value any
 local function viewNewIndex(proxy, key, value)
-  local node = rawget(views, proxy)
-  if node == nil then
-    error("SettingsKit views cannot be written once detached", 2)
-  end
-  writeView(node, key, value)
+  writeView(rawget(views, proxy), key, value)
 end
 
 ---The iterator `db:Pairs(view)` returns. Stateless: everything it needs is
@@ -2409,8 +2407,6 @@ local function pairsNext(proxy, previous)
     if type(key) ~= "nil" then
       return key, viewIndex(proxy, key)
     end
-    previous = nil
-  elseif inPhaseOne then
     previous = nil
   end
 
@@ -3632,17 +3628,27 @@ local function buildScopes(schema, keys, level)
   return scopes
 end
 
+---@param receiver any
+---@param label string qualified public method name, used in the argument error
+---@param level integer stack level the failure is reported at
+local function validateFacade(receiver, label, level)
+  if receiver ~= SettingsKit then
+    error(label .. " must be called on the SettingsKit facade; use " .. label .. "(...)", level)
+  end
+end
+
 ---Open the database over the saved variable `savedVariable`.
 ---
 ---Call it from the addon's loaded phase (`ADDON_LOADED` for the addon), the
 ---first moment the client guarantees the saved variable exists. Opening the
 ---same name again returns the same database.
----@param _ SettingsKit
+---@param self SettingsKit
 ---@param savedVariable string the global name from the TOC's `## SavedVariables`
 ---@param schema SettingsKit.Schema? per-scope SchemaKit table schemas; may be omitted when reopening
 ---@param options SettingsKit.Options?
 ---@return SettingsKit.Database db
-local function open(_, savedVariable, schema, options)
+local function open(self, savedVariable, schema, options)
+  validateFacade(self, "SettingsKit:Open", 3)
   validateSavedVariableName(savedVariable, 3)
 
   local existing = rawget(databases, savedVariable)
@@ -3754,15 +3760,6 @@ local function open(_, savedVariable, schema, options)
   connectLogout(db)
   rawset(databases, savedVariable, db)
   return db --[[@as SettingsKit.Database]]
-end
-
----@param receiver any
----@param label string qualified public method name, used in the argument error
----@param level integer stack level the failure is reported at
-local function validateFacade(receiver, label, level)
-  if receiver ~= SettingsKit then
-    error(label .. " must be called on the SettingsKit facade; use " .. label .. "(...)", level)
-  end
 end
 
 ---Refuse a limit update before anything changes: a secret key or value, an
@@ -4073,6 +4070,24 @@ if previousRevision ~= nil and previousRevision < 7 then
     end
   end
   upgradeCaches()
+end
+
+-- The depth probes the write fast path reads (`depthAllows`) live in this
+-- file, so a newer copy starts without them. Views built from now on build
+-- theirs; every live view below a scope root gets its probe here, after
+-- every upgrade, so nested views an older revision built keep the fast path.
+if previousRevision ~= nil then
+  ---Build the depth probe of every live record view below a scope root. A
+  ---function of its own so its loop variables do not count against the main
+  ---chunk's 200 locals.
+  local function ensureLiveDepthProbes()
+    for _, node in next, views do
+      if node.parent ~= false and node.kinds ~= nil then
+        ensureDepthProbe(#node.pathKeys + 1)
+      end
+    end
+  end
+  ensureLiveDepthProbes()
 end
 
 -- Commit ---------------------------------------------------------------------

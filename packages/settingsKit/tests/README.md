@@ -35,7 +35,7 @@ The SettingsKit suite covers:
 | `Defaults_spec.lua` | default reads, wildcard defaults, the first-read copy |
 | `Writes_spec.lua` | validated writes, `OnChange`, secret values and keys |
 | `Scopes_spec.lua` | scope keys and unavailable or undeclared scopes |
-| `Profiles_spec.lua` | profile methods and signals, `ResetDatabase` |
+| `Profiles_spec.lua` | profile methods and signals, a stored choice naming a missing profile, `ResetDatabase` |
 | `Migrations_spec.lua` | versioned migrations, transactional steps, the layout check |
 | `ReadOnly_spec.lua` | newer stored data, `allowNewerData`, `IsReadOnly` |
 | `CorruptedData_spec.lua` | a record or keyed section stored as a scalar |
@@ -43,7 +43,7 @@ The SettingsKit suite covers:
 | `Aliasing_spec.lua` | views and metatables refused as values, keyed-section reads storing nothing, `db:Pairs`, undeclared keys through `Compact` |
 | `Validate_spec.lua` | `db:Validate` |
 | `Allocation_spec.lua` | allocation guards |
-| `FastPaths_spec.lua` | the write fast path against SchemaKit's verdicts, read kinds, shared compiled schemas, signals created on demand, the shared logout compaction |
+| `FastPaths_spec.lua` | the write fast path against SchemaKit's verdicts, the fast path of nested views kept across an in-place upgrade, read kinds, `nil` and NaN keys of a keyed section, shared compiled schemas, signals created on demand, the shared logout compaction |
 | `ErrorLevels_spec.lua` | errors reported at the caller's line |
 | `Limits_spec.lua` | `maxScannedEntries`, `SetLimits`/`GetLimits`, `UNBOUNDED`, SchemaKit's `maxDepth` followed by writes and `CopyProfile` after `SchemaKit:SetLimits`, limits across an upgrade |
 | `Caching_spec.lua` | view caches, `Resync`, every mutation path, the upgrade over revision 6 |
