@@ -91,6 +91,30 @@ Lowering `maxGlows` keeps every glow and refuses the next. The limit is shared b
 
 Argument errors raise at the caller's line: `GlowKit:Start options.lines must be an integer from 1 to 32`; methods called on anything but a glow raise `GlowKit.Glow:Stop must be called on a GlowKit glow; use glow:Stop(...)`. What the client calls (the overlays' updates) never raises.
 
+Every message, raised at the caller's line. `<method>` is the public name called, such as `GlowKit:Start`.
+
+| Message | Raised by |
+|---|---|
+| `<method> must be called on the GlowKit facade; use <method>(...)` | a facade method called on anything but `GlowKit` |
+| `GlowKit.Glow:<Stop or IsActive> must be called on a GlowKit glow; use glow:<name>(...)` | a glow method called on anything but a glow handle |
+| `<method> frame must be a frame` | `Start`, `Stop`, `StopAll` and `IsGlowing` with anything but a table with `GetWidth` and `CreateTexture` |
+| `GlowKit:Start options must be a table or nil` | |
+| `GlowKit:Start options holds an unknown field; it accepts kind, key, color, lines, thickness and frequency` | |
+| `GlowKit:Start options.kind must be "pixel" or "pulse"` | |
+| `GlowKit:Start options.key must be a non-empty string or nil`, `GlowKit:<Stop or IsGlowing> key must be a non-empty string or nil` | |
+| `GlowKit:Start options.color must be { r, g, b, a? }` | a colour that is not a table |
+| `GlowKit:Start options.color must be { r, g, b, a? }, each from 0 to 1` | a component out of range, missing, NaN or secret |
+| `GlowKit:Start options.lines must be an integer from 1 to 32` | |
+| `GlowKit:Start options.<thickness or frequency> must be a number above 0 and at most 10` | |
+| `GlowKit:Start needs the client's CreateFrame, which this host does not have` | |
+| `GlowKit:Start holds at most <n> glows at once; stop one, or raise maxGlows` | a new glow past `maxGlows` (restarting a key does not count) |
+| `GlowKit:SetLimits limits must be a table` | |
+| `GlowKit:SetLimits limits holds an unknown field; it accepts maxGlows` | |
+| `GlowKit:SetLimits limits.maxGlows must not be a secret value` | |
+| `GlowKit:SetLimits limits.maxGlows must be an integer from 1 to 512` | |
+
+Loading raises `MoltenCodes GlowKit requires Registry API 2 to be loaded first`, `MoltenCodes GlowKit requires a valid Registry API 2 facade`, `MoltenCodes GlowKit requires PoolKit API 1 to be loaded first` or `MoltenCodes GlowKit package state is corrupted or incomplete`.
+
 ## Performance
 
 | Path | Cost |

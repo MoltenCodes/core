@@ -30,7 +30,7 @@ Non-goals: Blizzard's own overlay, particle or model effects.
 |---|---|
 | `LCG.PixelGlow_Start(frame, color, N, frequency, length, th, xOffset, yOffset, border, key)` | `GlowKit:Start(frame, { kind = "pixel", color = color, lines = N, frequency = frequency, thickness = th, key = key })` |
 | `LCG.PixelGlow_Stop(frame, key)` | `GlowKit:Stop(frame, key)` |
-| `LCG.ButtonGlow_Start(frame, color, frequency)` | `GlowKit:Start(frame, { kind = "pulse", color = color, frequency = frequency })` |
+| `LCG.ButtonGlow_Start(frame, color, frequency, frameLevel)` | `GlowKit:Start(frame, { kind = "pulse", color = color, frequency = frequency })`; the overlay always sits five levels above the frame |
 | `LCG.AutoCastGlow_Start(...)`, `LCG.ProcGlow_Start(...)` | No equivalent: use `pixel` or `pulse`. |
 
 See [`docs/API.md`](docs/API.md) for the complete contract.

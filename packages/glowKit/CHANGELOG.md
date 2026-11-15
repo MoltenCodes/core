@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.1 — 2026-11-15
+
+- Documentation: `docs/API.md` lists every error message, and the README's migration row for `ButtonGlow_Start` names LibCustomGlow-1.0's own frame-level argument as unsupported. Documentation only; the implementation revision stays 1.
+
 ## 0.1.0 — 2026-11-15
 
 - Added GlowKit API generation 1, implementation revision 1: glows, as recorded in `docs/ROADMAP.md` (package M).
