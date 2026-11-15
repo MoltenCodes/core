@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.6 — 2026-11-15
+
+- Documentation: `docs/API.md` states implementation revision 4 in its header (it still read 3), and its "Performance" row for a poll tick on a gate that is not ready counts two clock reads, one to timestamp the negative answer and one to measure the timeout, or one when `timeoutSeconds` is `false` (it said one). The source comments on `GetProbeErrorCount` and the round reset count a probe that answered a secret value as a failure, as the code has since revision 4. Comments and documentation only: the implementation revision is unchanged.
+
 ## 0.1.5 — 2026-09-24
 
 - A probe that answers a secret value is a probe failure. The client raises on any boolean test of a secret (measured on Retail 12.1.0 b69933: `if result then` with `result = secretwrap(true)` raised "attempt to perform boolean test on local 'result' (a secret boolean value ...)"), and before this release that test ran outside the probe's protected call, so a secret answer made `Gate` raise and left the gate registered. The answer is now checked with `issecretvalue` (read once at load) before it is tested for truth; a secret answer counts as "not ready", the gate stays pending, nothing raises out of `Gate`, `Probe`, a poll or a re-probe event, `GetProbeErrorCount` counts it, and the first of each polling round is reported through the host error handler as `ReadinessKit gate "<name>" probe answered a secret value; a probe must answer a plain true or false`. `docs/API.md` gains "Probes that answer a secret value".

@@ -2,7 +2,7 @@
 
 ReadinessKit API generation **1** provides named gates for host data that arrives after load: a gate probes a fact, polls it while it is not yet true, times out, remembers negative answers for one interval, and calls its waiters once with the outcome.
 
-Implementation revision: **3**.
+Implementation revision: **4**.
 
 ## Loading
 
@@ -245,7 +245,7 @@ An absent option is recognised by its type, never by comparing it with `nil`. On
 | Operation | Cost |
 |---|---|
 | `IsReady` | A field read; no allocation. |
-| Poll tick, gate not ready | One probe call and one clock read; no allocation. |
+| Poll tick, gate not ready | One probe call and two clock reads, one when `timeoutSeconds` is `false` (the negative answer is timestamped, and the timeout is measured); no allocation. |
 | `Probe`, negatively cached | One clock read; no allocation. |
 | `Await`, queued | One waiter handle. The waiter array is reused. |
 | `Gate` | One gate table and two waiter arrays; the poll timer is created on the gate's first polling round and reused for every later round. |

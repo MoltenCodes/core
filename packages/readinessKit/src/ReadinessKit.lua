@@ -833,7 +833,7 @@ end
 
 ---Begin a new polling round: status pending, a fresh timeout window, and the
 ---poll timer running. A round that follows a ready or timed-out state reports
----its first probe error again; the first round of a new gate continues the one
+---its first probe failure again; the first round of a new gate continues the one
 ---its defining probe began.
 ---@param gate table
 local function startPolling(gate)
@@ -1175,7 +1175,8 @@ local function gateIsClosed(self)
   return rawget(self, "_status") == STATUS_CLOSED
 end
 
----Return how many times the probe has raised since the gate was defined.
+---Return how many times the probe has failed (raised, or answered a secret
+---value) since the gate was defined.
 ---Only the first failure of each polling round reaches the host error
 ---handler; this count includes the ones that did not.
 ---@param self ReadinessKit.Gate
