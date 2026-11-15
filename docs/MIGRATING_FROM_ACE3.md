@@ -4,11 +4,9 @@ This guide moves an addon from Ace3 to the MoltenCodes Kits, one Ace3
 library at a time. Each section shows the Ace3 code first, then the same
 thing with the Kits, then the differences that change behaviour. Every
 MoltenCodes sample uses the API as documented in the Kit's `docs/API.md`
-today. **BridgeKit** ships in parts: its AceSerializer-3.0 reader and writer,
-its AceConfig-3.0 adapter and its AceDB-3.0 importer are current (revision 3),
-and the sample that uses its AceComm channel is marked *planned*, because that
-part is designed but not implemented yet (see
-[`BRIDGE_KIT_DESIGN.md`](BRIDGE_KIT_DESIGN.md)).
+today. **BridgeKit**'s AceSerializer-3.0 reader and writer, AceConfig-3.0
+adapter, AceDB-3.0 importer and AceComm-3.0 channel are current (revision 4;
+see [`BRIDGE_KIT_DESIGN.md`](BRIDGE_KIT_DESIGN.md)).
 
 The Ace3 behaviour described here was read from Ace3 at commit
 `5e2e0d3b3fd125ef1518744c6a9dd21f68f6e773`. References such as
@@ -34,7 +32,7 @@ The Ace3 behaviour described here was read from Ace3 at commit
 - [AceGUI-3.0](#acegui-30)
 - [AceSerializer-3.0](#aceserializer-30)
 - [AceComm-3.0](#acecomm-30)
-- [Moving data and peers with BridgeKit (planned)](#moving-data-and-peers-with-bridgekit-planned)
+- [Moving data and peers with BridgeKit](#moving-data-and-peers-with-bridgekit)
 - [What has no equivalent yet](#what-has-no-equivalent-yet)
 
 ## Before you start
@@ -89,7 +87,7 @@ show the addon form, which works without ModuleKit.
 | AceConfigCmd-3.0 | CommandKit `BindOptions` | [AceConfig](#aceconfig-30-aceconfigregistry-aceconfigdialog-aceconfigcmd) |
 | AceGUI-3.0 | WidgetKit | [AceGUI](#acegui-30) |
 | AceSerializer-3.0 | CodecKit; Ace-format compatibility: BridgeKit (`AceSerialize`, `AceDeserialize`) | [AceSerializer](#aceserializer-30) |
-| AceComm-3.0 (with ChatThrottleLib) | CommKit; Ace-format compatibility: BridgeKit (planned) | [AceComm](#acecomm-30) |
+| AceComm-3.0 (with ChatThrottleLib) | CommKit; Ace-format compatibility: BridgeKit | [AceComm](#acecomm-30) |
 
 ## LibStub
 
@@ -902,15 +900,13 @@ local handle, refused = comm:Send({
 - `scope:SyncSet(prefix, { fields = { ... } })` synchronises named fields by
   content hash, which many AceComm protocols implement by hand.
 
-## Moving data and peers with BridgeKit (planned)
+## Moving data and peers with BridgeKit
 
 Three things cannot be rewritten by hand without risk: the saved variable
 your players' settings live in, a large options table, and a wire format
 peers still speak. BridgeKit is designed for exactly these three
-([`BRIDGE_KIT_DESIGN.md`](BRIDGE_KIT_DESIGN.md)). **The AceSerializer, AceDB
-and AceConfig recipes below run today**; the AceComm one shows the planned API
-so an addon can plan its migration, and it is made current when its part
-ships.
+([`BRIDGE_KIT_DESIGN.md`](BRIDGE_KIT_DESIGN.md)). Every recipe below runs
+today.
 
 ### Reading and writing AceSerializer text
 
@@ -1034,13 +1030,12 @@ end
 
 ### Talking to Ace3 peers during the move
 
-*Planned API.* Use two prefixes: the old one in Ace3's format through
+*Current API* (BridgeKit revision 4). Use two prefixes: the old one in Ace3's format through
 BridgeKit, a new one through CommKit and CodecKit. Release v2 sends and
 listens on both; release v3 drops the old prefix once telemetry says the Ace3
 peers are gone.
 
 ```lua
--- Planned API: BridgeKit does not exist yet.
 local CommKit = Registry:Get("commKit", 1)
 local CodecKit = Registry:Get("codecKit", 1)
 local BridgeKit = Registry:Get("bridgeKit", 1)
@@ -1104,5 +1099,5 @@ end
 | AceConfigDialog `childGroups` (tabs, trees, drop-down groups) | The user-interface phase; `RenderOptions` nests groups. |
 | AceTab completion in arbitrary edit boxes | Not planned; CommandKit completes its own commands. |
 | AceDB namespaces, and the `race`, `factionrealm`, `factionrealmregion` and `locale` scopes | Not in SettingsKit API 1; use a second database or map fields. BridgeKit's importer maps existing data. |
-| Reading or writing AceComm and AceSerializer traffic | BridgeKit (planned). |
-| Converting AceConfig tables and importing AceDB data | BridgeKit (planned). |
+| Reading or writing AceComm and AceSerializer traffic | BridgeKit. |
+| Converting AceConfig tables and importing AceDB data | BridgeKit. |

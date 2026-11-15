@@ -12,7 +12,7 @@ This directory is the entry point for repository-wide documentation.
   and type-checked on every test run.
 - [`MIGRATING_FROM_ACE3.md`](MIGRATING_FROM_ACE3.md) moves an addon from Ace3 to the
   Kits library by library: the Ace3 code, the same thing with the Kits, and what
-  behaves differently; the data, options and wire tools are BridgeKit's (planned).
+  behaves differently; the data, options and wire tools are BridgeKit's.
 
 ## Architecture and contracts
 
@@ -21,7 +21,7 @@ This directory is the entry point for repository-wide documentation.
 - [`PACKAGE_MANIFEST.md`](PACKAGE_MANIFEST.md) defines the canonical machine-readable package metadata contract.
 - [`ROADMAP.md`](ROADMAP.md) records what was decided and delivered in each phase, the nine-point record of every planned Kit, and the standing obligations.
 - [`API_KIT_DESIGN.md`](API_KIT_DESIGN.md) is the design of `apiKit`, the flavour-aware wrapper over the WoW addon API (package H, implemented 2026-09-24): namespaces, naming rules, metadata pipeline, outputs and definition of done.
-- [`BRIDGE_KIT_DESIGN.md`](BRIDGE_KIT_DESIGN.md) is the design of `bridgeKit`, the Ace3 migration tools (package N, planned 2026-09-25): the AceConfig adapter, the AceDB importer and the AceComm/AceSerializer wire adapter, with the Ace3 formats they reproduce.
+- [`BRIDGE_KIT_DESIGN.md`](BRIDGE_KIT_DESIGN.md) is the design of `bridgeKit`, the Ace3 migration tools (package N, in delivery): the AceConfig adapter, the AceDB importer and the AceComm/AceSerializer wire adapter, with the Ace3 formats they reproduce.
 - [`BENCHMARKS.md`](BENCHMARKS.md) compares Kits with the Ace3 libraries that do the same work: the methodology, the in-client runner and the measured host results, regressions included.
 
 ## Development workflow
@@ -60,7 +60,7 @@ Current package entry points:
 - [`CodecKit`](../packages/codecKit/README.md) — serialise, compress and channel-encode values into addon-channel or printable strings; decoding never raises.
 - [`InteropKit`](../packages/interopKit/README.md) — the LibStub bridge.
 - [`MediaKit`](../packages/mediaKit/README.md) — typed media registry with font scripts, per-consumer defaults and LibSharedMedia mirroring.
-- [`BridgeKit`](../packages/bridgeKit/README.md) — migration from Ace3: AceSerializer-3.0 text written and read byte for byte (the AceConfig, AceDB and AceComm parts follow).
+- [`BridgeKit`](../packages/bridgeKit/README.md) — migration from Ace3: AceSerializer-3.0 text, AceConfig-3.0 tables, AceDB-3.0 saved variables and AceComm-3.0 messages.
 - [`BrokerKit`](../packages/brokerKit/README.md) — LibDataBroker-compatible data objects with per-attribute change signals and a two-way LibDataBroker-1.1 bridge.
 - [`LogKit`](../packages/logKit/README.md) — levelled, structured logging with lazy secret-safe formatting, a bounded journal and pluggable sinks.
 - [`CompatKit`](../packages/compatKit/README.md) — versioned shims with a host opt-out, provider registries with a fallback cascade, the taint catalogue as data.

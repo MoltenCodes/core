@@ -48,10 +48,12 @@ local BridgeKit = MoltenCodes.Registries[2]:Get("bridgeKit", 1)
 | `PreviewAceDB(source, plan)` | report, or report and `"maxImportEntries"` | What an import would write, materialise and drop. Writes nothing. |
 | `ImportAceDB(source, targetName, plan)` | report, or `nil, reason` | Build the SettingsKit layout in an empty target global, before `SettingsKit:Open`. |
 | `AceDBMigration(plan)` | function | A SettingsKit migration step that turns an AceDB table into the SettingsKit layout in place of the same saved variable. |
+| `OpenAceComm(scope, prefix, callback[, options])` | channel, or `nil, reason` | Send and receive AceComm-3.0 messages on `prefix` through a CommKit scope. |
+| `GetStatistics()` | a fresh table | The AceComm counters and the streams held now. |
 | `SetLimits(limits)` | nothing | Change any subset of the [limits](#limits). |
 | `GetLimits()` | a fresh table | The limits. |
 | `UNBOUNDED` | table | Sentinel for the limits that accept it. |
-| `ACE_WIRE_VERSION` | `1` | The newest AceComm wire version this revision speaks (design section 8.5); no channel ships yet. |
+| `ACE_WIRE_VERSION` | `1` | The newest AceComm wire version this revision speaks (design section 8.5). |
 | `ACE_BASELINE` | read-only table | `{ commit = "5e2e0d3b…", AceComm = 14, AceSerializer = 5, AceDB = 37, AceConfigRegistry = 22 }`: what BridgeKit reproduces. Read its fields by name: it is a proxy, so a write raises and `pairs` sees no fields. The newest revision loaded writes its values into it. |
 | `API`, `REVISION` | integers | API generation `1`, implementation revision. |
 
@@ -476,6 +478,94 @@ it never changes what a field reads.
 | `currentCharacterMissing`, `characterKeyMismatch`, `realmKeyMismatch` | changed | character and realm keys that will not line up |
 | `unsupportedScope`, `unmappedNamespace`, `undeclaredScope`, `unknownTopLevelKey` | dropped | sections the plan or the schema gives no destination |
 
+## The AceComm channel
+
+```lua
+local CommKit = Registry:Get("commKit", 1)
+local comm = CommKit:ForAddon("MyAddon")
+
+local channel = BridgeKit:OpenAceComm(comm, "MyAddon", function(prefix, message, distribution, sender)
+  -- `message` is whole: AceComm's multipart framing is already undone.
+end)
+channel:Send({ text = text, distribution = "GUILD" })
+```
+
+A channel writes the addon messages AceComm-3.0 writes for a text and reads
+what AceComm-3.0 peers send, with AceComm's rules (design section 8.3). It
+needs CommKit API 1 with raw addon messages (`RegisterRaw`, `SendRaw`,
+CommKit 0.5.0 or later); without it `OpenAceComm` raises at the caller. Its
+traffic leaves through CommKit's queue and bandwidth budget, like the addon's
+own CommKit messages.
+
+### `BridgeKit:OpenAceComm(scope, prefix, callback[, options])`
+
+- `scope`: an open CommKit scope (`CommKit:ForAddon(name)`,
+  `CommKit:CreateScope()`, a module's `scope.Comm`). The channel's raw
+  registration belongs to it: closing the scope closes the channel.
+- `prefix`: 1 to 16 bytes, not secret.
+- `callback(prefix, message, distribution, sender)`: AceComm's
+  `OnCommReceived` signature, called once per whole message. An error it
+  raises goes to the client's error handler, and the next channel on the
+  prefix is still called.
+- Returns the channel, or `nil` and CommKit's registration refusal
+  (`"full"`, `"closed"`, `"invalidPrefix"`, `"maxPrefixes"`,
+  `"framingConflict"` when the prefix carries CommKit's own framing).
+
+| Option | Default | Meaning |
+|---|---|---|
+| `priority` | `"NORMAL"` | `"ALERT"`, `"NORMAL"` or `"BULK"`, mapped to `CommKit.Priority`. Fixed per prefix while a channel is open on it: a later channel stating another raises, so the parts of different texts on one prefix never interleave. |
+| `wire` | `1` | The wire version; any other raises. |
+| `ambiguate` | `true` | Pass `sender` through `Ambiguate(sender, "none")` before the callback, as AceComm does. Streams are always keyed by the unmodified sender. |
+
+### The channel
+
+| Method | Returns | Purpose |
+|---|---|---|
+| `Send(request)` | CommKit's send handle, or `nil, reason` | Send `request.text` (`distribution`, `target`, `onProgress`, `onComplete` as CommKit's `SendRaw` takes them). |
+| `Close()` | `true`, or `false` when already closed | End the raw registration; the prefix's held streams go with its last channel. |
+| `IsClosed()` | boolean | Closed by `Close` or with its scope. |
+| `GetPrefix()`, `GetPriority()`, `GetWireVersion()` | string, string, integer | What the channel was opened with. |
+
+`Send` returns `nil` and `"closed"`, `"nulByte"` (AceComm forbids NUL),
+`"tooLarge"` (more than 4096 messages, about 1 MB) or CommKit's own refusal
+(`"badDistribution"`, `"queueFull"`, `"unavailable"`, ...). A request that is
+not a table, an unknown field, a `text` that is not a non-empty string or is
+secret, and an argument CommKit raises for raise at the caller.
+
+**Sending.** A text of at most 255 bytes whose first byte is not `01`-`09`
+leaves as one message, unchanged. One whose first byte is `01`-`09` gets the
+escape byte `04` in front while that still fits in 255 bytes. Anything longer
+is split into 254-byte parts after a control byte: `01` first, `02` for each
+middle part, `03` last. All parts of one text leave through `SendRaw` as one
+message of parts, so they stay in order.
+
+**Receiving.** `01` opens a stream for the prefix, distribution and sender,
+replacing one already held; `02` adds to it; `03` adds and delivers it; a
+`02` or `03` with no stream is dropped. `04` delivers the rest of the message,
+`05`-`09` are reserved and ignored, anything else is a whole message.
+Several channels on one prefix share one reassembly: only the first channel
+still open reads the raw messages, and each whole message goes to every open
+channel on the prefix in the order they were opened.
+
+**Bounds Ace lacks.** At most `maxAceStreams` streams are held, at most
+`maxAceStreamsPerSender` per sender, at most `maxAceStreamBytes` bytes in one
+stream and `maxAceSpoolBytes` in all. A stream past a bound is dropped and
+counted; drops are reported through the client's error handler at most once
+per sender per minute, and past `maxDropReportSenders` senders the others
+share one report. A stream whose last part is older than `aceStreamTimeout`
+seconds is dropped when the next message on any AceComm prefix arrives; a
+quiet session keeps its stale streams until then, within `maxAceSpoolBytes`.
+
+### `BridgeKit:GetStatistics()`
+
+A fresh table: `aceMessagesSent`, `acePartsSent`, `aceMessagesReceived`,
+`aceBytesReceived`, `aceStreamsOpened`, `aceStreamsCompleted`,
+`aceStreamsReplaced` (a new `01` while one was held), `aceStreamsExpired`,
+`aceStreamsOversize`, `aceStreamsRefusedQuota`, `aceOrphanParts` (`02`/`03`
+without a stream), `aceReservedControl` (`05`-`09`), and the current
+`openStreams` and `spoolBytes`. The counters are shared by every embedded copy
+and survive an in-place upgrade.
+
 ## Reports
 
 ```lua
@@ -522,6 +612,12 @@ session, kept across an in-place upgrade, set with `SetLimits` and read with
 | `maxListValues` | 4096 | no: `AceDeserialize` returns its values through `unpack` | 7900 |
 | `maxReportEntries` | 1024 | yes: a report is the caller's own memory | 2^24 |
 | `maxImportEntries` | 65536 | yes: the source is the addon's own data | 2^30 |
+| `maxAceStreams` | 64 | no: other players grow it | 1024 |
+| `maxAceStreamsPerSender` | 4 | no: other players grow it | 64 |
+| `maxAceStreamBytes` | 65536 | no: a peer chooses it | 1048576 |
+| `maxAceSpoolBytes` | 1048576 | no: other players grow it | 2^26 |
+| `aceStreamTimeout` | 30 (seconds) | no: a stream a peer never finishes would be held forever | 600 |
+| `maxDropReportSenders` | 64 | no: other players grow it | 1024 |
 
 A top-level table is depth 1. `SetLimits` raises at the caller, before
 changing anything, on a table that is not one, an unknown name, a secret key
@@ -530,8 +626,8 @@ where the table says no, naming why:
 `BridgeKit:SetLimits limits.maxDepth cannot be BridgeKit.UNBOUNDED because the
 reader and writer recurse on the Lua call stack; use an integer from 1 to 128`.
 
-The design's other limits (the AceComm streams) arrive with the part that uses
-them. A conversion's own bounds, `maxOptions` and `maxDepth`, are
+Lowering a stream limit does not drop streams already held; it applies to
+the next part received. A conversion's own bounds, `maxOptions` and `maxDepth`, are
 options of the call, because the tree belongs to one call, as OptionsKit's
 are.
 
@@ -543,7 +639,9 @@ key inside the values given to `AceSerialize`, a secret `text`, a secret
 source, and a secret result of a `name`, `order` or `hasAlpha` evaluated at
 conversion raise at the caller. A secret answer of a wrapped `validate`
 refuses without being compared; a secret `disabled` or `hidden` answer counts
-as `false`, as OptionsKit counts it. Error messages never format a
+as `false`, as OptionsKit counts it. A secret `OpenAceComm` scope, prefix or
+option, and a secret `Send` field or text raise at the caller. Error messages
+never format a
 secret: the one caller value a message names, an unknown limit name, is
 checked first, and only a string is named.
 
@@ -556,9 +654,11 @@ the text and recurse once per table level.
 
 ## Upgrades
 
-The package state (`_state`) holds the limits, the `UNBOUNDED` sentinel and
-the read-only baseline, so every embedded copy and every revision publishes the
-same two tables. A newer compatible revision loaded over an older one keeps
+The package state (`_state`) holds the limits, the `UNBOUNDED` sentinel, the
+read-only baseline and the AceComm state (open prefixes, held streams,
+counters, the channel prototype), so every embedded copy and every revision
+publishes the same tables, and a channel opened before an upgrade uses the
+new revision's methods. A newer compatible revision loaded over an older one keeps
 that state and replaces the methods; an older copy loaded later steps aside.
 A limit a later revision adds starts at its default over an inherited state.
 

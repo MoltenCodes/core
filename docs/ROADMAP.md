@@ -1484,7 +1484,9 @@ starts only after the owner has answered the design's open questions (section
    recorded from Ace3. N2 is done (2026-11-15): bridgeKit 0.2.0 converts
    AceConfig-3.0 tables to OptionsKit trees. N3 is done (2026-11-15):
    bridgeKit 0.3.0 imports AceDB-3.0 saved variables into the SettingsKit
-   layout.
+   layout. N4 is done (2026-11-15): bridgeKit 0.4.0 speaks AceComm-3.0
+   through CommKit's raw addon messages; streams expire lazily instead of on
+   a TimerKit timer (design decision 20).
 
 ### Standing obligations
 

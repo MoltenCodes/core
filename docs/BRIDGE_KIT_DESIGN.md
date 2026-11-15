@@ -6,8 +6,8 @@
 > owner answered the [open questions](#16-open-questions-for-the-owner) on
 > 2026-11-15, accepting every recommendation (decisions 9 to 13 below). Steps
 > N0 (the CommKit and SettingsKit prerequisites), N1 (the AceSerializer
-> reader and writer, `packages/bridgeKit/`), N2 (the AceConfig adapter) and N3
-> (the AceDB importer) are done; N4 and N5 follow
+> reader and writer, `packages/bridgeKit/`), N2 (the AceConfig adapter), N3
+> (the AceDB importer) and N4 (the AceComm channel) are done; N5 follows
 > ([section 15](#15-delivery-sequence)).
 >
 > This document is the canonical design of `bridgeKit`, the MoltenCodes
@@ -156,7 +156,7 @@ confirms it, [question 5](#16-open-questions-for-the-owner)):
 | OptionsKit API 1 | optional (`Registry:Find`) | `DefineAceConfig` | `DefineAceConfig` raises at the caller; `ConvertAceConfig` works and returns a plain tree table |
 | SchemaKit API 1 | optional | `PreviewAceDB`, `ImportAceDB`, `AceDBMigration` (probe checks against the SettingsKit schema) | those three raise at the caller. SettingsKit requires SchemaKit, so an addon with a SettingsKit schema always has it |
 | CommKit API 1, revision with raw addon messages ([prerequisite P1](#43-prerequisites-in-other-kits)) | optional | `OpenAceComm` | `OpenAceComm` raises at the caller naming the revision it needs |
-| TimerKit API 1 | optional | expiring AceComm reassembly streams | a stream expires at the next receive on its prefix instead of on time. CommKit requires TimerKit, so a wire channel always has it |
+| TimerKit API 1 | not used (decision 20) | expiring AceComm reassembly streams | as built, a stream always expires at the next AceComm receive instead of on time; `maxAceSpoolBytes` bounds what stale streams hold |
 
 BridgeKit does **not** depend on SettingsKit: the importer writes the saved
 table SettingsKit reads ([prerequisite P2](#43-prerequisites-in-other-kits)),
@@ -1071,7 +1071,8 @@ Each step ends with the gates green and a read-only review.
 - [x] **N3 — AceDB importer**: `PreviewAceDB`, `ImportAceDB`,
       `AceDBMigration`, backup (done 2026-11-15: bridgeKit 0.3.0, revision 3;
       decision 18).
-- [ ] **N4 — AceComm channel**: `OpenAceComm`, reassembly, statistics.
+- [x] **N4 — AceComm channel**: `OpenAceComm`, reassembly, statistics
+      (done 2026-11-15: bridgeKit 0.4.0, revision 4; decision 20).
 - [ ] **N5 — client suites, benchmark rows, documentation**, then the
       acceptance review; package N closes.
 
@@ -1126,3 +1127,4 @@ were asked.
 | 17 | From step N2's read-only review: a field Ace draws but OptionsKit would refuse at `Define` (a non-table `args` or plugin, a NaN `order`, a non-positive `step`, a soft bound outside the bounds, crossed bounds) is reported (`malformedField`, added to section 6.5) rather than making `Define` raise; a defaulted bound never crosses the bound the option gives; plugins merge in the sorted order of their names; `optionCount` and `maxDepth` measure the tree OptionsKit receives, `replace` tables included; report paths cut long keys, `paths`, `bind` and `replace` never do; `DefineAceConfig` opens `maxDynamicEntries` to the largest values table (2026-11-15). | 5.3, 5.4, 6.2, 6.5 |
 | 18 | The AceDB importer as built in step N3: a `plan.scopes` destination is a declared `map` field of the **global** scope only (`{ into = "global", field = ... }`), because every other scope is keyed by its own entries and the mapped AceDB keys belong to no single one of them; a second profile renamed to a taken name is dropped (`profileNameCollision`); a report entry may carry `detail`, the text of SchemaKit's path, rule and expectation for `schemaRefused`; `PreviewAceDB` returns the report so far and `"maxImportEntries"` for a source past the limit; a key the AceDB defaults name explicitly is materialised when the source lacks it; inside a migration SettingsKit's own `version` key is neither imported, reported nor backed up; the profile-name limit is read from SettingsKit when it is loaded and is 64 bytes otherwise (2026-11-15). The collision rule is superseded by decision 19. | 5.5, 7.3, 7.6, 7.9 |
 | 19 | From step N3's read-only review: keys that land on one layout key after renaming (profiles, profile choices, characters, namespace sections) collide with one rule, the key keeping its own name winning and otherwise the first in sorted order, reported `keyCollision`, which replaces `profileNameCollision`; an entry a namespace or a mapped scope brings never overwrites one already in the field, and a map field never grows past `max`; AceDB defaults are read as AceDB reads them: `"**"` merged into an explicit table default at every depth, a saved table merged with its table default, an open record taking default-only keys, a map's own default keys compared, and a field SettingsKit defaults where AceDB had none reported once per field (`defaultDiffers`), also for scopes AceDB has no defaults for; a map entry holding only defaults stays an entry; secret keys are never compared and a secret profile choice is never looked up; every walk starts from a fresh count, so a migration step that runs twice reports the same (2026-11-15). | 7.3, 7.6, 7.9 |
+| 20 | The AceComm channel as built in step N4: a stream expires lazily, checked against the client's clock when the next message on any AceComm prefix arrives, instead of on a TimerKit timer, so the channel needs no timer scope and a quiet session costs nothing; the bound on held bytes (`maxAceSpoolBytes`) still caps what a stale stream holds (supersedes the TimerKit row of section 4). An empty `text` raises at the caller, because AceComm would send an empty message no peer can tell from nothing. A text needing more than 4096 messages (CommKit's most parts per raw send) is `nil, "tooLarge"`. The specs run the channel against a CommKit stand-in; the real CommKit is exercised by the client suites of step N5 (2026-11-15). | 5.7, 8.3, 8.4, 13 |

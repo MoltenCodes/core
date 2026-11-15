@@ -42,7 +42,7 @@ README; its full contract is the package's `docs/API.md`.
 | [`codecKit`](packages/codecKit/) | Serialise, compress and channel-encode values behind a self-describing header; decoding never raises. |
 | [`interopKit`](packages/interopKit/) | The LibStub bridge: expose Kits to LibStub consumers and adopt LibStub libraries read-only. |
 | [`mediaKit`](packages/mediaKit/) | A typed media registry with font scripts, sorted cached lists, per-consumer defaults and LibSharedMedia adoption and mirroring. |
-| [`bridgeKit`](packages/bridgeKit/) | Migration from Ace3: AceSerializer-3.0 text written and read byte for byte; the AceConfig adapter, AceDB importer and AceComm channel follow. |
+| [`bridgeKit`](packages/bridgeKit/) | Migration from Ace3: AceSerializer-3.0 text written and read byte for byte, AceConfig-3.0 tables converted to OptionsKit trees, AceDB-3.0 saved variables imported into SettingsKit, AceComm-3.0 spoken through CommKit. |
 | [`brokerKit`](packages/brokerKit/) | LibDataBroker-compatible data objects: typed attributes as plain fields, per-attribute change signals and a two-way LibDataBroker-1.1 bridge. |
 | [`logKit`](packages/logKit/) | Levelled, structured logging with lazy secret-safe formatting, a bounded journal and chat, callback and table sinks. |
 | [`compatKit`](packages/compatKit/) | Versioned shims with a host opt-out, provider registries with a fallback cascade, and the catalogue of taint-hostile subsystems as data. |

@@ -1,6 +1,26 @@
 # Changelog
 
-## 0.4.0 — unreleased
+## 0.4.0 — 2026-11-15
+
+Delivery step N4 of `docs/BRIDGE_KIT_DESIGN.md`: the AceComm-3.0 channel. API
+generation 1, implementation revision 4.
+
+- `BridgeKit:OpenAceComm(scope, prefix, callback[, options])` opens a channel
+  on a CommKit scope's raw addon messages (CommKit 0.5.0): `channel:Send`
+  writes the messages AceComm-3.0 writes (one message, the escape byte, or
+  254-byte parts), and the callback receives whole messages reassembled with
+  AceComm's rules, `Ambiguate`d by default. Several channels on one prefix
+  share one reassembly and each receives every message; the priority is
+  fixed per prefix; the channel closes with its scope.
+- Bounds Ace lacks: `maxAceStreams`, `maxAceStreamsPerSender`,
+  `maxAceStreamBytes`, `maxAceSpoolBytes`, `aceStreamTimeout` (streams
+  expire at the next message received, design decision 20) and
+  `maxDropReportSenders`; drops are reported through the error handler at
+  most once per sender per minute.
+- `BridgeKit:GetStatistics()`: the AceComm counters, open streams and spool
+  bytes. CommKit joins the optional dependencies.
+- Implementation revision 4: the AceComm state lives in `_state`; an
+  in-place upgrade adds it and the new limits' defaults.
 
 ### Fixed (from step N3's read-only review)
 
