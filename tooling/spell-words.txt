@@ -71,6 +71,8 @@ Pandaria
 Quadrata
 raidpet
 REGEN
+safecall
+securecall
 Skurri
 Soulbound
 spellbook

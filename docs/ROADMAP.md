@@ -5828,6 +5828,586 @@ Namespace costs measured outside the bench (scripts above, same host):
    client suite's `EXPECTED.md` and `.toc` (the part's file).
 9. Status: recorded 2026-11-15; code follows.
 
+**moduleKit (package O): the AceAddon conveniences: intended state, module defaults and prototypes, finding addons, a module-created notice** — a change to facade `ModuleKit`
+
+1. Package `moduleKit`, facade `ModuleKit`, API generation 1 (additive),
+   version 0.10.0 (from 0.9.0), implementation revision 23 (from 22).
+   No part: see point 6 for why these stay in the core.
+2. Purpose: close the AceAddon-3.0 gaps the Ace3 feature-gap diagnosis
+   measured (section "AceAddon", work package 7), so an Ace addon ports
+   without restructuring. Corpus use (16 open-source Ace3 addons):
+   `SetEnabledState` 5/16 (39 sites), `SetDefaultModulePrototype` 5/16,
+   `NewModule(name, prototype)` 3/16 (9 sites), `GetAddon` 5/16 (49 sites),
+   `OnModuleCreated` 3/16, `SetDefaultModuleState` 1/16, `IterateAddons`
+   0/16.
+   - **Intended state without running hooks.** `module:SetEnabledState(enabled)`
+     writes the module's intent (`wanted`, `docs/API.md` *Intent versus
+     fact*) and nothing else: no hook runs, the fact does not change, and
+     `blockedBy` is cleared when `enabled` is `false`, as `Disable` clears
+     it. Before the addon is ready, `false` keeps the module out of the
+     `ready` pass (the pass already skips modules that are not wanted).
+     After ready it changes what recovery and `GetEnableState` see; `Enable`
+     and `Disable` still change the fact. AceAddon's `SetEnabledState` is
+     the same: a flag the next enable pass reads.
+   - **Default state.** `addon:SetDefaultModuleState(enabled)` sets the
+     starting intent of modules created afterwards. AceAddon refuses the call
+     once a module exists; ModuleKit applies it forward instead, because an
+     AddonKit addon object is itself the module `"Main"` and always exists
+     first. A definition field `enabledState` (boolean) overrides it per
+     module: a definition-table module catches up inside `CreateModule`, so
+     its intent must be known before that.
+   - **Catch-up honours intent.** The implicit catch-up of a definition-table
+     module created after ready enables it only when it is wanted, as the
+     `ready` pass does. Today every such module starts wanted, so no existing
+     behaviour changes. `module:Activate()` is an explicit request and still
+     enables, as today.
+   - **Module prototypes.** `addon:SetDefaultModulePrototype(prototype)` (or
+     `nil` to clear) and a definition field `prototype` (a table, or `false`
+     for none when a default is set). A module's lookup order is: its own
+     fields, then ModuleKit's `Module` methods (framework methods win and
+     stay upgradable in place), then the prototype. A prototype chosen at
+     creation stays the module's prototype; changing the default later
+     affects later modules only, as in AceAddon. Hooks (`OnInitialize`,
+     `OnEnable`, `OnDisable`) are found on the prototype too, so AceAddon's
+     "prototype carries a shared `OnEnable`" ports unchanged (AdiBags' use).
+     Refused at the caller: a prototype that is not a table or is secret, and
+     a prototype whose own key (read with `next`, keys checked for secrets
+     first, ADR 0002 point 2) names a `Module` method, `scope`, or begins
+     with `_` (ModuleKit's private fields).
+     Implementation: one **layer** table per distinct prototype, kept in the
+     package state in a weak-keyed map. The layer holds a copy of the
+     `Module` methods and has `{ __index = prototype }` as its metatable;
+     a prototyped module's metatable is `{ __index = layer }`, shared by
+     every module with that prototype. A lookup is therefore table hops
+     only (own, layer, prototype), no function `__index`. Modules without a
+     prototype keep today's `MODULE_METATABLE` and pay nothing. An in-place
+     upgrade refreshes every layer from the new `Module` table (copy the
+     current methods, drop names that are no longer methods), so prototyped
+     modules gain the new revision's methods as plain modules do.
+   - **Finding addons.** `ModuleKit:FindAddon(name)` returns the container or
+     `nil` and never creates one (`ForAddon` creates). A raising form is not
+     added: `nil` plus the caller's own `assert` already raises at the
+     caller's line. `ModuleKit:GetAddons()` returns a new sorted array of
+     container names (diagnostics; it allocates). Status per addon is
+     `addon:GetModules()` and each module's `IsEnabled` / `GetEnableState`.
+   - **Module-created notice.** `addon:OnModuleCreated(callback)` or
+     `addon:OnModuleCreated(receiver[, methodName])` (method name defaults to
+     `"OnModuleCreated"`, checked when registered, ADR 0003) subscribes to the
+     topic `"ModuleKit.ModuleCreated"` on the addon's SignalKit bus
+     (`SignalKit:ForAddon(addonName)`), declaring it once with
+     `arguments = 1`. It returns the bus subscription (a SignalKit
+     connection: `Disconnect`, `IsConnected`), or `nil, "full"` at the bus
+     limits. `CreateModule` publishes `(module)` after the module is
+     published in the container and before its catch-up, so a listener can
+     still give a late definition module fields before it initializes. A
+     listener error is isolated and reported by the bus (AceAddon uses
+     `safecall` the same way); `CreateModule` still returns the module. The
+     bus is only touched once someone subscribed: until then `CreateModule`
+     pays one `rawget`. A module's own `scope.Messages` can subscribe to
+     the same topic and is released on disable like any subscription.
+   - **Locals.** The main chunk stays at or under 195 active locals (the
+     `lua_limits` ratchet only goes down): the new functions are fields of
+     one table, `addonConveniences`, into which `missingScopePolicyMethods`
+     and the two dependency-policy methods move (net 195 to 193; the ratchet
+     entry is lowered to the measured value).
+   Non-goals: `NewAddon(object, name)`, mixins, `IterateEmbeds`,
+   `SetDefaultModuleLibraries`, `OnEmbedEnable` (kept different, Ace3
+   feature-gap diagnosis section 4, items 3 and 4); a raising `GetAddon`;
+   moving "Halted addons" (18.0 KB of prototypes) into a part (worth its own
+   record).
+3. Dependencies: registry API 2 and lifecycleKit API 1, unchanged.
+   `signalKit` API 1 is added to `optionalDependencies` and found through
+   `Registry:Find` on the first `OnModuleCreated`. In practice it is always
+   loaded: LifecycleKit requires it. A host without it raises at the caller:
+   `ModuleKit.Addon:OnModuleCreated needs SignalKit API 1, which is not loaded`.
+4. Surface (all additive):
+
+   | Member | Returns | Notes |
+   |---|---|---|
+   | `module:SetEnabledState(enabled)` | previous intent (boolean) | refused after shutdown, like `Enable`; a non-boolean or secret raises at the caller |
+   | `addon:SetDefaultModuleState(enabled)` | previous default | default `true` |
+   | `addon:GetDefaultModuleState()` | boolean | |
+   | `addon:SetDefaultModulePrototype(prototype)` | previous prototype or `nil` | `nil` clears |
+   | `addon:GetDefaultModulePrototype()` | table or `nil` | |
+   | `addon:OnModuleCreated(callback)` / `(receiver[, methodName])` | SignalKit connection, or `nil, "full"` | |
+   | `ModuleKit:FindAddon(name)` | container or `nil` | |
+   | `ModuleKit:GetAddons()` | new sorted array of names | |
+   | definition `enabledState` | | boolean |
+   | definition `prototype` | | table or `false` |
+
+   Error messages follow the Kit's form, for example
+   `ModuleKit.Addon:SetDefaultModulePrototype prototype key "Enable" shadows ModuleKit's Module:Enable`
+   and `ModuleKit.Module:SetEnabledState enabled must be a boolean`.
+5. Ownership: a prototype is referenced by the modules created with it and,
+   while it is the default, by the container; its layer lives as long as the
+   prototype (weak key). The module-created subscription belongs to the
+   addon's bus: it ends with `Disconnect`, or when the bus closes at logout.
+   Containers still live for the session.
+6. Performance and memory. Host bench `addonModules` against AceAddon-3.0,
+   one run on 2026-11-15 (Lua 5.1.5, 3 rounds):
+
+   | Case | Before | Expected after |
+   |---|---:|---:|
+   | create-addon | 0.78× | 0.78× (± noise: one `rawget` per `CreateModule`) |
+   | load-addon | 1.02× | 1.02× |
+   | disable-enable-module | 1.23× | 1.23× (a hook missing on a plain module costs one extra `rawget` for `_prototype`) |
+   | disable-enable-all | 1.14× | 1.14× |
+   | disable-enable-all-listening | 1.62× | 1.62× |
+
+   New measurement in phase 2 (host micro-benchmark beside the bench, same
+   run, both sides): a method call through a prototype, target at most 1.3×
+   AceAddon's (two table hops against one); `GetEnableState`-free paths
+   unchanged.
+   Held memory (load-and-execute footprint, debug information kept, one
+   process): ModuleKit 137,205 B today against AceAddon-3.0 27,041 B. The
+   additions are about 330 lines, about 13 KB at the measured 35 to 44 KB per
+   1,000 lines: expected about 150 KB. Why not a part: the two largest pieces,
+   prototypes (about 4.5 KB) and the created notice (about 2 KB), both hook
+   into `CreateModule` and `invokeHook`, so the core would keep forwarders
+   and checks for them, and a part's fixed cost (header, bootstrap, state
+   checks, about 1.5 KB) would take a third of the saving. Per object: a
+   module without a prototype is unchanged (933 B); a prototype costs one
+   layer (about 1.3 KB, the `Module` methods' hash part) per distinct
+   prototype, not per module; a container gains at most three fields, written
+   only when set.
+7. Tests: `SetEnabledState` before load, before ready (the module stays
+   off, its dependents are blocked as for a `Disable`), after ready (fact
+   unchanged; recovery skips it), after shutdown (refused), argument errors at
+   the caller; default state applied to later modules only, overridden by
+   `enabledState`; a late definition module with `enabledState = false`
+   initialized but not enabled, and `Activate` still enabling a mutable one;
+   prototypes: lookup order (own, framework, prototype), hooks from the
+   prototype in all three phases and in `implements`, a per-module prototype,
+   `prototype = false` against a default, refusals (non-table, secret,
+   secret key, framework name, `scope`, `_` key) leaving no module, layer
+   sharing between modules, a prototype with its own metatable; an in-place
+   upgrade from revision 22 that keeps every container and module and
+   refreshes layers (a method added by the new revision reaches a prototyped
+   module); `FindAddon` never creating, `GetAddons` sorted and fresh;
+   `OnModuleCreated`: function and method forms, missing method refused at
+   registration, order (published, then catch-up), a raising listener
+   reported while `CreateModule` returns the module, `nil, "full"` at the bus
+   limit, `Disconnect`, nothing published before the first subscription, the
+   missing-SignalKit refusal with a stand-in Registry; the lua_limits
+   measurement of the main chunk (195 to 193).
+8. Docs: API.md (surface tables, *Intent versus fact*: `SetEnabledState`,
+   defaults and catch-up; a new *Module prototypes* section; *Creating
+   modules*: the two definition fields; a *Finding addons* section; the
+   created notice; *Argument and state errors*; *Cost*), INTERNALS.md (layers
+   and their upgrade, the `_prototype` field, the hook fallback, the bus
+   topic), README migration table (`SetEnabledState`, `SetDefaultModuleState`,
+   `SetDefaultModulePrototype`, `NewModule(name, prototype)`, `GetAddon`,
+   `IterateAddons`, `OnModuleCreated`), CHANGELOG 0.10.0, tests/README, the
+   client suite (two tests: a prototype hook at login, `SetEnabledState(false)`
+   keeping a module off through `ready`). For the shared migration guide:
+   the AceAddon rows above leave "What has no equivalent yet".
+9. Status: recorded 2026-11-15 under ADR 0001 and ADR 0003; code follows.
+
+**commandKit (package O): parts for options binding and completion; the command list, a prefix, dispatch, the AceConfigCmd path syntax and general tab completion** — a change to facade `CommandKit`
+
+1. Package `commandKit`, facade `CommandKit`, API generation 1, version
+   0.3.0 (from 0.2.10), implementation revision 11 (from 10). Two parts
+   (ADR 0001): `CommandKit-Options` (`src/parts/CommandKit-Options.lua`,
+   part revision 1) and `CommandKit-Completion`
+   (`src/parts/CommandKit-Completion.lua`, part revision 1).
+2. Purpose: the CommandKit items of the Ace3 feature-gap diagnosis (section
+   "AceBucket, AceConsole, AceConfigCmd, AceTab", work package 10), placed
+   so an addon that only registers commands stops paying for options binding
+   and completion.
+   - **The split, along existing sections.** The "Options binding" section
+     (20.0 KB of prototypes, 19 main-chunk locals) moves to the `Options`
+     part and the "Completion" section (7.1 KB, 8 locals) to the
+     `Completion` part, measured with the section walk on revision 10. The
+     new options features join the first, AceTab's counterpart the second.
+     The core keeps `BindOptions`, `EnableCompletion` and
+     `DisableCompletion` (and the new part methods) on the scope prototype as
+     forwarders: each calls its part through `_state.parts.<Part>` with an
+     explicit error level, and raises at the caller's line when the part is
+     not loaded: `CommandKit.Scope:BindOptions needs CommandKit's Options
+     part, which is not loaded: add commandKit\parts\CommandKit-Options.lua
+     to your embeds.xml`. A forwarder in the core, rather than a method the
+     part writes onto the prototype, survives any load order of core and
+     part revisions. The core shares what the parts need (tokenizer,
+     sub-command walk, frames, contexts, output, secret probe, host
+     readers, the error reporter, limits, `activeByName`) through
+     `_state.helpers`, read at call time, so an upgraded core's helpers
+     serve parts loaded before it (AddonKit's pattern). Freeing 27 locals
+     takes the main chunk from 198 to about 175, below the gate's fail line,
+     so its `lua_limits.json` entry is removed.
+   - **This changes embedding.** An addon that calls `BindOptions` or
+     `EnableCompletion` must embed the part; a hand-written file list that
+     names only `CommandKit.lua` gets the error above at the call, with the
+     file to add. A single-Kit release ships both parts, and
+     `tooling.package.embeds` adds them when selected. This is the
+     consequence ADR 0001 states for every split.
+   - **The command list** (AceConsole `IterateChatCommands`, 0/16).
+     `scope:GetCommands()`: a new sorted array of the scope's active
+     top-level slash names; `CommandKit:GetCommands()`: every active name
+     CommandKit serves in the session (AceConsole's iterator is global too).
+     Diagnostics; both allocate.
+   - **A prefix and printing outside a handler** (AceConsole `Print`).
+     `scope:SetPrefix(text)` (or `nil`) returns the previous prefix;
+     `scope:GetPrefix()`. With a prefix, every line the scope writes (handler
+     output, usage, refusals, option listings, completion lists) starts with
+     `text`; colour codes are the author's choice (Ace's form is
+     `"|cff33ff99Name|r: "`). Default none, so today's output is unchanged.
+     `scope:Print(...)` and `scope:Printf(template, ...)` write to the
+     scope's sink outside any handler, with the same argument rules as
+     `context:Print`/`Printf` (`Printf` through LocaleKit when present).
+   - **Dispatch from code** (AceConfigCmd `HandleCommand`, 2/16).
+     `scope:Dispatch(name, text)` runs the scope's command `name` with
+     `text` exactly as the client's slash handler would (same dispatcher,
+     same frames, same failure reporting): `true` when it ran, `false` when
+     the scope has no such command. A secret `text` or `name`, and a closed
+     scope, raise at the caller. It works for bound and ordinary commands.
+   - **AceConfigCmd's syntax** (every `BindOptions` user who knows Ace).
+     `BindOptions(tree, name, { syntax = "path" })`, in the Options part.
+     `/cmd group option value`: each word selects a child of the current
+     group by key, without case and with `_` matching a space in the key
+     (AceConfigCmd's rule), until a non-group is reached; the rest of the
+     line is the value. Then: a group with nothing after it is listed (as
+     `list path`); a `toggle` without a value flips (as `set path toggle`);
+     an `execute` runs (with the `confirm` word rule of `exec`); any other
+     value option prints `path = value` without a value and is set with one
+     (as `set path value...`, same parsing and refusals). An empty line lists
+     the root, or runs `options.onEmpty(context)` when given (Ace addons open
+     their options window there). The five verbs stay available: they are
+     the command's sub-commands, so `/cmd set a.b 1` keeps working and a root
+     option keyed `get`, `set`, `reset`, `list` or `exec` is reached through
+     the verbs (`/cmd set list on`). Resolution uses one `tree:Walk` per typed
+     line with a visitor kept per binding (OptionsKit's walk allocates
+     nothing) and then the one `DescribeOption` today's verbs make, so a
+     typed line describes one option, never a group subtree. A group that a
+     future OptionsKit marks inline for the command line is still a path
+     step until OptionsKit reports that flag in its walk (ace3-gaps WP 1/2).
+     `syntax = "verbs"` is the default, today's behaviour.
+   - **The bound tree** (AceConfigCmd `GetChatCommandOptions`, 0/16).
+     `scope:GetBoundTree(name)` returns the tree a command was bound to, or
+     `nil`. Kept in a per-scope map created on the first bind and cleared by
+     `Unregister` and `Close`.
+   - **General tab completion** (AceTab-3.0, 1/16, Prat-3.0's five uses).
+     The migration guide marks AceTab "not planned" without a technical
+     reason; the hook it needs is the one CommandKit already installs.
+     Verified in Blizzard's UI source (`Gethe/wow-ui-source`,
+     `Interface/AddOns/Blizzard_ChatFrameBase/Shared/ChatFrameEditBox.lua`,
+     `live` `297d7aa` line 444, `classic` `e5d9b3a` line 442, `classic_era`
+     `4192ac6` line 442): `ChatEdit_CustomTabPressed(editBox)` is an empty
+     global "left intentionally global ... to enable secure tab completion
+     hooks in addons", and `ChatFrameEditBoxMixin:OnTabPressed` calls it
+     through `securecall` only after `AutoCompleteEditBox_OnTabPressed`
+     declined, skipping `SecureTabPressed` when it returns true. In the
+     Completion part:
+     `scope:RegisterCompletion(name, pattern, provider)` → `true`, or
+     `nil, "full"` at `maxCompletionProviders`, or `nil, "taken"` when the
+     scope already has `name`. `pattern` is a Lua pattern tested with
+     `string.find` against the text before the word being completed
+     (AceTab's "prematch"); `""` matches anywhere. `provider(partial,
+     before, editBox)` returns an array of candidates, or `nil`. On Tab, when
+     the cursor is at the end: the scope commands' own completion runs first
+     (today's behaviour); otherwise every provider whose pattern matches is
+     asked, in registration order, and their candidates are merged through
+     today's filter (start of word without case, secrets skipped,
+     `maxCompletions`), insertion, common prefix and listing. A provider that
+     raises is reported through the host error handler and the others still
+     run. `scope:UnregisterCompletion(name)` → `true`/`false`;
+     `scope:IsCompletionRegistered(name)`; `Close` releases every provider of
+     the scope. The tab chain is installed while any scope has completion
+     enabled or a provider registered, and uninstalled as today when neither
+     remains. Only chat edit boxes are covered (the client calls the hook
+     from them alone); other edit boxes are not, because completing there
+     needs the frame's own `OnTabPressed`, which a `HookScript` cannot stop,
+     so the guide's row becomes "chat edit boxes: `RegisterCompletion`;
+     other edit boxes: not planned (the client offers no hook there)".
+     The client's own name auto-complete (`AutoCompleteEditBox_OnTabPressed`)
+     runs before the hook and wins while its list is shown.
+   Non-goals: honouring `cmdHidden`/`cmdInline`/`confirm` beyond today
+   (WP 2); dynamic trees (WP 3); `Reopen` for CommandKit scopes (a separate
+   small record would let ModuleKit keep `scope.Commands`); the live taken
+   scan (kept by the owner's decision); a raising `GetBoundTree`.
+3. Dependencies: core unchanged (registry API 2, schemaKit API 1; optional
+   localeKit, clientKit, eventKit, lifecycleKit). `optionsKit` API 1 moves
+   from the core's `optionalDependencies` to the Options part's
+   `dependencies` (the part cannot work without it, and the embeds
+   generator then brings it along). The Completion part has none beyond its
+   core. Manifest:
+
+   ```json
+   "parts": {
+     "Options": {
+       "description": "Drive an OptionsKit tree from a slash command: the get, set, reset, list and exec verbs and AceConfigCmd's path syntax.",
+       "revision": 1,
+       "dependencies": { "optionsKit": { "api": 1 } }
+     },
+     "Completion": {
+       "description": "Tab completion in chat edit boxes: the scopes' own commands and AceTab-style completion providers.",
+       "revision": 1
+     }
+   }
+   ```
+4. Surface (additive apart from the split): core `CommandKit:GetCommands()`,
+   `scope:GetCommands()`, `scope:SetPrefix(text)`, `scope:GetPrefix()`,
+   `scope:Print(...)`, `scope:Printf(template, ...)`,
+   `scope:Dispatch(name, text)`; forwarders `BindOptions`, `GetBoundTree`
+   (Options), `EnableCompletion`, `DisableCompletion`,
+   `RegisterCompletion`, `UnregisterCompletion`, `IsCompletionRegistered`
+   (Completion); `BindOptions` option fields `syntax` (`"verbs"` or
+   `"path"`) and `onEmpty` (function); package limit
+   `maxCompletionProviders` (default 32, ceiling 256, `UNBOUNDED` refused:
+   every Tab press walks the list). Scope fields, all absent until written:
+   `_prefix`, `_bound`, `_completionProviders` (a count); the provider list
+   lives in the shared `completion` state table, which keeps its revision-10
+   field names so the part adopts it.
+5. Ownership: providers and bound-tree entries belong to their scope and go
+   with `Unregister`/`Close`; the tab chain belongs to the package as today.
+   The parts keep their state inside the core's (`_state.parts.<Part>`, with
+   `revision`); the highest part revision wins and upgrades in place.
+   Upgrade from revision 10: the state gains `parts` and `helpers`; scopes,
+   records and dispatchers are kept. A revision-10 `dispatch.tabPressed`
+   keeps serving completion until a Completion part loads and replaces it,
+   so an addon that enabled completion under revision 10 keeps it working
+   across a core-only upgrade.
+6. Performance and memory. Host bench, one run on 2026-11-15 (Lua 5.1.5,
+   3 rounds), ratios against Ace3 from the same run:
+
+   | Case | Before | Expected after |
+   |---|---:|---:|
+   | slashCommands register-unregister | 30.41× | unchanged (the taken scan) |
+   | slashCommands dispatch-words | 2.14× | unchanged (one `rawget` for the prefix per written line only) |
+   | slashCommands dispatch-subcommand | 2.97× | unchanged |
+   | options cmd-set-range / toggle / select | 1.69× / 1.96× / 1.47× | unchanged in verb syntax |
+   | new: the same typed line as AceConfigCmd (`/cmd g1 scale 1.25`) in path syntax | n/a | at most 2.0× (one allocation-free walk plus today's describe) |
+
+   The new case needs a line in the `options` workload (text in
+   the report). Completion runs only on a Tab press.
+   Held memory (load-and-execute footprint, debug information kept):
+   CommandKit 141,088 B today; AceConsole-3.0 10,483 B, AceConfigCmd-3.0
+   32,779 B, AceTab-3.0 20,398 B (63,660 B together). Expected after:
+
+   | Embedded | Expected | Ace3 it replaces | Ratio |
+   |---|---:|---|---:|
+   | core only (register, dispatch, print) | about 116 KB (−31 KB moved, +6 KB new) | AceConsole 10.5 KB | about 11× (today 13.5×) |
+   | core + Options | about 147 KB | AceConsole + AceConfigCmd 43.3 KB | about 3.4× |
+   | core + both parts | about 164 KB | all three, 63.7 KB | about 2.6× (today 2.2× without path syntax or providers) |
+
+   The core-only figure is the one most addons pay; what stays above
+   AceConsole is the parser, the schema arguments, sub-commands and the
+   taken check, outside this record. Per object: a scope with a prefix
+   +1 field; a provider entry about 100 B; a bound tree one map entry.
+7. Tests: the split (core alone: every forwarder raises at the caller with
+   the file to embed; the part loaded before and after another core
+   revision; a part revision upgrade in place; the part loaded without its
+   core raising the ADR 0001 message), the upgrade from revision 10 with
+   completion enabled and a bound command (both keep working with and
+   without the parts), all existing BindOptions and Completion specs moved
+   to load the parts; `GetCommands` (both, sorted, fresh); prefix on every
+   kind of line, `nil` clearing, argument errors; `scope:Print`/`Printf`
+   outside a handler; `Dispatch` (ran, unknown name, closed scope, secret
+   text, a raising handler reported not raised); path syntax for every kind
+   (group listing, toggle flip and set, tristate, range, select by key and
+   label, multiselect, color, input, execute with and without confirm),
+   case and `_` matching, unknown word, verbs still reachable, a root option
+   named like a verb, empty line with and without `onEmpty`, hidden and
+   disabled options, `syntax` refusals; `GetBoundTree`; providers: pattern
+   match and miss, merge order, filter and limit, one candidate, common
+   prefix, listing with prefix, a raising provider, `"taken"`, `"full"`,
+   unregister, release on `Close`, chain installed by a provider alone and
+   uninstalled after the last, cursor not at end, secret text; limits
+   `maxCompletionProviders`; lua_limits below the fail line.
+8. Docs: API.md (*Loading*: the two parts; surface; a *Prefix and printing*
+   section; *Dispatch from code*; `BindOptions` path syntax and `onEmpty`;
+   *Tab completion*: providers and the client hook with the source
+   reference; *Limits*; *Error behaviour*; *Embedded copies and upgrades*),
+   INTERNALS.md (helpers, forwarders, part state, the walk visitor), README
+   (migration table rows `IterateChatCommands`, `Print`, `HandleCommand`,
+   `GetChatCommandOptions`, AceConfigCmd syntax, `RegisterTabCompletion`),
+   CHANGELOG 0.3.0, tests/README, `src/.luarc.json` covering the parts, the
+   client suite (a provider completing in a real chat edit box; path syntax
+   `/cmd group option value`). For the shared files: the AceTab row of the
+   migration guide, the embedding guide's parts table (generated), the bench
+   workload line.
+9. Status: recorded 2026-11-15 under ADR 0001; code follows.
+
+**signalKit (package O): bucketed bus messages, AceBucket's RegisterBucketMessage, as a part** — a change to facade `SignalKit`
+
+1. Package `signalKit`, facade `SignalKit`, API generation 1 (additive),
+   version 0.9.0 (from 0.8.0), implementation revision 12 (from 11). New
+   part (ADR 0001) `SignalKit-Coalescing`
+   (`src/parts/SignalKit-Coalescing.lua`, part revision 1).
+2. Purpose: AceBucket-3.0's `RegisterBucketMessage` (Ace3 feature-gap
+   diagnosis, section "AceBucket, AceConsole, AceConfigCmd, AceTab", work
+   package 10; corpus 1/16, 1 site). Today an author pairs a SchedulerKit
+   `Coalesce` handle with a bus subscription by hand, and the host bench
+   leaves the message form out for that reason.
+   - **Where it belongs.** In SignalKit, as a part. EventKit set the
+     pattern: the subscribing Kit owns the subscription half and SchedulerKit
+     the timing half (`EventKit:Coalesce` over `SchedulerKit:Coalesce`,
+     SchedulerKit's *Coalescing and lanes*). SchedulerKit needs no change:
+     its `Coalesce` (revision 7 and later) is used as published. SignalKit
+     is required by LifecycleKit, so nearly every addon loads its core; a
+     part keeps the feature out of the addons that do not use it.
+   - **The calls.** `bus:Coalesce(topics, intervalSeconds, callback[, options])`
+     and the same on a bus scope, `scope:Coalesce(...)`, so a module's
+     `scope.Messages:Coalesce(...)` is released on disable. `callback` may be
+     a function or a receiver table followed by a method name
+     (`bus:Coalesce(topics, 0.5, self, "OnBucket")`), checked when the call is
+     made (ADR 0003); there is no default method name, as AceBucket takes an
+     explicit one. `topics` is a topic or an array of at most 32 distinct
+     topics; subscribing needs no declaration, as for `Subscribe`.
+   - **Semantics, those of `EventKit:Coalesce`.** The first message starts
+     the interval; at its end `callback(set)` runs once. The set is keyed by
+     the first published argument, every value `true`; a first argument that
+     is `nil`, NaN or a secret value is keyed by the topic (a secret would
+     raise as a key, ADR 0002). Options: `byTopic` (key by topic instead),
+     `maxKeys` (SchedulerKit's default 256; past it new keys are refused and
+     counted), `lane` (a SchedulerKit lane). The set is reused (copy what you
+     keep). A raising callback is reported through the host error handler.
+     AceBucket's per-key counts and its `"nil"` key stay deliberately
+     different (diagnosis section 4, item 5).
+   - **The handle**, as EventKit's: `Flush()`, `IsPending()`, `GetStats()`,
+     `Close()`, `IsClosed()`.
+   - **How it is built.** One listener closure per handle, subscribed to each
+     topic through the bus (or through the scope, so the scope's sweep
+     disconnects it); one SchedulerKit `Coalesce` handle in one SchedulerKit
+     scope private to the part. A scope `Close`, `DisconnectAll` or a bus
+     closing disconnects the subscriptions; the next delivery then sees its
+     first subscription disconnected, drops the set and closes the handle,
+     so nothing is delivered after the owner let go and no change is needed
+     in the bus scope's member bookkeeping. If any topic's subscription is
+     refused (`nil, "full"`), the ones already made are disconnected and the
+     call returns `nil, "full"`.
+   - **Core forwarders.** The core's bus and bus-scope prototypes carry
+     `Coalesce` forwarders that call `_state.parts.Coalescing` and raise at
+     the caller when it is absent:
+     `SignalKit.Bus:Coalesce needs SignalKit's Coalescing part, which is not
+     loaded: add signalKit\parts\SignalKit-Coalescing.lua to your embeds.xml`.
+     SchedulerKit is found with `Registry:Find("schedulerKit", 1)` at each
+     call that creates a handle (a found facade is kept, a miss is not);
+     a missing or pre-coalescing SchedulerKit raises at the caller.
+   Non-goals: arrival counts; a facade-level `SignalKit:Coalesce` over raw
+   signals (a raw signal's owner already holds it and can feed a SchedulerKit
+   handle directly); any SchedulerKit change.
+3. Dependencies: core unchanged (registry API 2; optional eventKit,
+   lifecycleKit). The part declares `"dependencies": { "schedulerKit":
+   { "api": 1 } }`, so the embeds generator brings SchedulerKit and TimerKit
+   along; the required graph has no cycle (SchedulerKit needs only TimerKit
+   and Registry). Manifest:
+
+   ```json
+   "parts": {
+     "Coalescing": {
+       "description": "Bucketed bus messages: collect a burst of publishes and deliver them once per interval.",
+       "revision": 1,
+       "dependencies": { "schedulerKit": { "api": 1 } }
+     }
+   }
+   ```
+4. Surface: `bus:Coalesce(topics, intervalSeconds, callback[, options])`,
+   `bus:Coalesce(topics, intervalSeconds, receiver, methodName[, options])`,
+   the same two on a bus scope; the handle methods above. `BUS_METHODS` and
+   `BUS_SCOPE_METHODS` gain `Coalesce`. Refusals at the caller: a closed
+   bus or scope, a bad topic (as `Subscribe`), more than 32 topics, a bad
+   interval, an unknown option (named with `describeKey`), a bad callback or
+   missing method, a secret argument.
+5. Ownership: a handle belongs to whoever holds it, and through its
+   subscriptions to the bus or scope it was made on; it ends at `Close`, or
+   at the first delivery after its subscriptions were disconnected. The
+   part's state (`revision`, the found SchedulerKit, its private
+   SchedulerKit scope) lives in `_state.parts.Coalescing`; the highest part
+   revision wins and upgrades in place. Upgrade from revision 11: the state
+   gains `parts`; nothing else changes.
+6. Performance and memory. Host bench `buckets` (EventKit `Coalesce` against
+   AceBucket-3.0's `RegisterBucketEvent`), one run on 2026-11-15: record-event
+   1.80×, burst 1.70×, register-remove 2.30×. Expected for the message form
+   in phase 2, with a new case pair against `RegisterBucketMessage`
+   (a `buckets` workload addition): record-message and burst within 1.1× of the event
+   form's ratios (a bus publish to one subscriber is 1.58× of AceEvent's
+   `SendMessage`, documented), register-remove about the event form's.
+   Publish paths of topics without a bucket are untouched: the core gains
+   only two forwarders, not on any publish or subscribe path.
+   Held memory (load-and-execute footprint, debug information kept):
+   SignalKit 89,324 B today; the core gains about 40 lines (the forwarders
+   and the `parts` field, about 1.5 KB). The part is about 260 lines, about
+   11 KB, against AceBucket-3.0's 9,788 B (AceBucket also covers events,
+   which EventKit's `Coalesce` does here). Per handle: one closure (136 B
+   with the method form, less for a function), one subscription handle per
+   topic (161 B, or 194 B through a scope), and SchedulerKit's coalesce handle
+   with its two sets.
+7. Tests (`Coalescing_spec.lua`): one delivery per interval with the first
+   message starting it; keys by first argument, `nil`/NaN/secret keyed by
+   topic, `byTopic`; several topics; `maxKeys` refusal counted; lane
+   delivery; `Flush`, `IsPending`, `GetStats`, `Close`; method form and its
+   registration check; scope `Close`, `DisconnectAll`, `Reopen` and the bus
+   closing all stopping delivery and closing the handle; partial
+   subscription refusal; a raising callback reported; argument errors at the
+   caller; the forwarders without the part; the part without its core (ADR
+   0001 message); no SchedulerKit, and one without `Coalesce`; upgrade from
+   revision 11 keeping buses and subscriptions; a part revision upgrade in
+   place.
+8. Docs: API.md (a *Bucketed messages* section, surface tables, errors,
+   *Embedded copies and revision upgrades*), INTERNALS.md (the forwarders,
+   part state, the lazy close), README (AceBucket `RegisterBucketMessage` and
+   `UnregisterBucket` migration rows), CHANGELOG 0.9.0, tests/README,
+   `src/.luarc.json`, the client suite (one bucket fed by `Publish` across
+   two frames). For the shared files: the migration guide's
+   `RegisterBucketMessage` row; SchedulerKit's *Coalescing and lanes* can
+   name the bus form beside EventKit's when its owner next edits it.
+9. Status: recorded 2026-11-15 under ADR 0001 and ADR 0003; code follows.
+
+**addonKit (package O): the module defaults and the created notice on the facade** — a change to facade `AddonKit`
+
+1. Package `addonKit`, facade `AddonKit`, API generation 1 (additive),
+   version 0.2.0 (from 0.1.0), implementation revision 2 (from 1). Core
+   only; no part changes.
+2. Purpose: surface the ModuleKit conveniences of this round where an
+   AddonKit author meets them, `MC`, the way AceAddon offers them on the
+   addon (`MyAddon:SetDefaultModuleState(false)`). Kept minimal: AddonKit
+   only forwards (ADR 0004: a layer over ModuleKit, no behaviour of its own).
+   - `MC:SetDefaultModuleState(enabled)`, `MC:SetDefaultModulePrototype(prototype)`
+     and `MC:OnModuleCreated(callback | receiver[, methodName])` call the
+     addon container's methods of the same names at the caller's line
+     (`callAtCaller`), and return what they return.
+   - `MC:NewModule(name, definition)` already passes the definition through,
+     so the new definition fields `enabledState` and `prototype` work with
+     no change; the `"Main"` dependency is still added.
+   - The addon object stays on: when the container's default state is
+     `false` and `MC:NewAddon()` is called after it, the new `"Main"`
+     module's intent is set back to `true` with `SetEnabledState(true)`
+     (unless its definition says `enabledState = false`), so an addon whose
+     author changed the module default first still enables at login.
+     AceAddon's default never applies to the addon object either. A default
+     prototype set before `MC:NewAddon()` does apply to `"Main"`;
+     the documentation says to set defaults after `MC:NewAddon()`, as in
+     AceAddon.
+   - A ModuleKit revision without these methods (before 23) is refused at
+     the caller: `MC:SetDefaultModuleState needs ModuleKit revision 23 or
+     later; update the copy of moduleKit your addon embeds`.
+   Non-goals: `MC:FindAddon` (`MoltenCodes:For(name):GetAddon()` and
+   `ModuleKit:FindAddon` cover it); an Ace-style `OnModuleCreated` field on
+   the addon object (a method-name subscription
+   `MC:OnModuleCreated(addon)` after defining `addon:OnModuleCreated` is the
+   port).
+3. Dependencies: unchanged (registry API 2; moduleKit API 1 optional, found
+   lazily as today).
+4. Surface: three facade methods added to `CORE_METHODS`; facade LuaCATS
+   types updated. Errors: the forwarded ModuleKit refusals at the author's
+   line, and the revision refusal above.
+5. Ownership: nothing new is held by AddonKit; the container holds the
+   defaults and the bus holds the subscription.
+6. Performance and memory: about 50 lines, about 2 KB held (AddonKit 42.3 KB
+   compiled today); no change on any read path of the facade. Nothing
+   per object.
+7. Tests: each forwarder (result, error level at the author's line, the
+   revision refusal with a ModuleKit stand-in), `MC:NewAddon()` after
+   `MC:SetDefaultModuleState(false)` enabling at login while a later
+   `MC:NewModule` stays off, a module from `MC:NewModule(name, { prototype =
+   ... })`, `MC:OnModuleCreated` seeing a later `MC:NewModule`, the upgrade
+   from revision 1.
+8. Docs: API.md (facade methods, *Modules*), README (AceAddon rows),
+   CHANGELOG 0.2.0, tests/README, GETTING_STARTED-style example in the
+   README for a prototype. For the shared files: none beyond the moduleKit
+   record's migration rows.
+9. Status: recorded 2026-11-15 under ADR 0004; code follows.
+
 #### Package N — bridgeKit, migrating from Ace3
 
 Decided 2026-09-25 with the project owner, from the external review that
