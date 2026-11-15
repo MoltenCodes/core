@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.8.1 — 2026-11-15
+
+- Documentation: the pausable timers of 0.8.0 left text that described only running timers. The README and `docs/API.md` ("Remaining time", "Timers started by an older revision", "Without `GetTimePreciseSec`", "State model", "Manual scopes", `CloseAddonScopes`, "Errors", "Cost", "Limits") now say what a paused timer answers and costs: `GetRemaining` its kept seconds, a pause without a deadline keeping the full delay, paused timers counted, cancelled and retained by their scope, `Pause` raising the host's `Cancel` failure and `Resume` the constructor's, and what `Resume` allocates. `docs/INTERNALS.md` adds paused timers to the active-set invariant, the `fireResumed` dispatch entry and the revision 12 upgrade note; `tests/README.md` lists the pause coverage; doc comments of `IsPending`, `Start`, `Cancel`, `GetRemaining`, `GetActiveCount` and the bulk snapshot include paused timers. Documentation only; the implementation revision stays 12.
+
 ## 0.8.0 — 2026-11-15
 
 - Added pausable timers, implementation revision 12, as recorded in `docs/ROADMAP.md` ("timerKit pausable timers", package M, worklist item W15): `timer:Pause()`, `timer:Resume()` and `timer:IsPaused()`, and the state `"paused"`. A pause cancels the host handle and keeps the remainder; a resume asks `C_Timer.NewTimer` for that remainder, and a repeating timer returns to its interval after that first fire. Recorded deviation: built on `C_Timer` handles, not an animation host, so TimerKit keeps no frame.

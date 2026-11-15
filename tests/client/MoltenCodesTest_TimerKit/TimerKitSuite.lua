@@ -15,6 +15,8 @@
 --   * that `Every` repeats at its interval, moves its deadline one interval per
 --     tick, and stops for good on `Cancel`, also from inside its own callback;
 --   * `GetRemaining` and `GetDeadline` against the client's own clock;
+--   * that `Pause` keeps a one-shot from firing past its deadline and `Resume`
+--     fires it once, its kept remainder later, on the real `C_Timer`;
 --   * that `CancelAll`, `Close` and `CloseAddonScopes` stop real native timers,
 --     and `ForAddon` with this addon's name;
 --   * that a callback error reaches the client's error handler, and whether a
@@ -139,6 +141,9 @@ local TIMER_METHODS = {
   "Restart",
   "GetRemaining",
   "GetDeadline",
+  "Pause",
+  "Resume",
+  "IsPaused",
 }
 
 --- Every method docs/API.md of timerKit lists on a scope.
@@ -837,6 +842,60 @@ clockTest(
     ctx:Expect(timer:GetState()):ToBe("completed")
     ctx:Expect(timer:GetRemaining()):ToBeNil()
     ctx:Expect(timer:GetDeadline()):ToBeNil()
+  end
+)
+
+-- timerKit.pause ------------------------------------------------------------------------
+
+local pause = newSuite("pause")
+
+clockTest(
+  pause,
+  "Pause keeps a one-shot from firing past its deadline, and Resume fires it once, its kept remainder later (lateness logged)",
+  function(ctx)
+    local scope = trackScope(TimerKit:CreateScope())
+    local fired = newRecord()
+    local timer = scope:After(ONE_SHOT_DELAY_SECONDS, counter(fired))
+    waitUntilInstant(ctx, preciseNow() + ONE_SHOT_DELAY_SECONDS / 2)
+
+    ctx:Expect(timer:Pause()):ToBe(true)
+    ctx:Expect(timer:IsPaused()):ToBe(true)
+    ctx:Expect(timer:GetState()):ToBe("paused")
+    ctx:Expect(timer:GetDeadline()):ToBeNil()
+    local kept = timer:GetRemaining()
+    ctx:Expect(type(kept)):ToBe("number")
+    ---@cast kept number
+    ctx:Expect(kept > 0 and kept < ONE_SHOT_DELAY_SECONDS):ToBe(true)
+    ctx:Expect(scope:GetActiveCount()):ToBe(1)
+
+    -- Well past the original deadline, nothing has fired and nothing moved.
+    waitUntilInstant(ctx, preciseNow() + ONE_SHOT_DELAY_SECONDS + QUIET_WAIT_SECONDS)
+    ctx:Expect(fired.count):ToBe(0)
+    ctx:Expect(timer:GetRemaining()):ToBe(kept)
+
+    local resumedAt = preciseNow()
+    ctx:Expect(timer:Resume()):ToBe(true)
+    ctx:Expect(timer:IsPending()):ToBe(true)
+    local wait = measuredWait(ctx, function()
+      return fired.count > 0
+    end, WAIT_TIMEOUT_SECONDS)
+    ctx:Expect(wait.satisfied):ToBe(true)
+    local lateness = (fired.times[1] or resumedAt) - (resumedAt + kept)
+    local allowance = frameAllowance(wait)
+    ctx:Log(
+      ("kept %s; fired %s after the resumed deadline (negative: early); allowance %s"):format(
+        milliseconds(kept),
+        milliseconds(lateness),
+        milliseconds(allowance)
+      )
+    )
+    ctx:Expect(lateness <= allowance):ToBe(true)
+    ctx:Expect(lateness >= -allowance):ToBe(true)
+
+    waitUntilInstant(ctx, preciseNow() + QUIET_WAIT_SECONDS)
+    ctx:Expect(fired.count):ToBe(1)
+    ctx:Expect(timer:GetState()):ToBe("completed")
+    ctx:Expect(scope:GetActiveCount()):ToBe(0)
   end
 )
 

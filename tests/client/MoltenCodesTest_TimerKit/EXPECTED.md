@@ -33,7 +33,7 @@ Exactly these lines, in this order (`PASS` is green and `SKIP` yellow in the
 client):
 
 ```text
-MoltenCodes Test: running timerKit: 9 suites. Results follow when every test has finished.
+MoltenCodes Test: running timerKit: 10 suites. Results follow when every test has finished.
 MoltenCodes Test: PASS timerKit.facade: Registry:Get('timerKit', 1) is the TimerKit facade with API 1, and its timers and scopes carry every documented method
 MoltenCodes Test: PASS timerKit.facade: the installed TimerKit carries the revision of the committed manifest
 MoltenCodes Test: PASS timerKit.oneShot: After(0.25) fires once on the real C_Timer, within one frame plus 20 ms of the deadline it recorded (lateness logged)
@@ -43,6 +43,7 @@ MoltenCodes Test: PASS timerKit.repeating: Every(0.1) ticks at its interval with
 MoltenCodes Test: PASS timerKit.repeating: a ticker that cancels itself inside its second tick never ticks a third time
 MoltenCodes Test: PASS timerKit.remaining: GetDeadline is GetTimePreciseSec at Start plus the delay, and GetRemaining counts down against that clock while running
 MoltenCodes Test: PASS timerKit.remaining: GetRemaining polled on every frame until the callback never goes negative, and is nil once the one-shot completed
+MoltenCodes Test: PASS timerKit.pause: Pause keeps a one-shot from firing past its deadline, and Resume fires it once, its kept remainder later (lateness logged)
 MoltenCodes Test: PASS timerKit.scopes: CancelAll stops a scope's running one-shot and ticker on the real C_Timer, and the scope still runs new timers
 MoltenCodes Test: PASS timerKit.scopes: Close cancels every running timer of the scope, none fires afterwards, and the closed scope refuses After at the calling line
 MoltenCodes Test: PASS timerKit.scopes: ForAddon with this test addon's name returns one open scope naming the addon, and its timers fire
@@ -63,7 +64,7 @@ MoltenCodes Test: PASS timerKit.secrets: After and Every refuse a secret delay a
 MoltenCodes Test: PASS timerKit.secrets: New refuses a secret delay and a secret repeating flag at the calling line
 MoltenCodes Test: PASS timerKit.secrets: ForAddon and CloseAddonScopes refuse a secret addon name at the calling line
 MoltenCodes Test: PASS timerKit.secrets: SetUserData stores a secret value and GetUserData hands it back still secret
-MoltenCodes Test: timerKit: 27 passed, 0 failed, 2 skipped, 0 timed out (29 tests)
+MoltenCodes Test: timerKit: 28 passed, 0 failed, 2 skipped, 0 timed out (30 tests)
 MoltenCodes Test: results saved in MoltenCodesTestResults; /reload or log out to write them to disk.
 ```
 
@@ -86,7 +87,7 @@ The four `timerKit.secrets` tests need the client's `issecretvalue` and
 `secretwrap`, which Retail 12.1 has. `secretwrap` only converts the value
 handed to it into a secret and changes no game state. A client without them
 prints these four lines instead, and the totals line reads
-`23 passed, 0 failed, 6 skipped, 0 timed out (29 tests)`:
+`24 passed, 0 failed, 6 skipped, 0 timed out (30 tests)`:
 
 ```text
 MoltenCodes Test: SKIP timerKit.secrets: After and Every refuse a secret delay at the calling line before comparing it, and start nothing -- the client has no issecretvalue and secretwrap; the secret path was not exercised
@@ -99,7 +100,7 @@ A client that has both functions but makes no secret with them (the harness
 asks once whether `issecretvalue` reports what `secretwrap` returns as
 secret) skips the same four tests with the harness's own reason, and the
 totals line is the same
-`23 passed, 0 failed, 6 skipped, 0 timed out (29 tests)`:
+`24 passed, 0 failed, 6 skipped, 0 timed out (30 tests)`:
 
 ```text
 MoltenCodes Test: SKIP timerKit.secrets: After and Every refuse a secret delay at the calling line before comparing it, and start nothing -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
@@ -122,7 +123,7 @@ tables do not list, present on every client. TimerKit itself needs only
 ### Retail (12.1)
 
 The lines above:
-`MoltenCodes Test: timerKit: 27 passed, 0 failed, 2 skipped, 0 timed out (29 tests)`,
+`MoltenCodes Test: timerKit: 28 passed, 0 failed, 2 skipped, 0 timed out (30 tests)`,
 with the two `SKIP` lines for the logout and the delivered tick.
 
 ### Classic Era (1.15) and Mists of Pandaria Classic (5.5)
@@ -134,12 +135,12 @@ client gives: whether its `secretwrap` makes a value `issecretvalue` reports
 as secret (both Classic flavours document the two functions).
 
 - When it does, the totals line is Retail's:
-  `MoltenCodes Test: timerKit: 27 passed, 0 failed, 2 skipped, 0 timed out (29 tests)`.
+  `MoltenCodes Test: timerKit: 28 passed, 0 failed, 2 skipped, 0 timed out (30 tests)`.
 - When it does not, the four lines under
   [On a client without secret values](#on-a-client-without-secret-values)
   with the reason `the client makes no secret values (...)` are `SKIP`, and
   the totals line is
-  `MoltenCodes Test: timerKit: 23 passed, 0 failed, 6 skipped, 0 timed out (29 tests)`.
+  `MoltenCodes Test: timerKit: 24 passed, 0 failed, 6 skipped, 0 timed out (30 tests)`.
 
 ## Visible side effects
 
@@ -172,7 +173,7 @@ results.
 
 | Test | Proves in the real client |
 |---|---|
-| `Registry:Get('timerKit', 1) is the TimerKit facade ...` | The facade the client loaded is API 1 and carries `New`, `After`, `Every`, `CreateScope`, `ForAddon` and `CloseAddonScopes`; a timer carries all thirteen timer methods and a scope all eight scope methods of docs/API.md. |
+| `Registry:Get('timerKit', 1) is the TimerKit facade ...` | The facade the client loaded is API 1 and carries `New`, `After`, `Every`, `CreateScope`, `ForAddon` and `CloseAddonScopes`; a timer carries all sixteen timer methods and a scope all eight scope methods of docs/API.md. |
 | `the installed TimerKit carries the revision ...` | Registry's selected revision and the facade's `REVISION` are both the committed manifest's, not an older or newer embedded copy. |
 | `After(0.25) fires once on the real C_Timer ...` | The callback runs once, and the moment it runs, read with `GetTimePreciseSec`, is within the allowance of the deadline `GetDeadline` recorded at the start, early or late. The allowance is one frame (the longest frame seen during the wait, never shorter than `1 / GetFramerate()`) plus 20 ms. The log gives the lateness in milliseconds (negative means early), the time since the call, the allowance and the longest frame. Inside its callback the timer is already `completed` and `GetRemaining` answers `nil`; 0.4 s later it has still run once. |
 | `After(0) does not run inside the call ...` | A zero delay keeps the client's next-frame behaviour: the callback has not run when `After` returns, and has run by the second rendered frame. The log gives the delay and the frame. |
@@ -181,6 +182,7 @@ results.
 | `a ticker that cancels itself inside its second tick ...` | `Cancel` from inside the ticker's own callback answers `true` and the native ticker never ticks a third time. |
 | `GetDeadline is GetTimePreciseSec at Start plus the delay ...` | The deadline lies between the clock readings just before and just after `Start`, plus the delay; after about 0.3 s, `GetRemaining` equals the deadline minus the clock at the moment of the call, and `GetDeadline` has not moved; after `Cancel` both are `nil`. |
 | `GetRemaining polled on every frame ...` | Read once per frame until the callback runs, `GetRemaining` never goes below 0 (it answers 0 while the client is late); once the one-shot completed, both getters answer `nil`. The log gives the smallest reading and how many readings were 0. |
+| `Pause keeps a one-shot from firing past its deadline ...` | `Pause` cancels the real `C_Timer` handle: half-way through a 0.25 s one-shot, the timer reads `paused` with no deadline and a remainder between 0 and 0.25 s, stays counted by its scope, and nothing fires in the next 0.65 s, past the original deadline, while the remainder stays put. `Resume` fires it once, within the allowance of the moment of the resume plus that remainder; afterwards it is `completed` and uncounted. The log gives the remainder and the lateness. |
 | `CancelAll stops a scope's running one-shot and ticker ...` | `CancelAll` answers 2 (the idle timer does not count), nothing runs within 0.65 s, and a new timer in the same scope fires. |
 | `Close cancels every running timer of the scope ...` | `Close` answers `true`, then `false`; nothing runs afterwards; `After` on the closed scope is refused with `TimerKit.Scope:After cannot create a timer in a closed scope` at this file's calling line. |
 | `ForAddon with this test addon's name ...` | `ForAddon("MoltenCodesTest_TimerKit")` returns the same open scope every time, naming the addon, and a timer in it fires once. The log says whether LifecycleKit is loaded and lists `timerKit` in `CLOSES_ADDON_SCOPES` (it should: that is the route that closes the scope at logout). |
@@ -204,7 +206,7 @@ results.
 
 - Any `FAIL` or `TIMEOUT` line, a `SKIP` other than the two above on Retail
   12.1, or a totals line other than
-  `27 passed, 0 failed, 2 skipped, 0 timed out (29 tests)`; on a Classic
+  `28 passed, 0 failed, 2 skipped, 0 timed out (30 tests)`; on a Classic
   client, a `SKIP` or a totals line that [Per flavour](#per-flavour) does
   not list.
 - No login line, or `Expected.lua is missing`: the harness or the installer

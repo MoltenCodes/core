@@ -17,7 +17,7 @@ end)
 -- With neither: TimerKit:CloseAddonScopes("MyAddon") on PLAYER_LOGOUT.
 ```
 
-`timer:GetRemaining()` and `timer:GetDeadline()` answer "how long until this fires?" for a running timer and return `nil` otherwise. They read `GetTimePreciseSec`, which is optional: on a host without it TimerKit still loads, and both methods return `nil`.
+`timer:GetRemaining()` and `timer:GetDeadline()` answer "how long until this fires?" for a running timer; a paused timer answers its kept seconds from `GetRemaining()` and `nil` from `GetDeadline()`, and every other state answers `nil`. They read `GetTimePreciseSec`, which is optional: on a host without it TimerKit still loads, both methods return `nil` for a running timer, and a paused one keeps its full delay.
 
 `timer:Pause()` keeps what is left of a running timer's delay and `timer:Resume()` starts it again for that remainder; a repeating timer then returns to its interval. Both are built on `C_Timer` handles: no frame, nothing per frame.
 

@@ -43,12 +43,12 @@ A timer is a table only TimerKit writes. Its private fields:
 | Field | Meaning |
 |---|---|
 | `_addonName` | The addon name of a canonical scope, `nil` for a manual one. |
-| `_active` | The set of running timers. |
+| `_active` | The set of running and paused timers. |
 | `_activeCount` | Its size. |
 | `_closed` | Terminal once `true`. |
 | `_logoutRoute`, `_logoutSubscription` | Addon scopes only: who closes the scope at logout (API.md, "At logout"). |
 
-A timer is in `_active` exactly while its state is `"running"`.
+A timer is in `_active` exactly while its state is `"running"` or `"paused"` (revision 12).
 
 ## Stale host callbacks
 
@@ -70,6 +70,7 @@ Callbacks TimerKit hands to the host and to other Kits call through `_state.disp
 |---|---|
 | `fireStarted(timer, handle)` | The host callbacks revision 10 and later create. |
 | `fire(timer, generation)` | The host callbacks revision 9 and older created. |
+| `fireResumed(timer, handle)` | The one-shot callbacks `Resume` creates (revision 12). |
 | `closeScope(scope)` | Shutdown wrappers of revision 5 and older that could not be disconnected. |
 | `closeOnShutdown(addonName)` | LifecycleKit `OnShutdown` subscriptions (logout route 2). |
 | `closeOnLogout()` | The EventKit `PLAYER_LOGOUT` connection (logout route 3). |
@@ -81,6 +82,8 @@ A newer revision must keep publishing every entry an older revision's callbacks 
 A newer revision keeps `_state`, the prototypes and the metatables, rewrites the prototypes' methods and the dispatch entries, and leaves every timer and scope object in place. Timers an older revision built keep their field layout; the table above says how each difference reads.
 
 Revision 11 changes no state and no layout. A timer revision 10 started keeps its handle and its callback closure, which calls `dispatch.fireStarted` and so runs the new code; cancelling it after the upgrade calls its handle's `Cancel` directly.
+
+Revision 12 changes no state and no layout either: it adds the state `"paused"`, which no older revision can have left, and the dispatch entry `fireResumed`. A timer an older revision started can be paused after the upgrade; its old callback is unbound by the pause like any other.
 
 ## Pausing (revision 12)
 

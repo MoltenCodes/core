@@ -1017,7 +1017,8 @@ local function createdBefore(left, right)
   return rawget(left, "_id") < rawget(right, "_id")
 end
 
----Return every running timer of `scope`, ordered by creation, as a snapshot.
+---Return every running or paused timer of `scope`, ordered by creation, as a
+---snapshot.
 ---@param scope TimerKit.Scope
 ---@return TimerKit.Timer[]
 local function snapshotActive(scope)
@@ -1355,7 +1356,7 @@ local function timerIsRepeating(self)
   return rawget(self, "_repeating") == true
 end
 
----Return whether the logical timer is currently running.
+---Return whether the logical timer is currently running; a paused timer is not.
 ---@param self TimerKit.TimerRecord
 ---@return boolean pending
 local function timerIsPending(self)
@@ -1373,15 +1374,15 @@ end
 
 ---Start an idle, completed, or cancelled timer.
 ---@param self TimerKit.TimerRecord
----@return boolean started `false` when the timer was already running.
+---@return boolean started `false` when the timer was already running or paused.
 local function timerStart(self)
   validateTimer(self, "TimerKit.Timer:Start", 3)
   return startTimer(self, "TimerKit.Timer:Start", 3)
 end
 
----Cancel a running timer.
+---Cancel a running or paused timer.
 ---@param self TimerKit.TimerRecord
----@return boolean cancelled `false` when the timer was not running.
+---@return boolean cancelled `false` when the timer was neither running nor paused.
 local function timerCancel(self)
   -- The receiver check of `validateTimer`, inline: `Cancel` is the one timer
   -- method on the start-and-cancel path.
@@ -1421,8 +1422,9 @@ local function timerGetDeadline(self)
 end
 
 ---Return the seconds left until this timer fires next, the seconds it kept
----when paused, or `nil` when it is neither running nor paused. Never negative: a timer the host has not delivered yet although its
----deadline passed reports `0`.
+---when paused, or `nil` when it is neither running nor paused. Never
+---negative: a timer the host has not delivered yet although its deadline
+---passed reports `0`.
 ---@param self TimerKit.TimerRecord
 ---@return number? remaining seconds, an estimate; see `GetDeadline`
 local function timerGetRemaining(self)
@@ -1536,7 +1538,7 @@ local function scopeGetAddonName(self)
   return rawget(self, "_addonName")
 end
 
----Return the number of logically running timers owned by this scope.
+---Return the number of logically running or paused timers owned by this scope.
 ---@param self TimerKit.ScopeRecord
 ---@return integer activeCount
 local function scopeGetActiveCount(self)

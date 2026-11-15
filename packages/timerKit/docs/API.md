@@ -123,11 +123,14 @@ timer:GetDeadline()  -- GetTimePreciseSec() at start + 30
 ```
 
 - `GetRemaining()` returns the seconds until the timer fires next as a number
-  while the timer is `running`, and `nil` in every other state — `idle`,
-  `completed` and `cancelled`. It never returns `0` to mean "not running", so a
-  caller can tell "about to fire" from "will not fire".
+  while the timer is `running`, the seconds it kept while `paused` (see
+  [Pausing](#pausing)), and `nil` in every other state — `idle`, `completed`
+  and `cancelled`. It never returns `0` to mean "not running", so a caller can
+  tell "about to fire" from "will not fire"; a paused timer the host was late
+  to deliver keeps `0`.
 - `GetDeadline()` returns the instant of the next fire on the
-  `GetTimePreciseSec()` clock while `running`, and `nil` otherwise.
+  `GetTimePreciseSec()` clock while `running`, and `nil` otherwise, `paused`
+  included.
 - A repeating timer reports its **next** tick. The deadline moves forward by one
   interval each time a tick is delivered.
 - `Start()` and `Restart()` compute a fresh deadline from the moment they run.
@@ -153,14 +156,16 @@ tick, and TimerKit never schedules from these values.
 Revisions before 4 kept no deadline. A timer such a revision started keeps
 running after an in-place upgrade, but TimerKit cannot know when it will fire,
 so `GetRemaining()` and `GetDeadline()` return `nil` for it until its next
-`Start()`/`Restart()` or, for a repeating timer, its next tick.
+`Start()`/`Restart()` or, for a repeating timer, its next tick. Pausing such a
+timer keeps its full delay, as on a host without the clock.
 
 ### Without `GetTimePreciseSec`
 
 The clock is optional. On a host that does not publish `GetTimePreciseSec`,
 TimerKit loads and every timer works exactly as before, but no deadline is
 recorded: `GetRemaining()` and `GetDeadline()` return `nil` even for a running
-timer. Requiring the clock would have added a host facility inside API
+timer. `Pause()` then keeps the full delay, which `GetRemaining()` answers while
+the timer is paused. Requiring the clock would have added a host facility inside API
 generation 1, which the compatibility rules reserve for a new generation.
 Every supported client publishes it.
 
@@ -217,7 +222,7 @@ Repeating timers remain `running` after each callback until cancelled or restart
 
 From revision 12, `Pause` takes a running timer to `paused` and `Resume` takes it back to `running`; `Cancel` and `Restart` work from `paused` as from `running`. See "Pausing".
 
-`Cancel()` and `Start()` are idempotent with respect to an already-satisfied state: cancelling a non-running timer and starting an already-running timer return `false` rather than creating duplicate native work.
+`Cancel()` and `Start()` are idempotent with respect to an already-satisfied state: cancelling a timer that is neither running nor paused, and starting one that is running or paused, return `false` rather than creating duplicate native work.
 
 ## Pausing
 
@@ -260,7 +265,7 @@ scope:CancelAll() -- scope remains reusable
 scope:Close()     -- terminal; future timer creation/restart is rejected
 ```
 
-Scopes track only **active** timers. Idle and completed timers do not contribute to `GetActiveCount()`.
+Scopes track only **active** timers: running and paused ones. Idle, completed and cancelled timers do not contribute to `GetActiveCount()`.
 
 Bulk cleanup runs in deterministic timer-creation order. If native cancellation raises, TimerKit continues attempting the remaining timers, preserves logical cancellation for every attempted timer, then re-raises the first native error object.
 
@@ -308,7 +313,7 @@ The routing costs one field read per `ForAddon` once decided. TimerKit allocates
 - validates `addonName` as a non-empty string;
 - returns `false` when the addon never asked for a scope, and records nothing, so the addon-scope map grows only with `ForAddon` calls;
 - returns `false` when the scope is already closed;
-- otherwise cancels every running timer of the scope in creation order, closes it and returns `true`. A native cancellation failure does not stop the sweep: every timer is cancelled logically and the first error is re-raised afterwards, as for `Scope:Close()`.
+- otherwise cancels every running or paused timer of the scope in creation order, closes it and returns `true`. A native cancellation failure does not stop the sweep: every timer is cancelled logically and the first error is re-raised afterwards, as for `Scope:Close()`.
 
 Closing is terminal: the closed scope stays the canonical addon scope, so a later `ForAddon(addonName)` returns it and refuses new timers. A timer callback may close its own addon scope; the firing timer is cancelled with the rest, so a ticker does not tick again.
 
@@ -356,7 +361,7 @@ message in the first table is raised at the caller's line (see
 | `TimerKit:ForAddon addonName must be a non-empty string` | `ForAddon` |
 | `TimerKit:CloseAddonScopes addonName must be a non-empty string` | `CloseAddonScopes` |
 | `TimerKit:CloseAddonScopes must be called on the TimerKit facade; use TimerKit:CloseAddonScopes(addonName)` | `CloseAddonScopes` with another receiver |
-| `MoltenCodes TimerKit host returned an invalid native timer handle` | a start whose `C_Timer` constructor returned `nil` or `false` instead of a handle; the timer is left in the state it had |
+| `MoltenCodes TimerKit host returned an invalid native timer handle` | a start or `Resume()` whose `C_Timer` constructor returned `nil` or `false` instead of a handle; the timer is left in the state it had |
 
 A secret value (Retail 12.0.0 and later) raises when it is compared, so the
 secret refusals above run before any other check of that argument. An absent
@@ -368,7 +373,7 @@ Host and internal failures carry no added position:
 
 | Message | Raised by |
 |---|---|
-| the host's own error object, unchanged | a start whose `C_Timer` constructor raised (the timer is left in the state it had), and the first native `Cancel` failure of `Cancel()`, `Restart()`, `CancelAll()`, `Close()` and `CloseAddonScopes` |
+| the host's own error object, unchanged | a start or `Resume()` whose `C_Timer` constructor raised (the timer is left in the state it had), and the first native `Cancel` failure of `Cancel()`, `Restart()`, `Pause()`, `CancelAll()`, `Close()` and `CloseAddonScopes`; inside the host callback of a resumed repeating timer, a ticker constructor that raises (the timer is left cancelled) |
 | Lua's own error for calling a missing method, such as `attempt to call method 'Cancel' (a nil value)` | a cancellation of a timer whose host handle has no `Cancel` method; TimerKit trusts the handle (see [Native boundary](#native-boundary)), and the timer is already logically cancelled when it raises |
 | `MoltenCodes TimerKit runtime dispatch is corrupted` | a native callback that finds the shared dispatch table damaged |
 
@@ -390,11 +395,15 @@ first`, `MoltenCodes TimerKit requires a valid Registry API 2 facade`,
   called directly, not under `pcall`, and the handle it returns is not
   inspected.
 - `Cancel()` allocates nothing beyond what the host's `Cancel` does, and calls
-  it directly on the stored handle.
+  it directly on the stored handle; `Pause()` likewise, plus one clock read.
+- `Resume()` allocates one callback closure and the host's one-shot handle and
+  reads the clock once. When a resumed repeating timer fires, it allocates one
+  more closure and the host's ticker handle, as a start does.
 - A delivered repeating tick allocates nothing and reads the clock once; a
   delivered one-shot allocates nothing.
 - `CancelAll()`, `Close()` and `CloseAddonScopes` allocate one snapshot array
-  of the scope's running timers and sort it by creation, O(n log n) in them.
+  of the scope's running and paused timers and sort it by creation, O(n log n)
+  in them.
 - `ForAddon` is one table lookup once the addon's logout route is decided; see
   [At logout](#at-logout) for what deciding it costs.
 
@@ -419,8 +428,9 @@ TimerKit has no limits to open, so it has no `SetLimits` and no `UNBOUNDED`
 (design constitution, principle 4a). What it retains is the consumer's own and
 grows only with the consumer's calls:
 
-- a scope holds the timers that are running in it, and releases each one when
-  it completes or is cancelled; idle and completed timers are not retained;
+- a scope holds the timers that are running or paused in it, and releases each
+  one when it completes or is cancelled; idle and completed timers are not
+  retained;
 - the addon-scope map holds one scope per name passed to `ForAddon`, and
   `CloseAddonScopes` records nothing for a name that never had one;
 - the logout routing holds at most one LifecycleKit subscription per addon

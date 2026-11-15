@@ -2,7 +2,7 @@
 
 The TimerKit suite covers:
 
-- idle/running/completed/cancelled timer state transitions;
+- idle/running/paused/completed/cancelled timer state transitions;
 - one-shot and repeating timers;
 - zero-delay one-shot and positive-interval ticker validation;
 - restart/cancel re-entrancy and stale native callback suppression;
@@ -14,6 +14,7 @@ The TimerKit suite covers:
 - `error` levels: every argument failure reports the caller's own line;
 - secret values on the `mainline` host: secret delays, options, addon names and receivers refused at the caller's line before any comparison, secret user data stored untouched;
 - opaque per-timer user data attached through the public handle;
+- pausing and resuming one-shot and repeating timers: exact remainders, a repeating timer back on its interval, stale callbacks of a paused handle, cancel, restart, `CancelAll` and `Close` of a paused timer, host failures on resume, no clock, and an upgrade from revision 11;
 - remaining time and deadlines (`GetRemaining`/`GetDeadline`) in every timer
   state, for repeating, restarted, overdue and rolled-back timers, for timers an
   older revision started, and on a host without `GetTimePreciseSec`;
