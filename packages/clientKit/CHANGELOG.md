@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.4 — 2026-11-15
+
+- Documentation: `docs/API.md` "Limits" no longer says every probe answers from the host on every call. The identity and capability methods read the values fixed at bootstrap; the taint probes (`IsSecret`, `CanAccessFrame`, `IsEventValid`) and the shims ask the host on every call and cache nothing. The `validateState` comment says the revisions after 2 changed no state field (it stopped at revision 3). Comments and documentation only: the implementation revision is unchanged.
+
 ## 0.2.3 — 2026-09-24
 
 - A value that may be secret is no longer tested as a boolean, which raises inside the Kit on Retail 12.1.0 (build 69933). `manifest:Get` read its receiver's `name` with `view.name or nil`, a boolean test on a caller value; it now reads the field without testing it and asks `issecretvalue` before lowering it or using it as a key, so a receiver whose `name` is secret is refused at the caller with `ClientKit.Manifest:Get must be called on a manifest`. Every other boolean test was audited and left: each is on a value ClientKit created, a type-checked host function, or a host return the client does not document as possibly secret. `docs/API.md` lists them under "Errors".

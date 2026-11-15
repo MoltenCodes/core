@@ -410,9 +410,9 @@ Bootstrap failures raise at the line that loaded the file:
 
 ClientKit has no limits to open, so it has no `SetLimits` and no `UNBOUNDED`.
 It retains a fixed set of values probed at load (flavour, interface number,
-build, locale, a fixed list of capability flags, the bound host functions),
-and the probes and shims answer from the host on every call and cache
-nothing.
+build, locale, a fixed list of capability flags, the bound host functions).
+The identity and capability methods read those values; the taint probes and
+the shims ask the host on every call and cache nothing.
 
 The one collection that grows is the manifest cache, and its bound is the
 host's: one record per addon asked for, keyed by the lower-cased name and

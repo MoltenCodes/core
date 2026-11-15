@@ -275,7 +275,7 @@ end
 ---Whether `currentState` has the shape this revision's schema requires.
 ---
 ---Revision 2 added `locale`, `manifests` and `manifestPrototype` without a
----schema change and revision 3 changed no field, so a copy carrying this
+---schema change and later revisions changed no field, so a copy carrying this
 ---revision has all three.
 ---@param currentState any
 ---@return boolean
