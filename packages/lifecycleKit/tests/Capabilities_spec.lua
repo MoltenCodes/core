@@ -67,6 +67,33 @@ describe("LifecycleKit.CLOSES_ADDON_SCOPES", function()
     assert.is_nil(capabilities.cacheKit)
   end)
 
+  it("names a table key by its type at the caller without running its __tostring", function()
+    local LifecycleKit = TestEnv.NewPackage()
+    local capabilities = LifecycleKit.CLOSES_ADDON_SCOPES
+    local ran = false
+    local key = setmetatable({}, {
+      __tostring = function()
+        ran = true
+        error("foreign __tostring ran", 0)
+      end,
+    })
+    local source = debug.getinfo(1, "S").short_src
+    local callLine
+    local ok, message = pcall(function()
+      callLine = debug.getinfo(1, "l").currentline + 1
+      capabilities[key] = true
+    end)
+    assert.is_false(ok)
+    assert.are.equal(
+      source
+        .. ":"
+        .. callLine
+        .. ': LifecycleKit.CLOSES_ADDON_SCOPES is read-only; field "<table>" cannot be written',
+      message
+    )
+    assert.is_false(ran)
+  end)
+
   it("hides its metatable so the view cannot be unsealed", function()
     local LifecycleKit = TestEnv.NewPackage()
     local capabilities = LifecycleKit.CLOSES_ADDON_SCOPES

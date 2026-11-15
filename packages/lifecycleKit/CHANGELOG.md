@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.6.8 — 2026-11-15
+
+- Fixed: an unrecognised `SetLimits` key, or a key written to `LifecycleKit.CLOSES_ADDON_SCOPES`, that is a table (or any other value with a `__tostring` metamethod) was passed to `tostring` to build the refusal. That ran the caller's `__tostring` inside LifecycleKit: foreign code that could raise, or answer a secret value on Retail, and so replace the real refusal with its own error. A new `describeKey` names such a key by its type instead: `LifecycleKit:SetLimits limits.<table> is not a recognised limit`, `LifecycleKit.CLOSES_ADDON_SCOPES is read-only; field "<table>" cannot be written`. A key `issecretvalue` reports secret is named `<secret value>` instead of being converted. A string key is shown as written and a number or boolean as before, so every documented message for those is unchanged. `docs/API.md` documents the form under *Argument errors* and `CLOSES_ADDON_SCOPES`.
+- Implementation revision 17. No state changed: an upgrade over revision 16 replaces the functions and keeps every instance, callback, limit and the published capability view; the previous-revision upgrade spec checks the new message on the upgraded facade.
+- Specs: 195 → 198. `Limits_spec.lua` and `Capabilities_spec.lua` give a table key whose `__tostring` raises and records that it ran, and check that the real refusal is raised at the caller's line and that `__tostring` never ran; `SecretValues_spec.lua` checks the placeholder for a secret write key.
+
+## 0.6.7 — 2026-11-15
+
+- `docs/API.md` "Argument errors" listed only the tail of each message (`callback must be a function`); it now says every message starts with the qualified method name (`LifecycleKit:<Method>` or `LifecycleKit.Instance:<Method>`), and adds the `CLOSES_ADDON_SCOPES` write refusal, the load-time errors and the instance-state corruption error, none of which it named.
+- `docs/API.md` documents the facade constants `LifecycleKit.API` and `LifecycleKit.REVISION` under Dependencies.
+- `README.md` gains a "Moving from AceAddon-3.0" table (`NewAddon`, `OnInitialize`, `OnEnable`, `OnDisable`, modules, and what Ace3 has no equivalent for); it had no migration section.
+- Documentation only: the implementation revision stays 16.
+
 ## 0.6.6 — 2026-11-15
 
 - Fixed the bootstrap catch-up running `OnReady` before it re-read the combat state. When a later embedded copy found that `PLAYER_LOGIN` had passed while the login watcher was missing, it promoted the loaded addons to `ready` first and reconciled combat afterwards, so their `OnReady` callbacks saw the stale `IsInCombat()` that 0.6.5 fixed for `PLAYER_LOGIN` itself; and when an `OnReady` raised, the reconciliation was skipped altogether, leaving the combat flag wrong until the next combat transition. The catch-up now follows the login handler's order: combat is reconciled first and always, and a failure there is re-raised ahead of a ready-callback failure. Two regression specs in `Bootstrap_spec.lua`.

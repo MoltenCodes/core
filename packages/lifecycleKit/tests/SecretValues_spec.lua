@@ -32,6 +32,21 @@ describe("LifecycleKit secret values", function()
   end)
   after_each(TestEnv.Reset)
 
+  it("names a secret CLOSES_ADDON_SCOPES key with a placeholder, never converting it", function()
+    local secret = setmetatable({}, {
+      __tostring = function()
+        error("a secret was converted", 0)
+      end,
+    })
+    installSecretProbe(secret)
+    expectRefusalAtCaller(
+      'LifecycleKit.CLOSES_ADDON_SCOPES is read-only; field "<secret value>" cannot be written',
+      function()
+        LifecycleKit.CLOSES_ADDON_SCOPES[secret] = true
+      end
+    )
+  end)
+
   it("refuses secret addon names and halt reasons before comparing them", function()
     local life = LifecycleKit:ForAddon("MyAddon")
     installSecretProbe("Secret")

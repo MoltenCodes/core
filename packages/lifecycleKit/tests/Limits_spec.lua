@@ -168,6 +168,32 @@ describe("LifecycleKit limits", function()
     end)
   end)
 
+  it("names a table limit key by its type at the caller without running its __tostring", function()
+    local ran = false
+    local key = setmetatable({}, {
+      __tostring = function()
+        ran = true
+        error("foreign __tostring ran", 0)
+      end,
+    })
+    local source = debug.getinfo(1, "S").short_src
+    local callLine
+    local ok, message = pcall(function()
+      callLine = debug.getinfo(1, "l").currentline + 1
+      LifecycleKit:SetLimits({ [key] = 4 })
+    end)
+    assert.is_false(ok)
+    assert.are.equal(
+      source
+        .. ":"
+        .. callLine
+        .. ": LifecycleKit:SetLimits limits.<table> is not a recognised limit",
+      message
+    )
+    assert.is_false(ran)
+    assert.are.equal(16, LifecycleKit:GetLimits().maxDependencies)
+  end)
+
   it("reports SetLimits and GetLimits errors at the caller's line", function()
     local source = debug.getinfo(1, "S").short_src
     local callLine

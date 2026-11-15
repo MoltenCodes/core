@@ -230,7 +230,7 @@ Phase subscriptions (`OnLoaded`, `OnReady`, `OnShutdown`, `OnHalted`) are one-sh
 
 ## Argument errors
 
-Every public method validates its arguments and raises at the caller's own file and line:
+Every public method validates its arguments and raises at the caller's own file and line. Each message starts with the qualified method name, `LifecycleKit:<Method>` for a facade method and `LifecycleKit.Instance:<Method>` for an instance method, followed by the text below: for example `LifecycleKit.Instance:OnReady callback must be a function`.
 
 | Call | Message |
 |---|---|
@@ -239,7 +239,7 @@ Every public method validates its arguments and raises at the caller's own file 
 | `Halt` | `reason must be a non-empty string` |
 | `DependsOn` | `addonName must be a non-empty string`, `addonName must name another addon` |
 | `SetCombatQueueLimit` | `limit must be a positive integer or LifecycleKit.UNBOUNDED` |
-| `LifecycleKit:SetLimits` | `limits must be a table`, `limits.<name> is not a recognised limit`, `limits.<name> must be a positive integer or LifecycleKit.UNBOUNDED`, `must be called on the LifecycleKit facade` |
+| `LifecycleKit:SetLimits` | `limits must be a table`, `limits.<name> is not a recognised limit` (a key that is not a string, number or boolean is named by its type, `limits.<table>`, so its `__tostring` never runs), `limits.<name> must be a positive integer or LifecycleKit.UNBOUNDED`, `must be called on the LifecycleKit facade` |
 | `LifecycleKit:GetLimits` | `must be called on the LifecycleKit facade` |
 
 On a client with secret values, comparing a secret with a value of its own
@@ -262,6 +262,10 @@ later):
 
 `SetLimits` and `GetLimits` called with a dot and a secret first argument are
 refused as calls without the facade, by its type, before any comparison.
+
+Writing to `LifecycleKit.CLOSES_ADDON_SCOPES` raises `LifecycleKit.CLOSES_ADDON_SCOPES is read-only; field "<key>" cannot be written`. A string key is shown as written and a number or boolean as `tostring` gives it; any other key is named by its type (`field "<table>"`), and a secret key by `<secret value>`, so neither a key's `__tostring` nor a secret conversion runs inside LifecycleKit.
+
+Loading `LifecycleKit.lua` raises `MoltenCodes LifecycleKit requires Registry API 2 to be loaded first`, `MoltenCodes LifecycleKit requires a valid Registry API 2 facade`, the same two for SignalKit API 1 and for EventKit API 1 (`MoltenCodes LifecycleKit requires SignalKit API 1 to be loaded first`, `... requires a valid EventKit API 1 facade` and so on), or `MoltenCodes LifecycleKit package state is corrupted or incomplete`. An instance whose private fields are damaged raises `MoltenCodes LifecycleKit instance state is corrupted or incomplete`.
 
 ## Limits
 
@@ -290,6 +294,8 @@ State written by revisions before 12 has neither field; an upgrade seeds the def
 
 ## Dependencies
 
+The facade carries two read-only constants: `LifecycleKit.API`, the API generation (`1`), and `LifecycleKit.REVISION`, the implementation revision of the copy that is active in the session (`17` for this one). A newer embedded copy replaces `REVISION` when it upgrades the facade in place.
+
 LifecycleKit API 1 requires:
 
 - Registry API 2
@@ -306,6 +312,6 @@ Host API read directly: `C_AddOns.IsAddOnLoaded` (falling back to the legacy `Is
 
 Compatible embedded copies share one LifecycleKit facade and state through Registry. Pending phase subscriptions created by the previous compatible implementation revision remain valid across an in-place upgrade; the upgrade releases per-instance state that the newer revision no longer owns.
 
-Revisions 8 to 16 keep schema 3. Upgrading from revision 7, 8, 9, 10, 11, 12, 13, 14 or 15 replaces its shared host watchers, which would otherwise keep calling the older revision's handlers: revision 7's logout handler closes no HookKit scope and no bus, revision 8's no CommandKit scope, revision 9's no CommKit scope, and no revision before 12 closes a TimerKit or SchedulerKit scope. Revision 13 adds `CLOSES_ADDON_SCOPES` without a schema change: an upgrade seeds the capability set into the state (`addonScopeCapabilities`) and publishes it. Revision 14 refuses secret arguments before comparing them and changes no state. Revision 15 creates the signals of the three repeating notices on first subscription instead of with the instance; an instance an older revision created keeps the signals it has, with their subscribers, and one it lacks is created when first needed. Revision 16 changes no state; when an upgrade catches up a login its watchers missed, it re-reads the combat state before any addon enters `ready`, as `PLAYER_LOGIN` does, and still re-reads it when an `OnReady` callback raises.
+Revisions 8 to 17 keep schema 3. Upgrading from revision 7, 8, 9, 10, 11, 12, 13, 14 or 15 replaces its shared host watchers, which would otherwise keep calling the older revision's handlers: revision 7's logout handler closes no HookKit scope and no bus, revision 8's no CommandKit scope, revision 9's no CommKit scope, and no revision before 12 closes a TimerKit or SchedulerKit scope. Revision 13 adds `CLOSES_ADDON_SCOPES` without a schema change: an upgrade seeds the capability set into the state (`addonScopeCapabilities`) and publishes it. Revision 14 refuses secret arguments before comparing them and changes no state. Revision 15 creates the signals of the three repeating notices on first subscription instead of with the instance; an instance an older revision created keeps the signals it has, with their subscribers, and one it lacks is created when first needed. Revision 16 changes no state; when an upgrade catches up a login its watchers missed, it re-reads the combat state before any addon enters `ready`, as `PLAYER_LOGIN` does, and still re-reads it when an `OnReady` callback raises. Revision 17 changes no state; it names an unrecognised `SetLimits` key or a `CLOSES_ADDON_SCOPES` write key without passing a table key to `tostring`.
 
 Revision 7 changed the package state from schema 2 to schema 3. Upgrading from an older revision adds the shared combat flag (seeded from `InCombatLockdown()`), the instance list (inherited instances in name order) and every instance's combat queue, dependency list and halted flag, and replaces the older revision's shared host watchers with its own, because a watcher keeps calling the handler of the revision that installed it. Pending deferred calls and notice subscriptions are carried across a same-revision reload unchanged. Bootstrap is idempotent for the current implementation revision: if a prior live upgrade accepted the Registry revision but host event registration failed before shared watchers were fully established, a later compatible copy retries the missing watcher setup instead of silently returning an incomplete runtime state. If a one-shot global phase passed while that watcher was absent, bootstrap also reconciles existing instances from the observable host/package state.

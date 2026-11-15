@@ -35,7 +35,7 @@
 
 local PACKAGE_NAME = "lifecycleKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 16
+local IMPLEMENTATION_REVISION = 17
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_SIGNAL_API = 1
 local REQUIRED_EVENT_KIT_API = 1
@@ -345,6 +345,29 @@ local function isSecret(value)
   return type(isSecretValue) == "function" and isSecretValue(value) == true
 end
 
+---Name a caller's table key in a refusal without running its `__tostring`.
+---A secret is named by a placeholder, because converting or concatenating it
+---raises; a string is shown as written and a number or boolean through
+---`tostring`, which runs no foreign code for those types; anything else is
+---named by its type, `<table>`, because a table's or userdata's `__tostring`
+---is the caller's code, which could raise or answer a secret and so lose the
+---real refusal.
+---@param key any a table key, which can never be `nil`
+---@return string
+local function describeKey(key)
+  if isSecret(key) then
+    return "<secret value>"
+  end
+  local kind = type(key)
+  if kind == "string" then
+    return key
+  end
+  if kind == "number" or kind == "boolean" then
+    return tostring(key)
+  end
+  return "<" .. kind .. ">"
+end
+
 ---Raise at `level` when `value` is secret, naming `label`.
 ---@param value any
 ---@param label string qualified argument name, used in the argument error
@@ -555,7 +578,7 @@ local sharedLimits = rawget(state, "limits")
 local function refuseCapabilityWrite(_, key)
   error(
     'LifecycleKit.CLOSES_ADDON_SCOPES is read-only; field "'
-      .. tostring(key)
+      .. describeKey(key)
       .. '" cannot be written',
     2
   )
@@ -2241,7 +2264,7 @@ local function validateLimitUpdate(limits, level)
   while type(key) ~= "nil" do
     if key ~= "maxDependencies" and key ~= "defaultCombatQueueLimit" then
       error(
-        "LifecycleKit:SetLimits limits." .. tostring(key) .. " is not a recognised limit",
+        "LifecycleKit:SetLimits limits." .. describeKey(key) .. " is not a recognised limit",
         level
       )
     end

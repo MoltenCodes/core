@@ -67,6 +67,22 @@ The name is matched exactly against the folder name WoW reports in `ADDON_LOADED
 
 See [`docs/API.md`](docs/API.md) for the complete contract.
 
+## Moving from AceAddon-3.0
+
+LifecycleKit is the lifecycle half of AceAddon-3.0; modules are ModuleKit,
+which runs on it.
+
+| AceAddon-3.0 | LifecycleKit |
+|---|---|
+| `LibStub("AceAddon-3.0"):NewAddon("MyAddon")` | `LifecycleKit:ForAddon("MyAddon")`, the same instance for every caller |
+| `MyAddon:OnInitialize()`, run at `ADDON_LOADED` | `lifecycle:OnLoaded(callback)`; a callback added after the phase runs at once |
+| `MyAddon:OnEnable()`, run at `PLAYER_LOGIN` | `lifecycle:OnReady(callback)`: loaded and logged in, also for a load-on-demand addon loaded later |
+| `MyAddon:OnDisable()`, run only when something disables the addon | `lifecycle:OnShutdown(callback)`, run at `PLAYER_LOGOUT`; there is no runtime disable of a whole addon |
+| `NewModule`, `GetModule`, `EnableModule` | ModuleKit (`ModuleKit:ForAddon(name):CreateModule(...)`) |
+| no equivalent | `Halt` and `DependsOn`/`OnDependencyHalted`, the combat gate (`WhenOutOfCombat`, `OnCombatStart`, `OnCombatEnd`) and the closing of the addon's Kit scopes at shutdown |
+
+See [`docs/MIGRATING_FROM_ACE3.md`](../../docs/MIGRATING_FROM_ACE3.md#aceaddon-30).
+
 ## Embedding
 
 [`../../docs/EMBEDDING.md`](../../docs/EMBEDDING.md) is the addon author's guide:

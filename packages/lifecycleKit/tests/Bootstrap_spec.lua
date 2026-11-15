@@ -4,7 +4,7 @@ local expectErrorContaining = TestEnv.expectErrorContaining
 
 ---The implementation revision `src/LifecycleKit.lua` carries; `Manifest_spec.lua`
 ---pins the same number against `package.manifest.json`.
-local CURRENT_REVISION = 16
+local CURRENT_REVISION = 17
 
 -- Lua 5.1 leaves a sentinel in `package.loaded` when a `require` raises, so a
 -- second `require` of the same module reports "loop or previous error loading
@@ -278,6 +278,19 @@ describe("LifecycleKit package bootstrap", function()
     assert.are.equal(CURRENT_REVISION, upgraded.REVISION)
     assert.are.equal(legacyState, upgraded._state)
     assert.are.equal(instance, upgraded:ForAddon("MyAddon"))
+    assert.are.equal(5, upgraded:GetLimits().maxDependencies)
+    -- Revision 17 names a table limit key by its type, never by `__tostring`.
+    local key = setmetatable({}, {
+      __tostring = function()
+        error("foreign __tostring ran", 0)
+      end,
+    })
+    TestEnv.expectErrorContaining(
+      "LifecycleKit:SetLimits limits.<table> is not a recognised limit",
+      function()
+        upgraded:SetLimits({ [key] = 1 })
+      end
+    )
     assert.are.equal(5, upgraded:GetLimits().maxDependencies)
     TestEnv.Logout()
     assert.are.equal(1, shutdowns)
