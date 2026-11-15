@@ -83,6 +83,26 @@ Coverage includes:
   and journals with their history carried into a newer revision, refusal of an
   incomplete journal prototype, and refusal to reinterpret a newer revision's
   state;
+- connection handles in the array part (revision 11): the slots of a new
+  handle and of a bus scope's subscription, handle-size allocation bounds
+  (128 and 144 bytes), the receiver refusal of strings, numbers, plain tables
+  and tables with a foreign or locked metatable; the upgrade from revision-10
+  state with named-field handles built by hand in the spec (bus topic signals
+  converted at load, held handles still answering, a raw signal kept until an
+  idle connect converts it, named handles added while a dispatch walks it, a
+  signal from before revision 9 never converted);
+- method-name callbacks: delivery as `method(receiver, ...)`, the topic as the
+  default method on buses, scopes, `Once`, late binding (a replaced method
+  reaches the subscription), a method removed after subscribing reported on a
+  bus and propagated on a raw signal with the connection kept, refusals at the
+  caller (no such method, a non-function field, an empty, non-string or secret
+  name, a required name on raw signals), and `Unsubscribe` not matching them;
+- `Publish` and `Subscribe` refusals after the reordered checks (receivers of
+  every other kind, empty, numeric, `false` and `nil` topics, a bad topic on a
+  closed bus), and a secret-value probe present at load used without reading
+  the global again;
+- `BusScope:Reopen`: the same object reopened empty, `false` when open,
+  `false, "closed"` when its bus is closed;
 - runtime API/revision metadata consistency with the package manifest.
 
 Spec files:
@@ -107,11 +127,18 @@ Spec files:
 | `LogoutClose_spec.lua` | who closes an addon's bus at logout, in each of the four cases, and across upgrades |
 | `SecretValues_spec.lua` | secret capacities, bus options, limits, argument counts, validator verdicts and dot-call receivers refused at the caller before a comparison |
 | `Bootstrap_spec.lua` | Registry bootstrap, duplicate embedding, revision upgrades (the previous revision included), limits, sentinel and journals carried |
+| `HandleLayout_spec.lua` | array-part handles, connection receiver refusals, the upgrade from named-field handles |
+| `MethodCallbacks_spec.lua` | the method-name form on buses, bus scopes and raw signals |
 | `Manifest_spec.lua` | runtime metadata against `package.manifest.json` |
 
 `SignalKitTestEnv.ExpectRefusalAtCaller(specFile, expected, callback)` is the
 one assertion behind "raised at the caller": the message names `expected`, a
 line of the calling spec file, and no line inside `src/SignalKit.lua`.
+
+`SignalKitTestEnv.ToNamedLayout(SignalKit, signal)` rewrites a signal and its
+handles into the shape revisions up to 10 left behind (named fields, a
+per-revision connection metatable, no `_layout`), so the upgrade specs stand
+for an older copy without shipping its source.
 
 EventKit and LifecycleKit are declared under `optionalDependencies`, so the
 runner puts them on `LUA_PATH`. `LoadEventKit` and `LoadLifecycleKit` install

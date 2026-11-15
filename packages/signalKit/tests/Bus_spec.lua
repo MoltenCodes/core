@@ -92,6 +92,48 @@ describe("SignalKit named buses", function()
       bus.Subscribe("Topic", function() end)
     end)
   end)
+
+  it(
+    "refuses a receiver of any other kind and a topic it knows nothing of at the caller",
+    function()
+      local bus = SignalKit:Bus("Checked", { openTopics = true })
+      bus:Subscribe("Known", function() end)
+      local foreign = setmetatable({}, { __metatable = "locked" })
+
+      for _, receiver in ipairs({ "Checked", 7, {}, foreign }) do
+        expectRefusalAtCaller("SignalKit.Bus:Publish must be called on a SignalKit bus", function()
+          bus.Publish(receiver, "Known")
+        end)
+        expectRefusalAtCaller(
+          "SignalKit.Bus:Subscribe must be called on a SignalKit bus",
+          function()
+            bus.Subscribe(receiver, "Known", function() end)
+          end
+        )
+      end
+      for _, topic in ipairs({ "", 7, false }) do
+        expectRefusalAtCaller("SignalKit.Bus:Publish topic must be a non-empty string", function()
+          bus:Publish(topic)
+        end)
+        expectRefusalAtCaller("SignalKit.Bus:Subscribe topic must be a non-empty string", function()
+          bus:Subscribe(topic, function() end)
+        end)
+      end
+      expectRefusalAtCaller("SignalKit.Bus:Publish topic must be a non-empty string", function()
+        bus:Publish(nil)
+      end)
+    end
+  )
+
+  it("still refuses a bad topic on a closed bus", function()
+    local bus = SignalKit:ForAddon("ClosedChecks")
+    SignalKit:CloseAddonBus("ClosedChecks")
+
+    expectRefusalAtCaller("SignalKit.Bus:Publish topic must be a non-empty string", function()
+      bus:Publish("")
+    end)
+    bus:Publish("Late")
+  end)
 end)
 
 describe("SignalKit bus topic policy", function()

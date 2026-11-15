@@ -20,7 +20,16 @@ describe("SignalKit errors", function()
   end)
 
   it("rejects non-function Once callbacks", function()
-    expectErrorContaining("SignalKit:Once callback must be a function", function()
+    expectErrorContaining(
+      "SignalKit:Once callback must be a function, or a receiver table followed by a method name",
+      function()
+        signal:Once(42)
+      end
+    )
+  end)
+
+  it("takes a table callback as a receiver that needs a method name", function()
+    expectErrorContaining("SignalKit:Once methodName must be a non-empty string", function()
       signal:Once({})
     end)
   end)

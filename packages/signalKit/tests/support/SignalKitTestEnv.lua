@@ -180,4 +180,37 @@ function SignalKitTestEnv.LoadRevision(revision)
   return chunk()
 end
 
+---Rewrite `signal` and its connection handles into the shape revisions up to
+---10 left behind: named handle fields (`_callback`, `_connected`, `_once`,
+---`_signal`, `_busScope`), a per-revision connection metatable over the shared
+---`Connection` prototype, and no `_layout` marker. The tables stay the same,
+---so handles a spec holds now stand for handles an older revision returned.
+---@param SignalKit table
+---@param signal table
+function SignalKitTestEnv.ToNamedLayout(SignalKit, signal)
+  local olderMetatable = { __index = rawget(SignalKit, "Connection") }
+  local listeners = rawget(signal, "_listeners")
+  for index = 1, #listeners do
+    local connection = listeners[index]
+    local callback, connected, once, owner, scope =
+      rawget(connection, 1),
+      rawget(connection, 2),
+      rawget(connection, 3),
+      rawget(connection, 4),
+      rawget(connection, 5)
+    for slot = 1, 5 do
+      rawset(connection, slot, nil)
+    end
+    rawset(connection, "_callback", callback)
+    rawset(connection, "_connected", connected)
+    rawset(connection, "_once", once)
+    rawset(connection, "_signal", owner)
+    if scope ~= nil then
+      rawset(connection, "_busScope", scope)
+    end
+    setmetatable(connection, olderMetatable)
+  end
+  rawset(signal, "_layout", nil)
+end
+
 return SignalKitTestEnv

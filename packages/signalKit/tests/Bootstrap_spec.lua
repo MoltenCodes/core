@@ -4,7 +4,7 @@ local expectErrorContaining = TestEnv.expectErrorContaining
 
 ---The implementation revision `src/SignalKit.lua` carries; `Manifest_spec.lua`
 ---pins the same number against `package.manifest.json`.
-local CURRENT_REVISION = 10
+local CURRENT_REVISION = 11
 
 ---The package-wide limits a fresh session starts with.
 local DEFAULT_LIMITS = { maxBuses = 64, maxJournalCapacity = 1024, maxJournalArguments = 8 }
@@ -172,7 +172,7 @@ describe("SignalKit package bootstrap", function()
 
     assert.are.equal(SignalKit, upgraded)
     assert.are.equal(CURRENT_REVISION, upgraded.REVISION)
-    assert.are.equal(5, rawget(state, "schema"))
+    assert.are.equal(6, rawget(state, "schema"))
     assert.are.equal("table", type(upgraded.UNBOUNDED))
     assert.are.equal(rawget(state, "unbounded"), upgraded.UNBOUNDED)
     assert.are.same(DEFAULT_LIMITS, upgraded:GetLimits())
@@ -325,7 +325,7 @@ describe("SignalKit package bootstrap", function()
 
     assert.are.equal(SignalKit, upgraded)
     assert.are.equal(CURRENT_REVISION, upgraded.REVISION)
-    assert.are.equal(5, rawget(state, "schema"))
+    assert.are.equal(6, rawget(state, "schema"))
     assert.are.same(DEFAULT_LIMITS, upgraded:GetLimits())
     -- The older signal reports generation 0 until it fires, and connects
     -- and disconnects without hooks.
@@ -414,7 +414,9 @@ describe("SignalKit package bootstrap", function()
       -- delivery closure isolating the callback it keeps in `_busCallback`.
       rawset(state, "schema", 4)
       local topicSignal = rawget(rawget(rawget(bus, "_topics"), "Topic"), "signal")
+      rawset(state, "connectionMetatable", nil)
       for _, signal in ipairs({ topicSignal, rawSignal }) do
+        TestEnv.ToNamedLayout(SignalKit, signal)
         rawset(signal, "_isolated", nil)
         rawset(signal, "_firing", nil)
       end
@@ -434,7 +436,7 @@ describe("SignalKit package bootstrap", function()
 
       assert.are.equal(SignalKit, upgraded)
       assert.are.equal(CURRENT_REVISION, upgraded.REVISION)
-      assert.are.equal(5, rawget(state, "schema"))
+      assert.are.equal(6, rawget(state, "schema"))
       assert.is_true(rawget(topicSignal, "_isolated"))
       -- Older subscriptions come first, the failing one is reported exactly
       -- once although it is isolated twice, and delivery goes on after it.

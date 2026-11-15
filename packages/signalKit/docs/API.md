@@ -2,7 +2,7 @@
 
 Package: `signalKit`  
 API generation: `1`  
-Implementation revision: `10`
+Implementation revision: `11`
 
 SignalKit provides deterministic callback dispatch with explicit connection lifetimes, and named message buses built on the same signals. A signal can tell its owner when it becomes observed ([hooks](#hooks-onfirst-and-onlast)), counts its firings ([`GetGeneration`](#signalgetgeneration)) and, as a [journal](#journals), keeps its last firings for explicit pull.
 
@@ -23,7 +23,7 @@ The source file also returns the same shared package table for pure-Lua test/mod
 
 The facade carries two read-only constants: `SignalKit.API`, the API
 generation (`1`), and `SignalKit.REVISION`, the implementation revision of the
-copy that is active in the session (`9` for this one). A newer embedded copy
+copy that is active in the session (`11` for this one). A newer embedded copy
 replaces `REVISION` when it upgrades the facade in place.
 
 ## `SignalKit:New(options)`
@@ -99,7 +99,7 @@ The rules:
 Bus topic signals carry no hooks: a bus, not a topic, is what a consumer
 observes.
 
-## `signal:Connect(callback)`
+## `signal:Connect(callback)` and `signal:Connect(receiver, methodName)`
 
 Connects `callback` and returns a connection handle.
 
@@ -109,7 +109,19 @@ local connection = changed:Connect(function(value)
 end)
 ```
 
-`callback` must be a function.
+`callback` must be a function, or a receiver table followed by the name of
+one of its methods, the form CallbackHandler-1.0's
+`RegisterCallback(self, "event", "method")` offers:
+
+```lua
+function Tracker:OnChanged(value)
+  self.last = value
+end
+changed:Connect(Tracker, "OnChanged") -- runs Tracker:OnChanged(value)
+```
+
+See [Method-name callbacks](#method-name-callbacks). On a raw signal the method
+name is required: a signal has no name it could default to.
 
 `Connect`, `Once`, `Fire`, `DisconnectAll` and `GetGeneration` must be called
 **on a signal**, `Disconnect` and `IsConnected` **on a connection handle**, and a
@@ -122,15 +134,17 @@ an `attempt to index` error from inside SignalKit:
 SignalKit:Connect must be called on a signal instance; use signal:Connect(callback)
 ```
 
-The receiver test inspects a private field rather than comparing metatables. A
-newer embedded package revision builds its own signal metatable, so a metatable
-comparison would reject instances created by the revision it just upgraded.
+The signal receiver test inspects a private field rather than comparing
+metatables. A newer embedded package revision builds its own signal metatable,
+so a metatable comparison would reject instances created by the revision it
+just upgraded. Connection handles, buses and scopes carry metatables kept in
+the shared package state and are recognised by identity.
 
 Multiple connections may use the same function. Each connection is independent and occupies its own position in deterministic connection order.
 
-## `signal:Once(callback)`
+## `signal:Once(callback)` and `signal:Once(receiver, methodName)`
 
-Connects a callback that can run at most once.
+Connects a callback, or a receiver's method, that can run at most once.
 
 The connection is disconnected **before** callback invocation. Therefore a recursive `Fire()` triggered by that callback cannot invoke the same once-listener again.
 
@@ -217,6 +231,42 @@ The counter is a Lua 5.1 number, a double, and counts exactly up to 2^53
 (about 9 × 10^15): a signal firing a thousand times a second would need
 285,000 years to get there, so the counter is never wrapped or reset. A signal
 created by a revision before 7 reports `0` until its next `Fire`.
+
+## Method-name callbacks
+
+Every method that takes a listener (`signal:Connect`, `signal:Once`,
+`bus:Subscribe`, `bus:SubscribeOnce` and the two scope subscriptions) also takes
+a receiver table and a method name in its place. This is the form Ace3 code
+uses (`self:RegisterMessage("Name", "Method")`), so ported code keeps its
+handlers as methods:
+
+```lua
+local bus = SignalKit:ForAddon("MyAddon")
+bus:Subscribe("ProfileChanged", MyAddon, "OnProfileChanged") -- MyAddon:OnProfileChanged(...)
+bus:Subscribe("ProfileChanged", MyAddon) -- the method named after the topic
+```
+
+- **Checked at registration.** `receiver[methodName]` must be a function when
+  the call is made, or it raises at the caller's line:
+  `<Method> receiver has no method "<name>"`. The name must be a non-empty
+  string that is not secret.
+- **Looked up at every delivery.** The method is read from the receiver each
+  time it is called, as CallbackHandler-1.0 and AceEvent-3.0 do, so replacing
+  it later (a hook on it, for example) reaches the subscriptions already made.
+  A method that has gone missing by then raises
+  `SignalKit receiver has no method "<name>"` inside the delivery: on a bus it
+  is isolated and reported through the host error handler like any subscriber
+  error, on a raw signal it propagates to the caller of `Fire`; in both cases
+  the connection stays connected.
+- **What it receives.** `method(receiver, ...)` with exactly what a function
+  listener would receive. A bus subscriber is not passed the topic (AceEvent
+  passes the message name first); a bus subscription without a method name
+  uses the method named after the topic, AceEvent's default.
+- **Cost.** One closure of two upvalues per registration (about 136 bytes on
+  a 64-bit Lua 5.1, on top of the handle), and per delivery one more Lua call
+  and one table read. Function listeners pay nothing for the form.
+- `bus:Unsubscribe(topic, callback)` matches functions, so it does not find a
+  method subscription: release one through its handle or its scope.
 
 ## Connection
 
@@ -362,11 +412,12 @@ Let `n` be the number of currently connected listeners.
 | `bus:Unsubscribe(...)` | `O(n)` | none; during a publish of the topic, one array per compaction |
 
 `Connect`, `Once` and a bus subscription allocate exactly one table, the
-connection handle: a table with four fields (`_signal`, `_callback`,
-`_connected`, `_once`), 224 bytes on a 64-bit Lua 5.1, plus `_busScope` for a
-bus scope's subscription. The handle is inherent to the contract: it stays
-valid after `Disconnect` and keeps answering `IsConnected` with `false`, so
-SignalKit cannot take it back and reuse it. Specs guard the bound
+connection handle: four slots in the array part, 128 bytes on a 64-bit Lua
+5.1, and 144 bytes with the fifth slot a bus scope's subscription uses
+(revision 10 and older: 224 and 384 bytes with named fields). The method-name
+form adds its closure (136 bytes). The handle is inherent to the contract: it
+stays valid after `Disconnect` and keeps answering `IsConnected` with `false`,
+so SignalKit cannot take it back and reuse it. Specs guard the bound
 (`Storage_spec.lua`).
 
 ### Tombstones and compaction
@@ -635,6 +686,10 @@ of `securecallfunction` itself is the client's.
 ### `bus:Subscribe(topic, callback)` and `bus:SubscribeOnce(topic, callback)`
 
 Subscribe `callback` to every future publish of `topic`, or to at most one.
+`callback` may also be a receiver table followed by an optional method name,
+`bus:Subscribe(topic, receiver[, methodName])`; without the name the method
+named after the topic runs (see
+[Method-name callbacks](#method-name-callbacks)).
 They return an ordinary SignalKit connection handle — `connection:Disconnect()`
 and `connection:IsConnected()` behave exactly as documented above — or
 `nil, "full"` at the topic or listener bound. A `SubscribeOnce` subscription is
@@ -645,7 +700,7 @@ publish allocates. Measured with the host benchmark (`docs/BENCHMARKS.md`, Lua
 5.1.5, both sides in the same run, 2026-09-25) against AceEvent-3.0 messages:
 a publish to 1, 10 and 100 subscribers takes 1.58×, 1.03× and 1.01× of
 `SendMessage`'s time, and a subscribe with its disconnect 1.55× to 1.60×, with
-224 bytes against none. The fixed part of a publish pays for the receiver
+224 bytes against none (revision 9; revision 11 holds 128 bytes per handle). The fixed part of a publish pays for the receiver
 check, the secret-value refusal of the topic, the topic policy and the
 generation; the subscribe pays for the handle.
 
@@ -654,7 +709,8 @@ generation; the subscribe pays for the handle.
 Disconnects every subscription of `callback` to `topic` and returns how many it
 disconnected. Holding the connection handle and calling `Disconnect` is cheaper
 (`O(1)` against `O(n)` in the topic's listeners) and is the preferred form;
-`Unsubscribe` exists for code that keeps only the function.
+`Unsubscribe` exists for code that keeps only the function; it does not find a
+method-name subscription.
 
 ### `bus:Topics()`
 
@@ -668,11 +724,17 @@ owner subscribed to. It mirrors EventKit's scopes.
 
 | Method | Meaning |
 |---|---|
-| `scope:Subscribe(topic, callback)` | As `bus:Subscribe`, owned by the scope. |
-| `scope:SubscribeOnce(topic, callback)` | As `bus:SubscribeOnce`, owned by the scope. |
+| `scope:Subscribe(topic, callback)` | As `bus:Subscribe`, owned by the scope; the method-name form too. |
+| `scope:SubscribeOnce(topic, callback)` | As `bus:SubscribeOnce`, owned by the scope; the method-name form too. |
 | `scope:DisconnectAll()` | Disconnects every subscription the scope owns and returns the count; the scope stays usable. |
-| `scope:Close()` | Disconnects everything and closes the scope terminally; `false` when it was already closed. Later subscriptions raise at the caller. |
+| `scope:Close()` | Disconnects everything and closes the scope; `false` when it was already closed. Later subscriptions raise at the caller until `Reopen`. |
 | `scope:IsClosed()` | Whether the scope is closed. |
+| `scope:Reopen()` | Opens a closed scope again, empty, and returns `true`; `false` when it was open, and `false, "closed"` when its bus is closed (an addon's bus closed at logout stays closed). Revision 11. |
+
+`Reopen` lets an owner keep one scope object across periods of use, which is
+what ModuleKit does for a module's `scope.Messages` across enable cycles: the
+subscriptions `Close` disconnected stay disconnected, and the same object takes
+new ones.
 
 Closing or disconnecting a scope during a publish takes effect at once: its
 subscribers that have not run yet are skipped, exactly as SignalKit's own
@@ -797,13 +859,17 @@ SignalKit still tests every value it did not create — arguments, option and
 limit fields, validator verdicts — for absence with `type(value) == "nil"`, the
 repository rule, which never compares anything, and refuses a secret at the
 caller before it would compare one. Published and fired arguments are never compared, so a secret
-passes through them untouched.
+passes through them untouched. SignalKit reads the client's `issecretvalue` once
+when its file loads; on a host that had none then, each check asks for it
+again, so a probe installed later (a test environment, a compatibility shim)
+is still honoured.
 
 | Raised by | Message |
 |---|---|
 | a signal method without a signal | `SignalKit:<Method> must be called on a signal instance; use signal:<Method>(...)` (`Connect`, `Once`, `Fire`, `DisconnectAll`, `GetGeneration`) |
 | a connection method without a handle | `SignalKit:<Method> must be called on a connection handle; use connection:<Method>()` (`Disconnect`, `IsConnected`) |
-| `Connect`, `Once` | `SignalKit:<Method> callback must be a function` |
+| `Connect`, `Once` | `SignalKit:<Method> callback must be a function, or a receiver table followed by a method name` |
+| the method-name form of a listener | `<Method> methodName must be a non-empty string`; `<Method> methodName must not be a secret value`; `<Method> receiver has no method "<name>"` (also when the field is not a function) |
 | `New`, `NewJournal` | `SignalKit:<Method> options must be a table or nil`; `SignalKit:<Method> options.onFirst must be a function or nil`; the same for `options.onLast` |
 | `SignalKit.New(options)` | `SignalKit:New options must be passed with a colon call: SignalKit:New(options)` |
 | a facade method without the facade | `SignalKit:<Method> must be called on the SignalKit facade; use SignalKit:<Method>(...)` (`NewJournal`, `Bus`, `ForAddon`, `CloseAddonBus`, `SetLimits`, `GetLimits`) |
@@ -816,7 +882,8 @@ passes through them untouched.
 | a bus method without a bus | `SignalKit.Bus:<Method> must be called on a SignalKit bus with a colon call` |
 | `DeclareTopic` | `SignalKit.Bus:DeclareTopic options must be a table or nil`; `SignalKit.Bus:DeclareTopic options.arguments count must be a finite non-negative integer`; `SignalKit.Bus:DeclareTopic options.arguments must be a count, a validator function or nil`; `SignalKit.Bus:DeclareTopic options.description must be a string or nil`; `SignalKit.Bus:DeclareTopic cannot declare on the closed bus "<bus>"`; `SignalKit.Bus:DeclareTopic topic "<topic>" is already declared on bus "<bus>" with a different arguments policy` |
 | `Publish` | `SignalKit.Bus:Publish topic "<topic>" is not declared on bus "<bus>"; declare it with bus:DeclareTopic(topic, options) or create the bus with options.openTopics = true`; `SignalKit.Bus:Publish topic "<topic>" on bus "<bus>" refused its arguments: <reason>`; `SignalKit.Bus:Publish validator for topic "<topic>" on bus "<bus>" failed: <error>` |
-| `Subscribe`, `SubscribeOnce`, `Unsubscribe` and the scope subscriptions | `<Method> callback must be a function`; `<Method> cannot subscribe on the closed bus "<bus>"` (not `Unsubscribe`) |
+| `Subscribe`, `SubscribeOnce` and the scope subscriptions | `<Method> callback must be a function, or a receiver table followed by a method name`; `<Method> cannot subscribe on the closed bus "<bus>"` |
+| `Unsubscribe` | `SignalKit.Bus:Unsubscribe callback must be a function` |
 | `CreateScope` | `SignalKit.Bus:CreateScope cannot create a scope on the closed bus "<bus>"` |
 | a scope method without a scope | `SignalKit.BusScope:<Method> must be called on a SignalKit bus scope` |
 | a scope subscription after `Close` | `SignalKit.BusScope:<Method> cannot subscribe in a closed scope` |
@@ -832,6 +899,17 @@ state an embedded copy left behind fails validation.
 Registry owns the stable `SignalKit` package table for `(signalKit, API 1)`. SignalKit instances use that shared table as their method prototype, so existing signal instances observe compatible package-method upgrades loaded into the same API generation.
 
 `SignalKit.Connection` is also preserved as one shared method table across compatible package revisions, allowing existing connection handles to observe compatible connection-method upgrades.
+
+Revision 11 moved the state to schema 6, which adds the shared metatable of
+connection handles, and keeps a handle's fields in its array part (see
+[Complexity and allocation behavior](#complexity-and-allocation-behavior)). An
+upgrade over revisions 9 and 10 converts the bus topic signals that no
+dispatch is walking at once; a raw signal keeps its older handles until a
+`Connect`, `Once` or subscription finds it idle, and is converted then. A
+conversion rewrites each handle in place, so a handle an addon holds keeps
+working. A signal from before revision 9, which carries no dispatch depth,
+keeps its older handles for good, because an older copy's `Fire` might still be
+walking it below the upgrade.
 
 Revision 2 changed the listener-array layout. Signals created by revision 1 carry
 no tombstone counter, so every counter read treats a missing counter as zero;

@@ -82,6 +82,41 @@ describe("SignalKit bus scopes", function()
     )
   end)
 
+  it("reopens a closed scope as the same, empty object", function()
+    local scope = bus:CreateScope()
+    local closed = scope:Subscribe("Topic", function() end)
+    local calls = 0
+
+    assert.is_false(scope:Reopen())
+    assert.is_true(scope:Close())
+    assert.is_true(scope:Reopen())
+    assert.is_false(scope:IsClosed())
+    assert.is_false(closed:IsConnected())
+    scope:Subscribe("Topic", function()
+      calls = calls + 1
+    end)
+    bus:Publish("Topic")
+
+    assert.are.equal(1, calls)
+    assert.are.equal(1, scope:DisconnectAll())
+    expectRefusalAtCaller("must be called on a SignalKit bus scope", function()
+      scope.Reopen(bus)
+    end)
+  end)
+
+  it("stays closed when its bus is closed", function()
+    local addonBus = SignalKit:ForAddon("ReopenAddon")
+    local scope = addonBus:CreateScope()
+    scope:Close()
+    SignalKit:CloseAddonBus("ReopenAddon")
+
+    local reopened, reason = scope:Reopen()
+
+    assert.is_false(reopened)
+    assert.are.equal("closed", reason)
+    assert.is_true(scope:IsClosed())
+  end)
+
   it("skips its later subscribers when closed during a publish, as a signal would", function()
     local scope = bus:CreateScope()
     local calls = {}

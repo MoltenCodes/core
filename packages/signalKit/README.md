@@ -114,14 +114,16 @@ connection:Disconnect()
 |---|---|
 | `CallbackHandler:New(target)`, one registry for every event name | `SignalKit:New(options)`, one signal per event; or `SignalKit:Bus(name)` when the events need names other addons can find |
 | `callbacks:Fire("Event", ...)` | `signal:Fire(...)`, or `bus:Publish("Event", ...)` on a declared topic |
-| `target.RegisterCallback(self, "Event", method)` | `signal:Connect(callback)` or `bus:Subscribe("Event", callback)`; each returns its own connection handle |
+| `target.RegisterCallback(self, "Event", method)` with a function | `signal:Connect(callback)` or `bus:Subscribe("Event", callback)`; each returns its own connection handle |
+| `target.RegisterCallback(self, "Event", "Method")` | `signal:Connect(self, "Method")` or `bus:Subscribe("Event", self, "Method")`: the method is checked when it is registered (a missing one raises at your line) and looked up at every call, as CallbackHandler does |
 | `target.UnregisterCallback(self, "Event")` | `connection:Disconnect()`; `bus:Unsubscribe("Event", callback)` when only the function is kept |
 | `target.UnregisterAllCallbacks(self)` | `scope:Close()` on a `bus:CreateScope()` the subscriber made its subscriptions through |
 | `callbacks.OnUsed`, `callbacks.OnUnused` | the `onFirst` and `onLast` options of `SignalKit:New` |
 | AceEvent-3.0 `RegisterMessage`, `SendMessage` | `SignalKit:ForAddon(addonName)` and `bus:Subscribe`, `bus:Publish` |
+| AceEvent-3.0 `RegisterMessage("Name", "Method")`, `RegisterMessage("Name")` | `bus:Subscribe("Name", self, "Method")`, `bus:Subscribe("Name", self)` (the method named after the message, AceEvent's default) |
 
-Two differences matter when porting. A signal's listeners receive the fired
-arguments without the event name in front. A raw signal's listener error
+Two differences matter when porting. A signal's listeners, method-name ones
+included, receive the fired arguments without the event name in front. A raw signal's listener error
 reaches the caller of `Fire`, where CallbackHandler isolates each callback; a
 bus isolates its subscribers. See
 [`docs/MIGRATING_FROM_ACE3.md`](../../docs/MIGRATING_FROM_ACE3.md#callbackhandler-10).

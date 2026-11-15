@@ -1008,6 +1008,49 @@ busSuite:Test(
   end
 )
 
+busSuite:Test(
+  "a method-name subscription runs the receiver's method as it is at each publish, and a missing one is refused at the calling line",
+  function(ctx)
+    local bus = probeBus()
+    bus:DeclareTopic("Method", { arguments = 1 })
+    local calls = {}
+    local receiver = {}
+    function receiver:Method(value)
+      calls[#calls + 1] = "first:" .. tostring(value)
+    end
+    track(bus:Subscribe("Method", receiver))
+    bus:Publish("Method", 1)
+    function receiver:Method(value)
+      calls[#calls + 1] = "replaced:" .. tostring(value)
+    end
+    bus:Publish("Method", 2)
+    ctx:Expect(calls):ToEqual({ "first:1", "replaced:2" })
+
+    local startLine = 0
+    local line = expectErrorAtCallingLine(ctx, function()
+      startLine = currentLine()
+      bus:Subscribe("Method", receiver, "Missing")
+    end, 'SignalKit.Bus:Subscribe receiver has no method "Missing"')
+    ctx:Expect(line):ToBe(startLine + 1)
+  end
+)
+
+busSuite:Test(
+  "a closed bus scope reopens as the same object and takes new subscriptions",
+  function(ctx)
+    local bus = probeBus()
+    bus:DeclareTopic("Reopened", { arguments = 0 })
+    local calls = {}
+    local scope = bus:CreateScope()
+    ctx:Expect(scope:Close()):ToBe(true)
+    ctx:Expect(scope:Reopen()):ToBe(true)
+    track(scope:Subscribe("Reopened", recorder(calls, "reopened")))
+    bus:Publish("Reopened")
+    ctx:Expect(calls):ToEqual({ "reopened" })
+    ctx:Expect(scope:Reopen()):ToBe(false)
+  end
+)
+
 -- signalKit.errors --------------------------------------------------------------------------
 
 local errors = newSuite("errors")
@@ -1035,10 +1078,14 @@ errors:Test(
     ---@type any
     local notAFunction = "not a function"
     local startLine = 0
-    local line = expectErrorAtCallingLine(ctx, function()
-      startLine = currentLine()
-      signal:Connect(notAFunction)
-    end, "SignalKit:Connect callback must be a function")
+    local line = expectErrorAtCallingLine(
+      ctx,
+      function()
+        startLine = currentLine()
+        signal:Connect(notAFunction)
+      end,
+      "SignalKit:Connect callback must be a function, or a receiver table followed by a method name"
+    )
     ctx:Expect(line):ToBe(startLine + 1)
   end
 )

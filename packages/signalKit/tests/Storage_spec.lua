@@ -34,10 +34,16 @@ local function bytesPerOperation(operations, workload)
   return TestEnv.AllocatedKilobytes(workload) * 1024 / operations
 end
 
--- One unscoped connection handle: a table with a four-slot hash part (64 +
--- 4 * 40 bytes on a 64-bit Lua 5.1). Tolerance above it covers interpreter
--- bookkeeping; a compaction array or a closure per connection would exceed it.
-local HANDLE_BYTES_BOUND = 240
+-- One unscoped connection handle: a table with a four-slot array part (64 +
+-- 4 * 16 bytes on a 64-bit Lua 5.1), where the named-field layout of
+-- revisions up to 10 took 224. Tolerance above it covers interpreter
+-- bookkeeping; a hash part, a compaction array or a closure per connection
+-- would exceed it.
+local HANDLE_BYTES_BOUND = 144
+
+-- A bus scope's subscription adds a fifth array slot (144 bytes; 384 in the
+-- named-field layout).
+local SCOPED_HANDLE_BYTES_BOUND = 160
 
 describe("SignalKit listener storage with no dispatch running", function()
   local SignalKit
@@ -324,7 +330,7 @@ describe("SignalKit bus storage", function()
 
     bus:Publish("Topic")
 
-    assert.are.equal(subscriber, rawget(connection, "_callback"))
+    assert.are.equal(subscriber, rawget(connection, 1))
     assert.is_nil(rawget(connection, "_busCallback"))
     assert.is_true(rawget(topicSignal(bus, "Topic"), "_isolated"))
     assert.are.equal(1, calls)
@@ -434,6 +440,25 @@ describe("SignalKit storage allocation #allocation", function()
     end)
 
     assert.is_true(bytes < HANDLE_BYTES_BOUND, bytes)
+  end)
+
+  it("allocates only the five-slot handle per bus scope Subscribe and Disconnect", function()
+    TestEnv.InstallHostErrorHandler()
+    local bus = SignalKit:Bus("Storage", { openTopics = true })
+    local scope = bus:CreateScope()
+    local function listener() end
+    for _ = 1, 10 do
+      scope:Subscribe("Topic", listener)
+    end
+    scope:Subscribe("Topic", listener):Disconnect()
+
+    local bytes = bytesPerOperation(2000, function()
+      for _ = 1, 2000 do
+        scope:Subscribe("Topic", listener):Disconnect()
+      end
+    end)
+
+    assert.is_true(bytes < SCOPED_HANDLE_BYTES_BOUND, bytes)
   end)
 
   it("allocates nothing to disconnect every listener one by one", function()
