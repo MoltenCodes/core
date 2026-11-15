@@ -1008,14 +1008,17 @@ end
 ---@param field string|nil the Ace field the entry is about
 ---@param action string
 ---@param reason string
+---@return table|nil entry the stored entry, or `nil` when the report is full
 local function noteEntry(report, path, field, action, reason)
   report.counts[action] = report.counts[action] + 1
   local entries = report.entries
   if exceeds(#entries + 1, limits.maxReportEntries) then
     report.truncated = report.truncated + 1
-    return
+    return nil
   end
-  entries[#entries + 1] = { path = path, field = field, action = action, reason = reason }
+  local entry = { path = path, field = field, action = action, reason = reason }
+  entries[#entries + 1] = entry
+  return entry
 end
 
 -- AceConfig adapter ------------------------------------------------------------
@@ -2320,8 +2323,9 @@ local DEFAULT_OPTION_DEPTH = 8
 ---Raise at the caller's caller: `label` and the problem.
 ---@param label string
 ---@param problem string
-local function refuseOption(label, problem)
-  error(label .. " " .. problem, 4)
+---@param level integer|nil the `error` level, 4 unless the check runs deeper
+local function refuseOption(label, problem, level)
+  error(label .. " " .. problem, level or 4)
 end
 
 ---Validate the options of `ConvertAceConfig` or `DefineAceConfig` and return
@@ -2807,15 +2811,38 @@ do
   -- The longest profile name SettingsKit accepts when it is not loaded to ask.
   local DEFAULT_PROFILE_NAME_LENGTH = 64
 
-  local copyCounted
+  local copyCounted, mergeSpecs, applySpec
+
+  ---Count one entry of the source, and stop the walk past `maxImportEntries`.
+  ---@param ctx table
+  local function countEntry(ctx)
+    ctx.entries = ctx.entries + 1
+    if exceeds(ctx.entries, ctx.maxEntries) then
+      error(IMPORT_OVERFLOW, 0)
+    end
+  end
 
   ---The keys of `source` in a stable order: by type, then by value.
   ---@param source table
   ---@return any[]
-  local function sortedKeys(source)
+  local function sortedKeys(source, ctx, path)
     local keys = {}
+    local probe = readSecretProbe()
+    local secret = false
     for key in next, source do
-      keys[#keys + 1] = key
+      -- A key is counted as it is met, so a huge section stops the walk
+      -- before it is sorted; a secret one is never compared.
+      if ctx ~= nil then
+        countEntry(ctx)
+      end
+      if probe ~= nil and probe(key) == true then
+        secret = true
+      else
+        keys[#keys + 1] = key
+      end
+    end
+    if secret and ctx ~= nil then
+      noteEntry(ctx.report, path or "", nil, "dropped", "secretValue")
     end
     local rank = { string = 1, number = 2, boolean = 3 }
     table.sort(keys, function(left, right)
@@ -2860,8 +2887,77 @@ do
     return true
   end
 
+  ---Two AceDB default specifications as one: `first`'s entries win, `second`
+  ---fills the rest, tables merged all the way down. AceDB applies an explicit
+  ---table default and then `"**"` to the same saved table, each filling only
+  ---what is still missing (AceDB-3.0.lua:118-124).
+  ---@param first table
+  ---@param second table
+  ---@param depth integer
+  ---@return table
+  function mergeSpecs(first, second, depth)
+    local merged = {}
+    for field, value in next, first do
+      merged[field] = value
+    end
+    if depth > MAX_OPTION_DEPTH * 4 then
+      return merged
+    end
+    for field, value in next, second do
+      local held = merged[field]
+      if type(held) == "nil" then
+        merged[field] = value
+      elseif type(held) == "table" and type(value) == "table" then
+        merged[field] = mergeSpecs(held, value, depth + 1)
+      end
+    end
+    return merged
+  end
+
+  ---What AceDB reads for a saved value under a default specification: the
+  ---value with every default it lacks filled in, explicit defaults first, then
+  ---`"**"` under explicit table defaults, and `"*"`/`"**"` table defaults into
+  ---the value's own table entries (AceDB-3.0.lua:89-132). Works on `value`,
+  ---which the caller has copied; keys a wildcard would create on first read are
+  ---not invented.
+  ---@param value table
+  ---@param spec table
+  ---@param depth integer
+  ---@return table value
+  function applySpec(value, spec, depth)
+    if depth > MAX_OPTION_DEPTH * 4 then
+      return value
+    end
+    local everywhere = rawget(spec, "**")
+    for field, default in next, spec do
+      if field == "*" or field == "**" then
+        if type(default) == "table" then
+          for key, held in next, value do
+            if type(rawget(spec, key)) == "nil" and type(held) == "table" then
+              applySpec(held, default, depth + 1)
+            end
+          end
+        end
+      elseif type(default) == "table" then
+        if type(rawget(value, field)) == "nil" then
+          rawset(value, field, {})
+        end
+        local held = rawget(value, field)
+        if type(held) == "table" then
+          applySpec(held, default, depth + 1)
+          if type(everywhere) == "table" then
+            applySpec(held, everywhere, depth + 1)
+          end
+        end
+      elseif type(rawget(value, field)) == "nil" then
+        rawset(value, field, default)
+      end
+    end
+    return value
+  end
+
   ---The AceDB default for `key` in a defaults table: the explicit entry, merged
-  ---over `"**"` when both are tables, else `"*"`, else `"**"`
+  ---deeply over `"**"` when both are tables, else `"*"`, else `"**"`
   ---(AceDB-3.0.lua:93-124).
   ---@param defaults any
   ---@param key any
@@ -2874,14 +2970,7 @@ do
     local everywhere = rawget(defaults, "**")
     if type(explicit) ~= "nil" then
       if type(explicit) == "table" and type(everywhere) == "table" then
-        local merged = {}
-        for field, value in next, everywhere do
-          merged[field] = value
-        end
-        for field, value in next, explicit do
-          merged[field] = value
-        end
-        return merged
+        return mergeSpecs(explicit, everywhere, 0)
       end
       return explicit
     end
@@ -2890,15 +2979,6 @@ do
       return unnamed
     end
     return everywhere
-  end
-
-  ---Count one entry of the source, and stop the walk past `maxImportEntries`.
-  ---@param ctx table
-  local function countEntry(ctx)
-    ctx.entries = ctx.entries + 1
-    if exceeds(ctx.entries, ctx.maxEntries) then
-      error(IMPORT_OVERFLOW, 0)
-    end
   end
 
   ---Why a value can never be stored in a saved variable, or `nil` when it can:
@@ -2967,17 +3047,37 @@ do
     if type(value) ~= "table" then
       return value
     end
-    local existing = copies[value]
-    if existing ~= nil then
-      return existing
+    -- An own work list rather than recursion, so no nesting depth reaches
+    -- the Lua stack (design section 7.4).
+    local root = {}
+    copies[value] = root
+    local pending = { value }
+    while #pending > 0 do
+      local original = table.remove(pending)
+      local copy = copies[original]
+      for key, entry in next, original do
+        countEntry(ctx)
+        local copiedKey, copiedEntry = key, entry
+        if type(key) == "table" then
+          copiedKey = copies[key]
+          if copiedKey == nil then
+            copiedKey = {}
+            copies[key] = copiedKey
+            pending[#pending + 1] = key
+          end
+        end
+        if type(entry) == "table" then
+          copiedEntry = copies[entry]
+          if copiedEntry == nil then
+            copiedEntry = {}
+            copies[entry] = copiedEntry
+            pending[#pending + 1] = entry
+          end
+        end
+        copy[copiedKey] = copiedEntry
+      end
     end
-    local copy = {}
-    copies[value] = copy
-    for key, entry in next, value do
-      countEntry(ctx)
-      copy[copyCounted(ctx, key, copies)] = copyCounted(ctx, entry, copies)
-    end
-    return copy
+    return root
   end
 
   ---Check `value` at `keys` of `scope` with the scope's schema, through a probe
@@ -3008,8 +3108,34 @@ do
   ---@param path string
   ---@param detail string|nil
   local function noteRefused(ctx, path, detail)
-    noteEntry(ctx.report, path, nil, "dropped", "schemaRefused")
-    ctx.report.entries[#ctx.report.entries].detail = detail
+    local entry = noteEntry(ctx.report, path, nil, "dropped", "schemaRefused")
+    if entry ~= nil then
+      entry.detail = detail
+    end
+  end
+
+  ---Report, once per field of a scope, a field whose reading changes with the
+  ---import because the source holds nothing there and the two defaults differ:
+  ---AceDB had none and SettingsKit has one, or the AceDB default cannot be
+  ---written.
+  ---@param ctx table
+  ---@param scope string
+  ---@param keys any[] the path inside the scope
+  local function noteDefaultOnce(ctx, scope, keys)
+    local parts = {}
+    for index = 1, #keys do
+      parts[index] = renderKey(keys[index])
+    end
+    local key = scope .. "\0" .. table.concat(parts, "\0")
+    if ctx.notedDefaults[key] then
+      return
+    end
+    ctx.notedDefaults[key] = true
+    local path = scope
+    for index = 1, #keys do
+      path = joinPath(path, keys[index])
+    end
+    noteEntry(ctx.report, path, nil, "changed", "defaultDiffers")
   end
 
   local importRecord, importMap
@@ -3028,10 +3154,27 @@ do
   local function importValue(ctx, scope, keys, path, sourceValue, aceDefault, settingsDefault)
     local candidate, materialising = sourceValue, false
     if type(sourceValue) == "nil" then
-      if type(aceDefault) == "nil" or deepEqual(aceDefault, settingsDefault) then
+      if type(aceDefault) == "nil" then
+        -- AceDB read nothing here; SettingsKit will read its default.
+        if type(settingsDefault) ~= "nil" and ctx.aceDefaults ~= nil then
+          noteDefaultOnce(ctx, scope, keys)
+        end
         return false, nil
       end
-      candidate, materialising = aceDefault, true
+      candidate = aceDefault
+      if type(aceDefault) == "table" then
+        candidate = applySpec({}, aceDefault, 0)
+      end
+      if deepEqual(candidate, settingsDefault) then
+        return false, nil
+      end
+      materialising = true
+    elseif type(sourceValue) == "table" and type(aceDefault) == "table" then
+      -- AceDB fills a saved table's missing entries from its default.
+      local merged = applySpec(copyValue(sourceValue), aceDefault, 0)
+      if not deepEqual(merged, sourceValue) then
+        candidate, materialising = merged, true
+      end
     end
     local reason = unstorable(ctx, candidate, #keys)
     if reason ~= nil then
@@ -3119,11 +3262,10 @@ do
     end
     local result, written = {}, false
     local fields = describe.fields or {}
+    -- Every key of the source is counted once, here, before any is walked.
+    local sourceKeys = type(source) == "table" and sortedKeys(source, ctx, path) or {}
     for _, name in ipairs(describe.fieldNames or {}) do
       local sourceValue = source and rawget(source, name)
-      if type(sourceValue) ~= "nil" then
-        countEntry(ctx)
-      end
       local settingsDefault = fields[name].default
       if type(settingsDefaults) == "table" and type(rawget(settingsDefaults, name)) ~= "nil" then
         settingsDefault = rawget(settingsDefaults, name)
@@ -3142,22 +3284,59 @@ do
         result[name], written = value, true
       end
     end
-    if type(source) == "table" then
-      for _, key in ipairs(sortedKeys(source)) do
-        if type(key) ~= "string" or fields[key] == nil then
-          countEntry(ctx)
-          local keyPath = joinPath(path, key)
-          if ctx.probe ~= nil and ctx.probe(key) == true then
-            noteEntry(ctx.report, path, nil, "dropped", "secretValue")
-          elseif describe.open then
-            local ok, value =
-              importValue(ctx, scope, extendKeys(keys, key), keyPath, rawget(source, key), nil, nil)
+    local held = {}
+    for _, key in ipairs(sourceKeys) do
+      -- `sourceKeys` is empty unless `source` is a table.
+      ---@cast source table
+      held[key] = true
+      if type(key) ~= "string" or fields[key] == nil then
+        local keyPath = joinPath(path, key)
+        if describe.open then
+          -- An undeclared field of an open record reads what AceDB read,
+          -- its AceDB default merged in.
+          local ok, value = importValue(
+            ctx,
+            scope,
+            extendKeys(keys, key),
+            keyPath,
+            rawget(source, key),
+            aceDefaultFor(aceDefaults, key),
+            nil
+          )
+          if ok then
+            result[key], written = value, true
+          end
+        else
+          local _, detail = checkAt(ctx, scope, extendKeys(keys, key), true)
+          noteRefused(ctx, keyPath, detail)
+        end
+      end
+    end
+    -- AceDB defaults for keys the record does not declare: an open record
+    -- takes them, a closed one cannot, which changes what the key reads.
+    if type(aceDefaults) == "table" then
+      for _, key in ipairs(sortedKeys(aceDefaults)) do
+        if
+          key ~= "*"
+          and key ~= "**"
+          and not held[key]
+          and (type(key) ~= "string" or fields[key] == nil)
+        then
+          if describe.open then
+            local ok, value = importValue(
+              ctx,
+              scope,
+              extendKeys(keys, key),
+              joinPath(path, key),
+              nil,
+              aceDefaultFor(aceDefaults, key),
+              nil
+            )
             if ok then
               result[key], written = value, true
             end
           else
-            local _, detail = checkAt(ctx, scope, extendKeys(keys, key), true)
-            noteRefused(ctx, keyPath, detail)
+            noteDefaultOnce(ctx, scope, extendKeys(keys, key))
           end
         end
       end
@@ -3205,41 +3384,62 @@ do
         aceDefaultFor(aceDefaults, key),
         settingsDefault
       )
+      -- A record entry the source holds stays an entry even when nothing in
+      -- it differs from the defaults: a map's keys are data of their own.
+      if
+        not ok
+        and valueDescribe.kind == "table"
+        and type(sourceEntry) == "table"
+        and #keys + 1 < ctx.maxDepth
+        and not (ctx.probe ~= nil and ctx.probe(sourceEntry) == true)
+      then
+        ok, value = true, {}
+      end
       if ok then
         result[key], count = value, count + 1
       end
     end
     local held = {}
+    local dropped = false
     if type(source) == "table" then
-      local dropped = false
-      for _, key in ipairs(sortedKeys(source)) do
-        countEntry(ctx)
-        if ctx.probe ~= nil and ctx.probe(key) == true then
-          noteEntry(ctx.report, path, nil, "dropped", "secretValue")
-        elseif type(maximum) == "number" and count >= maximum then
+      for _, key in ipairs(sortedKeys(source, ctx, path)) do
+        held[key] = true
+        if type(maximum) == "number" and count >= maximum then
           dropped = true
         else
-          held[key] = true
           importEntry(key, rawget(source, key))
         end
       end
-      if dropped then
-        noteEntry(ctx.report, path, nil, "dropped", "mapFull")
-      end
     end
-    -- An entry AceDB's defaults name explicitly reads that default where the
-    -- source lacks it; it is materialised when SettingsKit would read another.
+    -- A key the source lacks reads AceDB's default for it under AceDB (an
+    -- explicit entry, or the wildcard for a key the map's own default names)
+    -- and the map's default under SettingsKit; it is materialised when the
+    -- two differ. Keys past `max` are reported like source keys are.
+    local defaultKeys = {}
     if type(aceDefaults) == "table" then
       for _, key in ipairs(sortedKeys(aceDefaults)) do
-        if
-          key ~= "*"
-          and key ~= "**"
-          and not held[key]
-          and (type(maximum) ~= "number" or count < maximum)
-        then
+        if key ~= "*" and key ~= "**" then
+          defaultKeys[#defaultKeys + 1] = key
+        end
+      end
+    end
+    if type(describe.default) == "table" then
+      for _, key in ipairs(sortedKeys(describe.default)) do
+        defaultKeys[#defaultKeys + 1] = key
+      end
+    end
+    for _, key in ipairs(defaultKeys) do
+      if not held[key] then
+        held[key] = true
+        if type(maximum) == "number" and count >= maximum then
+          dropped = true
+        else
           importEntry(key, nil)
         end
       end
+    end
+    if dropped then
+      noteEntry(ctx.report, path, nil, "dropped", "mapFull")
     end
     if count == 0 then
       return nil
@@ -3250,27 +3450,40 @@ do
   ---Report, once per field, every AceDB default of `scope` that differs from
   ---the SettingsKit default: an entry the source lacks entirely (a character
   ---that never saved anything) reads the SettingsKit default from now on.
+  ---A scope AceDB has no defaults for is still compared: every field
+  ---SettingsKit defaults then reads differently.
   ---@param ctx table
+  ---@param scope string
   ---@param describe table
   ---@param aceDefaults any
-  ---@param path string
-  ---@param depth integer
-  local function noteDefaultsThatDiffer(ctx, describe, aceDefaults, path, depth)
-    if type(aceDefaults) ~= "table" or depth > ctx.maxDepth then
+  ---@param keys any[] the path inside the scope
+  ---@param recordDefault any the record's own default, when it has one
+  local function noteDefaultsThatDiffer(ctx, scope, describe, aceDefaults, keys, recordDefault)
+    if #keys >= ctx.maxDepth then
       return
     end
     local fields = describe.fields or {}
     for _, name in ipairs(describe.fieldNames or {}) do
       local field = fields[name]
       local aceDefault = aceDefaultFor(aceDefaults, name)
+      local settingsDefault = field.default
+      if type(recordDefault) == "table" and type(rawget(recordDefault, name)) ~= "nil" then
+        settingsDefault = rawget(recordDefault, name)
+      end
       if field.kind == "table" then
-        noteDefaultsThatDiffer(ctx, field, aceDefault, joinPath(path, name), depth + 1)
-      elseif
-        type(aceDefault) ~= "nil"
-        and field.kind ~= "map"
-        and not deepEqual(aceDefault, field.default)
-      then
-        noteEntry(ctx.report, joinPath(path, name), nil, "changed", "defaultDiffers")
+        local nested = settingsDefault
+        if type(nested) ~= "table" then
+          nested = field.default
+        end
+        noteDefaultsThatDiffer(ctx, scope, field, aceDefault, extendKeys(keys, name), nested)
+      elseif field.kind ~= "map" then
+        local aceReads = aceDefault
+        if type(aceDefault) == "table" then
+          aceReads = applySpec({}, aceDefault, 0)
+        end
+        if not deepEqual(aceReads, settingsDefault) then
+          noteDefaultOnce(ctx, scope, extendKeys(keys, name))
+        end
       end
     end
   end
@@ -3429,6 +3642,42 @@ do
     end
   end
 
+  ---Pair each source key of a section with its layout key. A key `rename`
+  ---maps to `nil` is skipped (`rename` reports why). Source keys that land on
+  ---one layout key collide: the key that keeps its own name wins, otherwise
+  ---the first in sorted order, and every other is reported `keyCollision`, so
+  ---which entry survives never depends on the order AceDB saved them in.
+  ---@param ctx table
+  ---@param keys any[] the section's keys, sorted
+  ---@param section string the section's report path
+  ---@param rename fun(key: any): any
+  ---@return any[][] pairs `{ sourceKey, layoutKey }`, in the order of `keys`
+  local function resolveKeys(ctx, keys, section, rename)
+    local layoutKeys, claimedBy = {}, {}
+    for _, key in ipairs(keys) do
+      local layoutKey = rename(key)
+      layoutKeys[key] = layoutKey
+      if layoutKey ~= nil then
+        local holder = claimedBy[layoutKey]
+        if holder == nil or (key == layoutKey and holder ~= layoutKey) then
+          claimedBy[layoutKey] = key
+        end
+      end
+    end
+    local resolved = {}
+    for _, key in ipairs(keys) do
+      local layoutKey = layoutKeys[key]
+      if layoutKey ~= nil then
+        if claimedBy[layoutKey] == key then
+          resolved[#resolved + 1] = { key, layoutKey }
+        else
+          noteEntry(ctx.report, joinPath(section, key), nil, "dropped", "keyCollision")
+        end
+      end
+    end
+    return resolved
+  end
+
   ---Import the profiles and the profile choices.
   ---@param ctx table
   ---@param source table
@@ -3446,46 +3695,56 @@ do
     layout.profiles = {}
     local describe = ctx.scopes.profile.describe
     if profiles ~= nil then
-      for _, name in ipairs(sortedKeys(profiles)) do
-        countEntry(ctx)
-        local newName = profileNameFor(ctx, name)
-        if newName ~= nil and type(rawget(layout.profiles, newName)) ~= "nil" then
-          noteEntry(ctx.report, joinPath("profiles", name), nil, "dropped", "profileNameCollision")
-          newName = nil
-        end
-        if newName ~= nil then
-          local entry = rawget(profiles, name)
-          if type(entry) ~= "table" then
+      local resolved = resolveKeys(
+        ctx,
+        sortedKeys(profiles, ctx, "profiles"),
+        "profiles",
+        function(name)
+          if type(rawget(profiles, name)) ~= "table" then
             noteEntry(ctx.report, joinPath("profiles", name), nil, "dropped", "notStorable")
-          else
-            names[name] = newName
-            -- A scope's schema describes one entry, so the path inside it starts
-            -- below the entry's own key.
-            layout.profiles[newName] = importRecord(
-              ctx,
-              "profile",
-              describe,
-              {},
-              joinPath("profiles", newName),
-              entry,
-              ctx.aceDefaults and rawget(ctx.aceDefaults, "profile"),
-              nil
-            ) or {}
+            return nil
           end
+          return profileNameFor(ctx, name)
         end
+      )
+      for _, pair in ipairs(resolved) do
+        local name, newName = pair[1], pair[2]
+        names[name] = newName
+        -- A scope's schema describes one entry, so the path inside it starts
+        -- below the entry's own key.
+        layout.profiles[newName] = importRecord(
+          ctx,
+          "profile",
+          describe,
+          {},
+          joinPath("profiles", newName),
+          rawget(profiles, name),
+          ctx.aceDefaults and rawget(ctx.aceDefaults, "profile"),
+          nil
+        ) or {}
       end
     end
     local profileKeys = sourceSection(ctx, source, "profileKeys")
     if profileKeys ~= nil then
       layout.profileKeys = {}
-      for _, key in ipairs(sortedKeys(profileKeys)) do
-        countEntry(ctx)
+      local resolved = resolveKeys(
+        ctx,
+        sortedKeys(profileKeys, ctx, "profileKeys"),
+        "profileKeys",
+        function(key)
+          return characterKeyFor(ctx, key)
+        end
+      )
+      for _, pair in ipairs(resolved) do
+        local key, newKey = pair[1], pair[2]
         local chosen = rawget(profileKeys, key)
-        local newKey = characterKeyFor(ctx, key)
-        local newName = names[chosen]
-        if newKey ~= nil and newName ~= nil then
-          layout.profileKeys[newKey] = newName
-        elseif newKey ~= nil then
+        -- The choice is probed before it is used as a key, so a secret never
+        -- reaches a table lookup.
+        if ctx.probe ~= nil and ctx.probe(chosen) == true then
+          noteEntry(ctx.report, joinPath("profileKeys", key), nil, "dropped", "secretValue")
+        elseif names[chosen] ~= nil then
+          layout.profileKeys[newKey] = names[chosen]
+        else
           noteEntry(ctx.report, joinPath("profileKeys", key), nil, "dropped", "danglingProfileKey")
         end
       end
@@ -3507,27 +3766,28 @@ do
       else
         layout[scope] = {}
         if section ~= nil then
-          for _, key in ipairs(sortedKeys(section)) do
-            countEntry(ctx)
-            local newKey = key
-            if scope == "char" then
-              newKey = characterKeyFor(ctx, key)
-            end
-            local entry = rawget(section, key)
-            if newKey ~= nil and type(entry) == "table" then
-              layout[scope][newKey] = importRecord(
-                ctx,
-                scope,
-                ctx.scopes[scope].describe,
-                {},
-                joinPath(scope, newKey),
-                entry,
-                ctx.aceDefaults and rawget(ctx.aceDefaults, scope),
-                nil
-              )
-            elseif newKey ~= nil then
+          local resolved = resolveKeys(ctx, sortedKeys(section, ctx, scope), scope, function(key)
+            if type(rawget(section, key)) ~= "table" then
               noteEntry(ctx.report, joinPath(scope, key), nil, "dropped", "notStorable")
+              return nil
             end
+            if scope == "char" then
+              return characterKeyFor(ctx, key)
+            end
+            return key
+          end)
+          for _, pair in ipairs(resolved) do
+            local key, newKey = pair[1], pair[2]
+            layout[scope][newKey] = importRecord(
+              ctx,
+              scope,
+              ctx.scopes[scope].describe,
+              {},
+              joinPath(scope, newKey),
+              rawget(section, key),
+              ctx.aceDefaults and rawget(ctx.aceDefaults, scope),
+              nil
+            )
           end
         end
       end
@@ -3536,12 +3796,17 @@ do
 
   ---Write `value` into the layout section of `scope` for `entryKey` (`nil` for
   ---the global section), under `field`, merging with what is already there.
+  ---An entry already present wins and the newcomer is reported `keyCollision`;
+  ---a map field stops at its `max`, reported `mapFull`, so the merge never
+  ---builds a table the schema would refuse.
+  ---@param ctx table
   ---@param layout table
   ---@param scope string
   ---@param entryKey any
   ---@param field string
   ---@param value table
-  local function placeUnder(layout, scope, entryKey, field, value)
+  ---@param path string the field's report path
+  local function placeUnder(ctx, layout, scope, entryKey, field, value, path)
     local section = SECTION_FOR_SCOPE[scope]
     layout[section] = layout[section] or {}
     local target = layout[section]
@@ -3550,12 +3815,29 @@ do
       target = target[entryKey]
     end
     local existing = target[field]
-    if type(existing) == "table" then
-      for key, entry in next, value do
-        existing[key] = entry
-      end
-    else
+    if type(existing) ~= "table" then
       target[field] = value
+      return
+    end
+    local describe = ctx.scopes[scope].describe.fields[field]
+    local maximum = describe and describe.kind == "map" and describe.max or nil
+    local count = 0
+    for _ in next, existing do
+      count = count + 1
+    end
+    local full = false
+    for _, key in ipairs(sortedKeys(value)) do
+      if type(rawget(existing, key)) ~= "nil" then
+        noteEntry(ctx.report, joinPath(path, key), nil, "dropped", "keyCollision")
+      elseif type(maximum) == "number" and count >= maximum then
+        full = true
+      else
+        existing[key] = rawget(value, key)
+        count = count + 1
+      end
+    end
+    if full then
+      noteEntry(ctx.report, path, nil, "dropped", "mapFull")
     end
   end
 
@@ -3583,7 +3865,7 @@ do
           ctx.aceDefaults and rawget(ctx.aceDefaults, scope)
         )
         if entries ~= nil then
-          placeUnder(layout, into, nil, field, entries)
+          placeUnder(ctx, layout, into, nil, field, entries, joinPath(into, field))
         end
       end
     end
@@ -3600,8 +3882,7 @@ do
     if namespaces == nil then
       return
     end
-    for _, name in ipairs(sortedKeys(namespaces)) do
-      countEntry(ctx)
+    for _, name in ipairs(sortedKeys(namespaces, ctx, "namespaces")) do
       local mapping = ctx.plan.namespaces and type(name) == "string" and ctx.plan.namespaces[name]
       local namespaceData = rawget(namespaces, name)
       if not mapping then
@@ -3626,28 +3907,34 @@ do
               local ok, value =
                 importField(ctx, scope, describe, keys, path, entry, defaults, describe.default)
               if ok then
-                placeUnder(layout, scope, layoutKey, mapping.field, value)
+                placeUnder(ctx, layout, scope, layoutKey, mapping.field, value, path)
               end
             end
             if scope == "global" then
               importOne(data, nil, { mapping.field }, joinPath("global", mapping.field))
             else
-              for _, key in ipairs(sortedKeys(data)) do
-                countEntry(ctx)
-                local layoutKey = key
-                if scope == "profile" then
-                  layoutKey = profileNames[key]
-                elseif scope == "char" then
-                  layoutKey = characterKeyFor(ctx, key)
+              local sectionPath = joinPath(joinPath("namespaces", name), section)
+              local resolved = resolveKeys(
+                ctx,
+                sortedKeys(data, ctx, sectionPath),
+                sectionPath,
+                function(key)
+                  if scope == "profile" then
+                    return profileNames[key]
+                  elseif scope == "char" then
+                    return characterKeyFor(ctx, key)
+                  end
+                  return key
                 end
-                if layoutKey ~= nil then
-                  importOne(
-                    rawget(data, key),
-                    layoutKey,
-                    { mapping.field },
-                    joinPath(joinPath(SECTION_FOR_SCOPE[scope], layoutKey), mapping.field)
-                  )
-                end
+              )
+              for _, resolvedPair in ipairs(resolved) do
+                local key, layoutKey = resolvedPair[1], resolvedPair[2]
+                importOne(
+                  rawget(data, key),
+                  layoutKey,
+                  { mapping.field },
+                  joinPath(joinPath(SECTION_FOR_SCOPE[scope], layoutKey), mapping.field)
+                )
               end
             end
           end
@@ -3667,7 +3954,7 @@ do
     if ctx.aceDefaults == nil then
       noteEntry(ctx.report, "", nil, "changed", "aceDefaultsUnknown")
     end
-    for _, key in ipairs(sortedKeys(source)) do
+    for _, key in ipairs(sortedKeys(source, ctx, "")) do
       -- Inside a migration the table carries SettingsKit's own `version`.
       local settingsVersion = ctx.mode == "migration" and key == "version"
       if not settingsVersion and (type(key) ~= "string" or not ACE_TOP_LEVEL[key]) then
@@ -3698,10 +3985,11 @@ do
         if ctx.declared[scope] then
           noteDefaultsThatDiffer(
             ctx,
+            scope,
             ctx.scopes[scope].describe,
             rawget(ctx.aceDefaults, scope),
-            scope,
-            1
+            {},
+            nil
           )
         end
       end
@@ -3709,6 +3997,10 @@ do
     layout.namespaces = {}
     return layout
   end
+
+  -- `readPlanSchema` runs one frame below `readPlan`, so its refusals name the
+  -- public method's caller from one level further up.
+  local SCHEMA_LEVEL = 5
 
   ---Seal and describe every scope of `plan.schema`, raising at the caller for a
   ---scope SettingsKit would refuse.
@@ -3719,26 +4011,32 @@ do
   ---@return table<string, boolean> declared
   local function readPlanSchema(label, SchemaKit, schema)
     if type(schema) ~= "table" then
-      refuseOption(label, "plan.schema is required: the schema table passed to SettingsKit:Open")
+      refuseOption(
+        label,
+        "plan.schema is required: the schema table passed to SettingsKit:Open",
+        SCHEMA_LEVEL
+      )
     end
     local scopes, declared = {}, {}
     for scope, node in next, schema do
       if type(scope) ~= "string" or SECTION_FOR_SCOPE[scope] == nil then
         refuseOption(
           label,
-          "plan.schema has a scope SettingsKit does not know: " .. renderKey(scope)
+          "plan.schema has a scope SettingsKit does not know: " .. renderKey(scope),
+          SCHEMA_LEVEL
         )
       end
       local ok, sealed = pcall(SchemaKit.Seal, SchemaKit, node)
       if not ok then
         refuseOption(
           label,
-          "plan.schema." .. scope .. " must be a SchemaKit table node or sealed schema"
+          "plan.schema." .. scope .. " must be a SchemaKit table node or sealed schema",
+          SCHEMA_LEVEL
         )
       end
       local describe = sealed:Describe()
       if describe.kind ~= "table" then
-        refuseOption(label, "plan.schema." .. scope .. " must be a SchemaKit.table")
+        refuseOption(label, "plan.schema." .. scope .. " must be a SchemaKit.table", SCHEMA_LEVEL)
       end
       scopes[scope] = { schema = sealed, describe = describe }
       declared[scope] = true
@@ -3877,6 +4175,7 @@ do
       aceDefaults = plan.aceDefaults,
       actions = actions,
       entries = 0,
+      notedDefaults = {},
       maxEntries = limits.maxImportEntries,
       maxDepth = SchemaKit:GetLimits().maxDepth,
       maxProfileNameLength = maxProfileNameLength,
@@ -3893,12 +4192,15 @@ do
     return { kind = "aceDB", entries = {}, counts = counts, truncated = 0 }
   end
 
-  ---Run the walk over `source`, turning an overflow into a result.
+  ---Run the walk over `source`, turning an overflow into a result. The walk's
+  ---running state is reset first, so one context serves any number of walks.
   ---@param ctx table
   ---@param source table
   ---@return table|nil layout `nil` past `maxImportEntries`
   local function walkSource(ctx, source)
     ctx.report = newImportReport()
+    ctx.entries = 0
+    ctx.notedDefaults = {}
     local ok, result = pcall(buildLayout, ctx, source)
     if ok then
       return result

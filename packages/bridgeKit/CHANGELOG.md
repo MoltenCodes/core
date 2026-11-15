@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.4.0 — unreleased
+
+### Fixed (from step N3's read-only review)
+
+- AceDB defaults are read as AceDB reads them: `"**"` merges into an explicit
+  table default at every depth; a saved table is merged with its table
+  default; an open record takes the keys only its defaults name; a map's own
+  SettingsKit default keys are compared with AceDB's wildcard; a field
+  SettingsKit defaults where AceDB had none is reported once per field
+  (`defaultDiffers`), also in scopes AceDB has no defaults for.
+- Renamed keys that collide (profiles, profile choices, characters, namespace
+  sections) keep the key that keeps its name, otherwise the first in sorted
+  order; the others are reported `keyCollision`, which replaces
+  `profileNameCollision`. Before, a renamed character could overwrite the
+  character already under that name.
+- A namespace or mapped scope landing on a field that already holds an entry
+  keeps the entry (`keyCollision`) and stops at a map's `max` (`mapFull`); an
+  explicit AceDB default past a map's `max` is reported too.
+- A map entry holding only defaults is kept instead of dropped.
+- Secret keys are filtered before sorting and a secret profile choice is never
+  used as a key; every source key is counted once against
+  `maxImportEntries`, as it is met.
+- `plan.schema` refusals are raised at the method's caller; a migration step
+  that runs more than once starts each walk afresh.
+
 ## 0.3.0 — 2026-11-15
 
 Delivery step N3 of `docs/BRIDGE_KIT_DESIGN.md`: the AceDB-3.0 importer. API

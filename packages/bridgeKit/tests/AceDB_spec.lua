@@ -233,8 +233,12 @@ describe("BridgeKit AceDB importer", function()
         schema = schema,
         aceDefaults = { char = { ["**"] = { level = 9 } } },
       })
-      -- `char` defaults name no key; the scope's own defaults are the table.
-      assert.are.same({}, Env.Global("MyAddonSettings").char)
+      -- `**` reaches every key of each character's table: the open record
+      -- `bars` reads `{ level = 9 }` under AceDB, so it is written.
+      assert.are.same(
+        { [CHARACTER] = { bars = { level = 9 } } },
+        Env.Global("MyAddonSettings").char
+      )
       local report = BridgeKit:PreviewAceDB({ profiles = { Default = { auras = { [5] = {} } } } }, {
         schema = schema,
         aceDefaults = { profile = { auras = { ["**"] = { shown = false }, [5] = {} } } },
@@ -395,7 +399,7 @@ describe("BridgeKit AceDB importer", function()
       assert.are.same({ [CHARACTER] = { level = 2 } }, target.char)
       assert.is_true(hasEntry(report, "profiles.Old", "renamedProfile"))
       assert.is_true(hasEntry(report, "profiles.Drop", "renamedProfile"))
-      assert.is_true(hasEntry(report, "profiles.Twin", "profileNameCollision"))
+      assert.is_true(hasEntry(report, "profiles.Twin", "keyCollision"))
       assert.is_true(hasEntry(report, 'char["Gone - Realm"]', "renamedCharacter"))
     end)
 
@@ -639,7 +643,9 @@ describe("BridgeKit AceDB importer", function()
         { schema = schema, aceDefaults = {} }
       )
       local lines = BridgeKit:FormatReport(report)
-      assert.are.equal("1 imported", lines[#lines])
+      -- With no AceDB defaults, the seven fields SettingsKit defaults read
+      -- differently from now on.
+      assert.are.equal("1 imported, 7 changed", lines[#lines])
     end)
   end)
 
@@ -875,6 +881,219 @@ describe("BridgeKit AceDB importer", function()
       })
       assert.is_false(ok)
       assert.is_truthy(tostring(failure):find("addon bug", 1, true))
+    end)
+  end)
+
+  describe("defaults, collisions and merges", function()
+    it("merge an AceDB default into an open record, keys it lacks included", function()
+      BridgeKit:ImportAceDB({ global = { bars = { a = 1 } } }, "MyAddonSettings", {
+        schema = schema,
+        aceDefaults = { global = { bars = { b = 2 } } },
+      })
+      assert.are.same({ a = 1, b = 2 }, Env.Global("MyAddonSettings").global.bars)
+    end)
+
+    it("report an AceDB default a closed record cannot hold", function()
+      local report = BridgeKit:PreviewAceDB({ profiles = { Default = {} } }, {
+        schema = schema,
+        aceDefaults = { profile = { unknown = 5 } },
+      })
+      assert.is_true(hasEntry(report, "profile.unknown", "defaultDiffers"))
+    end)
+
+    it("merge `**` into an explicit default at every depth", function()
+      BridgeKit:ImportAceDB({ global = {} }, "MyAddonSettings", {
+        schema = schema,
+        aceDefaults = { global = { ["**"] = { x = { y = 1 } }, bars = { x = { z = 2 } } } },
+      })
+      assert.are.same({ x = { y = 1, z = 2 } }, Env.Global("MyAddonSettings").global.bars)
+    end)
+
+    it("read a map's own default entries against AceDB's wildcard", function()
+      local mapSchema = {
+        global = S.table({
+          fields = {
+            counts = S.optional(
+              S.map({ keys = S.string(), values = S.number(), max = 2 }),
+              { a = 1 }
+            ),
+          },
+        }),
+      }
+      BridgeKit:ImportAceDB({ global = { counts = {} } }, "MyAddonSettings", {
+        schema = mapSchema,
+        aceDefaults = { global = { counts = { ["*"] = 5 } } },
+      })
+      assert.are.same({ a = 5 }, Env.Global("MyAddonSettings").global.counts)
+    end)
+
+    it("report explicit AceDB defaults a full map cannot take", function()
+      local report = BridgeKit:PreviewAceDB(
+        { profiles = { Default = { auras = { [1] = {}, [2] = {}, [3] = {} } } } },
+        { schema = schema, aceDefaults = { profile = { auras = { [4] = { shown = false } } } } }
+      )
+      assert.is_true(hasEntry(report, "profiles.Default.auras", "mapFull"))
+    end)
+
+    it("keep a map entry that holds nothing but defaults", function()
+      BridgeKit:ImportAceDB(
+        { profiles = { Default = { auras = { [7] = {} } } } },
+        "MyAddonSettings",
+        { schema = schema, aceDefaults = {} }
+      )
+      assert.are.same({ [7] = {} }, Env.Global("MyAddonSettings").profiles.Default.auras)
+    end)
+
+    it("report a SettingsKit default AceDB lacked, once per field", function()
+      local report = BridgeKit:PreviewAceDB(
+        { profiles = { Default = {}, Raid = {} } },
+        { schema = schema, aceDefaults = {} }
+      )
+      assert.are.same({ "changed (defaultDiffers)" }, notedAt(report, "profile.scale"))
+    end)
+
+    it("keep the entry that keeps its name when renames collide", function()
+      local report = BridgeKit:ImportAceDB(
+        {
+          profiles = { A = { scale = 2 }, Default = { scale = 1.5 } },
+          char = { ["Old - Silvermoon"] = { level = 5 }, [CHARACTER] = { level = 60 } },
+        },
+        "MyAddonSettings",
+        {
+          schema = schema,
+          aceDefaults = {},
+          renameProfile = function(name)
+            return name == "A" and "Default" or name
+          end,
+          renameCharacter = function(key)
+            return key == "Old - Silvermoon" and CHARACTER or key
+          end,
+        }
+      )
+      local target = Env.Global("MyAddonSettings")
+      assert.are.same({ Default = { scale = 1.5 } }, target.profiles)
+      assert.are.same({ [CHARACTER] = { level = 60 } }, target.char)
+      assert.is_true(hasEntry(report, "profiles.A", "keyCollision"))
+      assert.is_true(hasEntry(report, 'char["Old - Silvermoon"]', "keyCollision"))
+    end)
+
+    it("drop secret keys and profile choices without raising", function()
+      Env.MarkSecret("hidden")
+      local report = BridgeKit:ImportAceDB({
+        profileKeys = { [CHARACTER] = "hidden" },
+        profiles = { Default = {} },
+        global = { bars = { hidden = 1, shown = 2 } },
+      }, "MyAddonSettings", { schema = schema, aceDefaults = {} })
+      local target = Env.Global("MyAddonSettings")
+      assert.are.same({ shown = 2 }, target.global.bars)
+      assert.are.same({}, target.profileKeys)
+      assert.is_true(hasEntry(report, "global.bars", "secretValue"))
+      assert.is_true(hasEntry(report, 'profileKeys["' .. CHARACTER .. '"]', "secretValue"))
+    end)
+
+    it("raise a schema refusal at the caller", function()
+      local ok, failure = pcall(function()
+        BridgeKit:PreviewAceDB({}, { schema = { party = schema.profile } })
+      end)
+      assert.is_false(ok)
+      assert.is_truthy(tostring(failure):find("AceDB_spec.lua:", 1, true), tostring(failure))
+    end)
+
+    it("start each migration step from a clean walk", function()
+      local reports = {}
+      local step = BridgeKit:AceDBMigration({
+        schema = schema,
+        aceDefaults = {},
+        backup = "MyAddonDB_Backup",
+        replaceBackup = true,
+        onReport = function(report)
+          reports[#reports + 1] = report
+        end,
+      })
+      step({ profiles = { Default = {} } })
+      step({ profiles = { Default = {} } })
+      assert.are.same(reports[1].counts, reports[2].counts)
+      assert.is_true(hasEntry(reports[2], "profile.scale", "defaultDiffers"))
+    end)
+
+    it("keep what a section holds when a namespace lands on it, up to the map's max", function()
+      local mergeSchema = {
+        profile = S.table({
+          fields = { bars = S.optional(S.table({ fields = {}, open = true })) },
+        }),
+        global = S.table({
+          fields = {
+            seen = S.optional(S.map({ keys = S.string(), values = S.number(), max = 1 })),
+          },
+        }),
+      }
+      local report = BridgeKit:ImportAceDB(
+        {
+          profiles = { Default = { bars = { count = 1 } } },
+          race = { a = 1 },
+          namespaces = {
+            Bars = { profiles = { Default = { count = 4 } } },
+            Seen = { global = { b = 2 } },
+          },
+        },
+        "MyAddonSettings",
+        {
+          schema = mergeSchema,
+          aceDefaults = {},
+          scopes = { race = { into = "global", field = "seen" } },
+          namespaces = { Bars = { field = "bars" }, Seen = { field = "seen" } },
+        }
+      )
+      local target = Env.Global("MyAddonSettings")
+      assert.are.same({ count = 1 }, target.profiles.Default.bars)
+      assert.are.same({ a = 1 }, target.global.seen)
+      assert.is_true(hasEntry(report, "profiles.Default.bars.count", "keyCollision"))
+      assert.is_true(hasEntry(report, "global.seen", "mapFull"))
+    end)
+
+    it("apply AceDB's wildcards to entries a saved table already holds", function()
+      BridgeKit:ImportAceDB(
+        {
+          global = {
+            bars = { group = { one = {} }, deep = { two = { inner = {} } }, opts = { a = 1 } },
+          },
+        },
+        "MyAddonSettings",
+        {
+          schema = schema,
+          aceDefaults = {
+            global = {
+              bars = {
+                group = { ["*"] = { on = true } },
+                deep = { ["**"] = { on = true } },
+                opts = { b = 2 },
+              },
+            },
+          },
+        }
+      )
+      assert.are.same({
+        group = { one = { on = true } },
+        -- `**` reaches the entries at its own level, not what they nest.
+        deep = { two = { on = true, inner = {} } },
+        opts = { a = 1, b = 2 },
+      }, Env.Global("MyAddonSettings").global.bars)
+    end)
+
+    it("sort boolean keys and back up tables used as keys", function()
+      local tableKey = {}
+      local report = BridgeKit:ImportAceDB(
+        { global = { bars = { [true] = print, [false] = print, [tableKey] = 1 } } },
+        "MyAddonSettings",
+        { schema = schema, aceDefaults = {}, backup = "MyAddonDB_Backup" }
+      )
+      assert.is_true(hasEntry(report, "global.bars[false]", "notStorable"))
+      assert.is_true(hasEntry(report, "global.bars[true]", "notStorable"))
+      local copiedKey = next(Env.Global("MyAddonDB_Backup").data.global.bars, nil)
+      while type(copiedKey) ~= "table" do
+        copiedKey = next(Env.Global("MyAddonDB_Backup").data.global.bars, copiedKey)
+      end
+      assert.are_not.equal(tableKey, copiedKey)
     end)
   end)
 end)

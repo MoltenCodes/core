@@ -391,14 +391,20 @@ bounded by `maxImportEntries`, a table reached twice copied once.
 
 | AceDB section | SettingsKit destination | Notes |
 |---|---|---|
-| `profiles[name]` | `profiles[name]` | `renameProfile` first; a name longer than SettingsKit's `maxProfileNameLength` (64 bytes unless SettingsKit says otherwise) is dropped (`profileNameTooLong`), so is a blank one (`profileNameBlank`), and a second profile renamed to a name already taken (`profileNameCollision`). An empty profile stays a profile. |
-| `profileKeys[key]` | `profileKeys[key]` | Kept when it names an imported profile, under its new name; otherwise dropped (`danglingProfileKey`), and that character starts on the default profile. |
+| `profiles[name]` | `profiles[name]` | `renameProfile` first; a name longer than SettingsKit's `maxProfileNameLength` (64 bytes unless SettingsKit says otherwise) is dropped (`profileNameTooLong`), so is a blank one (`profileNameBlank`). Profiles renamed onto one name collide (`keyCollision`, below). An empty profile stays a profile. |
+| `profileKeys[key]` | `profileKeys[key]` | Kept when it names an imported profile, under its new name; otherwise dropped (`danglingProfileKey`), and that character starts on the default profile. A secret choice is dropped (`secretValue`) without being looked up. |
 | `char[key]`, `realm[key]`, `class[key]`, `faction[key]` | the same | `char` keys through `renameCharacter`. |
 | `global` | `global` | |
 | `race`, `factionrealm`, `factionrealmregion`, `locale` | the map field `plan.scopes` names, or dropped | `unsupportedScope`. |
-| `namespaces[n]` | each section under `plan.namespaces[n].field`, or dropped | `unmappedNamespace`; a section whose scope does not declare the field is dropped (`undeclaredScope`). |
+| `namespaces[n]` | each section under `plan.namespaces[n].field`, or dropped | `unmappedNamespace`; a section whose scope does not declare the field is dropped (`undeclaredScope`). Where the field already holds an entry (from the main sections or another namespace), the entry already there is kept and the newcomer dropped (`keyCollision`); a map field stops at its `max` (`mapFull`). |
 | a scope the schema does not declare | dropped | `undeclaredScope`. |
 | any other top-level key | dropped | `unknownTopLevelKey`; the backup keeps it. |
+
+Keys of `profiles`, `profileKeys`, `char` and namespace sections that land on
+one layout key after `renameProfile` or `renameCharacter` collide: the key that
+keeps its own name wins, otherwise the first in sorted key order, and every
+other is dropped (`keyCollision`). Which entry survives never depends on the
+order the client saved them in.
 
 The preview also reports the current character's SettingsKit key missing from
 `char` (`currentCharacterMissing`), a character whose `UnitNameUnmodified`
@@ -416,19 +422,24 @@ walked into; every other kind (scalars, arrays, `any`, `oneOf`, `custom`) is
 checked whole. A refused value is dropped (`schemaRefused`) with a `detail`
 holding SchemaKit's path, rule and expectation, never the value; an undeclared
 field of a closed record is refused the same way, and one of an open record is
-kept. A map past its `max` keeps its first keys in sorted key order
-(`mapFull`). A function, userdata, coroutine or a table with a metatable is
+kept, its AceDB default merged in. A map past its `max` keeps its first keys
+in sorted key order, then the keys only defaults name (`mapFull` for every key
+it cannot take, a default's included). A map entry the source holds stays an
+entry even when nothing in it differs from the defaults. A function, userdata, coroutine or a table with a metatable is
 dropped (`notStorable`), a secret key or value too (`secretValue`), and the
 walk stops at SchemaKit's `maxDepth` (`tooDeep`).
 
 Where the source holds nothing, with `A` the AceDB default (resolved with its
-`"*"` and `"**"` wildcards; `"**"` also merges under keys the defaults name)
-and `S` the SettingsKit default:
+`"*"` and `"**"` wildcards; `"**"` also merges, at every depth, into the table
+a key the defaults name holds) and `S` the SettingsKit default (the record's
+own default first, then the field's):
 
 | Source holds | `A` versus `S` | Written | Report |
 |---|---|---|---|
 | a value | — | the value, if the schema accepts it | counted as `imported` |
-| nothing | equal, or `A` absent | nothing: both read `S` | — |
+| a table, `A` a table | — | the table with `A` merged in as AceDB reads it, if the schema accepts it | `materialised` when the merge added anything, otherwise `imported` |
+| nothing | equal | nothing: both read `S` | — |
+| nothing | `A` absent, `S` present | nothing: the field reads `S` where it read nothing | `changed`, `defaultDiffers`, once per field |
 | nothing | different | `A`, if the schema accepts it | `materialised`, `defaultDiffers` |
 
 A materialised `A` the schema refuses is dropped (`schemaRefused`) and the
@@ -436,8 +447,11 @@ field reads `S`. A map's `"*"`/`"**"` default is applied to every key the map
 holds; when it differs from the map's wildcard default, the report says so once
 per map (`changed`, `wildcardDefaultDiffers`), because every key never saved
 reads `S` from now on. A key the AceDB defaults name explicitly is materialised
-when the source lacks it and the defaults differ. For a scope whose AceDB
-defaults differ from SettingsKit's, an entry the source lacks entirely (a
+when the source lacks it and the defaults differ; so is a key the map's own
+SettingsKit default names, read against AceDB's wildcard. An AceDB default for
+a key a closed record does not declare cannot be written (`changed`,
+`defaultDiffers`). For a scope whose AceDB defaults differ from SettingsKit's
+(a scope AceDB has no defaults for included), an entry the source lacks entirely (a
 character that never saved anything) reads `S` where it read `A`; the report
 says so once per field (`changed`, `defaultDiffers`, path `<scope>.<field>`).
 After the import SettingsKit's compaction removes only values equal to `S`, so
@@ -455,7 +469,8 @@ it never changes what a field reads.
 | `notStorable` | dropped | a function, userdata, coroutine, a table with a metatable, or a section or entry that is not a table |
 | `secretValue` | dropped | a secret key or value |
 | `tooDeep` | dropped | nesting past SchemaKit's `maxDepth` |
-| `profileNameTooLong`, `profileNameBlank`, `profileNameCollision` | dropped | a profile name SettingsKit refuses, or one already taken after renaming |
+| `profileNameTooLong`, `profileNameBlank` | dropped | a profile name SettingsKit refuses |
+| `keyCollision` | dropped | a key renamed onto one another key kept, or an entry a namespace brings where the field already holds one |
 | `renamedProfile`, `renamedCharacter` | renamed / dropped | `renameProfile` or `renameCharacter` gave another name, or `nil` |
 | `danglingProfileKey` | dropped | a profile choice naming no imported profile |
 | `currentCharacterMissing`, `characterKeyMismatch`, `realmKeyMismatch` | changed | character and realm keys that will not line up |
