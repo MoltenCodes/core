@@ -438,6 +438,60 @@ describe("SettingsKit spec profiles", function()
       specEvent()
       assert.are.equal(1, changes)
     end)
+    it("follows the index while a character has no assignment, and applies a later one", function()
+      local client = retail(1)
+      local db = SettingsKit:Open("MyAddonDB", schemaFor())
+      db:SetSpecProfile(1, "Healing")
+      assert.are.equal("Healing", db:GetProfile())
+      db:SetSpecProfile(1, nil)
+      -- No assignment now: the change to index 2 switches nothing, but the
+      -- database must not keep believing it applied index 1.
+      client.specialization = 2
+      specEvent()
+      db:SetProfile("Manual")
+      db:SetSpecProfile(1, "Healing")
+      assert.are.equal("Manual", db:GetProfile())
+      client.specialization = 1
+      specEvent()
+      assert.are.equal("Healing", db:GetProfile())
+    end)
+  end)
+
+  describe("databases opened during a spec event", function()
+    it("switches every database when a listener opens enough databases to rehash", function()
+      local client = retail(1)
+      local names = {}
+      local switched = {}
+      local opened = false
+      for index = 1, 6 do
+        local name = "SpecDB" .. index
+        names[index] = name
+        local db = SettingsKit:Open(name, schemaFor())
+        db:SetSpecProfile(2, "Two")
+        db:OnProfileChanged(function()
+          switched[name] = (switched[name] or 0) + 1
+          -- The first switch of the event, whichever database the
+          -- traversal reaches first, opens enough databases to make the
+          -- database table grow, each with an assignment for the index.
+          if not opened then
+            opened = true
+            for extra = 1, 100 do
+              local extraDb = SettingsKit:Open("OpenedDB" .. extra, schemaFor())
+              extraDb:SetSpecProfile(2, "Two")
+            end
+          end
+        end)
+      end
+      client.specialization = 2
+      specEvent()
+      for index = 1, #names do
+        assert.are.equal("Two", SettingsKit:Open(names[index]):GetProfile())
+        assert.are.equal(1, switched[names[index]])
+      end
+      for extra = 1, 100 do
+        assert.are.equal("Two", SettingsKit:Open("OpenedDB" .. extra):GetProfile())
+      end
+    end)
   end)
 
   describe("without EventKit", function()
@@ -468,6 +522,31 @@ describe("SettingsKit spec profiles", function()
       db:SetSpecProfile(1, "Healing")
       rawset(Registry, "Find", find)
       assert.is_false(rawget(Kit, "_state").specListenerConnected)
+      assert.are.equal("Healing", db:GetProfile())
+    end)
+  end)
+
+  describe("in-place upgrade from revision 11", function()
+    it("keeps a manual choice over an assignment the database already applied", function()
+      local client = retail(1)
+      local db = SettingsKit:Open("MyAddonDB", schemaFor())
+      db:SetSpecProfile(1, "Healing")
+      db:SetProfile("Manual")
+      local changes = 0
+      db:OnProfileChanged(function()
+        changes = changes + 1
+      end)
+      local upgraded = TestEnv.LoadRevision(SettingsKit.REVISION + 1)
+      assert.are.equal(SettingsKit, upgraded)
+      assert.are.equal("Manual", db:GetProfile())
+      assert.are.equal(0, changes)
+      -- The next change of index still applies the assignments.
+      db:SetSpecProfile(2, "Damage")
+      client.specialization = 2
+      specEvent()
+      assert.are.equal("Damage", db:GetProfile())
+      client.specialization = 1
+      specEvent()
       assert.are.equal("Healing", db:GetProfile())
     end)
   end)
@@ -503,7 +582,7 @@ describe("SettingsKit spec profiles", function()
 
       local upgraded = TestEnv.ReloadPackage()
       assert.are.equal(previous, upgraded)
-      assert.are.equal(11, upgraded.REVISION)
+      assert.are.equal(12, upgraded.REVISION)
       assert.are.equal(db, upgraded:Open("MyAddonDB"))
       assert.are.equal("Healing", other:GetProfile())
       assert.is_true(state.specListenerConnected)

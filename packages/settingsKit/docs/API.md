@@ -2,7 +2,7 @@
 
 SettingsKit API generation **1** opens a database over an addon's saved variable: scoped views whose reads fall back to schema defaults and whose writes are validated at the writer's line, profiles (also switched by specialization), change signals, versioned migrations and compaction.
 
-Implementation revision: **11**.
+Implementation revision: **12**.
 
 ## Loading
 
@@ -208,6 +208,7 @@ Opening a name that is already open returns the same database. `schema` may then
 5. Checks the layout (see [The saved table](#the-saved-table)): a section that is present but not a table is refused with `SettingsKit:Open MyAddonDB.global must be a table`. The check runs before anything else is written — before the version is stamped when no migration is pending, and on the last migration's result before that result is committed — so a refused table is never half-changed. A writable database then gets every missing section; a read-only one gets none.
 6. Picks the profile: the character's recorded choice when it names a usable profile, otherwise the default profile. In a writable database the profile gets an empty table when it has none.
 7. Builds the views and, when EventKit is registered, joins the logout compaction.
+8. When this character has [spec profiles](#spec-profiles), connects the shared spec listener (with EventKit) and switches to the profile assigned to the current spec index, if there is one.
 
 ## The saved table
 
@@ -406,7 +407,7 @@ The spec index is:
 
 There is no index while `C_SpecializationInfo.IsInitialized()` answers anything but `true`, while the player has no specialization (Retail's starter specialization, whose index is above the class's count), for a talent group above 8, without `C_SpecializationInfo`, or when the client answers a secret value. Without an index nothing switches.
 
-**Switching** needs EventKit (found with `Registry:Find("eventKit", 1)`). One listener for the session is connected the first time a database has an assignment, at `Open` or `SetSpecProfile`, so an addon that never uses spec profiles costs EventKit nothing. It runs on `PLAYER_ENTERING_WORLD`, `ACTIVE_TALENT_GROUP_CHANGED`, `PLAYER_LEVEL_CHANGED` and `PLAYER_SPECIALIZATION_CHANGED` for the unit `player` (all four documented on Retail, Mists of Pandaria Classic and Classic Era), reads the index once and applies it to every open database whose character has an assignment, unless that database already applied that index. So an event that changes nothing never undoes a manual `SetProfile`; the next change of index applies the assignment again. `Open` applies the assignment for the current index at once, so after `/reload` the assignment wins over a manual choice. A database without an assignment for the new index keeps its profile. A read-only database never switches. Without EventKit, call `db:ApplySpecProfile()` yourself, for example from your own `PLAYER_SPECIALIZATION_CHANGED` handler.
+**Switching** needs EventKit (found with `Registry:Find("eventKit", 1)`). One listener for the session is connected the first time a database has an assignment, at `Open` or `SetSpecProfile`, so an addon that never uses spec profiles costs EventKit nothing. It runs on `PLAYER_ENTERING_WORLD`, `ACTIVE_TALENT_GROUP_CHANGED`, `PLAYER_LEVEL_CHANGED` and `PLAYER_SPECIALIZATION_CHANGED` for the unit `player` (all four documented on Retail, Mists of Pandaria Classic and Classic Era), reads the index once and applies it to every open database whose character has an assignment, unless that database already applied that index; a database whose character has no assignment just records the index, so an assignment made later for an index the character comes back to applies then (revision 12). So an event that changes nothing never undoes a manual `SetProfile`; the next change of index applies the assignment again. `Open` applies the assignment for the current index at once, so after `/reload` the assignment wins over a manual choice. A database without an assignment for the new index keeps its profile. A read-only database never switches. Without EventKit, call `db:ApplySpecProfile()` yourself, for example from your own `PLAYER_SPECIALIZATION_CHANGED` handler.
 
 The switch runs the database's `OnProfileChanged` listeners inside the event; a listener that touches protected frames must wait for the end of combat itself.
 
@@ -539,7 +540,7 @@ local limits = SettingsKit:GetLimits() -- a fresh table: { maxProfileNameLength 
 
 ## Error behaviour
 
-Argument failures report the line that called SettingsKit, never a line inside it, and name the parameter without formatting the value: `SettingsKit:Open options.version must be a positive integer`, `SettingsKit.Database:DeleteProfile cannot delete the current profile`. Calling `Open`, `SetLimits` or `GetLimits` on anything but the facade (`SettingsKit.Open(...)`) raises `SettingsKit:Open must be called on the SettingsKit facade; use SettingsKit:Open(...)`. Calling a method on something that is not a database raises `SettingsKit.Database:SetProfile must be called on a SettingsKit database`. View refusals report the writing (or reading) line and are prefixed with the saved-variable name, `SettingsKit (MyAddonDB) ...`. Writing a field of the database object itself raises `SettingsKit databases are read-only; write through db.<scope> instead`.
+Argument failures report the line that called SettingsKit, never a line inside it, and name the parameter without formatting the value: `SettingsKit:Open options.version must be a positive integer`, `SettingsKit.Database:DeleteProfile cannot delete the current profile`. Calling `Open`, `SetLimits`, `GetLimits` or `GetSpecIndex` on anything but the facade (`SettingsKit.Open(...)`) raises `SettingsKit:Open must be called on the SettingsKit facade; use SettingsKit:Open(...)`. Calling a method on something that is not a database raises `SettingsKit.Database:SetProfile must be called on a SettingsKit database`. View refusals report the writing (or reading) line and are prefixed with the saved-variable name, `SettingsKit (MyAddonDB) ...`. Writing a field of the database object itself raises `SettingsKit databases are read-only; write through db.<scope> instead`.
 
 Where a value can come from outside SettingsKit (an argument, an option, a saved-variable entry, a schema default), its absence is tested with `type(value) == "nil"`, never by comparing it with `nil`: that is the repository rule, which never compares anything. The one exception, approved by the owner and documented in `docs/CONTRIBUTING.md`, is a getter's fast path (revision 8), which tests the value it reads from the saved table with `value ~= nil` and only returns it. On a client with secret values a secret compared with a value of its own type raises, and so does a secret used as a key; a comparison with `nil` happens not to raise (measured on Retail 12.1.0 b69933). A saved value, a secret included, is read back as it is stored. The secret refusals above, with their exact messages, are the only new errors this adds:
 
@@ -564,6 +565,15 @@ Revision 7 adds these refusals, each at the caller's line:
 - `SettingsKit.Database:Resync must be called on a SettingsKit database` and `SettingsKit.Database:Getter must be called on a SettingsKit database`
 - `SettingsKit.Database:Getter key must not be a secret value`, asked before the key is compared or used, and `SettingsKit.Database:Getter key must not be nil or NaN`
 - `SettingsKit.Database:Getter scope must not be a secret value`, `SettingsKit.Database:Getter scope must name a declared, available scope` and `SettingsKit.Database:Getter source must be a scope name or a view of this database`
+
+Revision 11 adds these refusals, each at the caller's line:
+
+- `SettingsKit:GetSpecIndex must be called on the SettingsKit facade; use SettingsKit:GetSpecIndex(...)`
+- `SettingsKit.Database:SetSpecProfile must be called on a SettingsKit database`, and the same for `GetSpecProfile` and `ApplySpecProfile`
+- `SettingsKit.Database:SetSpecProfile index must not be a secret value` and `SettingsKit.Database:SetSpecProfile index must be an integer from 1 to 8`, and the same for `GetSpecProfile`
+- `SettingsKit.Database:SetSpecProfile name must be a non-empty string`, `... name must not be a secret value`, `... name must contain a character other than whitespace` and `... name must be at most <maxProfileNameLength> bytes long`
+- `SettingsKit.Database:SetSpecProfile cannot change <name>, which is read-only: <reason>`
+- `SettingsKit.Database:SetSpecProfile <name>.specProfiles must be a table`, when the section was replaced by something other than a table after `Open`
 
 SettingsKit never tests a value it did not create as a boolean (`if x`, `x and y`, `x or y`, `not x`), which raises on a secret as well: the host identity returns are type-tested and asked about secrecy before they are used, and the only answers it tests (SchemaKit's `Check`, `pcall`) are its dependencies' own booleans.
 
@@ -617,5 +627,7 @@ Revision 9 fixes two faults and changes no other documented behaviour: a keyed-s
 Revision 10 fixes an in-place upgrade over revisions 1 to 6: a view of a deleted or reset-away profile stays detached even when the collector removed that profile's root view before the upgrade ran, so writes through it are still refused.
 
 Revision 11 adds [spec profiles](#spec-profiles): `GetSpecIndex`, `SetSpecProfile`, `GetSpecProfile`, `ApplySpecProfile` and the `specProfiles` section. A database an older revision opened gains the methods through the shared prototype; its section is created at its first `SetSpecProfile`, and a character whose saved table already holds assignments (written by a newer copy in an earlier session) gets the listener and its assignment when the upgrade runs.
+
+Revision 12 fixes two faults of spec profiles. A database whose character's assignments were all cleared went on remembering the index it last applied, so after a change of index and back, an assignment made meanwhile for that index was never applied; every spec event now records the index for such a database too. And an in-place upgrade applied the current index's assignment again to every database, also to those a revision with spec profiles opened, undoing a manual `SetProfile` whenever a newer copy loaded in the middle of the session; only databases revision 10 or earlier opened get it now. A spec event also switches every database with an assignment when a profile listener opens databases during the event; the walk over the open databases used to skip some once the listener made their table grow.
 
 Nothing survives `/reload` except the saved variable itself: open the database again in the loaded phase.

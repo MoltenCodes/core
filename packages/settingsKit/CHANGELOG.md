@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.4.1 — 2026-11-15
+
+Fixes from a review of spec profiles. API generation 1 and the saved-table layout are unchanged.
+
+- Fixed: an assignment could stop applying. A database remembers the spec index it last applied, and a spec event skips a database that already applied the event's index; but a database whose character had no assignment any more (all cleared, or removed by `DeleteProfile` or `ResetDatabase`) was skipped by every event and kept the old index. After the character changed specialization and came back, an assignment made meanwhile for that index matched the stale index and was never applied. Every spec event now records the index for a database without an assignment too.
+- Fixed: an in-place upgrade undid a manual profile choice. Loading a newer copy applied the current index's assignment again to every open database, also to those a revision with spec profiles had opened and kept following the events, so a newer copy loading in the middle of the session (a load-on-demand addon) switched a player who had chosen another profile by hand back to the assigned one. Only databases revision 10 or earlier opened get their assignment at the upgrade now.
+- Fixed: a spec event could skip databases. The event walked the open databases with `next` while switching them, and a profile listener that opened databases during the switch added keys to the table being walked, which the Lua 5.1 manual leaves undefined: once the table grew, the walk skipped databases that should have switched (it may also raise `invalid key to 'next'`). The walk now only collects the databases to switch, into an array allocated only when there is one, and switches them afterwards.
+- Implementation revision 12. No state changed: an upgrade over revision 11 keeps every database, assignment and the shared listener.
+- Docs: `docs/API.md` lists the refusals revision 11 added under *Error behaviour*, names `GetSpecIndex` among the facade methods that refuse another receiver, and adds the spec step to *What `Open` does, in order*; the README gains the AceDB-3.0 migration table; the client suite's `EXPECTED.md` names the twenty-two database methods and `GetSpecIndex`.
+- Specs: three more (`SpecProfiles_spec.lua`, 271 in all), each failing without its fix; the third opens 100 databases from the first switch of a spec event and requires all six databases with an assignment to switch once.
+
 ## 0.4.0 — 2026-11-15
 
 Spec profiles, the LibDualSpec-1.0 counterpart (roadmap record "settingsKit spec profiles", core decision 16). API generation 1, additive.

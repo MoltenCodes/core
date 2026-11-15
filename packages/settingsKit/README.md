@@ -48,6 +48,26 @@ What each piece promises:
 - **Getters for hot loops.** `db:Getter("profile", "scale")` returns a function answering exactly what `db.profile.scale` does, defaults included, without the metamethod call or a per-call probe of the key.
 - **Bounded by default, opened on purpose.** The secret-value scan of a written table (`maxScannedEntries`, an `Open` option that accepts `SettingsKit.UNBOUNDED`), profile-name length and path-key length (`SettingsKit:SetLimits`) each have a documented default; see *Limits* in the API.
 
+## Migrating from AceDB-3.0
+
+| AceDB-3.0 | SettingsKit |
+|---|---|
+| `AceDB:New(name, defaults, true)` | `SettingsKit:Open(name, schema, { defaultProfile = "Default" })` |
+| `AceDB:New(name, defaults)` (a profile per character) | `SettingsKit:Open(name, schema, { defaultProfile = "char" })` |
+| `db.profile`, `db.global`, `db.char`, `db.realm`, `db.class`, `db.faction` | The same names, as validated views. |
+| `db.race`, `db.factionrealm`, `db.factionrealmregion`, `db.locale` | No scope: declare a keyed `map` in `global` and index it yourself. |
+| `["*"]` and `["**"]` defaults | A `map` whose `values` is `S.optional(record, {})`: every key reads the record's defaults until written. |
+| `db:GetCurrentProfile()` | `db:GetProfile()` |
+| `db:GetProfiles()` (a table and a count) | `db:GetProfiles()` (a new sorted array) |
+| `db:SetProfile`, `db:CopyProfile`, `db:ResetProfile`, `db:DeleteProfile` | The same names; deleting a missing profile is refused. |
+| `db:ResetDB()` | `db:ResetDatabase()` |
+| `db:RegisterNamespace(name, defaults)` | No namespaces in API 1: open a second database. |
+| `db:RegisterDefaults(defaults)` | The schema passed to `Open`. |
+| Callbacks `OnProfileChanged(event, db, name)` and the other three | `db:OnProfileChanged(function(db, name, previous) end)`, `OnProfileCopied`, `OnProfileReset`, `OnProfileDeleted`. |
+| Values equal to their defaults stripped at logout | `db:Compact()`, run at logout while EventKit is embedded. |
+
+Existing AceDB data is imported by BridgeKit (`ImportAceDB`, `AceDBMigration`); the full guide is in [`docs/MIGRATING_FROM_ACE3.md`](../../docs/MIGRATING_FROM_ACE3.md).
+
 ## Migrating from LibDualSpec-1.0
 
 | LibDualSpec-1.0 | SettingsKit |

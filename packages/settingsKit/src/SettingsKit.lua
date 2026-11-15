@@ -53,7 +53,7 @@
 
 local PACKAGE_NAME = "settingsKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 11
+local IMPLEMENTATION_REVISION = 12
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_SCHEMAKIT_API = 1
 local REQUIRED_SIGNALKIT_API = 1
@@ -4110,12 +4110,43 @@ do
     ---After a spec event: apply the current index to every open database whose
     ---character has an assignment, unless that database already applied it,
     ---so an event that changes nothing never undoes a manual `SetProfile`.
+    ---A database whose character has no assignment (any more) still records
+    ---the index: one it kept from before its last assignment was cleared
+    ---would otherwise match the index the character comes back to, and an
+    ---assignment made meanwhile would never apply (revision 12).
+    ---
+    ---The switches run profile listeners, which may open databases; adding a
+    ---key to `databases` while `next` walks it is undefined in Lua 5.1 (a
+    ---rehash makes the walk skip databases, or raise). So the walk only
+    ---collects the databases to switch, into an array allocated when there is
+    ---at least one, and the switches run afterwards over that array, each
+    ---checked again, since an earlier switch's listener may have changed it.
+    ---A database opened meanwhile applied its assignment at `Open`.
     local function onSpecEvent()
       local index = readSpecIndex()
       if index == nil then
         return
       end
+      ---@type table[]|nil
+      local pending = nil
+      local pendingCount = 0
       for _, db in next, databases do
+        if rawget(db, "_specIndex") ~= index then
+          if readAssignments(db) ~= nil then
+            pending = pending or {}
+            pendingCount = pendingCount + 1
+            pending[pendingCount] = db
+          else
+            -- A field of the database, not a key of `databases`.
+            rawset(db, "_specIndex", index)
+          end
+        end
+      end
+      if pending == nil then
+        return
+      end
+      for position = 1, pendingCount do
+        local db = pending[position]
         if rawget(db, "_specIndex") ~= index and readAssignments(db) ~= nil then
           applyIndex(db, index)
         end
@@ -4253,9 +4284,13 @@ do
     if type(rawget(state, "specListenerConnected")) ~= "boolean" then
       rawset(state, "specListenerConnected", false)
     end
-    -- A database an older revision opened over a saved table a newer copy
-    -- wrote in an earlier session may already hold assignments.
-    if previousRevision ~= nil then
+    -- A database a revision without spec profiles (10 or earlier) opened over
+    -- a saved table a newer copy wrote in an earlier session may already hold
+    -- assignments. A database revision 11 or later opened applied its
+    -- assignment at `Open` and follows the events since; applying it again
+    -- here would undo a manual `SetProfile` whenever a newer copy loads in
+    -- the middle of the session (revision 12).
+    if previousRevision ~= nil and previousRevision < 11 then
       for _, db in next, databases do
         onDatabaseOpened(db)
       end
