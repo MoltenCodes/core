@@ -224,6 +224,11 @@ describe("CommandKit BindOptions", function()
       { "/myopts set: expected r g b [a] between 0 and 1, or #rrggbb[aa]" },
       run("/myopts set frame.color red")
     )
+    -- Hex needs its `#`, as documented: six bare digits are no colour.
+    assert.are.same(
+      { "/myopts set: expected r g b [a] between 0 and 1, or #rrggbb[aa]" },
+      run("/myopts set frame.color ffffff")
+    )
   end)
 
   it("resets a bound option to its default and refuses one without a default", function()

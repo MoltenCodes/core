@@ -53,7 +53,7 @@
 
 local PACKAGE_NAME = "commandKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 7
+local IMPLEMENTATION_REVISION = 8
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_SCHEMAKIT_API = 1
 local OPTIONAL_OPTIONSKIT_API = 1
@@ -1298,10 +1298,12 @@ local function compileArguments(arguments, label, level, maxPositions)
   end
   local count = 0
   for key in next, arguments do
-    if type(key) ~= "number" or key < 1 or key % 1 ~= 0 or key > maxPositions then
-      if maxPositions == math.huge then
-        error(label .. " must be a list of schemas", level)
-      end
+    if type(key) ~= "number" or key < 1 or key % 1 ~= 0 then
+      error(label .. " must be a list of schemas", level)
+    end
+    -- Only a position past the limit is refused with the limit: any other
+    -- key makes the table no list at all.
+    if key > maxPositions then
       error(label .. " must be a list of at most " .. maxPositions .. " schemas", level)
     end
     count = count + 1
@@ -2459,7 +2461,9 @@ end
 local function parseColour(node, ...)
   local first = ...
   local components
-  local hex = type(first) == "string" and first:match("^#?(%x+)$") or nil
+  -- The `#` is required, as `docs/API.md` documents: without it a word of
+  -- six digits would be read as hex.
+  local hex = type(first) == "string" and first:match("^#(%x+)$") or nil
   if hex ~= nil and select("#", ...) == 1 and (#hex == 6 or #hex == 8) then
     components = {}
     for index = 1, #hex / 2 do
@@ -3562,7 +3566,10 @@ local function refuseConflictingOptions(scope, options, limits, label, level)
   end
   for index = 1, #SCOPE_OPTION_NAMES do
     local field = SCOPE_OPTION_NAMES[index]
-    if type(rawget(options, field)) ~= "nil" and limits[field] ~= rawget(scope, "_" .. field) then
+    -- `false` reads as an absent field (`readScopeLimit`), so it agrees with
+    -- any scope; secrets were refused by `readScopeOptions`.
+    local value = rawget(options, field)
+    if type(value) ~= "nil" and value ~= false and limits[field] ~= rawget(scope, "_" .. field) then
       error(
         label .. "." .. field .. " differs from the limit this addon's scope was created with",
         level

@@ -105,6 +105,18 @@ describe("CommandKit limits", function()
           scope:Register("wide", specWithPositions(SchemaKit, 17, received))
         end
       )
+      -- A key that is no position makes the table no list: the limit is not
+      -- the reason.
+      assertReportedAtCaller(
+        "CommandKit.Scope:Register spec.arguments must be a list of schemas",
+        function(mark)
+          local scope = CommandKit:CreateScope()
+          local spec = specWithPositions(SchemaKit, 2, received)
+          spec.arguments.extra = SchemaKit.string()
+          mark()
+          scope:Register("named", spec)
+        end
+      )
       local larger = CommandKit:CreateScope({ maxPositions = 17 })
       assert.is_true(larger:Register("wide", specWithPositions(SchemaKit, 17, received)))
       local open = CommandKit:CreateScope({ maxPositions = CommandKit.UNBOUNDED })
@@ -167,6 +179,8 @@ describe("CommandKit limits", function()
           CommandKit:ForAddon("MyAddon", { maxCommands = CommandKit.UNBOUNDED })
         end
       )
+      -- `false` reads as an absent field, so it agrees with any scope.
+      assert.are.equal(scope, CommandKit:ForAddon("MyAddon", { maxCommands = false }))
     end)
   end)
 

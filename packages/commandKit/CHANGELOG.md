@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.7 — 2026-11-15
+
+- Fixed: a later `ForAddon` with a limit option set to `false` was refused with `... differs from the limit this addon's scope was created with` when the scope had been created with another limit, although `false` reads as an absent field everywhere else (`readScopeLimit`). `refuseConflictingOptions` now treats `false` as absent.
+- Fixed: an `arguments` list with a key that is no position (a string, `0`, `1.5`) was refused with `... must be a list of at most 16 schemas`, naming a limit that was not the reason. That message is now kept for an integer position above `maxPositions`; any other key gives `... must be a list of schemas`.
+- Fixed: `set <path> <colour>` read six or eight bare hex digits as a colour, although `docs/API.md` documents `#` and six or eight hex digits. The `#` is now required; `ffffff` is refused with the usual colour message. No spec or document relied on bare hex.
+- `docs/API.md`, *Embedded copies and upgrades*: revisions 7 and 8 are listed among those that change no layout. Fixed a typo in the 0.2.3 entry ("comments").
+- Implementation revision 8. No layout changes: revision 8 takes over revision 7's state as it is. A command bound with `BindOptions` before the upgrade keeps the handlers of the revision that bound it, so it accepts bare hex until it is bound again.
+- New specs: `false` on a later `ForAddon` against a scope with another limit, a non-position key in `arguments`, a bare hex colour refused, and the upgrade from revision 7.
+
 ## 0.2.6 — 2026-09-25
 
 - `Register` no longer reads up to 1,024 × 8 `EMOTE<n>_CMD<m>` globals on every call. The client defines its emote commands in GlobalStrings, before any addon loads, and never changes them, so the first emote check reads them into an index of their upper-case texts and every later check asks the index. It reads them again when the effective emote count (`maxEmotes`, `MAXEMOTEINDEX`) or the host's `issecretvalue` changes, and keeps no index from a reading that met a secret value. `hash_EmoteTokenList`, the slash tables and every `SLASH_` global are still read on every check, so a name another addon or the client holds is refused as before; only an emote global an addon wrote after the first check goes unseen until one of those changes (`docs/API.md`, "The taken check").
@@ -38,7 +47,7 @@
 
 ## 0.2.3 — 2026-09-24
 
-- Secret values: the source comment on the facade check no longer claim that comparing a secret with anything, `nil` included, raises, or that a raw identity test is safe whatever the other side. They state what was measured on Retail 12.1.0 b69933 (2026-09-24): a secret compared with a value of its own type raises (`==`, `~=`, `<`, `<=` and `rawequal` alike) and a secret used as a table key raises, while a comparison with `nil` or with a value of another type answers without raising. The `type(value) == "nil"` rule stays, as the repository's uniform rule that never compares anything. Comments and documentation only: `luac -s -l` gives the same instruction listing before and after, so the implementation revision is unchanged.
+- Secret values: the source comments on the facade check no longer claim that comparing a secret with anything, `nil` included, raises, or that a raw identity test is safe whatever the other side. They state what was measured on Retail 12.1.0 b69933 (2026-09-24): a secret compared with a value of its own type raises (`==`, `~=`, `<`, `<=` and `rawequal` alike) and a secret used as a table key raises, while a comparison with `nil` or with a value of another type answers without raising. The `type(value) == "nil"` rule stays, as the repository's uniform rule that never compares anything. Comments and documentation only: `luac -s -l` gives the same instruction listing before and after, so the implementation revision is unchanged.
 
 ## 0.2.2 — 2026-09-24
 

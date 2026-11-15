@@ -253,6 +253,17 @@ describe("CommandKit bootstrap", function()
     assert.is_true(scope:Register("kept", { handler = function() end }))
   end)
 
+  it("upgrades a revision 7 package in place and checks options as revision 8 does", function()
+    local current = upgradeFrom(7)
+    -- The scope revision 7 created takes `false` as an absent limit.
+    local scope = current:ForAddon("MyAddon")
+    assert.are.equal(scope, current:ForAddon("MyAddon", { maxCommands = false }))
+    local limited = current:ForAddon("Limited", { maxCommands = 3 })
+    assert.are.equal(limited, current:ForAddon("Limited", { maxCommands = false }))
+    assert.is_true(current:CloseAddonScopes("MyAddon"))
+    assert.is_true(current:CloseAddonScopes("Limited"))
+  end)
+
   it("requires Registry", function()
     TestEnv.Reset()
     TestEnv.InstallWowApi()

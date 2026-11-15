@@ -2,7 +2,7 @@
 
 CommandKit API generation **1** provides slash commands for World of Warcraft addons: collision-safe registration owned by a scope, a hyperlink-aware argument parser, sub-commands with generated usage, schema-checked arguments, output sinks, optional tab completion, and a command line over an OptionsKit tree.
 
-Implementation revision: **7**.
+Implementation revision: **8**.
 
 ## Loading
 
@@ -509,6 +509,6 @@ The nine-point plan in `docs/ROADMAP.md` is followed except where recorded here:
 
 Several addons may embed CommandKit; Registry selects the newest compatible revision and every copy shares one facade. An upgrade happens in place: scopes, commands, the slash dispatchers already in the client's tables and the completion replacement stay, because every one of them calls through shared package state that the newer copy rewrites. Scopes and contexts gain the newer copy's methods through the shared `CommandKit.Scope` and `CommandKit.Context` prototypes. The `CommandKit.UNBOUNDED` sentinel and the package-wide limits live in the package state too, so a newer copy publishes the same sentinel and inherits every limit a consumer set, and a scope keeps the limits it was created with.
 
-Revision 2 upgrades the addon scopes revision 1 built in place and arranges their [logout close](#at-logout) while it loads, for every open one. Revisions 3, 4, 5 and 6 change no layout: each takes over the state of the one before as it is. A command bound with `BindOptions` keeps the sub-command handlers of the revision that bound it, because they are compiled into its record; binding it again after the upgrade gives it the newer ones. A later revision keeps the `OnShutdown` subscriptions and the `PLAYER_LOGOUT` watcher it inherits: both call through the facade or the shared package state, so they run the newest code, and nothing is subscribed twice.
+Revision 2 upgrades the addon scopes revision 1 built in place and arranges their [logout close](#at-logout) while it loads, for every open one. Revisions 3, 4, 5, 6, 7 and 8 change no layout: each takes over the state of the one before as it is. A command bound with `BindOptions` keeps the sub-command handlers of the revision that bound it, because they are compiled into its record; binding it again after the upgrade gives it the newer ones. A later revision keeps the `OnShutdown` subscriptions and the `PLAYER_LOGOUT` watcher it inherits: both call through the facade or the shared package state, so they run the newest code, and nothing is subscribed twice.
 
 Nothing survives `/reload`: commands are registered again when the addon loads.
