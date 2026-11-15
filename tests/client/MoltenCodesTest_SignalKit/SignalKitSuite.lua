@@ -1053,6 +1053,47 @@ busSuite:Test(
   end
 )
 
+busSuite:Test(
+  "Coalesce from the Coalescing part collects two publishes into one delivery on a later frame, keyed by their first argument",
+  function(ctx)
+    local bus = probeBus()
+    bus:DeclareTopic("Bucketed", { arguments = 1 })
+    local delivered = {}
+    local succeeded, handle = pcall(bus.Coalesce, bus, "Bucketed", 0.1, function(set)
+      local keys = {}
+      for key in pairs(set) do
+        keys[#keys + 1] = tostring(key)
+      end
+      table.sort(keys)
+      delivered[#delivered + 1] = table.concat(keys, ",")
+    end)
+    if not succeeded then
+      ctx:Log("Coalesce refused: " .. tostring(handle))
+      Harness:SkipTest(
+        ctx,
+        "the Coalescing part or SchedulerKit is not installed; bus:Coalesce names the file to embed"
+      )
+    end
+    bus:Publish("Bucketed", "first")
+    bus:Publish("Bucketed", "second")
+    ctx:Expect(#delivered):ToBe(0)
+
+    -- `WaitUntil` through an untyped alias, as the EventKit suite does: the
+    -- LuaCATS field reads to the language server as a two-value predicate.
+    ---@type any
+    local context = ctx
+    local arrived = context:WaitUntil(function()
+      return #delivered > 0
+    end, 2) == true
+    if handle ~= nil then
+      handle:Close()
+    end
+
+    ctx:Expect(arrived):ToBe(true)
+    ctx:Expect(delivered):ToEqual({ "first,second" })
+  end
+)
+
 -- signalKit.errors --------------------------------------------------------------------------
 
 local errors = newSuite("errors")

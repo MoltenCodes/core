@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.2.0 — 2026-11-15
+
+The module defaults and the module-created notice on the facade (roadmap package O, "addonKit: the module defaults and the created notice on the facade", ADR 0004).
+
+- Added: `MC:SetDefaultModuleState(enabled)`, `MC:SetDefaultModulePrototype(prototype)` and `MC:OnModuleCreated(callback | receiver[, methodName])`, forwarded to the addon container's ModuleKit methods (ModuleKit revision 23 and later) with their refusals raised at the author's line; an older ModuleKit is named with the fix.
+- Changed: `MC:NewAddon()` sets the addon object's intent back to `true` when the container's module default is `false`, unless its definition says `enabledState = false`: the module default never applies to the addon object, as in AceAddon.
+- Not changed: the Composition part registers `MC:Options`' slash command with `Register` alone, so it needs neither of CommandKit 0.3.0's parts, and its contract is unchanged.
+- Memory (host, load-and-execute footprint, debug information kept): 38,752 → 41,409 B.
+- Implementation revision 2. An in-place upgrade from revision 1 adds the three methods to `_state.methods`.
+- Specs: 72 → 79 (`ModuleDefaults_spec.lua`). The client suite gains one test (never run).
+
 ## 0.1.0 — 2026-11-15
 
 - Added AddonKit API generation 1, implementation revision 1: the single entry point for addon authors, as recorded in `docs/ROADMAP.md` (package O, core decisions 18 and 19).

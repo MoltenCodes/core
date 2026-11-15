@@ -2,7 +2,7 @@
 
 Package: `signalKit`  
 API generation: `1`  
-Implementation revision: `11`
+Implementation revision: `12`
 
 SignalKit provides deterministic callback dispatch with explicit connection lifetimes, and named message buses built on the same signals. A signal can tell its owner when it becomes observed ([hooks](#hooks-onfirst-and-onlast)), counts its firings ([`GetGeneration`](#signalgetgeneration)) and, as a [journal](#journals), keeps its last firings for explicit pull.
 
@@ -750,6 +750,109 @@ holds more than twice the subscriptions still connected, plus one, and the
 compaction is amortized `O(1)` per disconnect.
 
 `CreateScope` on a closed bus raises at the caller.
+
+## Bucketed messages
+
+AceBucket-3.0's `RegisterBucketMessage`, in SignalKit's optional
+`parts/SignalKit-Coalescing.lua`
+([ADR 0001](../../../docs/decisions/0001-kit-core-and-parts.md)). The part needs
+SchedulerKit API 1 with its own Coalescing part (and so TimerKit), which its
+manifest names, so a generated embeds.xml brings them along:
+
+```text
+Registry.lua
+SignalKit.lua
+TimerKit.lua
+SchedulerKit.lua
+parts/SchedulerKit-Coalescing.lua
+parts/SignalKit-Coalescing.lua
+```
+
+```lua
+local bus = SignalKit:ForAddon("MyAddon")
+local handle = bus:Coalesce({ "BagChanged", "BankChanged" }, 0.5, function(set)
+  for bagID in pairs(set) do
+    refreshBag(bagID)
+  end
+end)
+bus:Publish("BagChanged", 1)
+bus:Publish("BagChanged", 3)
+bus:Publish("BagChanged", 1) -- one call with { [1] = true, [3] = true } after 0.5 s
+```
+
+`bus:Coalesce(topics, intervalSeconds, callback[, options])` and
+`bus:Coalesce(topics, intervalSeconds, receiver, methodName[, options])`
+subscribe to every topic in `topics` (a topic, or an array of at most 32
+distinct topics; nothing needs declaring, as for `Subscribe`) and collect what
+is published into a **set**. The first message of a burst starts the interval;
+at its end `callback(set)`, or the receiver's method with the receiver and the set, runs once
+with everything collected. These are the semantics of EventKit's `Coalesce`;
+the family is documented once, in SchedulerKit's docs/API.md under
+"Coalescing and lanes", and SchedulerKit does the timing. The receiver's method
+must exist when `Coalesce` is called
+([ADR 0003](../../../docs/decisions/0003-method-name-callbacks.md)) and is
+looked up at each delivery; there is no default method name.
+
+`scope:Coalesce(...)` on a bus scope does the same with the subscriptions owned
+by the scope, so a module's `self.scope.Messages:Coalesce(...)` stops with the
+module.
+
+| Option | Meaning |
+|---|---|
+| `byTopic` | Key the set by topic instead of the first published argument. |
+| `maxKeys` | Distinct keys one interval may hold; SchedulerKit's default is 256. Past it a new key is refused and counted. |
+| `lane` | A SchedulerKit lane every delivery goes through. |
+
+- Every value in the set is `true`. A message whose first argument is `nil`,
+  NaN or a secret value is keyed by its topic. AceBucket counts arrivals and
+  keys a missing argument as `"nil"`; neither is kept (no corpus addon reads
+  the counts).
+- **The set is reused**: copy what you keep.
+- A callback that raises is reported through the host error handler.
+- If any topic's subscription is refused, the ones already made are
+  disconnected and the call returns `nil, "full"`.
+
+The handle:
+
+| Method | Purpose |
+|---|---|
+| `Flush()` | Deliver now; `false` when nothing was collected or the handle is closed; SchedulerKit's `false, "deferred"` / `false, "dropped"` with a lane. |
+| `IsPending()` | Whether messages wait for delivery. |
+| `GetStats()` | SchedulerKit's `{ keys, refused, delivered, deferred, dropped }`, in a reused table. |
+| `Close()` | Unsubscribe, drop what was collected and stop. Terminal; `false` when already closed. |
+| `IsClosed()` | Whether the handle is closed. |
+
+When the owner lets go without `Close` (the scope's `Close` or
+`DisconnectAll`, the bus closing at logout), the subscriptions are gone, so
+nothing more is collected; a burst already collected is dropped at its
+interval's end and the handle closes itself then. A reopened scope does not
+bring the handle back.
+
+**Cost.** Each handle holds one listener closure per topic, one bus subscription
+per topic (161 bytes, 194 through a scope) and SchedulerKit's coalesce handle;
+every handle's timing lives in one SchedulerKit scope private to the part. A
+message reaching a bucket costs the bus delivery, the key choice and
+SchedulerKit's set write. Host bench (`buckets`, against AceBucket-3.0's
+`RegisterBucketMessage` in the same run): one message into an open interval
+1.83×, a burst of ten 1.92×, a create and remove 2.78×.
+
+**Errors**, at the caller's line: `SignalKit.Bus:Coalesce topics must be a
+topic or an array of topics`; `... topics must be non-empty strings`; `...
+topics must not be secret values`; `... topics must name at least one topic`;
+`... topics must name at most 32 distinct topics`; `... intervalSeconds must be
+a finite number of zero or more`; `... callback must be a function, or a
+receiver table followed by a method name`; `... methodName must be a non-empty
+string` (or a secret); `... receiver has no method "<name>"`; `... options must
+be a table`; `... options contains unknown field "<field>"`; `...
+options.byTopic must be a boolean`; a SchedulerKit refusal of `maxKeys` or
+`lane` as `SignalKit.Bus:Coalesce: <SchedulerKit's message>`; `... cannot
+subscribe on the closed bus "<name>"`; `SignalKit.BusScope:Coalesce cannot
+subscribe in a closed scope`; `... needs SchedulerKit API 1 with Coalesce, which
+is not loaded`. Without the part, `SignalKit.Bus:Coalesce needs SignalKit's
+Coalescing part, which is not loaded: add
+signalKit\parts\SignalKit-Coalescing.lua to your embeds.xml` (the same on a
+bus scope); the part loaded before SignalKit raises `MoltenCodes SignalKit part
+Coalescing requires SignalKit API 1 to be loaded first`.
 
 ## Limits
 

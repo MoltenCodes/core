@@ -187,7 +187,12 @@ describe("CommandKit limits", function()
   describe("SetLimits and GetLimits", function()
     it("report the defaults in a fresh table on every call", function()
       local first = CommandKit:GetLimits()
-      assert.are.same({ maxCaptured = 256, maxCompletions = 32, maxEmotes = 1024 }, first)
+      assert.are.same({
+        maxCaptured = 256,
+        maxCompletions = 32,
+        maxEmotes = 1024,
+        maxCompletionProviders = 32,
+      }, first)
       first.maxCaptured = 1
       assert.are_not.equal(first, CommandKit:GetLimits())
       assert.are.equal(256, CommandKit:GetLimits().maxCaptured)
@@ -366,7 +371,7 @@ describe("CommandKit limits", function()
       assert.are.equal(CommandKit, upgraded)
       assert.are.equal(sentinel, upgraded.UNBOUNDED)
       assert.are.same(
-        { maxCaptured = sentinel, maxCompletions = 32, maxEmotes = 7 },
+        { maxCaptured = sentinel, maxCompletions = 32, maxEmotes = 7, maxCompletionProviders = 32 },
         upgraded:GetLimits()
       )
       assert.is_true(scope:Register("after", { handler = noop }))

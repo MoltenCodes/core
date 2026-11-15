@@ -799,6 +799,49 @@ lifecycle:Test(
   end
 )
 
+lifecycle:Test(
+  "a definition-table module created after ready with enabledState = false initializes but stays off, and SetEnabledState changes the intent only",
+  function(ctx)
+    local journal = newJournal()
+    local definition = journalDefinition(journal, "Off")
+    definition.enabledState = false
+    local module = trackModule(ownContainer():CreateModule(newNamePrefix() .. "Off", definition))
+
+    ctx:Expect(journal.entries):ToEqual({ "Off:initialize" })
+    ctx:Expect(module:GetEnableState()):ToEqual({ wanted = false, actual = false })
+    ctx:Expect(module:SetEnabledState(true)):ToBe(false)
+    ctx:Expect(module:IsEnabled()):ToBe(false)
+    ctx:Expect(#journal.entries):ToBe(1)
+  end
+)
+
+lifecycle:Test(
+  "a module created with a prototype after ready runs the prototype's OnInitialize and OnEnable, and ModuleKit's methods win over the prototype",
+  function(ctx)
+    local journal = newJournal()
+    local prototype = {
+      OnInitialize = function(self)
+        journal.entries[#journal.entries + 1] = self:GetName() .. ":prototype-initialize"
+      end,
+      OnEnable = function(self)
+        journal.entries[#journal.entries + 1] = self:GetName() .. ":prototype-enable"
+      end,
+      Label = function()
+        return "from the prototype"
+      end,
+    }
+    local name = newNamePrefix() .. "Shared"
+    local module = trackModule(ownContainer():CreateModule(name, { prototype = prototype }))
+
+    ctx:Expect(journal.entries):ToEqual({
+      name .. ":prototype-initialize",
+      name .. ":prototype-enable",
+    })
+    ctx:Expect(module:Label()):ToBe("from the prototype")
+    ctx:Expect(module.GetName):ToBe(ModuleKit.Module.GetName)
+  end
+)
+
 lifecycle:Skip(
   "at logout the container disables every enabled module in reverse graph order and closes its scopes",
   "not observable in a run: PLAYER_LOGOUT ends the session before a result could be printed or saved; packages/moduleKit/tests/Lifecycle_spec.lua proves it"

@@ -48,12 +48,17 @@ See [`docs/API.md`](docs/API.md) for provider scopes, lifecycle behavior, failur
 |---|---|
 | `LibStub("AceAddon-3.0"):NewAddon("MyAddon")` | `ModuleKit:ForAddon("MyAddon")`, a container of modules; the addon's own `OnInitialize`/`OnEnable` code moves into a "Main" module |
 | `MyAddon:NewModule("Bags")` | `addon:CreateModule("Bags"[, definition])` |
+| `MyAddon:NewModule("Bags", prototype)`, `SetDefaultModulePrototype(prototype)` | `addon:CreateModule("Bags", { prototype = prototype })`, `addon:SetDefaultModulePrototype(prototype)`; ModuleKit's own methods win over the prototype's |
 | `OnInitialize`, `OnEnable`, `OnDisable` | the same hook names, called with the module's resolved injections; `OnDisable` also runs at logout |
 | mixins such as `"AceEvent-3.0"` in `NewModule` | `self.scope.Events`, `Timers`, `Jobs`, `Hooks`, `Commands`, `Comm` and `Messages`, released when the module is disabled |
 | `MyAddon:GetModule("Bags")`, which raises unless `silent` | `addon:GetModule("Bags")`, `nil` when absent |
 | `MyAddon:IterateModules()` | `addon:GetModules()`, an array in creation order |
 | `MyAddon:EnableModule("Bags")`, `module:Disable()` | `addon:GetModule("Bags"):Enable()`, `module:Disable()`, under the dependency policy |
-| `SetDefaultModuleState(false)` | `self:Disable()` in the module's `OnInitialize`; it stays disabled when the addon becomes ready |
+| `SetDefaultModuleState(false)` | `addon:SetDefaultModuleState(false)`, applying to modules created afterwards; per module, `{ enabledState = false }` |
+| `module:SetEnabledState(false)` | `module:SetEnabledState(false)`: intent only, no hook runs |
+| `AceAddon:GetAddon("MyAddon", true)` | `ModuleKit:FindAddon("MyAddon")`, `nil` when absent; `assert(...)` for the raising form |
+| `AceAddon:IterateAddons()` | `ModuleKit:GetAddons()`, a sorted array of names |
+| `function MyAddon:OnModuleCreated(module)` | `addon:OnModuleCreated(MyAddon)` after defining the method, or `addon:OnModuleCreated(function(module) end)` |
 | creation order decides who starts first | `DependsOn`, `Before`, `After`: dependency order, checked for cycles |
 
 See [`docs/MIGRATING_FROM_ACE3.md`](../../docs/MIGRATING_FROM_ACE3.md#aceaddon-30) for a worked example.

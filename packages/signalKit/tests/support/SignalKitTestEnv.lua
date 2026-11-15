@@ -213,4 +213,36 @@ function SignalKitTestEnv.ToNamedLayout(SignalKit, signal)
   rawset(signal, "_layout", nil)
 end
 
+--- The Coalescing part's environment: the chain with TimerKit and
+--- SchedulerKit (the part's dependency) and the World of Warcraft timer stubs
+--- they drive, then the part itself. SchedulerKit's own `Coalescing` part is
+--- loaded too when the SchedulerKit on the path ships `Coalesce` as one.
+local Scheduled = FrameworkTestEnv.New({
+  modules = { "Registry", "SignalKit", "TimerKit", "SchedulerKit" },
+})
+
+--- Modules `Scheduled.NewPackage` loads on top of the chain.
+local SCHEDULED_EXTRA_MODULES = { "SchedulerKit-Coalescing", "SignalKit-Coalescing" }
+
+local resetScheduled = Scheduled.Reset
+
+---Reset the chain and unload the parts loaded on top of it.
+function Scheduled.Reset()
+  resetScheduled()
+  for index = 1, #SCHEDULED_EXTRA_MODULES do
+    package.loaded[SCHEDULED_EXTRA_MODULES[index]] = nil
+  end
+end
+
+---Load the chain and the Coalescing part, and return SignalKit.
+---@return table SignalKit
+function Scheduled.NewSignalKit()
+  local _, _, SignalKit = Scheduled.NewPackage()
+  pcall(require, "SchedulerKit-Coalescing")
+  require("SignalKit-Coalescing")
+  return SignalKit
+end
+
+SignalKitTestEnv.Scheduled = Scheduled
+
 return SignalKitTestEnv

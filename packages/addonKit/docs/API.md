@@ -45,7 +45,7 @@ The package facade, `MoltenCodes.Registries[2]:Get("addonKit", 1)`:
 | `GetCatalogue()` | A fresh `{ [facadeName] = { packageId, api } }` of every Kit a facade hands out. |
 | `SetLimits(limits)` / `GetLimits()` | `maxFacades` (see [Limits](#limits)). |
 | `API` | `1`. |
-| `REVISION` | The implementation revision active in the session (`1`). |
+| `REVISION` | The implementation revision active in the session (`2`). |
 | `MAX_FACADES` | `256`, the default of `maxFacades`. |
 | `FACADES_CEILING` | `4096`, the highest `maxFacades` accepts. |
 
@@ -62,6 +62,9 @@ The addon's facade, `local MC = MoltenCodes:For(...)`:
 | `NewModule(name, definition?)` | A module of the addon. | core |
 | `GetAddon()` | The addon object. | core |
 | `GetModule(name)` | A module. | core |
+| `SetDefaultModuleState(enabled)` | The starting intent of modules created from now on; never the addon object's. Revision 2. | core |
+| `SetDefaultModulePrototype(prototype)` | The prototype of modules created from now on, or `nil`. Revision 2. | core |
+| `OnModuleCreated(callback)` / `OnModuleCreated(receiver[, methodName])` | Hear of every module created from now on. Revision 2. | core |
 | `Database(savedVariable, defaults, options?)` | A SettingsKit database from plain defaults. | Database |
 | `Range(min, max, default)` | An optional bounded number node. | Database |
 | `Enum(values, default)` | An optional choice node. | Database |
@@ -237,6 +240,37 @@ caller:
 MC:GetAddon MyAddon has no addon object yet; create it with MC:NewAddon() in the file the .toc loads first
 MC:GetModule MyAddon has no module named Bags; create it with MC:NewModule("Bags")
 ```
+
+### Module defaults and the created notice
+
+`MC:SetDefaultModuleState(enabled)`, `MC:SetDefaultModulePrototype(prototype)`
+and `MC:OnModuleCreated(callback | receiver[, methodName])` call the addon
+container's ModuleKit methods of the same names (ModuleKit revision 23 and
+later, docs/API.md of ModuleKit, "Intent versus fact", "Module prototypes" and
+"The module-created notice") and return what they return; ModuleKit's refusals
+are raised at the author's line. They are AceAddon-3.0's
+`MyAddon:SetDefaultModuleState(false)`, `SetDefaultModulePrototype` and
+`OnModuleCreated`, on `MC` because the addon object is itself a module.
+`MC:NewModule(name, { enabledState = false, prototype = Shared })` passes the
+two definition fields through as it passes every other.
+
+```lua
+local addon = MC:NewAddon()
+MC:SetDefaultModuleState(false)        -- modules start off; the addon does not
+MC:SetDefaultModulePrototype(BagModule)
+function addon:OnModuleCreated(module) end
+MC:OnModuleCreated(addon)              -- after the method exists
+```
+
+The module default never applies to the addon object, as in AceAddon: when it
+is `false` and `MC:NewAddon()` is called after it, the new addon object's
+intent is set back to `true` (unless its definition says `enabledState =
+false`), so the addon still enables at login. A default prototype set before
+`MC:NewAddon()` does apply to the addon object; set the defaults after
+`MC:NewAddon()`, as AceAddon requires. With a ModuleKit older than revision 23
+each method raises `MC:SetDefaultModuleState needs ModuleKit revision 23 or
+later; update the copy of moduleKit your addon embeds` (and the same for the
+other two).
 
 ## Database part
 
@@ -444,7 +478,9 @@ takes over in place: the facades, their cached Kits and pins, the facade
 metatable (its `__index` and `__newindex` are stable closures that dispatch
 through the state), the namespace entry (one function for the session) and
 the parts. A part keeps its own revision in the state; a part file of an equal
-or lower revision than the one installed loads as a no-op. See
+or lower revision than the one installed loads as a no-op. Revision 2 adds the
+three module-default methods to `_state.methods`, so facades made by revision
+1 gain them through the shared metatable. See
 [`INTERNALS.md`](INTERNALS.md).
 
 ## Dependencies

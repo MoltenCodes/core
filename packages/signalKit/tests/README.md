@@ -101,6 +101,17 @@ Coverage includes:
   every other kind, empty, numeric, `false` and `nil` topics, a bad topic on a
   closed bus), and a secret-value probe present at load used without reading
   the global again;
+- the Coalescing part (`Coalescing_spec.lua`, on the `Scheduled` environment of
+  `SignalKitTestEnv`, which loads TimerKit, SchedulerKit and its Coalescing part
+  when SchedulerKit ships it as one): one delivery per interval keyed by the
+  first argument, a missing first argument and `byTopic` keyed by topic, a
+  secret first argument keyed by topic on the `mainline` host, the receiver
+  form and its registration check, `Flush` and `Close`, a scope's `Close`
+  stopping a pending burst and its handle (also after `Reopen`), a raising
+  callback reported, `"full"` with nothing left subscribed, every argument
+  refusal at the caller, a missing SchedulerKit, the stubs without the part,
+  the part before its core, an equal part revision changing nothing, the part
+  serving across a core upgrade, and `parts` added over revision-11 state;
 - `BusScope:Reopen`: the same object reopened empty, `false` when open,
   `false, "closed"` when its bus is closed;
 - runtime API/revision metadata consistency with the package manifest.
@@ -110,6 +121,7 @@ Spec files:
 | File | Covers |
 |---|---|
 | `SignalKit_spec.lua` | construction, argument forwarding, ordering, signal independence |
+| `Coalescing_spec.lua` | the Coalescing part: bucketed bus messages, their handle, the stubs without the part, upgrades |
 | `Once_spec.lua` | once-listeners, including recursive dispatch |
 | `Mutation_spec.lua` | connect, disconnect and `DisconnectAll` during dispatch |
 | `Reentrancy_spec.lua` | nested `Fire()` |

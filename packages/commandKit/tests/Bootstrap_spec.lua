@@ -35,7 +35,7 @@ describe("CommandKit bootstrap", function()
     local upgraded = TestEnv.LoadRevision(CommandKit.REVISION + 1)
     assert.are.equal(sentinel, upgraded.UNBOUNDED)
     assert.are.same(
-      { maxCaptured = sentinel, maxCompletions = 8, maxEmotes = 1024 },
+      { maxCaptured = sentinel, maxCompletions = 8, maxEmotes = 1024, maxCompletionProviders = 32 },
       upgraded:GetLimits()
     )
   end)
@@ -138,6 +138,8 @@ describe("CommandKit bootstrap", function()
     require("SchemaKit")
     require("OptionsKit")
     local previous = TestEnv.LoadRevision(previousRevision)
+    require("CommandKit-Options")
+    require("CommandKit-Completion")
     local previousState = rawget(previous, "_state")
     local scopePrototype = previous.Scope
     local contextPrototype = previous.Context

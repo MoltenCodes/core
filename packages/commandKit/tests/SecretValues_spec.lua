@@ -291,7 +291,7 @@ describe("CommandKit and secret values", function()
       end
     )
     assert.are.same(
-      { maxCaptured = 256, maxCompletions = 32, maxEmotes = 1024 },
+      { maxCaptured = 256, maxCompletions = 32, maxEmotes = 1024, maxCompletionProviders = 32 },
       CommandKit:GetLimits()
     )
   end)

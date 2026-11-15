@@ -436,6 +436,7 @@ describe("CommandKit BindOptions", function()
   it("requires OptionsKit", function()
     TestEnv.Reset()
     local Alone = TestEnv.NewPackageAlone()
+    require("CommandKit-Options")
     TestEnv.expectErrorContaining(
       "CommandKit.Scope:BindOptions requires OptionsKit API 1",
       function()

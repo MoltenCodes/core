@@ -171,6 +171,24 @@ describe("ModuleKit kept module scopes", function()
     assert.is_true(type(EventKit.Scope.Reopen) ~= "function" or scopes[1] == scopes[2])
     assert.are.equal(1, scopes[2]:GetActiveCount())
   end)
+
+  it("keeps scope.Commands across enables now that CommandKit can reopen it", function()
+    local module = ModuleKit:ForAddon("MyAddon"):CreateModule("Slash")
+    local scopes = {}
+    module.OnEnable = function(self)
+      local commands = self.scope.Commands
+      scopes[#scopes + 1] = commands
+      commands:Register("keptslash", { handler = function() end })
+    end
+
+    module:Enable()
+    module:Disable()
+    assert.is_true(scopes[1]:IsClosed())
+    module:Enable()
+
+    assert.are.equal(scopes[1], scopes[2])
+    assert.is_true(scopes[2]:IsRegistered("keptslash"))
+  end)
 end)
 
 describe("ModuleKit blocked-module scan flag", function()
@@ -404,7 +422,7 @@ describe("ModuleKit in-place upgrade from revision 21", function()
     local upgraded = require("ModuleKit")
 
     assert.are.equal(previous, upgraded)
-    assert.are.equal(22, upgraded.REVISION)
+    assert.are.equal(23, upgraded.REVISION)
     assert.are.equal(addon, upgraded:ForAddon("MyAddon"))
     assert.are.equal("nil", addon:GetMissingScopePolicy())
     base:Enable()

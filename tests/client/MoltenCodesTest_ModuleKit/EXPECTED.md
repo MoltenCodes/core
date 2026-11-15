@@ -36,6 +36,8 @@ MoltenCodes Test: PASS moduleKit.facade: the installed ModuleKit carries the rev
 MoltenCodes Test: PASS moduleKit.lifecycle: ForAddon with this test addon's name, asked after its loaded and ready phases, returns one container that names the addon and carries every documented method
 MoltenCodes Test: PASS moduleKit.lifecycle: a definition-table module created after ready catches up inside CreateModule: OnInitialize, then OnEnable with the injection table, and it returns enabled and wanted
 MoltenCodes Test: PASS moduleKit.lifecycle: a mutable module created after ready stays created until Activate, which runs OnInitialize then OnEnable at once
+MoltenCodes Test: PASS moduleKit.lifecycle: a definition-table module created after ready with enabledState = false initializes but stays off, and SetEnabledState changes the intent only
+MoltenCodes Test: PASS moduleKit.lifecycle: a module created with a prototype after ready runs the prototype's OnInitialize and OnEnable, and ModuleKit's methods win over the prototype
 MoltenCodes Test: SKIP moduleKit.lifecycle: at logout the container disables every enabled module in reverse graph order and closes its scopes -- not observable in a run: PLAYER_LOGOUT ends the session before a result could be printed or saved; packages/moduleKit/tests/Lifecycle_spec.lua proves it
 MoltenCodes Test: SKIP moduleKit.lifecycle: a halt of this addon or of a required addon takes the affected modules down and keeps them blocked -- not exercised: a halt is terminal for the session (LifecycleKit has no resume), so the addon would stay halted until /reload; packages/moduleKit/tests/Halted_spec.lua proves it
 MoltenCodes Test: PASS moduleKit.ordering: EnableAll initializes and enables Before, DependsOn and After modules in graph order, not creation order, and DisableAll disables them in reverse
@@ -70,7 +72,7 @@ MoltenCodes Test: PASS moduleKit.secrets: ProvideValue accepts a secret value, w
 MoltenCodes Test: PASS moduleKit.secrets: SetLimits with a secret maxRequiredAddons is refused at the calling line and changes nothing
 MoltenCodes Test: PASS moduleKit.secrets: SetDependencyPolicy with a secret policy is refused at the calling line and keeps the policy
 MoltenCodes Test: PASS moduleKit.allocation: GetModule, HasModule, GetState, IsEnabled and the Resolve of a cached singleton and module-scoped value allocate nothing over 10000 rounds (allocation guard)
-MoltenCodes Test: moduleKit: 36 passed, 0 failed, 3 skipped, 0 timed out (39 tests)
+MoltenCodes Test: moduleKit: 38 passed, 0 failed, 3 skipped, 0 timed out (41 tests)
 ```
 
 The three `SKIP` lines are expected on every run:
@@ -101,7 +103,7 @@ The seven `moduleKit.secrets` tests need the client's `issecretvalue` and
 prints each of the seven with `SKIP` and
 ` -- the client has no issecretvalue and secretwrap; the secret path was not
 exercised`, and the totals line reads
-`29 passed, 0 failed, 10 skipped, 0 timed out (39 tests)`. A client that has
+`31 passed, 0 failed, 10 skipped, 0 timed out (41 tests)`. A client that has
 both but whose `secretwrap` makes no secret (secrets are not active there)
 prints these seven lines in their place, with the same totals line:
 
@@ -122,7 +124,7 @@ core client function the apiKit metadata does not document for any flavour;
 the suite asks for it once, when it loads. Retail 12.1 has it. A client
 without it prints
 `MoltenCodes Test: SKIP moduleKit.scopes: scope.Events delivers the CVAR_UPDATE of a chatBubbles change while enabled; after Disable its frame is gone from GetFramesRegisteredForEvent and a second change reaches nothing -- the client has no GetFramesRegisteredForEvent; the host registration was not read back`
-and one more skipped test in the totals line (`35 passed, 0 failed, 4
+and one more skipped test in the totals line (`37 passed, 0 failed, 4
 skipped` on Retail's numbers).
 
 ## Per flavour
@@ -143,7 +145,7 @@ the suite reads at load is missing on a Classic client.
 ### Retail (12.1)
 
 The lines above:
-`MoltenCodes Test: moduleKit: 36 passed, 0 failed, 3 skipped, 0 timed out (39 tests)`,
+`MoltenCodes Test: moduleKit: 38 passed, 0 failed, 3 skipped, 0 timed out (41 tests)`,
 with the three `SKIP` lines listed under them.
 
 ### Classic Era (1.15) and Mists of Pandaria Classic (5.5)
@@ -156,10 +158,10 @@ gives, read when the suite loads: whether `secretwrap` makes a value
 functions).
 
 - Secrets made: the totals line is Retail's,
-  `MoltenCodes Test: moduleKit: 36 passed, 0 failed, 3 skipped, 0 timed out (39 tests)`.
+  `MoltenCodes Test: moduleKit: 38 passed, 0 failed, 3 skipped, 0 timed out (41 tests)`.
 - No secrets made: the seven `SKIP` lines above replace the seven `PASS`
   lines of `moduleKit.secrets`, and the totals line is
-  `MoltenCodes Test: moduleKit: 29 passed, 0 failed, 10 skipped, 0 timed out (39 tests)`.
+  `MoltenCodes Test: moduleKit: 31 passed, 0 failed, 10 skipped, 0 timed out (41 tests)`.
 
 ## Visible side effects
 
@@ -229,7 +231,7 @@ variable.
 ## What counts as unexpected
 
 - Any `FAIL` or `TIMEOUT` line, any `SKIP` other than the three listed, or a
-  totals line other than `36 passed, 0 failed, 3 skipped, 0 timed out (39 tests)`
+  totals line other than `38 passed, 0 failed, 3 skipped, 0 timed out (41 tests)`
   (on a Classic client, other than the two totals lines under
   [Per flavour](#per-flavour)).
 - No login line, or `Expected.lua is missing`: the harness or the installer did

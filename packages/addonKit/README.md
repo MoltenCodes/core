@@ -177,6 +177,9 @@ is.
 | `LibStub("AceAddon-3.0"):NewAddon("MyAddon", "AceEvent-3.0", "AceTimer-3.0")` | `local MC = MoltenCodes:For(...)`, `local addon = MC:NewAddon()` |
 | `addon:OnInitialize()`, `OnEnable()`, `OnDisable()` | the same three hooks on the addon object |
 | `addon:NewModule("Bags")`, `addon:EnableModule("Bags")` | `MC:NewModule("Bags")`, `module:Enable()`; the module depends on the addon, as Ace's modules do |
+| `addon:SetDefaultModuleState(false)`, `module:SetEnabledState(false)` | `MC:SetDefaultModuleState(false)`, `module:SetEnabledState(false)` |
+| `addon:SetDefaultModulePrototype(prototype)`, `addon:NewModule("Bags", prototype)` | `MC:SetDefaultModulePrototype(prototype)`, `MC:NewModule("Bags", { prototype = prototype })` |
+| `function addon:OnModuleCreated(module)` | the same method, then `MC:OnModuleCreated(addon)` |
 | `LibStub("AceAddon-3.0"):GetAddon("MyAddon")` | `MC:GetAddon()` |
 | `self:RegisterEvent("BAG_UPDATE")`, `UnregisterEvent` | `self.scope.Events:Connect("BAG_UPDATE", handler)`, `connection:Disconnect()`; released when the addon is disabled |
 | `self:ScheduleTimer(func, 5)`, `ScheduleRepeatingTimer` | `self.scope.Timers:After(5, func)`, `Every(60, func)` |

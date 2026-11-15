@@ -4,7 +4,7 @@ local expectErrorContaining = TestEnv.expectErrorContaining
 
 ---The implementation revision `src/SignalKit.lua` carries; `Manifest_spec.lua`
 ---pins the same number against `package.manifest.json`.
-local CURRENT_REVISION = 11
+local CURRENT_REVISION = 12
 
 ---The package-wide limits a fresh session starts with.
 local DEFAULT_LIMITS = { maxBuses = 64, maxJournalCapacity = 1024, maxJournalArguments = 8 }

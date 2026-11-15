@@ -15,7 +15,7 @@ additional public API; the contract is [`API.md`](API.md).
 | `facades` | Addon name to its facade. |
 | `records` | Facade to its private record (below). |
 | `facadeCount` | How many facades exist; held to `maxFacades`. |
-| `methods` | Facade member name to function: the core's five methods and each part's. Each loader writes only its own keys. |
+| `methods` | Facade member name to function: the core's eight methods (revision 2 adds `SetDefaultModuleState`, `SetDefaultModulePrototype` and `OnModuleCreated`, thin forwarders to the addon's ModuleKit container) and each part's. Each loader writes only its own keys. |
 | `fields` | Facade field name to a factory `function(record)` whose value is stored on the facade at its first read (`LAUNCHER_DEFAULTS`). |
 | `helpers` | Core functions the parts call at call time (below). |
 | `parts` | Part name to `{ revision = n }`, written by each part file. |

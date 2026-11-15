@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.9.0 — 2026-11-15
+
+Bucketed bus messages, AceBucket-3.0's `RegisterBucketMessage`, as a part (roadmap package O, "signalKit: bucketed bus messages", ADR 0001 and ADR 0003).
+
+- Added (part `parts/SignalKit-Coalescing.lua`): `bus:Coalesce(topics, intervalSeconds, callback[, options])`, the receiver form `bus:Coalesce(topics, intervalSeconds, receiver, methodName[, options])`, and the same on a bus scope. The first message starts the interval, the set is keyed by the first argument (`nil`, NaN and secrets by topic; `byTopic`), `maxKeys` and `lane` go to SchedulerKit, whose Coalescing part does the timing. A handle has `Flush`, `IsPending`, `GetStats`, `Close` and `IsClosed`, and stops by itself once its bus or scope let its subscriptions go.
+- Added (core): `_state.parts`, and `Coalesce` on the bus and bus-scope prototypes, which names the file to embed while the part is not loaded. No other core change.
+- Memory (host, load-and-execute footprint, debug information kept): the core 89,345 → 90,327 B; the part 17,610 B (AceBucket-3.0, which also buckets events, holds 9,788 B).
+- Performance (host bench `buckets`, against AceBucket-3.0's `RegisterBucketMessage` in the same run): message-record 1.83×, message-burst 1.92×, message-register-remove 2.78×. Publish and subscribe paths are unchanged.
+- Implementation revision 12. An in-place upgrade from revision 11 adds `parts`; buses and subscriptions are kept.
+- Specs: 266 → 281 (`Coalescing_spec.lua`). The client suite gains a bucket test across frames (never run).
+
 ## 0.8.0 — 2026-11-15
 
 - Added: method-name callbacks. `signal:Connect(receiver, methodName)`, `signal:Once(receiver, methodName)`, `bus:Subscribe(topic, receiver[, methodName])`, `bus:SubscribeOnce(...)` and the two bus scope subscriptions take a receiver table and the name of one of its methods in place of a function, the form CallbackHandler-1.0's `RegisterCallback(self, "event", "method")` and AceEvent-3.0's `RegisterMessage("Name", "Method")` offer. A bus subscription without a name uses the method named after the topic (AceEvent's default); a raw signal needs the name. The method must exist when the call is made, or it raises at the caller's line (`<Method> receiver has no method "<name>"`; also `<Method> methodName must be a non-empty string` and `<Method> methodName must not be a secret value`). It is looked up on the receiver at every delivery, as those libraries do, so replacing it later reaches existing subscriptions; a method missing at delivery time raises inside the delivery, which a bus reports through the host error handler and a raw signal propagates to the `Fire` caller, and the connection stays. The method receives the receiver, then what a function listener receives (a bus subscriber is not passed the topic). `bus:Unsubscribe` matches functions only. The form costs one closure (136 bytes) per registration and one Lua call per delivery; function listeners pay nothing for it.

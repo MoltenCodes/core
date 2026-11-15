@@ -48,7 +48,7 @@
 
 local PACKAGE_NAME = "signalKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 11
+local IMPLEMENTATION_REVISION = 12
 local REQUIRED_REGISTRY_API = 2
 
 -- Schema of the private `_state` table. Revisions 1 to 3 carried no state at
@@ -180,9 +180,10 @@ local BUS_METHODS = {
   "Unsubscribe",
   "Topics",
   "CreateScope",
+  "Coalesce",
 }
 local BUS_SCOPE_METHODS =
-  { "Subscribe", "SubscribeOnce", "DisconnectAll", "Close", "IsClosed", "Reopen" }
+  { "Subscribe", "SubscribeOnce", "DisconnectAll", "Close", "IsClosed", "Reopen", "Coalesce" }
 local JOURNAL_METHODS = { "Fire", "History" }
 
 ---Whether every name in `methods` is a function field of `prototype`.
@@ -3038,6 +3039,36 @@ rawset(SCOPE_PROTOTYPE, "DisconnectAll", scopeDisconnectAll)
 rawset(SCOPE_PROTOTYPE, "Close", scopeClose)
 rawset(SCOPE_PROTOTYPE, "IsClosed", scopeIsClosed)
 rawset(SCOPE_PROTOTYPE, "Reopen", scopeReopen)
+
+---Put `Coalesce` on the bus and bus-scope prototypes: the Coalescing part's
+---methods when it is loaded (ADR 0001), and otherwise a method that names the
+---file to embed. The part records itself in `_state.parts` and installs its
+---methods; a later core revision reinstalls them here, so either load order
+---ends with the part serving.
+local function installPartMethods()
+  if type(rawget(state, "parts")) ~= "table" then
+    rawset(state, "parts", {})
+  end
+  local part = rawget(rawget(state, "parts"), "Coalescing")
+  local methods = type(part) == "table" and part.methods or nil
+  local busCoalesce = type(methods) == "table" and methods.BusCoalesce or nil
+  local scopeCoalesce = type(methods) == "table" and methods.ScopeCoalesce or nil
+  local fix = " needs SignalKit's Coalescing part, which is not loaded:"
+    .. " add signalKit\\parts\\SignalKit-Coalescing.lua to your embeds.xml"
+  if type(busCoalesce) ~= "function" then
+    busCoalesce = function()
+      error("SignalKit.Bus:Coalesce" .. fix, 2)
+    end
+  end
+  if type(scopeCoalesce) ~= "function" then
+    scopeCoalesce = function()
+      error("SignalKit.BusScope:Coalesce" .. fix, 2)
+    end
+  end
+  rawset(BUS_PROTOTYPE, "Coalesce", busCoalesce)
+  rawset(SCOPE_PROTOTYPE, "Coalesce", scopeCoalesce)
+end
+installPartMethods()
 
 rawset(JOURNAL_PROTOTYPE, "Fire", journalFire)
 rawset(JOURNAL_PROTOTYPE, "History", journalHistory)

@@ -2,9 +2,19 @@
 
 CommandKit API generation **1** provides slash commands for World of Warcraft addons: collision-safe registration owned by a scope, a hyperlink-aware argument parser, sub-commands with generated usage, schema-checked arguments, output sinks, optional tab completion, and a command line over an OptionsKit tree.
 
-Implementation revision: **9**.
+Implementation revision: **11**.
 
 ## Loading
+
+CommandKit is a core file and two optional parts
+([ADR 0001](../../../docs/decisions/0001-kit-core-and-parts.md)). An addon
+embeds the core and only the parts it uses:
+
+| File | Holds | Needs |
+|---|---|---|
+| `CommandKit.lua` | registration, parsing, dispatch, sinks, the prefix, `Dispatch`, `Reopen` | Registry API 2, SchemaKit API 1 |
+| `parts/CommandKit-Options.lua` | `BindOptions` and `GetBoundTree`: the command line over an OptionsKit tree | the core, OptionsKit API 1 |
+| `parts/CommandKit-Completion.lua` | `EnableCompletion`, `DisableCompletion` and the completion providers | the core |
 
 Runtime files must be loaded in dependency order:
 
@@ -12,7 +22,19 @@ Runtime files must be loaded in dependency order:
 Registry.lua
 SchemaKit.lua
 CommandKit.lua
+parts/CommandKit-Completion.lua      (optional)
+OptionsKit.lua                       (with the Options part)
+parts/CommandKit-Options.lua         (optional)
 ```
+
+`python3 -m tooling.package.embeds` writes this order for any selection. A
+part method called while its part is not loaded raises at the caller's line
+and names the file: `CommandKit.Scope:BindOptions needs CommandKit's Options
+part, which is not loaded: add commandKit\parts\CommandKit-Options.lua to
+your embeds.xml`. A part loaded without its core raises `MoltenCodes
+CommandKit part Options requires CommandKit API 1 to be loaded first` (the
+same for `Completion`). Until revision 11 both were inside `CommandKit.lua`;
+an addon that calls them adds the part's file to its list.
 
 Portable WoW code resolves the package through Registry:
 
@@ -29,11 +51,11 @@ CommandKit does not rely on `require()` at runtime. Loaded without Registry API 
 | `SlashCmdList` | `Register`, `BindOptions` | Both raise at the caller. |
 | `SLASH_<key><n>`, `SecureCmdList`, `ChatTypeInfo`, `hash_ChatTypeInfoList`, `hash_SlashCmdList`, `IsSecureCmd`, `hash_EmoteTokenList`, `EMOTE<n>_CMD<m>`, `MAXEMOTEINDEX` | the taken and emote checks | That source is not consulted; with none of them, nothing is found taken. |
 | `DEFAULT_CHAT_FRAME` | the default sink | Output goes to `print`. |
-| `ChatEdit_CustomTabPressed` | `EnableCompletion` | `EnableCompletion` returns `false`; nothing is installed. |
+| `ChatEdit_CustomTabPressed` | `EnableCompletion`, `RegisterCompletion` (Completion part) | `EnableCompletion` returns `false` and `RegisterCompletion` `nil, "unavailable"`; nothing is installed. |
 | `ChatEdit_GetActiveWindow` | completion, when the client passes no edit box | That Tab press is not completed. |
 | `geterrorhandler` | handler and completion failures | Falls back to `print`. |
-| OptionsKit API 1, through `Registry:Find` | `BindOptions` | `BindOptions` raises at the caller. |
-| LocaleKit API 1, through `Registry:Find` | `context:Printf` | `string.format`, without indexed specifiers. |
+| OptionsKit API 1, through `Registry:Find` | `BindOptions` (Options part) | `BindOptions` raises at the caller. |
+| LocaleKit API 1, through `Registry:Find` | `context:Printf`, `scope:Printf` | `string.format`, without indexed specifiers. |
 | ClientKit API 1, through `Registry:Find` | every secret check but the taken check, which asks `issecretvalue` directly. Looked up on the first secret question and kept, a miss included (revision 10): a ClientKit registered after that question is not asked, which changes no answer on the client, since ClientKit's `IsSecret` asks the same `issecretvalue`. | The host's `issecretvalue`; without that, nothing is secret. |
 | LifecycleKit API 1, through `Registry:Find` | closing an addon scope at logout (see [At logout](#at-logout)) | EventKit's `PLAYER_LOGOUT` closes it instead. |
 | EventKit API 1, through `Registry:Find` | closing an addon scope at logout when LifecycleKit is absent | Without either, the consumer closes it (case d). |
@@ -54,6 +76,7 @@ Package facade:
 | `CaptureSink()` | A sink that keeps its lines, for tests. |
 | `SetLimits(limits)` | Change any subset of the package-wide limits, shared by every consumer. |
 | `GetLimits()` | A fresh table of the package-wide limits (allocates). |
+| `GetCommands()` | A new sorted array of every slash name CommandKit serves in the session, whichever scope owns it: AceConsole's `IterateChatCommands`. Revision 11. |
 | `UNBOUNDED` | The sentinel a limit accepts to lift it, where the memory is the consumer's own. |
 | `MAX_COMMANDS` | `64`: the default `maxCommands` of a scope. |
 | `MAX_DEPTH` | `3`: the deepest sub-command nesting, a hard ceiling. |
@@ -67,9 +90,16 @@ Scope:
 | `Unregister(name)` | Unregister one command. `false` when this scope has no such command. |
 | `IsRegistered(name)` | Whether this scope registered `name`. |
 | `SetSink(sink)` | Send this scope's output to `sink`; `nil` restores the chat frame. |
-| `BindOptions(tree, commandName, options?)` | Register `/commandName` over an OptionsKit tree. |
-| `EnableCompletion()`, `DisableCompletion()` | Tab completion for this scope's commands. |
-| `Close()` | Unregister everything and turn completion off. Terminal. |
+| `GetCommands()` | A new sorted array of the slash names this scope serves. Revision 11. |
+| `SetPrefix(prefix)`, `GetPrefix()` | Start every line this scope writes with `prefix`; `nil` clears it. See [Prefix and printing](#prefix-and-printing). Revision 11. |
+| `Print(...)`, `Printf(template, ...)` | Write to this scope's sink outside any handler. Revision 11. |
+| `Dispatch(name, text)` | Run `/name text` as the client would. See [Dispatch from code](#dispatch-from-code). Revision 11. |
+| `BindOptions(tree, commandName, options?)` | Options part: register `/commandName` over an OptionsKit tree. |
+| `GetBoundTree(name)` | Options part: the tree `/name` was bound to, or `nil`. Revision 11. |
+| `EnableCompletion()`, `DisableCompletion()` | Completion part: Tab completion for this scope's commands. |
+| `RegisterCompletion(name, pattern, provider)`, `UnregisterCompletion(name)`, `IsCompletionRegistered(name)` | Completion part: AceTab's completion providers. See [Completion providers](#completion-providers). Revision 11. |
+| `Close()` | Unregister everything, turn completion off and release the providers. |
+| `Reopen()` | Open a closed manual scope again, empty. See [Reopening a manual scope](#reopening-a-manual-scope). Revision 11. |
 | `IsClosed()`, `GetActiveCount()`, `GetAddonName()` | State. |
 
 Context, handed to every handler and completion function:
@@ -293,6 +323,10 @@ When the user types `/name text`, the client calls the dispatcher with `text`. C
 
 A handler may run another slash command. Dispatches nest up to 4 deep; the fifth prints `/name: commands nested too deeply` and does nothing.
 
+### Dispatch from code
+
+`scope:Dispatch(name, text)` runs the scope's command `/name` with `text` exactly as the client runs a typed `/name text`: the same dispatcher, the same frames, the same output and failure reporting (a raising handler is reported, never raised to the caller). It returns `true` when it ran, and `false` when this scope serves no command `name`. It is AceConfigCmd-3.0's `HandleCommand`: a button, a broker click or another command can drive a bound command line without the player typing it. `name` is a non-empty string, `text` a string; a secret in either, or a closed scope, raises at the caller.
+
 ## The context
 
 A handler, and a `complete` function, receive a context. **It is valid only while that call runs**: CommandKit reuses it for the next command, and every method raises `CommandKit.Context:Print cannot be used after its command returned` on a context kept longer. For output after the command returned, keep your own reference to a sink.
@@ -342,7 +376,22 @@ A sink is anything with an `AddMessage(sink, text)` method; a chat frame is one.
 | `Messages()` | A fresh array of the kept lines, oldest first. |
 | `Clear()` | Forget every line. |
 
+## Prefix and printing
+
+`scope:SetPrefix(prefix)` starts every line this scope writes with `prefix`: handler output, usage, refusals, option listings and completion lists. It returns the previous prefix; `nil` clears it, and the default is none, so a scope that never sets one writes exactly what it wrote before revision 11. Colour codes are the author's choice; AceConsole-3.0's look is `"|cff33ff99MyAddon|r: "`. `scope:GetPrefix()` reads it back.
+
+`scope:Print(...)` and `scope:Printf(template, ...)` write to the scope's sink outside any handler, with the rules of `context:Print` and `context:Printf`: `tostring` of each argument joined by spaces, or the template formatted through LocaleKit's `Format` when LocaleKit is registered and `string.format` otherwise. A secret argument is refused at the caller. They are AceConsole's `Print` and `Printf`.
+
 ## `scope:BindOptions(tree, commandName, options?)`
+
+In the Options part (`parts/CommandKit-Options.lua`; see [Loading](#loading)).
+`options` accepts `description` (the help line), `syntax` (`"verbs"`, the
+default, or `"path"`; see [The path syntax](#the-path-syntax)) and `onEmpty`, a
+function `onEmpty(context)` that runs for an empty line in place of the usage
+(the verbs) or the root listing (the path syntax): AceConfigCmd addons open
+their options window there. `scope:GetBoundTree(name)` returns the tree a
+command of this scope was bound to, or `nil`; the entry goes with `Unregister`
+and `Close`. It is AceConfigCmd's `GetChatCommandOptions`.
 
 Registers `/commandName` with five sub-commands over an OptionsKit tree handle (`OptionsKit:Define` returns it). OptionsKit must be registered (`Registry:Find("optionsKit", 1)`) and `tree` must be one of its trees; otherwise `BindOptions` raises at your line. `options.description` is the command's help line. The result is `Register`'s.
 
@@ -376,9 +425,45 @@ A refusal from `validate` is printed as it comes, converted with `tostring`; one
 
 The group `OptionsKit:ProfileOptions(db)` returns is built from the kinds above, so a bound tree that holds it offers the profile choice on the command line too, with nothing specific to profiles in CommandKit.
 
+### The path syntax
+
+`BindOptions(tree, name, { syntax = "path" })` adds AceConfigCmd-3.0's command
+line, `/name group option value`, beside the five verbs:
+
+| Typed | Does |
+|---|---|
+| `/name` | runs `onEmpty`, or lists the root group |
+| `/name frame` | lists the group `frame` (as `list frame`) |
+| `/name frame scale 1.5` | sets `frame.scale` (as `set frame.scale 1.5`, same parsing and refusals) |
+| `/name frame scale` | prints `frame.scale = 1.5` (as `get`) |
+| `/name enabled` | flips a toggle (as `set enabled toggle`); `/name enabled off` sets it |
+| `/name wipe` | runs a button, asking first when it has `confirm` (as `exec`) |
+| `/name frame.scale 1.5` | a word with a dot names a whole path, as the verbs' messages print it |
+
+Each word selects a child of the current group by key, without case, until a
+non-group is reached; the rest of the line is the value. (AceConfigCmd also
+lets `_` stand for a space in a key; OptionsKit keys are identifiers and never
+hold one.) An unknown word prints `/name: unknown option "x"` (with
+`in "group"` after a group) and the usage. The verbs stay the command's
+sub-commands, so `/name set frame.scale 1` keeps working, and a root option
+keyed `get`, `set`, `reset`, `list` or `exec` is reached through the verbs:
+`/name set list on`. A group OptionsKit draws inline is a path step like any
+other group.
+
+Resolving a line takes one table read per word in an index of the tree's
+paths by their lower-case spelling, then the one `DescribeOption` the verbs
+make, so a typed line describes one option, never a group's whole subtree. The
+index is built with one `tree:Walk` on the first path-syntax line and kept with
+the binding (about 40 bytes per option: 2,177 bytes for a tree of 55 options on the host); a tree that can change shape
+(OptionsKit's `OnStructureChanged`) drops it when it does, and the next line
+builds it again. Two keys that differ only in case resolve to the first in
+display order. Tab completes
+the keys of the group the earlier words reached, `on`/`off` after a toggle and
+the keys of a `select` or `multiselect`.
+
 ## Tab completion
 
-Off by default. `scope:EnableCompletion()` turns it on for the scope's commands; `DisableCompletion()` and `Close()` turn it off. `EnableCompletion` returns `false`, and installs nothing, when the host has no `ChatEdit_CustomTabPressed`.
+In the Completion part (`parts/CommandKit-Completion.lua`; see [Loading](#loading)). Off by default. `scope:EnableCompletion()` turns it on for the scope's commands; `DisableCompletion()` and `Close()` turn it off. `EnableCompletion` returns `false`, and installs nothing, when the host has no `ChatEdit_CustomTabPressed`.
 
 When the cursor is at the end of `/name <text>` and `/name` belongs to a scope with completion on, Tab completes the last word from:
 
@@ -388,7 +473,53 @@ When the cursor is at the end of `/name <text>` and `/name` belongs to a scope w
 
 Candidates are matched on their start, without case, at most `maxCompletions` (32) of them. One candidate replaces the word and adds a space; several fill in their longest common start, and when that adds nothing they are listed on the sink. With no candidate, or for any other text, the Tab press goes to the previous handler. An error in a `complete` function is reported to the host error handler and the Tab press goes on to the previous handler.
 
-**How it is installed, and the trade-off.** The client calls `ChatEdit_CustomTabPressed(editBox)` from its tab handler and skips its own completion when it returns `true`; the global is the client's documented extension point and does nothing by itself. A secure post-hook (`hooksecurefunc`) cannot be used, because a post-hook's return value is discarded and the client would complete over CommandKit's result. CommandKit therefore replaces the global once, remembering the previous function and calling it for everything it does not complete — the chain other completion libraries use too. The global becomes addon code; the client calls it through its secure-call wrapper, which keeps that taint away from the rest of its tab handling. When the last scope turns completion off, CommandKit writes the previous function back if its replacement is still the installed one; if another addon has replaced the global since, CommandKit's function stays in that addon's chain, forwarding every call.
+**How it is installed, and the trade-off.** The client calls `ChatEdit_CustomTabPressed(editBox)` from its tab handler and skips its own completion when it returns `true`; the global is the client's documented extension point and does nothing by itself. Blizzard's UI source declares it empty, "left intentionally global ... to enable secure tab completion hooks in addons", and `ChatFrameEditBoxMixin:OnTabPressed` calls it through `securecall` after its own name auto-complete (`AutoCompleteEditBox_OnTabPressed`) declined and before `SecureTabPressed` (`Interface/AddOns/Blizzard_ChatFrameBase/Shared/ChatFrameEditBox.lua` in `Gethe/wow-ui-source`: `live` `297d7aa` line 444, `classic` `e5d9b3a` line 442, `classic_era` `4192ac6` line 442). While the client's name auto-complete list is shown, a Tab press is the client's. A secure post-hook (`hooksecurefunc`) cannot be used, because a post-hook's return value is discarded and the client would complete over CommandKit's result. CommandKit therefore replaces the global once, remembering the previous function and calling it for everything it does not complete — the chain other completion libraries use too. The global becomes addon code; the client calls it through its secure-call wrapper, which keeps that taint away from the rest of its tab handling. When the last scope turns completion off and no provider is left, CommandKit writes the previous function back if its replacement is still the installed one; if another addon has replaced the global since, CommandKit's function stays in that addon's chain, forwarding every call.
+
+### Completion providers
+
+AceTab-3.0's counterpart: complete any word of chat input, not only a scope's
+own commands.
+
+```lua
+local commands = CommandKit:ForAddon("MyAddon")
+commands:RegisterCompletion("whisperTarget", "^/w%s+$", function(partial, before, editBox)
+  return MyAddon:KnownNames() -- an array of strings
+end)
+```
+
+`scope:RegisterCompletion(name, pattern, provider)` returns `true`, `nil,
+"taken"` when the scope already has a provider called `name`, `nil, "full"` at
+`maxCompletionProviders` (32 in the session), or `nil, "unavailable"` on a host
+without `ChatEdit_CustomTabPressed`. `pattern` is a Lua pattern tested with
+`string.find` against the text before the word being completed (AceTab's
+"prematch"); `""` matches anywhere. A malformed pattern is refused at the
+caller. `provider(partial, before, editBox)` returns an array of candidates or
+`nil`.
+
+On a Tab press with the cursor at the end of the text, a scope command's own
+completion runs first; when it offers nothing, every provider whose pattern
+matches is asked, in registration order, and their candidates are merged and
+applied as above (the start of the word without case, secrets skipped,
+`maxCompletions`, one candidate inserted, a common start filled in, otherwise
+listed on the sink of the first provider's scope that offered one). A provider
+that raises is reported through the host error handler and the others still
+run. `UnregisterCompletion(name)` answers whether it removed one,
+`IsCompletionRegistered(name)` whether the scope has it, and `Close` releases
+every provider of the scope.
+
+Only chat edit boxes are covered: the client calls the hook from them alone.
+Completing in another edit box would need that frame's own `OnTabPressed`,
+which a `HookScript` cannot stop, so it is not offered.
+
+## Reopening a manual scope
+
+`scope:Reopen()` opens a closed manual scope (`CreateScope`) again, empty, and
+returns `true`; an open scope answers `false`. Commands its close released stay
+released, and the same object takes new ones; its sink and prefix are kept.
+ModuleKit uses it to keep a module's `scope.Commands` across enable cycles. An
+addon scope (`ForAddon`) cannot be reopened: closing it is its addon's
+teardown, and `Reopen` raises `CommandKit.Scope:Reopen cannot reopen an addon
+scope; closing it is its addon's teardown`.
 
 ## At logout
 
@@ -434,7 +565,7 @@ MyAddon.lua:30: CommandKit.Scope:Register "myaddon" is already registered in thi
 MyAddon.lua:31: CommandKit.Scope:BindOptions requires OptionsKit API 1
 ```
 
-Calling a scope method on something that is not a scope raises `CommandKit.Scope:Register must be called on a CommandKit scope`; a facade method called with a dot raises `CommandKit:ForAddon must be called on the CommandKit facade; use CommandKit:ForAddon(...)`; `Register`, `BindOptions` and `EnableCompletion` on a closed scope raise `... cannot be used on a closed scope`.
+Calling a scope method on something that is not a scope raises `CommandKit.Scope:Register must be called on a CommandKit scope`; a facade method called with a dot raises `CommandKit:ForAddon must be called on the CommandKit facade; use CommandKit:ForAddon(...)`; `Register`, `BindOptions`, `EnableCompletion`, `RegisterCompletion` and `Dispatch` on a closed scope raise `... cannot be used on a closed scope`. A part method whose part is not loaded raises `CommandKit.Scope:<Method> needs CommandKit's <Part> part, which is not loaded: add commandKit\parts\CommandKit-<Part>.lua to your embeds.xml`.
 
 The other argument and spec messages, where `<label>` is the method and the field's path (`CommandKit.Scope:Register spec.subcommands.show`):
 
@@ -447,7 +578,9 @@ The other argument and spec messages, where `<label>` is the method and the fiel
 | A spec's `arguments` | `<label> must be a SchemaKit.array schema or a list of schemas`; `<label> must be a list of schemas` (a key that is no position); `<label> must be a list of at most 16 schemas` (a position past `maxPositions`); `<label> must be a non-empty list of schemas without holes` |
 | `Register` on a host without slash commands | `CommandKit.Scope:Register requires the host's SlashCmdList table` (and `BindOptions`) |
 | `SetSink` | `CommandKit.Scope:SetSink sink must be a table with an AddMessage method` |
-| `BindOptions` | `CommandKit.Scope:BindOptions requires OptionsKit API 1`; `CommandKit.Scope:BindOptions tree must be an OptionsKit tree`; `CommandKit.Scope:BindOptions options must be a table` |
+| `BindOptions` | `CommandKit.Scope:BindOptions requires OptionsKit API 1`; `CommandKit.Scope:BindOptions tree must be an OptionsKit tree`; `CommandKit.Scope:BindOptions options must be a table`; `... options.syntax must be "verbs" or "path"`; `... options.onEmpty must be a function` |
+| `RegisterCompletion` | `<label> name must be a non-empty string`; `... pattern must be a string`; `... pattern must not be a secret value`; `... pattern is not a valid Lua pattern: <reason>`; `... provider must be a function` |
+| `SetPrefix`, `Print`, `Printf`, `Dispatch`, `Reopen` | `CommandKit.Scope:SetPrefix prefix must be a non-empty string` (or a secret); `CommandKit.Scope:Print argument <n> must not be a secret value` (and `Printf`); `CommandKit.Scope:Printf template must be a string`; `CommandKit.Scope:Dispatch name must be a non-empty string`; `CommandKit.Scope:Dispatch text must be a string`; `CommandKit.Scope:Reopen cannot reopen an addon scope; closing it is its addon's teardown` |
 | The context | `CommandKit.Context:Print must be called on a CommandKit context` (every context method); `CommandKit.Context:Printf template must be a string` |
 | `SetLimits` | `CommandKit:SetLimits limits must be a table`; the value messages under [Limits](#limits) |
 
@@ -463,6 +596,8 @@ What the user types is never an error: it is printed to the sink. Errors raised 
 | `ParseInto` | One pass over the text, jumping with `string.find` from one byte that matters (whitespace, quote, backslash, pipe) to the next; only token strings, none for text seen before. |
 | `Parse` | As `ParseInto`, plus the array. |
 | Usage, bound sub-commands, completion | Allocate; not hot paths. |
+| A path-syntax line | One table read per word in the binding's path index (built by one `tree:Walk` on the first line), then the bound sub-command's one `DescribeOption`. Host bench, same typed line on both sides: 1.83× of AceConfigCmd-3.0 (`cmd-set-range-path`), against 1.73× for the verbs' `set` line. |
+| The prefix | One field read per written line; nothing when no prefix is set. |
 
 ## Limits
 
@@ -477,6 +612,7 @@ Everything CommandKit keeps or scans is bounded by default, and every bound that
 | `maxCaptured`: lines a capture sink keeps | 256 | `SetLimits` | yes: the sink's lines belong to whoever made it | the oldest are dropped |
 | `maxCompletions`: candidates one completion offers | 32 | `SetLimits`, at most 256 | no: the candidates are printed to the shared chat frame as one line | the rest are not offered |
 | `maxEmotes`: emote indexes the emote check reads | 1024 (or a smaller `MAXEMOTEINDEX`) | `SetLimits`, at most 16384 | no: emote indexes have gaps, so the scan needs an end | the rest are not read |
+| `maxCompletionProviders`: completion providers in the session (Completion part) | 32 | `SetLimits`, at most 256 | no: every Tab press asks every provider | `RegisterCompletion` answers `nil, "full"` |
 
 Scope limits are options of the scope that owns the registrations:
 
@@ -516,7 +652,8 @@ The nine-point plan in `docs/ROADMAP.md` is followed except where recorded here:
 - **The taken check reads `SlashCmdList`, `SecureCmdList` and `ChatTypeInfo`** and their `SLASH_<key><n>` globals, the client's `hash_*` lookup tables and `IsSecureCmd`, and the `EMOTE<n>_CMD<m>` globals, best effort as documented, rather than every `SLASH_*` global: scanning the global table would be unbounded. An emote's name is refused with `nil, "emote"`, an addition to the planned results.
 - **`BindOptions` adds `exec`** beside `get`, `set`, `reset` and `list`, honours `confirm` with an explicit word, and parses values per option kind before OptionsKit's schema and `validate` check them; it describes the option it names once per run (`DescribeOption`, or `Describe` with an OptionsKit older than revision 7).
 - **Completion is opt-in per scope** (`EnableCompletion`), because it replaces a client global; the plan made it optional without naming the switch.
-- **Additions:** `scope:IsRegistered`, `scope:DisableCompletion`, `scope:GetAddonName`, `CommandKit.MAX_COMMANDS`, `CommandKit.MAX_DEPTH`, the `CommandKit.Context` prototype, and the limits (scope options, `SetLimits`, `GetLimits` and `CommandKit.UNBOUNDED`); argument tokens are converted for number and boolean schemas; textures are single tokens; `Print` writes no prefix.
+- **Additions:** `scope:IsRegistered`, `scope:DisableCompletion`, `scope:GetAddonName`, `CommandKit.MAX_COMMANDS`, `CommandKit.MAX_DEPTH`, the `CommandKit.Context` prototype, and the limits (scope options, `SetLimits`, `GetLimits` and `CommandKit.UNBOUNDED`); argument tokens are converted for number and boolean schemas; textures are single tokens; `Print` writes no prefix unless `SetPrefix` set one (revision 11).
+- **Revision 11** adds the command lists, the prefix, `scope:Print`/`Printf`, `Dispatch`, `Reopen`, the path syntax, `GetBoundTree`, `onEmpty` and the completion providers, and moves options binding and completion into the two parts (ADR 0001).
 - **Closing at logout** through LifecycleKit API 1 or EventKit API 1, both optional dependencies found through `Registry:Find` (see [At logout](#at-logout)); the plan named neither.
 - **Localised help** is the addon's: usage and description strings are passed in already translated, and `Printf` goes through LocaleKit. CommandKit's own fixed words stay English.
 
@@ -524,6 +661,8 @@ The nine-point plan in `docs/ROADMAP.md` is followed except where recorded here:
 
 Several addons may embed CommandKit; Registry selects the newest compatible revision and every copy shares one facade. An upgrade happens in place: scopes, commands, the slash dispatchers already in the client's tables and the completion replacement stay, because every one of them calls through shared package state that the newer copy rewrites. Scopes and contexts gain the newer copy's methods through the shared `CommandKit.Scope` and `CommandKit.Context` prototypes. The `CommandKit.UNBOUNDED` sentinel and the package-wide limits live in the package state too, so a newer copy publishes the same sentinel and inherits every limit a consumer set, and a scope keeps the limits it was created with.
 
-Revision 2 upgrades the addon scopes revision 1 built in place and arranges their [logout close](#at-logout) while it loads, for every open one. Revisions 3, 4, 5, 6, 7, 8 and 9 change no layout: each takes over the state of the one before as it is. A command bound with `BindOptions` keeps the sub-command handlers of the revision that bound it, because they are compiled into its record; binding it again after the upgrade gives it the newer ones. A later revision keeps the `OnShutdown` subscriptions and the `PLAYER_LOGOUT` watcher it inherits: both call through the facade or the shared package state, so they run the newest code, and nothing is subscribed twice.
+Revision 2 upgrades the addon scopes revision 1 built in place and arranges their [logout close](#at-logout) while it loads, for every open one. Revisions 3 to 10 change no layout: each takes over the state of the one before as it is. A command bound with `BindOptions` keeps the sub-command handlers of the revision that bound it, because they are compiled into its record; binding it again after the upgrade gives it the newer ones. A later revision keeps the `OnShutdown` subscriptions and the `PLAYER_LOGOUT` watcher it inherits: both call through the facade or the shared package state, so they run the newest code, and nothing is subscribed twice.
+
+Revision 11 adds two fields to the package state, `parts` (each loaded part's record: its `revision` and the scope methods it serves) and `helpers` (the core functions the parts call, read at call time), and the `maxCompletionProviders` limit at its default; scopes, records and dispatchers are kept. The core puts every part method on the scope prototype at load: the loaded part's function, or a method naming the file to embed. A part puts its methods there when it loads too, so any load order of core and part revisions ends with the newest of each serving, and an equal or older part revision loaded again changes nothing. A revision-10 copy left completion's tab function in the shared `dispatch` table; the revision-11 core keeps it, so completion enabled before the upgrade keeps working until a Completion part loads and replaces it, and `Close` still counts such a scope's completion off.
 
 Nothing survives `/reload`: commands are registered again when the addon loads.

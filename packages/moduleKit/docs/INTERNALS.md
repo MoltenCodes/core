@@ -109,7 +109,9 @@ as before, so an in-place upgrade needs no migration.
 
 Two per-module fields sit beside `_state`:
 
-- `_wantedEnabled` — intent. Starts `true`. Written only by the public
+- `_wantedEnabled` — intent. Starts as the container's `_defaultModuleState`
+  (absent reads as `true`) or the definition's `enabledState`; `SetEnabledState`
+  writes it directly (revision 23). Written only by the public
   `Enable` / `Disable` on the module itself, by the addon's own `EnableAll` /
   `DisableAll` before their pass (the LifecycleKit-driven `enableAll` dispatch
   writes nothing and skips modules whose intent is `false`), and set by every successful `enableOne`, since an enabled
@@ -144,6 +146,30 @@ enabled module from before revision 6 open, and creates a missing scope, on
 modules an older revision created; it leaves present fields alone, so an
 upgrade carries intent and blocking across unchanged. Absent optional fields
 need no backfill, because they read as empty (see *Allocation policy*).
+
+## Revision 23 conveniences
+
+The new functions share one main-chunk local, `addonConveniences`, together
+with the two policy method pairs that moved into it (main chunk 195 → 193
+active locals). Container fields, each absent until set:
+
+| Field | Meaning |
+|---|---|
+| `_defaultModuleState` | `false` when modules start unwanted; `SetDefaultModuleState(true)` removes it. |
+| `_defaultModulePrototype` | The default prototype. |
+| `_moduleCreatedBus` | The addon's SignalKit bus, once `OnModuleCreated` subscribed; `CreateModule` publishes only when it is set. |
+
+A module created with a prototype carries `_prototype` and the metatable
+`prototypeMetatable(prototype)` returns: `{ __index = layer }`, where `layer`
+holds a copy of the `Module` methods and has `{ __index = prototype }`. The map
+`state.prototypeLayers` (prototype to metatable) keeps one per prototype for the
+session; Lua 5.1 has no ephemeron tables, so a weak key would not free a
+prototype its layer references anyway. The commit section refills every layer
+(`refreshLayers`) after writing the `Module` methods, so an in-place upgrade
+reaches prototyped modules. `invokeHook` reads a hook with `rawget` and, only
+when that is `nil` and the module has `_prototype`, through the module, so a
+plain module's transitions cost one extra `rawget` for a hook it does not have.
+`catchUpModule` enables only a wanted module.
 
 ## Halted addons
 

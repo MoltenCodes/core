@@ -38,7 +38,8 @@
 --   Messages .............. names, suggestions, the "not loaded" text
 --   Kit lookup ............ facade records, resolving and caching Kits
 --   Facade metatable ...... reads, writes, the namespace entry
---   Facade methods ........ Use, NewAddon, NewModule, GetAddon, GetModule
+--   Facade methods ........ Use, NewAddon, NewModule, GetAddon, GetModule,
+--                           the module defaults and OnModuleCreated
 --   Package public API .... For, GetCatalogue, SetLimits, GetLimits
 --   Commit ................ helpers, methods, facade fields, namespace, self-check
 
@@ -46,7 +47,7 @@
 
 local PACKAGE_NAME = "addonKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 1
+local IMPLEMENTATION_REVISION = 2
 local REQUIRED_REGISTRY_API = 2
 local STATE_SCHEMA = 1
 
@@ -130,7 +131,20 @@ local PART_OF = {
 -- How a member is written in a message: methods with a colon, the rest with a dot.
 local DOT_MEMBERS = { addonName = true, Registry = true, S = true, Range = true, Enum = true }
 
-local CORE_METHODS = { "Use", "NewAddon", "NewModule", "GetAddon", "GetModule" }
+local CORE_METHODS = {
+  "Use",
+  "NewAddon",
+  "NewModule",
+  "GetAddon",
+  "GetModule",
+  "SetDefaultModuleState",
+  "SetDefaultModulePrototype",
+  "OnModuleCreated",
+}
+
+-- The ModuleKit revision that added the module defaults and the
+-- module-created notice the three forwarders above call.
+local MODULE_DEFAULTS_REVISION = 23
 local FACADE_METHODS = { "For", "GetCatalogue", "SetLimits", "GetLimits" }
 
 -- The longest edit distance a "did you mean" suggestion may be from what was typed.
@@ -224,6 +238,9 @@ local SUGGESTION_DISTANCE = 2
 ---@field NewModule fun(self: MoltenCodesFacade, name: string, definition: ModuleKit.Definition?): AddonKit.Addon
 ---@field GetAddon fun(self: MoltenCodesFacade): AddonKit.Addon
 ---@field GetModule fun(self: MoltenCodesFacade, name: string): AddonKit.Addon
+---@field SetDefaultModuleState fun(self: MoltenCodesFacade, enabled: boolean): boolean
+---@field SetDefaultModulePrototype fun(self: MoltenCodesFacade, prototype: table?): table?
+---@field OnModuleCreated fun(self: MoltenCodesFacade, callback: function|table, methodName: string?): SignalKit.Connection?, string?
 ---@field Database fun(self: MoltenCodesFacade, savedVariable: string, defaults: table, options: SettingsKit.Options?): SettingsKit.Database Database part
 ---@field Range fun(min: number, max: number, default: number): table Database part: an optional bounded number
 ---@field Enum fun(values: (string|number|boolean)[], default: string|number|boolean): table Database part: an optional choice
@@ -896,7 +913,15 @@ local function facadeNewAddon(self, definition)
       2
     )
   end
-  return callAtCaller(3, container.CreateModule, container, MAIN_MODULE, definition)
+  local main = callAtCaller(3, container.CreateModule, container, MAIN_MODULE, definition)
+  -- The module default never applies to the addon object, as in AceAddon:
+  -- an author who turned modules off first still gets an addon that enables.
+  local wantsOff = type(definition) == "table" and rawget(definition, "enabledState") == false
+  local getDefault = container.GetDefaultModuleState
+  if not wantsOff and type(getDefault) == "function" and getDefault(container) == false then
+    main:SetEnabledState(true)
+  end
+  return main
 end
 
 ---A module of the addon. It depends on the addon object, so the addon
@@ -976,6 +1001,60 @@ local function facadeGetModule(self, name)
     )
   end
   return module
+end
+
+---The addon's ModuleKit container, refusing a ModuleKit revision without
+---the module defaults with the fix.
+---@param self MoltenCodesFacade
+---@param label string the method, `MC:SetDefaultModuleState`
+---@param methodName string the container method it forwards to
+---@return table container
+local function containerWithDefaults(self, label, methodName)
+  local record = requireRecord(self, label, 4)
+  local container = containerOf(record, 4)
+  if type(container[methodName]) ~= "function" then
+    error(
+      label
+        .. " needs ModuleKit revision "
+        .. MODULE_DEFAULTS_REVISION
+        .. " or later; update the copy of moduleKit your addon embeds",
+      3
+    )
+  end
+  return container
+end
+
+---The starting intent of the addon's modules created from now on; the addon
+---object itself is never affected. Forwards to ModuleKit.
+---@param self MoltenCodesFacade
+---@param enabled boolean
+---@return boolean previous
+local function facadeSetDefaultModuleState(self, enabled)
+  local container = containerWithDefaults(self, "MC:SetDefaultModuleState", "SetDefaultModuleState")
+  return callAtCaller(3, container.SetDefaultModuleState, container, enabled)
+end
+
+---The prototype of the addon's modules created from now on, or `nil`.
+---Forwards to ModuleKit.
+---@param self MoltenCodesFacade
+---@param prototype table|nil
+---@return table|nil previous
+local function facadeSetDefaultModulePrototype(self, prototype)
+  local container =
+    containerWithDefaults(self, "MC:SetDefaultModulePrototype", "SetDefaultModulePrototype")
+  return callAtCaller(3, container.SetDefaultModulePrototype, container, prototype)
+end
+
+---Call `callback(module)`, or a receiver's method, for every module of the
+---addon created from now on. Forwards to ModuleKit.
+---@param self MoltenCodesFacade
+---@param callback function|table
+---@param methodName string?
+---@return table|nil connection
+---@return string|nil reason
+local function facadeOnModuleCreated(self, callback, methodName)
+  local container = containerWithDefaults(self, "MC:OnModuleCreated", "OnModuleCreated")
+  return callAtCaller(3, container.OnModuleCreated, container, callback, methodName)
 end
 
 -- Package public API ---------------------------------------------------------
@@ -1058,6 +1137,9 @@ rawset(methods, "NewAddon", facadeNewAddon)
 rawset(methods, "NewModule", facadeNewModule)
 rawset(methods, "GetAddon", facadeGetAddon)
 rawset(methods, "GetModule", facadeGetModule)
+rawset(methods, "SetDefaultModuleState", facadeSetDefaultModuleState)
+rawset(methods, "SetDefaultModulePrototype", facadeSetDefaultModulePrototype)
+rawset(methods, "OnModuleCreated", facadeOnModuleCreated)
 
 rawset(AddonKit, "API", API_GENERATION)
 rawset(AddonKit, "REVISION", IMPLEMENTATION_REVISION)

@@ -42,8 +42,9 @@ What each piece promises:
 - **Two kinds of failure, two channels.** A bad spec raises at your line when you register it; a bad thing the user typed is printed to the sink with the usage. A handler that raises is reported to the sink and to the host error handler.
 - **Cheap dispatch.** A slash command allocates nothing when its text has been seen before, unless a table default is filled (each dispatch gets a fresh copy); the parser has no state outside the call; everything is bounded (64 commands per scope, 3 sub-command levels, 4 nested dispatches).
 - **Bounded by default, opened on purpose.** Scope options (`maxCommands`, `maxSubcommands`, `maxPositions`, `maxSlashAliases`), `CommandKit:SetLimits{}` and `CommandKit.UNBOUNDED` lift the defaults where the memory is yours; see [Limits](docs/API.md#limits).
-- **Options from the command line.** `scope:BindOptions(tree, "myaddon_options")` gives `get`, `set`, `reset`, `list` and `exec` over an OptionsKit tree, with values parsed per option kind and the tree's own validation messages.
-- **Completion on request.** `scope:EnableCompletion()` completes sub-command names and option paths on Tab through the client's `ChatEdit_CustomTabPressed` extension point.
+- **Options from the command line** (the Options part). `scope:BindOptions(tree, "myaddon_options")` gives `get`, `set`, `reset`, `list` and `exec` over an OptionsKit tree, with values parsed per option kind and the tree's own validation messages; `{ syntax = "path" }` adds AceConfigCmd's `/myaddon group option value`.
+- **Completion on request** (the Completion part). `scope:EnableCompletion()` completes sub-command names and option paths on Tab through the client's `ChatEdit_CustomTabPressed` extension point; `scope:RegisterCompletion(name, pattern, provider)` completes any word of chat input, as AceTab does.
+- **A prefix, and printing from anywhere.** `scope:SetPrefix("|cff33ff99MyAddon|r: ")` starts every line with it; `scope:Print` and `scope:Printf` write outside a handler; `scope:Dispatch(name, text)` runs a command from code.
 
 See [`docs/API.md`](docs/API.md) for the complete contract, and [`docs/INTERNALS.md`](docs/INTERNALS.md) for the parser's state machine and the state layout.
 
@@ -56,10 +57,13 @@ See [`docs/API.md`](docs/API.md) for the complete contract, and [`docs/INTERNALS
 | `self:GetArgs(input, 2)` | `CommandKit:Parse(input)` or `CommandKit:ParseInto(input, array)`, which also keep colour-wrapped text and textures whole; usually `arguments` and `subcommands` in the spec make it unnecessary |
 | Parsing sub-commands by hand in `SlashCommand` | `subcommands = { show = { ... } }`, up to three levels, with generated usage |
 | `self:UnregisterChatCommand("myaddon")` | `commands:Unregister("myaddon")`; the slash name stays bound to an inert dispatcher (see "Inert globals" in the API) |
-| `self:Print(...)`, `self:Printf(format, ...)` | `context:Print(...)`, `context:Printf(template, ...)` inside a handler; `scope:SetSink(sink)` for another frame |
-| `self:IterateChatCommands()` | No equivalent; `commands:IsRegistered("myaddon")` answers for one name |
-| `AceTab:RegisterTabCompletion(...)` for your own command | A `complete` function in the spec, and `commands:EnableCompletion()`; CommandKit completes its own commands only |
-| `AceConfigCmd:CreateChatCommand("myaddon_options", "MyAddon")` | `commands:BindOptions(tree, "myaddon_options")` over an OptionsKit tree |
+| `self:Print(...)`, `self:Printf(format, ...)` | `commands:Print(...)`, `commands:Printf(template, ...)` anywhere, or `context:Print`/`Printf` inside a handler; `commands:SetPrefix("|cff33ff99MyAddon|r: ")` for AceConsole's coloured addon name; `scope:SetSink(sink)` for another frame |
+| `AceConsole:IterateChatCommands()` | `CommandKit:GetCommands()` (every command in the session) or `commands:GetCommands()` (this scope's), sorted arrays |
+| `AceTab:RegisterTabCompletion(...)` for your own command | A `complete` function in the spec, and `commands:EnableCompletion()` (Completion part) |
+| `AceTab:RegisterTabCompletion(descriptor, ...)` for any chat input | `commands:RegisterCompletion(name, pattern, provider)` (Completion part): `pattern` is matched against the text before the word, `provider(partial, before, editBox)` returns the candidates; chat edit boxes only |
+| `AceConfigCmd:CreateChatCommand("myaddon", "MyAddon")` | `commands:BindOptions(tree, "myaddon", { syntax = "path" })` (Options part): the same `/myaddon group option value` line, plus the `get`/`set`/`reset`/`list`/`exec` verbs |
+| `AceConfigCmd:HandleCommand("myaddon", "MyAddon", input)` | `commands:Dispatch("myaddon", input)`; for "an empty line opens the window", `BindOptions(..., { onEmpty = function(context) ... end })` |
+| `AceConfigCmd:GetChatCommandOptions("myaddon")` | `commands:GetBoundTree("myaddon")` |
 
 [`docs/MIGRATING_FROM_ACE3.md`](../../docs/MIGRATING_FROM_ACE3.md#aceconsole-30) walks through a whole addon.
 
@@ -73,9 +77,17 @@ troubleshooting. This package's load order inside a consuming addon is:
 Libs\MoltenCodes\registry\Registry.lua
 Libs\MoltenCodes\schemaKit\SchemaKit.lua
 Libs\MoltenCodes\commandKit\CommandKit.lua
+Libs\MoltenCodes\commandKit\parts\CommandKit-Completion.lua   # only with completion
+Libs\MoltenCodes\signalKit\SignalKit.lua                       # with the Options part
+Libs\MoltenCodes\optionsKit\OptionsKit.lua                     # with the Options part
+Libs\MoltenCodes\commandKit\parts\CommandKit-Options.lua      # only with BindOptions
 ```
 
 Minimum footprint: embed 3 files: `registry/Registry.lua`, `schemaKit/SchemaKit.lua`, `commandKit/CommandKit.lua`.
+The two parts ([ADR 0001](../../docs/decisions/0001-kit-core-and-parts.md)) are
+optional: `parts/CommandKit-Options.lua` for `BindOptions` (it needs
+OptionsKit), and `parts/CommandKit-Completion.lua` for tab completion.
+`python3 -m tooling.package.embeds` writes the list for any selection.
 
 Direct runtime dependencies: Registry API 2 and SchemaKit API 1.
 All three files above are required; omitting either of the first two makes this
@@ -84,8 +96,8 @@ package raise at load.
 Optional, each found with `Registry:Find` when it is used, so they may load in
 any order:
 
-- OptionsKit API 1 (and its SignalKit dependency), needed only by
-  `scope:BindOptions`;
+- OptionsKit API 1 (and its SignalKit dependency), needed by the Options part
+  (`scope:BindOptions`), which names it as its dependency;
 - LocaleKit API 1, used by `context:Printf` for indexed specifiers such as
   `%2$s`; without it `Printf` uses `string.format`;
 - ClientKit API 1, used to recognise a secret value; without it CommandKit asks

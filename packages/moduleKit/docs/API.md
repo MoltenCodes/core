@@ -21,6 +21,9 @@ The addon container exposes:
 | `SetDependencyPolicy(policy)` | Change targeted dependency behavior and return the previous policy. |
 | `GetMissingScopePolicy()` | Return `"nil"` or `"raise"`: what reading a scope field whose Kit is not loaded answers. Revision 22. |
 | `SetMissingScopePolicy(policy)` | Choose `"nil"` (default) or `"raise"` and return the previous policy; see [Module scopes](#module-scopes). Revision 22. |
+| `SetDefaultModuleState(enabled)`, `GetDefaultModuleState()` | The starting intent of modules created from now on (default `true`); see [Intent versus fact](#intent-versus-fact). Revision 23. |
+| `SetDefaultModulePrototype(prototype)`, `GetDefaultModulePrototype()` | The prototype of modules created from now on, or `nil`; see [Module prototypes](#module-prototypes). Revision 23. |
+| `OnModuleCreated(callback)` / `OnModuleCreated(receiver[, methodName])` | Hear of every module created from now on; see [The module-created notice](#the-module-created-notice). Revision 23. |
 | `CreateModule(name[, definition])` | Create a uniquely named module. |
 | `GetModule(name)` | Return a module or `nil`. |
 | `HasModule(name)` | Test module existence. |
@@ -59,13 +62,16 @@ Each module exposes:
 | `Disable()` | Targeted disable under the selected dependency policy. |
 | `Activate()` | Catch this module up to already-reached LifecycleKit phases. |
 | `Resolve(name)` | Resolve an injectable with this module as scope context. |
+| `SetEnabledState(enabled)` | Set what the module is meant to be without running a hook; returns the previous intent. See [Intent versus fact](#intent-versus-fact). Revision 23. |
 
 The package facade also exposes `ModuleKit.UNBOUNDED`, `ModuleKit:SetLimits(limits)`
-and `ModuleKit:GetLimits()`; see [Limits](#limits).
+and `ModuleKit:GetLimits()` (see [Limits](#limits)), and, from revision 23,
+`ModuleKit:FindAddon(name)` and `ModuleKit:GetAddons()` (see
+[Finding addons](#finding-addons)).
 
 The facade also carries two read-only constants: `ModuleKit.API`, the API
 generation (`1`), and `ModuleKit.REVISION`, the implementation revision of the
-copy that is active in the session (`21` for this one). A newer embedded copy
+copy that is active in the session (`23` for this one). A newer embedded copy
 replaces `REVISION` when it upgrades the facade in place.
 
 Each module also carries one field:
@@ -145,11 +151,15 @@ local module = addon:CreateModule("Inventory", {
   onInitialize = function(self, deps) end,
   onEnable = function(self, deps) end,
   onDisable = function(self, deps) end,
+  enabledState = true,
+  prototype = SharedModuleMethods,
 })
 ```
 
 Definition tables accept only these fields:
 
+- `enabledState` (revision 23): the module's starting intent, a boolean; the container's default state when omitted
+- `prototype` (revision 23): the module's prototype, a table, or `false` for none when the container has a default; see [Module prototypes](#module-prototypes)
 - `dependsOn`
 - `optionalDependencies`
 - `before`
@@ -265,11 +275,11 @@ The rules:
   table every module carries.
 - **The same object across enables.** When the Kit can reopen a closed scope
   (`Scope:Reopen()`: TimerKit 0.9.0, EventKit 0.10.0, SignalKit 0.8.0 bus
-  scopes, HookKit 0.4.0 and SchedulerKit 0.9.0 and later), the scope a disable
+  scopes, HookKit 0.4.0, SchedulerKit 0.9.0 and CommandKit 0.3.0 and later), the scope a disable
   closed is kept on the module and reopened by the first read in the next
   enabled period, so `self.scope.Events` is the same, empty object every
   time and no Registry lookup or construction is repeated. A field whose Kit
-  has no `Reopen` (CommKit and CommandKit today, or an older revision of any
+  has no `Reopen` (CommKit today, or an older revision of any
   Kit) gets a new scope as before. A reference kept from an earlier enabled
   period raises when used while the module is disabled, because its scope is
   closed, and works again once the module is re-enabled and has read the
@@ -327,7 +337,9 @@ local state = module:GetEnableState()
 `GetEnableState()` returns a fresh table on every call.
 
 **How intent is set.** Every module starts wanted (`wanted = true`): it is meant
-to be enabled once its addon is ready. `module:Enable()` and `EnableAll()` set
+to be enabled once its addon is ready, unless the container's default state
+(`addon:SetDefaultModuleState(false)`) or the definition's `enabledState =
+false` says it is not. `module:Enable()` and `EnableAll()` set
 it; `module:Disable()` and `DisableAll()` clear it, and only for the modules
 they are called on. A successful enable of any kind also sets it. The
 LifecycleKit `ready` phase does not set it and skips modules that are not
@@ -355,6 +367,97 @@ too, in graph order, so a whole chain recovers at once.
 - `GetBlockedBy()` keeps its existing meaning — the module named by the last
   refused operation of any kind — and is independent of `blockedBy` here.
 - A module blocked by a halt never recovers; see [Halted addons](#halted-addons).
+
+**Setting intent without running hooks** (revision 23, AceAddon-3.0's
+`SetEnabledState`). `module:SetEnabledState(enabled)` writes the intent and
+returns the previous one; it runs no hook and never changes whether the module
+is enabled now. `false` before the addon is ready keeps the module out of the
+`ready` pass (its hard dependents are recorded as blocked by it, as for a
+`Disable`) and clears its `blockedBy`; after ready it changes what recovery and
+`GetEnableState` see. `Enable` and `Disable` still change the fact. It is
+refused after shutdown, like `Enable`; `enabled` must be a boolean.
+
+**Module defaults.** `addon:SetDefaultModuleState(enabled)` sets the starting
+intent of the modules this container creates from now on and returns the
+previous default; `GetDefaultModuleState()` reads it. AceAddon refuses the call
+once a module exists; ModuleKit applies it forward instead, because an AddonKit
+addon object is itself the module `"Main"` and always exists first.
+
+**Catch-up honours intent.** A definition-table module created after the addon
+is ready catches up inside `CreateModule` as before, but is enabled only when it
+is wanted, as the `ready` pass does: with `enabledState = false` (or a default
+of `false`) it ends `initialized`. `module:Activate()` is an explicit request
+and still enables a module whatever its intent.
+
+## Module prototypes
+
+A module may share methods and hooks through a prototype, as AceAddon-3.0's
+`NewModule(name, prototype)` and `SetDefaultModulePrototype` give:
+
+```lua
+local BagModule = {
+  OnEnable = function(self) self:Refresh() end,
+  Refresh = function(self) end,
+}
+addon:SetDefaultModulePrototype(BagModule)  -- every later module
+local bank = addon:CreateModule("Bank")      -- has Refresh and that OnEnable
+local other = addon:CreateModule("Other", { prototype = false }) -- has neither
+```
+
+A module looks a key up in its own fields first, then in ModuleKit's `Module`
+methods, then in the prototype, so ModuleKit's methods always win and stay
+upgradable in place. The hooks (`OnInitialize`, `OnEnable`, `OnDisable`) are
+found on the prototype too, and `implements` sees what the prototype carries.
+A module keeps the prototype it was created with: a later
+`SetDefaultModulePrototype` affects later modules only. The definition field
+`prototype` names one for a single module (or `false` for none).
+`SetDefaultModulePrototype(nil)` clears the default and returns the previous
+one; `GetDefaultModulePrototype()` reads it.
+
+Refused at the caller, with nothing created or changed: a prototype that is not
+a table or is secret, and one whose own key (read with `next`, each checked for
+a secret first) is a `Module` method name (`prototype key "Enable" shadows
+ModuleKit's Module:Enable`), `scope`, or begins with `_` (`is reserved for
+ModuleKit`). A prototype may carry its own metatable; keys it answers through
+it are found as well, and keys beginning with `_` must not be among them.
+
+**Cost.** A module without a prototype is unchanged. Each distinct prototype
+gets one layer table holding a copy of the `Module` methods, with the prototype
+as its `__index`, and one metatable shared by its modules; a lookup through the
+prototype is two table reads more than on a plain module, never a function
+call. Layers live for the session, like containers.
+
+## Finding addons
+
+`ModuleKit:FindAddon(name)` returns the container for `name`, or `nil`, and
+never creates one (`ForAddon` creates). It is AceAddon's `GetAddon(name, true)`;
+for the raising form, `assert(ModuleKit:FindAddon(name))` raises at your line.
+`ModuleKit:GetAddons()` returns a new sorted array of every container's addon
+name, for diagnostics; each module's `IsEnabled` and `GetEnableState` give the
+status AceAddon's `IterateAddonStatus` gave.
+
+## The module-created notice
+
+`addon:OnModuleCreated(callback)` calls `callback(module)` for every module the
+container creates from now on; `addon:OnModuleCreated(receiver[, methodName])`
+calls the receiver's method `methodName` with the receiver and the module, the method name defaulting to
+`"OnModuleCreated"`, AceAddon's hook name. The method must exist when it is
+registered ([ADR 0003](../../../docs/decisions/0003-method-name-callbacks.md)); it
+is looked up again at each notice.
+
+It subscribes to the topic `"ModuleKit.ModuleCreated"` on the addon's SignalKit
+bus (`SignalKit:ForAddon(addonName)`), declaring it once with one argument, and
+returns that subscription, a SignalKit connection (`Disconnect`,
+`IsConnected`), or `nil, "full"` at the bus's limits. `CreateModule` publishes
+the module once it is in the container and before its catch-up, so a listener
+can still give a late definition module what it needs before it initializes.
+The bus isolates a listener that raises and reports it through the host error
+handler, as AceAddon's `safecall` does; `CreateModule` still returns the
+module. Nothing is published, and the bus is not touched, until something
+subscribed. A module's `scope.Messages` can subscribe to the same topic and is
+released when the module disables. SignalKit is always loaded where ModuleKit is
+(LifecycleKit requires it); without it the call raises
+`ModuleKit.Addon:OnModuleCreated needs SignalKit API 1, which is not loaded`.
 
 ## Halted addons
 
@@ -663,6 +766,10 @@ at the `CreateModule` line. Messages name the public method in full.
 | `ForAddon` | `ModuleKit:ForAddon addonName must be a non-empty string` |
 | `SetDependencyPolicy` | `ModuleKit.Addon:SetDependencyPolicy policy must be "automatic" or "strict"` |
 | `SetMissingScopePolicy` | `ModuleKit.Addon:SetMissingScopePolicy policy must be "nil" or "raise"` |
+| `SetEnabledState`, `SetDefaultModuleState`, definition `enabledState` | `ModuleKit.Module:SetEnabledState enabled must be a boolean`; `ModuleKit.Addon:SetDefaultModuleState enabled must be a boolean`; `ModuleKit module definition enabledState must be a boolean` |
+| `SetDefaultModulePrototype`, definition `prototype` | `<label> must be a table`; `<label> key "<name>" shadows ModuleKit's Module:<name>`; `<label> key "<name>" is reserved for ModuleKit`, where `<label>` is `ModuleKit.Addon:SetDefaultModulePrototype prototype` or `ModuleKit module definition prototype` |
+| `OnModuleCreated` | `ModuleKit.Addon:OnModuleCreated callback must be a function, or a receiver table followed by a method name`; `... methodName must be a non-empty string`; `... receiver has no method "<name>"`; `... needs SignalKit API 1, which is not loaded` |
+| `FindAddon` | `ModuleKit:FindAddon addonName must be a non-empty string` |
 | reading `module.scope.<Field>` under the `"raise"` policy when its Kit is not loaded | `ModuleKit module "<name>" scope.<Field> needs <Facade> API 1, which is not loaded; add <packageId>\<Facade>.lua from MoltenCodes to your embeds.xml` |
 | `CreateModule`, `GetModule`, `HasModule` | `ModuleKit.Addon:<Method> name must be a non-empty string` |
 | `CreateModule` | `ModuleKit.Addon:CreateModule name "<name>" is already in use` (a module or a provider) |
@@ -698,6 +805,7 @@ refused at the caller's line, before anything changes:
 | `CreateModule` | `ModuleKit module definition requiresAddons entries must not be secret values` |
 | `CreateModule`, `Provide*` | `<label>.implements entries must not be secret values`, for example `ModuleKit.Addon:ProvideValue options.implements entries must not be secret values` |
 | `SetDependencyPolicy` | `ModuleKit.Addon:SetDependencyPolicy policy must not be a secret value` (the policy is kept) |
+| `SetEnabledState`, `SetDefaultModuleState`, `SetDefaultModulePrototype`, `OnModuleCreated`, definition `enabledState` and `prototype` | `<label> must not be a secret value`; a prototype's key: `<label> keys must not be secret values` |
 | `SetMissingScopePolicy` | `ModuleKit.Addon:SetMissingScopePolicy policy must not be a secret value` (the policy is kept) |
 | `SetLimits` | `ModuleKit:SetLimits limits.<name> must not be a secret value` (a value); `ModuleKit:SetLimits limit names must not be secret values` (a key) |
 | `CreateModule` | `ModuleKit module definition field names must not be secret values` (a key of the definition table) |

@@ -121,6 +121,8 @@ connection:Disconnect()
 | `callbacks.OnUsed`, `callbacks.OnUnused` | the `onFirst` and `onLast` options of `SignalKit:New` |
 | AceEvent-3.0 `RegisterMessage`, `SendMessage` | `SignalKit:ForAddon(addonName)` and `bus:Subscribe`, `bus:Publish` |
 | AceEvent-3.0 `RegisterMessage("Name", "Method")`, `RegisterMessage("Name")` | `bus:Subscribe("Name", self, "Method")`, `bus:Subscribe("Name", self)` (the method named after the message, AceEvent's default) |
+| AceBucket-3.0 `RegisterBucketMessage(messages, interval, callback)` | `bus:Coalesce(topics, interval, callback)` or `bus:Coalesce(topics, interval, self, "Method")` from the Coalescing part; values are `true`, not counts |
+| AceBucket-3.0 `UnregisterBucket(handle)` | `handle:Close()`, or close the bus scope it was made through |
 
 Two differences matter when porting. A signal's listeners, method-name ones
 included, receive the fired arguments without the event name in front. A raw signal's listener error
@@ -165,6 +167,9 @@ Libs\MoltenCodes\signalKit\SignalKit.lua
 ```
 
 Minimum footprint: embed 2 files: `registry/Registry.lua`, `signalKit/SignalKit.lua`.
+The optional part `parts/SignalKit-Coalescing.lua` (bucketed messages,
+`bus:Coalesce`) also needs TimerKit and SchedulerKit with its Coalescing part;
+`python3 -m tooling.package.embeds` writes the list.
 
 Direct runtime dependencies: Registry API 2.
 Every file above is required; omitting one makes this package raise at

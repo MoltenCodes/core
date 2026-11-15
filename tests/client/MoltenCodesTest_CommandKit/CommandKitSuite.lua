@@ -26,7 +26,9 @@
 --     the real chat frame (one visible line, see EXPECTED.md);
 --   * `BindOptions` over a real OptionsKit tree;
 --   * tab completion through the client's `ChatEdit_CustomTabPressed`, handed
---     a stand-in edit box so nothing is typed, and put back afterwards;
+--     a stand-in edit box so nothing is typed, and put back afterwards, for
+--     the scope's own commands and for a `RegisterCompletion` provider;
+--   * the `BindOptions` path syntax (`/cmd option value`);
 --   * the documented allocation-free paths on the client's own collector;
 --   * argument errors naming CommandKitSuite.lua at the calling line, and
 --     secret values made by the client's `secretwrap` refused where
@@ -1583,6 +1585,51 @@ completionSuite:Test(
     editBox = newStandInEditBox("/mcttestopts set sc")
     ctx:Expect(installed(editBox)):ToBe(true)
     ctx:Expect(editBox.text):ToBe("/mcttestopts set scale ")
+  end
+)
+
+completionSuite:Test(
+  "a completion provider registered with RegisterCompletion completes '/w ar' through the installed ChatEdit_CustomTabPressed, and Close of its scope writes the client's function back",
+  function(ctx)
+    local original = requireTabExtensionPoint(ctx)
+    local scope = newManualScope()
+    local registered, reason = scope:RegisterCompletion("probe", "^/w%s+$", function()
+      return { "Arthas", "Baine" }
+    end)
+    ctx:Expect(registered):ToBe(true)
+    ctx:Expect(reason):ToBe(nil)
+    local installed = readHost("ChatEdit_CustomTabPressed")
+    ctx:Expect(installed == original):ToBe(false)
+
+    local editBox = newStandInEditBox("/w ar")
+    ctx:Expect(installed(editBox)):ToBe(true)
+    ctx:Expect(editBox.text):ToBe("/w Arthas ")
+
+    ctx:Expect(scope:Close()):ToBe(true)
+    ctx:Expect(readHost("ChatEdit_CustomTabPressed")):ToBe(original)
+  end
+)
+
+completionSuite:Test(
+  "the path syntax: '/mcttestopts scale 1.5' sets the option and '/mcttestopts shown' flips the toggle, through the client's SlashCmdList",
+  function(ctx)
+    local tree = defineTree()
+    local sink = CommandKit:CaptureSink()
+    addonScope:SetSink(sink)
+    registeredNames[#registeredNames + 1] = OPTIONS_COMMAND_NAME
+    local registered, reason =
+      addonScope:BindOptions(tree, OPTIONS_COMMAND_NAME, { syntax = "path" })
+    if registered ~= true then
+      ctx:Fail("BindOptions('" .. OPTIONS_COMMAND_NAME .. "') was refused: " .. tostring(reason))
+    end
+    runSlash(OPTIONS_COMMAND_KEY, "scale 1.5")
+    runSlash(OPTIONS_COMMAND_KEY, "shown")
+    for _, line in ipairs(sink:Messages()) do
+      ctx:Log("sink: " .. line)
+    end
+    ctx:Expect(optionValues.scale):ToBe(1.5)
+    ctx:Expect(sink:Messages()[1]):ToBe("scale = 1.5")
+    ctx:Expect(addonScope:GetBoundTree(OPTIONS_COMMAND_NAME)):ToBe(tree)
   end
 )
 

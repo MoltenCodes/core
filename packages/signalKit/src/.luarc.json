@@ -5,7 +5,9 @@
   "workspace": {
     "library": [
       "../../../meta",
-      "../../registry/src"
+      "../../registry/src",
+      "../../timerKit/src",
+      "../../schedulerKit/src"
     ],
     "checkThirdParty": false
   },

@@ -28,11 +28,12 @@ MoltenCodes Test: PASS addonKit.facade: Registry:Get('addonKit', 1) is the Addon
 MoltenCodes Test: PASS addonKit.facade: the installed AddonKit carries the revision of the committed manifest
 MoltenCodes Test: PASS addonKit.entry: MoltenCodes:For answers this addon's facade, and a Kit read through it is the shared one
 MoltenCodes Test: PASS addonKit.entry: an error through the facade names this file's line, not AddonKit's
+MoltenCodes Test: PASS addonKit.entry: MC:SetDefaultModuleState(false) leaves the addon object enabled, and a module MC:NewModule makes after login is announced to MC:OnModuleCreated and initialized but not enabled
 MoltenCodes Test: PASS addonKit.database: an open at file scope, before ADDON_LOADED, was refused with the fix
 MoltenCodes Test: PASS addonKit.database: the open in OnInitialize wraps the client's restored saved variable
 MoltenCodes Test: PASS addonKit.composition: the panel is in the settings list and /mctaddonkit opens it
 MoltenCodes Test: PASS addonKit.composition: the minimap button follows the profile and moves on a profile switch
-MoltenCodes Test: addonKit: 8 passed, 0 failed, 0 skipped, 0 timed out (8 tests)
+MoltenCodes Test: addonKit: 9 passed, 0 failed, 0 skipped, 0 timed out (9 tests)
 MoltenCodes Test: results saved in MoltenCodesTestResults; /reload or log out to write them to disk.
 ```
 

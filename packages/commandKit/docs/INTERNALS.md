@@ -9,7 +9,7 @@ This document describes implementation invariants for maintainers. It is not an 
 | Field | Meaning |
 |---|---|
 | `schema` | The state layout version, `1`. |
-| `dispatch` | `slash`, `tabPressed` and `closeAddonScopesAtLogout`; every closure CommandKit leaves in the client's tables, and the logout watcher's trampoline, call through it. |
+| `dispatch` | `slash`, `tabPressed` and `closeAddonScopesAtLogout`; every closure CommandKit leaves in the client's tables, and the logout watcher's trampoline, call through it. From revision 11 `tabPressed` is written by the Completion part, not the core. |
 | `runtimeRevision` | The revision that last committed its functions. |
 | `scopeMetatable`, `contextMetatable` | The metatables every scope and context shares; their `__index` is `CommandKit.Scope` and `CommandKit.Context`. |
 | `addonScopes` | Addon name to that addon's canonical scope. Only `ForAddon` adds to it. |
@@ -18,11 +18,13 @@ This document describes implementation invariants for maintainers. It is not an 
 | `ownedKeys` | Slash-table key to the lower-case name it serves, for every key CommandKit ever wrote. The taken check skips these keys (also when `hash_ChatTypeInfoList` names one), and the dispatcher reads its name here. |
 | `slashHandlers` | Slash-table key to the permanent dispatcher closure written under it. One closure per key for the session. The taken check does not count a `hash_SlashCmdList` entry holding one of these closures. |
 | `frames`, `frameDepth` | The dispatch frames, one per nesting level up to `MAX_NESTING` (4), and how many are in use. |
-| `completion` | `installed`, `previous` (the function the replacement forwards to, or `false`), `handler` (the replacement closure, or `false` before the first install) and `enabledScopes`. |
+| `completion` | `installed`, `previous` (the function the replacement forwards to, or `false`), `handler` (the replacement closure, or `false` before the first install), `enabledScopes`, and from revision 11 `providers`, the completion providers in registration order (`{ scope, name, pattern, provider }`), added by the Completion part. |
+| `parts` | Revision 11: part name to its record, `{ revision, methods, ... }`. `methods` maps a scope method name to the part's function; the Completion part's record also has `releaseScope`. See "Parts". |
+| `helpers` | Revision 11: the core functions the parts call (`isSecret`, `validateScope`, `registerCommand`, `tokenize`, `walkSubcommands`, `openContext`, the frames, the context writers, `SchemaKit`, `installPartMethods`, ...). One table kept across revisions; each core revision rewrites its fields, so a part reads the newest at every call. |
 | `unbounded` | The `CommandKit.UNBOUNDED` sentinel, created once so every revision publishes the same table; the state predicate checks the facade field against it. |
 | `logoutWatch` | `{ scope, connection, trampoline }`: CommandKit's own EventKit scope, its one `PLAYER_LOGOUT` `Once` connection and the trampoline handed to it, each `false` until the first `ForAddon` in case (c) of "At logout" creates it. Added by revision 2; an upgrade over revision 1 adds it. |
 | `clientKitLookup` | Revision 10: `{ looked, clientKit }`, ClientKit as `isSecret` found it on its first question (`clientKit` the implementation or `false`). A found implementation table is stable per package and API across ClientKit's own upgrades, so it is kept; a miss is kept too, since ClientKit's `IsSecret` and the host's `issecretvalue` give the same answer. Each Registry lookup cost 70 to 100 instructions, twice per `Register` and once per secret question of the options binding. An upgrade over revision 9 adds it empty. |
-| `limits` | The package-wide limits `SetLimits` writes: `maxCaptured` (an integer or the sentinel), `maxCompletions` and `maxEmotes` (integers under their ceilings). Read where they apply, so a change takes effect at the next capture, completion or registration. |
+| `limits` | The package-wide limits `SetLimits` writes: `maxCaptured` (an integer or the sentinel), `maxCompletions`, `maxEmotes` and, from revision 11, `maxCompletionProviders` (integers under their ceilings). Read where they apply, so a change takes effect at the next capture, completion or registration. |
 
 `keyByName`, `ownedKeys` and `slashHandlers` grow with the number of distinct slash names registered in the session, which is bounded by what addons register; each entry is a few strings and one closure.
 
@@ -40,6 +42,19 @@ This document describes implementation invariants for maintainers. It is not an 
 | `_sink` | The sink, or `false` for `DEFAULT_CHAT_FRAME`. |
 | `_completion` | Whether this scope counts in `completion.enabledScopes`. |
 | `_maxCommands`, `_maxSubcommands`, `_maxPositions`, `_maxSlashAliases` | The scope's limits, resolved from its options at creation: an integer, or `math.huge` for `CommandKit.UNBOUNDED`, so every comparison on the registration path stays numeric. |
+| `_prefix` | Revision 11: the prefix `writeLine` puts before every line; absent unless `SetPrefix` set one. |
+| `_bound` | Revision 11, the Options part: lower-case command name to the tree it was bound to; created on the first bind, entries cleared by `releaseCommand`. |
+| `_completionProviders` | Revision 11, the Completion part: how many of `completion.providers` belong to this scope; absent until the first `RegisterCompletion`. |
+
+None of the three revision-11 fields is written by `newScope`, so a scope that never uses them is as large as before, and the scope layout stays `2`.
+
+## Parts
+
+ADR 0001 splits CommandKit into the core and two parts. Each part resolves the core through `Registry:Get("commandKit", 1)` at file scope, refuses to load when `_state.parts` or `_state.helpers` is missing (no core, or a core before revision 11), and returns at once when an equal or newer revision of itself is recorded in `_state.parts`.
+
+The part methods (`BindOptions`, `GetBoundTree`, `EnableCompletion`, `DisableCompletion`, `RegisterCompletion`, `UnregisterCompletion`, `IsCompletionRegistered`) are written onto `CommandKit.Scope` by `scopeExtras.installPartMethods`: the recorded part's function, or a stub that raises at the caller with the file to embed. The core runs it at commit and each part after recording itself, so the prototype always carries the newest part's methods whichever of core and part loaded last, and a part's error levels are those of a method called directly (no forwarding frame).
+
+The Options part keeps everything per binding in closures: the verb handlers, the path resolver (an index `paths`/`kinds` of the tree's paths by lower-case spelling, built by one `tree:Walk` on the first path-syntax line and dropped by the tree's `OnStructureChanged` when it has one) and a word buffer shared by the path handler and the path completer. The Completion part keeps the tab chain's functions and the providers; the core's `Close` calls the part's `releaseScope`, or, with no Completion part loaded, counts a scope's completion off itself.
 
 ## Record layout
 
@@ -134,9 +149,9 @@ The replacement is created once and kept in `completion.handler`:
 function(editBox, ...) return dispatch.tabPressed(editBox, ...) end
 ```
 
-`tabPressed` tries completion only while `enabledScopes > 0`, inside `pcall`; an error is reported and the call falls through to `completion.previous`. `installTabHandler` writes the global only when it is not already the replacement, remembering the current function as `previous`; `uninstallTabHandler` writes `previous` back only when the replacement is still the installed global. When another addon has replaced the global since, `installed` stays `true` and the replacement keeps forwarding, so a later `EnableCompletion` does not install a second copy into the chain.
+`tabPressed` (the Completion part) tries completion only while `enabledScopes > 0` or a provider is registered, inside `pcall`; an error is reported and the call falls through to `completion.previous`. `installTabHandler` writes the global only when it is not already the replacement, remembering the current function as `previous`; `uninstallTabHandler` writes `previous` back only when the replacement is still the installed global. When another addon has replaced the global since, `installed` stays `true` and the replacement keeps forwarding, so a later `EnableCompletion` does not install a second copy into the chain.
 
-`tryComplete` borrows a dispatch frame to tokenise the words before the one being completed, walks the sub-commands with them, and opens the frame's context on the reached record for the `complete` call.
+`tryComplete` borrows a dispatch frame to tokenise the words before the one being completed, walks the sub-commands with them, and opens the frame's context on the reached record for the `complete` call. When the scope's commands offer nothing, it asks each provider whose pattern finds a match in the text before the word, each under `pcall`, and applies the merged candidates the same way. The chain is uninstalled (`uninstallTabHandlerWhenUnused`) only when no scope has completion enabled and no provider is left.
 
 ## Upgrades
 
@@ -151,5 +166,7 @@ Revision 4 changes no layout either and inherits revision 3's state unchanged; i
 Revision 7 changes no state layout and inherits revision 6's state unchanged. Records it compiles may share the `EMPTY` parts and `NO_ARGUMENTS` (above); records an older copy compiled keep their own tables, which dispatch reads the same way. Its taken check caches are file-level and start empty.
 
 Revision 9 changes no layout and inherits revision 8's state unchanged; it only names an unknown option or limit key by its type instead of converting it with `tostring`.
+
+Revision 11 adds `parts`, `helpers` and the `maxCompletionProviders` limit to the state when they are missing; nothing else migrates. The main chunk drops from 198 to 169 active locals with the two sections gone; the new core functions are fields of one table, `scopeExtras`. It no longer writes `dispatch.tabPressed`: a revision-10 tab function stays until a Completion part replaces it.
 
 Revision 6 changes no layout and inherits revision 5's state unchanged. Its taken check also asks the client's `hash_*` lookup tables and `IsSecureCmd`, and tells CommandKit's own entries there apart by `ownedKeys` and by the closures in `slashHandlers`, so a name an older copy registered is still CommandKit's after the upgrade.

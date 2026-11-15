@@ -184,6 +184,31 @@ entry:Test("an error through the facade names this file's line, not AddonKit's",
   ctx:Expect(string.find(tostring(message), "AddonKit.lua:", 1, true) == nil):ToBe(true)
 end)
 
+entry:Test(
+  "MC:SetDefaultModuleState(false) leaves the addon object enabled, and a module MC:NewModule makes after login is announced to MC:OnModuleCreated and initialized but not enabled",
+  function(ctx)
+    local announced = {}
+    local connection = MC:OnModuleCreated(function(module)
+      announced[#announced + 1] = module:GetName()
+    end)
+    -- ModuleKit keeps a module for the session, so a later run in the same
+    -- session takes the next free name.
+    local container = MC.ModuleKit:ForAddon(addonName)
+    local serial = 1
+    while container:HasModule("ClientDefaultsProbe" .. serial) do
+      serial = serial + 1
+    end
+    local previous = MC:SetDefaultModuleState(false)
+    local module = MC:NewModule("ClientDefaultsProbe" .. serial, {})
+    MC:SetDefaultModuleState(previous)
+    connection:Disconnect()
+
+    ctx:Expect(addon:IsEnabled()):ToBe(true)
+    ctx:Expect(announced):ToEqual({ module:GetName() })
+    ctx:Expect(module:GetState()):ToBe("initialized")
+  end
+)
+
 -- addonKit.database --------------------------------------------------------
 
 local database = newSuite("database")

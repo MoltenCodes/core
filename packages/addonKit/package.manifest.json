@@ -2,10 +2,11 @@
   "name": "addonKit",
   "displayName": "AddonKit",
   "description": "The single entry point for MoltenCodes addons: MoltenCodes:For(...) with lazily resolved Kits, an addon object over ModuleKit, databases from plain defaults, and one-call options panels and minimap launchers, with errors that say the fix.",
-  "version": "0.1.0",
+  "summary": "The single entry point for addon authors: `MoltenCodes:For(...)` with every Kit by name, an addon object over ModuleKit, databases from plain defaults, and one-call options panels and minimap launchers, with errors that say the fix.",
+  "version": "0.2.0",
   "license": "MIT",
   "api": 1,
-  "revision": 1,
+  "revision": 2,
   "dependencies": {
     "registry": {
       "api": 2

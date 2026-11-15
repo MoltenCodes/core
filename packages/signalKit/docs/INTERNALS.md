@@ -123,6 +123,24 @@ which carry no underscore fields of a signal or a connection, and reads as
 first; buses, scopes and handles by their metatable, which `getmetatable`
 answers without raising for any value.
 
+## The Coalescing part
+
+The core's only part of it is `installPartMethods` at commit: it creates
+`_state.parts` when missing (revision 12; no schema change) and writes
+`Coalesce` onto the bus and bus-scope prototypes, the recorded part's functions
+or stubs that name the file to embed. The part writes them too when it loads,
+so either load order ends with the part serving, and a part revision equal to
+or older than the recorded one returns at once.
+
+The part's record (`_state.parts.Coalescing`) keeps, across part revisions,
+`handleMetatable` (handles are recognised by it; each revision refills its
+`__index`), the SchedulerKit facade once found, and the one SchedulerKit scope
+every handle's coalesce handle lives in. A handle is `{ _callback, _methodName,
+_connections, _closed, _coalesce }`. It makes no bus-scope member of its own:
+its subscriptions go through the bus or the scope, so the scope's sweep
+disconnects them, and the delivery checks the first one; a disconnected one
+releases the handle (`releaseIfAbandoned`) instead of delivering.
+
 ## Upgrades
 
 Revision 9 (state schema 5) marks the topic signals it inherits `_isolated`.

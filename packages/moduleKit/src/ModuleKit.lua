@@ -35,7 +35,7 @@
 
 local PACKAGE_NAME = "moduleKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 22
+local IMPLEMENTATION_REVISION = 23
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_LIFECYCLE_API = 1
 local STATE_SCHEMA = 1
@@ -88,6 +88,8 @@ local OWN_ADDON_HALTED = "halted"
 ---@field onInitialize fun(self: ModuleKit.Module, injections: table<string, any>)?
 ---@field onEnable fun(self: ModuleKit.Module, injections: table<string, any>)?
 ---@field onDisable fun(self: ModuleKit.Module, injections: table<string, any>)?
+---@field enabledState boolean? the starting intent; the container's default state when omitted
+---@field prototype table|false|nil the module's prototype; `false` for none when the container has a default
 
 ---What a provided value, or a module, must carry: a dense array of distinct
 ---method names, each looked up as `value[name]` and required to be a function,
@@ -128,6 +130,8 @@ local OWN_ADDON_HALTED = "halted"
 ---@field Disable fun(self: ModuleKit.Module): ModuleKit.Module
 ---@field Activate fun(self: ModuleKit.Module): ModuleKit.Module
 ---@field Resolve fun(self: ModuleKit.Module, providerName: string): any
+---@field SetEnabledState fun(self: ModuleKit.Module, enabled: boolean): boolean
+---@field package _prototype table|nil the prototype it was created with; see `addonConveniences.prototypeMetatable`
 ---@field package _addon ModuleKit.Addon the owning container
 ---@field package _name string
 ---@field package _order integer creation order inside the container, from 1
@@ -170,6 +174,14 @@ local OWN_ADDON_HALTED = "halted"
 ---@field ProvideModule fun(self: ModuleKit.Addon, name: string, factory: (fun(addon: ModuleKit.Addon, module: ModuleKit.Module): any), options: ModuleKit.ProvideOptions?): ModuleKit.Addon
 ---@field ProvideTransient fun(self: ModuleKit.Addon, name: string, factory: (fun(addon: ModuleKit.Addon, module: ModuleKit.Module|nil): any), options: ModuleKit.ProvideOptions?): ModuleKit.Addon
 ---@field Resolve fun(self: ModuleKit.Addon, name: string, requestingModule: ModuleKit.Module|nil): any
+---@field SetDefaultModuleState fun(self: ModuleKit.Addon, enabled: boolean): boolean
+---@field GetDefaultModuleState fun(self: ModuleKit.Addon): boolean
+---@field SetDefaultModulePrototype fun(self: ModuleKit.Addon, prototype: table?): table?
+---@field GetDefaultModulePrototype fun(self: ModuleKit.Addon): table?
+---@field OnModuleCreated fun(self: ModuleKit.Addon, callback: (fun(module: ModuleKit.Module))|table, methodName: string?): table|nil, string?
+---@field package _defaultModuleState false|nil `false` when modules start unwanted; absent reads as `true`
+---@field package _defaultModulePrototype table|nil
+---@field package _moduleCreatedBus table|nil the addon's SignalKit bus, once `OnModuleCreated` subscribed
 ---@field package _name string the addon folder name
 ---@field package _lifecycle LifecycleKit.Instance
 ---@field package _dependencyPolicy ModuleKit.DependencyPolicy
@@ -223,6 +235,8 @@ local OWN_ADDON_HALTED = "halted"
 ---@field Addon ModuleKit.Addon Shared container prototype.
 ---@field Module ModuleKit.Module Shared module prototype.
 ---@field ForAddon fun(self: ModuleKit, addonName: string): ModuleKit.Addon
+---@field FindAddon fun(self: ModuleKit, addonName: string): ModuleKit.Addon|nil
+---@field GetAddons fun(self: ModuleKit): string[]
 ---@field SetLimits fun(self: ModuleKit, limits: ModuleKit.Limits|table)
 ---@field GetLimits fun(self: ModuleKit): ModuleKit.Limits
 
@@ -512,6 +526,9 @@ if type(previousRevision) == "nil" then
     -- consumer set.
     unbounded = {},
     limits = { maxRequiredAddons = DEFAULT_MAX_REQUIRED_ADDONS },
+    -- Module prototype to the metatable of its modules (revision 23); see
+    -- `addonConveniences.prototypeMetatable`.
+    prototypeLayers = {},
   }
 
   rawset(ModuleKit, "Addon", Addon)
@@ -542,6 +559,10 @@ else
   end
   if not validateLimitsState(rawget(state, "limits"), rawget(state, "unbounded")) then
     error("MoltenCodes ModuleKit package state is corrupted or incomplete", 2)
+  end
+  -- Revisions before 23 had no module prototypes.
+  if type(rawget(state, "prototypeLayers")) ~= "table" then
+    rawset(state, "prototypeLayers", {})
   end
 end
 
@@ -2046,6 +2067,11 @@ end
 ---@return any errorValue
 local function invokeHook(module, name)
   local callback = rawget(module, name)
+  -- A module created with a prototype may inherit its hooks from it; the
+  -- lookup goes through the module's layer, so framework methods still win.
+  if callback == nil and rawget(module, "_prototype") ~= nil then
+    callback = module[name]
+  end
   local kind = type(callback)
   if kind == "function" then
     return pcall(callback, module, module._injections)
@@ -2565,7 +2591,10 @@ local function catchUpModule(addon, module)
   if lifecycle:IsLoaded() then
     initializeWithPolicy(module, nil, 2)
   end
-  if lifecycle:IsReady() then
+  -- Catch-up is implicit, like the `ready` pass, so a module that is not
+  -- wanted (`enabledState = false`, or the container's default state) is
+  -- initialized but not enabled.
+  if lifecycle:IsReady() and module._wantedEnabled ~= false then
     -- Catch-up is implicit, so a halt blocks it quietly instead of
     -- raising out of `CreateModule`; an explicit `Enable` still raises.
     local blocker = module._state ~= "enabled" and haltBlocker(module) or nil
@@ -3284,10 +3313,24 @@ local function addonGetAddonName(self)
   return rawget(self, "_name")
 end
 
+-- Container and module conveniences share one main-chunk local, because Lua
+-- 5.1 allows a chunk at most 200 and this file sits near that limit: the
+-- dependency and missing-scope policies, the module defaults (state and
+-- prototype), the module-created notice, `SetEnabledState`, and the
+-- prototype layers they rely on. The fields are installed on `Addon`,
+-- `Module` and the facade in the commit section.
+local addonConveniences = {
+  -- The bus topic `CreateModule` publishes a new module on, once
+  -- `OnModuleCreated` subscribed to it on the addon's SignalKit bus.
+  MODULE_CREATED_TOPIC = "ModuleKit.ModuleCreated",
+  -- The method a receiver subscribed without a method name is called by.
+  MODULE_CREATED_METHOD = "OnModuleCreated",
+}
+
 ---Return the container's dependency policy.
 ---@param self ModuleKit.Addon
 ---@return ModuleKit.DependencyPolicy
-local function addonGetDependencyPolicy(self)
+function addonConveniences.GetDependencyPolicy(self)
   return rawget(self, "_dependencyPolicy")
 end
 
@@ -3297,7 +3340,7 @@ end
 ---@param self ModuleKit.Addon
 ---@param policy ModuleKit.DependencyPolicy
 ---@return ModuleKit.DependencyPolicy previous
-local function addonSetDependencyPolicy(self, policy)
+function addonConveniences.SetDependencyPolicy(self, policy)
   ensureNotShutdown(self, "ModuleKit.Addon:SetDependencyPolicy", 3)
   if isSecretValue(policy) then
     error("ModuleKit.Addon:SetDependencyPolicy policy must not be a secret value", 2)
@@ -3310,14 +3353,10 @@ local function addonSetDependencyPolicy(self, policy)
   return previous
 end
 
--- The two missing-scope policy methods share one main-chunk local, because
--- Lua 5.1 allows a chunk at most 200.
-local missingScopePolicyMethods = {}
-
 ---Return what reading a scope field answers when its Kit is not loaded.
 ---@param self ModuleKit.Addon
 ---@return ModuleKit.MissingScopePolicy
-function missingScopePolicyMethods.Get(self)
+function addonConveniences.GetMissingScopePolicy(self)
   if rawget(self, "_missingScopePolicy") == "raise" then
     return "raise"
   end
@@ -3331,7 +3370,7 @@ end
 ---@param self ModuleKit.Addon
 ---@param policy ModuleKit.MissingScopePolicy
 ---@return ModuleKit.MissingScopePolicy previous
-function missingScopePolicyMethods.Set(self, policy)
+function addonConveniences.SetMissingScopePolicy(self, policy)
   ensureNotShutdown(self, "ModuleKit.Addon:SetMissingScopePolicy", 3)
   if isSecretValue(policy) then
     error("ModuleKit.Addon:SetMissingScopePolicy policy must not be a secret value", 2)
@@ -3339,7 +3378,7 @@ function missingScopePolicyMethods.Set(self, policy)
   if policy ~= "nil" and policy ~= "raise" then
     error('ModuleKit.Addon:SetMissingScopePolicy policy must be "nil" or "raise"', 2)
   end
-  local previous = missingScopePolicyMethods.Get(self)
+  local previous = addonConveniences.GetMissingScopePolicy(self)
   -- The default leaves no field behind, so a container that never chose a
   -- policy carries none.
   if policy == "raise" then
@@ -3350,7 +3389,255 @@ function missingScopePolicyMethods.Set(self, policy)
   return previous
 end
 
+---Refuse a boolean argument that is secret or not a boolean.
+---@param value any
+---@param label string the argument in full, `ModuleKit.Module:SetEnabledState enabled`
+---@param level integer stack level the failure is reported at, counted from this function
+function addonConveniences.checkBoolean(value, label, level)
+  if isSecretValue(value) then
+    error(label .. " must not be a secret value", level)
+  end
+  if type(value) ~= "boolean" then
+    error(label .. " must be a boolean", level)
+  end
+end
+
+---Set what the module is meant to be, without running a hook or changing
+---whether it is enabled now. `false` before the addon is ready keeps the
+---module out of the `ready` pass; afterwards it changes what recovery and
+---`GetEnableState` see. AceAddon-3.0's `SetEnabledState`.
+---@param self ModuleKit.Module
+---@param enabled boolean
+---@return boolean previous the intent before this call
+function addonConveniences.SetEnabledState(self, enabled)
+  ensureNotShutdown(rawget(self, "_addon"), "ModuleKit.Module:SetEnabledState", 3)
+  addonConveniences.checkBoolean(enabled, "ModuleKit.Module:SetEnabledState enabled", 3)
+  local previous = rawget(self, "_wantedEnabled") ~= false
+  if enabled then
+    rawset(self, "_wantedEnabled", true)
+  else
+    markWantedDisabled(self)
+  end
+  return previous
+end
+
+---Set the starting intent of the modules this container creates from now on.
+---AceAddon-3.0 refuses the call once a module exists; it applies forward here,
+---because an AddonKit addon object is itself a module and always exists first.
+---@param self ModuleKit.Addon
+---@param enabled boolean
+---@return boolean previous
+function addonConveniences.SetDefaultModuleState(self, enabled)
+  ensureNotShutdown(self, "ModuleKit.Addon:SetDefaultModuleState", 3)
+  addonConveniences.checkBoolean(enabled, "ModuleKit.Addon:SetDefaultModuleState enabled", 3)
+  local previous = rawget(self, "_defaultModuleState") ~= false
+  -- The default, `true`, leaves no field behind.
+  if enabled then
+    rawset(self, "_defaultModuleState", nil)
+  else
+    rawset(self, "_defaultModuleState", false)
+  end
+  return previous
+end
+
+---Return the starting intent of modules created from now on.
+---@param self ModuleKit.Addon
+---@return boolean
+function addonConveniences.GetDefaultModuleState(self)
+  return rawget(self, "_defaultModuleState") ~= false
+end
+
+---Refuse a module prototype ModuleKit cannot honour: anything but a
+---non-secret table, and a table whose own key would shadow what ModuleKit
+---reads on a module: a `Module` method (framework methods always win, so the
+---entry would never be seen), `scope`, or a private `_` field.
+---@param prototype any
+---@param label string the argument in full, `ModuleKit.Addon:SetDefaultModulePrototype prototype`
+---@param level integer stack level the failure is reported at, counted from this function
+function addonConveniences.checkPrototype(prototype, label, level)
+  if isSecretValue(prototype) then
+    error(label .. " must not be a secret value", level)
+  end
+  if type(prototype) ~= "table" then
+    error(label .. " must be a table", level)
+  end
+  for key in next, prototype do
+    if isSecretValue(key) then
+      error(label .. " keys must not be secret values", level)
+    end
+    if type(key) == "string" then
+      if rawget(Module, key) ~= nil then
+        error(label .. ' key "' .. key .. "\" shadows ModuleKit's Module:" .. key, level)
+      end
+      if key == "scope" or key:sub(1, 1) == "_" then
+        error(label .. ' key "' .. key .. '" is reserved for ModuleKit', level)
+      end
+    end
+  end
+end
+
+---Copy the current `Module` methods into a prototype layer, dropping names
+---that are no longer methods. Run when a layer is made and, for every layer,
+---when a newer revision commits its methods.
+---@param layer table
+function addonConveniences.fillLayer(layer)
+  for name in next, layer do
+    rawset(layer, name, nil)
+  end
+  for name, method in next, Module do
+    rawset(layer, name, method)
+  end
+end
+
+---Refill every prototype layer from the current `Module` methods.
+function addonConveniences.refreshLayers()
+  for _, metatable in next, rawget(state, "prototypeLayers") do
+    addonConveniences.fillLayer(rawget(metatable, "__index"))
+  end
+end
+
+---The metatable of every module created with `prototype`, made once per
+---prototype. Its `__index` is a layer holding the `Module` methods whose own
+---`__index` is the prototype, so a lookup is table reads only: the module's
+---own fields, then ModuleKit's methods, then the prototype. Layers live in
+---the shared state for the session, as containers do; Lua 5.1 has no
+---ephemeron tables, so a weak key would not let a prototype go either.
+---@param prototype table
+---@return table metatable
+function addonConveniences.prototypeMetatable(prototype)
+  local layers = rawget(state, "prototypeLayers")
+  local metatable = rawget(layers, prototype)
+  if metatable == nil then
+    local layer = setmetatable({}, { __index = prototype })
+    addonConveniences.fillLayer(layer)
+    metatable = { __index = layer }
+    rawset(layers, prototype, metatable)
+  end
+  return metatable
+end
+
+---Set the prototype of modules this container creates from now on, or clear
+---it with `nil`. A module keeps the prototype it was created with.
+---@param self ModuleKit.Addon
+---@param prototype table|nil
+---@return table|nil previous
+function addonConveniences.SetDefaultModulePrototype(self, prototype)
+  ensureNotShutdown(self, "ModuleKit.Addon:SetDefaultModulePrototype", 3)
+  if isSecretValue(prototype) or prototype ~= nil then
+    addonConveniences.checkPrototype(
+      prototype,
+      "ModuleKit.Addon:SetDefaultModulePrototype prototype",
+      3
+    )
+  end
+  local previous = rawget(self, "_defaultModulePrototype")
+  rawset(self, "_defaultModulePrototype", prototype)
+  return previous
+end
+
+---Return the prototype of modules created from now on, or `nil`.
+---@param self ModuleKit.Addon
+---@return table|nil
+function addonConveniences.GetDefaultModulePrototype(self)
+  return rawget(self, "_defaultModulePrototype")
+end
+
+---Call `callback(module)`, or `receiver[methodName](receiver, module)`, for
+---every module this container creates from now on. The subscription is made
+---on the addon's SignalKit bus, which isolates and reports a listener's
+---error, so `CreateModule` still returns its module.
+---@param self ModuleKit.Addon
+---@param callback function|table a function, or a receiver table
+---@param methodName string? the receiver's method; `"OnModuleCreated"` when omitted
+---@return table|nil connection a SignalKit connection
+---@return string|nil reason `"full"` at the bus limits
+function addonConveniences.OnModuleCreated(self, callback, methodName)
+  local label = "ModuleKit.Addon:OnModuleCreated"
+  ensureNotShutdown(self, label, 3)
+  if isSecretValue(callback) then
+    error(label .. " callback must not be a secret value", 2)
+  end
+  if type(callback) == "table" then
+    if methodName == nil then
+      methodName = addonConveniences.MODULE_CREATED_METHOD
+    end
+    if isSecretValue(methodName) then
+      error(label .. " methodName must not be a secret value", 2)
+    end
+    if type(methodName) ~= "string" or methodName == "" then
+      error(label .. " methodName must be a non-empty string", 2)
+    end
+    if type(callback[methodName]) ~= "function" then
+      error(label .. ' receiver has no method "' .. methodName .. '"', 2)
+    end
+  elseif type(callback) ~= "function" then
+    error(label .. " callback must be a function, or a receiver table followed by a method name", 2)
+  end
+
+  local SignalKit = findOptionalPackage("signalKit", 1)
+  if SignalKit == nil or type(rawget(SignalKit, "ForAddon")) ~= "function" then
+    error(label .. " needs SignalKit API 1, which is not loaded", 2)
+  end
+  local bus, reason = SignalKit:ForAddon(rawget(self, "_name"))
+  if bus == nil then
+    return nil, reason
+  end
+  local topic = addonConveniences.MODULE_CREATED_TOPIC
+  local declared, declareReason = bus:DeclareTopic(topic, {
+    arguments = 1,
+    description = "ModuleKit created a module in this addon; the argument is the module.",
+  })
+  if not declared then
+    return nil, declareReason
+  end
+  local connection, subscribeReason
+  if type(callback) == "table" then
+    connection, subscribeReason = bus:Subscribe(topic, callback, methodName)
+  else
+    connection, subscribeReason = bus:Subscribe(topic, callback)
+  end
+  if connection == nil then
+    return nil, subscribeReason
+  end
+  rawset(self, "_moduleCreatedBus", bus)
+  return connection
+end
+
+---Publish a module just created, when someone subscribed to the notice.
+---@param addon ModuleKit.Addon
+---@param module ModuleKit.Module
+function addonConveniences.publishCreated(addon, module)
+  local bus = rawget(addon, "_moduleCreatedBus")
+  if bus ~= nil then
+    bus:Publish(addonConveniences.MODULE_CREATED_TOPIC, module)
+  end
+end
+
+---Return the container for `addonName`, or `nil`, never creating one.
+---@param _ ModuleKit
+---@param addonName string
+---@return ModuleKit.Addon|nil
+function addonConveniences.FindAddon(_, addonName)
+  validateNonEmptyString(addonName, "ModuleKit:FindAddon addonName", 3)
+  return rawget(rawget(state, "addons"), addonName)
+end
+
+---Return a new sorted array of every container's addon name. Diagnostics: it
+---allocates.
+---@param _ ModuleKit
+---@return string[]
+function addonConveniences.GetAddons(_)
+  local names = {}
+  for name in next, rawget(state, "addons") do
+    names[#names + 1] = name
+  end
+  table.sort(names)
+  return names
+end
+
 local DEFINITION_FIELDS = {
+  enabledState = true,
+  prototype = true,
   dependsOn = true,
   optionalDependencies = true,
   before = true,
@@ -3503,6 +3790,15 @@ local function applyDefinition(module, definition)
 
   -- Apply in a fixed order so malformed definitions fail deterministically
   -- on every Lua implementation and every load order.
+  local enabledState = rawget(definition, "enabledState")
+  if isSecretValue(enabledState) or enabledState ~= nil then
+    addonConveniences.checkBoolean(enabledState, "ModuleKit module definition enabledState", 4)
+    rawset(module, "_wantedEnabled", enabledState)
+  end
+  local prototype = rawget(definition, "prototype")
+  if isSecretValue(prototype) or (prototype ~= nil and prototype ~= false) then
+    addonConveniences.checkPrototype(prototype, "ModuleKit module definition prototype", 4)
+  end
   applyDefinitionList(module, definition, "dependsOn", "_hardDependencies", "DependsOn")
   applyDefinitionList(
     module,
@@ -3603,8 +3899,9 @@ local function addonCreateModule(self, name, definition)
     _order = #order + 1,
     _state = "created",
     -- Every module is meant to be enabled once its addon is ready, until
-    -- an explicit `Disable` says otherwise.
-    _wantedEnabled = true,
+    -- an explicit `Disable` says otherwise, unless the container's default
+    -- state or the definition's `enabledState` says it is not.
+    _wantedEnabled = rawget(self, "_defaultModuleState") ~= false,
     _scope = nil,
     scope = nil,
     OnInitialize = nil,
@@ -3618,6 +3915,16 @@ local function addonCreateModule(self, name, definition)
   module.scope = scope
 
   applyDefinition(module, definition)
+  -- The prototype is the definition's (`false` for none) or the container's
+  -- default, chosen once: a later default does not change this module.
+  local prototype = rawget(self, "_defaultModulePrototype")
+  if type(definition) == "table" and rawget(definition, "prototype") ~= nil then
+    prototype = rawget(definition, "prototype")
+  end
+  if prototype then
+    rawset(module, "_prototype", prototype)
+    setmetatable(module, addonConveniences.prototypeMetatable(prototype))
+  end
   -- The definition is atomic, so what the module carries when this returns
   -- is what it will carry: ModuleKit's own methods and the hooks the
   -- definition set. Checked before the module is published, so a refusal
@@ -3644,6 +3951,10 @@ local function addonCreateModule(self, name, definition)
   if blocker ~= nil and module._wantedEnabled == true then
     markBlocked(module, blocker)
   end
+
+  -- Before the catch-up, so a listener can still give a late definition
+  -- module what it needs before it initializes.
+  addonConveniences.publishCreated(self, module)
 
   -- A fully specified late-created module can catch up immediately. For the
   -- common mutable-object style, omit the definition and call :Activate()
@@ -4348,12 +4659,23 @@ rawset(Module, "Enable", moduleEnable)
 rawset(Module, "Disable", moduleDisable)
 rawset(Module, "Activate", moduleActivate)
 rawset(Module, "Resolve", moduleResolve)
+rawset(Module, "SetEnabledState", addonConveniences.SetEnabledState)
+
+-- Every prototype layer holds a copy of the `Module` methods, so a module
+-- created with a prototype by an older revision gains this revision's methods
+-- here, as a plain module does through the shared `Module` table.
+addonConveniences.refreshLayers()
 
 rawset(Addon, "GetAddonName", addonGetAddonName)
-rawset(Addon, "GetDependencyPolicy", addonGetDependencyPolicy)
-rawset(Addon, "SetDependencyPolicy", addonSetDependencyPolicy)
-rawset(Addon, "GetMissingScopePolicy", missingScopePolicyMethods.Get)
-rawset(Addon, "SetMissingScopePolicy", missingScopePolicyMethods.Set)
+rawset(Addon, "GetDependencyPolicy", addonConveniences.GetDependencyPolicy)
+rawset(Addon, "SetDependencyPolicy", addonConveniences.SetDependencyPolicy)
+rawset(Addon, "GetMissingScopePolicy", addonConveniences.GetMissingScopePolicy)
+rawset(Addon, "SetMissingScopePolicy", addonConveniences.SetMissingScopePolicy)
+rawset(Addon, "SetDefaultModuleState", addonConveniences.SetDefaultModuleState)
+rawset(Addon, "GetDefaultModuleState", addonConveniences.GetDefaultModuleState)
+rawset(Addon, "SetDefaultModulePrototype", addonConveniences.SetDefaultModulePrototype)
+rawset(Addon, "GetDefaultModulePrototype", addonConveniences.GetDefaultModulePrototype)
+rawset(Addon, "OnModuleCreated", addonConveniences.OnModuleCreated)
 rawset(Addon, "CreateModule", addonCreateModule)
 rawset(Addon, "GetModule", addonGetModule)
 rawset(Addon, "HasModule", addonHasModule)
@@ -4375,6 +4697,8 @@ rawset(ModuleKit, "API", API_GENERATION)
 rawset(ModuleKit, "REVISION", IMPLEMENTATION_REVISION)
 rawset(ModuleKit, "UNBOUNDED", UNBOUNDED)
 rawset(ModuleKit, "ForAddon", forAddon)
+rawset(ModuleKit, "FindAddon", addonConveniences.FindAddon)
+rawset(ModuleKit, "GetAddons", addonConveniences.GetAddons)
 rawset(ModuleKit, "SetLimits", setLimits)
 rawset(ModuleKit, "GetLimits", getLimits)
 

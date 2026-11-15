@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.3.0 — 2026-11-15
+
+CommandKit becomes a core and two parts, and gains AceConsole's, AceConfigCmd's and AceTab's remaining features (roadmap package O, "commandKit: parts for options binding and completion", ADR 0001).
+
+- Changed: options binding and tab completion move out of `CommandKit.lua` into `parts/CommandKit-Options.lua` (`BindOptions`, `GetBoundTree`) and `parts/CommandKit-Completion.lua` (`EnableCompletion`, `DisableCompletion` and the providers). **An addon that calls them embeds the part**; without it the method raises at the caller with the file to add (`CommandKit.Scope:BindOptions needs CommandKit's Options part, which is not loaded: add commandKit\parts\CommandKit-Options.lua to your embeds.xml`). OptionsKit becomes the Options part's dependency instead of an optional dependency of the core. The core installs every part method on the scope prototype at load (the loaded part's function, or the raising stub), and each part does when it loads, so any load order of core and part revisions ends with the newest serving.
+- Added: `scope:GetCommands()` and `CommandKit:GetCommands()`, sorted arrays of slash names (AceConsole's `IterateChatCommands`).
+- Added: `scope:SetPrefix(prefix)`, `scope:GetPrefix()`: every line the scope writes starts with the prefix; none by default, so output is unchanged.
+- Added: `scope:Print(...)`, `scope:Printf(template, ...)` outside handlers.
+- Added: `scope:Dispatch(name, text)`, the client's dispatch of `/name text` from code (AceConfigCmd's `HandleCommand`).
+- Added: `scope:Reopen()` for a closed manual scope, so ModuleKit keeps a module's `scope.Commands` across enables; an addon scope is refused.
+- Added (Options part): `BindOptions(tree, name, { syntax = "path" })`, AceConfigCmd's `/name group option value` beside the verbs, resolved through an index of the tree's paths built once per binding (dropped by `OnStructureChanged`); `options.onEmpty(context)` for an empty line; `scope:GetBoundTree(name)`.
+- Added (Completion part): `scope:RegisterCompletion(name, pattern, provider)`, `UnregisterCompletion`, `IsCompletionRegistered`: AceTab's counterpart for any word of chat input in a chat edit box, on the `ChatEdit_CustomTabPressed` hook CommandKit already installs (verified in Blizzard's UI source on Retail, Mists of Pandaria Classic and Classic Era); the package limit `maxCompletionProviders` (32, at most 256, `UNBOUNDED` refused).
+- Memory (host, load-and-execute footprint, debug information kept): the core holds 117,461 B where revision 10 held 140,450 B; the Options part 40,148 B and the Completion part 19,254 B. Main chunk 198 → 169 active locals.
+- Performance (host bench, ratios against Ace3 from one run): `cmd-set-range-path`, the same typed line as AceConfigCmd, 1.83×; every existing case unchanged within noise.
+- Implementation revision 11. An in-place upgrade over revision 10 adds `parts`, `helpers` and the provider limit to the state; scopes, records, dispatchers and a revision-10 tab function are kept.
+- Specs: 176 → 209 (`Parts_spec.lua`, `ScopeExtras_spec.lua`, `PathSyntax_spec.lua`, `Providers_spec.lua`; the BindOptions and Completion specs load the parts). The client suite gains a provider test and a path-syntax test (never run).
+
 ## 0.2.10 — 2026-11-15
 
 The secret question without a per-call Registry lookup (roadmap package O, "commandKit secret question", core decision 18). No surface change.

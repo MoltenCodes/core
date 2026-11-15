@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.10.0 — 2026-11-15
+
+The AceAddon-3.0 conveniences (roadmap package O, "moduleKit: the AceAddon conveniences", ADR 0003).
+
+- Added: `module:SetEnabledState(enabled)`, intent without running a hook (AceAddon's `SetEnabledState`).
+- Added: `addon:SetDefaultModuleState(enabled)` and `GetDefaultModuleState()`, the starting intent of later modules, and the definition field `enabledState`. A definition-table module created after ready is now enabled by its catch-up only when it is wanted, as the `ready` pass does; every such module was wanted before this release, so nothing existing changes. `Activate` still enables.
+- Added: module prototypes, `addon:SetDefaultModulePrototype(prototype)`, `GetDefaultModulePrototype()` and the definition field `prototype`: own fields, then ModuleKit's methods, then the prototype, hooks included, through one layer table per prototype (table reads only). Prototype keys that would shadow a `Module` method, `scope` or a `_` field are refused at the caller.
+- Added: `ModuleKit:FindAddon(name)` (never creates) and `ModuleKit:GetAddons()` (a sorted array).
+- Added: `addon:OnModuleCreated(callback)` / `(receiver[, methodName])`, a subscription on the addon's SignalKit bus that `CreateModule` publishes to before the catch-up; nothing is published until someone subscribes. `signalKit` API 1 is listed as an optional dependency (LifecycleKit already requires it).
+- Changed: CommandKit 0.3.0 scopes have `Reopen`, so `scope.Commands` is now kept across enables like the other module scopes.
+- Memory (host, load-and-execute footprint, debug information kept): 137,711 → 151,485 B; a module without a prototype is unchanged; a prototype costs one layer (the `Module` methods' hash part) per distinct prototype. Main chunk 195 → 193 active locals.
+- Performance (host bench `addonModules`, ratios against AceAddon-3.0 from one run, before → after): create-addon 0.76× → 0.81×, load-addon 0.95× → 1.01×, disable-enable-all 1.17× → 1.18×, disable-enable-module 1.24× → 1.25×, disable-enable-all-listening 1.61× → 1.58×.
+- Implementation revision 23. An in-place upgrade from revision 22 adds the empty `prototypeLayers` map; containers and modules are kept.
+- Specs: 264 → 288 (`Conveniences_spec.lua`; `KeptScopes_spec.lua` gains the CommandKit case). The client suite gains two lifecycle tests (never run).
+
 ## 0.9.0 — 2026-11-15
 
 - Module scopes are kept across enable cycles. A Kit scope that a disable closed cleanly is kept on the module (`_keptScopes`) when its Kit has `Scope:Reopen()` (TimerKit 0.9.0, EventKit 0.10.0, SignalKit 0.8.0 bus scopes, HookKit 0.4.0, SchedulerKit 0.9.0), and the first read in the next enabled period reopens it instead of looking the Kit up in Registry and building a new one. `self.scope.Events` is therefore the same, empty object at every enable; a field whose Kit has no `Reopen` (CommKit, CommandKit, older revisions) gets a new scope as before, and a `Reopen` that raises or refuses gives the kept scope up. A reference kept from an earlier period raises while the module is disabled and works again after re-enable. `docs/API.md` *Module scopes* states it.

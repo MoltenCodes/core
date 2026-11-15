@@ -2,10 +2,11 @@
   "name": "commandKit",
   "displayName": "CommandKit",
   "description": "Slash commands for World of Warcraft addons: hyperlink-aware argument parsing, sub-commands with generated usage, schema-checked arguments, output sinks, tab completion and an OptionsKit command line.",
-  "version": "0.2.10",
+  "summary": "Slash commands with hyperlink-aware parsing, generated usage, schema-checked arguments, sinks, completion and an OptionsKit command line.",
+  "version": "0.3.0",
   "license": "MIT",
   "api": 1,
-  "revision": 10,
+  "revision": 11,
   "dependencies": {
     "registry": {
       "api": 2
@@ -15,9 +16,6 @@
     }
   },
   "optionalDependencies": {
-    "optionsKit": {
-      "api": 1
-    },
     "localeKit": {
       "api": 1
     },
@@ -29,6 +27,21 @@
     },
     "lifecycleKit": {
       "api": 1
+    }
+  },
+  "parts": {
+    "Options": {
+      "description": "Drive an OptionsKit tree from a slash command: the get, set, reset, list and exec verbs and AceConfigCmd's path syntax.",
+      "revision": 1,
+      "dependencies": {
+        "optionsKit": {
+          "api": 1
+        }
+      }
+    },
+    "Completion": {
+      "description": "Tab completion in chat edit boxes: the scopes' own commands and AceTab-style completion providers.",
+      "revision": 1
     }
   }
 }

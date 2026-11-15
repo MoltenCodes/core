@@ -21,6 +21,7 @@ The fixture addons carry a `--# selene:` line because they are linted as test co
 |---|---|
 | `Lookup_spec.lua` | the facade, Kit resolution, suggestions, pins, the facade limit |
 | `Addon_spec.lua` | the addon object and modules |
+| `ModuleDefaults_spec.lua` | revision 2: `MC:SetDefaultModuleState` keeping the addon object on, `enabledState = false` on the addon object, the default and a module's own prototype, `MC:OnModuleCreated` with a receiver, ModuleKit's refusals and an old ModuleKit named at the author's line, and facades of revision 1 gaining the three methods |
 | `Database_spec.lua` | the Database part |
 | `Composition_spec.lua` | the Composition part |
 | `Arguments_spec.lua` | argument errors at the caller's line, secrets, re-raised messages |

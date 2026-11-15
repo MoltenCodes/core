@@ -53,10 +53,9 @@
 
 local PACKAGE_NAME = "commandKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 10
+local IMPLEMENTATION_REVISION = 11
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_SCHEMAKIT_API = 1
-local OPTIONAL_OPTIONSKIT_API = 1
 local OPTIONAL_LOCALEKIT_API = 1
 local OPTIONAL_CLIENTKIT_API = 1
 local STATE_SCHEMA = 1
@@ -129,6 +128,11 @@ local DEFAULT_MAX_CAPTURED = 256
 local DEFAULT_MAX_COMPLETIONS = 32
 local MAX_COMPLETIONS_CEILING = 256
 
+-- The most completion providers (`RegisterCompletion`, the Completion part)
+-- the session holds. Every Tab press walks them, so the limit has the same
+-- ceiling and refuses `UNBOUNDED`.
+local DEFAULT_MAX_COMPLETION_PROVIDERS = 32
+
 -- The emote indexes the emote check reads: `EMOTE<index>_CMD<n>` for index
 -- 1..maxEmotes (or the host's `MAXEMOTEINDEX`, when it is a smaller number)
 -- and n up to the first gap. Emote indexes have gaps, so the scan cannot stop
@@ -161,15 +165,17 @@ local MAX_NAME_LENGTH = 32
 
 -- The package-wide limits `SetLimits` accepts, in the order `GetLimits` and
 -- the validation read them.
-local LIMIT_NAMES = { "maxCaptured", "maxCompletions", "maxEmotes" }
+local LIMIT_NAMES = { "maxCaptured", "maxCompletions", "maxEmotes", "maxCompletionProviders" }
 -- A ceiling for the limits that refuse `UNBOUNDED`, and the reason given.
 local LIMIT_CEILINGS = {
   maxCompletions = MAX_COMPLETIONS_CEILING,
   maxEmotes = MAX_EMOTES_CEILING,
+  maxCompletionProviders = MAX_COMPLETIONS_CEILING,
 }
 local LIMIT_UNBOUNDED_REFUSALS = {
   maxCompletions = "the candidates are printed to the shared chat frame as one line",
   maxEmotes = "emote indexes have gaps, so the scan needs an end",
+  maxCompletionProviders = "every Tab press asks every provider",
 }
 
 -- The limits a scope option accepts, with their defaults.
@@ -194,9 +200,6 @@ local SPEC_FIELDS = {
   complete = true,
 }
 
--- The fields `BindOptions` accepts in its option table.
-local BIND_OPTION_FIELDS = { description = true }
-
 -- Words a boolean argument and a toggle option accept, lower-case.
 local BOOLEAN_WORDS = {
   on = true,
@@ -212,6 +215,7 @@ local BOOLEAN_WORDS = {
 -- The published surface, listed once so the public-surface predicate reads as
 -- a checklist instead of a long boolean expression.
 local FACADE_METHODS = {
+  "GetCommands",
   "CreateScope",
   "ForAddon",
   "CloseAddonScopes",
@@ -227,8 +231,19 @@ local SCOPE_METHODS = {
   "IsRegistered",
   "SetSink",
   "BindOptions",
+  "GetBoundTree",
   "EnableCompletion",
   "DisableCompletion",
+  "RegisterCompletion",
+  "UnregisterCompletion",
+  "IsCompletionRegistered",
+  "GetCommands",
+  "SetPrefix",
+  "GetPrefix",
+  "Print",
+  "Printf",
+  "Dispatch",
+  "Reopen",
   "Close",
   "IsClosed",
   "GetActiveCount",
@@ -321,10 +336,13 @@ local PARSER_PATTERNS = {
 ---@field maxCaptured (integer|table)? Most lines a capture sink keeps; default 256, or `CommandKit.UNBOUNDED`.
 ---@field maxCompletions integer? Most candidates one completion offers; default 32, at most 256.
 ---@field maxEmotes integer? Emote indexes the emote check reads; default 1024, at most 16384.
+---@field maxCompletionProviders integer? Completion providers the session holds; default 32, at most 256.
 
 ---Option table accepted by `BindOptions`.
 ---@class CommandKit.BindOptions
 ---@field description string? The bound command's help line.
+---@field syntax ("verbs"|"path")? `"path"` adds AceConfigCmd's `/cmd group option value`; default `"verbs"`.
+---@field onEmpty (fun(context: CommandKit.Context))? Runs for an empty line instead of the usage or the root listing.
 
 ---The owner of a set of slash commands, released together by `Close`.
 ---@class CommandKit.Scope
@@ -332,9 +350,20 @@ local PARSER_PATTERNS = {
 ---@field Unregister fun(self: CommandKit.Scope, name: string): boolean
 ---@field IsRegistered fun(self: CommandKit.Scope, name: string): boolean
 ---@field SetSink fun(self: CommandKit.Scope, sink: CommandKit.Sink?)
----@field BindOptions fun(self: CommandKit.Scope, tree: table, commandName: string, options: CommandKit.BindOptions?): true|nil, "taken"|"emote"|"full"|nil
----@field EnableCompletion fun(self: CommandKit.Scope): boolean
----@field DisableCompletion fun(self: CommandKit.Scope): boolean
+---@field BindOptions fun(self: CommandKit.Scope, tree: table, commandName: string, options: CommandKit.BindOptions?): true|nil, "taken"|"emote"|"full"|nil Options part
+---@field GetBoundTree fun(self: CommandKit.Scope, name: string): table? Options part
+---@field EnableCompletion fun(self: CommandKit.Scope): boolean Completion part
+---@field DisableCompletion fun(self: CommandKit.Scope): boolean Completion part
+---@field RegisterCompletion fun(self: CommandKit.Scope, name: string, pattern: string, provider: fun(partial: string, before: string, editBox: table): string[]?): true|nil, "taken"|"full"|"unavailable"|nil Completion part
+---@field UnregisterCompletion fun(self: CommandKit.Scope, name: string): boolean Completion part
+---@field IsCompletionRegistered fun(self: CommandKit.Scope, name: string): boolean Completion part
+---@field GetCommands fun(self: CommandKit.Scope): string[]
+---@field SetPrefix fun(self: CommandKit.Scope, prefix: string?): string?
+---@field GetPrefix fun(self: CommandKit.Scope): string?
+---@field Print fun(self: CommandKit.Scope, ...: any)
+---@field Printf fun(self: CommandKit.Scope, template: string, ...: any)
+---@field Dispatch fun(self: CommandKit.Scope, name: string, text: string): boolean
+---@field Reopen fun(self: CommandKit.Scope): boolean
 ---@field Close fun(self: CommandKit.Scope): boolean
 ---@field IsClosed fun(self: CommandKit.Scope): boolean
 ---@field GetActiveCount fun(self: CommandKit.Scope): integer
@@ -357,6 +386,7 @@ local PARSER_PATTERNS = {
 ---@field CaptureSink fun(self: CommandKit): CommandKit.CaptureSink
 ---@field SetLimits fun(self: CommandKit, limits: CommandKit.Limits)
 ---@field GetLimits fun(self: CommandKit): CommandKit.Limits
+---@field GetCommands fun(self: CommandKit): string[]
 
 -- Dependencies ---------------------------------------------------------------
 
@@ -542,6 +572,7 @@ if previousRevision == nil then
       maxCaptured = DEFAULT_MAX_CAPTURED,
       maxCompletions = DEFAULT_MAX_COMPLETIONS,
       maxEmotes = DEFAULT_MAX_EMOTES,
+      maxCompletionProviders = DEFAULT_MAX_COMPLETION_PROVIDERS,
     },
     -- The package-level `PLAYER_LOGOUT` watcher (see "Logout close"): the
     -- EventKit scope that owns it, the connection once made, and the
@@ -550,6 +581,10 @@ if previousRevision == nil then
     -- ClientKit as `isSecret` found it on its first question (revision 10):
     -- `looked` once asked, `clientKit` the implementation or `false`.
     clientKitLookup = { looked = false, clientKit = false },
+    -- Each loaded part's record, `{ revision, methods, ... }` (revision 11,
+    -- ADR 0001), and the core functions the parts call.
+    parts = {},
+    helpers = {},
   }
   rawset(CommandKit, "Scope", Scope)
   rawset(CommandKit, "Context", Context)
@@ -569,6 +604,16 @@ end
 -- nothing; the lookup starts empty and is filled by the next question.
 if rawget(state, "clientKitLookup") == nil then
   rawset(state, "clientKitLookup", { looked = false, clientKit = false })
+end
+-- Revisions before 11 had no parts and no provider limit.
+if rawget(state, "parts") == nil then
+  rawset(state, "parts", {})
+end
+if rawget(state, "helpers") == nil then
+  rawset(state, "helpers", {})
+end
+if rawget(rawget(state, "limits"), "maxCompletionProviders") == nil then
+  rawset(rawget(state, "limits"), "maxCompletionProviders", DEFAULT_MAX_COMPLETION_PROVIDERS)
 end
 for _, addonScope in next, rawget(state, "addonScopes") do
   if rawget(addonScope, "_schema") == 1 then
@@ -1082,6 +1127,11 @@ end
 ---@param scope CommandKit.Scope
 ---@param text string
 local function writeLine(scope, text)
+  -- A scope's prefix (revision 11), absent unless its owner set one.
+  local prefix = rawget(scope, "_prefix")
+  if prefix ~= nil then
+    text = prefix .. text
+  end
   local sink = rawget(scope, "_sink")
   if sink == false then
     sink = readGlobal("DEFAULT_CHAT_FRAME")
@@ -1922,6 +1972,11 @@ end
 ---@param record table
 local function releaseCommand(scope, lowerName, record)
   rawset(rawget(scope, "_commands"), lowerName, nil)
+  -- The tree a bound command was bound to (the Options part's `_bound`).
+  local bound = rawget(scope, "_bound")
+  if bound ~= nil then
+    rawset(bound, lowerName, nil)
+  end
   rawset(scope, "_count", rawget(scope, "_count") - 1)
   if activeByName[lowerName] == record then
     activeByName[lowerName] = nil
@@ -2276,844 +2331,6 @@ local function contextGetRawText(self)
   return rawget(self, "_raw")
 end
 
--- Options binding ------------------------------------------------------------
---
--- `BindOptions` registers a command whose sub-commands read and write an
--- OptionsKit tree. Every bound sub-command describes the one option (or
--- group) its path names, once, to see it as it is now (value, labels, hidden
--- and disabled flags): `tree:DescribeOption(path)` on OptionsKit revision 7
--- and later, so only that option's callbacks run; the whole `tree:Describe()`
--- on an older revision. Allocating by design, because a values function may
--- answer differently each time.
-
--- Option kinds that carry a value.
-local VALUE_KINDS = {
-  toggle = true,
-  range = true,
-  select = true,
-  multiselect = true,
-  input = true,
-  color = true,
-  keybinding = true,
-}
-
----Index a description by path.
----@param node table
----@param index table<string, table>
-local function indexDescription(node, index)
-  index[node.path] = node
-  local children = node.children
-  if type(children) == "table" then
-    for position = 1, #children do
-      indexDescription(children[position], index)
-    end
-  end
-end
-
----The description node at `path`, or `nil` after telling the user.
----@param context CommandKit.Context
----@param tree table
----@param path string|nil
----@param allowRoot boolean whether `nil` or `""` names the root group
----@return table|nil node
-local function findOption(context, tree, path, allowRoot)
-  if path == nil or path == "" then
-    if not allowRoot then
-      contextFail(context, "expected an option path")
-      contextUsage(context)
-      return nil
-    end
-    path = ""
-  end
-  local node
-  -- OptionsKit revision 7 describes one option; an older revision only the
-  -- whole tree, which is then indexed by path.
-  if type(tree.DescribeOption) == "function" then
-    node = tree:DescribeOption(path)
-  else
-    local index = {}
-    indexDescription(tree:Describe(), index)
-    node = index[path]
-  end
-  if node == nil or node.hidden == true then
-    contextFail(context, 'unknown option "' .. path .. '"')
-    return nil
-  end
-  return node
-end
-
----The sorted keys of a values table.
----@param node table
----@return any[]
-local function valueKeys(node)
-  local keys = {}
-  local sorting = node.sorting
-  if type(sorting) == "table" then
-    for index = 1, #sorting do
-      keys[index] = sorting[index]
-    end
-    return keys
-  end
-  for key in next, node.values or {} do
-    keys[#keys + 1] = key
-  end
-  table.sort(keys, function(left, right)
-    return tostring(left) < tostring(right)
-  end)
-  return keys
-end
-
----A value as the command line shows it. A secret, at the top or inside a
----`multiselect` or `color` table (OptionsKit's `Describe` passes nested
----secrets through), is shown as `(secret value)` before anything compares or
----formats it.
----@param node table
----@param value any
----@return string
-local function formatValue(node, value)
-  if isSecret(value) then
-    return "(secret value)"
-  end
-  local kind = node.kind
-  if type(value) == "nil" then
-    if kind == "toggle" then
-      return "default"
-    end
-    return "(none)"
-  end
-  if kind == "toggle" and type(value) == "boolean" then
-    return value and "on" or "off"
-  end
-  if kind == "select" then
-    local label = type(node.values) == "table" and node.values[value] or nil
-    if isSecret(label) then
-      return tostring(value)
-    end
-    if type(label) ~= "nil" and tostring(label) ~= tostring(value) then
-      return tostring(value) .. " (" .. tostring(label) .. ")"
-    end
-    return tostring(value)
-  end
-  if kind == "multiselect" and type(value) == "table" then
-    local chosen = {}
-    local keys = valueKeys(node)
-    for index = 1, #keys do
-      local entry = value[keys[index]]
-      if isSecret(entry) then
-        return "(secret value)"
-      end
-      if entry == true then
-        chosen[#chosen + 1] = tostring(keys[index])
-      end
-    end
-    if #chosen == 0 then
-      return "(none)"
-    end
-    return table.concat(chosen, ", ")
-  end
-  if kind == "color" and type(value) == "table" then
-    if isSecret(value.r) or isSecret(value.g) or isSecret(value.b) or isSecret(value.a) then
-      return "(secret value)"
-    end
-    local text = string.format("%.2f %.2f %.2f", value.r or 0, value.g or 0, value.b or 0)
-    if type(value.a) ~= "nil" then
-      text = text .. string.format(" %.2f", value.a)
-    end
-    return text
-  end
-  if kind == "keybinding" and value == "" then
-    return "(unbound)"
-  end
-  return tostring(value)
-end
-
----Read a boolean flag of the addon's tree that `Describe` passes through as
----the addon wrote it (`tristate`, `confirm`). OptionsKit checks only its type,
----so the flag may be a secret boolean, which cannot be tested for truth or
----compared with `true` inside CommandKit. A secret flag answers `whenSecret`,
----chosen per flag as the safe reading; anything but a boolean answers `false`.
----@param value any
----@param whenSecret boolean
----@return boolean
-local function readTreeFlag(value, whenSecret)
-  if type(value) ~= "boolean" then
-    return false
-  end
-  if isSecret(value) then
-    return whenSecret
-  end
-  return value
-end
-
----Find a `select` or `multiselect` key from what the user typed: the key
----itself (as text or as a number), else a label, ignoring case.
----@param node table
----@param word string
----@return any key
-local function matchValueKey(node, word)
-  local values = node.values or {}
-  for key in next, values do
-    if tostring(key) == word then
-      return key
-    end
-  end
-  local lowerWord = word:lower()
-  for key, label in next, values do
-    if not isSecret(label) and tostring(label):lower() == lowerWord then
-      return key
-    end
-  end
-  return nil
-end
-
----The "expected one of" message of a `select` or `multiselect`.
----@param node table
----@return string
-local function expectedKeys(node)
-  return "expected one of: " .. joinValues(valueKeys(node), ", ")
-end
-
----Parse a colour typed as `r g b [a]` in 0..1 or as `#rrggbb[aa]`.
----@param node table
----@param ... string
----@return table|nil colour
----@return string|nil problem
-local function parseColour(node, ...)
-  local first = ...
-  local components
-  -- The `#` is required, as `docs/API.md` documents: without it a word of
-  -- six digits would be read as hex.
-  local hex = type(first) == "string" and first:match("^#(%x+)$") or nil
-  if hex ~= nil and select("#", ...) == 1 and (#hex == 6 or #hex == 8) then
-    components = {}
-    for index = 1, #hex / 2 do
-      components[index] = tonumber(hex:sub(index * 2 - 1, index * 2), 16) / 255
-    end
-  else
-    components = {}
-    for index = 1, select("#", ...) do
-      local number = tonumber((select(index, ...)))
-      if number == nil then
-        return nil, "expected r g b [a] between 0 and 1, or #rrggbb[aa]"
-      end
-      components[index] = number
-    end
-    if #components < 3 or #components > 4 then
-      return nil, "expected r g b [a] between 0 and 1, or #rrggbb[aa]"
-    end
-  end
-  local colour = { r = components[1], g = components[2], b = components[3] }
-  if node.hasAlpha then
-    colour.a = components[4] or 1
-  elseif components[4] ~= nil then
-    return nil, "this colour has no alpha"
-  end
-  return colour
-end
-
--- What `set <path> toggle` answers when the current value (a `toggle`, or the
--- chosen key of a `multiselect`) is secret: flipping it would test the secret.
-local SECRET_TOGGLE_PROBLEM = "the current value is secret; use on or off"
-
----Parse the words after `set <path>` into a value of the option's kind.
----@param node table
----@param ... string
----@return any value
----@return string|nil problem
-local function parseValue(node, ...)
-  local kind = node.kind
-  local word = ...
-  local wordCount = select("#", ...)
-  if kind == "input" or kind == "keybinding" then
-    local text = table.concat({ ... }, " ")
-    if kind == "keybinding" and (text:lower() == "none" or text:lower() == "unbound") then
-      return ""
-    end
-    return text
-  end
-  if kind == "color" then
-    return parseColour(node, ...)
-  end
-  if word == nil then
-    if kind == "toggle" then
-      return nil, "expected on, off or toggle"
-    end
-    if kind == "range" then
-      return nil, "expected a number"
-    end
-    return nil, expectedKeys(node)
-  end
-  if kind == "toggle" then
-    local lowerWord = word:lower()
-    if wordCount > 1 then
-      return nil, "expected on, off or toggle"
-    end
-    if lowerWord == "toggle" then
-      if isSecret(node.value) then
-        return nil, SECRET_TOGGLE_PROBLEM
-      end
-      return not node.value
-    end
-    -- A secret `tristate` reads as absent: `default` is not offered.
-    if readTreeFlag(node.tristate, false) and lowerWord == "default" then
-      return nil
-    end
-    local value = BOOLEAN_WORDS[lowerWord]
-    if value == nil then
-      return nil, "expected on, off or toggle"
-    end
-    return value
-  end
-  if kind == "range" then
-    local number = tonumber(word)
-    if number == nil or wordCount > 1 then
-      return nil, "expected a number"
-    end
-    return number
-  end
-  if kind == "select" then
-    local key = matchValueKey(node, table.concat({ ... }, " "))
-    if key == nil then
-      return nil, expectedKeys(node)
-    end
-    return key
-  end
-  -- multiselect: `<key> on|off|toggle`
-  local key = matchValueKey(node, word)
-  if key == nil then
-    return nil, expectedKeys(node)
-  end
-  local stateWord = select(2, ...)
-  local current = type(node.value) == "table" and node.value or {}
-  local enabled
-  if type(stateWord) == "string" and stateWord:lower() == "toggle" then
-    local chosen = current[key]
-    if isSecret(chosen) then
-      return nil, SECRET_TOGGLE_PROBLEM
-    end
-    enabled = chosen ~= true
-  elseif type(stateWord) == "string" then
-    enabled = BOOLEAN_WORDS[stateWord:lower()]
-  end
-  if enabled == nil or wordCount > 2 then
-    return nil, "expected <key> on|off|toggle"
-  end
-  local value = {}
-  for existingKey, isChosen in next, current do
-    value[existingKey] = isChosen
-  end
-  value[key] = enabled
-  return value
-end
-
----One `list` line for a child node.
----@param node table
----@return string|nil
-local function listLine(node)
-  local kind = node.kind
-  local line
-  if kind == "group" then
-    line = node.path .. " - " .. tostring(node.name) .. " (group)"
-  elseif kind == "execute" then
-    line = node.path .. " - " .. tostring(node.name) .. " (exec)"
-  elseif VALUE_KINDS[kind] == true then
-    line = node.path .. " = " .. formatValue(node, node.value) .. " - " .. tostring(node.name)
-  else
-    return nil
-  end
-  if node.disabled == true then
-    line = line .. " (disabled)"
-  end
-  return line
-end
-
----Refuse a node that is not a value option, or is disabled.
----@param context CommandKit.Context
----@param node table
----@return boolean usable
-local function ensureValueOption(context, node)
-  if node.kind == "execute" then
-    contextFail(context, '"' .. node.path .. '" is a button; use exec')
-    return false
-  end
-  if VALUE_KINDS[node.kind] ~= true then
-    contextFail(context, '"' .. node.path .. '" has no value')
-    return false
-  end
-  return true
-end
-
----Build the sub-command handlers of a bound command.
----@param tree table
----@return table handlers
-local function newOptionHandlers(tree)
-  local handlers = {}
-
-  ---Print a refusal the tree returned. `validate` may answer with anything:
-  ---a message that is secret, or empty once converted with `tostring`, is
-  ---replaced by `fallback` rather than making `Fail` raise inside this
-  ---handler.
-  ---@param context CommandKit.Context
-  ---@param message any
-  ---@param fallback string
-  local function failWithRefusal(context, message, fallback)
-    if isSecret(message) then
-      message = fallback
-    else
-      message = tostring(message)
-      if message == "" then
-        message = fallback
-      end
-    end
-    contextFail(context, message)
-  end
-
-  function handlers.get(context, path)
-    local node = findOption(context, tree, path, false)
-    if node == nil or not ensureValueOption(context, node) then
-      return
-    end
-    contextPrint(context, node.path .. " = " .. formatValue(node, node.value))
-  end
-
-  function handlers.set(context, path, ...)
-    local node = findOption(context, tree, path, false)
-    if node == nil or not ensureValueOption(context, node) then
-      return
-    end
-    if node.disabled == true then
-      contextFail(context, '"' .. node.path .. '" is disabled')
-      return
-    end
-    local value, problem = parseValue(node, ...)
-    if problem ~= nil then
-      contextFail(context, problem)
-      return
-    end
-    local valid, message = tree:Validate(node.path, value)
-    if not valid then
-      failWithRefusal(context, message, "refused by validate")
-      return
-    end
-    local written, refusal = tree:Set(node.path, value)
-    if not written then
-      failWithRefusal(context, refusal, "refused by validate")
-      return
-    end
-    contextPrint(context, node.path .. " = " .. formatValue(node, tree:Get(node.path)))
-  end
-
-  function handlers.reset(context, path)
-    local node = findOption(context, tree, path, false)
-    if node == nil or not ensureValueOption(context, node) then
-      return
-    end
-    if node.disabled == true then
-      contextFail(context, '"' .. node.path .. '" is disabled')
-      return
-    end
-    if type(node.bind) == "nil" then
-      contextFail(context, '"' .. node.path .. '" has no default to reset to')
-      return
-    end
-    local value = tree:Reset(node.path)
-    contextPrint(context, node.path .. " = " .. formatValue(node, value))
-  end
-
-  function handlers.list(context, path)
-    local node = findOption(context, tree, path, true)
-    if node == nil then
-      return
-    end
-    if node.kind ~= "group" then
-      local line = listLine(node)
-      if line ~= nil then
-        contextPrint(context, line)
-      end
-      -- `Describe` has called a `desc` function already; its string may
-      -- be secret, and `Print` would refuse it.
-      local desc = node.desc
-      if type(desc) == "string" then
-        if isSecret(desc) then
-          contextPrint(context, "(secret value)")
-        else
-          contextPrint(context, desc)
-        end
-      end
-      if node.kind == "select" or node.kind == "multiselect" then
-        contextPrint(context, "values: " .. joinValues(valueKeys(node), ", "))
-      end
-      return
-    end
-    local printed = 0
-    local children = node.children or {}
-    for index = 1, #children do
-      local child = children[index]
-      if child.hidden ~= true then
-        local line = listLine(child)
-        if line ~= nil then
-          contextPrint(context, line)
-          printed = printed + 1
-        end
-      end
-    end
-    if printed == 0 then
-      contextPrint(context, "(no options)")
-    end
-  end
-
-  function handlers.exec(context, path, confirmation)
-    local node = findOption(context, tree, path, false)
-    if node == nil then
-      return
-    end
-    if node.kind ~= "execute" then
-      contextFail(context, '"' .. node.path .. '" is not a button')
-      return
-    end
-    if node.disabled == true then
-      contextFail(context, '"' .. node.path .. '" is disabled')
-      return
-    end
-    local confirm = node.confirm
-    -- A secret boolean `confirm` asks: running a button the addon may
-    -- have marked for confirmation is the surprise to avoid.
-    local asks = type(confirm) == "string" or readTreeFlag(confirm, true)
-    if asks and confirmation ~= "confirm" then
-      if type(confirm) == "string" and not isSecret(confirm) then
-        contextPrint(context, confirm)
-      end
-      contextPrint(
-        context,
-        "Type " .. contextGetCommandPath(context) .. " " .. node.path .. " confirm to run it."
-      )
-      return
-    end
-    tree:Execute(node.path)
-  end
-
-  return handlers
-end
-
----A completion function offering the option paths `accepts` admits.
----@param tree table
----@param accepts fun(kind: string): boolean
----@return function
-local function newPathCompleter(tree, accepts)
-  return function(_, _, position)
-    if position ~= 1 then
-      return nil
-    end
-    local paths = {}
-    tree:Walk(function(path, kind)
-      if accepts(kind) and not tree:IsHidden(path) then
-        paths[#paths + 1] = path
-      end
-    end)
-    return paths
-  end
-end
-
----@param kind string
----@return boolean
-local function acceptsValue(kind)
-  return VALUE_KINDS[kind] == true
-end
-
----@param kind string
----@return boolean
-local function acceptsListable(kind)
-  return kind == "group" or kind == "execute" or VALUE_KINDS[kind] == true
-end
-
----@param kind string
----@return boolean
-local function acceptsExecute(kind)
-  return kind == "execute"
-end
-
----Build the command spec `BindOptions` registers.
----@param tree table
----@param description string|nil
----@return CommandKit.CommandSpec
-local function newOptionsSpec(tree, description)
-  local S = SchemaKit
-  local handlers = newOptionHandlers(tree)
-  local valuePaths = newPathCompleter(tree, acceptsValue)
-  return {
-    description = description,
-    subcommands = {
-      get = {
-        handler = handlers.get,
-        arguments = { S.string() },
-        usage = "<path>",
-        description = "Print an option's value.",
-        complete = valuePaths,
-      },
-      set = {
-        handler = handlers.set,
-        usage = "<path> <value...>",
-        description = "Change an option.",
-        complete = valuePaths,
-      },
-      reset = {
-        handler = handlers.reset,
-        arguments = { S.string() },
-        usage = "<path>",
-        description = "Restore an option's default.",
-        complete = valuePaths,
-      },
-      list = {
-        handler = handlers.list,
-        arguments = { S.optional(S.string()) },
-        usage = "[path]",
-        description = "List the options of a group, or describe one option.",
-        complete = newPathCompleter(tree, acceptsListable),
-      },
-      exec = {
-        handler = handlers.exec,
-        arguments = { S.string(), S.optional(S.string({ oneOf = { "confirm" } })) },
-        usage = "<path> [confirm]",
-        description = "Run a button.",
-        complete = newPathCompleter(tree, acceptsExecute),
-      },
-    },
-  }
-end
-
--- Completion -----------------------------------------------------------------
---
--- The client calls `ChatEdit_CustomTabPressed(editBox)` from its tab handler
--- and skips its own completion when that returns `true`. The global is the
--- documented extension point and is empty in the client, so CommandKit
--- replaces it with a closure that remembers the previous function and calls
--- it for any text that is not one of its commands. A secure post-hook
--- (`hooksecurefunc`) cannot be used: its return value is discarded, so the
--- client would complete over CommandKit's completion. The trade-off is taint:
--- the global becomes addon code, as it does for every addon that completes
--- chat input. The closure is removed again when the last scope disables
--- completion and nobody has replaced the global since; otherwise it stays in
--- the chain, forwarding. See `docs/API.md`.
-
----The longest common prefix of `candidates`.
----@param candidates string[]
----@return string
-local function commonPrefix(candidates)
-  local prefix = candidates[1]
-  for index = 2, #candidates do
-    local candidate = candidates[index]
-    local length = 0
-    local limit = math.min(#prefix, #candidate)
-    while length < limit and prefix:byte(length + 1) == candidate:byte(length + 1) do
-      length = length + 1
-    end
-    prefix = prefix:sub(1, length)
-  end
-  return prefix
-end
-
----Add `candidate` to `candidates` when it starts with `partial`, ignoring case.
----A secret candidate (a `complete` function may return names read from the
----client) is skipped before it is compared.
----@param candidates string[]
----@param candidate any
----@param lowerPartial string
-local function offer(candidates, candidate, lowerPartial)
-  if
-    type(candidate) ~= "string"
-    or #candidates >= rawget(sharedLimits, "maxCompletions")
-    or isSecret(candidate)
-  then
-    return
-  end
-  if candidate:sub(1, #lowerPartial):lower() == lowerPartial then
-    candidates[#candidates + 1] = candidate
-  end
-end
-
----Complete the word before the cursor in a borrowed frame.
----@param frame table
----@param record table the top-level record
----@param editBox table
----@param text string the whole edit-box text
----@param argumentText string the text between the slash name and the partial word
----@param partial string the word being completed
----@param partialStart integer where `partial` starts in `text`
----@return boolean handled
-local function completeInFrame(frame, record, editBox, text, argumentText, partial, partialStart)
-  local scope = rawget(record, "_scope")
-  local tokens = frame.tokens
-  local count = tokenize(argumentText, tokens)
-  if count == nil then
-    return false
-  end
-  local node, index = walkSubcommands(record, tokens, count)
-  local context = openContext(frame, node, argumentText .. partial)
-  local candidates = {}
-  local lowerPartial = partial:lower()
-  if index > count then
-    local names = rawget(node, "_subcommandNames")
-    for position = 1, #names do
-      offer(candidates, names[position], lowerPartial)
-    end
-  end
-  local complete = rawget(node, "_complete")
-  if complete ~= false then
-    local offered = complete(context, partial, count - index + 2)
-    if type(offered) == "table" then
-      for position = 1, #offered do
-        offer(candidates, offered[position], lowerPartial)
-      end
-    end
-  end
-  if #candidates == 0 then
-    return false
-  end
-  local before = text:sub(1, partialStart - 1)
-  if #candidates == 1 then
-    editBox:SetText(before .. candidates[1] .. " ")
-    return true
-  end
-  local prefix = commonPrefix(candidates)
-  if #prefix > #partial then
-    editBox:SetText(before .. prefix)
-  else
-    writeLine(scope, table.concat(candidates, "  "))
-  end
-  return true
-end
-
----Try to complete the edit box's text. `true` when CommandKit handled it.
----@param editBox any
----@return boolean handled
-local function tryComplete(editBox)
-  if type(editBox) == "nil" then
-    local getActiveWindow = readGlobal("ChatEdit_GetActiveWindow")
-    if type(getActiveWindow) == "function" then
-      editBox = getActiveWindow()
-    end
-  end
-  if
-    type(editBox) ~= "table"
-    or type(editBox.GetText) ~= "function"
-    or type(editBox.SetText) ~= "function"
-  then
-    return false
-  end
-  local text = editBox:GetText()
-  if type(text) ~= "string" or isSecret(text) then
-    return false
-  end
-  if type(editBox.GetCursorPosition) == "function" then
-    local cursor = editBox:GetCursorPosition()
-    -- A secret cursor cannot be compared; completing without knowing
-    -- where the cursor is could rewrite text after it, so leave it.
-    if type(cursor) == "number" and (isSecret(cursor) or cursor < #text) then
-      return false
-    end
-  end
-  -- A bare `/name` without a space is the client's own slash completion.
-  local slashName, argumentStart = text:match("^/([%w_]+)%s+()")
-  if slashName == nil then
-    return false
-  end
-  local record = activeByName[slashName:lower()]
-  if record == nil or rawget(rawget(record, "_scope"), "_completion") ~= true then
-    return false
-  end
-  local lastSpace = text:find("%s[^%s]*$")
-  local partialStart = lastSpace + 1
-  local partial = text:sub(partialStart)
-  local argumentText = text:sub(argumentStart, partialStart - 1)
-  local frame = acquireFrame()
-  if frame == nil then
-    return false
-  end
-  local ok, handled =
-    pcall(completeInFrame, frame, record, editBox, text, argumentText, partial, partialStart)
-  releaseFrame(frame)
-  if not ok then
-    error(handled, 0)
-  end
-  return handled
-end
-
----The body of the installed `ChatEdit_CustomTabPressed` replacement.
----@param editBox any
----@param ... any
----@return any
-local function tabPressed(editBox, ...)
-  if completion.enabledScopes > 0 then
-    local ok, handled = pcall(tryComplete, editBox)
-    if not ok then
-      reportError(handled)
-    elseif handled then
-      return true
-    end
-  end
-  local previous = completion.previous
-  if type(previous) == "function" then
-    return previous(editBox, ...)
-  end
-  return false
-end
-
----Install the replacement once. `false` when the host has no
----`ChatEdit_CustomTabPressed`.
----@return boolean
-local function installTabHandler()
-  if completion.installed then
-    return true
-  end
-  local current = readGlobal("ChatEdit_CustomTabPressed")
-  if type(current) ~= "function" then
-    return false
-  end
-  local handler = completion.handler
-  if handler == false then
-    handler = function(editBox, ...)
-      return dispatch.tabPressed(editBox, ...)
-    end
-    completion.handler = handler
-  end
-  if current ~= handler then
-    completion.previous = current
-    writeGlobal("ChatEdit_CustomTabPressed", handler)
-  end
-  completion.installed = true
-  return true
-end
-
----Remove the replacement when it is still the installed function; otherwise
----leave it in the chain, forwarding to the function it replaced.
-local function uninstallTabHandler()
-  if not completion.installed then
-    return
-  end
-  local current = readGlobal("ChatEdit_CustomTabPressed")
-  if type(current) ~= "function" or current ~= completion.handler then
-    return
-  end
-  writeGlobal("ChatEdit_CustomTabPressed", completion.previous)
-  completion.previous = false
-  completion.installed = false
-end
-
----Turn a scope's completion off, if it was on.
----@param scope CommandKit.Scope
----@return boolean disabled
-local function disableCompletion(scope)
-  if rawget(scope, "_completion") ~= true then
-    return false
-  end
-  rawset(scope, "_completion", false)
-  completion.enabledScopes = completion.enabledScopes - 1
-  if completion.enabledScopes == 0 then
-    uninstallTabHandler()
-  end
-  return true
-end
-
 -- Logout close ---------------------------------------------------------------
 --
 -- CommandKit never observes logout itself and never depends on LifecycleKit
@@ -3300,6 +2517,217 @@ function LogoutClose.arrangeInherited()
   end
 end
 
+---Check the text argument of `Parse`, `ParseInto` and `Dispatch`.
+---@param text any
+---@param methodName string qualified public method name, used in the argument error
+---@param level integer stack level the failure is reported at
+local function validateText(text, methodName, level)
+  if type(text) ~= "string" then
+    error(methodName .. " text must be a string", level)
+  end
+  if isSecret(text) then
+    error(methodName .. " text must not be a secret value", level)
+  end
+end
+
+-- Revision 11 additions share one main-chunk local, because Lua 5.1 allows a
+-- chunk at most 200: the command lists, the prefix, printing outside a
+-- handler, dispatch from code, `Reopen`, and the bookkeeping of the two parts
+-- (ADR 0001): which scope methods each part serves, the stubs that name the
+-- part to embed while it is not loaded, and the release `Close` asks for.
+local scopeExtras = {
+  -- Scope methods served by a part, with the part that serves them.
+  PART_METHODS = {
+    BindOptions = "Options",
+    GetBoundTree = "Options",
+    EnableCompletion = "Completion",
+    DisableCompletion = "Completion",
+    RegisterCompletion = "Completion",
+    UnregisterCompletion = "Completion",
+    IsCompletionRegistered = "Completion",
+  },
+}
+
+---A new sorted array of the slash names this scope serves now.
+---@param self CommandKit.Scope
+---@return string[]
+function scopeExtras.GetCommands(self)
+  validateScope(self, "CommandKit.Scope:GetCommands", 3)
+  local names = {}
+  for name in next, rawget(self, "_commands") do
+    names[#names + 1] = name
+  end
+  table.sort(names)
+  return names
+end
+
+---A new sorted array of every slash name CommandKit serves in the session,
+---whichever scope owns it. AceConsole-3.0's `IterateChatCommands`.
+---@param self CommandKit
+---@return string[]
+function scopeExtras.GetAllCommands(self)
+  validateFacade(self, "CommandKit:GetCommands", 3)
+  local names = {}
+  for name in next, activeByName do
+    names[#names + 1] = name
+  end
+  table.sort(names)
+  return names
+end
+
+---Start every line this scope writes with `prefix`, or with nothing for
+---`nil`. Returns the previous prefix.
+---@param self CommandKit.Scope
+---@param prefix string|nil
+---@return string|nil previous
+function scopeExtras.SetPrefix(self, prefix)
+  validateScope(self, "CommandKit.Scope:SetPrefix", 3)
+  if prefix ~= nil then
+    validateString(prefix, "CommandKit.Scope:SetPrefix prefix", 3)
+  end
+  local previous = rawget(self, "_prefix")
+  rawset(self, "_prefix", prefix)
+  return previous
+end
+
+---The prefix every line of this scope starts with, or `nil`.
+---@param self CommandKit.Scope
+---@return string|nil
+function scopeExtras.GetPrefix(self)
+  validateScope(self, "CommandKit.Scope:GetPrefix", 3)
+  return rawget(self, "_prefix")
+end
+
+---Write the arguments, converted with `tostring` and joined by spaces, to
+---this scope's sink, outside any handler. A secret argument is refused at the
+---caller.
+---@param self CommandKit.Scope
+---@param ... any
+function scopeExtras.Print(self, ...)
+  validateScope(self, "CommandKit.Scope:Print", 3)
+  refuseSecretArguments("CommandKit.Scope:Print", 1, 3, ...)
+  local text = ""
+  for index = 1, select("#", ...) do
+    if index > 1 then
+      text = text .. " "
+    end
+    text = text .. tostring((select(index, ...)))
+  end
+  writeLine(self, text)
+end
+
+---Format as `context:Printf` does (LocaleKit's `Format` when registered) and
+---write the result to this scope's sink, outside any handler.
+---@param self CommandKit.Scope
+---@param template string
+---@param ... any
+function scopeExtras.Printf(self, template, ...)
+  validateScope(self, "CommandKit.Scope:Printf", 3)
+  if type(template) ~= "string" then
+    error("CommandKit.Scope:Printf template must be a string", 2)
+  end
+  refuseSecretArguments("CommandKit.Scope:Printf", 1, 3, template)
+  refuseSecretArguments("CommandKit.Scope:Printf", 2, 3, ...)
+  local LocaleKit = findOptional("localeKit", OPTIONAL_LOCALEKIT_API)
+  local text
+  if LocaleKit ~= nil and type(rawget(LocaleKit, "Format")) == "function" then
+    text = LocaleKit:Format(template, ...)
+  else
+    text = string.format(template, ...)
+  end
+  writeLine(self, text)
+end
+
+---Run this scope's command `name` with `text`, exactly as the client's slash
+---handler runs a typed `/name text`: the same dispatcher, frames and failure
+---reporting. AceConfigCmd-3.0's `HandleCommand`.
+---@param self CommandKit.Scope
+---@param name string the slash name without the slash
+---@param text string what would follow the slash name
+---@return boolean ran `false` when this scope has no such command
+function scopeExtras.Dispatch(self, name, text)
+  validateScope(self, "CommandKit.Scope:Dispatch", 3)
+  ensureOpen(self, "CommandKit.Scope:Dispatch", 3)
+  validateString(name, "CommandKit.Scope:Dispatch name", 3)
+  validateText(text, "CommandKit.Scope:Dispatch", 3)
+  local lowerName = name:lower()
+  local record = rawget(rawget(self, "_commands"), lowerName)
+  if record == nil or activeByName[lowerName] ~= record then
+    return false
+  end
+  slashDispatch(rawget(keyByName, lowerName), text)
+  return true
+end
+
+---Open a closed manual scope again, empty, so its owner can keep using the
+---same object; its sink and prefix are kept. `false` for an open scope.
+---ModuleKit uses it to keep a module's `scope.Commands` across enables.
+---@param self CommandKit.Scope
+---@return boolean reopened
+function scopeExtras.Reopen(self)
+  validateScope(self, "CommandKit.Scope:Reopen", 3)
+  if rawget(self, "_addonName") ~= false then
+    error(
+      "CommandKit.Scope:Reopen cannot reopen an addon scope; closing it is its addon's teardown",
+      2
+    )
+  end
+  if rawget(self, "_closed") ~= true then
+    return false
+  end
+  rawset(self, "_closed", false)
+  return true
+end
+
+---Release what the Completion part holds for a closing scope. Without the
+---part, a scope a revision before 11 enabled is still counted off.
+---@param scope CommandKit.Scope
+function scopeExtras.releaseCompletion(scope)
+  local part = rawget(rawget(state, "parts"), "Completion")
+  if type(part) == "table" and type(part.releaseScope) == "function" then
+    part.releaseScope(scope)
+  elseif rawget(scope, "_completion") == true then
+    rawset(scope, "_completion", false)
+    completion.enabledScopes = completion.enabledScopes - 1
+  end
+end
+
+---A scope method that names the part to embed, for a part not loaded.
+---@param methodName string
+---@param partName string
+---@return function
+function scopeExtras.newPartStub(methodName, partName)
+  local message = "CommandKit.Scope:"
+    .. methodName
+    .. " needs CommandKit's "
+    .. partName
+    .. " part, which is not loaded: add commandKit\\parts\\CommandKit-"
+    .. partName
+    .. ".lua to your embeds.xml"
+  return function()
+    error(message, 2)
+  end
+end
+
+---Install every part method on the scope prototype: the loaded part's
+---function, or a stub. The core runs it at commit and each part after it
+---records itself, so any load order of core and part revisions ends with the
+---newest of each serving.
+function scopeExtras.installPartMethods()
+  local parts = rawget(state, "parts")
+  for methodName, partName in next, scopeExtras.PART_METHODS do
+    local part = rawget(parts, partName)
+    local method = type(part) == "table"
+        and type(part.methods) == "table"
+        and part.methods[methodName]
+      or nil
+    if type(method) ~= "function" then
+      method = scopeExtras.newPartStub(methodName, partName)
+    end
+    rawset(Scope, methodName, method)
+  end
+end
+
 -- Scope methods --------------------------------------------------------------
 
 ---Register `/name`. Returns `true`, `nil, "taken"` when another owner or a
@@ -3358,70 +2786,6 @@ local function scopeSetSink(self, sink)
   rawset(self, "_sink", sink)
 end
 
----Register `/commandName` with `get`, `set`, `reset`, `list` and `exec`
----sub-commands over an OptionsKit tree.
----@param self CommandKit.Scope
----@param tree table an OptionsKit tree handle
----@param commandName string
----@param options CommandKit.BindOptions?
----@return true|nil registered
----@return "taken"|"emote"|"full"|nil reason
-local function scopeBindOptions(self, tree, commandName, options)
-  local methodName = "CommandKit.Scope:BindOptions"
-  validateScope(self, methodName, 3)
-  ensureOpen(self, methodName, 3)
-  local OptionsKit = findOptional("optionsKit", OPTIONAL_OPTIONSKIT_API)
-  if OptionsKit == nil then
-    error(methodName .. " requires OptionsKit API 1", 2)
-  end
-  local metatable = readMetatable(tree)
-  local treeIndex = nil
-  if type(metatable) == "table" then
-    treeIndex = rawget(metatable, "__index")
-  end
-  if type(treeIndex) ~= "table" or treeIndex ~= rawget(OptionsKit, "Tree") then
-    error(methodName .. " tree must be an OptionsKit tree", 2)
-  end
-  local description = nil
-  if type(options) ~= "nil" then
-    if type(options) ~= "table" then
-      error(methodName .. " options must be a table", 2)
-    end
-    refuseUnknownFields(options, BIND_OPTION_FIELDS, methodName .. " options", 3)
-    description = rawget(options, "description")
-    validateOptionalString(description, methodName .. " options.description", 3)
-  end
-  local registered, reason =
-    registerCommand(self, commandName, newOptionsSpec(tree, description), methodName, 3)
-  return registered, reason
-end
-
----Complete this scope's sub-command names and arguments on Tab. Returns
----`false` when the host has no `ChatEdit_CustomTabPressed`.
----@param self CommandKit.Scope
----@return boolean enabled
-local function scopeEnableCompletion(self)
-  validateScope(self, "CommandKit.Scope:EnableCompletion", 3)
-  ensureOpen(self, "CommandKit.Scope:EnableCompletion", 3)
-  if rawget(self, "_completion") == true then
-    return true
-  end
-  if not installTabHandler() then
-    return false
-  end
-  rawset(self, "_completion", true)
-  completion.enabledScopes = completion.enabledScopes + 1
-  return true
-end
-
----Stop completing this scope's commands.
----@param self CommandKit.Scope
----@return boolean disabled `false` when completion was not enabled.
-local function scopeDisableCompletion(self)
-  validateScope(self, "CommandKit.Scope:DisableCompletion", 3)
-  return disableCompletion(self)
-end
-
 ---Close the scope: unregister every command and turn completion off.
 ---Terminal.
 ---@param self CommandKit.Scope
@@ -3433,7 +2797,7 @@ local function scopeClose(self)
   end
   rawset(self, "_closed", true)
   LogoutClose.releaseSubscription(self)
-  disableCompletion(self)
+  scopeExtras.releaseCompletion(self)
   local commands = rawget(self, "_commands")
   local names = {}
   for name in next, commands do
@@ -3662,19 +3026,6 @@ local function closeAddonScopes(self, addonName)
   return scopeClose(scope)
 end
 
----Check the text argument of `Parse` and `ParseInto`.
----@param text any
----@param methodName string qualified public method name, used in the argument error
----@param level integer stack level the failure is reported at
-local function validateText(text, methodName, level)
-  if type(text) ~= "string" then
-    error(methodName .. " text must be a string", level)
-  end
-  if isSecret(text) then
-    error(methodName .. " text must not be a secret value", level)
-  end
-end
-
 ---Split `text` into arguments, allocating a new array on every call. Returns
 ---the array, or `nil` and `"unterminated quote"` / `"unterminated link"`.
 ---@param self CommandKit
@@ -3774,6 +3125,7 @@ local function getLimits(self)
     maxCaptured = rawget(sharedLimits, "maxCaptured"),
     maxCompletions = rawget(sharedLimits, "maxCompletions"),
     maxEmotes = rawget(sharedLimits, "maxEmotes"),
+    maxCompletionProviders = rawget(sharedLimits, "maxCompletionProviders"),
   }
 end
 
@@ -3783,9 +3135,14 @@ rawset(Scope, "Register", scopeRegister)
 rawset(Scope, "Unregister", scopeUnregister)
 rawset(Scope, "IsRegistered", scopeIsRegistered)
 rawset(Scope, "SetSink", scopeSetSink)
-rawset(Scope, "BindOptions", scopeBindOptions)
-rawset(Scope, "EnableCompletion", scopeEnableCompletion)
-rawset(Scope, "DisableCompletion", scopeDisableCompletion)
+rawset(Scope, "GetCommands", scopeExtras.GetCommands)
+rawset(Scope, "SetPrefix", scopeExtras.SetPrefix)
+rawset(Scope, "GetPrefix", scopeExtras.GetPrefix)
+rawset(Scope, "Print", scopeExtras.Print)
+rawset(Scope, "Printf", scopeExtras.Printf)
+rawset(Scope, "Dispatch", scopeExtras.Dispatch)
+rawset(Scope, "Reopen", scopeExtras.Reopen)
+scopeExtras.installPartMethods()
 rawset(Scope, "Close", scopeClose)
 rawset(Scope, "IsClosed", scopeIsClosed)
 rawset(Scope, "GetActiveCount", scopeGetActiveCount)
@@ -3811,10 +3168,38 @@ rawset(CommandKit, "ParseInto", parseInto)
 rawset(CommandKit, "CaptureSink", captureSink)
 rawset(CommandKit, "SetLimits", setLimits)
 rawset(CommandKit, "GetLimits", getLimits)
+rawset(CommandKit, "GetCommands", scopeExtras.GetAllCommands)
 
 rawset(dispatch, "slash", slashDispatch)
-rawset(dispatch, "tabPressed", tabPressed)
 rawset(dispatch, "closeAddonScopesAtLogout", LogoutClose.closeAtLogout)
+
+-- What the parts call, read through this table at call time, so a newer core
+-- serves parts loaded before it. The table itself is kept across revisions.
+local helpers = rawget(state, "helpers")
+helpers.isSecret = isSecret
+helpers.findOptional = findOptional
+helpers.reportError = reportError
+helpers.readMetatable = readMetatable
+helpers.validateScope = validateScope
+helpers.ensureOpen = ensureOpen
+helpers.validateString = validateString
+helpers.validateOptionalString = validateOptionalString
+helpers.refuseUnknownFields = refuseUnknownFields
+helpers.tokenize = tokenize
+helpers.writeLine = writeLine
+helpers.joinValues = joinValues
+helpers.registerCommand = registerCommand
+helpers.acquireFrame = acquireFrame
+helpers.releaseFrame = releaseFrame
+helpers.openContext = openContext
+helpers.walkSubcommands = walkSubcommands
+helpers.contextPrint = contextPrint
+helpers.contextUsage = contextUsage
+helpers.contextFail = contextFail
+helpers.contextGetCommandPath = contextGetCommandPath
+helpers.installPartMethods = scopeExtras.installPartMethods
+helpers.BOOLEAN_WORDS = BOOLEAN_WORDS
+helpers.SchemaKit = SchemaKit
 rawset(state, "runtimeRevision", IMPLEMENTATION_REVISION)
 
 if not validatePublicSurface(CommandKit) or not validateCurrentState(CommandKit) then

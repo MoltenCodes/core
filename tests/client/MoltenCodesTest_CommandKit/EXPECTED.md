@@ -55,6 +55,8 @@ MoltenCodes Test: PASS commandKit.options: refusals of /mcttestopts: set scale 5
 MoltenCodes Test: PASS commandKit.options: list prints one line per option of the tree, and exec wipe asks its question until the word confirm follows, then runs the button once
 MoltenCodes Test: PASS commandKit.completion: EnableCompletion answers whether the client has ChatEdit_CustomTabPressed; when it does, it replaces the global, and DisableCompletion writes the client's function back
 MoltenCodes Test: PASS commandKit.completion: a Tab press handed to the installed ChatEdit_CustomTabPressed completes '/mcttestcmd sc' to 'scale ', lists every sub-command after '/mcttestcmd ', and completes a bound option path
+MoltenCodes Test: PASS commandKit.completion: a completion provider registered with RegisterCompletion completes '/w ar' through the installed ChatEdit_CustomTabPressed, and Close of its scope writes the client's function back
+MoltenCodes Test: PASS commandKit.completion: the path syntax: '/mcttestopts scale 1.5' sets the option and '/mcttestopts shown' flips the toggle, through the client's SlashCmdList
 MoltenCodes Test: SKIP commandKit.completion: a real Tab press in the chat box calls ChatEdit_CustomTabPressed with that edit box -- needs the player to press Tab in the chat box; the tests hand the installed function a stand-in edit box instead
 MoltenCodes Test: PASS commandKit.allocation: 5000 dispatches of 'scale 1.5' through the client's SlashCmdList entry allocate nothing
 MoltenCodes Test: PASS commandKit.allocation: 5000 ParseInto calls over text holding a real Hearthstone link allocate nothing
@@ -69,7 +71,7 @@ MoltenCodes Test: PASS commandKit.secrets: SetLimits with a secret maxCaptured o
 MoltenCodes Test: PASS commandKit.secrets: inside a dispatched handler, context:Print and Printf refuse a secret argument at the handler's line in CommandKitSuite.lua and write nothing
 MoltenCodes Test: PASS commandKit.secrets: a handler that raises a secret message writes '/mcttestsecret failed' without the message and hands the secret, still secret, to the client's error handler
 MoltenCodes Test: PASS commandKit.secrets: a bound option whose getter returns a secret prints '(secret value)', and set toggle on a secret toggle is refused and writes nothing
-MoltenCodes Test: commandKit: 33 passed, 0 failed, 3 skipped, 0 timed out (36 tests)
+MoltenCodes Test: commandKit: 35 passed, 0 failed, 3 skipped, 0 timed out (38 tests)
 MoltenCodes Test: results saved in MoltenCodesTestResults; /reload or log out to write them to disk.
 ```
 
@@ -145,17 +147,18 @@ The six `commandKit.secrets` tests need the client's `issecretvalue` and
 `secretwrap`. Retail 12.1 has both. A client without them prints each of the
 six lines as `SKIP ... -- the client has no issecretvalue and secretwrap; the
 secret path was not exercised`, and the totals line reads
-`27 passed, 0 failed, 9 skipped, 0 timed out (36 tests)`.
+`29 passed, 0 failed, 9 skipped, 0 timed out (38 tests)`.
 
 ### A client without `ChatEdit_CustomTabPressed`
 
 docs/API.md lists `ChatEdit_CustomTabPressed` as an optional host facility,
 and the Retail 12 chat code has not been checked for it yet. On a client
 without it, the first completion test still passes (it checks that
-`EnableCompletion` returns `false` and installs nothing), and the second ends
-as `SKIP ... -- the client has no ChatEdit_CustomTabPressed; EnableCompletion
-returns false and completion is not available`, making the totals
-`32 passed, 0 failed, 4 skipped, 0 timed out (36 tests)`. Send the log either
+`EnableCompletion` returns `false` and installs nothing), and the second and
+the provider test end as `SKIP ... -- the client has no
+ChatEdit_CustomTabPressed; EnableCompletion returns false and completion is
+not available`, making the totals
+`33 passed, 0 failed, 5 skipped, 0 timed out (38 tests)`. Send the log either
 way: the facade test records whether `ChatEdit_CustomTabPressed` and
 `ChatEdit_GetActiveWindow` exist and whether the client reports them secure.
 
@@ -180,7 +183,7 @@ nothing the suite reads at load is missing on a Classic client.
 ### Retail (12.1)
 
 The lines above:
-`MoltenCodes Test: commandKit: 33 passed, 0 failed, 3 skipped, 0 timed out (36 tests)`,
+`MoltenCodes Test: commandKit: 35 passed, 0 failed, 3 skipped, 0 timed out (38 tests)`,
 with the three `SKIP` lines listed under
 [The three expected SKIPs](#the-three-expected-skips).
 
@@ -199,17 +202,17 @@ load).
 
 - With both functions, and secrets made with them, the totals line is
   Retail's:
-  `MoltenCodes Test: commandKit: 33 passed, 0 failed, 3 skipped, 0 timed out (36 tests)`.
+  `MoltenCodes Test: commandKit: 35 passed, 0 failed, 3 skipped, 0 timed out (38 tests)`.
 - Without them, the six `commandKit.secrets` lines are `SKIP` with the reason
   given under [On a client without secret values](#on-a-client-without-secret-values),
   and the totals line is
-  `MoltenCodes Test: commandKit: 27 passed, 0 failed, 9 skipped, 0 timed out (36 tests)`.
+  `MoltenCodes Test: commandKit: 29 passed, 0 failed, 9 skipped, 0 timed out (38 tests)`.
 
 A client that has both functions but makes no secret with them
 (`issecretvalue` does not report what `secretwrap` returns as secret;
 `Harness:CanMakeSecrets` measures this once at load) skips the same six
 tests with another reason, and the totals line is again
-`MoltenCodes Test: commandKit: 27 passed, 0 failed, 9 skipped, 0 timed out (36 tests)`:
+`MoltenCodes Test: commandKit: 29 passed, 0 failed, 9 skipped, 0 timed out (38 tests)`:
 
 ```text
 MoltenCodes Test: SKIP commandKit.secrets: Parse and ParseInto refuse a secret text at the calling line -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
@@ -267,7 +270,7 @@ one pass fewer and one skip more than either totals line above.
 
 - Any `FAIL` or `TIMEOUT` line, a `SKIP` other than the three above on Retail
   12.1, or a totals line other than
-  `33 passed, 0 failed, 3 skipped, 0 timed out (36 tests)` (see the two
+  `35 passed, 0 failed, 3 skipped, 0 timed out (38 tests)` (see the two
   sections above for a client without secrets or without
   `ChatEdit_CustomTabPressed`, and [Per flavour](#per-flavour) for a Classic
   client).

@@ -40,7 +40,15 @@
 local FrameworkTestEnv = require("FrameworkTestEnv")
 
 local CommandKitTestEnv = FrameworkTestEnv.New({
-  modules = { "Registry", "SignalKit", "SchemaKit", "OptionsKit", "CommandKit" },
+  modules = {
+    "Registry",
+    "SignalKit",
+    "SchemaKit",
+    "OptionsKit",
+    "CommandKit",
+    "CommandKit-Options",
+    "CommandKit-Completion",
+  },
 })
 
 --- The chat globals this environment installs and removes.
@@ -151,13 +159,13 @@ function CommandKitTestEnv.Reset()
 end
 
 ---Reset, install the host stubs and the chat globals, then load Registry,
----SignalKit, SchemaKit, OptionsKit and CommandKit.
+---SignalKit, SchemaKit, OptionsKit and CommandKit's core, without its parts.
 ---@return table CommandKit
 ---@return table Registry
 ---@return table SignalKit
 ---@return table SchemaKit
 ---@return table OptionsKit
-function CommandKitTestEnv.NewPackage()
+function CommandKitTestEnv.NewPackageWithoutParts()
   CommandKitTestEnv.Reset()
   CommandKitTestEnv.InstallWowApi()
   CommandKitTestEnv.InstallChatApi()
@@ -167,6 +175,53 @@ function CommandKitTestEnv.NewPackage()
   local OptionsKit = require("OptionsKit")
   local CommandKit = require("CommandKit")
   return CommandKit, Registry, SignalKit, SchemaKit, OptionsKit
+end
+
+---As `NewPackageWithoutParts`, then CommandKit's two parts, Options and
+---Completion, as an addon that embeds the whole Kit does.
+---@return table CommandKit
+---@return table Registry
+---@return table SignalKit
+---@return table SchemaKit
+---@return table OptionsKit
+function CommandKitTestEnv.NewPackage()
+  local CommandKit, Registry, SignalKit, SchemaKit, OptionsKit =
+    CommandKitTestEnv.NewPackageWithoutParts()
+  require("CommandKit-Options")
+  require("CommandKit-Completion")
+  return CommandKit, Registry, SignalKit, SchemaKit, OptionsKit
+end
+
+---Run a part's source as if it declared part revision `revision`, the way a
+---newer embedded copy of the part loads over an older one.
+---@param partName "Options"|"Completion"
+---@param revision integer
+---@return any result what the part's file returned
+function CommandKitTestEnv.LoadPartRevision(partName, revision)
+  local moduleName = "CommandKit-" .. partName
+  local path = nil
+  for template in package.path:gmatch("[^;]+") do
+    local candidate = template:gsub("%?", moduleName)
+    local file = io.open(candidate, "r")
+    if file ~= nil then
+      file:close()
+      path = candidate
+      break
+    end
+  end
+  if path == nil then
+    error("CommandKitTestEnv.LoadPartRevision could not find " .. moduleName, 2)
+  end
+  local file = assert(io.open(path, "r"))
+  local text = file:read("*a")
+  file:close()
+  local patched, replacements =
+    text:gsub("local PART_REVISION = %d+", "local PART_REVISION = " .. revision)
+  if replacements ~= 1 then
+    error("CommandKitTestEnv.LoadPartRevision could not find PART_REVISION", 2)
+  end
+  local chunk = assert(loadstring(patched, "@" .. path))
+  return chunk()
 end
 
 ---As `NewPackage`, with LocaleKit loaded too.
