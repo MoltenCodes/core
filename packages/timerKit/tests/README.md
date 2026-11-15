@@ -20,6 +20,10 @@ The TimerKit suite covers:
   older revision started, and on a host without `GetTimePreciseSec`;
 - no allocation on a repeating tick or a cancellation;
 - duplicate embedded loading, in-place revision upgrade, and Registry publication;
+- method-name callbacks (`After`/`Every` with a receiver and a method name): checked at the call, looked up at every fire, refusals at the caller's line;
+- the nine-slot timer record, its size, and the in-place conversion of timers an older revision built, at load and when a method, a host callback or a bulk cancel meets one;
+- reopening a closed manual scope, and the refusal for an addon scope;
+- the secret probe installed after load;
 - manifest/runtime API and revision consistency.
 
 Spec files:
@@ -33,12 +37,15 @@ Spec files:
 | `LogoutCoverage_spec.lua` | the four logout routes, re-examination, subscription release on close, carrying routes across an upgrade |
 | `AddonScopes_spec.lua` | canonical per-addon scopes, `CloseAddonScopes`, terminal closure, unknown addons, facade receiver, manual scopes |
 | `Errors_spec.lua` | definition validation, non-finite delays, native creation and cancellation failures, the trusted host handle (a missing handle refused, one without `Cancel` raising only when cancelled) |
-| `ErrorLevels_spec.lua` | every argument failure at the caller's line; a table option field named by its type without running its `__tostring` |
+| `ErrorLevels_spec.lua` | every argument failure at the caller's line, every check of the `After`/`Every` fast paths, receivers refused by metatable alone; a table option field named by its type without running its `__tostring` |
 | `UserData_spec.lua` | opaque per-timer user data |
 | `Remaining_spec.lua` | `GetRemaining`/`GetDeadline` in every state, restarts, late hosts, rolled-back starts |
 | `Pause_spec.lua` | `Pause`/`Resume`/`IsPaused` of one-shot and repeating timers, stale callbacks, cancel, restart and scope cleanup of paused timers, host failures, no clock, an upgrade from revision 11 |
 | `Allocation_spec.lua` | a repeating tick and a cancellation allocate nothing |
 | `Property_spec.lua` | deterministic mixed operations keep the scope active count consistent |
 | `Bootstrap_spec.lua` | duplicate loading, Registry publication, loading with Registry alone, the revision-1, revision-5 and revision-7 upgrades and the previous-revision upgrade (which then names a table option field by its type), older revisions' deadlines, no `GetTimePreciseSec` |
-| `SecretValues_spec.lua` | secret arguments refused at the caller's line, secret user data accepted |
+| `SecretValues_spec.lua` | secret arguments refused at the caller's line, secret user data accepted, a probe installed after load honoured |
 | `Manifest_spec.lua` | runtime API and revision against `package.manifest.json` |
+| `MethodCallbacks_spec.lua` | `After`/`Every` with a receiver and a method name on scopes and the facade, late lookup, a method gone at fire time, refusals, `Restart`/`Pause`/`Resume` |
+| `RecordLayout_spec.lua` | the record size, allocation-free user data, conversion of older timers on fire, method call, cancel, bulk cancel, close and load, `_generation` kept |
+| `Reopen_spec.lua` | `Scope:Reopen` on closed, open and addon scopes, and on foreign receivers |

@@ -32,7 +32,12 @@ describe("TimerKit error levels", function()
       line = currentLine() + 1
       scope:After(1, "nope")
     end)
-    assertReportedAt(line, "TimerKit.Scope:After callback must be a function", ok, value)
+    assertReportedAt(
+      line,
+      "TimerKit.Scope:After callback must be a function, or a receiver table followed by a method name",
+      ok,
+      value
+    )
   end)
 
   it("points package convenience-constructor errors at the caller", function()
@@ -43,7 +48,12 @@ describe("TimerKit error levels", function()
       line = currentLine() + 1
       TimerKit:After(1, "nope")
     end)
-    assertReportedAt(line, "TimerKit:After callback must be a function", ok, value)
+    assertReportedAt(
+      line,
+      "TimerKit:After callback must be a function, or a receiver table followed by a method name",
+      ok,
+      value
+    )
 
     local intervalLine
     local intervalOk, intervalValue = pcall(function()
@@ -243,5 +253,72 @@ describe("TimerKit error levels", function()
       numberOk,
       numberValue
     )
+  end)
+
+  it("reports every check of the After and Every fast paths at the caller's line", function()
+    local TimerKit = TestEnv.NewPackage()
+    local scope = TimerKit:CreateScope()
+    local function callback() end
+    local HUGE = math.huge
+    local cases = {
+      { scope.After, "not a scope", 1, "TimerKit.Scope:After must be called on a TimerKit scope" },
+      { scope.After, scope, "1", "TimerKit.Scope:After delay must be a finite number" },
+      { scope.After, scope, 0 / 0, "TimerKit.Scope:After delay must be a finite number" },
+      { scope.After, scope, HUGE, "TimerKit.Scope:After delay must be a finite number" },
+      { scope.After, scope, -HUGE, "TimerKit.Scope:After delay must be a finite number" },
+      { scope.After, scope, -1, "TimerKit.Scope:After delay must be zero or greater" },
+      {
+        scope.Every,
+        scope,
+        0,
+        "TimerKit.Scope:Every delay must be greater than zero for repeating timers",
+      },
+      { scope.Every, {}, 1, "TimerKit.Scope:Every must be called on a TimerKit scope" },
+      { TimerKit.After, TimerKit, 0 / 0, "TimerKit:After delay must be a finite number" },
+      {
+        TimerKit.Every,
+        TimerKit,
+        -1,
+        "TimerKit:Every delay must be greater than zero for repeating timers",
+      },
+    }
+    for index = 1, #cases do
+      local case = cases[index]
+      local line
+      local ok, value = pcall(function()
+        line = currentLine() + 1
+        case[1](case[2], case[3], callback)
+      end)
+      assertReportedAt(line, case[4], ok, value)
+    end
+
+    scope:Close()
+    local closedLine
+    local closedOk, closedValue = pcall(function()
+      closedLine = currentLine() + 1
+      scope:Every(1, callback)
+    end)
+    assertReportedAt(
+      closedLine,
+      "TimerKit.Scope:Every cannot create a timer in a closed scope",
+      closedOk,
+      closedValue
+    )
+  end)
+
+  it("refuses timer receivers by metatable alone, without a type test", function()
+    local TimerKit = TestEnv.NewPackage()
+    local Timer = TimerKit.Timer
+    local foreign = setmetatable({}, { __index = Timer })
+    local hidden = setmetatable({}, { __metatable = "hidden" })
+
+    for _, receiver in ipairs({ "timer", 1, true, foreign, hidden }) do
+      for _, name in ipairs({ "Cancel", "GetState", "Start" }) do
+        local ok, message = pcall(Timer[name], receiver)
+        assert.is_false(ok)
+        local expected = "TimerKit.Timer:" .. name .. " must be called on a TimerKit timer"
+        assert.is_truthy(string.find(message, expected, 1, true), message)
+      end
+    end
   end)
 end)

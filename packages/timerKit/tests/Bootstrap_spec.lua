@@ -379,7 +379,7 @@ describe("TimerKit bootstrap", function()
 
   it("reports no remaining time for a timer an older revision started", function()
     local TimerKit = TestEnv.NewPackage()
-    local timer = TimerKit:After(2, function() end)
+    local timer = TestEnv.ToLegacyLayout(TimerKit, TimerKit:After(2, function() end))
 
     -- Revisions before 4 kept no deadline. A timer they started is still
     -- running after the upgrade, but TimerKit cannot know when it fires, so
@@ -395,7 +395,7 @@ describe("TimerKit bootstrap", function()
 
   it("learns the deadline of an older revision's ticker at its next tick", function()
     local TimerKit = TestEnv.NewPackage()
-    local ticker = TimerKit:Every(1, function() end)
+    local ticker = TestEnv.ToLegacyLayout(TimerKit, TimerKit:Every(1, function() end))
     rawset(ticker, "_deadline", nil)
 
     TestEnv.AdvanceMs(1000)

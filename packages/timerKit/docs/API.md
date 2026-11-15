@@ -9,8 +9,8 @@ Package facade:
 | Method | Purpose |
 |---|---|
 | `New(options)` | Create an idle timer in TimerKit's internal manual scope. |
-| `After(delay, callback)` | Create and immediately start a one-shot timer. |
-| `Every(interval, callback)` | Create and immediately start a repeating timer. |
+| `After(delay, callback)` / `After(delay, receiver, methodName)` | Create and immediately start a one-shot timer. The method-name form is revision 14; see [Method-name callbacks](#method-name-callbacks). |
+| `Every(interval, callback)` / `Every(interval, receiver, methodName)` | Create and immediately start a repeating timer. |
 | `CreateScope()` | Create a manually owned timer scope. |
 | `ForAddon(addonName)` | Return the canonical scope for an addon, creating it on demand. |
 | `CloseAddonScopes(addonName)` | Close that addon's scope; returns `false` when it has none or it was already closed. |
@@ -41,10 +41,11 @@ Scopes:
 | Method | Purpose |
 |---|---|
 | `New(options)` | Create an idle timer owned by this scope. |
-| `After(delay, callback)` | Start a one-shot timer in this scope. |
-| `Every(interval, callback)` | Start a repeating timer in this scope. |
+| `After(delay, callback)` / `After(delay, receiver, methodName)` | Start a one-shot timer in this scope. |
+| `Every(interval, callback)` / `Every(interval, receiver, methodName)` | Start a repeating timer in this scope. |
 | `CancelAll()` | Cancel every active timer and keep the scope reusable. |
 | `Close()` | Terminally close the scope after best-effort cancellation. |
+| `Reopen()` | Reopen a closed manual scope; `false` when it was open; raises on an addon scope. Revision 14; see [Reopening a manual scope](#reopening-a-manual-scope). |
 | `IsClosed()` | Return whether the scope is terminally closed. |
 | `GetAddonName()` | Return the owning addon name, or `nil` for manual scopes. |
 | `GetActiveCount()` | Return the number of logically running or paused timers. |
@@ -76,6 +77,49 @@ Unknown option fields are rejected so misspellings cannot silently change timer 
 
 Timer callbacks receive the **logical TimerKit timer handle**, not the native `C_Timer` FunctionContainer.
 
+## Method-name callbacks
+
+From revision 14, `After` and `Every`, on scopes and on the facade, also take
+a receiver table and the name of one of its methods, the counterpart of
+AceTimer's `self:ScheduleTimer("Method", delay)`:
+
+```lua
+local Poller = {}
+
+function Poller:Refresh(timer)
+  -- self is Poller; timer is the TimerKit timer that fired
+end
+
+local timers = TimerKit:ForAddon("MyAddon")
+timers:After(2, Poller, "Refresh")
+timers:Every(5, Poller, "Refresh")
+```
+
+- **Checked at the call.** `receiver[methodName]` must be a function when
+  `After` or `Every` runs (it may come from the receiver's metatable), or the
+  call raises at the caller's line: `<method> receiver has no method "Name"`.
+  `methodName` must be a non-empty string and not a secret value. The method
+  name is required: AceTimer has no default either.
+- **Looked up at every fire, as AceTimer does.** Each time the timer fires it
+  reads `receiver[methodName]` and calls it as `method(receiver, timer)`, so a method
+  replaced or hooked after the start (for example through HookKit) is the one
+  that runs. When the method is gone by then, the callback raises
+  `TimerKit timer receiver has no method "Name"`, exactly as a closure
+  callback that raises: a one-shot timer has already completed, a repeating
+  timer keeps ticking (see [Repeating callback errors](#repeating-callback-errors)).
+- **Arguments.** The method receives the receiver and the timer. AceTimer's
+  extra argument has no counterpart; attach it with `SetUserData`.
+- **Everything else is a timer.** `Restart`, `Pause`, `Resume`, `Cancel`,
+  scopes and limits behave exactly as for a closure callback; `Restart` keeps
+  calling the same receiver and method name.
+- **Cost.** The form wraps the lookup in one closure per timer (136 bytes on
+  a 64-bit Lua 5.1) that becomes the timer's callback, so the start, cancel
+  and fire paths are those of a closure callback plus one table read and one
+  Lua call per fire. Measured on the host: 35.1 ns per call against 19.2 ns
+  for a closure.
+
+`New(options)` takes a function `callback` only.
+
 ## Timing validation
 
 One-shot timers accept finite delays greater than or equal to zero. A zero-delay one-shot preserves WoW's next-frame scheduling behavior.
@@ -101,7 +145,9 @@ The contract is deliberately small:
 
 - exactly **one** value per timer; a second `SetUserData` replaces the first;
 - the value is stored **by reference**. TimerKit never reads, copies, compares,
-  or serializes it, and attaching a value allocates nothing;
+  or serializes it, and attaching a value allocates nothing: every timer's
+  record has a slot for it from the start (revision 14 gives one-shot and
+  repeating timers the same nine-slot record);
 - `SetUserData(nil)` detaches the value;
 - user data survives `Cancel()`, `Start()`, and `Restart()`. TimerKit never
   clears it, so an owner that attaches a large object is responsible for
@@ -269,6 +315,19 @@ Scopes track only **active** timers: running and paused ones. Idle, completed an
 
 Bulk cleanup runs in deterministic timer-creation order. If native cancellation raises, TimerKit continues attempting the remaining timers, preserves logical cancellation for every attempted timer, then re-raises the first native error object.
 
+### Reopening a manual scope
+
+From revision 14, `scope:Reopen()` makes a closed manual scope usable again
+and answers `true`; on an open scope it answers `false` and changes nothing.
+The reopened scope is empty and behaves like a new one. Timers its close
+cancelled stay cancelled; `Start()` or `Restart()` runs them in the scope
+again. ModuleKit uses this to keep one timer scope per module across enable
+cycles instead of building a new one each time.
+
+`Reopen` on an addon scope (`ForAddon`) raises
+`TimerKit.Scope:Reopen cannot reopen an addon scope` at the caller's line:
+closing an addon scope is its addon's teardown and stays terminal.
+
 ## Addon-owned scopes
 
 ```lua
@@ -344,7 +403,13 @@ message in the first table is raised at the caller's line (see
 |---|---|
 | `<method> must be called on a TimerKit timer` | a timer method called on anything but a TimerKit timer |
 | `<method> must be called on a TimerKit scope` | a scope method called on anything but a TimerKit scope |
-| `<method> callback must be a function` | `After`, `Every`, and `New` without a function `callback` |
+| `<method> callback must be a function, or a receiver table followed by a method name` | `After` and `Every` with a `callback` that is neither a function nor a table (revision 14; the text still contains the earlier `callback must be a function`) |
+| `<method> callback must be a function` | `New` without a function `callback` |
+| `<method> methodName must be a non-empty string` | `After` and `Every` with a receiver and no method name, or one that is not a non-empty string |
+| `<method> methodName must not be a secret value` | `After` and `Every` with a receiver and a secret method name |
+| `<method> receiver must not be a secret value` | `After` and `Every` with a secret receiver |
+| `<method> receiver has no method "<name>"` | `After` and `Every` when `receiver[methodName]` is not a function |
+| `TimerKit.Scope:Reopen cannot reopen an addon scope` | `Reopen` on a scope `ForAddon` returned |
 | `<method> delay must be a finite number` | a delay or interval that is not a number, or is NaN or infinite |
 | `<method> delay must be zero or greater` | a negative one-shot delay |
 | `<method> delay must be greater than zero for repeating timers` | a repeating interval of zero or less |
@@ -366,7 +431,9 @@ message in the first table is raised at the caller's line (see
 A secret value (Retail 12.0.0 and later) raises when it is compared, so the
 secret refusals above run before any other check of that argument. An absent
 option is recognised by its type, never by comparing it with `nil`. A host
-without `issecretvalue` has no secret values. The value given to
+without `issecretvalue` has no secret values. TimerKit reads `issecretvalue` once,
+when it loads; on a host that had none then, it asks for the global again at
+each check, so a probe installed later is honoured (revision 14). The value given to
 `Timer:SetUserData` is stored and never compared, so it may be secret.
 
 Host and internal failures carry no added position:
@@ -375,7 +442,8 @@ Host and internal failures carry no added position:
 |---|---|
 | the host's own error object, unchanged | a start or `Resume()` whose `C_Timer` constructor raised (the timer is left in the state it had), and the first native `Cancel` failure of `Cancel()`, `Restart()`, `Pause()`, `CancelAll()`, `Close()` and `CloseAddonScopes`; inside the host callback of a resumed repeating timer, a ticker constructor that raises (the timer is left cancelled) |
 | Lua's own error for calling a missing method, such as `attempt to call method 'Cancel' (a nil value)` | a cancellation of a timer whose host handle has no `Cancel` method; TimerKit trusts the handle (see [Native boundary](#native-boundary)), and the timer is already logically cancelled when it raises |
-| `MoltenCodes TimerKit runtime dispatch is corrupted` | a native callback that finds the shared dispatch table damaged |
+| `TimerKit timer receiver has no method "<name>"` | the callback of a method-name timer whose method is gone when it fires (see [Method-name callbacks](#method-name-callbacks)) |
+| Lua's own error for indexing or calling a missing value | a native callback revision 14 or later created that finds the shared dispatch table damaged (earlier revisions raised `MoltenCodes TimerKit runtime dispatch is corrupted`, which callbacks they created still do) |
 
 Loading raises `MoltenCodes TimerKit requires Registry API 2 to be loaded
 first`, `MoltenCodes TimerKit requires a valid Registry API 2 facade`,
@@ -386,14 +454,20 @@ first`, `MoltenCodes TimerKit requires a valid Registry API 2 facade`,
 
 - Every getter, `SetUserData`, `IsPending`, `IsCancelled` and
   `GetActiveCount` is a receiver check and a field read; none allocates.
-- `New`, `After` and `Every` allocate the timer handle: one table, sized once
-  for every field it will hold, `SetUserData` included (384 bytes for a
-  one-shot timer and 704 for a repeating one on a 64-bit Lua 5.1). Every start
+- `New`, `After` and `Every` allocate the timer handle: one table of nine
+  array slots, sized once for every field it will hold, `SetUserData`
+  included: 208 bytes for a one-shot or a repeating timer on a 64-bit Lua 5.1,
+  measured (revision 13 used 384 and 704 bytes). A pending one-shot timer,
+  with its callback closure, the test host's handle and its scope entry,
+  holds 936 bytes there, against 1,112 before revision 14. Every start
   (`Start`, `Restart`, `After`, `Every`) allocates one callback closure (about 140
   bytes) and whatever the host allocates for its native handle, and reads
   `GetTimePreciseSec` once when the client has it. The host constructor is
   called directly, not under `pcall`, and the handle it returns is not
   inspected.
+- `After` and `Every` with a function callback test every argument in one
+  condition and start the timer in one more frame; only a call that fails a
+  test, or a method-name call, runs the validators. `Cancel()` is one frame.
 - `Cancel()` allocates nothing beyond what the host's `Cancel` does, and calls
   it directly on the stored handle; `Pause()` likewise, plus one clock read.
 - `Resume()` allocates one callback closure and the host's one-shot handle and

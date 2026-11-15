@@ -105,4 +105,49 @@ function TimerKitTestEnv.LoadRevision(revision)
   return chunk()
 end
 
+--- The array slots of a revision 14 timer, by the field name revision 13 and
+--- older stored them under.
+local LEGACY_FIELD_SLOTS = {
+  _id = 1,
+  _scope = 2,
+  _callback = 3,
+  _delay = 4,
+  _state = 5,
+  _native = 6,
+  _deadline = 7,
+  _repeating = 8,
+  _userData = 9,
+}
+
+---Rewrite a current timer into the named-field layout revision 13 and older
+---used, with the metatable those revisions gave a timer, as if an older
+---embedded copy had built it. Its host callback is untouched: revisions 10 to
+---13 bound it to the same `dispatch.fireStarted` and handle.
+---@param TimerKit table the loaded facade
+---@param timer table a timer the current revision built
+---@return table timer the same table
+function TimerKitTestEnv.ToLegacyLayout(TimerKit, timer)
+  local values = {}
+  for name, slot in pairs(LEGACY_FIELD_SLOTS) do
+    values[name] = rawget(timer, slot)
+    rawset(timer, slot, nil)
+  end
+  for name, value in pairs(values) do
+    rawset(timer, name, value)
+  end
+  setmetatable(timer, rawget(rawget(TimerKit, "_state"), "timerMetatable"))
+  return timer
+end
+
+---Whether `timer` is stored in the array layout of revision 14 and later.
+---@param TimerKit table the loaded facade
+---@param timer table
+---@return boolean
+function TimerKitTestEnv.HasRecordLayout(TimerKit, timer)
+  local state = rawget(TimerKit, "_state")
+  return getmetatable(timer) == rawget(state, "timerRecordMetatable")
+    and type(rawget(timer, 1)) == "number"
+    and rawget(timer, "_state") == nil
+end
+
 return TimerKitTestEnv

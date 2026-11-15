@@ -39,6 +39,7 @@ MoltenCodes Test: PASS timerKit.facade: the installed TimerKit carries the revis
 MoltenCodes Test: PASS timerKit.oneShot: After(0.25) fires once on the real C_Timer, within one frame plus 20 ms of the deadline it recorded (lateness logged)
 MoltenCodes Test: PASS timerKit.oneShot: After(0) does not run inside the call and runs within the next two rendered frames
 MoltenCodes Test: PASS timerKit.oneShot: Cancel before the deadline keeps the callback from ever running, and the timer reads cancelled with no remaining time
+MoltenCodes Test: PASS timerKit.oneShot: After(0.25, receiver, methodName) fires once as receiver:Method(timer) on the real C_Timer
 MoltenCodes Test: PASS timerKit.repeating: Every(0.1) ticks at its interval with its own handle, moves its deadline one interval per tick, and stops for good on Cancel (intervals logged)
 MoltenCodes Test: PASS timerKit.repeating: a ticker that cancels itself inside its second tick never ticks a third time
 MoltenCodes Test: PASS timerKit.remaining: GetDeadline is GetTimePreciseSec at Start plus the delay, and GetRemaining counts down against that clock while running
@@ -64,7 +65,8 @@ MoltenCodes Test: PASS timerKit.secrets: After and Every refuse a secret delay a
 MoltenCodes Test: PASS timerKit.secrets: New refuses a secret delay and a secret repeating flag at the calling line
 MoltenCodes Test: PASS timerKit.secrets: ForAddon and CloseAddonScopes refuse a secret addon name at the calling line
 MoltenCodes Test: PASS timerKit.secrets: SetUserData stores a secret value and GetUserData hands it back still secret
-MoltenCodes Test: timerKit: 28 passed, 0 failed, 2 skipped, 0 timed out (30 tests)
+MoltenCodes Test: PASS timerKit.secrets: getmetatable on a secret value answers without raising, so a secret receiver gets the receiver message
+MoltenCodes Test: timerKit: 30 passed, 0 failed, 2 skipped, 0 timed out (32 tests)
 MoltenCodes Test: results saved in MoltenCodesTestResults; /reload or log out to write them to disk.
 ```
 
@@ -83,30 +85,32 @@ Running it again in the same session prints the same lines.
 
 ### On a client without secret values
 
-The four `timerKit.secrets` tests need the client's `issecretvalue` and
+The five `timerKit.secrets` tests need the client's `issecretvalue` and
 `secretwrap`, which Retail 12.1 has. `secretwrap` only converts the value
 handed to it into a secret and changes no game state. A client without them
-prints these four lines instead, and the totals line reads
-`24 passed, 0 failed, 6 skipped, 0 timed out (30 tests)`:
+prints these five lines instead, and the totals line reads
+`25 passed, 0 failed, 7 skipped, 0 timed out (32 tests)`:
 
 ```text
 MoltenCodes Test: SKIP timerKit.secrets: After and Every refuse a secret delay at the calling line before comparing it, and start nothing -- the client has no issecretvalue and secretwrap; the secret path was not exercised
 MoltenCodes Test: SKIP timerKit.secrets: New refuses a secret delay and a secret repeating flag at the calling line -- the client has no issecretvalue and secretwrap; the secret path was not exercised
 MoltenCodes Test: SKIP timerKit.secrets: ForAddon and CloseAddonScopes refuse a secret addon name at the calling line -- the client has no issecretvalue and secretwrap; the secret path was not exercised
 MoltenCodes Test: SKIP timerKit.secrets: SetUserData stores a secret value and GetUserData hands it back still secret -- the client has no issecretvalue and secretwrap; the secret path was not exercised
+MoltenCodes Test: SKIP timerKit.secrets: getmetatable on a secret value answers without raising, so a secret receiver gets the receiver message -- the client has no issecretvalue and secretwrap; the secret path was not exercised
 ```
 
 A client that has both functions but makes no secret with them (the harness
 asks once whether `issecretvalue` reports what `secretwrap` returns as
-secret) skips the same four tests with the harness's own reason, and the
+secret) skips the same five tests with the harness's own reason, and the
 totals line is the same
-`24 passed, 0 failed, 6 skipped, 0 timed out (30 tests)`:
+`25 passed, 0 failed, 7 skipped, 0 timed out (32 tests)`:
 
 ```text
 MoltenCodes Test: SKIP timerKit.secrets: After and Every refuse a secret delay at the calling line before comparing it, and start nothing -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
 MoltenCodes Test: SKIP timerKit.secrets: New refuses a secret delay and a secret repeating flag at the calling line -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
 MoltenCodes Test: SKIP timerKit.secrets: ForAddon and CloseAddonScopes refuse a secret addon name at the calling line -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
 MoltenCodes Test: SKIP timerKit.secrets: SetUserData stores a secret value and GetUserData hands it back still secret -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
+MoltenCodes Test: SKIP timerKit.secrets: getmetatable on a secret value answers without raising, so a secret receiver gets the receiver message -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
 ```
 
 ## Per flavour
@@ -123,24 +127,24 @@ tables do not list, present on every client. TimerKit itself needs only
 ### Retail (12.1)
 
 The lines above:
-`MoltenCodes Test: timerKit: 28 passed, 0 failed, 2 skipped, 0 timed out (30 tests)`,
+`MoltenCodes Test: timerKit: 30 passed, 0 failed, 2 skipped, 0 timed out (32 tests)`,
 with the two `SKIP` lines for the logout and the delivered tick.
 
 ### Classic Era (1.15) and Mists of Pandaria Classic (5.5)
 
 The `running` line and every test line are the same as Retail's, in the same
 order, including the two `SKIP` lines expected on every client. Whether the
-four `timerKit.secrets` tests run depends on one answer only the running
+five `timerKit.secrets` tests run depends on one answer only the running
 client gives: whether its `secretwrap` makes a value `issecretvalue` reports
 as secret (both Classic flavours document the two functions).
 
 - When it does, the totals line is Retail's:
-  `MoltenCodes Test: timerKit: 28 passed, 0 failed, 2 skipped, 0 timed out (30 tests)`.
-- When it does not, the four lines under
+  `MoltenCodes Test: timerKit: 30 passed, 0 failed, 2 skipped, 0 timed out (32 tests)`.
+- When it does not, the five lines under
   [On a client without secret values](#on-a-client-without-secret-values)
   with the reason `the client makes no secret values (...)` are `SKIP`, and
   the totals line is
-  `MoltenCodes Test: timerKit: 24 passed, 0 failed, 6 skipped, 0 timed out (30 tests)`.
+  `MoltenCodes Test: timerKit: 25 passed, 0 failed, 7 skipped, 0 timed out (32 tests)`.
 
 ## Visible side effects
 
@@ -173,11 +177,12 @@ results.
 
 | Test | Proves in the real client |
 |---|---|
-| `Registry:Get('timerKit', 1) is the TimerKit facade ...` | The facade the client loaded is API 1 and carries `New`, `After`, `Every`, `CreateScope`, `ForAddon` and `CloseAddonScopes`; a timer carries all sixteen timer methods and a scope all eight scope methods of docs/API.md. |
+| `Registry:Get('timerKit', 1) is the TimerKit facade ...` | The facade the client loaded is API 1 and carries `New`, `After`, `Every`, `CreateScope`, `ForAddon` and `CloseAddonScopes`; a timer carries all sixteen timer methods and a scope all nine scope methods of docs/API.md (`Reopen` included). |
 | `the installed TimerKit carries the revision ...` | Registry's selected revision and the facade's `REVISION` are both the committed manifest's, not an older or newer embedded copy. |
 | `After(0.25) fires once on the real C_Timer ...` | The callback runs once, and the moment it runs, read with `GetTimePreciseSec`, is within the allowance of the deadline `GetDeadline` recorded at the start, early or late. The allowance is one frame (the longest frame seen during the wait, never shorter than `1 / GetFramerate()`) plus 20 ms. The log gives the lateness in milliseconds (negative means early), the time since the call, the allowance and the longest frame. Inside its callback the timer is already `completed` and `GetRemaining` answers `nil`; 0.4 s later it has still run once. |
 | `After(0) does not run inside the call ...` | A zero delay keeps the client's next-frame behaviour: the callback has not run when `After` returns, and has run by the second rendered frame. The log gives the delay and the frame. |
 | `Cancel before the deadline keeps the callback from ever running ...` | After `Cancel` (which answers `true`, then `false`), nothing runs within 0.65 s, past the deadline; the timer reads `cancelled`, not pending, with `nil` remaining time and deadline. |
+| `After(0.25, receiver, methodName) fires once ...` | The method-name form starts a real `C_Timer` timer and calls `receiver:Method(timer)` exactly once, with the receiver as `self` and the TimerKit handle as the argument; the timer then reads `completed`. |
 | `Every(0.1) ticks at its interval ...` | Four ticks arrive, each interval within the allowance of 0.1 s, each callback receiving the TimerKit handle; inside every tick `GetDeadline` is already one interval ahead (within 5 ms). After `Cancel`, no tick arrives within 0.4 s. The log lists the intervals and the ticks after `Cancel`. |
 | `a ticker that cancels itself inside its second tick ...` | `Cancel` from inside the ticker's own callback answers `true` and the native ticker never ticks a third time. |
 | `GetDeadline is GetTimePreciseSec at Start plus the delay ...` | The deadline lies between the clock readings just before and just after `Start`, plus the delay; after about 0.3 s, `GetRemaining` equals the deadline minus the clock at the moment of the call, and `GetDeadline` has not moved; after `Cancel` both are `nil`. |
@@ -201,12 +206,13 @@ results.
 | `New refuses a secret delay and a secret repeating flag ...` | Both option fields are refused with their secret messages at the calling line. |
 | `ForAddon and CloseAddonScopes refuse a secret addon name ...` | Both refuse with `addonName must not be a secret value` at the calling line; this addon's scope stays open. |
 | `SetUserData stores a secret value ...` | User data is stored by reference and never compared, so a secret is accepted and comes back still secret; `SetUserData(nil)` detaches it. |
+| `getmetatable on a secret value answers ...` | `getmetatable` accepts a secret without raising (TimerKit's receiver checks call it with no `type` test in front), and `Timer.Cancel` called on a secret raises the receiver message at the calling line. The log records what `getmetatable` did. |
 
 ## What counts as unexpected
 
 - Any `FAIL` or `TIMEOUT` line, a `SKIP` other than the two above on Retail
   12.1, or a totals line other than
-  `28 passed, 0 failed, 2 skipped, 0 timed out (30 tests)`; on a Classic
+  `30 passed, 0 failed, 2 skipped, 0 timed out (32 tests)`; on a Classic
   client, a `SKIP` or a totals line that [Per flavour](#per-flavour) does
   not list.
 - No login line, or `Expected.lua is missing`: the harness or the installer

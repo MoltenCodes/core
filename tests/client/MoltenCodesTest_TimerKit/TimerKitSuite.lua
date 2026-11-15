@@ -153,6 +153,7 @@ local SCOPE_METHODS = {
   "Every",
   "CancelAll",
   "Close",
+  "Reopen",
   "IsClosed",
   "GetAddonName",
   "GetActiveCount",
@@ -676,6 +677,30 @@ clockTest(
     waitUntilInstant(ctx, preciseNow() + ONE_SHOT_DELAY_SECONDS + QUIET_WAIT_SECONDS)
     ctx:Expect(fired.count):ToBe(0)
     ctx:Expect(timer:GetState()):ToBe("cancelled")
+  end
+)
+
+clockTest(
+  oneShot,
+  "After(0.25, receiver, methodName) fires once as receiver:Method(timer) on the real C_Timer",
+  function(ctx)
+    local scope = trackScope(TimerKit:CreateScope())
+    local calls = {}
+    local receiver = {}
+    function receiver:Wake(timer)
+      calls[#calls + 1] = { receiver = self, timer = timer }
+    end
+    local timer = scope:After(ONE_SHOT_DELAY_SECONDS, receiver, "Wake")
+
+    local wait = measuredWait(ctx, function()
+      return #calls > 0
+    end, WAIT_TIMEOUT_SECONDS)
+    ctx:Expect(wait.satisfied):ToBe(true)
+    waitUntilInstant(ctx, preciseNow() + QUIET_WAIT_SECONDS)
+    ctx:Expect(#calls):ToBe(1)
+    ctx:Expect(calls[1] and calls[1].receiver):ToBe(receiver)
+    ctx:Expect(calls[1] and calls[1].timer):ToBe(timer)
+    ctx:Expect(timer:GetState()):ToBe("completed")
   end
 )
 
@@ -1478,5 +1503,27 @@ secretTest(
     ctx:Expect(isSecretValue(timer:GetUserData())):ToBe(true)
     timer:SetUserData(nil)
     ctx:Expect(timer:GetUserData()):ToBeNil()
+  end
+)
+
+secretTest(
+  "getmetatable on a secret value answers without raising, so a secret receiver gets the receiver message",
+  function(ctx)
+    local secret = makeSecret(ctx, 42)
+
+    -- TimerKit's receiver checks call `getmetatable` without a `type` test in
+    -- front of it; this records what the client does with a secret there.
+    local answered, metatable = pcall(getmetatable, secret)
+    ctx:Log(
+      "getmetatable(secret) " .. (answered and "answered" or ("raised: " .. tostring(metatable)))
+    )
+    ctx:Expect(answered):ToBe(true)
+
+    local startLine = 0
+    local line = expectErrorAtCallingLine(ctx, function()
+      startLine = currentLine()
+      TimerKit.Timer.Cancel(secret)
+    end, "TimerKit.Timer:Cancel must be called on a TimerKit timer")
+    ctx:Expect(line):ToBe(startLine + 1)
   end
 )

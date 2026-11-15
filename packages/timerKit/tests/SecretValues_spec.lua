@@ -150,3 +150,40 @@ describe("TimerKit and secret values", function()
     assert.are.equal("MyAddon", TimerKit:ForAddon("MyAddon"):GetAddonName())
   end)
 end)
+
+describe("TimerKit and a secret probe installed after load", function()
+  after_each(TestEnv.Reset)
+
+  it("honours the probe on every path that checks one", function()
+    local TimerKit = TestEnv.NewPackage()
+    local scope = TimerKit:CreateScope()
+    local marker = 5
+    -- The probe a later shim installs; the spec owns this host global.
+    -- selene: allow(global_usage)
+    rawset(_G, "issecretvalue", function(value)
+      return value == marker
+    end)
+
+    local calls = {
+      function()
+        scope:After(marker, callback)
+      end,
+      function()
+        scope:Every(marker, callback)
+      end,
+      function()
+        TimerKit:After(marker, callback)
+      end,
+      function()
+        scope:New({ delay = marker, callback = callback })
+      end,
+    }
+    for index = 1, #calls do
+      local ok, message = pcall(calls[index])
+      assert.is_false(ok)
+      assert.is_truthy(string.find(message, "delay must not be a secret value", 1, true), message)
+    end
+    assert.are.equal(0, scope:GetActiveCount())
+    assert.is_true(scope:After(1, callback):IsPending())
+  end)
+end)

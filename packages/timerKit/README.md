@@ -31,6 +31,22 @@ Two timers that expire at the same instant fire in whatever order the client dis
 
 See [`docs/API.md`](docs/API.md) for the full state model, scope semantics, error behavior, and native API boundary, and [`docs/INTERNALS.md`](docs/INTERNALS.md) for the timer record, stale-callback protection and upgrade invariants.
 
+## Coming from AceTimer-3.0
+
+| AceTimer-3.0 | TimerKit |
+|---|---|
+| `self:ScheduleTimer(func, delay)` | `scope:After(delay, func)` (the callback receives the timer) |
+| `self:ScheduleTimer("Method", delay)` | `scope:After(delay, self, "Method")`: checked when it starts, looked up at every fire, called as `self:Method(timer)` |
+| `self:ScheduleRepeatingTimer("Method", interval)` | `scope:Every(interval, self, "Method")` |
+| `self:ScheduleTimer(func, delay, arg)` | `scope:After(delay, func)` with `timer:SetUserData(arg)` |
+| `self:CancelTimer(handle)` | `timer:Cancel()` |
+| `self:CancelAllTimers()` | `scope:CancelAll()`, or closing the scope |
+| `self:TimeLeft(handle)` | `timer:GetRemaining()` |
+
+A cancelled TimerKit timer leaves nothing pending in the client. Timers can
+also be paused and resumed one by one (`Pause`/`Resume`), and closing a scope
+cancels all of its timers at once.
+
 ## Embedding
 
 [`../../docs/EMBEDDING.md`](../../docs/EMBEDDING.md) is the addon author's guide:
