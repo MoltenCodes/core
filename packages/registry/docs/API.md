@@ -1,7 +1,7 @@
 # Registry API
 
 Registry API generation: **2**  
-Implementation revision: **15**
+Implementation revision: **16**
 
 Registry is a zero-dependency runtime resolver for independently embedded framework packages.
 
@@ -32,6 +32,10 @@ Registry has no dependencies and must be listed before every framework package
 that uses it:
 
 ```toc
+
+The key `MoltenCodes.For` is reserved for AddonKit, which installs its entry
+function there (`local MC = MoltenCodes:For(...)`); Registry never writes it.
+
 ## Interface: 120105, 50504, 20506, 11509
 ## Title: My Addon
 ## Notes: Example of embedding MoltenCodes packages
@@ -175,15 +179,21 @@ pattern; the private state must not be written by consumers (see
 - asks `issecretvalue`, on a client that has it, about the name and the API
   before either is used as a key, and about the stored revision before it is
   compared;
-- reads the state with raw access and checks the entry's shape, so a malformed
-  entry is never returned.
+- indexes the state plainly (revision 16 and later): the private state, its
+  package buckets and its entries are tables Registry creates and never gives
+  a metatable, so a plain read is a raw read; it still checks the entry's
+  shape (a table, an integer revision in range, a table implementation), so a
+  malformed entry is never returned;
+- resolves `issecretvalue` once, when the file loads, and looks the global up
+  again on each call only when it was absent then, so a probe installed after
+  load is still honoured.
 
 A miss, a secret, a malformed argument or a malformed entry takes the full path:
 the same messages at the same caller line, the same corruption error, and the
 same `Find` reasons. On the host benchmark (`docs/BENCHMARKS.md`, workload
-`libraryRegistry`) a `Get` hit costs about a third of what revision 13 spent;
-the rest is the probe, the raw reads and the shape check, which the contract
-keeps.
+`libraryRegistry`) a `Get` hit costs about a quarter of what revision 13 spent
+and 2.5 to 3 times LibStub's lookup on a host that is not idle; the rest is the probe and the shape
+check, which the contract keeps.
 
 ## `Registry:GetInfo(packageName, api)`
 

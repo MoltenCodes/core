@@ -202,3 +202,31 @@ describe("Registry secret values", function()
     end)
   end)
 end)
+
+describe("Registry secret probe resolution", function()
+  before_each(TestEnv.Reset)
+  after_each(TestEnv.Reset)
+
+  it("keeps the probe it resolved at load when the global changes later", function()
+    installSecretProbe("secretKit")
+    -- `Reload` keeps the globals, so the probe is present while Registry loads.
+    local Registry = TestEnv.Reload()
+    -- issecretvalue is a World of Warcraft client global; the fixture owns and clears it.
+    -- selene: allow(global_usage)
+    rawset(_G, "issecretvalue", nil)
+
+    expectErrorContaining("Registry:Get packageName must be a non-empty string", function()
+      Registry:Get("secretKit", 1)
+    end)
+  end)
+
+  it("honours a probe installed after load when none existed at load", function()
+    local Registry = TestEnv.NewRegistry()
+    assert.is_nil(Registry:Find("secretKit", 1))
+    installSecretProbe("secretKit")
+
+    expectErrorContaining("Registry:Get packageName must be a non-empty string", function()
+      Registry:Get("secretKit", 1)
+    end)
+  end)
+end)

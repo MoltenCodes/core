@@ -44,7 +44,7 @@ local PUBLIC_ALIAS_KEY = "Registry"
 
 local STATE_SCHEMA = 1
 local API_GENERATION = 2
-local IMPLEMENTATION_REVISION = 15
+local IMPLEMENTATION_REVISION = 16
 
 -- Lua 5.1 doubles represent consecutive integers exactly only up to 2^53; past it
 -- distinct values compare equal, and a revision such as `1e300` would become one
@@ -66,15 +66,25 @@ local STATUS_RETIRED = "retired"
 
 -- Validation ---------------------------------------------------------------
 
----Whether the client reports `value` as secret; always `false` elsewhere.
----Comparing a secret with a value of its own type raises inside Registry, so
----outside values are tested with `type` and `isSecret` first; a secret is never valid.
+-- issecretvalue is a World of Warcraft client API reachable only through the global table.
+local loadedProbe = rawget(globals, "issecretvalue")
+loadedProbe = type(loadedProbe) == "function" and loadedProbe or nil
+---`issecretvalue` as resolved at load or, when absent then, as the global is now (a probe
+---installed later is honoured); `nil` when there is none.
+---@return function|nil
+local function readProbe()
+  local isSecretValue = loadedProbe or rawget(globals, "issecretvalue")
+  return type(isSecretValue) == "function" and isSecretValue or nil
+end
+
+---Whether the client reports `value` as secret; always `false` elsewhere. Comparing a secret with
+---a value of its own type raises inside Registry, so outside values are tested with `type` and
+---`isSecret` first; a secret is never valid.
 ---@param value any
 ---@return boolean
 local function isSecret(value)
-  -- issecretvalue is a World of Warcraft client API reachable only through the global table.
-  local isSecretValue = rawget(globals, "issecretvalue")
-  return type(isSecretValue) == "function" and isSecretValue(value) == true
+  local isSecretValue = loadedProbe or readProbe()
+  return isSecretValue ~= nil and isSecretValue(value) == true
 end
 
 ---Whether `hook(value)` answers truthy; a secret answer cannot be tested, so it never does.
@@ -120,9 +130,8 @@ local function validatePackageName(packageName, methodName)
   end
 end
 
----Refuse an `api` or `revision` argument that is not a bounded positive
----integer, at the caller of the public method (level 3: this function, the
----method, its caller).
+---Refuse an `api` or `revision` argument that is not a bounded positive integer, at the caller of
+---the public method (level 3: this function, the method, its caller).
 ---@param value any
 ---@param methodName string
 ---@param fieldName "api"|"revision"
@@ -177,15 +186,14 @@ end
 
 -- Package-state access ----------------------------------------------------
 --
--- An entry is `{ revision, implementation }`. Revisions 7 and 8 add optional
--- fields that older entries simply lack: `status`, `retire` (the selected
--- copy's hand-over hook), `migratedThrough` (the revision whose layout the
--- state is in), `migrating` and `pendingState` (an unfinished migration run and
--- the state it had reached) and `seal` (the sealed-facade metatable).
+-- An entry is `{ revision, implementation }`. Revisions 7 and 8 add optional fields that older
+-- entries simply lack: `status`, `retire` (the selected copy's hand-over hook), `migratedThrough`
+-- (the revision whose layout the state is in), `migrating` and `pendingState` (an unfinished
+-- migration run and the state it had reached) and `seal` (the sealed-facade metatable).
 --
--- Corrupted state found while serving a public call is raised at that call's
--- caller, like an argument error. The accessors therefore take the stack level
--- the public method needs, counted from the accessor itself.
+-- Corrupted state found while serving a public call is raised at that call's caller, like an
+-- argument error. The accessors therefore take the stack level the public method needs, counted
+-- from the accessor itself.
 
 ---@param packageName string
 ---@param level integer error level, counted from this function
@@ -236,11 +244,10 @@ end
 
 ---The fast path of `Register`, `Get` and `Find`: look up before validating.
 ---
----Every Registry revision validated a name and an API before either became a
----key, so a hit needs no pattern match; the secret probe still runs before
----either is used as a key. A hit returns the well-formed entry and its fields;
----anything else returns `nil` and whether the arguments are valid, so the full
----path raises, or explains the miss, without probing again.
+---Every Registry revision validated a name and an API before either became a key, so a hit needs
+---no pattern match; the probe still runs before either is used as a key. A hit returns the
+---well-formed entry and its fields; anything else returns `nil` and whether the arguments are
+---valid, so the full path raises, or explains the miss, without probing again.
 ---@param packageName any
 ---@param api any
 ---@return table|nil entry
@@ -248,24 +255,20 @@ end
 ---@return table|nil implementation
 ---@return integer|nil revision
 local function lookUp(packageName, api)
-  local isSecretValue = rawget(globals, "issecretvalue")
-  local probing = type(isSecretValue) == "function"
-  if probing and (isSecretValue(packageName) == true or isSecretValue(api) == true) then
+  local probe = loadedProbe or readProbe()
+  if probe ~= nil and (probe(packageName) == true or probe(api) == true) then
     return nil, false
   end
-  local packageEntries = rawget(entries, packageName)
-  local entry = nil
-  if type(packageEntries) == "table" then
-    entry = rawget(packageEntries, api)
-  end
+  -- Plain indexing: the state, its buckets and entries are Registry's own tables and carry no
+  -- metatable. Every field is still shape-checked before a hit is returned.
+  local packageEntries = entries[packageName]
+  local entry = type(packageEntries) == "table" and packageEntries[api] or nil
   if type(entry) == "table" then
-    local implementation = rawget(entry, "implementation")
-    -- `isPositiveInteger`, inlined with the probe already read.
-    local revision = rawget(entry, "revision")
+    local implementation, revision = entry.implementation, entry.revision
     if
       type(implementation) == "table"
       and type(revision) == "number"
-      and not (probing and isSecretValue(revision) == true)
+      and not (probe ~= nil and probe(revision) == true)
       and revision % 1 == 0
       and revision > 0
       and revision <= MAXIMUM_INTEGER
@@ -344,9 +347,8 @@ local function selectRevision(entry, implementation, currentRevision, revision)
     return nil
   end
   rawset(entry, "revision", revision)
-  -- A retire hook belongs to the revision that registered it. Once another
-  -- revision is selected the hook describes state that no longer exists, so
-  -- it must never be handed the newer copy's table.
+  -- A retire hook belongs to the revision that registered it. Once another revision is selected the
+  -- hook describes state that no longer exists, so it must never be handed the newer copy's table.
   rawset(entry, "retire", nil)
   -- The implementation table is never replaced: packages upgrade it in place,
   -- so consumers holding older references observe the newer revision at once.
@@ -453,9 +455,8 @@ local function getInfo(_, packageName, api)
   }
 end
 
----Silent lookup for an optional dependency. Never raises for a package that is
----not there; raises at the caller only for malformed arguments. Allocation-free,
----so it is safe on any path.
+---Silent lookup for an optional dependency. Never raises for a package that is not there; raises
+---at the caller only for malformed arguments. Allocation-free, so it is safe on any path.
 ---@param packageName string
 ---@param api integer
 ---@return table|nil implementation
@@ -496,10 +497,9 @@ end
 
 ---Diagnostic enumeration of every registration, sorted by package then API.
 ---
----Allocates a fresh array of fresh rows on every call by design; it is meant
----for consoles and options pages, never for a hot path. Malformed private
----state raises the same corruption error `Get` raises, at the caller, instead
----of being listed as data or failing inside `table.sort`.
+---Allocates a fresh array of fresh rows on every call by design; it is meant for consoles and
+---options pages, never for a hot path. Malformed private state raises the same corruption error
+---`Get` raises, at the caller, instead of being listed as data or failing inside `table.sort`.
 ---@return Registry.PackageRow[]
 local function packages()
   local rows = {}
@@ -796,8 +796,7 @@ local function bootstrap(_, request)
       -- Nothing was inherited, so no step runs; the table is still validated,
       -- so a malformed one fails on every load, not only on the first upgrade.
       if
-        type(migrations) ~= "nil"
-        and selectMigrationSteps(migrations, revision, revision) == nil
+        type(migrations) ~= "nil" and selectMigrationSteps(migrations, revision, revision) == nil
       then
         error(label .. " request.migrations must map positive revisions to functions", 3)
       end

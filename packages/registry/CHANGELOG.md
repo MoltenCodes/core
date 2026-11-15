@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.6.11 — 2026-11-15
+
+- Faster lookups. The fast path of `Register`, `Get` and `Find` indexes the private state, its package buckets and its entries plainly instead of through `rawget`: they are tables Registry creates and never gives a metatable, so a plain read is a raw read. Every shape check stays (bucket and entry are tables, the revision an integer in range, the implementation a table), so a malformed entry still takes the full path and raises the same corruption error at the caller. `docs/API.md` (*Lookup cost*) states this in place of the earlier "raw access" sentence. Bootstrap-state and facade integrity checks keep raw access.
+- Host benchmark against LibStub, same session (2026-11-15, a machine that was not idle): `lookup` 4.28× → 3.07×, `silent-miss` 5.52× → 5.08×, `stale-copy` 2.07× → 1.60×, `upgrade` 1.38× → 1.06×, `new-library` 2.16× → 2.11×; nothing new allocates.
+- The secret probe follows the rule every Kit follows: `issecretvalue` is resolved once when the file loads; only when it was absent then is the global looked up again on each call, so a probe installed after load is still honoured.
+- `Registry.lua` stays inside its 1000-line budget (1000 lines): a few comments are wrapped to the 100-column limit.
+- Implementation revision 16. No state changed: an in-place upgrade from any earlier revision replaces the methods only (the existing upgrade specs in `FastPath_spec.lua` cover entries written by revisions 1, 2 and the previous one).
+- Specs: 141 → 143 (`SecretValues_spec.lua`: the probe resolved at load is kept after the global changes, and a probe installed after load is honoured). `Registry_spec.lua` expects revision 16.
+
 ## 0.6.10 — 2026-11-15
 
 - Fixed: a sealed facade built its refusal with `tostring(key)`. For a table or userdata key that runs the key's `__tostring`, foreign code that can raise or answer a secret, so the writer saw that code's error (or a message it chose) instead of the refusal. A string, number or boolean field is still shown as written (`field "Extra"` is unchanged); a key `issecretvalue` reports secret is named `<secret>`, asked first, and any other key by its type, `MoltenCodes DemoKit facade is sealed; field "<table>" cannot be added from outside the package`. Whether the client hands `__newindex` a secret key at all is not documented, so that check is defensive. Documented under *Sealed facades* in `docs/API.md`.

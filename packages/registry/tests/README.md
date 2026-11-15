@@ -37,7 +37,7 @@ Spec files:
 | `Retirement_spec.lua` | retire hooks and `OnRetire`, per-revision migrations run exactly once, failed steps, the in-place upgrade from the previous Registry revision |
 | `Seal_spec.lua` | sealed facades: refused writes at the writer's line, a table or secret field named without running its `__tostring`, the new message after an upgrade from the previous Registry revision, `rawset` upgrades, removal, foreign metatables |
 | `FastPath_spec.lua` | the lookup fast path of `Register`, `Get` and `Find`: hits equal to the full path, argument, secret and corruption refusals at the caller, no allocation, in-place upgrades from revisions 1, 2 and the previous one, an older copy loading afterwards |
-| `SecretValues_spec.lua` | secret arguments, request fields and hook results refused or handed over without a comparison |
+| `SecretValues_spec.lua` | secret arguments, request fields and hook results refused or handed over without a comparison; the probe resolved at load kept, and a probe installed after load honoured |
 | `RegistryTestEnv_spec.lua` | the test environment's own reset and isolation |
 | `Manifest_spec.lua` | runtime API and revision against `package.manifest.json` |
 
