@@ -17,12 +17,19 @@
 --   FormatReport      Ace's shape, and a report of everything that changed
 --                     (design section 6, step N2).
 --
--- The AceDB importer and the AceComm channel follow in later revisions
--- (design section 15, steps N3 and N4).
+--   PreviewAceDB      an AceDB-3.0 saved variable rebuilt in the SettingsKit
+--   ImportAceDB       layout, every value checked against the addon's
+--   AceDBMigration    schema and AceDB defaults that differ written as values
+--                     (design section 7, step N3).
+--
+-- The AceComm channel follows in a later revision (design section 15, step
+-- N4).
 --
 -- BridgeKit needs Registry API 2. `DefineAceConfig` finds OptionsKit API 1
 -- through `Registry:Find` when it is called; without it, it raises at the
--- caller, and `ConvertAceConfig` still returns a plain tree table.
+-- caller, and `ConvertAceConfig` still returns a plain tree table. The AceDB
+-- importer finds SchemaKit API 1 the same way, and reads SettingsKit's
+-- profile-name limit when SettingsKit API 1 is loaded.
 --
 -- Contents
 -- --------
@@ -37,6 +44,7 @@
 --   Reports ............... the report shape both conversions share
 --   AceConfig adapter ..... the walk from an Ace options table to OptionsKit's
 --   Conversion methods .... options, ConvertAceConfig, DefineAceConfig, FormatReport
+--   AceDB importer ........ the walk from an AceDB table to SettingsKit's layout
 --   Package public API .... the facade published through Registry
 --   Commit ................ facade assignment and self-check
 
@@ -44,7 +52,7 @@
 
 local PACKAGE_NAME = "bridgeKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 2
+local IMPLEMENTATION_REVISION = 3
 local REQUIRED_REGISTRY_API = 2
 local STATE_SCHEMA = 1
 
@@ -98,6 +106,7 @@ local LIMIT_NAMES = {
   "maxTextBytes",
   "maxListValues",
   "maxReportEntries",
+  "maxImportEntries",
 }
 local LIMIT_RULES = {
   maxDepth = {
@@ -113,6 +122,7 @@ local LIMIT_RULES = {
     unboundedRefusal = "a peer chooses the size of the text a reader is given",
   },
   maxReportEntries = { default = 1024, ceiling = 2 ^ 24, unbounded = true },
+  maxImportEntries = { default = 65536, ceiling = 2 ^ 30, unbounded = true },
   maxListValues = {
     default = 4096,
     ceiling = 7900,
@@ -121,8 +131,10 @@ local LIMIT_RULES = {
 }
 
 -- The actions a report counts, in the order `FormatReport` sums them up
--- (design section 5.2). The AceDB importer adds its own two.
+-- (design section 5.2): a conversion's, and an import's.
 local REPORT_ACTIONS = { "converted", "dropped", "changed", "renamed", "unsupported" }
+local IMPORT_ACTIONS =
+  { "imported", "materialised", "dropped", "changed", "renamed", "unsupported" }
 
 -- AceSerializer escapes a string's control bytes, space, caret, tilde and DEL
 -- with a tilde and one character (design section 8.1, "String escaping"). The
@@ -179,17 +191,19 @@ local EXPONENT_BOUND = 2200
 ---@field maxTextBytes integer? Bytes of the text `AceSerialize` writes and `AceDeserialize` reads.
 ---@field maxListValues integer? Top-level values `AceDeserialize` returns.
 ---@field maxReportEntries (integer|table)? Entries one report stores; `BridgeKit.UNBOUNDED` lifts it.
+---@field maxImportEntries (integer|table)? Entries one AceDB import walks or copies; `BridgeKit.UNBOUNDED` lifts it.
 
 ---One report entry. No entry holds a value from the source.
 ---@class BridgeKit.ReportEntry
----@field path string The converted option path, `""` for the root.
+---@field path string The converted option path, or the saved-variable path; `""` for the root.
 ---@field field string? The Ace field the entry is about.
----@field action "dropped"|"changed"|"renamed"|"unsupported"
+---@field action "dropped"|"changed"|"renamed"|"unsupported"|"materialised"
 ---@field reason string From the vocabulary in docs/API.md.
+---@field detail string? Text BridgeKit wrote: SchemaKit's path, rule and expectation for `schemaRefused`.
 
 ---What a conversion did, entry by entry and counted.
 ---@class BridgeKit.Report
----@field kind "aceConfig"
+---@field kind "aceConfig"|"aceDB"
 ---@field entries BridgeKit.ReportEntry[] In walk order, at most `maxReportEntries`.
 ---@field counts table<string, integer> Every action, `0` included.
 ---@field truncated integer Entries not stored because `maxReportEntries` was reached.
@@ -201,6 +215,29 @@ local EXPONENT_BOUND = 2200
 ---@field paths table<string, string[]> Converted option path to the original Ace keys.
 ---@field maxDepth integer The longest option path, in keys.
 ---@field optionCount integer Options converted, groups included, the root excluded.
+
+---Where an AceDB scope SettingsKit lacks goes.
+---@class BridgeKit.ScopeDestination
+---@field into "global"
+---@field field string A declared `map` field of the global scope.
+
+---Where an AceDB namespace goes.
+---@class BridgeKit.NamespaceDestination
+---@field field string A declared record or map field of the scopes the namespace has data for.
+---@field defaults table? That namespace's AceDB defaults.
+
+---The plan the AceDB importer methods accept.
+---@class BridgeKit.ImportPlan
+---@field schema table The schema table the addon passes to `SettingsKit:Open`.
+---@field aceDefaults table? The defaults table the addon passed to `AceDB:New`.
+---@field scopes table<string, BridgeKit.ScopeDestination>?
+---@field namespaces table<string, BridgeKit.NamespaceDestination>?
+---@field renameProfile (fun(name: string): string?)?
+---@field renameCharacter (fun(key: string): string?)?
+---@field version integer? `ImportAceDB` only: stamped into the target.
+---@field backup string? The global that receives the backup; required by `AceDBMigration`.
+---@field replaceBackup boolean? Overwrite a backup global that holds data.
+---@field onReport (fun(report: BridgeKit.Report))? `AceDBMigration` only.
 
 ---The options `ConvertAceConfig` accepts.
 ---@class BridgeKit.ConvertOptions
@@ -234,6 +271,9 @@ local EXPONENT_BOUND = 2200
 ---@field ConvertAceConfig fun(self: BridgeKit, appName: string, source: table|function, options: BridgeKit.ConvertOptions?): BridgeKit.Conversion
 ---@field DefineAceConfig fun(self: BridgeKit, addonName: string, source: table|function, options: BridgeKit.DefineOptions?): table, BridgeKit.Report
 ---@field FormatReport fun(self: BridgeKit, report: BridgeKit.Report, maxLines: integer?): string[]
+---@field PreviewAceDB fun(self: BridgeKit, source: table|string, plan: BridgeKit.ImportPlan): BridgeKit.Report, string?
+---@field ImportAceDB fun(self: BridgeKit, source: table|string, targetName: string, plan: BridgeKit.ImportPlan): BridgeKit.Report|nil, string?, BridgeKit.Report?
+---@field AceDBMigration fun(self: BridgeKit, plan: BridgeKit.ImportPlan): fun(raw: table)
 ---@field AceSerialize fun(self: BridgeKit, ...: any): boolean, string|BridgeKit.WriteReason
 ---@field AceDeserialize fun(self: BridgeKit, text: string): boolean, ...
 ---@field SetLimits fun(self: BridgeKit, limits: BridgeKit.Limits)
@@ -292,6 +332,9 @@ local PUBLIC_METHODS = {
   "ConvertAceConfig",
   "DefineAceConfig",
   "FormatReport",
+  "PreviewAceDB",
+  "ImportAceDB",
+  "AceDBMigration",
   "SetLimits",
   "GetLimits",
 }
@@ -2570,9 +2613,10 @@ local function formatReport(self, report, maxLines)
     lines[index] = path .. field .. ": " .. entry.action .. " (" .. entry.reason .. ")"
   end
   local summary = {}
-  for _, action in ipairs(REPORT_ACTIONS) do
+  local actions = report.kind == "aceDB" and IMPORT_ACTIONS or REPORT_ACTIONS
+  for _, action in ipairs(actions) do
     local count = report.counts[action]
-    if type(count) == "number" and (count > 0 or action == "converted") then
+    if type(count) == "number" and (count > 0 or action == actions[1]) then
       summary[#summary + 1] = count .. " " .. action
     end
   end
@@ -2582,6 +2626,1403 @@ local function formatReport(self, report, maxLines)
   end
   lines[#lines + 1] = table.concat(summary, ", ")
   return lines
+end
+
+-- AceDB importer ---------------------------------------------------------------
+--
+-- The importer reads an AceDB-3.0 saved variable and builds the SettingsKit
+-- layout of API generation 1 from it (design section 7, SettingsKit's
+-- `docs/API.md`, "The saved table"). Every value is checked against the
+-- SettingsKit schema the addon will open with before it is written: a probe
+-- table holding only the path to that value is checked with the scope's
+-- sealed schema, which is sound because every field of a SettingsKit record is
+-- optional. Where the source holds nothing, an AceDB default that differs from
+-- the SettingsKit default is written as a value, so every field reads after
+-- the import what it read under AceDB (design section 7.6).
+--
+-- Walking is bounded twice: by SchemaKit's `maxDepth` for nesting, and by
+-- `maxImportEntries` for the whole source; passing the second refuses the
+-- import as a whole.
+
+-- The SettingsKit scopes, and where each lives in the layout.
+local SECTION_FOR_SCOPE = {
+  global = "global",
+  profile = "profiles",
+  char = "char",
+  realm = "realm",
+  class = "class",
+  faction = "faction",
+}
+local KEYED_SCOPES = { "char", "realm", "class", "faction" }
+
+-- AceDB scopes SettingsKit lacks (design section 7.3).
+local UNSUPPORTED_SCOPES = { "race", "factionrealm", "factionrealmregion", "locale" }
+
+-- Every top-level key of an AceDB saved variable the importer knows.
+local ACE_TOP_LEVEL = {
+  profileKeys = true,
+  profiles = true,
+  global = true,
+  char = true,
+  realm = true,
+  class = true,
+  faction = true,
+  race = true,
+  factionrealm = true,
+  factionrealmregion = true,
+  locale = true,
+  namespaces = true,
+}
+
+-- The sections of a namespace, in the order they are imported, and the
+-- SettingsKit scope each one maps to.
+local NAMESPACE_SECTIONS = {
+  { "global", "global" },
+  { "profiles", "profile" },
+  { "char", "char" },
+  { "realm", "realm" },
+  { "class", "class" },
+  { "faction", "faction" },
+}
+
+-- The plan fields each importer method accepts.
+local PLAN_FIELDS = {
+  preview = {
+    schema = true,
+    aceDefaults = true,
+    scopes = true,
+    namespaces = true,
+    renameProfile = true,
+    renameCharacter = true,
+  },
+}
+PLAN_FIELDS.import = { version = true, backup = true, replaceBackup = true }
+PLAN_FIELDS.migration = { backup = true, replaceBackup = true, onReport = true }
+for _, mode in ipairs({ "import", "migration" }) do
+  for field in next, PLAN_FIELDS.preview do
+    PLAN_FIELDS[mode][field] = true
+  end
+end
+
+-- An import that passes `maxImportEntries` stops with this error, which the
+-- public method turns into its `"maxImportEntries"` refusal.
+local IMPORT_OVERFLOW = "\0BridgeKit import overflow\0"
+
+-- The interface numbers of the clients whose AceDB keys characters and realms
+-- by name and ruleset (design section 7.3).
+local RULESET_INTERFACE_FIRST, RULESET_INTERFACE_LAST = 16000, 19999
+
+-- The longest profile name SettingsKit accepts when it is not loaded to ask.
+local DEFAULT_PROFILE_NAME_LENGTH = 64
+
+local copyCounted
+
+---A report path segment for one key: an identifier as it is, any other key
+---bracketed, with strings quoted and escaped the way SchemaKit renders keys
+---(`|` doubled, `\` and `"` escaped, other control bytes `\ddd`), and cut past
+---`PATH_KEY_LIMIT` bytes.
+---@param key any
+---@return string
+local function renderKey(key)
+  if type(key) == "string" then
+    if stringFind(key, IDENTIFIER_PATTERN) ~= nil and #key <= PATH_KEY_LIMIT then
+      return key
+    end
+    local shown = #key > PATH_KEY_LIMIT and stringSub(key, 1, PATH_KEY_LIMIT) or key
+    shown = string.gsub(shown, '[%c|\\"]', function(character)
+      if character == "|" then
+        return "||"
+      elseif character == "\\" or character == '"' then
+        return "\\" .. character
+      end
+      return string.format("\\%03d", string.byte(character))
+    end)
+    return '["' .. shown .. (#key > PATH_KEY_LIMIT and '..."]' or '"]')
+  elseif type(key) == "number" then
+    return "[" .. (key == key and string.format("%.14g", key) or "NaN") .. "]"
+  elseif type(key) == "boolean" then
+    return "[" .. tostring(key) .. "]"
+  end
+  return "[" .. type(key) .. "]"
+end
+
+---`path` with `key` appended as a report path segment.
+---@param path string
+---@param key any
+---@return string
+local function joinPath(path, key)
+  local segment = renderKey(key)
+  if path == "" then
+    return segment
+  end
+  if stringSub(segment, 1, 1) == "[" then
+    return path .. segment
+  end
+  return path .. "." .. segment
+end
+
+---The keys of `source` in a stable order: by type, then by value.
+---@param source table
+---@return any[]
+local function sortedKeys(source)
+  local keys = {}
+  for key in next, source do
+    keys[#keys + 1] = key
+  end
+  local rank = { string = 1, number = 2, boolean = 3 }
+  table.sort(keys, function(left, right)
+    local leftType, rightType = type(left), type(right)
+    if leftType ~= rightType then
+      return (rank[leftType] or 4) < (rank[rightType] or 4)
+    end
+    if leftType == "string" or leftType == "number" then
+      return left < right
+    end
+    if leftType == "boolean" then
+      return left == false and right == true
+    end
+    return false
+  end)
+  return keys
+end
+
+---Whether two values are deeply equal: tables entry by entry, NaN never.
+---@param left any
+---@param right any
+---@param depth integer?
+---@return boolean
+local function deepEqual(left, right, depth)
+  depth = depth or 0
+  if left == right then
+    return true
+  end
+  if type(left) ~= "table" or type(right) ~= "table" or depth > MAX_OPTION_DEPTH * 4 then
+    return false
+  end
+  for key, value in next, left do
+    if not deepEqual(value, rawget(right, key), depth + 1) then
+      return false
+    end
+  end
+  for key in next, right do
+    if type(rawget(left, key)) == "nil" then
+      return false
+    end
+  end
+  return true
+end
+
+---The AceDB default for `key` in a defaults table: the explicit entry, merged
+---over `"**"` when both are tables, else `"*"`, else `"**"`
+---(AceDB-3.0.lua:93-124).
+---@param defaults any
+---@param key any
+---@return any
+local function aceDefaultFor(defaults, key)
+  if type(defaults) ~= "table" then
+    return nil
+  end
+  local explicit = rawget(defaults, key)
+  local everywhere = rawget(defaults, "**")
+  if type(explicit) ~= "nil" then
+    if type(explicit) == "table" and type(everywhere) == "table" then
+      local merged = {}
+      for field, value in next, everywhere do
+        merged[field] = value
+      end
+      for field, value in next, explicit do
+        merged[field] = value
+      end
+      return merged
+    end
+    return explicit
+  end
+  local unnamed = rawget(defaults, "*")
+  if type(unnamed) ~= "nil" then
+    return unnamed
+  end
+  return everywhere
+end
+
+---Count one entry of the source, and stop the walk past `maxImportEntries`.
+---@param ctx table
+local function countEntry(ctx)
+  ctx.entries = ctx.entries + 1
+  if exceeds(ctx.entries, ctx.maxEntries) then
+    error(IMPORT_OVERFLOW, 0)
+  end
+end
+
+---Why a value can never be stored in a saved variable, or `nil` when it can:
+---a function, userdata or coroutine anywhere in it, a table with a metatable,
+---or a secret.
+---@param ctx table
+---@param value any
+---@param depth integer
+---@return string|nil reason
+local function unstorable(ctx, value, depth)
+  local probe = ctx.probe
+  if probe ~= nil and probe(value) == true then
+    return "secretValue"
+  end
+  local valueType = type(value)
+  if valueType == "function" or valueType == "userdata" or valueType == "thread" then
+    return "notStorable"
+  end
+  if valueType ~= "table" then
+    return nil
+  end
+  if depth > ctx.maxDepth then
+    return "tooDeep"
+  end
+  if getmetatable(value) ~= nil then
+    return "notStorable"
+  end
+  for key, entry in next, value do
+    countEntry(ctx)
+    local reason = unstorable(ctx, key, depth + 1) or unstorable(ctx, entry, depth + 1)
+    if reason ~= nil then
+      return reason
+    end
+  end
+  return nil
+end
+
+---A copy of a storable value; tables are copied, a table reached twice once.
+---@param value any
+---@param copies table|nil
+---@return any
+local function copyValue(value, copies)
+  if type(value) ~= "table" then
+    return value
+  end
+  copies = copies or {}
+  local existing = copies[value]
+  if existing ~= nil then
+    return existing
+  end
+  local copy = {}
+  copies[value] = copy
+  for key, entry in next, value do
+    copy[copyValue(key, copies)] = copyValue(entry, copies)
+  end
+  return copy
+end
+
+---A copy of `value` for a backup, counting every entry against
+---`maxImportEntries`; a table reached twice is copied once and stays shared.
+---@param ctx table
+---@param value any
+---@param copies table
+---@return any
+function copyCounted(ctx, value, copies)
+  if type(value) ~= "table" then
+    return value
+  end
+  local existing = copies[value]
+  if existing ~= nil then
+    return existing
+  end
+  local copy = {}
+  copies[value] = copy
+  for key, entry in next, value do
+    countEntry(ctx)
+    copy[copyCounted(ctx, key, copies)] = copyCounted(ctx, entry, copies)
+  end
+  return copy
+end
+
+---Check `value` at `keys` of `scope` with the scope's schema, through a probe
+---table that holds only that path. Returns `true`, or `false` and the
+---failure's detail, which holds SchemaKit's path, rule and expectation, never
+---the value.
+---@param ctx table
+---@param scope string
+---@param keys any[]
+---@param value any
+---@return boolean ok
+---@return string|nil detail
+local function checkAt(ctx, scope, keys, value)
+  local probe = value
+  for index = #keys, 1, -1 do
+    probe = { [keys[index]] = probe }
+  end
+  local ok, failure = ctx.scopes[scope].schema:Check(probe)
+  if ok then
+    return true, nil
+  end
+  local where = failure.path ~= "" and (failure.path .. " ") or ""
+  return false, where .. failure.rule .. ": expected " .. tostring(failure.expected)
+end
+
+---Note a refused value with SchemaKit's explanation.
+---@param ctx table
+---@param path string
+---@param detail string|nil
+local function noteRefused(ctx, path, detail)
+  noteEntry(ctx.report, path, nil, "dropped", "schemaRefused")
+  ctx.report.entries[#ctx.report.entries].detail = detail
+end
+
+local importRecord, importMap
+
+---Import one value field: the source value when there is one and the schema
+---accepts it, otherwise the AceDB default when it differs from the
+---SettingsKit default (design section 7.6).
+---@param ctx table
+---@param scope string
+---@param keys any[] the path inside the scope, this field's key last
+---@param path string
+---@param sourceValue any
+---@param aceDefault any
+---@param settingsDefault any
+---@return boolean written, any value
+local function importValue(ctx, scope, keys, path, sourceValue, aceDefault, settingsDefault)
+  local candidate, materialising = sourceValue, false
+  if type(sourceValue) == "nil" then
+    if type(aceDefault) == "nil" or deepEqual(aceDefault, settingsDefault) then
+      return false, nil
+    end
+    candidate, materialising = aceDefault, true
+  end
+  local reason = unstorable(ctx, candidate, #keys)
+  if reason ~= nil then
+    noteEntry(ctx.report, path, nil, "dropped", reason)
+    return false, nil
+  end
+  local ok, detail = checkAt(ctx, scope, keys, candidate)
+  if not ok then
+    noteRefused(ctx, path, detail)
+    return false, nil
+  end
+  if materialising then
+    noteEntry(ctx.report, path, nil, "materialised", "defaultDiffers")
+  else
+    ctx.report.counts.imported = ctx.report.counts.imported + 1
+  end
+  return true, copyValue(candidate)
+end
+
+---Import a field of a record: a nested record or map is walked into, any
+---other kind is imported whole.
+---@param ctx table
+---@param scope string
+---@param describe table the field's description
+---@param keys any[]
+---@param path string
+---@param sourceValue any
+---@param aceDefault any
+---@param settingsDefault any
+---@return boolean written, any value
+local function importField(
+  ctx,
+  scope,
+  describe,
+  keys,
+  path,
+  sourceValue,
+  aceDefault,
+  settingsDefault
+)
+  local probe = ctx.probe
+  if probe ~= nil and type(sourceValue) ~= "nil" and probe(sourceValue) == true then
+    noteEntry(ctx.report, path, nil, "dropped", "secretValue")
+    return false, nil
+  end
+  local kind = describe.kind
+  if
+    (kind == "table" or kind == "map")
+    and type(sourceValue) ~= "nil"
+    and type(sourceValue) ~= "table"
+  then
+    local _, detail = checkAt(ctx, scope, keys, sourceValue)
+    noteRefused(ctx, path, detail)
+    return false, nil
+  end
+  if kind == "table" then
+    local nested = settingsDefault
+    if type(nested) ~= "table" then
+      nested = describe.default
+    end
+    local record = importRecord(ctx, scope, describe, keys, path, sourceValue, aceDefault, nested)
+    return record ~= nil, record
+  elseif kind == "map" then
+    local entries = importMap(ctx, scope, describe, keys, path, sourceValue, aceDefault)
+    return entries ~= nil, entries
+  end
+  return importValue(ctx, scope, keys, path, sourceValue, aceDefault, settingsDefault)
+end
+
+---Import a record (a SchemaKit `table`). Returns the new table, or `nil` when
+---nothing in it was written.
+---@param ctx table
+---@param scope string
+---@param describe table
+---@param keys any[]
+---@param path string
+---@param source table|nil
+---@param aceDefaults any
+---@param settingsDefaults table|nil the record's own default, when it has one
+---@return table|nil
+function importRecord(ctx, scope, describe, keys, path, source, aceDefaults, settingsDefaults)
+  if #keys >= ctx.maxDepth then
+    noteEntry(ctx.report, path, nil, "dropped", "tooDeep")
+    return nil
+  end
+  local result, written = {}, false
+  local fields = describe.fields or {}
+  for _, name in ipairs(describe.fieldNames or {}) do
+    local sourceValue = source and rawget(source, name)
+    if type(sourceValue) ~= "nil" then
+      countEntry(ctx)
+    end
+    local settingsDefault = fields[name].default
+    if type(settingsDefaults) == "table" and type(rawget(settingsDefaults, name)) ~= "nil" then
+      settingsDefault = rawget(settingsDefaults, name)
+    end
+    local ok, value = importField(
+      ctx,
+      scope,
+      fields[name],
+      extendKeys(keys, name),
+      joinPath(path, name),
+      sourceValue,
+      aceDefaultFor(aceDefaults, name),
+      settingsDefault
+    )
+    if ok then
+      result[name], written = value, true
+    end
+  end
+  if type(source) == "table" then
+    for _, key in ipairs(sortedKeys(source)) do
+      if type(key) ~= "string" or fields[key] == nil then
+        countEntry(ctx)
+        local keyPath = joinPath(path, key)
+        if ctx.probe ~= nil and ctx.probe(key) == true then
+          noteEntry(ctx.report, path, nil, "dropped", "secretValue")
+        elseif describe.open then
+          local ok, value =
+            importValue(ctx, scope, extendKeys(keys, key), keyPath, rawget(source, key), nil, nil)
+          if ok then
+            result[key], written = value, true
+          end
+        else
+          local _, detail = checkAt(ctx, scope, extendKeys(keys, key), true)
+          noteRefused(ctx, keyPath, detail)
+        end
+      end
+    end
+  end
+  if not written then
+    return nil
+  end
+  return result
+end
+
+---Import a map (a SchemaKit `map`): every key the source holds, in sorted
+---order up to the map's `max`, each entry walked when the map's values are
+---records. Returns the new table, or `nil` when nothing was written.
+---@param ctx table
+---@param scope string
+---@param describe table
+---@param keys any[]
+---@param path string
+---@param source table|nil
+---@param aceDefaults any
+---@return table|nil
+function importMap(ctx, scope, describe, keys, path, source, aceDefaults)
+  local valueDescribe = describe.values or { kind = "any" }
+  local wildcardDefault = valueDescribe.default
+  local aceWildcard = type(aceDefaults) == "table"
+      and (rawget(aceDefaults, "*") or rawget(aceDefaults, "**"))
+    or nil
+  if type(aceWildcard) ~= "nil" and not deepEqual(aceWildcard, wildcardDefault) then
+    noteEntry(ctx.report, path, nil, "changed", "wildcardDefaultDiffers")
+  end
+  local result, count = {}, 0
+  local maximum = describe.max
+  local function importEntry(key, sourceEntry)
+    local settingsDefault = wildcardDefault
+    if type(describe.default) == "table" and type(rawget(describe.default, key)) ~= "nil" then
+      settingsDefault = rawget(describe.default, key)
+    end
+    local ok, value = importField(
+      ctx,
+      scope,
+      valueDescribe,
+      extendKeys(keys, key),
+      joinPath(path, key),
+      sourceEntry,
+      aceDefaultFor(aceDefaults, key),
+      settingsDefault
+    )
+    if ok then
+      result[key], count = value, count + 1
+    end
+  end
+  local held = {}
+  if type(source) == "table" then
+    local dropped = false
+    for _, key in ipairs(sortedKeys(source)) do
+      countEntry(ctx)
+      if ctx.probe ~= nil and ctx.probe(key) == true then
+        noteEntry(ctx.report, path, nil, "dropped", "secretValue")
+      elseif type(maximum) == "number" and count >= maximum then
+        dropped = true
+      else
+        held[key] = true
+        importEntry(key, rawget(source, key))
+      end
+    end
+    if dropped then
+      noteEntry(ctx.report, path, nil, "dropped", "mapFull")
+    end
+  end
+  -- An entry AceDB's defaults name explicitly reads that default where the
+  -- source lacks it; it is materialised when SettingsKit would read another.
+  if type(aceDefaults) == "table" then
+    for _, key in ipairs(sortedKeys(aceDefaults)) do
+      if
+        key ~= "*"
+        and key ~= "**"
+        and not held[key]
+        and (type(maximum) ~= "number" or count < maximum)
+      then
+        importEntry(key, nil)
+      end
+    end
+  end
+  if count == 0 then
+    return nil
+  end
+  return result
+end
+
+---Report, once per field, every AceDB default of `scope` that differs from
+---the SettingsKit default: an entry the source lacks entirely (a character
+---that never saved anything) reads the SettingsKit default from now on.
+---@param ctx table
+---@param describe table
+---@param aceDefaults any
+---@param path string
+---@param depth integer
+local function noteDefaultsThatDiffer(ctx, describe, aceDefaults, path, depth)
+  if type(aceDefaults) ~= "table" or depth > ctx.maxDepth then
+    return
+  end
+  local fields = describe.fields or {}
+  for _, name in ipairs(describe.fieldNames or {}) do
+    local field = fields[name]
+    local aceDefault = aceDefaultFor(aceDefaults, name)
+    if field.kind == "table" then
+      noteDefaultsThatDiffer(ctx, field, aceDefault, joinPath(path, name), depth + 1)
+    elseif
+      type(aceDefault) ~= "nil"
+      and field.kind ~= "map"
+      and not deepEqual(aceDefault, field.default)
+    then
+      noteEntry(ctx.report, joinPath(path, name), nil, "changed", "defaultDiffers")
+    end
+  end
+end
+
+---A profile's name in the layout, or `nil` to drop it: `renameProfile` first,
+---then SettingsKit's rules (design section 7.3).
+---@param ctx table
+---@param name any
+---@return string|nil
+local function profileNameFor(ctx, name)
+  local path = joinPath("profiles", name)
+  local newName = name
+  if ctx.plan.renameProfile ~= nil then
+    newName = ctx.plan.renameProfile(name)
+    if ctx.probe ~= nil and type(newName) ~= "nil" and ctx.probe(newName) == true then
+      newName = nil
+    end
+    if type(newName) ~= "string" then
+      noteEntry(ctx.report, path, nil, "dropped", "renamedProfile")
+      return nil
+    end
+    if newName ~= name then
+      noteEntry(ctx.report, path, nil, "renamed", "renamedProfile")
+    end
+  end
+  if type(newName) ~= "string" then
+    noteEntry(ctx.report, path, nil, "dropped", "profileNameBlank")
+    return nil
+  end
+  if #newName > ctx.maxProfileNameLength then
+    noteEntry(ctx.report, path, nil, "dropped", "profileNameTooLong")
+    return nil
+  end
+  if stringFind(newName, "%S") == nil then
+    noteEntry(ctx.report, path, nil, "dropped", "profileNameBlank")
+    return nil
+  end
+  return newName
+end
+
+---A character's key in the layout, or `nil` to drop it.
+---@param ctx table
+---@param key any
+---@return any
+local function characterKeyFor(ctx, key)
+  local rename = ctx.plan.renameCharacter
+  if rename == nil then
+    return key
+  end
+  local newKey = rename(key)
+  local path = joinPath("char", key)
+  if type(newKey) ~= "string" or (ctx.probe ~= nil and ctx.probe(newKey) == true) then
+    noteEntry(ctx.report, path, nil, "dropped", "renamedCharacter")
+    return nil
+  end
+  if newKey ~= key then
+    noteEntry(ctx.report, path, nil, "renamed", "renamedCharacter")
+  end
+  return newKey
+end
+
+---A section of the source, or `nil`; a section that is not a table is
+---reported and treated as absent.
+---@param ctx table
+---@param source table
+---@param name string
+---@return table|nil
+local function sourceSection(ctx, source, name)
+  local section = rawget(source, name)
+  if type(section) == "nil" then
+    return nil
+  end
+  if type(section) ~= "table" or (ctx.probe ~= nil and ctx.probe(section) == true) then
+    noteEntry(ctx.report, name, nil, "dropped", "notStorable")
+    return nil
+  end
+  return section
+end
+
+---Whether a section holds anything.
+---@param section table|nil
+---@return boolean
+local function holdsEntries(section)
+  return type(section) == "table" and type(next(section)) ~= "nil"
+end
+
+---Call a client function by name, or `nil` when the client lacks it or
+---answers with a secret.
+---@param ctx table
+---@param name string
+---@return ...
+local function askClient(ctx, name, ...)
+  -- These are World of Warcraft client APIs reachable only through the global table.
+  -- selene: allow(global_usage)
+  local fn = rawget(_G, name)
+  if type(fn) ~= "function" then
+    return nil
+  end
+  local first, second, third, fourth = fn(...)
+  local probe = ctx.probe
+  if probe ~= nil and (probe(first) == true or probe(second) == true or probe(fourth) == true) then
+    return nil
+  end
+  return first, second, third, fourth
+end
+
+---Report what the current character's keys say about the import: its
+---SettingsKit key missing from `char`, and keys that will not line up
+---(design section 7.3).
+---@param ctx table
+---@param source table
+---@param layout table
+local function noteCharacterKeys(ctx, source, layout)
+  local chars, realms = rawget(source, "char"), rawget(source, "realm")
+  local _, _, _, interface = askClient(ctx, "GetBuildInfo")
+  local ruleset = type(interface) == "number"
+    and interface >= RULESET_INTERFACE_FIRST
+    and interface <= RULESET_INTERFACE_LAST
+  if ruleset then
+    if holdsEntries(chars) then
+      noteEntry(ctx.report, "char", nil, "changed", "characterKeyMismatch")
+    end
+    if holdsEntries(realms) then
+      noteEntry(ctx.report, "realm", nil, "changed", "realmKeyMismatch")
+    end
+  end
+  if not ctx.declared.char or not holdsEntries(chars) then
+    return
+  end
+  local name = askClient(ctx, "UnitName", "player")
+  local realm = askClient(ctx, "GetRealmName")
+  if type(name) ~= "string" or type(realm) ~= "string" then
+    return
+  end
+  local settingsKey = name .. " - " .. realm
+  local unmodified = askClient(ctx, "UnitNameUnmodified", "player")
+  if type(unmodified) == "string" and unmodified ~= name then
+    noteEntry(
+      ctx.report,
+      joinPath("char", unmodified .. " - " .. realm),
+      nil,
+      "changed",
+      "characterKeyMismatch"
+    )
+  end
+  if type(layout.char) ~= "table" or type(rawget(layout.char, settingsKey)) == "nil" then
+    noteEntry(ctx.report, joinPath("char", settingsKey), nil, "changed", "currentCharacterMissing")
+  end
+end
+
+---Import the profiles and the profile choices.
+---@param ctx table
+---@param source table
+---@param layout table
+---@return table<any, string> profileNames source name to layout name
+local function importProfiles(ctx, source, layout)
+  local profiles = sourceSection(ctx, source, "profiles")
+  local names = {}
+  if not ctx.declared.profile then
+    if holdsEntries(profiles) then
+      noteEntry(ctx.report, "profiles", nil, "dropped", "undeclaredScope")
+    end
+    return names
+  end
+  layout.profiles = {}
+  local describe = ctx.scopes.profile.describe
+  if profiles ~= nil then
+    for _, name in ipairs(sortedKeys(profiles)) do
+      countEntry(ctx)
+      local newName = profileNameFor(ctx, name)
+      if newName ~= nil and type(rawget(layout.profiles, newName)) ~= "nil" then
+        noteEntry(ctx.report, joinPath("profiles", name), nil, "dropped", "profileNameCollision")
+        newName = nil
+      end
+      if newName ~= nil then
+        local entry = rawget(profiles, name)
+        if type(entry) ~= "table" then
+          noteEntry(ctx.report, joinPath("profiles", name), nil, "dropped", "notStorable")
+        else
+          names[name] = newName
+          -- A scope's schema describes one entry, so the path inside it starts
+          -- below the entry's own key.
+          layout.profiles[newName] = importRecord(
+            ctx,
+            "profile",
+            describe,
+            {},
+            joinPath("profiles", newName),
+            entry,
+            ctx.aceDefaults and rawget(ctx.aceDefaults, "profile"),
+            nil
+          ) or {}
+        end
+      end
+    end
+  end
+  local profileKeys = sourceSection(ctx, source, "profileKeys")
+  if profileKeys ~= nil then
+    layout.profileKeys = {}
+    for _, key in ipairs(sortedKeys(profileKeys)) do
+      countEntry(ctx)
+      local chosen = rawget(profileKeys, key)
+      local newKey = characterKeyFor(ctx, key)
+      local newName = names[chosen]
+      if newKey ~= nil and newName ~= nil then
+        layout.profileKeys[newKey] = newName
+      elseif newKey ~= nil then
+        noteEntry(ctx.report, joinPath("profileKeys", key), nil, "dropped", "danglingProfileKey")
+      end
+    end
+  end
+  return names
+end
+
+---Import `char`, `realm`, `class` and `faction`.
+---@param ctx table
+---@param source table
+---@param layout table
+local function importKeyedScopes(ctx, source, layout)
+  for _, scope in ipairs(KEYED_SCOPES) do
+    local section = sourceSection(ctx, source, scope)
+    if not ctx.declared[scope] then
+      if holdsEntries(section) then
+        noteEntry(ctx.report, scope, nil, "dropped", "undeclaredScope")
+      end
+    else
+      layout[scope] = {}
+      if section ~= nil then
+        for _, key in ipairs(sortedKeys(section)) do
+          countEntry(ctx)
+          local newKey = key
+          if scope == "char" then
+            newKey = characterKeyFor(ctx, key)
+          end
+          local entry = rawget(section, key)
+          if newKey ~= nil and type(entry) == "table" then
+            layout[scope][newKey] = importRecord(
+              ctx,
+              scope,
+              ctx.scopes[scope].describe,
+              {},
+              joinPath(scope, newKey),
+              entry,
+              ctx.aceDefaults and rawget(ctx.aceDefaults, scope),
+              nil
+            )
+          elseif newKey ~= nil then
+            noteEntry(ctx.report, joinPath(scope, key), nil, "dropped", "notStorable")
+          end
+        end
+      end
+    end
+  end
+end
+
+---Write `value` into the layout section of `scope` for `entryKey` (`nil` for
+---the global section), under `field`, merging with what is already there.
+---@param layout table
+---@param scope string
+---@param entryKey any
+---@param field string
+---@param value table
+local function placeUnder(layout, scope, entryKey, field, value)
+  local section = SECTION_FOR_SCOPE[scope]
+  layout[section] = layout[section] or {}
+  local target = layout[section]
+  if entryKey ~= nil then
+    target[entryKey] = target[entryKey] or {}
+    target = target[entryKey]
+  end
+  local existing = target[field]
+  if type(existing) == "table" then
+    for key, entry in next, value do
+      existing[key] = entry
+    end
+  else
+    target[field] = value
+  end
+end
+
+---Import the AceDB scopes SettingsKit lacks into the map fields `plan.scopes`
+---names, or report them dropped.
+---@param ctx table
+---@param source table
+---@param layout table
+local function importUnsupportedScopes(ctx, source, layout)
+  for _, scope in ipairs(UNSUPPORTED_SCOPES) do
+    local section = sourceSection(ctx, source, scope)
+    local destination = ctx.plan.scopes and ctx.plan.scopes[scope]
+    if holdsEntries(section) and destination == nil then
+      noteEntry(ctx.report, scope, nil, "dropped", "unsupportedScope")
+    elseif destination ~= nil then
+      local into, field = destination.into, destination.field
+      local describe = ctx.scopes[into].describe.fields[field]
+      local entries = importMap(
+        ctx,
+        into,
+        describe,
+        { field },
+        joinPath(into, field),
+        section,
+        ctx.aceDefaults and rawget(ctx.aceDefaults, scope)
+      )
+      if entries ~= nil then
+        placeUnder(layout, into, nil, field, entries)
+      end
+    end
+  end
+end
+
+---Import each namespace's sections under the field `plan.namespaces` names in
+---the same SettingsKit sections, or report the namespace dropped.
+---@param ctx table
+---@param source table
+---@param layout table
+---@param profileNames table<any, string>
+local function importNamespaces(ctx, source, layout, profileNames)
+  local namespaces = sourceSection(ctx, source, "namespaces")
+  if namespaces == nil then
+    return
+  end
+  for _, name in ipairs(sortedKeys(namespaces)) do
+    countEntry(ctx)
+    local mapping = ctx.plan.namespaces and type(name) == "string" and ctx.plan.namespaces[name]
+    local namespaceData = rawget(namespaces, name)
+    if not mapping then
+      noteEntry(ctx.report, joinPath("namespaces", name), nil, "dropped", "unmappedNamespace")
+    elseif type(namespaceData) == "table" then
+      for _, pair in ipairs(NAMESPACE_SECTIONS) do
+        local section, scope = pair[1], pair[2]
+        local data = rawget(namespaceData, section)
+        local describe = ctx.declared[scope] and ctx.scopes[scope].describe.fields[mapping.field]
+        local defaults = type(mapping.defaults) == "table" and rawget(mapping.defaults, scope)
+          or nil
+        if holdsEntries(data) and not describe then
+          noteEntry(
+            ctx.report,
+            joinPath(joinPath("namespaces", name), section),
+            nil,
+            "dropped",
+            "undeclaredScope"
+          )
+        elseif type(data) == "table" and describe then
+          local function importOne(entry, layoutKey, keys, path)
+            local ok, value =
+              importField(ctx, scope, describe, keys, path, entry, defaults, describe.default)
+            if ok then
+              placeUnder(layout, scope, layoutKey, mapping.field, value)
+            end
+          end
+          if scope == "global" then
+            importOne(data, nil, { mapping.field }, joinPath("global", mapping.field))
+          else
+            for _, key in ipairs(sortedKeys(data)) do
+              countEntry(ctx)
+              local layoutKey = key
+              if scope == "profile" then
+                layoutKey = profileNames[key]
+              elseif scope == "char" then
+                layoutKey = characterKeyFor(ctx, key)
+              end
+              if layoutKey ~= nil then
+                importOne(
+                  rawget(data, key),
+                  layoutKey,
+                  { mapping.field },
+                  joinPath(joinPath(SECTION_FOR_SCOPE[scope], layoutKey), mapping.field)
+                )
+              end
+            end
+          end
+        end
+      end
+    end
+  end
+end
+
+---Build the SettingsKit layout and the report from an AceDB table. Raises
+---`IMPORT_OVERFLOW` past `maxImportEntries`; an error the addon's rename
+---functions raise propagates.
+---@param ctx table
+---@param source table
+---@return table layout
+local function buildLayout(ctx, source)
+  local layout = {}
+  if ctx.aceDefaults == nil then
+    noteEntry(ctx.report, "", nil, "changed", "aceDefaultsUnknown")
+  end
+  for _, key in ipairs(sortedKeys(source)) do
+    -- Inside a migration the table carries SettingsKit's own `version`.
+    local settingsVersion = ctx.mode == "migration" and key == "version"
+    if not settingsVersion and (type(key) ~= "string" or not ACE_TOP_LEVEL[key]) then
+      noteEntry(ctx.report, renderKey(key), nil, "dropped", "unknownTopLevelKey")
+    end
+  end
+  if ctx.declared.global then
+    layout.global = importRecord(
+      ctx,
+      "global",
+      ctx.scopes.global.describe,
+      {},
+      "global",
+      sourceSection(ctx, source, "global"),
+      ctx.aceDefaults and rawget(ctx.aceDefaults, "global"),
+      nil
+    ) or {}
+  elseif holdsEntries(rawget(source, "global")) then
+    noteEntry(ctx.report, "global", nil, "dropped", "undeclaredScope")
+  end
+  local profileNames = importProfiles(ctx, source, layout)
+  importKeyedScopes(ctx, source, layout)
+  importUnsupportedScopes(ctx, source, layout)
+  importNamespaces(ctx, source, layout, profileNames)
+  noteCharacterKeys(ctx, source, layout)
+  if ctx.aceDefaults ~= nil then
+    for _, scope in ipairs({ "profile", "char", "realm", "class", "faction" }) do
+      if ctx.declared[scope] then
+        noteDefaultsThatDiffer(
+          ctx,
+          ctx.scopes[scope].describe,
+          rawget(ctx.aceDefaults, scope),
+          scope,
+          1
+        )
+      end
+    end
+  end
+  layout.namespaces = {}
+  return layout
+end
+
+---Seal and describe every scope of `plan.schema`, raising at the caller for a
+---scope SettingsKit would refuse.
+---@param label string
+---@param SchemaKit table
+---@param schema any
+---@return table scopes scope name to `{ schema, describe }`
+---@return table<string, boolean> declared
+local function readPlanSchema(label, SchemaKit, schema)
+  if type(schema) ~= "table" then
+    refuseOption(label, "plan.schema is required: the schema table passed to SettingsKit:Open")
+  end
+  local scopes, declared = {}, {}
+  for scope, node in next, schema do
+    if type(scope) ~= "string" or SECTION_FOR_SCOPE[scope] == nil then
+      refuseOption(label, "plan.schema has a scope SettingsKit does not know: " .. renderKey(scope))
+    end
+    local ok, sealed = pcall(SchemaKit.Seal, SchemaKit, node)
+    if not ok then
+      refuseOption(
+        label,
+        "plan.schema." .. scope .. " must be a SchemaKit table node or sealed schema"
+      )
+    end
+    local describe = sealed:Describe()
+    if describe.kind ~= "table" then
+      refuseOption(label, "plan.schema." .. scope .. " must be a SchemaKit.table")
+    end
+    scopes[scope] = { schema = sealed, describe = describe }
+    declared[scope] = true
+  end
+  return scopes, declared
+end
+
+---Validate an importer plan and build the walk's context. Raises at the
+---caller's caller for a programming error.
+---@param label string
+---@param plan any
+---@param mode "preview"|"import"|"migration"
+---@return table ctx
+local function readPlan(label, plan, mode)
+  if type(plan) ~= "table" then
+    refuseOption(label, "plan must be a table")
+  end
+  local probe = readSecretProbe()
+  local allowed = PLAN_FIELDS[mode]
+  for key, value in next, plan do
+    if probe ~= nil and (probe(key) == true or probe(value) == true) then
+      refuseOption(label, "plan must not hold a secret key or value")
+    end
+    if type(key) ~= "string" or not allowed[key] then
+      refuseOption(label, "plan has no field named " .. renderKey(key))
+    end
+  end
+  local SchemaKit = Registry:Find("schemaKit", 1)
+  if type(SchemaKit) ~= "table" then
+    refuseOption(label, "requires SchemaKit API 1, which is not loaded")
+  end
+  local scopes, declared = readPlanSchema(label, SchemaKit, plan.schema)
+  for _, field in ipairs({ "aceDefaults", "scopes", "namespaces" }) do
+    if type(plan[field]) ~= "nil" and type(plan[field]) ~= "table" then
+      refuseOption(label, "plan." .. field .. " must be a table")
+    end
+  end
+  for _, field in ipairs({ "renameProfile", "renameCharacter", "onReport" }) do
+    if type(plan[field]) ~= "nil" and type(plan[field]) ~= "function" then
+      refuseOption(label, "plan." .. field .. " must be a function")
+    end
+  end
+  for scope, destination in next, plan.scopes or {} do
+    local known = false
+    for _, name in ipairs(UNSUPPORTED_SCOPES) do
+      known = known or scope == name
+    end
+    if not known then
+      refuseOption(
+        label,
+        "plan.scopes names a scope SettingsKit has itself or AceDB lacks: " .. renderKey(scope)
+      )
+    end
+    if
+      type(destination) ~= "table"
+      or destination.into ~= "global"
+      or type(destination.field) ~= "string"
+    then
+      refuseOption(
+        label,
+        "plan.scopes." .. scope .. ' must be { into = "global", field = "<map field>" }'
+      )
+    end
+    local fields = declared.global and scopes.global.describe.fields or {}
+    local target = fields[destination.field]
+    if type(target) ~= "table" or target.kind ~= "map" then
+      refuseOption(
+        label,
+        "plan.scopes."
+          .. scope
+          .. '.field "'
+          .. destination.field
+          .. '" is not a declared map field of scope "global"'
+      )
+    end
+  end
+  for name, mapping in next, plan.namespaces or {} do
+    if type(name) ~= "string" or type(mapping) ~= "table" or type(mapping.field) ~= "string" then
+      refuseOption(
+        label,
+        'plan.namespaces entries must be { field = "<field>", defaults = <table>? }'
+      )
+    end
+    if type(mapping.defaults) ~= "nil" and type(mapping.defaults) ~= "table" then
+      refuseOption(label, "plan.namespaces." .. name .. ".defaults must be a table")
+    end
+    local found = false
+    for scope in next, declared do
+      local target = scopes[scope].describe.fields[mapping.field]
+      if type(target) == "table" and (target.kind == "table" or target.kind == "map") then
+        found = true
+      end
+    end
+    if not found then
+      refuseOption(
+        label,
+        "plan.namespaces."
+          .. name
+          .. '.field "'
+          .. mapping.field
+          .. '" is not a declared record or map field of any scope'
+      )
+    end
+  end
+  if
+    mode == "import"
+    and type(plan.version) ~= "nil"
+    and not isIntegerUpTo(plan.version, 2 ^ 53)
+  then
+    refuseOption(label, "plan.version must be a positive integer")
+  end
+  if mode == "migration" and type(plan.backup) ~= "string" then
+    refuseOption(label, "plan.backup is required: the name of a global listed in ## SavedVariables")
+  end
+  if type(plan.backup) ~= "nil" and (type(plan.backup) ~= "string" or plan.backup == "") then
+    refuseOption(label, "plan.backup must be the name of a global")
+  end
+  if type(plan.replaceBackup) ~= "nil" and type(plan.replaceBackup) ~= "boolean" then
+    refuseOption(label, "plan.replaceBackup must be a boolean")
+  end
+  local SettingsKit = Registry:Find("settingsKit", 1)
+  local maxProfileNameLength = DEFAULT_PROFILE_NAME_LENGTH
+  if type(SettingsKit) == "table" and type(SettingsKit.GetLimits) == "function" then
+    maxProfileNameLength = SettingsKit:GetLimits().maxProfileNameLength or maxProfileNameLength
+  end
+  local actions = {}
+  return {
+    mode = mode,
+    plan = plan,
+    probe = probe,
+    scopes = scopes,
+    declared = declared,
+    aceDefaults = plan.aceDefaults,
+    actions = actions,
+    entries = 0,
+    maxEntries = limits.maxImportEntries,
+    maxDepth = SchemaKit:GetLimits().maxDepth,
+    maxProfileNameLength = maxProfileNameLength,
+  }
+end
+
+---A new import report: every import action counted, `0` included.
+---@return BridgeKit.Report
+local function newImportReport()
+  local counts = {}
+  for _, action in ipairs(IMPORT_ACTIONS) do
+    counts[action] = 0
+  end
+  return { kind = "aceDB", entries = {}, counts = counts, truncated = 0 }
+end
+
+---Run the walk over `source`, turning an overflow into a result.
+---@param ctx table
+---@param source table
+---@return table|nil layout `nil` past `maxImportEntries`
+local function walkSource(ctx, source)
+  ctx.report = newImportReport()
+  local ok, result = pcall(buildLayout, ctx, source)
+  if ok then
+    return result
+  end
+  if result == IMPORT_OVERFLOW then
+    return nil
+  end
+  error(result, 0)
+end
+
+---The AceDB table a `source` argument names: a table, or the name of a
+---global holding one.
+---@param label string
+---@param source any
+---@return table
+---@return string sourceName the global's name, or `"table"`
+local function readSource(label, source)
+  local probe = readSecretProbe()
+  if probe ~= nil and probe(source) == true then
+    refuseOption(label, "source must not be a secret value")
+  end
+  if type(source) == "string" then
+    -- The saved variable lives in the global table under its TOC name. The
+    -- refusal is raised here, not through `refuseOption`, so the type test
+    -- visibly guards the value (docs/TOOLING.md, "How a guard is
+    -- recognised"); level 3 is the public method's caller.
+    -- selene: allow(global_usage)
+    local value = rawget(_G, source)
+    if type(value) ~= "table" then
+      error(label .. ' source names the global "' .. source .. '", which does not hold a table', 3)
+    end
+    return value, source
+  end
+  if type(source) ~= "table" then
+    refuseOption(label, "source must be a table or the name of a global holding one")
+  end
+  return source, "table"
+end
+
+---Whether a global is free for an import to write: `nil` or an empty table.
+---@param name string
+---@return boolean
+local function globalIsFree(name)
+  -- selene: allow(global_usage)
+  local value = rawget(_G, name)
+  return type(value) == "nil" or (type(value) == "table" and type(next(value)) == "nil")
+end
+
+---The backup of `source` (design section 7.8): bounded by `maxImportEntries`,
+---tables reached twice kept shared.
+---@param data table the source table or the contents moved out of it
+---@param sourceName string
+---@return table
+local function backupOf(data, sourceName)
+  return {
+    bridgeKit = IMPLEMENTATION_REVISION,
+    source = sourceName,
+    commit = ACE_BASELINE.commit,
+    data = data,
+  }
+end
+
+---The report an import of `source` would produce, with the same entries and
+---counts; writes nothing anywhere (design section 5.5).
+---@param self BridgeKit
+---@param source table|string
+---@param plan BridgeKit.ImportPlan
+---@return BridgeKit.Report report
+---@return string|nil reason `"maxImportEntries"` when the source is too large to import
+local function previewAceDB(self, source, plan)
+  local label = "BridgeKit:PreviewAceDB"
+  validateFacade(self, label, 3)
+  local sourceTable = readSource(label, source)
+  local ctx = readPlan(label, plan, "preview")
+  local layout = walkSource(ctx, sourceTable)
+  if layout == nil then
+    return ctx.report, "maxImportEntries"
+  end
+  return ctx.report, nil
+end
+
+---Build the SettingsKit layout from an AceDB saved variable in an empty
+---target global, before `SettingsKit:Open` (design sections 5.5 and 7.7). The
+---source is never written. Returns the report, or `nil` and a refusal (and
+---the report so far for `"maxImportEntries"`).
+---@param self BridgeKit
+---@param source table|string
+---@param targetName string
+---@param plan BridgeKit.ImportPlan
+---@return BridgeKit.Report|nil report
+---@return string|nil reason `"targetNotEmpty"`, `"backupTaken"` or `"maxImportEntries"`
+---@return BridgeKit.Report|nil partial the report so far, with `"maxImportEntries"`
+local function importAceDB(self, source, targetName, plan)
+  local label = "BridgeKit:ImportAceDB"
+  validateFacade(self, label, 3)
+  local sourceTable, sourceName = readSource(label, source)
+  if type(targetName) ~= "string" or isSecretValue(targetName) or targetName == "" then
+    refuseOption(label, "targetName must be the name of a global")
+  end
+  local ctx = readPlan(label, plan, "import")
+  if not globalIsFree(targetName) then
+    return nil, "targetNotEmpty"
+  end
+  if plan.backup ~= nil and not plan.replaceBackup and not globalIsFree(plan.backup) then
+    return nil, "backupTaken"
+  end
+  local layout = walkSource(ctx, sourceTable)
+  if layout == nil then
+    return nil, "maxImportEntries", ctx.report
+  end
+  if plan.version ~= nil then
+    layout.version = plan.version
+  end
+  if plan.backup ~= nil then
+    -- The copy is bounded like the walk: a source too large to copy is
+    -- refused before anything is written.
+    ctx.entries = 0
+    local copied, data = pcall(copyCounted, ctx, sourceTable, {})
+    if not copied then
+      if data == IMPORT_OVERFLOW then
+        return nil, "maxImportEntries", ctx.report
+      end
+      error(data, 0)
+    end
+    -- selene: allow(global_usage)
+    rawset(_G, plan.backup, backupOf(data, sourceName))
+  end
+  -- An empty table the client loaded for the target is filled in place, so
+  -- the global keeps the identity the client saves.
+  -- selene: allow(global_usage)
+  local target = rawget(_G, targetName)
+  if type(target) ~= "table" then
+    target = {}
+    -- selene: allow(global_usage)
+    rawset(_G, targetName, target)
+  end
+  for key, value in next, layout do
+    target[key] = value
+  end
+  return ctx.report
+end
+
+---A SettingsKit migration step that turns an AceDB table into the SettingsKit
+---layout in place of the same saved variable (design sections 5.5 and 7.7):
+---`migrations = { [n] = BridgeKit:AceDBMigration(plan) }`. The step moves the
+---old contents into the backup global, after the new layout was built and
+---`onReport` ran, so a step that raises leaves no backup behind.
+---@param self BridgeKit
+---@param plan BridgeKit.ImportPlan
+---@return fun(raw: table)
+local function aceDBMigration(self, plan)
+  local label = "BridgeKit:AceDBMigration"
+  validateFacade(self, label, 3)
+  local ctx = readPlan(label, plan, "migration")
+  local backupName = plan.backup
+  ---@cast backupName string
+  return function(raw)
+    if not plan.replaceBackup and not globalIsFree(backupName) then
+      error(label .. ' backup global "' .. backupName .. '" already holds data', 2)
+    end
+    local layout = walkSource(ctx, raw)
+    if layout == nil then
+      error(label .. " the saved table has more than maxImportEntries entries", 2)
+    end
+    if plan.onReport ~= nil then
+      plan.onReport(ctx.report)
+    end
+    -- The table the step receives is SettingsKit's own copy, private to the
+    -- step, so its contents move into the backup instead of being copied
+    -- again.
+    -- SettingsKit's own `version` is no AceDB data and stays SettingsKit's.
+    local moved = {}
+    for key, value in next, raw do
+      if key ~= "version" then
+        moved[key] = value
+      end
+    end
+    -- selene: allow(global_usage)
+    rawset(_G, backupName, backupOf(moved, "table"))
+    for key in next, moved do
+      raw[key] = nil
+    end
+    for key, value in next, layout do
+      raw[key] = value
+    end
+  end
 end
 
 -- Package public API ---------------------------------------------------------
@@ -2668,6 +4109,9 @@ rawset(BridgeKit, "AceDeserialize", aceDeserialize)
 rawset(BridgeKit, "ConvertAceConfig", convertAceConfig)
 rawset(BridgeKit, "DefineAceConfig", defineAceConfig)
 rawset(BridgeKit, "FormatReport", formatReport)
+rawset(BridgeKit, "PreviewAceDB", previewAceDB)
+rawset(BridgeKit, "ImportAceDB", importAceDB)
+rawset(BridgeKit, "AceDBMigration", aceDBMigration)
 rawset(BridgeKit, "SetLimits", setLimits)
 rawset(BridgeKit, "GetLimits", getLimits)
 

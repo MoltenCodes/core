@@ -1,5 +1,39 @@
 # Changelog
 
+## 0.3.0 — 2026-11-15
+
+Delivery step N3 of `docs/BRIDGE_KIT_DESIGN.md`: the AceDB-3.0 importer. API
+generation 1, implementation revision 3. AceSerializer and AceConfig behaviour
+is unchanged.
+
+- `BridgeKit:PreviewAceDB(source, plan)`, `BridgeKit:ImportAceDB(source,
+  targetName, plan)` and `BridgeKit:AceDBMigration(plan)` rebuild an AceDB-3.0
+  saved variable in the SettingsKit layout (SettingsKit 0.3.2's public
+  contract): profiles, profile choices, `char`, `realm`, `class`, `faction`
+  and `global` where SettingsKit reads them; `race`, `factionrealm`,
+  `factionrealmregion` and `locale` into global map fields the plan names;
+  namespaces under fields the plan names. Every value is checked against the
+  addon's schema through a probe table; an AceDB default that differs from
+  the SettingsKit default is written as a value, wildcards included, so every
+  field reads what it read under AceDB, also after compaction. Profiles and
+  characters can be renamed; names SettingsKit refuses are dropped.
+- `ImportAceDB` refuses a target or backup global that holds data, writes the
+  backup first and never writes the source; `AceDBMigration` runs inside
+  `SettingsKit:Open` as a migration step and moves the old contents into the
+  backup only once the new layout is built, so a failing step leaves nothing
+  behind.
+- Import reports (`kind = "aceDB"`, actions `imported`, `materialised`,
+  `dropped`, `changed`, `renamed`, `unsupported`), entries with a `detail`
+  for `schemaRefused`; the `maxImportEntries` limit (65536, `UNBOUNDED`
+  allowed). SchemaKit and SettingsKit join OptionsKit as optional
+  dependencies.
+- 238 specs (was 199): new `AceDB_spec.lua`, including a round trip through
+  SettingsKit itself (every field read before and after compaction), the
+  migration inside `SettingsKit:Open`, a failing migration leaving the saved
+  table and the backup untouched, every reason and plan error.
+- Implementation revision 3: no state changes; an in-place upgrade adds the
+  `maxImportEntries` default to the inherited limits.
+
 ## 0.2.0 — 2026-11-15
 
 Delivery step N2 of `docs/BRIDGE_KIT_DESIGN.md`: the AceConfig-3.0 adapter.

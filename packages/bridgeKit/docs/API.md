@@ -5,10 +5,10 @@ without breaking what its players already have. Its canonical design is
 [`docs/BRIDGE_KIT_DESIGN.md`](../../../docs/BRIDGE_KIT_DESIGN.md); this
 document is the contract of what the current revision ships.
 
-**Revision 2 ships the AceSerializer-3.0 wire format** (design step N1, revision
-1) **and the AceConfig-3.0 adapter** (step N2). The AceDB importer and the
-AceComm channel follow in later revisions (design section 15); until then
-their methods do not exist.
+**Revision 3 ships the AceSerializer-3.0 wire format** (design step N1,
+revision 1), **the AceConfig-3.0 adapter** (step N2, revision 2) **and the
+AceDB-3.0 importer** (step N3). The AceComm channel follows in a later
+revision (design section 15); until then its methods do not exist.
 
 Everything here reproduces Ace3 at commit
 `5e2e0d3b3fd125ef1518744c6a9dd21f68f6e773`, AceSerializer-3.0 `MINOR` 5. The
@@ -22,7 +22,10 @@ BridgeKit needs Registry API 2 and nothing else: an addon that only reads and
 writes AceSerializer text, or converts an AceConfig table to a plain tree,
 embeds two files. `DefineAceConfig` finds OptionsKit API 1 through
 `Registry:Find` when it is called, so defining the converted tree needs
-OptionsKit's files too (Registry, SignalKit, SchemaKit, OptionsKit).
+OptionsKit's files too (Registry, SignalKit, SchemaKit, OptionsKit). The AceDB
+importer finds SchemaKit API 1 the same way (SettingsKit requires it, so an
+addon with a SettingsKit schema has it), and reads SettingsKit's profile-name
+limit when SettingsKit API 1 is loaded.
 
 ```xml
 <Script file="Libs\MoltenCodes\registry\Registry.lua" />
@@ -42,6 +45,9 @@ local BridgeKit = MoltenCodes.Registries[2]:Get("bridgeKit", 1)
 | `ConvertAceConfig(appName, source[, options])` | conversion | An AceConfig-3.0 options table (or a function returning one) as a table for `OptionsKit:Define`, and a report. |
 | `DefineAceConfig(addonName, source[, options])` | tree, report | `ConvertAceConfig`, then `OptionsKit:Define`. |
 | `FormatReport(report[, maxLines])` | array of strings | Display lines for a report, safe to print. |
+| `PreviewAceDB(source, plan)` | report, or report and `"maxImportEntries"` | What an import would write, materialise and drop. Writes nothing. |
+| `ImportAceDB(source, targetName, plan)` | report, or `nil, reason` | Build the SettingsKit layout in an empty target global, before `SettingsKit:Open`. |
+| `AceDBMigration(plan)` | function | A SettingsKit migration step that turns an AceDB table into the SettingsKit layout in place of the same saved variable. |
 | `SetLimits(limits)` | nothing | Change any subset of the [limits](#limits). |
 | `GetLimits()` | a fresh table | The limits. |
 | `UNBOUNDED` | table | Sentinel for the limits that accept it. |
@@ -305,6 +311,156 @@ type (OptionsKit checks once at `Define`), reproduce
 or convert an AceDBOptions-3.0 group (pass `replace` with
 `OptionsKit:ProfileOptions(db)` instead).
 
+## The AceDB importer
+
+An AceDB-3.0 saved variable and SettingsKit's saved table
+([`settingsKit/docs/API.md`](../../settingsKit/docs/API.md#the-saved-table))
+name most of their sections alike and key them alike, which is what makes a
+faithful import possible. The importer rebuilds the SettingsKit layout from
+the AceDB table: every value checked against the schema the addon will open
+with, every AceDB default that differs from the SettingsKit default written as
+a value, and everything it cannot carry over reported.
+
+### The plan
+
+`source` is the AceDB table, or the name of the global holding it. `plan`:
+
+| Field | Required | Meaning |
+|---|---|---|
+| `schema` | yes | The schema table the addon passes to `SettingsKit:Open`: scope name (`global`, `profile`, `char`, `realm`, `class`, `faction`) to a SchemaKit `table` node or sealed schema. |
+| `aceDefaults` | no, recommended | The defaults table the addon passed to `AceDB:New`. Without it, a value AceDB stripped because it equalled its default cannot be told from one never set; the report says so once (`aceDefaultsUnknown`) and nothing is materialised. |
+| `scopes` | no | `{ race = { into = "global", field = "byRace" } }`: an AceDB scope SettingsKit lacks (`race`, `factionrealm`, `factionrealmregion`, `locale`) lands in a declared `map` field of the global scope, each AceDB key a map key. Without an entry the scope is dropped. |
+| `namespaces` | no | `{ Bars = { field = "bars", defaults = <that namespace's AceDB defaults> } }`: each section of the namespace lands under `field` of the same SettingsKit section (`profiles[p].bars`, `char[k].bars`, `global.bars`, ...). Without an entry the namespace is dropped. |
+| `renameProfile` | no | `function(name) -> string|nil`, called for every profile: its name in SettingsKit, or `nil` to drop it. |
+| `renameCharacter` | no | `function(key) -> string|nil`: a character's key in SettingsKit, or `nil` to drop it; applied to `char` and `profileKeys`. |
+| `version` | `ImportAceDB` only | The `options.version` the addon passes to `SettingsKit:Open`, stamped into the target so no migration runs over imported data. |
+| `backup` | `AceDBMigration`: yes; `ImportAceDB`: no | The name of a global listed in `## SavedVariables` that receives the backup. |
+| `replaceBackup` | no | `true` lets the backup overwrite a backup global that holds data. |
+| `onReport` | `AceDBMigration` only | `function(report)`, called once the new layout is built. |
+
+An unknown field, a missing `schema`, a scope SettingsKit does not know, a
+scope schema that is not a SchemaKit `table`, a `scopes` destination other than
+a declared `map` field of the global scope, a namespace `field` declared in no
+scope as a record or map, a field of the wrong type, a secret plan field or
+source argument, and SchemaKit absent raise at the caller. An error a rename
+function raises propagates unchanged.
+
+### The three methods
+
+- **`PreviewAceDB(source, plan)`** returns the report an import would
+  produce, with the same entries and counts, and writes nothing. When the
+  source is larger than `maxImportEntries` it returns the report so far and
+  `"maxImportEntries"`.
+- **`ImportAceDB(source, targetName, plan)`** writes into `targetName`, a
+  global that must be `nil` or an empty table (`nil, "targetNotEmpty"`
+  otherwise; an empty table is filled in place). With `plan.backup` it first
+  writes the backup (`nil, "backupTaken"` when that global holds data and
+  `replaceBackup` is not set). It returns the report, or `nil,
+  "maxImportEntries"` and the report so far, having written nothing. The
+  source is never written. The addon then calls `SettingsKit:Open(targetName,
+  schema, { version = plan.version, ... })`.
+- **`AceDBMigration(plan)`** returns a step for `SettingsKit:Open(name, schema,
+  { version = n, migrations = { [n] = BridgeKit:AceDBMigration(plan) } })`, for
+  an addon that keeps its saved-variable name. SettingsKit hands the step a
+  copy of the saved table and commits it only when the step returns. The step
+  builds the new layout, calls `onReport`, and only then moves the old
+  contents into the backup global and leaves the new layout in the table it
+  was given, so a step that raises (a backup global already holding data, a
+  source past `maxImportEntries`, an `onReport` that raises) leaves the saved
+  table untouched and no backup behind. SettingsKit's own `version` key is
+  neither imported nor backed up.
+
+```lua
+-- A new saved variable, MyAddonSettings, next to the old MyAddonDB.
+if type(MyAddonSettings) == "nil" then
+  local report, reason = BridgeKit:ImportAceDB("MyAddonDB", "MyAddonSettings", {
+    schema = schema,
+    aceDefaults = aceDefaults,
+    version = 1,
+    backup = "MyAddonDB_Backup",
+  })
+end
+local db = SettingsKit:Open("MyAddonSettings", schema, { version = 1 })
+```
+
+The backup is `{ bridgeKit = <REVISION>, source = <the source global's name or
+"table">, commit = ACE_BASELINE.commit, data = <a copy of the source> }`,
+bounded by `maxImportEntries`, a table reached twice copied once.
+
+### Section by section
+
+| AceDB section | SettingsKit destination | Notes |
+|---|---|---|
+| `profiles[name]` | `profiles[name]` | `renameProfile` first; a name longer than SettingsKit's `maxProfileNameLength` (64 bytes unless SettingsKit says otherwise) is dropped (`profileNameTooLong`), so is a blank one (`profileNameBlank`), and a second profile renamed to a name already taken (`profileNameCollision`). An empty profile stays a profile. |
+| `profileKeys[key]` | `profileKeys[key]` | Kept when it names an imported profile, under its new name; otherwise dropped (`danglingProfileKey`), and that character starts on the default profile. |
+| `char[key]`, `realm[key]`, `class[key]`, `faction[key]` | the same | `char` keys through `renameCharacter`. |
+| `global` | `global` | |
+| `race`, `factionrealm`, `factionrealmregion`, `locale` | the map field `plan.scopes` names, or dropped | `unsupportedScope`. |
+| `namespaces[n]` | each section under `plan.namespaces[n].field`, or dropped | `unmappedNamespace`; a section whose scope does not declare the field is dropped (`undeclaredScope`). |
+| a scope the schema does not declare | dropped | `undeclaredScope`. |
+| any other top-level key | dropped | `unknownTopLevelKey`; the backup keeps it. |
+
+The preview also reports the current character's SettingsKit key missing from
+`char` (`currentCharacterMissing`), a character whose `UnitNameUnmodified`
+differs from its `UnitName`, as AceDB and SettingsKit key it apart
+(`characterKeyMismatch`), and, on a client whose interface lies between 16000
+and 19999, where AceDB keys characters and realms by name and ruleset, the
+`char` and `realm` sections (`characterKeyMismatch`, `realmKeyMismatch`).
+
+### Values and defaults
+
+Every value is checked before it is written: a probe table holding only the
+path to the value is checked with the scope's sealed schema, which is sound
+because every field of a SettingsKit record is optional. Records and maps are
+walked into; every other kind (scalars, arrays, `any`, `oneOf`, `custom`) is
+checked whole. A refused value is dropped (`schemaRefused`) with a `detail`
+holding SchemaKit's path, rule and expectation, never the value; an undeclared
+field of a closed record is refused the same way, and one of an open record is
+kept. A map past its `max` keeps its first keys in sorted key order
+(`mapFull`). A function, userdata, coroutine or a table with a metatable is
+dropped (`notStorable`), a secret key or value too (`secretValue`), and the
+walk stops at SchemaKit's `maxDepth` (`tooDeep`).
+
+Where the source holds nothing, with `A` the AceDB default (resolved with its
+`"*"` and `"**"` wildcards; `"**"` also merges under keys the defaults name)
+and `S` the SettingsKit default:
+
+| Source holds | `A` versus `S` | Written | Report |
+|---|---|---|---|
+| a value | — | the value, if the schema accepts it | counted as `imported` |
+| nothing | equal, or `A` absent | nothing: both read `S` | — |
+| nothing | different | `A`, if the schema accepts it | `materialised`, `defaultDiffers` |
+
+A materialised `A` the schema refuses is dropped (`schemaRefused`) and the
+field reads `S`. A map's `"*"`/`"**"` default is applied to every key the map
+holds; when it differs from the map's wildcard default, the report says so once
+per map (`changed`, `wildcardDefaultDiffers`), because every key never saved
+reads `S` from now on. A key the AceDB defaults name explicitly is materialised
+when the source lacks it and the defaults differ. For a scope whose AceDB
+defaults differ from SettingsKit's, an entry the source lacks entirely (a
+character that never saved anything) reads `S` where it read `A`; the report
+says so once per field (`changed`, `defaultDiffers`, path `<scope>.<field>`).
+After the import SettingsKit's compaction removes only values equal to `S`, so
+it never changes what a field reads.
+
+### Import reasons
+
+| Reason | Action | When |
+|---|---|---|
+| `defaultDiffers` | materialised / changed | an AceDB default written as a value; or, per field of a scope, entries the source lacks read SettingsKit's default |
+| `wildcardDefaultDiffers` | changed | a map's AceDB wildcard default differs from its SettingsKit wildcard default |
+| `aceDefaultsUnknown` | changed | no `plan.aceDefaults` |
+| `schemaRefused` | dropped | the schema refuses the value (`detail` says why) |
+| `mapFull` | dropped | a map past its `max` |
+| `notStorable` | dropped | a function, userdata, coroutine, a table with a metatable, or a section or entry that is not a table |
+| `secretValue` | dropped | a secret key or value |
+| `tooDeep` | dropped | nesting past SchemaKit's `maxDepth` |
+| `profileNameTooLong`, `profileNameBlank`, `profileNameCollision` | dropped | a profile name SettingsKit refuses, or one already taken after renaming |
+| `renamedProfile`, `renamedCharacter` | renamed / dropped | `renameProfile` or `renameCharacter` gave another name, or `nil` |
+| `danglingProfileKey` | dropped | a profile choice naming no imported profile |
+| `currentCharacterMissing`, `characterKeyMismatch`, `realmKeyMismatch` | changed | character and realm keys that will not line up |
+| `unsupportedScope`, `unmappedNamespace`, `undeclaredScope`, `unknownTopLevelKey` | dropped | sections the plan or the schema gives no destination |
+
 ## Reports
 
 ```lua
@@ -316,13 +472,20 @@ report = {
 }
 ```
 
-A plain table the caller owns. `entries` are in walk order, at most
-`maxReportEntries`; `path` is the converted path (`""` for the root) and
-`field` the Ace field the entry is about, when there is one. **No entry holds
-a value from the source**: paths are converted keys, which are identifiers,
-each longer than 32 bytes cut and marked `...`. `counts` holds every action,
-`0` included; a converted option is counted, never listed; `truncated` counts
-the entries past the limit, whose counts are still included.
+A plain table the caller owns, `kind = "aceConfig"` for a conversion and
+`"aceDB"` for an import. `entries` are in walk order, at most
+`maxReportEntries`; `path` is the converted option path or the saved-variable
+path (`""` for the root), `field` the Ace field the entry is about when there
+is one, and `detail`, when present, text BridgeKit wrote. **No entry holds a
+value from the source**: an option path is made of converted keys, which are
+identifiers; a saved-variable path renders keys as SchemaKit does (identifiers
+dotted, numbers and booleans bracketed, other strings quoted with `|` doubled
+and control bytes escaped); keys longer than 32 bytes are cut and marked
+`...`. `counts` holds every action of the kind, `0` included: `converted`,
+`dropped`, `changed`, `renamed`, `unsupported` for a conversion, `imported`,
+`materialised`, `dropped`, `changed`, `renamed`, `unsupported` for an import. A
+converted option and an imported value are counted, never listed; `truncated`
+counts the entries past the limit, whose counts are still included.
 
 `FormatReport(report[, maxLines])` returns `"<path> <field>: <action>
 (<reason>)"` lines, `(root)` for the root's path, at most `maxLines` (50 by
@@ -343,6 +506,7 @@ session, kept across an in-place upgrade, set with `SetLimits` and read with
 | `maxTextBytes` | 1048576 | no: a peer chooses the size of the text a reader is given | 2^26 |
 | `maxListValues` | 4096 | no: `AceDeserialize` returns its values through `unpack` | 7900 |
 | `maxReportEntries` | 1024 | yes: a report is the caller's own memory | 2^24 |
+| `maxImportEntries` | 65536 | yes: the source is the addon's own data | 2^30 |
 
 A top-level table is depth 1. `SetLimits` raises at the caller, before
 changing anything, on a table that is not one, an unknown name, a secret key
@@ -351,8 +515,8 @@ where the table says no, naming why:
 `BridgeKit:SetLimits limits.maxDepth cannot be BridgeKit.UNBOUNDED because the
 reader and writer recurse on the Lua call stack; use an integer from 1 to 128`.
 
-The design's other limits (imports and AceComm streams) arrive with the parts
-that use them. A conversion's own bounds, `maxOptions` and `maxDepth`, are
+The design's other limits (the AceComm streams) arrive with the part that uses
+them. A conversion's own bounds, `maxOptions` and `maxDepth`, are
 options of the call, because the tree belongs to one call, as OptionsKit's
 are.
 

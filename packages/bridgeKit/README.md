@@ -15,6 +15,14 @@ local written, exportText = BridgeKit:AceSerialize("profile", settings)
 
 -- Keep an AceConfig options table working in OptionsKit.
 local tree, report = BridgeKit:DefineAceConfig("MyAddon", aceOptions, { db = db })
+
+-- Carry an AceDB saved variable over to SettingsKit, with a backup.
+local imported = BridgeKit:ImportAceDB("MyAddonDB", "MyAddonSettings", {
+  schema = schema,
+  aceDefaults = aceDefaults,
+  version = 1,
+  backup = "MyAddonDB_Backup",
+})
 ```
 
 ## What it ships
@@ -23,7 +31,7 @@ local tree, report = BridgeKit:DefineAceConfig("MyAddon", aceOptions, { db = db 
 |---|---|---|
 | **AceSerializer-3.0**: `AceSerialize` and `AceDeserialize`, byte for byte with Ace3 | revision 1 | 2: `Registry.lua`, `BridgeKit.lua` |
 | **AceConfig-3.0**: options tables to OptionsKit trees, the Ace callbacks wrapped, with a report | revision 2 | 2 for `ConvertAceConfig`; 5 with OptionsKit for `DefineAceConfig` |
-| AceDB-3.0 saved variables to the SettingsKit layout | planned (step N3) | |
+| **AceDB-3.0**: saved variables rebuilt in the SettingsKit layout, checked against the schema, with a backup | revision 3 | 3: Registry, SchemaKit, BridgeKit (SettingsKit is the addon's own) |
 | AceComm-3.0 messages through CommKit | planned (step N4) | |
 
 The plan and every format are in
@@ -43,7 +51,9 @@ recipes in [`docs/MIGRATING_FROM_ACE3.md`](../../docs/MIGRATING_FROM_ACE3.md).
   with a reason instead of raising, overflowing the stack or writing undefined
   bytes.
 - **Nothing lost silently.** A conversion reports every field it drops,
-  changes or renames, and `strict` turns any of it into an error.
+  changes or renames, and `strict` turns any of it into an error; an import
+  reports every value it drops or writes from a default, and never touches
+  the source.
 - **No Ace3 code.** BridgeKit is written from the format description; Ace3 is
   only run, outside the repository, to record what it does.
 

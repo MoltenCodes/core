@@ -6,6 +6,20 @@
       "flavours": ["retail", "classic-mop", "classic-era", "ptr", "beta"],
       "guard": "packages/clientKit/src/ClientKit.lua:831",
       "reason": "bindHostFunctions stores the legacy global (or false) in the host table; its only reader returns nil before calling it when the entry is false."
+    },
+    {
+      "package": "bridgeKit",
+      "api": "previewAceDB(…)",
+      "flavours": ["retail", "classic-mop", "classic-era", "ptr", "beta"],
+      "guard": "packages/bridgeKit/src/BridgeKit.lua:3868",
+      "reason": "The dynamic global is the addon's own saved variable named by the caller, not a client API; readSource raises at the caller unless it holds a table, and its callers use only that returned table."
+    },
+    {
+      "package": "bridgeKit",
+      "api": "importAceDB(…)",
+      "flavours": ["retail", "classic-mop", "classic-era", "ptr", "beta"],
+      "guard": "packages/bridgeKit/src/BridgeKit.lua:3868",
+      "reason": "The dynamic global is the addon's own saved variable named by the caller, not a client API; readSource raises at the caller unless it holds a table, and its callers use only that returned table."
     }
   ]
 }
