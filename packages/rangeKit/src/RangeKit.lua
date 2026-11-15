@@ -51,7 +51,7 @@
 
 local PACKAGE_NAME = "rangeKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 1
+local IMPLEMENTATION_REVISION = 2
 local REQUIRED_REGISTRY_API = 2
 local STATE_SCHEMA = 1
 
@@ -696,7 +696,9 @@ local function buildLists()
   }
 end
 
----Whether two ascending checker arrays describe the same checks.
+---Whether two ascending checker arrays describe the same checks: the same
+---range, minimum range and source at every position. The `closer` pairing
+---follows from those, so it needs no comparison of its own.
 ---@param left table[]
 ---@param right table[]
 ---@return boolean
@@ -705,8 +707,12 @@ local function sameCheckers(left, right)
     return false
   end
   for index = 1, #left do
-    local a, b = left[index], right[index]
-    if a.range ~= b.range or a.source ~= b.source then
+    local leftChecker, rightChecker = left[index], right[index]
+    if
+      leftChecker.range ~= rightChecker.range
+      or leftChecker.minRange ~= rightChecker.minRange
+      or leftChecker.source ~= rightChecker.source
+    then
       return false
     end
   end

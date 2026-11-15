@@ -205,6 +205,24 @@ describe("RangeKit rebuilds and listeners", function()
     assert.is_true(connection:IsConnected())
   end)
 
+  it("calls listeners when only a spell's minimum range changed", function()
+    TestEnv.SetClass("WARRIOR")
+    TestEnv.Learn(100, 25, 8)
+    TestEnv.Learn(5246, 12)
+    local calls = 0
+    RangeKit:OnCheckersChanged(function()
+      calls = calls + 1
+    end)
+    assert.are.equal(8, RangeKit:DescribeCheckers("harm")[3].minRange)
+    assert.are.equal(1, calls)
+
+    -- Same sources and ranges, a different minimum range.
+    TestEnv.DefineSpell(100, 25, 10)
+    TestEnv.Emit("SPELLS_CHANGED")
+    assert.are.equal(10, RangeKit:DescribeCheckers("harm")[3].minRange)
+    assert.are.equal(2, calls)
+  end)
+
   it("hears about spells learned and forgotten", function()
     local calls = 0
     RangeKit:OnCheckersChanged(function()

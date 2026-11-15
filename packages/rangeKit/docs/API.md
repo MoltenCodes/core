@@ -2,7 +2,7 @@
 
 RangeKit API generation **1** estimates the distance from the player to a unit in whole yards, and whether the unit is within a given distance, from the player's own spells and the client's interact distances.
 
-Implementation revision: **1**.
+Implementation revision: **2** (package version 0.1.1).
 
 ## Loading
 
@@ -49,7 +49,7 @@ Every call above is in the generated client documentation of Retail 12.1.5, Mist
 | `OnCheckersChanged(callback)` | Call `callback()` after each rebuild that changed a list. Returns a connection. |
 | `SetLimits(limits)` / `GetLimits()` | Change or read `maxListeners`; `GetLimits` returns a fresh table. |
 | `MAX_LISTENERS`, `LISTENERS_CEILING` | `32`, `256`. |
-| `API`, `REVISION` | `1`, `1`. |
+| `API`, `REVISION` | `1`, `2`. |
 
 A connection:
 
@@ -73,7 +73,7 @@ A check that gives no answer (an invalid target, a spell the client cannot check
 
 ## `RangeKit:IsInRange(unit, yards)`
 
-`yards` is a finite number of at least 0. The answer is `true` when the estimate's `maxRange` is at most `yards`, `false` when its `minRange` is at least `yards`, and `nil` otherwise, or when `GetRange` has no estimate. Asking for a distance a checker answers for exactly (one of the ranges `DescribeCheckers` lists) always decides.
+`yards` is a finite number of at least 0. The answer is `true` when the estimate's `maxRange` is at most `yards`, `false` when its `minRange` is at least `yards`, and `nil` otherwise, or when `GetRange` has no estimate. Asking for a distance a checker of the searched list answers for exactly always decides. Out of combat, and in combat for a unit the player can attack, that is every range `DescribeCheckers` lists; in combat for any other unit the interact ranges (7 and 28 yards) and spells joined to an interact checker are not searched, so asking for those distances may answer `nil`.
 
 ## Checkers
 
@@ -120,7 +120,7 @@ The candidates per class are taken from LibRangeCheck-3.0 minor 39 (MIT, Copyrig
 | Warlock | 686, 5782, 172, 5019 | 5697 | 20707 | 755 |
 | Warrior | 355, 100, 5246, 2764 | | | |
 
-The IDs have not been checked against a second source. A wrong ID only removes one checker, because its reach comes from the client.
+On 2026-11-15 every ID above was compared with LibRangeCheck-3.0 minor 39, still the newest upstream minor that day; each one is in its lists for the same class and kind. They have not been checked against a second source (the public spell databases tried refuse automated reads). A wrong ID only removes one checker, because its reach comes from the client.
 
 ## `RangeKit:DescribeCheckers(kind)`
 
@@ -134,7 +134,7 @@ The client refuses `CheckInteractDistance` (and `IsItemInRange`) from addon code
 
 The lists are built at the first query and rebuilt on `SPELLS_CHANGED`, `LEARNED_SPELL_IN_SKILL_LINE`, `PLAYER_TALENT_UPDATE`, `CHARACTER_POINTS_CHANGED` and `UNIT_PET` for the player, each registered only when `C_EventUtils.IsEventValid` agrees (all five are in the generated documentation of the three promised flavours). `LEARNED_SPELL_IN_TAB` is in none of them and is not used.
 
-A rebuild that changed any list, the first build included, calls every connected listener with no arguments, in connection order. A listener that raises is handed to `geterrorhandler()` and the others still run; one disconnected during the notification is not called. A rebuild that changed nothing calls nobody.
+A rebuild that changed any list (a checker added, removed or reordered, or a checker's range or minimum range changed), the first build included, calls every connected listener with no arguments, in connection order. A listener that raises is handed to `geterrorhandler()` and the others still run; one disconnected during the notification is not called. A rebuild that changed nothing calls nobody.
 
 ## Secret values
 
@@ -150,7 +150,23 @@ Past the limit `OnCheckersChanged` raises at the caller: `RangeKit:OnCheckersCha
 
 ## Error behaviour
 
-Argument errors raise at the caller's line: `RangeKit:IsInRange yards must be a finite number of at least 0`; methods called on anything but a connection raise `RangeKit.Connection:Disconnect must be called on a RangeKit connection; use connection:Disconnect(...)`. What the client calls (the events) never raises.
+Argument errors raise at the caller's line. A secret value is refused with the same message as a wrong type, except for the limit value, which names it. The messages:
+
+| Message | When |
+|---|---|
+| `RangeKit:<Method> must be called on the RangeKit facade; use RangeKit:<Method>(...)` | A method called with `.` or on another table. |
+| `RangeKit:GetRange unit must be a unit token string` (and `RangeKit:IsInRange ...`) | `unit` is not a non-empty string, or is secret. |
+| `RangeKit:IsInRange yards must be a finite number of at least 0` | `yards` is not a number, is NaN, negative, infinite or secret. |
+| `RangeKit:DescribeCheckers kind must be harm, friend, resurrect, pet or interact` | Any other `kind`. |
+| `RangeKit:OnCheckersChanged callback must be a function` | `callback` is not a function, or is secret. |
+| `RangeKit:OnCheckersChanged holds at most <n> listeners; raise maxListeners with RangeKit:SetLimits` | `maxListeners` listeners are already connected. |
+| `RangeKit:SetLimits limits must be a table` | `limits` is not a table. |
+| `RangeKit:SetLimits limits holds an unknown field; it accepts maxListeners` | Any other key, or a secret key. |
+| `RangeKit:SetLimits limits.maxListeners must not be a secret value` | A secret limit. |
+| `RangeKit:SetLimits limits.maxListeners must be an integer from 1 to 256` | Any other limit value. |
+| `RangeKit.Connection:Disconnect must be called on a RangeKit connection; use connection:Disconnect(...)` (and `IsConnected`) | A connection method called on anything but a connection handle. |
+
+At load, `MoltenCodes RangeKit requires Registry API 2 to be loaded first`, `MoltenCodes RangeKit requires a valid Registry API 2 facade` and `MoltenCodes RangeKit package state is corrupted or incomplete` raise at the loading file. What the client calls (the events) never raises; a listener's error goes to `geterrorhandler()`.
 
 ## Performance
 
@@ -164,3 +180,5 @@ Argument errors raise at the caller's line: `RangeKit:IsInRange yards must be a 
 ## Embedded copies and upgrades
 
 Several addons may embed RangeKit; Registry selects the newest compatible revision and every copy shares one facade and one state: the lists, the listeners, the event frame and the limit. The event frame's script calls through a dispatch table in the shared state that every loading revision rewrites, so events reach the newest copy's code. The event frame is made once per session.
+
+Revision 2 changed no state field: a revision 1 copy upgrades in place, and its lists, listeners, event frame and limit are kept. From then on a rebuild that changes only a checker's minimum range notifies the listeners (revision 1 compared only ranges and sources).

@@ -16,7 +16,7 @@
 ---   combat         `SetCombat`;
 ---   events         `C_EventUtils.IsEventValid` from the shared fixture;
 ---   secret values  `InstallSecretProbe` and `NewSecret`;
----   upgrades       `LoadRevision`.
+---   upgrades       `LoadRevision`, `NewPackageAtRevision`.
 local FrameworkTestEnv = require("FrameworkTestEnv")
 
 local RangeKitTestEnv = FrameworkTestEnv.New({
@@ -152,6 +152,19 @@ end
 function RangeKitTestEnv.NewPackage()
   newWorld()
   return sharedNewPackage()
+end
+
+---Reset, install the host stubs and a fresh range world, load Registry, then
+---load the working RangeKit file as `revision`: the starting point of an
+---upgrade spec, which then calls `ReloadPackage` to load the shipped revision.
+---@param revision integer
+---@return table RangeKit
+function RangeKitTestEnv.NewPackageAtRevision(revision)
+  RangeKitTestEnv.Reset()
+  newWorld()
+  RangeKitTestEnv.InstallWowApi()
+  require("Registry")
+  return RangeKitTestEnv.LoadRevision(revision)
 end
 
 ---Install the range world's client calls again after a spec removed some.

@@ -52,7 +52,7 @@ describe("RangeKit bootstrap", function()
 
       local upgraded = TestEnv.LoadRevision(RangeKit.REVISION + 1)
       assert.are.equal(RangeKit, upgraded)
-      assert.are.equal(2, upgraded.REVISION)
+      assert.are.equal(RangeKit.REVISION, upgraded.REVISION)
       assert.are.equal(100, upgraded:GetLimits().maxListeners)
       assert.are.equal(eventFrame, rawget(upgraded._state, "eventFrame"))
       assert.are.same({ 28, 40 }, { upgraded:GetRange("target") })
@@ -64,6 +64,33 @@ describe("RangeKit bootstrap", function()
       assert.is_true(connection:Disconnect())
     end
   )
+
+  it("upgrades a revision 1 copy in place, which then hears a changed minimum range", function()
+    local RangeKit = TestEnv.NewPackageAtRevision(1)
+    assert.are.equal(1, RangeKit.REVISION)
+    TestEnv.SetClass("WARRIOR")
+    TestEnv.Learn(100, 25, 8)
+    TestEnv.Learn(5246, 12)
+    local calls = 0
+    local connection = RangeKit:OnCheckersChanged(function()
+      calls = calls + 1
+    end)
+    assert.are.equal(8, RangeKit:DescribeCheckers("harm")[3].minRange)
+    assert.are.equal(1, calls)
+    local state, eventFrame = RangeKit._state, rawget(RangeKit._state, "eventFrame")
+
+    local upgraded = TestEnv.ReloadPackage()
+    assert.are.equal(RangeKit, upgraded)
+    assert.are.equal(2, upgraded.REVISION)
+    assert.are.equal(state, upgraded._state)
+    assert.are.equal(eventFrame, rawget(upgraded._state, "eventFrame"))
+
+    TestEnv.DefineSpell(100, 25, 10)
+    TestEnv.Emit("SPELLS_CHANGED")
+    assert.are.equal(10, upgraded:DescribeCheckers("harm")[3].minRange)
+    assert.are.equal(2, calls)
+    assert.is_true(connection:IsConnected())
+  end)
 
   it("refuses shared state whose limit or lists hold an invalid value", function()
     local RangeKit = TestEnv.NewPackage()

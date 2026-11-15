@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.1 — 2026-11-15
+
+- Fixed: a rebuild in which only a spell's minimum range changed (a talent that changes a spell's reach, the same spell, the same range) replaced the lists without calling the `OnCheckersChanged` listeners, so `DescribeCheckers` answered differently with no notification. The comparison now covers each checker's minimum range as well as its range and source. Implementation revision 2; a revision 1 copy upgrades in place.
+- Documentation: `IsInRange` decides at every checker range only for the list it searches; in combat, for a unit the player cannot attack, the interact ranges are not searched. The candidate spell IDs were compared with LibRangeCheck-3.0 minor 39.
+- 43 specs.
+
 ## 0.1.0 — 2026-11-15
 
 - Added RangeKit API generation 1, implementation revision 1: unit range estimates, as recorded in `docs/ROADMAP.md` (rangeKit, core decision 16).
