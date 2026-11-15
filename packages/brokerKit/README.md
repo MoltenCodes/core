@@ -66,7 +66,25 @@ What each piece promises:
 - **`ExposeToLibDataBroker`** and **`AdoptFromLibDataBroker`** connect the two registries without echo loops, and return `false, "absent"` when LibStub or LibDataBroker-1.1 is not loaded. Adopted objects are read-only; **`IsForeign`** tells them apart.
 - **`SetLimits`** opens the two bounds (256 objects, 32 attributes per object) on purpose, up to `BrokerKit.UNBOUNDED`.
 
-Non-goals: rendering a display, the minimap launcher button (a user-interface Kit), persisting anything (a display's saved variables hold the player's layout).
+Non-goals: rendering a display, the minimap launcher button ([LauncherKit](../launcherKit/) puts a BrokerKit object on the minimap, as LibDBIcon-1.0 does for a LibDataBroker launcher), persisting anything (a display's saved variables hold the player's layout).
+
+### Moving from LibDataBroker-1.1
+
+A data object keeps its LibDataBroker shape, so most of a port is the lookup and the callbacks. `ldb` below is `LibStub("LibDataBroker-1.1")`; the [field-by-field mapping](docs/API.md#field-by-field-mapping) in the API is complete.
+
+| LibDataBroker-1.1 | BrokerKit |
+|---|---|
+| `ldb:NewDataObject(name, dataobj)` | `BrokerKit:New(name, definition)`. A taken name raises at the caller instead of returning `nil`, and the known attributes are type-checked. |
+| `dataobj.text = value`, `dataobj.text` | The same lines: `object.text = value`, `object.text`. |
+| `ldb:GetDataObjectByName(name)` | `BrokerKit:Get(name)` |
+| `ldb:GetNameByDataObject(dataobj)` | `object.name` |
+| `ldb:DataObjectIterator()` | `BrokerKit:Iterate()`, in sorted name order; `BrokerKit:Objects()` for an array of names. |
+| `ldb:pairs(dataobj)`, `ldb:ipairs(dataobj)` | No equivalent: read the attributes by name. |
+| `ldb.RegisterCallback(owner, "LibDataBroker_DataObjectCreated", handler)` | `BrokerKit:OnObjectAdded(callback)` |
+| `ldb.RegisterCallback(owner, "LibDataBroker_AttributeChanged_<name>_<attr>", handler)` | `object:OnChange(attr, callback)`, called with `(object, attribute, value, previous)`. |
+| `ldb.RegisterCallback(owner, "LibDataBroker_AttributeChanged_<name>", handler)` | `object:OnChange(callback)` |
+
+Objects created through BrokerKit reach LibDataBroker displays once `ExposeToLibDataBroker` is called, so an addon can move over without its players changing display.
 
 See [`docs/API.md`](docs/API.md) for the complete contract, including the attribute table and the LibDataBroker mapping field by field, and [`docs/INTERNALS.md`](docs/INTERNALS.md) for the layout.
 

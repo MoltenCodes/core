@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.6 — 2026-11-15
+
+- Documentation: the README's non-goals called the minimap launcher button "a user-interface Kit". That Kit exists now; the README names [LauncherKit](../launcherKit/), which puts a BrokerKit object on the minimap.
+- Documentation: the README had no migration table from the library BrokerKit replaces. It now has *Moving from LibDataBroker-1.1*, mapping `NewDataObject`, field reads and writes, `GetDataObjectByName`, `GetNameByDataObject`, `DataObjectIterator`, `pairs` and `ipairs`, and the `LibDataBroker_DataObjectCreated` and `LibDataBroker_AttributeChanged*` callbacks, and linking the complete mapping in `docs/API.md`. The mapping was checked against LibDataBroker-1.1's own source.
+- Specs: `Manifest_spec.lua` pins the manifest version and now expects 0.1.6 (a test-only change).
+- Documentation only: the implementation revision is unchanged (3).
+
 ## 0.1.5 — 2026-11-15
 
 - Source comment: `OBJECT_METATABLE_TAG` only hides an object proxy's metatable. The comment also called it how a receiver is recognised, which `recordOf` does by looking the proxy up in the shared `records` table. Comment only: the implementation revision is unchanged.
