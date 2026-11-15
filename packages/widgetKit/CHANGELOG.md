@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.3 — 2026-11-15
+
+- Documentation: the public-surface table of `docs/API.md` gave `REVISION` as `9`; it is `10`, as the header says. Documentation only: the implementation revision is unchanged.
+
 ## 0.2.2 — 2026-11-15
 
 - Fixed: `Slider:SetSliderValues` read an absent `step` as `step or 0`, a truth test that raises inside WidgetKit on a secret value (Retail 12.x) before `validateNumber` could refuse it. The absent value is now tested with `type(step) == "nil"`, so a secret `step` is refused at the caller (`WidgetKit Slider:SetSliderValues step must not be a secret value`), and `false` is refused as not a number instead of counting as no step.

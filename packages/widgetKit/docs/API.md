@@ -61,7 +61,7 @@ Package facade:
 | `MAX_CREATED`, `MAX_CHILDREN`, `MAX_CALLBACKS` | `256`, `256`, `16`: the defaults. See [Limits](#limits). |
 | `SetLimits(limits)` / `GetLimits()` | Change or read the package-wide limits `maxCreatedCeiling` and `maxDropdownEntries`; `GetLimits` returns a fresh table. |
 | `UNBOUNDED` | Sentinel `maxCallbacks`, `SetMaxChildren` and the `maxDropdownEntries` limit accept to lift a bound. |
-| `API`, `REVISION` | `1`, `9`. |
+| `API`, `REVISION` | `1`, `10`. |
 
 Widget base (`WidgetKit.Widget`), on every widget:
 
