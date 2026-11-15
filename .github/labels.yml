@@ -50,6 +50,9 @@
   description: "The example addon under examples/."
 
 # Kit: one label per package under packages/, named after its package ID.
+- name: "kit: addonKit"
+  color: "5319e7"
+  description: "The addonKit package."
 - name: "kit: apiKit"
   color: "5319e7"
   description: "The apiKit package."

@@ -1,0 +1,6 @@
+## Interface: 120105
+## Title: First Addon
+## SavedVariables: FirstAddonDB
+
+embeds.xml
+Core.lua

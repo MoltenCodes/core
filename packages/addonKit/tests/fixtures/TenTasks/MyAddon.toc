@@ -1,0 +1,8 @@
+## Interface: 120105
+## Title: My Addon
+## SavedVariables: MyAddonDB
+
+embeds.xml
+Locales\enUS.lua
+Locales\deDE.lua
+Core.lua

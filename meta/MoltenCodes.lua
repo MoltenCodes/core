@@ -10,4 +10,5 @@
 ---@class MoltenCodesNamespace
 ---@field Registry Registry Alias for the newest Registry API generation loaded.
 ---@field Registries table<integer, Registry> Every loaded generation, by number.
+---@field For fun(self: MoltenCodesNamespace, addonName: string, ...: any): MoltenCodesFacade AddonKit's entry point, installed when AddonKit is embedded.
 MoltenCodes = {}

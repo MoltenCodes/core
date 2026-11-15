@@ -1,0 +1,12 @@
+## Interface: 120105, 50504, 20506, 11509
+## Title: MoltenCodes Test: AddonKit
+## Notes: Real-client test suites for MoltenCodes AddonKit. Run them with /mct run addonKit. One test opens the settings panel and closes it again.
+## Author: MoltenCodes
+## Version: 1.0.0
+## Dependencies: MoltenCodesTest
+## SavedVariables: MoltenCodesTestAddonKitDB
+## X-Category: Development Tools
+## X-License: MIT
+
+# Development only: never ship this addon. See tests/client/README.md.
+AddonKitSuite.lua

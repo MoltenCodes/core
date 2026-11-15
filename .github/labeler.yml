@@ -6,6 +6,10 @@
 # one Kit per pull request. Labels are only added, never removed, so a label a
 # maintainer sets by hand stays.
 
+"kit: addonKit":
+  - changed-files:
+      - any-glob-to-any-file: "packages/addonKit/**"
+
 "kit: apiKit":
   - changed-files:
       - any-glob-to-any-file: "packages/apiKit/**"

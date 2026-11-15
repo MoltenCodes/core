@@ -3348,23 +3348,20 @@ copied.
    floor, spell words, and a sentence for `registry/docs/API.md` reserving
    the `For` key (Registry's package).
 
-9. Status: recorded 2026-11-15 under core decisions 18 and 19; code
-   follows. Work that depends on other owners, none of it blocking:
-   - the runtime Kits: method-name callbacks (19c) in EventKit, TimerKit,
-     HookKit and the SignalKit bus; AddonKit uses them and adds nothing of
-     its own. Requested, optional: a ModuleKit opt-in that makes a read of
-     a scope field whose Kit is absent raise `self.scope.Timers needs
-     TimerKit, which is not loaded; add timerKit\TimerKit.lua to
-     embeds.xml` instead of reading `nil` (usability F5). `NewAddon` and
-     `NewModule` turn it on when ModuleKit offers it; without it, the
-     documented `nil` stays.
-   - SettingsKit: no contract change needed. If SettingsKit gains a
-     record with a wildcard fallback, AddonKit maps `["*"]` beside named
-     keys onto it; if OptionsKit `range` takes `min`/`max` from the bound
-     schema, the guide drops the duplicated bounds.
-   - the tooling: the part-file format and the generated `embeds.xml`
-     the error messages point to.
-   - Registry: the reservation sentence in Registry's API docs.
+9. Status: implemented 2026-11-15 under core decisions 18 and 19, 0.1.0,
+   revision 1, parts Database and Composition revision 1, 72 specs (98.0%
+   line coverage); the client suite
+   (`tests/client/MoltenCodesTest_AddonKit`) is written and has not been run
+   in a client. Deviations: resident memory measured 40.6 KB (core), 17.7 KB
+   (Database), 9.8 KB (Composition), 68.1 KB in all, against targets of 24,
+   8, 8 and 40 KB set from a prototype without Bootstrap, state validation,
+   limits or suggestions; still below AceAddon, AceDB and AceConsole
+   together (70.6 KB, same session). A facade costs about 450 bytes per
+   addon. lua-language-server checks calls through the facade, a Kit and a
+   database; a call chained straight through the addon object
+   (`self.scope.Timers:After`) is not checked, because the addon object
+   accepts the author's fields. `docs/GETTING_STARTED.md` and
+   `docs/COOKBOOK.md` ship with it, the guide's code checked by a spec.
 
 Settings records (settingsKit, schemaKit, optionsKit, commandKit), basis: the
 decision 18 settings and memory diagnoses (prototypes measured against Ace3

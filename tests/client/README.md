@@ -56,6 +56,7 @@ tests/client/
 ├── MoltenCodesTest_MediaKit/          # the test addon of the `mediaKit` package (.toc, suite, EXPECTED.md)
 ├── MoltenCodesTest_WidgetKit/         # the test addon of the `widgetKit` package (.toc, suite, EXPECTED.md)
 ├── MoltenCodesTest_BridgeKit/         # the test addon of the `bridgeKit` package (.toc, suite, EXPECTED.md); two tests compare with real Ace3 from the benchmark's MoltenCodesBench_Ace3
+├── MoltenCodesTest_AddonKit/          # the test addon of the `addonKit` package (.toc, suite, EXPECTED.md); itself a small AddonKit addon
 ├── MoltenCodesTest_PanelKit/          # the test addon of the `panelKit` package (.toc, suite, EXPECTED.md); it opens and closes the settings panel
 ├── MoltenCodesTest_MenuKit/           # the test addon of the `menuKit` package (.toc, suite, EXPECTED.md); one test asks for a right click on your own unit frame
 ├── MoltenCodesTest_LauncherKit/       # the test addon of the `launcherKit` package (.toc, suite, EXPECTED.md); it puts one button on the minimap for the session

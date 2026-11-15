@@ -53,6 +53,7 @@ libstub
 Lifegiving
 loadouts
 MAXEMOTEINDEX
+mctaddonkit
 mcttestcmd
 mcttestinert
 mcttestopts

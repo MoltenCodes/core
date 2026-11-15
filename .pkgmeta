@@ -175,3 +175,5 @@ move-folders:
   MoltenCodes/packages/rangeKit/docs: MoltenCodes/rangeKit/docs
   MoltenCodes/packages/unitFrameKit/src: MoltenCodes/unitFrameKit
   MoltenCodes/packages/unitFrameKit/docs: MoltenCodes/unitFrameKit/docs
+  MoltenCodes/packages/addonKit/src: MoltenCodes/addonKit
+  MoltenCodes/packages/addonKit/docs: MoltenCodes/addonKit/docs

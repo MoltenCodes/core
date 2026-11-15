@@ -189,6 +189,9 @@ is what the release artifact's `manifest.json` records under `loadOrder`:
 
 ```text
 registry/Registry.lua
+addonKit/AddonKit.lua
+addonKit/parts/AddonKit-Composition.lua
+addonKit/parts/AddonKit-Database.lua
 apiKit/ApiKit.lua
 apiKit/flavours/Beta.lua
 apiKit/flavours/ClassicEra.lua
@@ -300,7 +303,7 @@ files:
 <!-- generated:footprint -->
 | Files | Kit | Alongside `registry/Registry.lua` |
 |---|---|---|
-| 2 | `apiKit`, `poolKit`, `bindingKit`, `bridgeKit`, `signalKit`, `cacheKit`, `clientKit`, `timerKit`, `schemaKit`, `compatKit`, `dialogKit`, `editModeKit`, `hookKit`, `interopKit`, `localeKit`, `menuKit`, `profileKit`, `rangeKit`, `unitFrameKit` | nothing |
+| 2 | `addonKit`, `apiKit`, `poolKit`, `bindingKit`, `bridgeKit`, `signalKit`, `cacheKit`, `clientKit`, `timerKit`, `schemaKit`, `compatKit`, `dialogKit`, `editModeKit`, `hookKit`, `interopKit`, `localeKit`, `menuKit`, `profileKit`, `rangeKit`, `unitFrameKit` | nothing |
 | 3 | `barKit`, `codecKit`, `glowKit`, `toastKit`, `tooltipKit` | `poolKit` |
 | 3 | `brokerKit`, `eventKit`, `logKit`, `mediaKit` | `signalKit` |
 | 3 | `schedulerKit`, `readinessKit` | `timerKit` |
@@ -329,7 +332,10 @@ what they add (see [Choosing Kits and parts](#choosing-kits-and-parts)). Each
 part loads after its Kit's core and brings in what it needs:
 
 <!-- generated:parts -->
-No Kit has optional parts yet: every Kit is its core file.
+| Part | File | Adds | Brings in beyond its Kit |
+|---|---|---|---|
+| `addonKit/Composition` | `addonKit/parts/AddonKit-Composition.lua` | MC:Options (an options panel with its slash command) and MC:Launcher (a minimap button kept in the profile). | nothing |
+| `addonKit/Database` | `addonKit/parts/AddonKit-Database.lua` | MC:Database (a SettingsKit database from AceDB-style defaults, the schema inferred), MC.Range and MC.Enum. | nothing |
 <!-- /generated:parts -->
 
 ## A complete example addon
@@ -723,6 +729,7 @@ actually touch, which is deliberately small:
 | `commKit` | SignalKit's, EventKit's, TimerKit's, SchedulerKit's and PoolKit's surfaces; `GetTimePreciseSec`; `C_ChatInfo.SendAddonMessage` (legacy global fallback; else `Send` refuses `"unavailable"`) | `C_ChatInfo.RegisterAddonMessagePrefix` and `IsAddonMessagePrefixRegistered` (legacy globals, then nothing registered), `C_ChatInfo.SendAddonMessageLogged` (logged sends refused), the events `CHAT_MSG_ADDON`, `CHAT_MSG_ADDON_LOGGED`, `GROUP_ROSTER_UPDATE`, `PLAYER_ENTERING_WORLD`, `GetFramerate` (no low-frame-rate mode), `UnitInParty` and `UnitInRaid` (no roster eviction; streams still expire), `Enum` (12.x values assumed), `securecallfunction` (`pcall`), `issecretvalue`, `geterrorhandler` (`print`), CodecKit API 1 (`SyncSet` raises), HookKit API 1 (outside traffic uncharged), SchemaKit API 1 (`schema` raises); LifecycleKit API 1 through `Registry:Find` (otherwise CommKit's own `PLAYER_LOGOUT` watcher closes its addon scopes) |
 | `widgetKit` | PoolKit's and SignalKit's surfaces; `CreateFrame`, the ScrollBox framework (`WowScrollBoxList`, `MinimalScrollBar`, `CreateScrollBoxListLinearView`, `ScrollUtil.InitScrollBoxListWithScrollBar`, `CreateDataProvider`; `Create("ScrollList")` raises at the caller) | `UIParent` (released frames rest on a hidden holder), `issecretvalue` (nothing secret), `geterrorhandler` (`print`), `ColorPickerFrame:SetupColorPickerAndShow` (a click fires the current colour), `IsAltKeyDown`, `IsControlKeyDown`, `IsShiftKeyDown` (no modifiers), OptionsKit API 1 through `Registry:Find` (`RenderOptions` raises at the caller), SchedulerKit API 1 (saves are immediate), MediaKit API 1 (`CreateMediaPicker` raises; the renderer uses the option's `values`) |
 | `unitFrameKit` | nothing at load; `CreateFrame` and `EnumerateFrames` for scans (without them nothing is kept and every query answers `nil`) | `UnitIsUnit` (every query answers `nil`), `UnitExists` (every query looks), `C_NamePlate` (`GetNamePlate` answers `nil`), `issecretvalue` (nothing secret), `geterrorhandler` (`print`) |
+| `addonKit` | nothing | `issecretvalue` (nothing secret), `geterrorhandler` (`print`); every Kit through `Registry:Find` when it is first used (a helper whose Kit is missing raises at the caller with the file to add) |
 | `rangeKit` | nothing (without `UnitExists` every unit counts as missing: `nil`) | `CreateFrame` (no rebuild events until it exists), `C_EventUtils` (every rebuild event registered), `UnitClass`, `C_SpellBook`, `C_Spell`, `Enum` (no spell checkers), `CheckInteractDistance` (no interact checkers), `UnitCanAttack`, `UnitCanAssist`, `UnitIsDeadOrGhost`, `UnitIsUnit` (answer counts as no), `InCombatLockdown` (never in combat), `issecretvalue` (nothing secret), `geterrorhandler` (`print`) |
 | `editModeKit` | `CreateFrame`, `UIParent` and `EventRegistry` (`Register` raises at the caller) | `EditModeManagerFrame` (the layout is named `"default"`), `InCombatLockdown` (never in combat: moves happen at once), `issecretvalue` (nothing secret), `geterrorhandler` (`print`) |
 | `glowKit` | PoolKit's surface; `CreateFrame` (`Start` raises at the caller) | `issecretvalue` (nothing secret) |

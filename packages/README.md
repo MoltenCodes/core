@@ -47,5 +47,6 @@ Current packages:
 - [`launcherKit`](launcherKit/) — minimap buttons for BrokerKit objects: any minimap shape, LibDBIcon's saved fields, Retail's addon compartment.
 - [`menuKit`](menuKit/) — checked, bounded menus on Blizzard's Menu API: context menus, dropdown menus, removable extensions of Blizzard's tagged menus.
 - [`panelKit`](panelKit/) — OptionsKit trees in Blizzard's settings panel: a category or subcategory per tree, drawn by WidgetKit only while shown.
+- [`addonKit`](addonKit/) — the single entry point for addon authors: `MoltenCodes:For(...)`, the addon object, databases from plain defaults, options and launcher helpers.
 - [`apiKit`](apiKit/) — the flavour-aware, typed wrapper over the World of Warcraft API (`wow.retail.api`, ...): direct aliases generated from the client's own documentation tables, LuaCATS types per flavour, the raw API always valid.
 - [`testKit`](testKit/) — development-only in-client test suites: phase-gated, SchedulerKit-driven, secret-safe expectations, structured results.

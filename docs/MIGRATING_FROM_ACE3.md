@@ -47,6 +47,8 @@ The Ace3 behaviour described here was read from Ace3 at commit
 
 ## Before you start
 
+**The short way: AddonKit.** `local MC = MoltenCodes:For(...)` at the top of each file gives you every Kit as `MC.EventKit`, `MC.TimerKit` and so on, `MC:NewAddon()` for the addon object and `MC:Database(name, defaults)` for an AceDB-style defaults table. [AddonKit's README](../packages/addonKit/README.md#moving-from-ace3) has the one-table migration. The samples below use the low-level form AddonKit is built on.
+
 **Embedding.** Ace3 libraries come in through `embeds.xml` and `LibStub`.
 The Kits come in the same way: list their files in dependency order in
 `embeds.xml` (each Kit's `docs/API.md` has a "Loading" section, and
@@ -258,6 +260,8 @@ function bags:OnEnable() end
 - The lifecycle alone, without modules, is LifecycleKit:
   `LifecycleKit:ForAddon(ADDON_NAME):OnLoaded(function(instance) end)`,
   `OnReady`, `OnShutdown`.
+
+With AddonKit: `local addon = MoltenCodes:For(...):NewAddon()` is this module `"Main"`, and `MC:NewModule("Bags")` creates a module that depends on it, so it enables after the addon and is disabled with it, as Ace's modules are.
 
 ## AceEvent-3.0
 
@@ -687,6 +691,8 @@ end)
   which can be more bytes).
 - **Existing AceDB data** is carried over by BridgeKit's importer:
   see [below](#importing-an-acedb-saved-variable).
+
+With AddonKit, the AceDB defaults table is accepted as it is: `MC:Database("MyAddonDB", defaults)` infers the schema (`["*"]` and `{}` included; `["**"]` and `["*"]` beside named keys raise with the alternative), refuses wrong types and undeclared fields, and refuses to open before `ADDON_LOADED`. Write `MC.Range(min, max, default)` or `MC.Enum(values, default)` where a field needs bounds.
 
 ## AceDBOptions-3.0
 

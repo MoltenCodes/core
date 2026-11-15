@@ -4,7 +4,7 @@
 [![Release](https://img.shields.io/github/v/release/MoltenCodes/core?include_prereleases&sort=semver)](https://github.com/MoltenCodes/core/releases)
 
 A modular Lua 5.1 framework for professional World of Warcraft addon
-development: 41 small packages, called Kits, each independently versioned,
+development: 42 small packages, called Kits, each independently versioned,
 tested and publishable, that an addon embeds one by one or loads together as the
 standalone addon `MoltenCodes`.
 
@@ -16,7 +16,7 @@ bounded by default and safe around the Retail secret-value and taint rules.
 
 ## Packages
 
-Forty release packages and one development package. Each links to its
+Forty-one release packages and one development package. Each links to its
 README; its full contract is the package's `docs/API.md`.
 
 | Package | Purpose |
@@ -60,10 +60,16 @@ README; its full contract is the package's `docs/API.md`.
 | [`launcherKit`](packages/launcherKit/) | Minimap buttons for BrokerKit objects, dragged round any minimap shape, state in LibDBIcon's saved fields, and Retail's addon compartment. |
 | [`menuKit`](packages/menuKit/) | Menus described as checked, bounded tables and shown by Blizzard's Menu API: context menus, dropdowns and removable extensions of Blizzard's own menus. |
 | [`panelKit`](packages/panelKit/) | An OptionsKit tree in Blizzard's settings panel, as a category or subcategory, drawn by WidgetKit only while its page is shown. |
+| [`addonKit`](packages/addonKit/) | The single entry point for addon authors: `MoltenCodes:For(...)` with every Kit by name, an addon object over ModuleKit, databases from plain defaults, and one-call options panels and minimap launchers, with errors that say the fix. |
 | [`apiKit`](packages/apiKit/) | The flavour-aware, typed wrapper over the World of Warcraft API (`wow.retail.api`, ...), generated from the client's own documentation tables. |
 | [`testKit`](packages/testKit/) | Development only, never bundled: in-client test suites in LifecycleKit phases and SchedulerKit jobs, with structured results. |
 
 ## Using the framework in an addon
+
+The quickest start is AddonKit: `local MC = MoltenCodes:For(...)` at the top of
+each file gives your addon every Kit by name and an addon object; see
+[Getting started](docs/GETTING_STARTED.md) for a first addon in ten minutes.
+The lines below show the low-level path AddonKit is built on.
 
 An addon either embeds the Kits it needs or depends on the installed
 `MoltenCodes` addon, which loads every release Kit. Embedded copies leave
@@ -149,7 +155,7 @@ answers `--help`.
 ├── examples/                # a complete example addon, loaded by its own spec
 ├── lychee.toml              # Markdown link-check configuration
 ├── meta/                    # editor-only LuaCATS definitions, including the game API
-├── packages/                # the 41 Kits, one directory each (see packages/README.md)
+├── packages/                # the 42 Kits, one directory each (see packages/README.md)
 ├── pyproject.toml           # the supported Python floor for the tooling
 ├── selene.toml              # Selene configuration for runtime Lua
 ├── selene-tests.toml        # Selene configuration for test Lua
@@ -191,6 +197,7 @@ and why it is there.
 
 Start with [`docs/README.md`](docs/README.md), the documentation map. Why the framework is built the way it is: [`docs/decisions/`](docs/decisions/README.md), one record per decision.
 
+- [`docs/GETTING_STARTED.md`](docs/GETTING_STARTED.md) — a first addon in ten minutes, every snippet run by a spec; [`docs/COOKBOOK.md`](docs/COOKBOOK.md) — one recipe per common task.
 - [`docs/EMBEDDING.md`](docs/EMBEDDING.md) — how an addon embeds and loads the framework.
 - [`docs/MIGRATING_FROM_ACE3.md`](docs/MIGRATING_FROM_ACE3.md) — moving an addon from Ace3 to the Kits, library by library, and from the libraries that travel with Ace3 (LibDataBroker, LibDBIcon, LibSharedMedia, LibQTip, LibDualSpec and others).
 - [`docs/BENCHMARKS.md`](docs/BENCHMARKS.md) — performance against Ace3, measured on host Lua, with regressions listed.

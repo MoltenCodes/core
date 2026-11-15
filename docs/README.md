@@ -4,6 +4,8 @@ This directory is the entry point for repository-wide documentation.
 
 ## Using the framework
 
+- [`GETTING_STARTED.md`](GETTING_STARTED.md) — your first addon in ten minutes with AddonKit.
+- [`COOKBOOK.md`](COOKBOOK.md) — short recipes for the tasks addons do most.
 - [`EMBEDDING.md`](EMBEDDING.md) is the addon author's guide: `.toc` entries, load
   order, supported Interface numbers, LibStub coexistence, taint, the combat log,
   `/reload` semantics, performance guidance, and the error messages a wrong load
@@ -84,6 +86,7 @@ Current package entry points:
 - [`LauncherKit`](../packages/launcherKit/README.md) — minimap buttons for BrokerKit objects, in LibDBIcon's saved fields, and Retail's addon compartment.
 - [`MenuKit`](../packages/menuKit/README.md) — checked, bounded menus on Blizzard's Menu API, with removable extensions of Blizzard's menus.
 - [`PanelKit`](../packages/panelKit/README.md) — OptionsKit trees in Blizzard's settings panel, drawn by WidgetKit only while shown.
+- [`AddonKit`](../packages/addonKit/README.md) — the single entry point: `MoltenCodes:For(...)`, the addon object, databases from plain defaults, options panels and minimap launchers in one call.
 - [`ApiKit`](../packages/apiKit/README.md) — the flavour-aware, typed wrapper over the World of Warcraft API, generated from the client's own documentation tables: `local api = wow.retail.api`.
 - [`TestKit`](../packages/testKit/README.md) — development-only in-client test suites with structured results.
 

@@ -22,6 +22,7 @@ body:
       multiple: true
       options:
         - registry
+        - addonKit
         - apiKit
         - barKit
         - bindingKit

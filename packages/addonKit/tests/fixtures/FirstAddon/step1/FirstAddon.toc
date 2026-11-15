@@ -1,0 +1,5 @@
+## Interface: 120105
+## Title: First Addon
+
+embeds.xml
+Core.lua

@@ -1,0 +1,83 @@
+{
+  "name": "addonKit",
+  "displayName": "AddonKit",
+  "description": "The single entry point for MoltenCodes addons: MoltenCodes:For(...) with lazily resolved Kits, an addon object over ModuleKit, databases from plain defaults, and one-call options panels and minimap launchers, with errors that say the fix.",
+  "version": "0.1.0",
+  "license": "MIT",
+  "api": 1,
+  "revision": 1,
+  "dependencies": {
+    "registry": {
+      "api": 2
+    }
+  },
+  "optionalDependencies": {
+    "brokerKit": {
+      "api": 1
+    },
+    "commandKit": {
+      "api": 1
+    },
+    "launcherKit": {
+      "api": 1
+    },
+    "lifecycleKit": {
+      "api": 1
+    },
+    "moduleKit": {
+      "api": 1
+    },
+    "optionsKit": {
+      "api": 1
+    },
+    "panelKit": {
+      "api": 1
+    },
+    "schemaKit": {
+      "api": 1
+    },
+    "settingsKit": {
+      "api": 1
+    }
+  },
+  "parts": {
+    "Composition": {
+      "description": "MC:Options (an options panel with its slash command) and MC:Launcher (a minimap button kept in the profile).",
+      "revision": 1,
+      "dependencies": {},
+      "optionalDependencies": {
+        "brokerKit": {
+          "api": 1
+        },
+        "commandKit": {
+          "api": 1
+        },
+        "launcherKit": {
+          "api": 1
+        },
+        "optionsKit": {
+          "api": 1
+        },
+        "panelKit": {
+          "api": 1
+        }
+      }
+    },
+    "Database": {
+      "description": "MC:Database (a SettingsKit database from AceDB-style defaults, the schema inferred), MC.Range and MC.Enum.",
+      "revision": 1,
+      "dependencies": {},
+      "optionalDependencies": {
+        "lifecycleKit": {
+          "api": 1
+        },
+        "schemaKit": {
+          "api": 1
+        },
+        "settingsKit": {
+          "api": 1
+        }
+      }
+    }
+  }
+}
