@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.5 — 2026-11-15
+
+- Removed dead code: a provider registry no longer stores its kind in `_kind`. Nothing read the field, because the shared `providers` table already maps each kind to its registry. `docs/INTERNALS.md` drops its row from the registry field table.
+- Implementation revision 3, because the executed implementation changed. No state field changed: an in-place upgrade from revision 2 keeps the shims, skips, provider registries, limits and the sentinel, and replaces the methods only. A registry created by revision 2 keeps its unused `_kind`, which nothing reads. `docs/API.md` states revision 3 in its header and its public-surface table.
+- Specs: `Providers_spec.lua` checks that a new registry holds no `_kind`; `Bootstrap_spec.lua` already upgrades a copy of the previous revision with the current file, and its unknown-schema spec now loads the next revision instead of a fixed revision 2, which is no longer newer than the shipped one.
+
 ## 0.1.4 — 2026-09-25
 
 - Documentation: `docs/API.md`'s public surface table gives `API`, `REVISION` as `1`, `2`, matching the manifest (it still read `1`, `1`). The *The context* section records what the CompatKit client suite measured on Retail 12.1.0 (build 69933, 2026-09-25). `hasApi` checks identity, so a legacy global aliasing a bound function could answer `true` for a name ApiKit does not bind. No such alias turned up: the legacy `GetAddOnMetadata` global is absent, and `hasApi` answered `false` for it, for `InterfaceOptionsFrame_OpenToCategory` and for the undocumented `hooksecurefunc`. Documentation only: the implementation revision is unchanged.

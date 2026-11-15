@@ -16,7 +16,7 @@ describe("CompatKit bootstrap", function()
     local registered, revision = Registry:Get("compatKit", 1)
     assert.are.equal(CompatKit, registered)
     assert.are.equal(1, CompatKit.API)
-    assert.are.equal(2, CompatKit.REVISION)
+    assert.are.equal(3, CompatKit.REVISION)
     assert.are.equal(CompatKit.REVISION, revision)
   end)
 
@@ -125,8 +125,8 @@ describe("CompatKit bootstrap", function()
     assert.are.same({ 0, 1, 0 }, { CompatKit:Apply() })
     assert.are.same({ "applied" }, ran)
 
-    -- The fix the shipped revision carries: a probe answering a secret
-    -- counts as dead before the answer is compared.
+    -- The secret-probe fix of revision 2 carries over: a probe answering a
+    -- secret counts as dead before the answer is compared.
     answer = {}
     Env.InstallSecretProbe(answer)
     assert.are.same({ "print-sink", "print" }, { registry:Resolve() })
@@ -177,7 +177,7 @@ describe("CompatKit bootstrap", function()
     Env.expectErrorContaining(
       "MoltenCodes CompatKit package state is corrupted or incomplete",
       function()
-        Env.LoadSourceAtRevision(2)
+        Env.LoadSourceAtRevision(CompatKit.REVISION + 1)
       end
     )
   end)

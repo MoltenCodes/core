@@ -56,7 +56,6 @@ One object per kind, created by `Providers` and kept in `providers`:
 
 | Field | Meaning |
 |---|---|
-| `_kind` | The kind string. |
 | `_providers` | Name to `{ implementation, probe, priority }`; `probe` is `false` for an always-alive provider. |
 | `_order` | Every name, ordered by priority (higher first) and then by name. Maintained at `Register` (insertion) and `Unregister` (removal), so `Resolve` walks it without sorting or allocating. |
 | `_count` | How many providers exist (bounded by `limits.maxProviders`). |

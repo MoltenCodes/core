@@ -5,7 +5,7 @@ session with a host opt-out, provider registries with liveness probes and a
 deterministic fallback cascade, and the read-only catalogue of taint-hostile
 Blizzard subsystems.
 
-Implementation revision: **2**.
+Implementation revision: **3**.
 
 ## Loading
 
@@ -49,7 +49,7 @@ globals at call time; it works without any of them.
 | `GetLimits()` | A fresh table of the three limits; allocates. |
 | `CATALOGUE`, `CATALOGUE_COUNT` | The read-only catalogue and how many rows it has. |
 | `UNBOUNDED` | Sentinel that lifts any limit; the same table for every revision. |
-| `API`, `REVISION` | `1`, `2`. |
+| `API`, `REVISION` | `1`, `3`. |
 
 Every method checks its receiver: `CompatKit.Shim(...)` raises
 `CompatKit:Shim must be called on the CompatKit facade; use CompatKit:Shim(...)`.

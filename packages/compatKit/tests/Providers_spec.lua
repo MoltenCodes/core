@@ -32,6 +32,16 @@ describe("CompatKit providers", function()
     it("hides the prototype behind the metatable tag", function()
       assert.are.equal("CompatKit.ProviderRegistry", getmetatable(registry))
     end)
+
+    it("keeps only the fields INTERNALS.md documents, without the kind", function()
+      -- Revision 3 dropped `_kind`: it was written and never read, because
+      -- the `providers` table already maps each kind to its registry.
+      assert.is_nil(rawget(registry, "_kind"))
+      assert.are.same({}, rawget(registry, "_providers"))
+      assert.are.same({}, rawget(registry, "_order"))
+      assert.are.equal(0, rawget(registry, "_count"))
+      assert.is_false(rawget(registry, "_resolved"))
+    end)
   end)
 
   describe("Register and Unregister", function()

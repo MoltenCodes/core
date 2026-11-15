@@ -41,7 +41,7 @@
 
 local PACKAGE_NAME = "compatKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 2
+local IMPLEMENTATION_REVISION = 3
 local REQUIRED_REGISTRY_API = 2
 local STATE_SCHEMA = 1
 
@@ -1434,7 +1434,6 @@ local function packageProviders(self, kind)
   end
 
   registry = setmetatable({
-    _kind = kind,
     _providers = {},
     _order = {},
     _count = 0,
