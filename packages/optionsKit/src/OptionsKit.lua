@@ -46,7 +46,7 @@
 
 local PACKAGE_NAME = "optionsKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 8
+local IMPLEMENTATION_REVISION = 9
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_SCHEMAKIT_API = 1
 local REQUIRED_SIGNALKIT_API = 1
@@ -470,11 +470,16 @@ if type(previousRevision) == "nil" then
     unbounded = {},
     -- The group table `ProfileOptions` returned to the link record behind
     -- it, so `Define` recognises the group when it meets it in a tree.
-    -- Weak keys: a group the consumer dropped is forgotten with it.
-    profileGroups = setmetatable({}, { __mode = "k" }),
-    -- Revision 8: a database to the links of the groups `ProfileOptions`
-    -- built for it, one per distinct set of options, so a later call with
-    -- the same database and options returns the same group.
+    -- Weak keys and values (set below, for every revision's state): the link
+    -- references its group, so weak keys alone would keep every entry under
+    -- Lua 5.1. An entry lives while its link is held by the cache, a tree or
+    -- the group's own callbacks in a group the consumer still holds.
+    profileGroups = {},
+    -- Revision 8: a database to the link of the group `ProfileOptions`
+    -- last built for it (revision 9: one link, no longer one per distinct
+    -- set of options), so a later call with the same database and options
+    -- returns the same group. The link references the database, so an entry
+    -- lives for the session; there is one per database.
     profileLinksByDatabase = setmetatable({}, { __mode = "k" }),
   }
   rawset(OptionsKit, "Tree", Tree)
@@ -486,15 +491,29 @@ end
 -- Revision 1 had no profile groups and built tree layout 1. The group map is
 -- added, and every tree gains the (empty) list of profile links `Undefine`
 -- detaches: a revision 1 tree cannot contain a profile group. Revisions 3
--- to 6 changed no layout, so a revision 2 or later state needs nothing here.
+-- to 6 changed no layout; revision 7 changed only the record layout, which
+-- every reader accepts in both forms.
 if rawget(state, "profileGroups") == nil then
-  rawset(state, "profileGroups", setmetatable({}, { __mode = "k" }))
+  rawset(state, "profileGroups", {})
 end
+-- Revisions 2 to 8 made the group map weak-keyed only, which never released
+-- an entry (its link references the group). Revision 9 makes it weak in keys
+-- and values, on an inherited map as on a new one.
+setmetatable(rawget(state, "profileGroups"), { __mode = "kv" })
 -- Revision 8 caches the groups per database. Groups an older revision built
 -- are not in the cache: they keep working, and the first call after the
 -- upgrade builds the group later calls return.
 if rawget(state, "profileLinksByDatabase") == nil then
   rawset(state, "profileLinksByDatabase", setmetatable({}, { __mode = "k" }))
+end
+-- Revision 8 kept an array of links per database, one per distinct set of
+-- options, which grew with every new `localize` closure. Revision 9 keeps one
+-- link: an inherited array is reduced to its last link. The other groups keep
+-- working wherever they are held; later calls with their options build anew.
+for database, entry in next, rawget(state, "profileLinksByDatabase") do
+  if rawget(entry, "db") == nil then
+    rawset(rawget(state, "profileLinksByDatabase"), database, entry[#entry])
+  end
 end
 for _, existingTree in next, rawget(state, "trees") do
   if rawget(existingTree, "_schema") == 1 then
@@ -1969,8 +1988,9 @@ end
 -- `OnChange` on each, so a renderer redraws after a switch made elsewhere;
 -- `Undefine` disconnects them. The group table is the key of
 -- `state.profileGroups`, which is how `Define` finds the link. Revision 8
--- caches the link, and so the group, per database and options in
--- `state.profileLinksByDatabase`, as AceDBOptions keeps one group per database.
+-- caches the link, and so the group, per database in
+-- `state.profileLinksByDatabase`, as AceDBOptions keeps one group per database;
+-- since revision 9 a call with other options replaces the cached link.
 
 -- The methods the group calls on the database. Checked structurally, as
 -- `options.db` is: SettingsKit API 1 publishes no predicate for its databases.
@@ -2509,9 +2529,10 @@ local function detachProfileLink(link)
   link.tree = false
 end
 
----The link of the group already built for `db` with exactly these options,
----or `nil`. The option values were checked by `readProfileOptions` (none is a
----secret), so comparing them is safe; `localize` is compared by identity.
+---The link of the group last built for `db`, when it was built with exactly
+---these options, or `nil`. The option values were checked by
+---`readProfileOptions` (none is a secret), so comparing them is safe;
+---`localize` is compared by identity.
 ---@param db table
 ---@param name string|false
 ---@param order number|false
@@ -2519,25 +2540,23 @@ end
 ---@param localize function|false
 ---@return table|nil link
 local function findCachedProfileLink(db, name, order, description, localize)
-  local links = rawget(profileLinksByDatabase, db)
-  if links == nil then
-    return nil
-  end
-  for index = 1, #links do
-    local link = links[index]
-    if
-      link.name == name
-      and link.order == order
-      and link.description == description
-      and link.localize == localize
-    then
-      return link
-    end
+  local link = rawget(profileLinksByDatabase, db)
+  if
+    link ~= nil
+    and link.name == name
+    and link.order == order
+    and link.description == description
+    and link.localize == localize
+  then
+    return link
   end
   return nil
 end
 
----Build the group for a new link and remember it for `db`.
+---Build the group for a new link and remember it for `db`, replacing the link
+---built there before: one link per database keeps the cache bounded however
+---many option sets (or `localize` closures) the calls pass. A replaced group
+---keeps working wherever it is still held.
 ---@param link table
 ---@return OptionsKit.Option group
 local function buildProfileGroup(link)
@@ -2554,13 +2573,7 @@ local function buildProfileGroup(link)
   end
   link.group = group
   rawset(profileGroups, group, link)
-  local db = link.db
-  local links = rawget(profileLinksByDatabase, db)
-  if links == nil then
-    links = {}
-    rawset(profileLinksByDatabase, db, links)
-  end
-  links[#links + 1] = link
+  rawset(profileLinksByDatabase, link.db, link)
   return group
 end
 
@@ -2785,9 +2798,6 @@ local function define(_, addonName, spec, options)
     _db = db,
     -- The limits the tree was defined under, `math.huge` for unbounded.
     -- Only `Define` enforces them; they are kept for inspection.
-    _maxOptions = context.maxOptions,
-    _maxDepth = context.maxDepth,
-    _maxDynamicEntries = context.maxDynamicEntries,
   }, TREE_METATABLE)
   context.db = db
   context.tree = tree

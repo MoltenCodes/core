@@ -107,7 +107,7 @@ describe("OptionsKit bootstrap", function()
     assert.is_true(upgraded.REVISION > 1)
     local groups = rawget(state, "profileGroups")
     assert.are.equal("table", type(groups))
-    assert.are.equal("k", getmetatable(groups).__mode)
+    assert.are.equal("kv", getmetatable(groups).__mode)
     assert.are.equal(2, rawget(tree, "_schema"))
     assert.are.same({}, rawget(tree, "_profileLinks"))
     assert.is_true(upgraded:Undefine("Addon"))
@@ -320,6 +320,48 @@ describe("OptionsKit bootstrap", function()
     assert.is_true(upgraded:Undefine("Addon"))
     local again = upgraded:Define("Again", { type = "group", args = { profiles = cached } })
     assert.are.equal("Raid", again:Get("profiles.current"))
+  end)
+
+  it("upgrades a revision 8 state: one link per database, weak group map", function()
+    TestEnv.Reset()
+    TestEnv.InstallWowApi()
+    require("Registry")
+    require("SignalKit")
+    require("SchemaKit")
+    local OptionsKit = TestEnv.LoadRevision(8)
+    local SettingsKit = require("SettingsKit")
+    local S = require("SchemaKit")
+    local db = SettingsKit:Open(PROFILE_SAVED_VARIABLE, {
+      profile = S.table({ fields = { scale = S.optional(S.number(), 1) } }),
+    })
+    local first = OptionsKit:ProfileOptions(db, { name = "First" })
+    local last = OptionsKit:ProfileOptions(db)
+    local tree = OptionsKit:Define("Addon", { type = "group", args = { profiles = first } })
+    local state = rawget(OptionsKit, "_state")
+    -- Revision 8's layout: an array of links per database, a group map weak
+    -- in its keys only.
+    local cache = rawget(state, "profileLinksByDatabase")
+    local groups = rawget(state, "profileGroups")
+    rawset(cache, db, { groups[first], groups[last] })
+    setmetatable(groups, { __mode = "k" })
+
+    -- The shipped file, at its own revision, loads over revision 8.
+    local upgraded = require("OptionsKit")
+    assert.are.equal(OptionsKit, upgraded)
+    assert.is_true(upgraded.REVISION > 8)
+    assert.are.equal("kv", getmetatable(groups).__mode)
+    -- The array is reduced to its last link, which later calls return.
+    assert.are.equal(groups[last], rawget(cache, db))
+    assert.are.equal(last, upgraded:ProfileOptions(db))
+
+    -- The group defined before the upgrade still reaches its tree.
+    local changes = {}
+    tree:OnChange(function(_, path, value)
+      changes[#changes + 1] = { path, value }
+    end)
+    db:SetProfile("Raid")
+    assert.are.same({ { "profiles.current", "Raid" } }, changes)
+    assert.is_true(upgraded:Undefine("Addon"))
   end)
 
   it("requires Registry", function()

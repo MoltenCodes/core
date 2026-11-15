@@ -940,6 +940,39 @@ describe("OptionsKit ProfileOptions", function()
       setGlobal("OptionsKitProfileOtherDB", nil)
     end)
 
+    it("keeps one link per database, so other options replace it and old groups go", function()
+      local OptionsKit, db = openDatabase()
+      local state = rawget(OptionsKit, "_state")
+      local kept = OptionsKit:ProfileOptions(db, { name = "Kept" })
+      -- A fresh `localize` closure per call used to add a link and a group
+      -- entry that were never released.
+      for _ = 1, 50 do
+        OptionsKit:ProfileOptions(db, {
+          localize = function(_, default)
+            return default
+          end,
+        })
+      end
+      local last = OptionsKit:ProfileOptions(db)
+      collectgarbage("collect")
+      collectgarbage("collect")
+
+      assert.are.equal(last, rawget(state.profileLinksByDatabase, db).group)
+      local entries = 0
+      for _ in pairs(state.profileGroups) do
+        entries = entries + 1
+      end
+      -- The cached group and the one this spec still holds.
+      assert.are.equal(2, entries)
+
+      -- A replaced group the consumer kept still works as a profile group.
+      assert.are_not.equal(kept, OptionsKit:ProfileOptions(db, { name = "Kept" }))
+      local tree = OptionsKit:Define("Addon", { type = "group", args = { profiles = kept } })
+      assert.are.equal("Default", tree:Get("profiles.current"))
+      db:SetProfile("Alt")
+      assert.are.equal("Alt", tree:Get("profiles.current"))
+    end)
+
     it("calls localize once per database and options, when the group is built", function()
       local OptionsKit, db = openDatabase()
       local calls = 0
@@ -1076,12 +1109,12 @@ describe("OptionsKit ProfileOptions", function()
 
     it("allocates nothing on a call answered from the cache #allocation", function()
       local OptionsKit, db = openDatabase()
+      -- Warmed with an equal table: options are compared by value. Calls
+      -- alternating two option sets would rebuild (one group per database).
+      OptionsKit:ProfileOptions(db, { name = "Profiles", order = 90 })
       local options = { name = "Profiles", order = 90 }
-      OptionsKit:ProfileOptions(db)
-      OptionsKit:ProfileOptions(db, options)
       local allocated = TestEnv.AllocatedKilobytes(function()
-        for _ = 1, 2000 do
-          OptionsKit:ProfileOptions(db)
+        for _ = 1, 4000 do
           OptionsKit:ProfileOptions(db, options)
         end
       end)

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.1 — 2026-11-15
+
+- Fixed: the `ProfileOptions` cache grew without bound. It kept one link per database and set of options, compared `localize` by identity, and never released an entry, so a consumer passing a `localize` closure made fresh for each call added a link and a group per call for the session (the weak keys never released: each link references its database and its group). The cache now keeps one link per database and a call with other options replaces it; the profile group map is weak in keys and values, so a replaced group nobody holds is released, and one still held keeps working and is still recognised by `Define`. Calls alternating two option sets now build a group each time (`docs/API.md`, *One group per database and options*).
+- Removed (internal): the tree fields `_maxOptions`, `_maxDepth` and `_maxDynamicEntries`, written at `Define` and read by nothing (the multiselect schemas take the limit from the build context). `docs/INTERNALS.md` no longer lists them or claims the schemas read them. Two stale source comments are corrected (the group map's weak keys; the upgrade note that "revisions 3 to 6 changed no layout" stood for every later state).
+- Implementation revision 9. An in-place upgrade over revision 8 reduces each database's array of links to its last link and makes the group map weak in keys and values; groups built earlier keep working. A new upgrade spec models revision 8's layout; the revision 1 upgrade spec now expects the `kv` mode, and the allocation spec of the cached call uses one option set.
+- 188 specs: the cache stays at one link and the group map at the groups still held after 50 calls with fresh `localize` closures, and a replaced group still works in a tree; the upgrade over revision 8.
+
 ## 0.4.0 — 2026-09-25
 
 A contract change inside API generation 1, approved by the owner after the host benchmark against AceDBOptions-3.0 (`docs/BENCHMARKS.md`).
