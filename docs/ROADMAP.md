@@ -1384,8 +1384,24 @@ its code. Order:
 - [ ] **launcherKit** — the minimap launcher for brokerKit, with an
       AddonCompartment entry on Retail.
 - [ ] **tooltipKit** — multi-column tooltips pooled through PoolKit.
-- [ ] widgetKit — AceConfigDialog's tab, tree and drop-down group layouts
-      in the renderer.
+- [x] widgetKit — AceConfigDialog's tab, tree and drop-down group layouts
+      in the renderer. A capability of three existing Kits, agreed with the
+      owner on 2026-11-15, and delivered the same day (optionsKit 0.5.0,
+      widgetKit 0.3.0, bridgeKit 0.5.0; bridgeKit design decision 23):
+      - **optionsKit**: a `group` accepts the renderer hint `childGroups`,
+        `"tab"`, `"tree"` or `"select"`, as Ace3 names them; `Describe`
+        carries it; the facade publishes `CHILD_GROUPS` so other Kits can
+        tell an OptionsKit that knows the hint.
+      - **widgetKit**: `RenderOptions` shows the non-inline child groups of
+        a group with `childGroups` one page at a time: a row of buttons
+        (`tab`), a list beside the page (`tree`, one level; a page's own
+        `childGroups` opens the next) or a dropdown (`select`). Options and
+        inline groups stay above the pages. The selected page is kept per
+        group while the rendering lives, and choosing one rebuilds the
+        rendering. A group without the hint renders as before.
+      - **bridgeKit**: `ConvertAceConfig` carries `childGroups` over when
+        the registered OptionsKit publishes `CHILD_GROUPS`, and reports it
+        dropped as before otherwise.
 - [ ] barKit (status and timer bars), dialogKit, toastKit, bindingKit, glow,
       Edit Mode integration, timerKit's engine-driven ticker (W15).
 

@@ -54,7 +54,7 @@
 
 local PACKAGE_NAME = "bridgeKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 4
+local IMPLEMENTATION_REVISION = 5
 local REQUIRED_REGISTRY_API = 2
 local STATE_SCHEMA = 1
 
@@ -1171,7 +1171,7 @@ local KIND_FIELDS = {
       args = "args",
       plugins = "args",
       inline = "inline",
-      childGroups = "drop",
+      childGroups = "childGroups",
       guiInline = "inline",
       dialogInline = "inline",
       dropdownInline = "inline",
@@ -2336,8 +2336,22 @@ function convertBody(work, aceOption, spec, target, context)
         end
       end
     end
-    if type(readField(work, aceOption, "childGroups", context.where)) ~= "nil" then
-      noteEntry(work.report, path, "childGroups", "dropped", "presentation")
+    -- OptionsKit revision 10 and later take Ace3's three layouts as they
+    -- are and publish them in `CHILD_GROUPS`; an older OptionsKit, or none,
+    -- would refuse the field, so it is dropped there as before.
+    local childGroups = readField(work, aceOption, "childGroups", context.where)
+    if type(childGroups) ~= "nil" then
+      local OptionsKit = Registry:Find("optionsKit", 1)
+      local accepted = type(OptionsKit) == "table" and rawget(OptionsKit, "CHILD_GROUPS") or nil
+      if
+        type(accepted) == "table"
+        and type(childGroups) == "string"
+        and accepted[childGroups] == true
+      then
+        target.childGroups = childGroups
+      else
+        noteEntry(work.report, path, "childGroups", "dropped", "presentation")
+      end
     end
     for field in next, aceOption do
       if type(field) == "string" and not BASE_FIELDS[field] and spec.own[field] == nil then

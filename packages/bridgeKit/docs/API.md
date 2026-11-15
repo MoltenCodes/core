@@ -8,7 +8,8 @@ document is the contract of what the current revision ships.
 **Revision 4 ships all four parts**: the AceSerializer-3.0 wire format
 (design step N1, revision 1), the AceConfig-3.0 adapter (step N2, revision 2),
 the AceDB-3.0 importer (step N3, revision 3) and the AceComm-3.0 channel
-(step N4, revision 4).
+(step N4, revision 4); revision 5 carries AceConfigDialog's `childGroups`
+layouts over to OptionsKit.
 
 Everything here reproduces Ace3 at commit
 `5e2e0d3b3fd125ef1518744c6a9dd21f68f6e773`, AceSerializer-3.0 `MINOR` 5. The
@@ -231,13 +232,17 @@ with the option's Ace `info`, and their result kept, because OptionsKit's
 `name` is a string and its `order` a number; a name function that gives no
 string leaves the option named by its key. `desc` stays live. Fields that only
 choose a presentation (`width`, `descStyle`, `icon`, `image`, `style`,
-`childGroups`, ...), custom AceGUI controls and fields OptionsKit cannot
+...), custom AceGUI controls and fields OptionsKit cannot
 express are dropped and reported. A group's `plugins` are merged into its
 `args`, a plugin winning a collision as `GetSubOption` searches plugins first
 (`AceConfigDialog-3.0.lua:117-127`). A `range` without `min` gets `0`
 (`-math.huge` with a `softMin`) and without `max` gets `100` (`math.huge` with
 a `softMax`), as the dialog's slider assumes (`877`); its `step` is kept but
-not enforced by OptionsKit, where the dialog snaps to it (`880`).
+not enforced by OptionsKit, where the dialog snaps to it (`880`). A group's `childGroups` (`"tab"`, `"tree"` or `"select"`) is kept when the
+OptionsKit registered at conversion time publishes `CHILD_GROUPS` (OptionsKit
+revision 10 and later), so WidgetKit's renderer shows those groups as pages;
+with an older OptionsKit or none, and for any other value, it is dropped and
+reported (`presentation`) as before, because an older `Define` would refuse it.
 
 **Keys.** OptionsKit accepts identifiers as keys (`[%a_][%w_]*`); Ace accepts
 any string without control characters (`AceConfigRegistry-3.0.lua:197-205`).

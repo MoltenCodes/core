@@ -1347,4 +1347,34 @@ describe("BridgeKit DefineAceConfig", function()
       tostring(failure):find("requires OptionsKit API 1, which is not loaded (absent)", 1, true)
     )
   end)
+
+  it(
+    "carries childGroups over when OptionsKit publishes CHILD_GROUPS, and drops it otherwise",
+    function()
+      local BridgeKit, OptionsKit = Env.NewPackageWithOptionsKit()
+      local function source()
+        return {
+          type = "group",
+          childGroups = "tree",
+          args = {
+            tabs = { type = "group", name = "Tabs", childGroups = "tab", args = {} },
+            odd = { type = "group", name = "Odd", childGroups = "drop", args = {} },
+          },
+        }
+      end
+      local tree, report = BridgeKit:DefineAceConfig("ChildGroups", source())
+      local description = tree:Describe()
+      assert.are.equal("tree", description.childGroups)
+      assert.are.equal("tab", tree:DescribeOption("tabs").childGroups)
+      assert.is_nil(tree:DescribeOption("odd").childGroups)
+      assert.are.equal("dropped (presentation)", noted(report, "odd", "childGroups"))
+      assert.is_nil(noted(report, "tabs", "childGroups"))
+
+      -- An OptionsKit that does not publish the values would refuse the field.
+      rawset(OptionsKit, "CHILD_GROUPS", nil)
+      local conversion = BridgeKit:ConvertAceConfig("Older", source())
+      assert.is_nil(conversion.tree.childGroups)
+      assert.are.equal("dropped (presentation)", noted(conversion.report, "", "childGroups"))
+    end
+  )
 end)

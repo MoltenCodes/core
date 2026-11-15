@@ -504,7 +504,7 @@ describe("BridgeKit AceComm channel", function()
 
     it("runs the newest revision's receive code for a channel an older one opened", function()
       local _, received = openRecording()
-      Env.LoadRevision(5, {
+      Env.LoadRevision(BridgeKit.REVISION + 1, {
         ['countAce("aceMessagesReceived")'] = 'countAce("aceMessagesReceived", 10)',
       })
       commKit.Deliver(PREFIX, "hi", "PARTY", SENDER)

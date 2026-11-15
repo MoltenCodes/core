@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.0 — 2026-11-15
+
+- Added: `ConvertAceConfig` and `DefineAceConfig` keep a group's `childGroups` (`"tab"`, `"tree"` or `"select"`) when the registered OptionsKit publishes `CHILD_GROUPS` (OptionsKit revision 10 and later), so WidgetKit's renderer draws Ace's tabs, tree and drop-down groups as pages. With an older OptionsKit or none, and for any other value, the field is dropped and reported as `presentation`, as before. Design decision 23.
+- Implementation revision 5. No state changed: an upgrade over revision 4 keeps every channel and counter.
+- Specs: the field kept and described, an unknown value dropped, and an OptionsKit without `CHILD_GROUPS`. The AceComm upgrade spec loads `REVISION + 1` instead of a fixed revision.
+
 ## 0.4.0 — 2026-11-15
 
 Delivery step N4 of `docs/BRIDGE_KIT_DESIGN.md`: the AceComm-3.0 channel. API

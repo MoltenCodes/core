@@ -756,8 +756,10 @@ rendering:Refresh()
   `validate` refusal is returned for the user.
 - **`confirm`** exists on `execute` only.
 - **Keys** in `args` are identifiers (`[%a_][%w_]*`).
-- Presentation fields (`width`, `icon`, `image`, `descStyle`,
-  `childGroups`, the `dialogControl` family, per-interface `guiHidden` and
+- `childGroups` (`"tab"`, `"tree"`, `"select"`) is the same hint on an
+  OptionsKit group, and WidgetKit's renderer draws those groups as pages.
+- Presentation fields (`width`, `icon`, `image`, `descStyle`, the
+  `dialogControl` family, per-interface `guiHidden` and
   `cmdHidden`) have no equivalent; OptionsKit refuses unknown fields at
   `Define`.
 - **`NotifyChange`**: the rendering follows `tree:OnChange` by itself;
@@ -1103,7 +1105,6 @@ end
 | Ace3 | Status |
 |---|---|
 | AceGUI `TreeGroup`, `TabGroup`, `DropdownGroup`, `Icon`, `InteractiveLabel`, `Frame:SetStatusText` | The user-interface phase. |
-| AceConfigDialog `childGroups` (tabs, trees, drop-down groups) | The user-interface phase; `RenderOptions` nests groups. |
 | AceTab completion in arbitrary edit boxes | Not planned; CommandKit completes its own commands. |
 | AceDB namespaces, and the `race`, `factionrealm`, `factionrealmregion` and `locale` scopes | Not in SettingsKit API 1; use a second database or map fields. BridgeKit's importer maps existing data. |
 | Reading or writing AceComm and AceSerializer traffic | BridgeKit. |
