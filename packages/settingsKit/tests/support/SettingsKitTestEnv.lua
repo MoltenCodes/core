@@ -5,7 +5,8 @@
 --- What stays here is this package's own module load order and the host
 --- surface only SettingsKit touches, which the shared fixture does not model:
 ---
----   `UnitName`, `GetRealmName`, `UnitClass`, `UnitFactionGroup`
+---   `UnitName`, `GetRealmName`, `UnitClass`, `UnitFactionGroup`, `UnitRace`,
+---   `GetLocale`, `GetCurrentRegion`, `GetCurrentRegionName`
 ---                        the player identity `Open` resolves its scope keys
 ---                        from, set by `SetPlayer`;
 ---   `issecretvalue`      installed by `InstallSecretProbe`, reporting the
@@ -30,16 +31,33 @@ local SettingsKitTestEnv = FrameworkTestEnv.New({
 })
 
 --- The player identity host functions this environment installs and removes.
-local IDENTITY_GLOBALS =
-  { "UnitName", "UnitNameUnmodified", "GetRealmName", "UnitClass", "UnitFactionGroup" }
+local IDENTITY_GLOBALS = {
+  "UnitName",
+  "UnitNameUnmodified",
+  "GetRealmName",
+  "UnitClass",
+  "UnitFactionGroup",
+  "UnitRace",
+  "GetLocale",
+  "GetCurrentRegion",
+  "GetCurrentRegionName",
+}
 
 --- The specialization host surface `SetSpecialization` installs and `Reset`
 --- removes. `WOW_PROJECT_ID` is owned, and cleared, by the shared fixture.
 local SPECIALIZATION_GLOBALS = { "C_SpecializationInfo", "GetNumTalentGroups" }
 
 --- The identity a fresh environment reports.
-local DEFAULT_PLAYER =
-  { name = "Tester", realm = "Silvermoon", class = "MAGE", faction = "Alliance" }
+local DEFAULT_PLAYER = {
+  name = "Tester",
+  realm = "Silvermoon",
+  class = "MAGE",
+  faction = "Alliance",
+  race = "Scourge",
+  locale = "enUS",
+  region = 3,
+  regionName = "EU",
+}
 
 --- Saved-variable globals specs created through `SavedVariable`.
 local savedVariables = {}
@@ -72,12 +90,14 @@ function SettingsKitTestEnv.GetGlobal(name)
   return rawget(_G, name)
 end
 
----Install the four identity functions for `player`. A field set to `false`
----leaves that function out, so the scope it feeds is unavailable.
+---Install the identity functions for `player`. A field set to `false` leaves
+---that function out, so the scope it feeds is unavailable. `race`, `locale`,
+---`region` (the number `GetCurrentRegion` answers) and `regionName` feed the
+---scopes revision 15 added; each may be any value, for the fallback cases.
 ---`unmodified`, when given, installs `UnitNameUnmodified` answering it (any
 ---value, for the fallback cases); without it the function is left out, as on
 ---a client without one.
----@param player table? `{ name, realm, class, faction, unmodified }`; omitted fields take the defaults
+---@param player table? `{ name, realm, class, faction, unmodified, race, locale, region, regionName }`; omitted fields take the defaults
 function SettingsKitTestEnv.SetPlayer(player)
   player = player or {}
   local function pick(field)
@@ -116,6 +136,23 @@ function SettingsKitTestEnv.SetPlayer(player)
       return faction, "Localized " .. faction
     end
     return nil
+  end or nil)
+  local race, locale = pick("race"), pick("locale")
+  local region, regionName = pick("region"), pick("regionName")
+  setGlobal("UnitRace", race ~= false and function(unit)
+    if unit == "player" then
+      return "Localized race", race, 5
+    end
+    return nil
+  end or nil)
+  setGlobal("GetLocale", locale ~= false and function()
+    return locale
+  end or nil)
+  setGlobal("GetCurrentRegion", region ~= false and function()
+    return region
+  end or nil)
+  setGlobal("GetCurrentRegionName", regionName ~= false and function()
+    return regionName
   end or nil)
 end
 
@@ -202,6 +239,7 @@ function SettingsKitTestEnv.Reset()
   end
 
   baseReset()
+  package.loaded["SettingsKit-Namespaces"] = nil
   for index = 1, #IDENTITY_GLOBALS do
     setGlobal(IDENTITY_GLOBALS[index], nil)
   end
@@ -220,6 +258,13 @@ function SettingsKitTestEnv.NewPackage()
   local SettingsKit, Registry, SignalKit, EventKit, SchemaKit = baseNewPackage()
   SettingsKitTestEnv.SetPlayer()
   return SettingsKit, Registry, SignalKit, EventKit, SchemaKit
+end
+
+---Load the Namespaces part after the core, as an addon that embeds it does.
+---@return table SettingsKit
+function SettingsKitTestEnv.LoadNamespaces()
+  package.loaded["SettingsKit-Namespaces"] = nil
+  return require("SettingsKit-Namespaces")
 end
 
 ---Load the module chain without EventKit, as an addon that embeds none does.

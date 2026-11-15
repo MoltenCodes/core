@@ -31,6 +31,12 @@
 --     an assignment for it switching at once, and, after the owner changes
 --     specialization (or talent group) and runs the suite again in the same
 --     session, the database having followed through EventKit;
+--   * AceDB-3.0 parity (revision 15): the race, factionrealm,
+--     factionrealmregion and locale keys from the live client (`UnitRace` on
+--     the Classic flavours, whose documentation omits it), the lifecycle
+--     signals around a real switch, and, with the Namespaces part, a
+--     namespace stored in the real saved variable, back after /reload, and an
+--     empty one removed by the logout cleanup;
 --   * secret values made by the client's `secretwrap`: a secret already in
 --     the saved table reads back through a view still secret, a secret value
 --     or key is refused, and every secret argument is refused before it is
@@ -1995,6 +2001,165 @@ specProfiles:Test(
     ctx:Expect(db:GetSpecProfile(index)):ToBe(specScratchProfile(index))
     ctx:Expect(db:ApplySpecProfile()):ToBe(false)
     ctx:Log("assigned " .. count .. " index(es); change specialization and run again")
+  end
+)
+
+-- settingsKit.aceParity ---------------------------------------------------------------------------
+--
+-- Revision 15: AceDB-3.0's four other scopes keyed from the live client, the
+-- lifecycle signals around a real switch, and namespaces in the real saved
+-- variable across /reload (with the Namespaces part).
+
+local aceParity = newSuite("aceParity")
+
+--- The namespace the account database keeps across /reload, holding a value.
+local KEPT_NAMESPACE = "MoltenCodesTestKept"
+
+--- The namespace registered with nothing but defaults: the logout cleanup
+--- removes it, so it is absent from the table the client restores.
+local EMPTY_NAMESPACE = "MoltenCodesTestEmpty"
+
+--- The value the kept namespace stores.
+local KEPT_SIZE = 7
+
+local NAMESPACE_SCHEMA = {
+  profile = S.table({ fields = { size = S.optional(S.number({ min = 1, max = 100 }), 36) } }),
+}
+
+---The namespace methods, or skip when the Namespaces part is not loaded: the
+---core then raises when the method is read.
+---@param ctx table
+---@param db table
+local function requireNamespaces(ctx, db)
+  local loaded = pcall(function()
+    return db.RegisterNamespace
+  end)
+  if not loaded then
+    Harness:SkipTest(
+      ctx,
+      "the Namespaces part (settingsKit\\parts\\SettingsKit-Namespaces.lua) is not loaded"
+    )
+  end
+end
+
+aceParity:Test(
+  "race, factionrealm, factionrealmregion and locale are keyed as AceDB-3.0 keys them from the live client",
+  function(ctx)
+    local record = S.table({ fields = { touched = S.optional(S.boolean(), false) } })
+    local name = newScratchGlobal("aceScopes")
+    local db = SettingsKit:Open(name, {
+      race = record,
+      factionrealm = record,
+      factionrealmregion = record,
+      locale = record,
+    })
+    local _, race = callHost("UnitRace", "player")
+    local faction = plainName((callHost("UnitFactionGroup", "player")))
+    local realm = plainName((callHost("GetRealmName")))
+    local regionNames = { "US", "KR", "EU", "TW", "CN" }
+    local regionNumber = callHost("GetCurrentRegion")
+    local region = (not isSecret(regionNumber) and type(regionNumber) == "number")
+        and regionNames[regionNumber]
+      or plainName((callHost("GetCurrentRegionName")))
+      or "TR"
+    local locale = plainName((callHost("GetLocale")))
+    if type(faction) == "nil" or type(realm) == "nil" then
+      ctx:Fail('UnitFactionGroup("player") or GetRealmName() answered no plain name')
+    end
+    ---@cast faction string
+    ---@cast realm string
+    ctx:Log(
+      "race "
+        .. tostring(plainName(race))
+        .. ", region "
+        .. region
+        .. ", locale "
+        .. tostring(locale)
+    )
+    db.race.touched = true
+    db.factionrealm.touched = true
+    db.factionrealmregion.touched = true
+    db.locale.touched = true
+    local raw = readHost(name)
+    ctx:Expect(type(rawField(rawTableField(raw, "race"), plainName(race) or ""))):ToBe("table")
+    ctx
+      :Expect(type(rawField(rawTableField(raw, "factionrealm"), faction .. " - " .. realm)))
+      :ToBe("table")
+    ctx
+      :Expect(
+        type(
+          rawField(
+            rawTableField(raw, "factionrealmregion"),
+            faction .. " - " .. realm .. " - " .. region
+          )
+        )
+      )
+      :ToBe("table")
+    ctx:Expect(type(rawField(rawTableField(raw, "locale"), (locale or ""):lower()))):ToBe("table")
+  end
+)
+
+aceParity:Test(
+  "SetProfile fires OnProfileShutdown before the switch, then OnNewProfile, then OnProfileChanged",
+  function(ctx)
+    local db = SettingsKit:Open(newScratchGlobal("lifecycle"), SCRATCH_SCHEMA)
+    local order = {}
+    track(db:OnProfileShutdown(function(_, name)
+      order[#order + 1] = "shutdown " .. name
+    end))
+    track(db:OnNewProfile(function(_, name)
+      order[#order + 1] = "new " .. name
+    end))
+    track(db:OnProfileChanged(function(_, name)
+      order[#order + 1] = "changed " .. name
+    end))
+    local previous = db:GetProfile()
+    local target = SCRATCH_PROFILE_PREFIX .. "lifecycle"
+    db:SetProfile(target)
+    ctx
+      :Expect(table.concat(order, ", "))
+      :ToBe("shutdown " .. previous .. ", new " .. target .. ", changed " .. target)
+    ctx:Expect(db:IsNewProfile()):ToBe(true)
+  end
+)
+
+aceParity:Test(
+  "a namespace of the account database is stored in namespaces.<name> in AceDB-3.0's layout",
+  function(ctx)
+    local account = openDatabases(ctx)
+    requireNamespaces(ctx, account)
+    local kept = account:RegisterNamespace(KEPT_NAMESPACE, NAMESPACE_SCHEMA)
+    account:RegisterNamespace(EMPTY_NAMESPACE, NAMESPACE_SCHEMA)
+    kept.profile.size = KEPT_SIZE
+    local namespaces = rawTableField(readHost(ACCOUNT_DB_NAME), "namespaces")
+    local keptProfiles = rawTableField(rawTableField(namespaces, KEPT_NAMESPACE), "profiles")
+    ctx:Expect(rawField(rawTableField(keptProfiles, account:GetProfile()), "size")):ToBe(KEPT_SIZE)
+    ctx:Expect(rawField(rawTableField(namespaces, KEPT_NAMESPACE), "profileKeys")):ToBeNil()
+    ctx:Expect(kept:GetProfile()):ToBe(account:GetProfile())
+    ctx:Log("/reload, then run again: the kept namespace comes back and the empty one is gone")
+  end
+)
+
+aceParity:Test(
+  "after /reload, the kept namespace came back from disk and the logout cleanup removed the empty one",
+  function(ctx)
+    local restored = restoredAtLoad and restoredAtLoad.account
+    local namespaces = rawTableField(restored, "namespaces")
+    if type(rawField(namespaces, KEPT_NAMESPACE)) == "nil" then
+      Harness:SkipTest(
+        ctx,
+        "first run: the previous test writes the namespaces; /reload and run again"
+      )
+    end
+    local keptProfiles = rawTableField(rawTableField(namespaces, KEPT_NAMESPACE), "profiles")
+    local found = false
+    for _, profile in pairs(keptProfiles or {}) do
+      if type(profile) == "table" and rawField(profile, "size") == KEPT_SIZE then
+        found = true
+      end
+    end
+    ctx:Expect(found):ToBe(true)
+    ctx:Expect(rawField(namespaces, EMPTY_NAMESPACE)):ToBeNil()
   end
 )
 

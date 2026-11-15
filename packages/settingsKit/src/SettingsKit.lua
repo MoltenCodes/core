@@ -53,7 +53,7 @@
 
 local PACKAGE_NAME = "settingsKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 14
+local IMPLEMENTATION_REVISION = 15
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_SCHEMAKIT_API = 1
 local REQUIRED_SIGNALKIT_API = 1
@@ -124,25 +124,67 @@ local UNBOUNDED_REFUSALS = {
   pathKeyLimit = "paths show keys other players can send, and every message must stay short and printable",
 }
 
--- The scopes a schema may declare, in the order they are documented.
-local SCOPE_NAMES = { "global", "char", "realm", "class", "faction", "profile" }
-
--- The section of the saved table each scope lives in.
-local SCOPE_SECTIONS = {
-  global = "global",
-  char = "char",
-  realm = "realm",
-  class = "class",
-  faction = "faction",
-  profile = "profiles",
+-- The scopes a schema may declare and what the code needs to know about each,
+-- in one table so the main chunk stays under Lua 5.1's 200 locals.
+local Scopes = {
+  -- Every scope, in the order they are documented. Revision 15 added `race`,
+  -- `factionrealm`, `factionrealmregion` and `locale`, AceDB-3.0's other
+  -- scopes, last: a walk that has found every scope a schema declares stops
+  -- early, so a schema of the original six walks no further than before.
+  names = {
+    "global",
+    "char",
+    "realm",
+    "class",
+    "faction",
+    "profile",
+    "race",
+    "factionrealm",
+    "factionrealmregion",
+    "locale",
+  },
+  -- The scopes revision 15 added. Their keys are read, and their sections
+  -- created and checked, only for a schema that declares them: saved data
+  -- that holds an unrelated top-level `race` key, which no earlier revision
+  -- read, still opens.
+  declaredOnlyNames = { "race", "factionrealm", "factionrealmregion", "locale" },
+  -- The section of the saved table each scope lives in.
+  sections = {
+    global = "global",
+    char = "char",
+    realm = "realm",
+    class = "class",
+    faction = "faction",
+    race = "race",
+    factionrealm = "factionrealm",
+    factionrealmregion = "factionrealmregion",
+    locale = "locale",
+    profile = "profiles",
+  },
+  -- The scope names as a set, for refusing an unknown one without allocating.
+  set = {
+    global = true,
+    char = true,
+    realm = true,
+    class = true,
+    faction = true,
+    race = true,
+    factionrealm = true,
+    factionrealmregion = true,
+    locale = true,
+    profile = true,
+  },
+  -- AceDB-3.0's region names, by `GetCurrentRegion()`, for the
+  -- `factionrealmregion` key; AceDB-3.0 falls back to
+  -- `GetCurrentRegionName()` and then to `"TR"`, and so does this file.
+  regionNames = { "US", "KR", "EU", "TW", "CN" },
+  fallbackRegion = "TR",
 }
 
--- The scope names as a set, for refusing an unknown one without allocating.
-local SCOPE_SET =
-  { global = true, char = true, realm = true, class = true, faction = true, profile = true }
-
--- Every section of the saved table, created at Open when missing.
--- `namespaces` is reserved for API 1's second version (module namespaces);
+-- Every section of the saved table, created at Open when missing, besides
+-- the sections of the scopes revision 15 added, which are created only when
+-- declared (`Scopes.declaredOnlyNames`). `namespaces` holds the namespaces of the
+-- Namespaces part (revision 15; it was reserved for them before);
 -- `specProfiles` (revision 11) holds each character's spec assignments.
 local LAYOUT_SECTIONS = {
   "global",
@@ -163,6 +205,7 @@ local OPTION_KEYS = {
   migrations = true,
   maxScannedEntries = true,
   allowNewerData = true,
+  maxNamespaces = true,
 }
 
 -- The two kinds of view: a record (a SchemaKit `table`) and a keyed section
@@ -193,6 +236,11 @@ local DATABASE_METHODS = {
   "OnProfileCopied",
   "OnProfileReset",
   "OnProfileDeleted",
+  "OnNewProfile",
+  "OnProfileShutdown",
+  "OnDatabaseShutdown",
+  "OnDatabaseReset",
+  "IsNewProfile",
   "Compact",
   "GetSavedVariable",
   "Pairs",
@@ -638,6 +686,31 @@ local Chain = {
   ENTRY_CACHE_METATABLE = rawget(state, "entryCacheMetatable"),
 }
 
+-- Revision 15. What every revision from 15 on shares:
+-- `parts`: the state of each loaded part (decision 0001), by part name.
+-- `helpers`: the core functions the parts call. Filled under "Commit" by
+--   every revision, and read by a part at call time, never copied, so an
+--   upgraded core serves parts loaded before it.
+-- `createdProfiles`: database to the set of profile names whose tables this
+--   session created (`db:IsNewProfile()`), weak-keyed so a database never
+--   gains a field for it.
+if type(rawget(state, "parts")) ~= "table" then
+  rawset(state, "parts", {})
+end
+if type(rawget(state, "helpers")) ~= "table" then
+  rawset(state, "helpers", {})
+end
+if type(rawget(state, "createdProfiles")) ~= "table" then
+  rawset(state, "createdProfiles", setmetatable({}, WEAK_KEYS))
+end
+
+-- The helpers of the database methods revision 15 added (profile lifecycle,
+-- `missingOk`, the namespace hooks), in one table so the main chunk stays
+-- under Lua 5.1's 200 locals. Filled under "Database methods".
+local DatabaseHelpers = {
+  createdProfiles = rawget(state, "createdProfiles"),
+}
+
 -- Host facilities ------------------------------------------------------------
 
 ---Return the host's `issecretvalue`, or `nil` on a client without secrets.
@@ -839,10 +912,10 @@ end
 ---Validate `Open`'s options and return what the database keeps of them.
 ---@param options any
 ---@param level integer stack level the failures are reported at
----@return string defaultProfile, integer|false version, table|false migrations, number maxScannedEntries, boolean allowNewerData
+---@return string defaultProfile, integer|false version, table|false migrations, number maxScannedEntries, boolean allowNewerData, number|nil maxNamespaces
 local function readOptions(options, level)
   if type(options) == "nil" then
-    return DEFAULT_PROFILE_NAME, false, false, DEFAULT_MAX_SCANNED_ENTRIES, false
+    return DEFAULT_PROFILE_NAME, false, false, DEFAULT_MAX_SCANNED_ENTRIES, false, nil
   end
   if type(options) ~= "table" then
     error("SettingsKit:Open options must be a table", level)
@@ -894,43 +967,59 @@ local function readOptions(options, level)
 
   local maxScannedEntries = readMaxScannedEntries(rawget(options, "maxScannedEntries"), level + 1)
   local allowNewerData = readAllowNewerData(rawget(options, "allowNewerData"), version, level + 1)
+  local maxNamespaces =
+    DatabaseHelpers.readMaxNamespaces(rawget(options, "maxNamespaces"), level + 1)
 
-  return defaultProfile, version or false, migrations or false, maxScannedEntries, allowNewerData
+  return defaultProfile,
+    version or false,
+    migrations or false,
+    maxScannedEntries,
+    allowNewerData,
+    maxNamespaces
 end
 
 ---Validate `Open`'s schema argument: a table of SchemaKit nodes or schemas
 ---keyed by scope name, with at least one scope.
 ---@param schema any
 ---@param level integer stack level the failures are reported at
-local function validateSchemaTable(schema, level)
+---@param label string? the method the schema was passed to (`SettingsKit:Open` when omitted)
+local function validateSchemaTable(schema, level, label)
+  label = label or "SettingsKit:Open"
   if type(schema) ~= "table" then
-    error("SettingsKit:Open schema must be a table of scope schemas", level)
+    error(label .. " schema must be a table of scope schemas", level)
   end
 
-  local unknown = firstUnknownKey(schema, SCOPE_SET)
+  local unknown = firstUnknownKey(schema, Scopes.set)
   if unknown ~= nil then
-    error('SettingsKit:Open schema contains unknown scope "' .. unknown .. '"', level)
+    error(label .. ' schema contains unknown scope "' .. unknown .. '"', level)
   end
 
+  -- Every key is a scope name now, so the walk below may stop once it has
+  -- seen them all.
+  local total = 0
+  for _ in next, schema do
+    total = total + 1
+  end
   local declared = 0
-  for index = 1, #SCOPE_NAMES do
-    local scopeName = SCOPE_NAMES[index]
+  for index = 1, #Scopes.names do
+    local scopeName = Scopes.names[index]
     local node = rawget(schema, scopeName)
     if type(node) ~= "nil" then
       local name = type(node) == "table" and getmetatable(node) or nil
       if name ~= "SchemaKit.Node" and name ~= "SchemaKit.Schema" then
         error(
-          "SettingsKit:Open schema."
-            .. scopeName
-            .. " must be a SchemaKit schema node or sealed schema",
+          label .. " schema." .. scopeName .. " must be a SchemaKit schema node or sealed schema",
           level
         )
       end
       declared = declared + 1
+      if declared == total then
+        break
+      end
     end
   end
   if declared == 0 then
-    error("SettingsKit:Open schema must declare at least one scope", level)
+    error(label .. " schema must declare at least one scope", level)
   end
 end
 
@@ -1508,8 +1597,9 @@ local compiledScopes = setmetatable({}, WEAK_KEYS)
 ---@param scopeName string
 ---@param maxDepth integer SchemaKit's `maxDepth` as `Open` read it
 ---@param level integer stack level the failures are reported at
+---@param label string the method the schema was passed to, for messages
 ---@return SchemaKit.Schema sealed, SettingsKit.Plan plan
-local function compileScope(node, scopeName, maxDepth, level)
+local function compileScope(node, scopeName, maxDepth, level, label)
   local schemaRevision = rawget(SchemaKit, "REVISION")
   local cached = compiledScopes[node]
   if cached ~= nil and cached.maxDepth == maxDepth and cached.schemaRevision == schemaRevision then
@@ -1522,11 +1612,11 @@ local function compileScope(node, scopeName, maxDepth, level)
   local sealed = SchemaKit:Seal(node)
   local description = sealed:Describe()
   if description.kind ~= "table" then
-    error("SettingsKit:Open schema." .. scopeName .. " must be a SchemaKit.table schema", level)
+    error(label .. " schema." .. scopeName .. " must be a SchemaKit.table schema", level)
   end
   local plan, refusal = compilePlan(description, 1, "schema." .. scopeName, maxDepth)
   if plan == nil then
-    error("SettingsKit:Open " .. tostring(refusal), level)
+    error(label .. " " .. tostring(refusal), level)
   end
   compiledScopes[node] = {
     sealed = sealed,
@@ -1992,8 +2082,8 @@ end
 ---@return table scope, string|false sectionKey, boolean detached
 function Chain.findRoot(db, proxy)
   local scopes = db._scopes
-  for index = 1, #SCOPE_NAMES do
-    local scopeName = SCOPE_NAMES[index]
+  for index = 1, #Scopes.names do
+    local scopeName = Scopes.names[index]
     if scopeName ~= "profile" and rawget(db, scopeName) == proxy then
       local scope = rawget(scopes, scopeName)
       return scope, scope.sectionKey, false
@@ -3063,8 +3153,8 @@ end
 ---keeps, the detached ones included until they are dropped.
 ---@param db table
 function Chain.rebindDatabase(db)
-  for index = 1, #SCOPE_NAMES do
-    local scopeName = SCOPE_NAMES[index]
+  for index = 1, #Scopes.names do
+    local scopeName = Scopes.names[index]
     if scopeName ~= "profile" then
       local proxy = rawget(db, scopeName)
       local node = proxy and rawget(views, proxy)
@@ -3292,8 +3382,8 @@ local function compactDatabase(db)
   bumpGeneration(db)
   local ok, removed = pcall(function()
     local count = 0
-    for index = 1, #SCOPE_NAMES do
-      local scope = rawget(db._scopes, SCOPE_NAMES[index])
+    for index = 1, #Scopes.names do
+      local scope = rawget(db._scopes, Scopes.names[index])
       if scope ~= nil then
         count = count + compactScope(raw, scope, isSecretValue, maxDepth)
       end
@@ -3304,21 +3394,45 @@ local function compactDatabase(db)
   if not ok then
     error(removed, 0)
   end
+  -- A database with namespaces compacts them too (the Namespaces part).
+  local namespaced = DatabaseHelpers.cascade(db, "compact")
+  if type(namespaced) == "number" then
+    removed = removed + namespaced
+  end
   return removed
 end
 
----Compact at logout. A failure is reported, never raised into EventKit's
----dispatch, so one addon's database cannot stop another's compaction. A
----read-only database is skipped: compaction removes saved values, and the
----newer version that wrote them decides what they should be.
+---Shut a database down at logout: fire `OnDatabaseShutdown` (revision 15),
+---on the database and then on its namespaces, then compact it, then let the
+---Namespaces part remove what is empty inside `namespaces`. Every failure is
+---reported, never raised into EventKit's dispatch, so one addon's database
+---cannot stop another's shutdown or compaction. A read-only database still
+---hears the signal but is not compacted: compaction removes saved values, and
+---the newer version that wrote them decides what they should be.
 ---@param db table
 local function compactOnLogout(db)
+  local signals = rawget(db, "_signals")
+  local signal = signals and rawget(signals, "databaseShutdown")
+  if signal ~= nil then
+    local fired, failure = pcall(signal.Fire, signal, db)
+    if not fired then
+      reportError(failure)
+    end
+  end
+  local shut, shutFailure = pcall(DatabaseHelpers.cascade, db, "shutdownDatabase")
+  if not shut then
+    reportError(shutFailure)
+  end
   if rawget(db, "_readOnly") == true then
     return
   end
   local ok, failure = pcall(compactDatabase, db)
   if not ok then
     reportError(failure)
+  end
+  local cleaned, cleanFailure = pcall(DatabaseHelpers.cascade, db, "logout")
+  if not cleaned then
+    reportError(cleanFailure)
   end
 end
 
@@ -3395,9 +3509,15 @@ local function callHost(name, ...)
   return host(...)
 end
 
----Read the four scope keys once, the way `Open` resolves them.
+---Read the scope keys once, the way `Open` resolves them: the four every
+---database has, and the keys of the scopes revision 15 added only when
+---`schema` declares them (`Scopes.readAddedKeys`), so a database that
+---declares none of them makes no further host call. The added keys are AceDB-3.0's (`AceDB-3.0.lua`, where
+---it computes its keys when it loads), so data imported from AceDB keeps its
+---keys.
+---@param schema table|nil the scope schemas `Open` was given; `nil` reads the four only
 ---@return table<string, string|false> keys
-local function readScopeKeys()
+local function readScopeKeys(schema)
   ---The player's name for the character key: `UnitNameUnmodified("player")`
   ---(revision 14), which no name-changing effect alters, as AceDB-3.0 keys
   ---characters; `UnitName("player")` when the client has no such function or
@@ -3425,30 +3545,103 @@ local function readScopeKeys()
   if playerName ~= nil and realm ~= nil then
     character = playerName .. " - " .. realm
   end
-  return {
+  local keys = {
     char = character,
     realm = realm or false,
     class = class or false,
     faction = faction or false,
   }
+
+  -- `schema` was validated: every value is `nil` or a schema node.
+  if schema ~= nil and Scopes.declaresAdded(schema) then
+    Scopes.readAddedKeys(keys, schema, faction, realm, isSecretValue)
+  end
+  return keys
+end
+
+---Fill in `keys` the keys of the scopes revision 15 added that `schema`
+---declares. A field of `Scopes`, defined once, so `readScopeKeys` builds no
+---closure on an `Open` that declares none of them.
+---@param keys table<string, string|false>
+---@param schema table
+---@param faction string|nil
+---@param realm string|nil
+---@param isSecretValue (fun(value: any): boolean)|nil
+function Scopes.readAddedKeys(keys, schema, faction, realm, isSecretValue)
+  if type(rawget(schema, "race")) ~= "nil" then
+    -- The second result is the race's file name (`"Scourge"`, `"NightElf"`),
+    -- which does not change with the client's language.
+    keys.race = usableKey((select(2, callHost("UnitRace", "player"))), isSecretValue) or false
+  end
+  ---@type string|false
+  local factionRealm = false
+  if faction ~= nil and realm ~= nil then
+    factionRealm = faction .. " - " .. realm
+  end
+  if type(rawget(schema, "factionrealm")) ~= "nil" then
+    keys.factionrealm = factionRealm
+  end
+  if type(rawget(schema, "factionrealmregion")) ~= "nil" then
+    keys.factionrealmregion = factionRealm
+      and (factionRealm .. " - " .. Scopes.readRegion(isSecretValue))
+  end
+  if type(rawget(schema, "locale")) ~= "nil" then
+    local locale = usableKey((callHost("GetLocale")), isSecretValue)
+    keys.locale = locale and locale:lower() or false
+  end
+end
+
+---The region name for `factionrealmregion`, as AceDB-3.0 picks it: the name
+---of `GetCurrentRegion()`'s number, else `GetCurrentRegionName()` when it
+---answers a usable name (test and beta clients answer `""`), else `"TR"`.
+---`GetCurrentRegionName` is documented only on Retail; it is read only when
+---the client has it.
+---@param isSecretValue (fun(value: any): boolean)|nil
+---@return string
+function Scopes.readRegion(isSecretValue)
+  local region = callHost("GetCurrentRegion")
+  if not (isSecretValue ~= nil and isSecretValue(region)) and type(region) == "number" then
+    local name = Scopes.regionNames[region]
+    if name ~= nil then
+      return name
+    end
+  end
+  return usableKey((callHost("GetCurrentRegionName")), isSecretValue) or Scopes.fallbackRegion
 end
 
 -- Why each scope can be unavailable, for the error a read of it raises.
-local UNAVAILABLE_REASONS = {
+Scopes.unavailableReasons = {
   char = 'UnitNameUnmodified("player"), UnitName("player") or GetRealmName() returned no name',
   realm = "GetRealmName() returned no realm",
   class = 'UnitClass("player") returned no class',
   faction = 'UnitFactionGroup("player") returned no faction',
+  race = 'UnitRace("player") returned no race',
+  factionrealm = 'UnitFactionGroup("player") or GetRealmName() returned no faction or realm',
+  factionrealmregion = 'UnitFactionGroup("player") or GetRealmName() returned no faction or realm',
+  locale = "GetLocale() returned no locale",
 }
+
+---Whether `scopes` (a database's scope records, or a validated schema
+---table) declares any of the scopes revision 15 added.
+---@param scopes table
+---@return boolean
+function Scopes.declaresAdded(scopes)
+  return rawget(scopes, "race") ~= nil
+    or rawget(scopes, "factionrealm") ~= nil
+    or rawget(scopes, "factionrealmregion") ~= nil
+    or rawget(scopes, "locale") ~= nil
+end
 
 -- Saved table ----------------------------------------------------------------
 
 ---Return the first layout section of `candidate` that is present but not a
----table, or `nil` when every section is absent or a table. Asks `type` only,
----so it writes nothing and never touches a secret.
+---table, or `nil` when every section is absent or a table. The sections of
+---the scopes revision 15 added count only when `scopes` declares them. Asks
+---`type` only, so it writes nothing and never touches a secret.
 ---@param candidate table the saved table, or a migrated copy of it
+---@param scopes table the database's scope records
 ---@return string|nil sectionName
-local function findLayoutProblem(candidate)
+local function findLayoutProblem(candidate, scopes)
   -- A new saved variable holds nothing to refuse.
   if type(next(candidate)) == "nil" then
     return nil
@@ -3460,6 +3653,19 @@ local function findLayoutProblem(candidate)
       return sectionName
     end
   end
+  if not Scopes.declaresAdded(scopes) then
+    return nil
+  end
+  local declaredOnlyNames = Scopes.declaredOnlyNames
+  for index = 1, #declaredOnlyNames do
+    local scopeName = declaredOnlyNames[index]
+    if rawget(scopes, scopeName) ~= nil then
+      local section = rawget(candidate, scopeName)
+      if type(section) ~= "nil" and type(section) ~= "table" then
+        return scopeName
+      end
+    end
+  end
   return nil
 end
 
@@ -3469,21 +3675,34 @@ end
 ---@param raw table
 ---@param name string saved-variable name, for messages
 ---@param level integer stack level the failure is reported at
-local function validateLayout(raw, name, level)
-  local sectionName = findLayoutProblem(raw)
+---@param scopes table the database's scope records
+local function validateLayout(raw, name, level, scopes)
+  local sectionName = findLayoutProblem(raw, scopes)
   if sectionName ~= nil then
     error("SettingsKit:Open " .. name .. "." .. sectionName .. " must be a table", level)
   end
 end
 
----Create every missing section of the saved table. The layout was validated
+---Create every missing section of the saved table, and the sections of the
+---scopes revision 15 added that `scopes` declares. The layout was validated
 ---first, so every present section is a table.
 ---@param raw table
-local function createLayout(raw)
+---@param scopes table the database's scope records
+local function createLayout(raw, scopes)
   for index = 1, #LAYOUT_SECTIONS do
     local sectionName = LAYOUT_SECTIONS[index]
     if type(rawget(raw, sectionName)) == "nil" then
       rawset(raw, sectionName, {})
+    end
+  end
+  if not Scopes.declaresAdded(scopes) then
+    return
+  end
+  local declaredOnlyNames = Scopes.declaredOnlyNames
+  for index = 1, #declaredOnlyNames do
+    local scopeName = declaredOnlyNames[index]
+    if rawget(scopes, scopeName) ~= nil and type(rawget(raw, scopeName)) == "nil" then
+      rawset(raw, scopeName, {})
     end
   end
 end
@@ -3515,8 +3734,9 @@ end
 ---@param name string saved-variable name, for messages
 ---@param migration function
 ---@param isLast boolean whether this is the last step with a function
+---@param scopes table the database's scope records
 ---@return boolean ok, any failure
-local function runMigrationStep(raw, name, migration, isLast)
+local function runMigrationStep(raw, name, migration, isLast, scopes)
   local isSecretValue = readIsSecret()
   local copy = copySavedTable(raw, isSecretValue)
   local ok, failure = pcall(migration, copy)
@@ -3527,7 +3747,7 @@ local function runMigrationStep(raw, name, migration, isLast)
     -- Steps before the last may pass through any shape (a pre-SettingsKit
     -- table can hold a field named `global`); the result the views will
     -- read must have the layout, and is refused before it is committed.
-    local sectionName = findLayoutProblem(copy)
+    local sectionName = findLayoutProblem(copy, scopes)
     if sectionName ~= nil then
       return false, name .. "." .. sectionName .. " must be a table"
     end
@@ -3569,8 +3789,9 @@ end
 ---@param version integer|false
 ---@param migrations table|false
 ---@param level integer stack level the failures are reported at
+---@param scopes table the database's scope records
 ---@return integer|false newerVersion
-local function migrate(raw, name, version, migrations, level)
+local function migrate(raw, name, version, migrations, level, scopes)
   if version == false then
     return false
   end
@@ -3593,7 +3814,7 @@ local function migrate(raw, name, version, migrations, level)
 
   local lastMigration = findLastMigration(migrations, stored + 1, version)
   if lastMigration == false then
-    validateLayout(raw, name, level + 1)
+    validateLayout(raw, name, level + 1, scopes)
   end
   for step = stored + 1, version do
     -- `migrations` is `false` when the option was omitted: every step is
@@ -3603,7 +3824,7 @@ local function migrate(raw, name, version, migrations, level)
       migration = rawget(migrations, step)
     end
     if type(migration) ~= "nil" then
-      local ok, failure = runMigrationStep(raw, name, migration, step == lastMigration)
+      local ok, failure = runMigrationStep(raw, name, migration, step == lastMigration, scopes)
       if not ok then
         raiseMigrationFailure(name, step, failure, level + 1)
       end
@@ -3713,6 +3934,129 @@ local function fireProfileSignal(db, signalName, ...)
   end
 end
 
+-- The bound `RegisterNamespace` keeps when `Open` got no `maxNamespaces`. An
+-- addon may register one namespace per module it loads (one per boss module,
+-- in a boss-warning addon), so the bound sits well above a handful; the data
+-- is the addon's own, so `SettingsKit.UNBOUNDED` lifts it.
+DatabaseHelpers.DEFAULT_MAX_NAMESPACES = 256
+
+-- The method names the Namespaces part publishes, for the message a read of
+-- one raises while the part is not loaded (decision 0001, point 5).
+DatabaseHelpers.PART_METHODS = { RegisterNamespace = "Namespaces", GetNamespace = "Namespaces" }
+
+-- The fields the `options` of `CopyProfile`, `DeleteProfile` and
+-- `GetNamespace` accept.
+DatabaseHelpers.MISSING_OK_KEYS = { missingOk = true }
+
+---Hand `phase` to the Namespaces part for a database that has namespaces
+---(`_namespaces`) or is one (`_parent`), and return what the part answers;
+---nothing for any other database, which pays two `rawget`s. The part sets
+---`state.dispatch.namespaces`, which no core revision overwrites.
+---@param db table
+---@param phase string
+---@param ... any
+---@return any
+function DatabaseHelpers.cascade(db, phase, ...)
+  if rawget(db, "_namespaces") == nil and rawget(db, "_parent") == nil then
+    return nil
+  end
+  local hook = rawget(dispatch, "namespaces")
+  if type(hook) ~= "function" then
+    return nil
+  end
+  return hook(db, phase, ...)
+end
+
+---Refuse a profile method a namespace cannot run: its profile follows its
+---parent database's, so it is changed there.
+---@param db table a validated database
+---@param methodName string qualified public method name, used in the error
+---@param level integer stack level the failure is reported at
+function DatabaseHelpers.refuseNamespace(db, methodName, level)
+  local parent = rawget(db, "_parent")
+  if parent ~= nil then
+    error(
+      methodName
+        .. " cannot be called on "
+        .. rawget(db, "_name")
+        .. "; call it on the database of "
+        .. rawget(parent, "_name"),
+      level
+    )
+  end
+end
+
+---Record that this session created the table of profile `name` of `db`. The
+---record is the name itself while there is one, the common case (`Open` of
+---a new character), so that case allocates no set; a second name turns it
+---into a set of names.
+---@param db table
+---@param name string
+function DatabaseHelpers.noteCreatedProfile(db, name)
+  local created = DatabaseHelpers.createdProfiles
+  local record = created[db]
+  if record == nil or record == name then
+    created[db] = name
+  elseif type(record) == "string" then
+    created[db] = { [record] = true, [name] = true }
+  else
+    record[name] = true
+  end
+end
+
+---Read the `options` of a method that accepts `{ missingOk = true }`, and
+---return whether it did. Refuses anything else at the caller's line; a
+---secret is refused before it is tested.
+---@param options any
+---@param methodName string qualified public method name, used in the error
+---@param level integer stack level the failure is reported at
+---@return boolean missingOk
+function DatabaseHelpers.readMissingOk(options, methodName, level)
+  if type(options) == "nil" then
+    return false
+  end
+  if type(options) ~= "table" then
+    error(methodName .. " options must be a table", level)
+  end
+  local unknown = firstUnknownKey(options, DatabaseHelpers.MISSING_OK_KEYS)
+  if unknown ~= nil then
+    error(methodName .. ' options contains unknown field "' .. unknown .. '"', level)
+  end
+  local missingOk = rawget(options, "missingOk")
+  if isSecret(missingOk) then
+    error(methodName .. " options.missingOk must not be a secret value", level)
+  end
+  if type(missingOk) ~= "nil" and type(missingOk) ~= "boolean" then
+    error(methodName .. " options.missingOk must be a boolean", level)
+  end
+  return missingOk == true
+end
+
+---Validate `Open`'s `maxNamespaces` and return the bound, `math.huge` for
+---`SettingsKit.UNBOUNDED`, or `nil` when it was not passed (the database then
+---keeps no field for it). A secret is refused before any comparison.
+---@param value any
+---@param level integer stack level the failure is reported at
+---@return number|nil
+function DatabaseHelpers.readMaxNamespaces(value, level)
+  if type(value) == "nil" then
+    return nil
+  end
+  if isSecret(value) then
+    error("SettingsKit:Open options.maxNamespaces must not be a secret value", level)
+  end
+  if value == UNBOUNDED then
+    return math.huge
+  end
+  if not isIntegerAtLeast(value, 1) then
+    error(
+      "SettingsKit:Open options.maxNamespaces must be a positive integer or SettingsKit.UNBOUNDED",
+      level
+    )
+  end
+  return value
+end
+
 ---Refuse a method that changes the saved table when the database is
 ---read-only. Every changing method asks this right after its receiver check,
 ---so nothing is validated, created or signalled on a read-only database.
@@ -3750,23 +4094,40 @@ end
 ---@return string savedVariable the global name the database was opened over
 local function databaseGetSavedVariable(self)
   validateDatabase(self, "SettingsKit.Database:GetSavedVariable", 3)
-  return rawget(self, "_name")
+  -- A namespace lives in its parent's saved variable.
+  return rawget(rawget(self, "_parent") or self, "_name")
 end
 
 ---Switch the current profile, creating it when it does not exist, and record
 ---the choice for this character.
+---
+---`OnProfileShutdown` fires first, on the database and then on its
+---namespaces, before anything changes; then the database and every namespace
+---switch, and only then do the namespaces' and the database's
+---`OnNewProfile` and `OnProfileChanged` fire, namespaces first.
 ---@param self SettingsKit.Database
 ---@param name string
 ---@return boolean changed `false` when `name` already was the current profile
 local function databaseSetProfile(self, name)
   validateDatabase(self, "SettingsKit.Database:SetProfile", 3)
+  local db = self --[[@as table]]
+  -- Asked inline: a switch is the one profile method spec events call often.
+  if rawget(db, "_parent") ~= nil then
+    DatabaseHelpers.refuseNamespace(db, "SettingsKit.Database:SetProfile", 3)
+  end
   refuseReadOnly(self, "SettingsKit.Database:SetProfile", 3)
   validateProfileName(name, "SettingsKit.Database:SetProfile name", 3)
 
-  local db = self --[[@as table]]
   local previous = db._profile
   if name == previous then
     return false
+  end
+  local namespaced = rawget(db, "_namespaces") ~= nil
+  if rawget(db, "_signals") ~= nil then
+    fireProfileSignal(db, "profileShutdown", self, previous)
+  end
+  if namespaced then
+    DatabaseHelpers.cascade(db, "shutdown", previous)
   end
 
   local raw = db._raw
@@ -3785,8 +4146,18 @@ local function databaseSetProfile(self, name)
   if created then
     -- A root of this profile built before its table existed read defaults.
     Chain.rebindDatabase(db)
+    DatabaseHelpers.noteCreatedProfile(db, name)
   end
-  fireProfileSignal(db, "profileChanged", self, name, previous)
+  if namespaced then
+    DatabaseHelpers.cascade(db, "setProfile", name, previous)
+  end
+  -- Read again: a listener may have connected the first signal meanwhile.
+  if rawget(db, "_signals") ~= nil then
+    if created then
+      fireProfileSignal(db, "newProfile", self, name)
+    end
+    fireProfileSignal(db, "profileChanged", self, name, previous)
+  end
   return true
 end
 
@@ -3795,7 +4166,8 @@ end
 ---@return string[] names
 local function databaseGetProfiles(self)
   validateDatabase(self, "SettingsKit.Database:GetProfiles", 3)
-  local db = self --[[@as table]]
+  -- A namespace's profiles are its parent database's.
+  local db = rawget(self, "_parent") or self --[[@as table]]
   local names = {}
   local current = db._profile
   local hasCurrent = false
@@ -3820,10 +4192,14 @@ end
 ---Replace the current profile's contents with a copy of profile `from`.
 ---@param self SettingsKit.Database
 ---@param from string
-local function databaseCopyProfile(self, from)
+---@param options { missingOk: boolean? }?
+---@return boolean copied `false` when `from` does not exist and `missingOk` is set
+local function databaseCopyProfile(self, from, options)
   validateDatabase(self, "SettingsKit.Database:CopyProfile", 3)
+  DatabaseHelpers.refuseNamespace(self, "SettingsKit.Database:CopyProfile", 3)
   refuseReadOnly(self, "SettingsKit.Database:CopyProfile", 3)
   validateProfileName(from, "SettingsKit.Database:CopyProfile from", 3)
+  local missingOk = DatabaseHelpers.readMissingOk(options, "SettingsKit.Database:CopyProfile", 3)
 
   local db = self --[[@as table]]
   local current = db._profile
@@ -3833,14 +4209,22 @@ local function databaseCopyProfile(self, from)
   local raw = db._raw
   local source = rawget(rawget(raw, "profiles"), from)
   if type(source) ~= "table" then
+    if missingOk then
+      return false
+    end
     error("SettingsKit.Database:CopyProfile from names a profile that does not exist", 2)
   end
   local maxDepth = readMaxDepth()
   if isTooDeep(source, 1, maxDepth) then
     error("SettingsKit.Database:CopyProfile from nests more than " .. maxDepth .. " tables", 2)
   end
+  -- The namespaces' copies are measured too, before anything changes.
+  local refusal = DatabaseHelpers.cascade(db, "checkCopy", from, maxDepth)
+  if refusal ~= nil then
+    error(refusal, 2)
+  end
 
-  ensureProfile(raw, current)
+  local created = ensureProfile(raw, current)
   local target = rawget(rawget(raw, "profiles"), current)
   wipe(target)
   for key, value in next, source do
@@ -3848,20 +4232,39 @@ local function databaseCopyProfile(self, from)
   end
   bumpGeneration(db)
   Chain.rebindDatabase(db)
+  if created then
+    DatabaseHelpers.noteCreatedProfile(db, current)
+  end
+  DatabaseHelpers.cascade(db, "copyProfile", from, current)
+  if created then
+    fireProfileSignal(db, "newProfile", self, current)
+  end
   fireProfileSignal(db, "profileCopied", self, from, current)
+  return true
 end
 
 ---Remove every value of the current profile, so it reads its defaults again.
+---On a namespace it empties that namespace's current profile only; on a
+---database it empties every namespace's too.
 ---@param self SettingsKit.Database
 local function databaseResetProfile(self)
   validateDatabase(self, "SettingsKit.Database:ResetProfile", 3)
   refuseReadOnly(self, "SettingsKit.Database:ResetProfile", 3)
   local db = self --[[@as table]]
   local current = db._profile
-  ensureProfile(db._raw, current)
+  local created = ensureProfile(db._raw, current)
   wipe(rawget(rawget(db._raw, "profiles"), current))
   bumpGeneration(db)
   Chain.rebindDatabase(db)
+  if created then
+    DatabaseHelpers.noteCreatedProfile(db, current)
+  end
+  if rawget(db, "_parent") == nil then
+    DatabaseHelpers.cascade(db, "resetProfile", current)
+  end
+  if created then
+    fireProfileSignal(db, "newProfile", self, current)
+  end
   fireProfileSignal(db, "profileReset", self, current)
 end
 
@@ -3869,10 +4272,14 @@ end
 ---back to the default profile at their next `Open`.
 ---@param self SettingsKit.Database
 ---@param name string
-local function databaseDeleteProfile(self, name)
+---@param options { missingOk: boolean? }?
+---@return boolean deleted `false` when `name` does not exist and `missingOk` is set
+local function databaseDeleteProfile(self, name, options)
   validateDatabase(self, "SettingsKit.Database:DeleteProfile", 3)
+  DatabaseHelpers.refuseNamespace(self, "SettingsKit.Database:DeleteProfile", 3)
   refuseReadOnly(self, "SettingsKit.Database:DeleteProfile", 3)
   validateProfileName(name, "SettingsKit.Database:DeleteProfile name", 3)
+  local missingOk = DatabaseHelpers.readMissingOk(options, "SettingsKit.Database:DeleteProfile", 3)
 
   local db = self --[[@as table]]
   if name == db._profile then
@@ -3881,6 +4288,9 @@ local function databaseDeleteProfile(self, name)
   local raw = db._raw
   local profiles = rawget(raw, "profiles")
   if type(rawget(profiles, name)) ~= "table" then
+    if missingOk then
+      return false
+    end
     error("SettingsKit.Database:DeleteProfile name names a profile that does not exist", 2)
   end
 
@@ -3896,7 +4306,9 @@ local function databaseDeleteProfile(self, name)
   bumpGeneration(db)
   detachProfileView(db, name)
   Chain.rebindDatabase(db)
+  DatabaseHelpers.cascade(db, "deleteProfile", name)
   fireProfileSignal(db, "profileDeleted", self, name)
+  return true
 end
 
 ---Wipe the whole saved variable back to an empty layout. Every profile view
@@ -3909,6 +4321,7 @@ end
 ---@param self SettingsKit.Database
 local function databaseResetDatabase(self)
   validateDatabase(self, "SettingsKit.Database:ResetDatabase", 3)
+  DatabaseHelpers.refuseNamespace(self, "SettingsKit.Database:ResetDatabase", 3)
   refuseReadOnly(self, "SettingsKit.Database:ResetDatabase", 3)
   local db = self --[[@as table]]
   local raw = db._raw
@@ -3922,7 +4335,7 @@ local function databaseResetDatabase(self)
   if stamp ~= false then
     rawset(raw, "version", stamp)
   end
-  createLayout(raw)
+  createLayout(raw, db._scopes)
   bumpGeneration(db)
 
   -- Clearing a field during a traversal is allowed in Lua 5.1.
@@ -3935,7 +4348,12 @@ local function databaseResetDatabase(self)
   db._profile = name
   publishProfileView(db)
   Chain.rebindDatabase(db)
+  -- The wiped saved variable holds no profile, so this one is new.
+  DatabaseHelpers.noteCreatedProfile(db, name)
+  DatabaseHelpers.cascade(db, "resetDatabase", name, previous)
 
+  fireProfileSignal(db, "databaseReset", self)
+  fireProfileSignal(db, "newProfile", self, name)
   fireProfileSignal(db, "profileReset", self, name)
   if name ~= previous then
     fireProfileSignal(db, "profileChanged", self, name, previous)
@@ -4199,6 +4617,9 @@ end
 ---@param self SettingsKit.Database
 local function databaseResync(self)
   validateDatabase(self, "SettingsKit.Database:Resync", 3)
+  -- A namespace finds its saved table again; a database with namespaces
+  -- resyncs them too.
+  DatabaseHelpers.cascade(self, "resync")
   bumpGeneration(self)
   Chain.rebindDatabase(self)
 end
@@ -4280,7 +4701,21 @@ local function databaseIndex(db, key)
   -- here, so a scope name that does is undeclared or unavailable. The
   -- message is built only now, so a database whose missing scopes nobody
   -- reads builds none.
-  if SCOPE_SET[key] == true then
+  local part = DatabaseHelpers.PART_METHODS[key]
+  if part ~= nil then
+    -- databaseIndex <- the reading line
+    error(
+      "SettingsKit.Database:"
+        .. key
+        .. " is in SettingsKit's "
+        .. part
+        .. " part, which is not loaded: add settingsKit\\parts\\SettingsKit-"
+        .. part
+        .. ".lua",
+      2
+    )
+  end
+  if Scopes.set[key] == true then
     local scope = rawget(rawget(db, "_scopes"), key)
     if scope == nil then
       -- databaseIndex <- the reading line
@@ -4301,7 +4736,7 @@ local function databaseIndex(db, key)
           .. ") db."
           .. key
           .. " is unavailable: "
-          .. UNAVAILABLE_REASONS[key]
+          .. Scopes.unavailableReasons[key]
           .. " when the database was opened",
         2
       )
@@ -4324,16 +4759,25 @@ end
 ---@param schema table
 ---@param keys table<string, string|false>
 ---@param level integer stack level the failures are reported at
+---@param label string? the method the schema was passed to (`SettingsKit:Open` when omitted)
 ---@return table scopes
-local function buildScopes(schema, keys, level)
+local function buildScopes(schema, keys, level, label)
   local scopes = {}
   -- Read once for every scope: `GetLimits` allocates its answer.
   local maxDepth = readMaxDepth()
-  for index = 1, #SCOPE_NAMES do
-    local scopeName = SCOPE_NAMES[index]
+  -- `validateSchemaTable` refused every key that is not a scope, so the walk
+  -- may stop once it has seen them all.
+  local remaining = 0
+  for _ in next, schema do
+    remaining = remaining + 1
+  end
+  for index = 1, #Scopes.names do
+    local scopeName = Scopes.names[index]
     local node = rawget(schema, scopeName)
     if type(node) ~= "nil" then
-      local sealed, plan = compileScope(node, scopeName, maxDepth, level + 1)
+      remaining = remaining - 1
+      local sealed, plan =
+        compileScope(node, scopeName, maxDepth, level + 1, label or "SettingsKit:Open")
 
       ---@type string|false
       local sectionKey = false
@@ -4347,12 +4791,15 @@ local function buildScopes(schema, keys, level)
         name = scopeName,
         schema = sealed,
         plan = plan,
-        sectionName = SCOPE_SECTIONS[scopeName],
+        sectionName = Scopes.sections[scopeName],
         sectionKey = sectionKey,
         available = available,
         -- `OnChange` creates the signal on first use.
         signal = false,
       }
+      if remaining == 0 then
+        break
+      end
     end
   end
   return scopes
@@ -4408,7 +4855,7 @@ local function open(self, savedVariable, schema, options)
 
   validateSchemaTable(schema, 3)
   ---@cast schema table
-  local defaultProfile, version, migrations, maxScannedEntries, allowNewerData =
+  local defaultProfile, version, migrations, maxScannedEntries, allowNewerData, maxNamespaces =
     readOptions(options, 3)
 
   local raw = readGlobal(savedVariable)
@@ -4418,7 +4865,7 @@ local function open(self, savedVariable, schema, options)
 
   -- Scope keys are read once, before anything is written, so a schema or
   -- layout refusal leaves the saved variable untouched.
-  local keys = readScopeKeys()
+  local keys = readScopeKeys(schema)
   local scopes = buildScopes(schema, keys, 3)
 
   if type(raw) == "nil" then
@@ -4428,11 +4875,11 @@ local function open(self, savedVariable, schema, options)
   -- Data a newer version of the addon saved is left as that version wrote
   -- it: nothing is migrated, the stored version is never lowered, and unless
   -- the addon opted in, nothing is written at all.
-  local newerVersion = migrate(raw, savedVariable, version, migrations, 3)
+  local newerVersion = migrate(raw, savedVariable, version, migrations, 3, scopes)
   local readOnly = newerVersion ~= false and not allowNewerData
-  validateLayout(raw, savedVariable, 3)
+  validateLayout(raw, savedVariable, 3, scopes)
   if not readOnly then
-    createLayout(raw)
+    createLayout(raw, scopes)
   end
 
   local charKey = keys.char
@@ -4449,8 +4896,9 @@ local function open(self, savedVariable, schema, options)
       profileName = stored
     end
   end
+  local createdProfile = false
   if not readOnly then
-    ensureProfile(raw, profileName)
+    createdProfile = ensureProfile(raw, profileName)
   end
 
   local db = setmetatable({
@@ -4478,11 +4926,16 @@ local function open(self, savedVariable, schema, options)
     -- equals this.
     _generation = 0,
   }, DATABASE_METATABLE)
+  -- Kept only when passed, so the default costs the database no field.
+  if maxNamespaces ~= nil then
+    rawset(db, "_maxNamespaces", maxNamespaces)
+  end
+  if createdProfile then
+    DatabaseHelpers.noteCreatedProfile(db, profileName)
+  end
 
-  for index = 1, #SCOPE_NAMES do
-    local scopeName = SCOPE_NAMES[index]
-    local scope = rawget(scopes, scopeName)
-    if scope ~= nil and scope.available and scopeName ~= "profile" then
+  for scopeName, scope in next, scopes do
+    if scope.available and scopeName ~= "profile" then
       rawset(db, scopeName, Chain.newRootView(db))
     end
   end
@@ -4921,6 +5374,7 @@ do
     ---@return boolean recorded `false` when the character key is unavailable
     local function databaseSetSpecProfile(self, index, name)
       validateDatabase(self, "SettingsKit.Database:SetSpecProfile", 3)
+      DatabaseHelpers.refuseNamespace(self, "SettingsKit.Database:SetSpecProfile", 3)
       refuseReadOnly(self, "SettingsKit.Database:SetSpecProfile", 3)
       validateSpecIndex(index, "SettingsKit.Database:SetSpecProfile", 3)
       if type(name) ~= "nil" then
@@ -4978,7 +5432,8 @@ do
     local function databaseGetSpecProfile(self, index)
       validateDatabase(self, "SettingsKit.Database:GetSpecProfile", 3)
       validateSpecIndex(index, "SettingsKit.Database:GetSpecProfile", 3)
-      return readAssignment(self --[[@as table]], index)
+      -- A namespace's profile follows its parent's assignments.
+      return readAssignment(rawget(self, "_parent") or self --[[@as table]], index)
     end
 
     ---Switch to the profile assigned to the current spec index, for an addon
@@ -4987,6 +5442,7 @@ do
     ---@return boolean switched
     local function databaseApplySpecProfile(self)
       validateDatabase(self, "SettingsKit.Database:ApplySpecProfile", 3)
+      DatabaseHelpers.refuseNamespace(self, "SettingsKit.Database:ApplySpecProfile", 3)
       return applyIndex(self --[[@as table]], (readSpecIndex()))
     end
 
@@ -5342,6 +5798,64 @@ rawset(Database, "IsReadOnly", databaseIsReadOnly)
 rawset(Database, "Resync", databaseResync)
 rawset(Database, "Getter", databaseGetter)
 
+-- Revision 15: the rest of AceDB-3.0's database callbacks, through the same
+-- lazily created signals, and the session's record of created profiles.
+-- Defined here, not as locals, so the main chunk stays under 200 locals.
+---@param self SettingsKit.Database
+---@param callback fun(db: SettingsKit.Database, name: string)
+---@return SignalKit.Connection connection
+rawset(Database, "OnNewProfile", function(self, callback)
+  return connectProfileSignal(self, "newProfile", "SettingsKit.Database:OnNewProfile", callback)
+end)
+---@param self SettingsKit.Database
+---@param callback fun(db: SettingsKit.Database, name: string)
+---@return SignalKit.Connection connection
+rawset(Database, "OnProfileShutdown", function(self, callback)
+  return connectProfileSignal(
+    self,
+    "profileShutdown",
+    "SettingsKit.Database:OnProfileShutdown",
+    callback
+  )
+end)
+---@param self SettingsKit.Database
+---@param callback fun(db: SettingsKit.Database)
+---@return SignalKit.Connection connection
+rawset(Database, "OnDatabaseShutdown", function(self, callback)
+  return connectProfileSignal(
+    self,
+    "databaseShutdown",
+    "SettingsKit.Database:OnDatabaseShutdown",
+    callback
+  )
+end)
+---@param self SettingsKit.Database
+---@param callback fun(db: SettingsKit.Database)
+---@return SignalKit.Connection connection
+rawset(Database, "OnDatabaseReset", function(self, callback)
+  return connectProfileSignal(
+    self,
+    "databaseReset",
+    "SettingsKit.Database:OnDatabaseReset",
+    callback
+  )
+end)
+---Whether this session created the current profile's table: `Open` did for
+---a new character, or `SetProfile`, a spec switch or `ResetDatabase` did.
+---`Open` creates the profile before any `OnNewProfile` listener can connect,
+---so this is how an addon learns its first profile is new.
+---@param self SettingsKit.Database
+---@return boolean
+rawset(Database, "IsNewProfile", function(self)
+  validateDatabase(self, "SettingsKit.Database:IsNewProfile", 3)
+  local record = DatabaseHelpers.createdProfiles[self]
+  local current = rawget(self, "_profile")
+  if type(record) == "table" then
+    return record[current] == true
+  end
+  return record == current
+end)
+
 -- Only views an older revision built and an upgrade missed still use the
 -- shared view metatable; it keeps reading and writing through this file.
 rawset(VIEW_METATABLE, "__index", viewIndex)
@@ -5381,6 +5895,37 @@ end)
 rawset(dispatch, "compactOnLogout", compactOnLogout)
 rawset(dispatch, "compactAllOnLogout", compactAllOnLogout)
 rawset(dispatch, "readView", viewIndex)
+
+-- The core functions the parts call (`state.helpers`). Replaced by every
+-- revision, read by a part at call time.
+do
+  local helpers = rawget(state, "helpers")
+  helpers.DATABASE_SCHEMA = DATABASE_SCHEMA
+  helpers.DATABASE_METATABLE = DATABASE_METATABLE
+  helpers.DEFAULT_MAX_NAMESPACES = DatabaseHelpers.DEFAULT_MAX_NAMESPACES
+  helpers.Scopes = Scopes
+  helpers.isSecret = isSecret
+  helpers.reportError = reportError
+  helpers.formatKey = formatKey
+  helpers.validateDatabase = validateDatabase
+  helpers.validateSchemaTable = validateSchemaTable
+  helpers.readMissingOk = DatabaseHelpers.readMissingOk
+  helpers.readScopeKeys = readScopeKeys
+  helpers.buildScopes = buildScopes
+  helpers.readMaxDepth = readMaxDepth
+  helpers.isTooDeep = isTooDeep
+  helpers.copyPlain = copyPlain
+  helpers.wipe = wipe
+  helpers.ensureProfile = ensureProfile
+  helpers.newRootView = Chain.newRootView
+  helpers.publishProfileView = publishProfileView
+  helpers.detachProfileView = detachProfileView
+  helpers.bumpGeneration = bumpGeneration
+  helpers.rebindDatabase = Chain.rebindDatabase
+  helpers.compactDatabase = compactDatabase
+  helpers.fireProfileSignal = fireProfileSignal
+  helpers.noteCreatedProfile = DatabaseHelpers.noteCreatedProfile
+end
 rawset(state, "runtimeRevision", IMPLEMENTATION_REVISION)
 
 if not validatePublicSurface(SettingsKit) or not validateCurrentState(SettingsKit) then

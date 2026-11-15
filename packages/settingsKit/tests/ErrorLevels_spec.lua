@@ -146,6 +146,11 @@ describe("SettingsKit error levels", function()
       "GetSavedVariable",
       "Pairs",
       "Validate",
+      "OnNewProfile",
+      "OnProfileShutdown",
+      "OnDatabaseShutdown",
+      "OnDatabaseReset",
+      "IsNewProfile",
     }
     for _, method in ipairs(methods) do
       assertReportedAtCaller(
@@ -245,6 +250,95 @@ describe("SettingsKit error levels", function()
     for _, case in ipairs(cases) do
       assertCaseAtCaller(case[1], case[2])
     end
+  end)
+
+  it("points the revision 15 refusals at the caller", function()
+    TestEnv.LoadNamespaces()
+    local db = SettingsKit:Open("MyAddonDB", schema(), { maxNamespaces = 1 })
+    local child = db:RegisterNamespace("Bars", schema())
+    local unbound = SettingsKit:Open("OtherDB", schema())
+    local cases = {
+      {
+        'SettingsKit.Database:CopyProfile options contains unknown field "silent"',
+        function()
+          db:CopyProfile("Other", { silent = true })
+        end,
+      },
+      {
+        "SettingsKit.Database:DeleteProfile options must be a table",
+        function()
+          db:DeleteProfile("Other", true)
+        end,
+      },
+      {
+        "SettingsKit.Database:SetProfile cannot be called on MyAddonDB namespace Bars; call it on the database of MyAddonDB",
+        function()
+          child:SetProfile("Other")
+        end,
+      },
+      {
+        "SettingsKit.Database:SetSpecProfile cannot be called on MyAddonDB namespace Bars; call it on the database of MyAddonDB",
+        function()
+          child:SetSpecProfile(1, "Other")
+        end,
+      },
+      {
+        "SettingsKit.Database:RegisterNamespace name must be a non-empty string",
+        function()
+          db:RegisterNamespace(nil, schema())
+        end,
+      },
+      {
+        "SettingsKit.Database:RegisterNamespace schema must be a table of scope schemas",
+        function()
+          db:RegisterNamespace("Other", nil)
+        end,
+      },
+      {
+        "SettingsKit.Database:RegisterNamespace schema.profile must be a SchemaKit.table schema",
+        function()
+          unbound:RegisterNamespace("Other", { profile = S.number() })
+        end,
+      },
+      {
+        "SettingsKit.Database:RegisterNamespace cannot register more than 1 namespaces in MyAddonDB; raise options.maxNamespaces in SettingsKit:Open",
+        function()
+          db:RegisterNamespace("Other", schema())
+        end,
+      },
+      {
+        "SettingsKit.Database:GetNamespace name names no registered namespace",
+        function()
+          db:GetNamespace("Other")
+        end,
+      },
+      {
+        "SettingsKit.Database:GetNamespace options.missingOk must be a boolean",
+        function()
+          db:GetNamespace("Other", { missingOk = 1 })
+        end,
+      },
+      {
+        "SettingsKit.Database:IsNewProfile must be called on a SettingsKit database",
+        function()
+          db.IsNewProfile(nil)
+        end,
+      },
+    }
+    for _, case in ipairs(cases) do
+      assertCaseAtCaller(case[1], case[2])
+    end
+  end)
+
+  it("points a read of a part method at the reading line while the part is not loaded", function()
+    local db = SettingsKit:Open("MyAddonDB", schema())
+    assertReportedAtCaller(
+      "SettingsKit.Database:RegisterNamespace is in SettingsKit's Namespaces part, which is not loaded: add settingsKit\\parts\\SettingsKit-Namespaces.lua",
+      function(mark)
+        mark()
+        local _ = db.RegisterNamespace
+      end
+    )
   end)
 
   it("points view and database refusals at the line that wrote or read", function()

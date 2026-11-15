@@ -233,6 +233,7 @@ profileKit/ProfileKit.lua
 rangeKit/RangeKit.lua
 readinessKit/ReadinessKit.lua
 settingsKit/SettingsKit.lua
+settingsKit/parts/SettingsKit-Namespaces.lua
 toastKit/ToastKit.lua
 tooltipKit/TooltipKit.lua
 unitFrameKit/UnitFrameKit.lua
@@ -336,6 +337,7 @@ part loads after its Kit's core and brings in what it needs:
 |---|---|---|---|
 | `addonKit/Composition` | `addonKit/parts/AddonKit-Composition.lua` | MC:Options (an options panel with its slash command) and MC:Launcher (a minimap button kept in the profile). | nothing |
 | `addonKit/Database` | `addonKit/parts/AddonKit-Database.lua` | MC:Database (a SettingsKit database from AceDB-style defaults, the schema inferred), MC.Range and MC.Enum. | nothing |
+| `settingsKit/Namespaces` | `settingsKit/parts/SettingsKit-Namespaces.lua` | db:RegisterNamespace and db:GetNamespace: child databases with their own schema over the saved variable's namespaces section, in AceDB's layout, following the parent's profile. | nothing |
 <!-- /generated:parts -->
 
 ## A complete example addon

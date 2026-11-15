@@ -113,6 +113,14 @@
         "ptr": "Interface/AddOns/Blizzard_SharedXMLBase/GlobalCallbackRegistry.lua:9",
         "beta": "Interface/AddOns/Blizzard_SharedXMLBase/GlobalCallbackRegistry.lua:7"
       }
+    },
+    {
+      "name": "UnitRace",
+      "source": "Called by Blizzard_CharacterFrame (LoadFirst, AllowLoad: game, not load-on-demand) at the commit each flavour's metadata was captured from; these flavours' generated documentation omits it, Retail's documents it (UnitDocumentation.lua).",
+      "evidence": {
+        "classic-mop": "Interface/AddOns/Blizzard_CharacterFrame/Cata/PaperDollFrame.lua:3896",
+        "classic-era": "Interface/AddOns/Blizzard_CharacterFrame/Vanilla/PaperDollFrame.lua:91"
+      }
     }
   ]
 }

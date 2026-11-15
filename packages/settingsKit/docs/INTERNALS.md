@@ -19,7 +19,10 @@ MyAddonDB = {
   realm = { Silvermoon = { ... } },               -- db.realm
   class = { MAGE = { ... } },                     -- db.class
   faction = { Alliance = { ... } },               -- db.faction
-  namespaces = {},                                -- reserved for v2 module namespaces
+  race = { Scourge = { ... } },                   -- db.race, only when declared (revision 15)
+  namespaces = {                                  -- the Namespaces part (revision 15)
+    Bars = { profiles = { Default = { ... } }, char = { ... } },
+  },
 }
 ```
 
@@ -30,7 +33,8 @@ MyAddonDB = {
 | `profiles` | profile name | `Open` and `SetProfile` create the current profile's table; writes through `db.profile` fill it. |
 | `profileKeys` | `"<name> - <realm>"` | `SetProfile` records the character's choice; `DeleteProfile` removes choices naming the deleted profile. |
 | `char`, `realm`, `class`, `faction` | the scope key read at `Open` | The first write through that scope creates the entry. |
-| `namespaces` | module name | Nothing in v1. It exists from v1 so module namespaces add data without a layout change. |
+| `race`, `factionrealm`, `factionrealmregion`, `locale` | the scope key read at `Open`, AceDB-3.0's | Revision 15. `Open` creates the section only when the schema declares the scope, and checks it only then; the first write through the scope creates the entry. |
+| `namespaces` | namespace name | Revision 15, by the Namespaces part: `RegisterNamespace` creates `namespaces[name]`, the sections of the scopes the namespace declares and its current profile's table (writable databases only); the parent's profile operations change it (see [Namespaces](#namespaces)); logout removes empty profiles, sections and namespace tables inside it. Without the part SettingsKit writes nothing here. |
 | `specProfiles` | `"<name> - <realm>"` | Revision 11. `SetSpecProfile` writes the character's entry `{ [index] = profileName }` and removes it with its last assignment; `DeleteProfile` removes assignments naming the deleted profile; `ResetDatabase` recreates it empty. A database an older revision opened gets the section at its first `SetSpecProfile`. |
 
 Inside a scope, values are stored by field name exactly as the schema declares them; a keyed section is a table keyed by the consumer's keys. Defaults are never stored, except the first-read copy of a plain table default (an array, say), which `Compact` removes while it is unchanged.
@@ -60,6 +64,9 @@ Inside a scope, values are stored by field name exactly as the schema declares t
 | `logoutDatabases` | Revision 6: the databases the shared `PLAYER_LOGOUT` listener compacts, in the order they were opened. An upgrade over an older revision adds it empty. |
 | `logoutConnected` | Revision 6: whether the shared listener is connected to EventKit. |
 | `specListenerConnected` | Revision 11: whether the one shared spec listener is connected to EventKit. An upgrade over an older revision adds it `false`. |
+| `parts` | Revision 15: the state of each loaded part by name (decision 0001); the Namespaces part keeps `{ revision = 1 }` there, and a copy of the part returns at once when an equal or newer revision is installed. |
+| `helpers` | Revision 15: the core functions the parts call (schema checks, scope keys, view building, compaction, signals). Every revision fills it at load, and a part reads it at call time, so an upgraded core serves parts loaded before it. |
+| `createdProfiles` | Revision 15: weak-keyed database to the profile created this session (a name) or, once there is a second, a set of names; `db:IsNewProfile()` reads it. Kept here, not on the database, so a database keeps its hash size. |
 
 ## Databases
 
@@ -68,7 +75,7 @@ A database is a table carrying its views as plain fields (`global`, `char`, ...,
 | Field | Purpose |
 |---|---|
 | `_layout` | Database layout number (`4`). Layout 1 (revisions 1 to 4) had no `_newerVersion` and `_readOnly`; layout 2 (revision 5) had `_unavailable`, the messages of reading an undeclared or unavailable scope, which `databaseIndex` now builds when such a scope is read; layout 3 (revision 6) had no `_generation`. |
-| `_name` | The saved-variable name. |
+| `_name` | The saved-variable name; for a namespace, `"<saved variable> namespace <name>"`, which every message shows. |
 | `_raw` | The saved table. |
 | `_schemaSource` | The schema table passed to `Open`, to recognise a reopen. |
 | `_scopes` | Scope name to scope record (below), for every declared scope. |
@@ -80,14 +87,36 @@ A database is a table carrying its views as plain fields (`global`, `char`, ...,
 | `_newerVersion` | The stored version when it was newer than `options.version` at `Open`, else `false`. `ResetDatabase` stamps it instead of `_version`, and the read-only messages name it. |
 | `_readOnly` | `true` when `_newerVersion` is set and `allowNewerData` was not. Read with `rawget` by every write path. |
 | `_maxScannedEntries` | `options.maxScannedEntries`: how many entries the scan of a written table visits before refusing it (65536 by default), or `math.huge` when opened with `SettingsKit.UNBOUNDED`. |
-| `_signals` | The four profile signals, each created by the first `OnProfile*` call that connects to it; a signal nobody connected to is absent and not fired. From revision 14 the table itself is created by that first call too, so a database with two scopes and no listener keeps to 16 fields (a 16-slot table instead of 32). |
+| `_signals` | The profile and lifecycle signals (`profileChanged`, `profileCopied`, `profileReset`, `profileDeleted`, and from revision 15 `newProfile`, `profileShutdown`, `databaseShutdown`, `databaseReset`), each created by the first call that connects to it; a signal nobody connected to is absent and not fired. From revision 14 the table itself is created by that first call too, so a database with two scopes and no listener keeps to 16 fields (a 16-slot table instead of 32). |
 | `_buildProfileAtOnce` | Revision 14, set on databases an older revision opened when it upgrades them: `publishProfileView` then builds the new profile view at once, because a getter such a revision made reads the node behind `db.profile`. |
 | `_specIndex` | Revision 11, absent until set: the spec index whose assignment the database last applied (at `Open`, `SetSpecProfile`, `ApplySpecProfile` or a spec event), or, from revision 12, the index of the last spec event while its character had no assignment. A spec event skips a database that already applied the event's index, so an event that changes nothing never undoes a manual `SetProfile`. Absent reads as `nil`, so no layout number changed. |
+| `_maxNamespaces` | Revision 15, only when `Open` got `maxNamespaces`: the bound of `RegisterNamespace` (`math.huge` for `SettingsKit.UNBOUNDED`). Absent means 256. |
+| `_namespaces` | Revision 15, set by the Namespaces part's first `RegisterNamespace`: one table holding the namespaces in registration order (`[1]` to `[n]`) and by name. The core's profile methods hand their phases to the part only for a database holding it. |
+| `_parent`, `_namespaceName` | Revision 15, only on a namespace: its parent database and its name. The core's profile methods refuse a database with `_parent` (see [Namespaces](#namespaces)). |
 | `_generation` | Revision 7: a counter every SettingsKit mutation that can change which saved table a view resolves to increments (`bumpGeneration`); a node's cached table is current while the node's `generation` equals it (see [Resolution](#resolution)). |
 
 A scope record holds the scope's `name`, SettingsKit's sealed `schema` (shared by every database opened with the same schema node, see [Plans](#plans)), its compiled `plan`, the `sectionName` and `sectionKey` of its saved table, whether it is `available`, and its `OnChange` `signal`: `false` until the first `OnChange` of the scope creates it, so a write nobody listens to fires nothing. An undeclared scope has no record.
 
 A missing scope field falls through to the metatable's `__index`, which looks for a method on the `Database` prototype and otherwise, for a scope name, raises at the reading line the message for a scope without a record (not declared) or with `available = false`, built from the saved-variable name at that moment.
+
+## Namespaces
+
+A namespace is a database table built by the Namespaces part (`src/parts/SettingsKit-Namespaces.lua`) with the private fields above and the one database metatable, so every view, write, signal and compaction path serves it unchanged. Its `_raw` is `namespaces[name]` of the parent's saved table (a table of its own, never stored, for a read-only parent with nothing saved there), its `_profile` follows the parent's, and it never joins `state.databases` or the logout list: its parent reaches it.
+
+The core calls `state.dispatch.namespaces(db, phase, ...)` through `DatabaseHelpers.cascade` only for a database holding `_namespaces` (or, for `resync`, being a namespace). A database without namespaces pays one or two `rawget`s per profile operation and nothing on reads or writes. The phases, in the order a profile method runs them:
+
+| Phase | Called by | What the part does |
+|---|---|---|
+| `checkCopy` | `CopyProfile`, before any change | Answers a refusal when a namespace's `profiles[from]`, registered or not, nests deeper than SchemaKit's `maxDepth`; the core raises it at the caller's line. |
+| `shutdown` | `SetProfile`, before any change, after the parent's `OnProfileShutdown` | Fires each namespace's `OnProfileShutdown`, in registration order. |
+| `setProfile`, `copyProfile`, `resetProfile`, `deleteProfile`, `resetDatabase` | the method of that name, after the parent changed and before the parent's signals | Changes every namespace (no user code runs in between), applies the raw part of a copy, reset or delete to the namespaces nobody registered this session, then fires the namespaces' signals, signal by signal, each over every namespace in registration order. |
+| `compact` | `compactDatabase` | Compacts every namespace and answers the count. |
+| `shutdownDatabase`, `logout` | `compactOnLogout` | Fires each namespace's `OnDatabaseShutdown` (each under `pcall`, failures reported); after compaction removes empty profiles, sections and namespace tables inside `namespaces`. |
+| `resync` | `Resync` | Finds each namespace's saved table again (or a namespace's own, on its `Resync`). |
+
+A namespace's views of a deleted profile are detached exactly as the parent's are. After `ResetDatabase` each namespace gets a new saved table in the new `namespaces` section, its profile roots are detached and `child.profile` is published again.
+
+Upgrades: the part keeps no copies of core functions (it reads `state.helpers` at call time) and its children use the shared prototype and metatable, so a newer core revision loaded in place keeps cascading to namespaces registered before it (`Namespaces_spec.lua`, "keeps cascading after a later core revision upgrades in place").
 
 ## Plans
 
@@ -256,7 +285,7 @@ The cost is one copy and one walk per pending step, each visiting every table an
 
 ## Compaction
 
-`compactRecord`, `compactMap` and `compactValue` walk a saved table together with its plan and defaults. A value deeply equal to its default is removed (`deepEqual` treats a secret as unequal to everything and stops at SchemaKit's `maxDepth`, read when the compaction starts). A record or map table is compacted first and then removed when it is empty and has a default to fall back to. The walk follows the plan, which `compilePlan` stops at the `maxDepth` in force at `Open`, so it carries no depth counter of its own; keys the plan does not declare are never visited, so undeclared data survives. `compactScope` walks every entry of a section, removes empty character, realm, class and faction entries, and keeps empty profiles. At logout, the one shared listener calls `dispatch.compactAllOnLogout()`, which calls `compactOnLogout(db)` for every database on `state.logoutDatabases`, in the order they were opened; `compactOnLogout` skips a read-only database, runs `compactDatabase` under `pcall` and reports a failure through `geterrorhandler()`, so one database's failure never stops another's compaction.
+`compactRecord`, `compactMap` and `compactValue` walk a saved table together with its plan and defaults. A value deeply equal to its default is removed (`deepEqual` treats a secret as unequal to everything and stops at SchemaKit's `maxDepth`, read when the compaction starts). A record or map table is compacted first and then removed when it is empty and has a default to fall back to. The walk follows the plan, which `compilePlan` stops at the `maxDepth` in force at `Open`, so it carries no depth counter of its own; keys the plan does not declare are never visited, so undeclared data survives. `compactScope` walks every entry of a section, removes empty entries of the keyed scopes (character, realm, class, faction and, from revision 15, race, faction-realm, faction-realm-region and locale), and keeps empty profiles. At logout, the one shared listener calls `dispatch.compactAllOnLogout()`, which calls `compactOnLogout(db)` for every database on `state.logoutDatabases`, in the order they were opened; `compactOnLogout` fires the database's `OnDatabaseShutdown` and its namespaces' (revision 15), then skips a read-only database, runs `compactDatabase` under `pcall`, then the namespace cleanup, and reports every failure through `geterrorhandler()`, so one database's failure never stops another's shutdown or compaction.
 
 ## Closures and upgrades
 
@@ -273,6 +302,8 @@ Revision 7 added database layout 4 (`_generation`) and node layout 3 (`cache` an
 Revision 8 changes no layout: only the closure `plainGetter` returns (see [The nil-rule exception](#getters)). Getters revision 7 made keep their own closure, which reads the same fields, and keep working; `Getter_spec.lua` makes getters under revision 7, upgrades in place and checks them and a getter made afterwards.
 
 Revision 9 changes no layout. Every in-place upgrade, from any revision, walks `state.views` once and builds the depth probe of every live record view below a scope root: `depthProbes` is file-local, so a newer copy starts without the probes the older one built, and before revision 9 only an upgrade over revisions 1 to 5 rebuilt them, which sent writes through nested views to the full check after an upgrade over revisions 6 to 8. `FastPaths_spec.lua` upgrades in place and counts SchemaKit checks of nested writes.
+
+Revision 15 changes no node, plan or database layout number: every field it adds to a database is absent unless used (`_maxNamespaces`, `_namespaces`, `_parent`, `_namespaceName`). The scope tables are one `Scopes` table (names, sections, the set, the added scopes, the region names and the unavailable reasons), which frees three main-chunk locals; the added scopes come last in `Scopes.names`, and the walks over a schema stop once they have seen every scope it declares, so a schema of the original six costs no more than before. The keys of the added scopes are read only for a schema that declares them (`Scopes.readAddedKeys`). The helpers of the methods revision 15 added live in the `DatabaseHelpers` table. An upgrade over revision 14 adds `state.parts`, `state.helpers` and `state.createdProfiles`; databases revision 14 opened gain the new methods through the prototype and answer `IsNewProfile() == false` for the profile their `Open` created. `Bootstrap_spec.lua` removes the three tables after loading revision 14, reloads, and checks the signals and a namespace on the old database.
 
 Revision 13 changes no layout: an unknown `SetLimits` key that is not a string, number or boolean is named by its type instead of being passed to `tostring`, and an upgrade over revision 12 replaces the methods only. `Limits_spec.lua` checks it.
 

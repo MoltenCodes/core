@@ -2,7 +2,7 @@
 
 SettingsKit API generation **1** opens a database over an addon's saved variable: scoped views whose reads fall back to schema defaults and whose writes are validated at the writer's line, profiles (also switched by specialization), change signals, versioned migrations and compaction.
 
-Implementation revision: **13**.
+Implementation revision: **15**. Part `Namespaces`: revision **1**.
 
 ## Loading
 
@@ -21,6 +21,13 @@ Portable WoW code resolves the package through Registry:
 local SettingsKit = MoltenCodes.Registries[2]:Get("settingsKit", 1)
 ```
 
+The optional [Namespaces](#namespaces) part loads after the core, when the addon uses `db:RegisterNamespace`:
+
+```text
+SettingsKit.lua
+parts/SettingsKit-Namespaces.lua
+```
+
 SettingsKit does not rely on `require()` at runtime. Loading it without one of its dependencies raises `MoltenCodes SettingsKit requires Registry API 2 to be loaded first` (or `SchemaKit API 1`, `SignalKit API 1`).
 
 ### Host facilities
@@ -30,14 +37,17 @@ SettingsKit does not rely on `require()` at runtime. Loading it without one of i
 | `UnitNameUnmodified("player")` (else `UnitName("player")`), `GetRealmName()` | the `char` scope key `"<name> - <realm>"`, also `SettingsKit:GetCharacterKey()`; `realm` needs only `GetRealmName` | The scope is unavailable (below). `defaultProfile = "char"` falls back to `"Default"` and the profile choice is not recorded. |
 | `UnitClass("player")` | the `class` scope key, its second result (`"MAGE"`) | The `class` scope is unavailable. |
 | `UnitFactionGroup("player")` | the `faction` scope key (`"Alliance"`, `"Horde"`, `"Neutral"`) | The `faction` scope is unavailable. |
-| `issecretvalue` | every validated write through a view, the key of `Getter`, `Validate`, `Compact`, profile names, the scope keys | Nothing is treated as secret, which is correct on clients without secret values. Read at every call. Reads are not probed (revision 14): the client refuses a secret key before any metamethod runs (see [Error behaviour](#error-behaviour)). |
+| `UnitRace("player")` | revision 15, only for a schema declaring `race`: its second result, the race's file name (`"Scourge"`) | The `race` scope is unavailable. Documented on Retail (`UnitDocumentation.lua`); undocumented on Mists of Pandaria Classic and Classic Era, where Blizzard's own character frame calls it (`Blizzard_CharacterFrame/Cata/PaperDollFrame.lua`, `Vanilla/PaperDollFrame.lua`). |
+| `GetCurrentRegion()`, `GetCurrentRegionName()` | revision 15, only for a schema declaring `factionrealmregion`: the region, as AceDB-3.0 names it (`US`, `KR`, `EU`, `TW`, `CN` by `GetCurrentRegion()`, else `GetCurrentRegionName()`, else `TR`) | `TR`. `GetCurrentRegionName` is documented only on Retail and is read only where the client has it. |
+| `GetLocale()` | revision 15, only for a schema declaring `locale`: the key is its answer in lower case | The `locale` scope is unavailable. |
+| `issecretvalue` | every validated write through a view, the key of `Getter`, `Validate`, `Compact`, profile names, namespace names, `missingOk` options, the scope keys | Nothing is treated as secret, which is correct on clients without secret values. Read at every call. Reads are not probed (revision 14): the client refuses a secret key before any metamethod runs (see [Error behaviour](#error-behaviour)). |
 | `geterrorhandler` | reporting a logout compaction that failed | Falls back to `print`. |
 | EventKit API 1 | compaction on `PLAYER_LOGOUT`; switching [spec profiles](#spec-profiles) on the spec events | `db:Compact()` and `db:ApplySpecProfile()` are the addon's to call. |
 | `C_SpecializationInfo`, `UnitClass`, `GetNumTalentGroups`, `WOW_PROJECT_ID` | [spec profiles](#spec-profiles): the current specialization or talent group | No spec index: assignments are kept, nothing switches. |
 
 The character key takes the name from `UnitNameUnmodified("player")` (revision 14), which no name-changing effect alters (`UnitName` reports a changed name under effects such as Lifegiving Seed, warcraft.wiki.gg `API_UnitName`), as AceDB-3.0 keys characters; when the client has no `UnitNameUnmodified` or its answer is not usable, `UnitName("player")` gives it, as before. Both answer alike outside such effects, so saved data keeps its key. Both are documented in `Blizzard_APIDocumentationGenerated/UnitDocumentation.lua` on the `live`, `classic` and `classic_era` branches of Gethe/wow-ui-source.
 
-The four identity functions are called once per `Open`. A function that is missing, or returns `nil`, an empty string or a secret, makes its scope **unavailable**: reading `db.class` then raises at the reading line, for example `SettingsKit (MyAddonDB) db.class is unavailable: UnitClass("player") returned no class when the database was opened`. The identity is read once, so a database opened before the client knows the player (at file scope, say) stays without those scopes; open it in the loaded phase.
+The identity functions are called once per `Open`, the revision 15 ones only for the scopes the schema declares. A function that is missing, or returns `nil`, an empty string or a secret, makes its scope **unavailable**: reading `db.class` then raises at the reading line, for example `SettingsKit (MyAddonDB) db.class is unavailable: UnitClass("player") returned no class when the database was opened`. The identity is read once, so a database opened before the client knows the player (at file scope, say) stays without those scopes; open it in the loaded phase.
 
 EventKit is found with `Registry:Find("eventKit", 1)` when a database is opened. It is never an edge in the load order, so a bundle that does not ship it still loads SettingsKit.
 
@@ -61,16 +71,19 @@ Databases:
 
 | Member | Purpose |
 |---|---|
-| `db.global`, `db.char`, `db.realm`, `db.class`, `db.faction`, `db.profile` | Live views of each declared, available scope. |
+| `db.global`, `db.char`, `db.realm`, `db.class`, `db.faction`, `db.profile`, and from revision 15 `db.race`, `db.factionrealm`, `db.factionrealmregion`, `db.locale` | Live views of each declared, available scope. |
 | `GetProfile()` | The current profile's name. |
 | `SetProfile(name)` | Switch profile, creating it when missing. |
 | `GetProfiles()` | Every profile name, sorted. Allocates. |
-| `CopyProfile(from)` | Replace the current profile with a copy of `from`. |
+| `CopyProfile(from, options?)` | Replace the current profile with a copy of `from`. |
 | `ResetProfile()` | Empty the current profile. |
-| `DeleteProfile(name)` | Delete a profile other than the current one. |
+| `DeleteProfile(name, options?)` | Delete a profile other than the current one. |
 | `ResetDatabase()` | Empty the whole saved variable. |
 | `OnChange(scope, callback)` | Connect to validated writes of one scope. |
 | `OnProfileChanged(callback)`, `OnProfileCopied(callback)`, `OnProfileReset(callback)`, `OnProfileDeleted(callback)` | Connect to the profile signals. |
+| `OnNewProfile(callback)`, `OnProfileShutdown(callback)`, `OnDatabaseShutdown(callback)`, `OnDatabaseReset(callback)` | Revision 15: connect to the lifecycle signals (see [Lifecycle signals](#lifecycle-signals)). |
+| `IsNewProfile()` | Revision 15: whether this session created the current profile's table. |
+| `RegisterNamespace(name, schema)`, `GetNamespace(name, options?)` | With the Namespaces part: a namespace's database (see [Namespaces](#namespaces)). |
 | `Compact()` | Remove every saved value equal to its default. |
 | `GetSavedVariable()` | The global name the database was opened over. |
 | `Pairs(view)` | Iterate a view: keys with defaults, then saved keys. |
@@ -183,7 +196,7 @@ profile.anchor = "LEFT"          -- raises at this line:
 
 `savedVariable` is the global name from the TOC's `## SavedVariables` line, an identifier. When the global is `nil`, `Open` creates it as `{}`; when it holds anything but a table, `Open` refuses at your line. **Call `Open` in the addon's loaded phase** (`lifecycle:OnLoaded`, or your own `ADDON_LOADED` for your addon): before it, the client has not loaded the saved table yet, and it will replace the one `Open` created.
 
-`schema` maps scope names to SchemaKit `table` nodes or sealed schemas. Each scope is optional, at least one is required, and an unknown scope name is refused. SettingsKit seals its own copy of each (sealing a sealed schema gives a new one with its own failure table), so a write never overwrites the failure of a check you run with the same schema. Databases opened with the same schema node or sealed schema share that seal and its compiled plan, which is built by the first of them and reused while SchemaKit's `maxDepth` and revision stay the same (revision 6). Two rules apply:
+`schema` maps scope names (`global`, `char`, `realm`, `class`, `faction`, `profile`, and from revision 15 `race`, `factionrealm`, `factionrealmregion`, `locale`) to SchemaKit `table` nodes or sealed schemas. Each scope is optional, at least one is required, and an unknown scope name is refused. SettingsKit seals its own copy of each (sealing a sealed schema gives a new one with its own failure table), so a write never overwrites the failure of a check you run with the same schema. Databases opened with the same schema node or sealed schema share that seal and its compiled plan, which is built by the first of them and reused while SchemaKit's `maxDepth` and revision stay the same (revision 6). Two rules apply:
 
 - a scope schema must be a `SchemaKit.table`;
 - **every field of every record read through a view is `optional`** — the scope's own fields, the fields of nested `table` fields, and the fields of records that are the values of a `map`. A saved variable starts empty and fills in one write at a time, so a required field could never be satisfied. `Open` refuses one with its path: `SettingsKit:Open schema.profile.frame.x must be optional: a saved variable starts empty`.
@@ -197,6 +210,7 @@ profile.anchor = "LEFT"          -- raises at this line:
 | `migrations` | none | `{ [n] = function(raw) }`, each key from 1 to `version`. Requires `version`. |
 | `maxScannedEntries` | `65536` | The most entries the scan of one written table visits (see [Limits](#limits)): a positive integer or `SettingsKit.UNBOUNDED`. |
 | `allowNewerData` | `false` | `true` opens a saved table whose stored version is newer than `version` writable instead of read-only (see [Newer stored data](#newer-stored-data-read-only-databases)). A boolean; requires `version`. |
+| `maxNamespaces` | `256` | Revision 15: the most namespaces `RegisterNamespace` registers on this database, a positive integer or `SettingsKit.UNBOUNDED` (see [Limits](#limits)). Accepted without the Namespaces part. |
 
 Unknown fields are refused, and so is a secret `version`, `maxScannedEntries`, `allowNewerData` or `migrations` key, before it is compared or tested: `SettingsKit:Open options.version must not be a secret value`, `SettingsKit:Open options.maxScannedEntries must not be a secret value`, `SettingsKit:Open options.allowNewerData must not be a secret value`, `SettingsKit:Open options.migrations must not have a secret key`. A secret option name is reported as `SettingsKit:Open options contains unknown field "<secret>"`. `allowNewerData` that is not a boolean raises `SettingsKit:Open options.allowNewerData must be a boolean`, and without `version` `SettingsKit:Open options.allowNewerData requires options.version`.
 
@@ -232,7 +246,11 @@ MyAddonDB = {
   realm = { Silvermoon = { ... } },
   class = { MAGE = { ... } },
   faction = { Alliance = { ... } },
-  namespaces = {},
+  race = { Scourge = { ... } },
+  factionrealm = { ["Alliance - Silvermoon"] = { ... } },
+  factionrealmregion = { ["Alliance - Silvermoon - EU"] = { ... } },
+  locale = { enus = { ... } },
+  namespaces = { Bars = { profiles = { Default = { ... } }, char = { ... } } },
   specProfiles = { ["Tester - Silvermoon"] = { "Healing", "Damage" } },
 }
 ```
@@ -247,11 +265,16 @@ MyAddonDB = {
 | `realm` | table | `GetRealmName()` | One record per realm. |
 | `class` | table | the class file name, the second return of `UnitClass("player")` (`"MAGE"`) | One record per class. |
 | `faction` | table | `UnitFactionGroup("player")` (`"Alliance"`, `"Horde"`, `"Neutral"`) | One record per faction. |
-| `namespaces` | table | module name | Reserved: SettingsKit writes nothing here in generation 1. Leave it empty. |
+| `race` | table | the race's file name, the second return of `UnitRace("player")` (`"Scourge"`) | Revision 15: one record per race. Created and checked by `Open` only when the schema declares `race`. |
+| `factionrealm` | table | `"<faction> - <realm>"` (`"Alliance - Argent Dawn"`) | Revision 15: one record per faction and realm. Only when declared. |
+| `factionrealmregion` | table | `"<faction> - <realm> - <region>"` (`"Alliance - Argent Dawn - EU"`, the region as [Host facilities](#host-facilities) says) | Revision 15: one record per faction, realm and region. Only when declared. |
+| `locale` | table | `GetLocale()` in lower case, as AceDB-3.0 keys it | Revision 15: one record per client language. Only when declared. |
+| `namespaces` | table | namespace name | Revision 15: each namespace's data, in AceDB-3.0's namespace layout, written by the [Namespaces](#namespaces) part: inside `namespaces[name]`, one section per scope the namespace declares (`profiles`, `global`, `char`, `realm`, `class`, `faction`, `race`, `factionrealm`, `factionrealmregion`, `locale`), keyed as the sections above are; no `profileKeys`, `specProfiles`, `version` or nested `namespaces`. Without the part SettingsKit writes nothing here. Before revision 15 this section was reserved for exactly this. |
 | `specProfiles` | table | `"<name> - <realm>"` | Revision 11: each character's [spec profiles](#spec-profiles), a table from spec index (1 to 8) to profile name. An entry that is not a table, and a value that is not a usable profile name, is ignored. |
 
 Every section is optional in what you write: `Open` creates the missing ones
-in a writable database. A present section that is not a table is refused, as
+in a writable database (the four revision 15 scope sections only when
+declared). A present section that is not a table is refused, as
 step 5 above says. Inside a record, a value is stored under the field name the
 schema declares. SettingsKit never validates stored data: `Open` does not
 check it, and a read returns a stored scalar as it is (a non-table where the
@@ -380,7 +403,7 @@ The current profile is chosen per character and recorded in the saved table (`pr
 
 ### `db:SetProfile(name)`
 
-Switches to profile `name`, creating an empty one when it does not exist, records it for this character (when the character key is available), points `db.profile` at a view of it and fires `OnProfileChanged(db, name, previous)`. Returns `true`, or `false` without a signal when `name` is already current. `db.profile` is a different table after a switch; a view kept from before keeps reading and writing the profile it was made for.
+Switches to profile `name`, creating an empty one when it does not exist, records it for this character (when the character key is available), points `db.profile` at a view of it and fires `OnProfileChanged(db, name, previous)`; from revision 15 it fires `OnProfileShutdown(db, previous)` first, before anything changes, and `OnNewProfile(db, name)` before `OnProfileChanged` when it created the profile. Returns `true`, or `false` without a signal when `name` is already current. `db.profile` is a different table after a switch; a view kept from before keeps reading and writing the profile it was made for.
 
 Profile names are non-empty strings of at most `maxProfileNameLength` bytes (64 by default) with a character other than whitespace, never secret. A stored choice longer than the current limit is ignored at `Open`.
 
@@ -388,21 +411,21 @@ Profile names are non-empty strings of at most `maxProfileNameLength` bytes (64 
 
 A fresh array of every profile name, sorted with `<`, always including the current one.
 
-### `db:CopyProfile(from)`
+### `db:CopyProfile(from, options?)`
 
-Replaces the current profile's contents with a deep copy of profile `from` and fires `OnProfileCopied(db, from, current)`. The current profile keeps its table, so `db.profile` is unchanged. Copying the current profile onto itself, a profile that does not exist, or one nesting more than SchemaKit's `maxDepth` tables (16 by default, read when `CopyProfile` runs) is refused.
+Replaces the current profile's contents with a deep copy of profile `from`, fires `OnProfileCopied(db, from, current)` and returns `true`. The current profile keeps its table, so `db.profile` is unchanged. Copying the current profile onto itself, a profile that does not exist, or one nesting more than SchemaKit's `maxDepth` tables (16 by default, read when `CopyProfile` runs) is refused. Revision 15: `options` may be `{ missingOk = true }` (AceDB-3.0's `silent`), and a `from` that does not exist then returns `false` and changes nothing.
 
 ### `db:ResetProfile()`
 
 Empties the current profile in place, so every field reads its default, and fires `OnProfileReset(db, name)`.
 
-### `db:DeleteProfile(name)`
+### `db:DeleteProfile(name, options?)`
 
-Deletes a profile other than the current one and fires `OnProfileDeleted(db, name)`. Characters whose recorded choice was `name` lose it and start on the default profile at their next `Open`. Deleting the current profile or one that does not exist is refused.
+Deletes a profile other than the current one, fires `OnProfileDeleted(db, name)` and returns `true`; with `{ missingOk = true }` (revision 15) a `name` that does not exist returns `false` instead of raising. Characters whose recorded choice was `name` lose it and start on the default profile at their next `Open`. Deleting the current profile or one that does not exist is refused.
 
 ### `db:ResetDatabase()`
 
-Empties the saved variable in place, stamps `options.version` again when the database was opened with one, recreates the layout, switches to the default profile, fires `OnProfileReset(db, name)` and, when the profile name changed, `OnProfileChanged(db, name, previous)`. Every profile view obtained before is detached, and `db.profile` is a new view. The scope views of `global`, `char` and the rest stay valid.
+Empties the saved variable in place, stamps `options.version` again when the database was opened with one, recreates the layout, switches to the default profile, fires `OnDatabaseReset(db)` and `OnNewProfile(db, name)` (revision 15), `OnProfileReset(db, name)` and, when the profile name changed, `OnProfileChanged(db, name, previous)`. Every profile view obtained before is detached, and `db.profile` is a new view. The scope views of `global`, `char` and the rest stay valid.
 
 ## Spec profiles
 
@@ -478,6 +501,61 @@ The signal fires after the value is stored. SignalKit's dispatch rules apply: li
 | `OnProfileReset(callback)` | `callback(db, name)` |
 | `OnProfileDeleted(callback)` | `callback(db, name)` |
 
+### Lifecycle signals
+
+Revision 15, AceDB-3.0's other database callbacks. Each signal is created by its first listener, so a database nobody listens to allocates nothing.
+
+| Method | Callback | Fires |
+|---|---|---|
+| `OnNewProfile(callback)` | `callback(db, name)` | when SettingsKit creates the current profile's table: `SetProfile` (spec switches included), `ResetDatabase`, and `CopyProfile` or `ResetProfile` when the current profile's table was missing; after the change, before the method's other signals. |
+| `OnProfileShutdown(callback)` | `callback(db, name)`, `name` the profile being left | at the start of a `SetProfile` that switches, before anything changes: `db.profile` is still the old profile. A listener that raises stops the switch with nothing changed. AceDB-3.0 passes no name. |
+| `OnDatabaseShutdown(callback)` | `callback(db)` | at `PLAYER_LOGOUT`, with EventKit, for every database in the order opened, before it is compacted, so a listener's last writes are compacted too; also for a read-only database (not compacted). A listener that raises is reported through the host error handler and stops nothing else. Without EventKit nothing fires: use LifecycleKit's `OnShutdown`. |
+| `OnDatabaseReset(callback)` | `callback(db)` | first in `ResetDatabase`, before `OnNewProfile`, `OnProfileReset` and `OnProfileChanged`. |
+
+`Open` creates a new character's first profile before any listener can connect, so it fires no `OnNewProfile`. **`db:IsNewProfile()`** answers it instead: whether this session created the current profile's table (by `Open`, `SetProfile`, a spec switch or `ResetDatabase`). A database opened by revision 14 before an in-place upgrade answers `false` for the profile its `Open` created.
+
+```lua
+local db = SettingsKit:Open("MyAddonDB", schema)
+if db:IsNewProfile() then applyPreset(db.profile) end
+db:OnNewProfile(function(_, name) applyPreset(db.profile) end)
+```
+
+## Namespaces
+
+Revision 15, with the part `parts/SettingsKit-Namespaces.lua` loaded after the core: AceDB-3.0's `RegisterNamespace` and `GetNamespace`. A namespace is a database of its own schema over `MyAddonDB.namespaces[name]`, for a module that keeps its own settings, and it follows its parent's profile.
+
+```lua
+local bars = db:RegisterNamespace("Bars", {
+  profile = S.table({ fields = { size = S.optional(S.number({ min = 1, max = 100 }), 36) } }),
+})
+bars.profile.size = 40          -- validated, stored in MyAddonDB.namespaces.Bars.profiles.Default
+db:SetProfile("Raid")           -- bars:GetProfile() is "Raid" too
+```
+
+### `db:RegisterNamespace(name, schema)`
+
+Returns the namespace `name` of this database. `name` is a non-secret string of 1 to 64 bytes with a character other than whitespace; `schema` is what `Open` takes, compiled the same way and sharing its compiled plans. Registering a name again with the same schema table returns the same namespace; another schema raises. It refuses at your line: a namespace receiver (namespaces do not nest), more than `maxNamespaces` namespaces (256 by default), and a saved `namespaces[name]`, or a section of a declared scope inside it, that is not a table. In a writable database it creates `namespaces[name]`, the sections of the scopes it declares and the current profile's table; a read-only database creates nothing, and the namespace reads what is saved or its defaults and refuses every write. The scope keys are read now, as `Open` reads them; `char` is the parent's key.
+
+### `db:GetNamespace(name, options?)`
+
+Returns the registered namespace `name`. A name nobody registered raises `SettingsKit.Database:GetNamespace name names no registered namespace` at your line, unless `options` is `{ missingOk = true }` (AceDB-3.0's `silent`), which returns `nil`.
+
+### What a namespace is
+
+A namespace is a SettingsKit database: views (read at the same cost), validated writes, `OnChange`, `Getter`, `Validate`, `Pairs`, `Compact` (this namespace only), `Resync`, `IsReadOnly` (its parent's), `GetProfile`, `GetProfiles` and `GetSpecProfile` (its parent's), `IsNewProfile`, and every profile and lifecycle signal of its own. `ResetProfile` on a namespace empties only that namespace's current profile, as on an AceDB-3.0 namespace. `GetSavedVariable` answers the parent's global name; messages name the namespace, `SettingsKit (MyAddonDB namespace Bars) ...`. Its parent owns its profile: `SetProfile`, `CopyProfile`, `DeleteProfile`, `ResetDatabase`, `SetSpecProfile` and `ApplySpecProfile` on a namespace raise `SettingsKit.Database:SetProfile cannot be called on MyAddonDB namespace Bars; call it on the database of MyAddonDB`.
+
+### The parent's profile operations
+
+`SetProfile` (spec switches included), `CopyProfile`, `ResetProfile`, `DeleteProfile` and `ResetDatabase` on the parent change every namespace, in three steps:
+
+1. Every refusal is decided before anything changes, the depth of every namespace's copy included, and `OnProfileShutdown` fires on the parent, then on each namespace in registration order.
+2. The parent changes, then every namespace (no listener runs in between): a switch points each at the profile, creating its table when the namespace declares `profile`; a copy copies each namespace's `profiles[from]` (an absent one empties the target, as AceDB-3.0 does); a reset empties each namespace's current profile; a delete removes each namespace's `profiles[name]` and detaches its views of it; `ResetDatabase` gives each namespace a new saved table and a new `profile` view. Namespaces saved in `namespaces` that nobody registered this session get the raw part of a copy, reset or delete, as AceDB-3.0 gives them.
+3. The namespaces' signals fire, signal by signal, each over every namespace in registration order, then the parent's. A listener that raises reaches your line with every change already made.
+
+The parent's `Compact` compacts every namespace too and returns the total. At logout each namespace's `OnDatabaseShutdown` fires after its parent's, the namespaces are compacted with the parent, and then empty profiles, empty sections and empty namespace tables inside `namespaces` are removed (the parent's own layout stays as `Open` made it).
+
+Without the part, reading `db.RegisterNamespace` or `db.GetNamespace` raises at the reading line `SettingsKit.Database:RegisterNamespace is in SettingsKit's Namespaces part, which is not loaded: add settingsKit\parts\SettingsKit-Namespaces.lua`.
+
 ## `db:Pairs(view)`
 
 `for key, value in db:Pairs(db.profile) do ... end` iterates a view of this database: first every key that has a default (a record's field defaults, or a keyed section's own default entries — never its wildcard, which covers every possible key), then every saved key without a default, including undeclared ones. Each value is what reading `view[key]` returns, so a record field yields its child view. Order within each phase is `next` order. The iterator is stateless and allocates nothing beyond what the reads themselves do (the first read of a plain-table default stores a copy, as above). As with `pairs`, do not add keys to the view while iterating it. Anything but a view of this database is refused at your line.
@@ -524,6 +602,10 @@ Walks every declared scope — every stored character, realm, class and faction 
 
 Returns how many values and tables it removed. With EventKit registered, every database compacts itself on `PLAYER_LOGOUT`, through one listener SettingsKit connects once and shares between all databases, in the order they were opened; a compaction that raises there is reported through `geterrorhandler()` rather than raised into EventKit's dispatch, and the other databases are still compacted. Values written after that compaction are saved as they are. A read-only database refuses `Compact` and is skipped at logout.
 
+## Secret values
+
+Every value SettingsKit takes from outside is asked `issecretvalue` before it is compared, indexed, measured or formatted: written keys and values, `Getter` keys, `Validate` and `OnChange` scope names, option values and keys, profile and namespace names, `missingOk`, and every answer of the client (the scope keys, including the revision 15 ones, and the spec index). A secret is refused at the caller's line with a message that names the parameter and never formats the value, or, for a client answer, makes its scope unavailable. Reads are not probed: the client refuses a secret key before any metamethod runs (revision 14, below).
+
 ## Limits
 
 Every bound SettingsKit keeps holds unless you open it. A bound on something you create is an option; a bound on text every addon's databases render is a shared limit.
@@ -531,6 +613,7 @@ Every bound SettingsKit keeps holds unless you open it. A bound on something you
 | Limit | Default | How to open | `UNBOUNDED` allowed? | Ceiling and reason |
 |---|---|---|---|---|
 | `maxScannedEntries` | `65536` | `Open(name, schema, { maxScannedEntries = n })` | yes | none: the scanned table is your own data |
+| `maxNamespaces` | `256` | `Open(name, schema, { maxNamespaces = n })` (revision 15) | yes | none: the namespaces are your own modules; an addon that registers one per module it loads (a namespace per boss module, say) raises it |
 | `maxProfileNameLength` | `64` | `SettingsKit:SetLimits({ maxProfileNameLength = n })` | no | `64` to `1024`: profile names are typed by players and shown in option screens and dropdowns; below 64 a `"<name> - <realm>"` character profile may not fit |
 | `pathKeyLimit` | `32` | `SettingsKit:SetLimits({ pathKeyLimit = n })` | no | `1` to `1024`: paths show keys other players can send, and every message must stay short and printable |
 | table depth of a scanned, compared or copied value, and of the views a database builds | SchemaKit's `maxDepth` (16 by default) | `SchemaKit:SetLimits{ maxDepth = n }`, read when each scan, comparison, `CopyProfile` or `Open` starts | no | follows SchemaKit's ceiling of 64: every one of these walks recurses once per nested table |
@@ -585,6 +668,17 @@ Revision 11 adds these refusals, each at the caller's line:
 
 Revision 14 removes the two read refusals, by core decision 19b: `SettingsKit (<name>) <view path> cannot be read with a secret key` (a view read) and `SettingsKit databases cannot be read with a secret key` (a database read). On the client a secret key raises before any `__index` metamethod runs (measured on Retail 12.1.0 build 69933, `docs/EMBEDDING.md`), so neither probe could ever fire there; a read with a secret key now raises the client's own error, `attempted to index a table that cannot be indexed with secret keys`, at the same reading line, and the client suite asserts it. Every other secret refusal stays: written keys and values, `Getter`, `Validate`, `Compact`, profile names, scope names and every answer of the client. Revision 14 adds one refusal at the caller's line: `SettingsKit:GetCharacterKey must be called on the SettingsKit facade; use SettingsKit:GetCharacterKey(...)`.
 
+Revision 15 adds these refusals, each at the caller's line:
+
+- `SettingsKit.Database:OnNewProfile must be called on a SettingsKit database` and `SettingsKit.Database:OnNewProfile callback must be a function`, and the same for `OnProfileShutdown`, `OnDatabaseShutdown`, `OnDatabaseReset`; `SettingsKit.Database:IsNewProfile must be called on a SettingsKit database`
+- `SettingsKit.Database:CopyProfile options must be a table`, `... options contains unknown field "<field>"`, `... options.missingOk must be a boolean` and `... options.missingOk must not be a secret value`, and the same for `DeleteProfile` and `GetNamespace`
+- `SettingsKit:Open options.maxNamespaces must be a positive integer or SettingsKit.UNBOUNDED` and `SettingsKit:Open options.maxNamespaces must not be a secret value`
+- `SettingsKit:Open MyAddonDB.race must be a table` (and `factionrealm`, `factionrealmregion`, `locale`), only when the scope is declared; the read of an unavailable added scope raises `SettingsKit (MyAddonDB) db.race is unavailable: UnitRace("player") returned no race when the database was opened` (`factionrealm` and `factionrealmregion`: `UnitFactionGroup("player") or GetRealmName() returned no faction or realm`; `locale`: `GetLocale() returned no locale`)
+- `SettingsKit.Database:<method> cannot be called on <name> namespace <namespace>; call it on the database of <name>` for `SetProfile`, `CopyProfile`, `DeleteProfile`, `ResetDatabase`, `SetSpecProfile` and `ApplySpecProfile` on a namespace
+- with the Namespaces part: `SettingsKit.Database:RegisterNamespace name must be a non-empty string`, `... name must not be a secret value`, `... name must contain a character other than whitespace`, `... name must be at most 64 bytes long` (and the same for `GetNamespace`); `SettingsKit.Database:RegisterNamespace cannot be called on a namespace: namespaces do not nest` (and `GetNamespace`); `SettingsKit.Database:RegisterNamespace <name> namespace <namespace> is already registered with a different schema table`; `SettingsKit.Database:RegisterNamespace cannot register more than <n> namespaces in <name>; raise options.maxNamespaces in SettingsKit:Open`; `SettingsKit.Database:RegisterNamespace <name>.namespaces.<namespace> must be a table` (and `.<section> must be a table`); the schema refusals of `Open` with `SettingsKit.Database:RegisterNamespace` in place of `SettingsKit:Open`; `SettingsKit.Database:CopyProfile from nests more than <n> tables in <name> namespace <namespace>`
+- without the part, at the reading line: `SettingsKit.Database:RegisterNamespace is in SettingsKit's Namespaces part, which is not loaded: add settingsKit\parts\SettingsKit-Namespaces.lua` (and `GetNamespace`)
+- loading the part without its core: `MoltenCodes SettingsKit part Namespaces requires SettingsKit API 1 to be loaded first`
+
 SettingsKit never tests a value it did not create as a boolean (`if x`, `x and y`, `x or y`, `not x`), which raises on a secret as well: the host identity returns are type-tested and asked about secrecy before they are used, and the only answers it tests (SchemaKit's `Check`, `pcall`) are its dependencies' own booleans.
 
 A secret stored `version` in the saved table is refused as `SettingsKit:Open MyAddonDB.version must be a non-negative integer`, and a secret profile choice in `profileKeys` is ignored (never compared) by `DeleteProfile`, as `Open` already ignored it.
@@ -600,6 +694,9 @@ A secret stored `version` in the saved table is refused as `SettingsKit:Open MyA
 | A validated write | The same checks and messages in every case. A value that is not a table, written to a declared `string`, `number`, `boolean` or `enum` field through a view that already took one valid write, takes the fused path: the read-only and detached tests, the secret probe of key and value, the field's own rules, SchemaKit's `maxDepth` read without allocating (`SchemaKit:GetLimit`), the bound of any keyed section above, one table write and, once a listener was connected to the scope, one signal dispatch. Any other write, and every refused one, runs one SchemaKit check of a probe holding only the written path. No allocation when the key already exists and the value is not a table; a table value adds the scan of its contents. On host Lua 5.1 (2026-11-15, revision 14) about 0.3 µs for `db.profile.scale = 1.5` and 0.55 µs for `db.profile.frame.x = 3` (revision 13: 0.41 and 0.91 µs). |
 | `Open`, `SetProfile` to a new profile | Validates the schema and options, reads the scope keys, creates the missing layout sections and gives each scope a view with nothing behind it yet. The first `Open` of a schema also seals, describes and compiles it; later ones with the same schema reuse that. Signals are created when a listener first connects. On host Lua 5.1 (2026-11-15, revision 14) an `Open` of the benchmark schema over a new saved variable takes about 6.5 µs and allocates about 3.7 KB (revision 13: 10 µs, 8.3 KB; AceDB-3.0: 2 µs, 3.3 KB); an open database with one profile read holds about 3.0 KB beyond its saved variable (revision 13: 3.9 KB; AceDB-3.0: 3.4 KB). |
 | `GetProfiles`, `CopyProfile`, `Compact` | Allocate or walk by design; not for hot paths. |
+| `SetProfile` between existing profiles, with namespaces | Revision 15: no allocation; each namespace adds its switch (no validation, no `profileKeys` write). On host Lua 5.1 (2026-11-15) about 4.6 µs with 10 namespaces against AceDB-3.0's 18.6 µs and 1.9 KB (0.25x); without namespaces 0.62 µs (0.21x). |
+| `RegisterNamespace` | Revision 15: compiles the schema once (shared like `Open`'s), reads the scope keys and builds the namespace's records and empty views. On host Lua 5.1 (2026-11-15) about 7.8 µs with a profile read; a namespace with its profile view built holds about 4.0 KB (AceDB-3.0: 2.7 µs, 3.3 KB). |
+| The revision 15 scopes | Nothing unless declared: their keys are read and their sections created only for a schema that declares them. |
 | A pending migration step | One deep copy of the saved table and one walk of the result, once per step with a function, only while the stored version is behind (see [Migrations](#migrations)). |
 
 Defaults are compiled once at `Open` from `schema:Describe()`; nothing on the read path consults SchemaKit.
@@ -619,7 +716,7 @@ The nine-point plan in `docs/ROADMAP.md` is followed except where recorded here:
 - **Views are refused as values**, together with any table carrying a metatable other than the one SettingsKit gives saved tables. A stored view would alias another view's data and be written through without validation, because Lua 5.1 calls `__newindex` only for absent keys.
 - **Spec profiles keep no enabled flag** (revision 11), unlike LibDualSpec-1.0: an assignment is what enables switching for its index, which keeps one rule for the saved table and the options screen.
 - **The spec index kind is read on every call**, not once: `WOW_PROJECT_ID` is a constant of the session, so the answer is the same, and a call costs one table read.
-- **Additions:** `db:Validate(scope, path, value)`, for an options layer that checks a value before it writes it (optionsKit binds options to database paths); `db:Pairs(view)`, because Lua 5.1 cannot iterate a proxy with `pairs`; `OnProfileCopied`, `OnProfileReset` and `OnProfileDeleted` methods; a fifth `path` argument to `OnChange` listeners; `db:GetSavedVariable()`; `db:Resync()` and `db:Getter(source, key)` (revision 7); `SettingsKit:GetCharacterKey()` (revision 14); `Compact` returns a count; `SettingsKit.DEFAULT_PROFILE` and `SettingsKit.MAX_PROFILE_NAME_LENGTH`; `SetLimits`, `GetLimits`, `UNBOUNDED` and the `maxScannedEntries` option (principle 4a, *Bounded by default, opened on purpose*).
+- **Additions:** `db:Validate(scope, path, value)`, for an options layer that checks a value before it writes it (optionsKit binds options to database paths); `db:Pairs(view)`, because Lua 5.1 cannot iterate a proxy with `pairs`; `OnProfileCopied`, `OnProfileReset` and `OnProfileDeleted` methods; a fifth `path` argument to `OnChange` listeners; `db:GetSavedVariable()`; `db:Resync()` and `db:Getter(source, key)` (revision 7); `SettingsKit:GetCharacterKey()` (revision 14); `db:IsNewProfile()` and the profile name passed to `OnProfileShutdown` listeners (revision 15); `Compact` returns a count; `SettingsKit.DEFAULT_PROFILE` and `SettingsKit.MAX_PROFILE_NAME_LENGTH`; `SetLimits`, `GetLimits`, `UNBOUNDED` and the `maxScannedEntries` option (principle 4a, *Bounded by default, opened on purpose*).
 
 ## Embedded copies and upgrades
 
@@ -644,3 +741,5 @@ Revision 12 fixes two faults of spec profiles. A database whose character's assi
 Nothing survives `/reload` except the saved variable itself: open the database again in the loaded phase.
 
 Revision 14 changes four documented behaviours, recorded in `docs/ROADMAP.md` package O, "settingsKit read-through views": views read through chained tables, so an open database's saved tables carry SettingsKit's metatable and read their defaults (see [The saved table](#the-saved-table)); a read with a secret key raises the client's own error instead of SettingsKit's (core decision 19b); views are built by their first use; and the `char` key comes from `UnitNameUnmodified("player")`. It adds `SettingsKit:GetCharacterKey()`. An in-place upgrade from an earlier revision gives every live view its own metatable and chain (the shared view metatable is SettingsKit's, so its protection is lifted for the swap and put back), moves every keyed section's entry cache to the shared entry-cache metatable, and keeps every database, view, listener and getter; a database an older revision opened builds its profile view at once from then on, because a getter that revision made expects one. An upgrade from revision 14 on gives every view's metatable the newer file's functions and rebinds its chain.
+
+Revision 15 adds the four AceDB-3.0 scopes, the lifecycle signals, `IsNewProfile`, `missingOk`, the `maxNamespaces` option and the hooks of the [Namespaces](#namespaces) part, and changes one documented behaviour: `CopyProfile` and `DeleteProfile` return a boolean. An in-place upgrade from revision 14 adds the shared tables these use; databases revision 14 opened gain every new method through the prototype, keep their listeners and getters, and answer `IsNewProfile() == false` for the profile their `Open` created. The part keeps no copy of core functions and its namespaces share the prototype and metatable, so a later core revision loaded in place keeps cascading to namespaces registered before it; a copy of the part whose revision is not higher than the loaded one returns at once.

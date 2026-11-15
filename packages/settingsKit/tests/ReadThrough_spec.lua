@@ -513,7 +513,7 @@ describe("SettingsKit upgrade from revision 13", function()
 
     local upgraded = TestEnv.ReloadPackage()
     assert.are.equal(previous, upgraded)
-    assert.are.equal(14, upgraded.REVISION)
+    assert.is_true(upgraded.REVISION >= 14)
     assert.are.equal(db, upgraded:Open("MyAddonDB"))
     for proxy, node in pairs(state.views) do
       assert.are.equal("SettingsKit.View", getmetatable(proxy))

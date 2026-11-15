@@ -37,8 +37,9 @@ What each piece promises:
 
 - **Defaults are a view, not stored data.** A read that finds nothing saved returns the schema's default, including wildcard defaults for every key of a keyed section, and writes nothing. The saved file holds only what the player changed, and `db:Compact()` removes values that were set back to their default.
 - **Writes are validated where they happen.** `db.profile.scale = 7` raises at that line with SchemaKit's failure text, and nothing is stored. A secret value is refused the same way: saved variables never hold one.
-- **Scopes.** `db.global`, `db.char`, `db.realm`, `db.class`, `db.faction` and `db.profile`, keyed from `UnitNameUnmodified` (else `UnitName`), `GetRealmName`, `UnitClass` and `UnitFactionGroup` read once at `Open`; `SettingsKit:GetCharacterKey()` answers the character key.
-- **Profiles.** `SetProfile`, `GetProfiles` (sorted), `CopyProfile`, `ResetProfile`, `DeleteProfile`, `ResetDatabase`, with a signal for each change.
+- **Scopes.** `db.global`, `db.char`, `db.realm`, `db.class`, `db.faction` and `db.profile`, keyed from `UnitNameUnmodified` (else `UnitName`), `GetRealmName`, `UnitClass` and `UnitFactionGroup` read once at `Open`; `SettingsKit:GetCharacterKey()` answers the character key. AceDB-3.0's other four, `db.race`, `db.factionrealm`, `db.factionrealmregion` and `db.locale`, with AceDB's keys, cost nothing unless the schema declares them.
+- **Profiles.** `SetProfile`, `GetProfiles` (sorted), `CopyProfile`, `ResetProfile`, `DeleteProfile`, `ResetDatabase`, with a signal for each change, and AceDB-3.0's other callbacks: `OnNewProfile`, `OnProfileShutdown` (before a switch), `OnDatabaseShutdown` (at logout, before compaction) and `OnDatabaseReset`. `db:IsNewProfile()` says whether this session created the current profile, so an addon learns its first profile is new.
+- **Namespaces.** With the optional `settingsKit\parts\SettingsKit-Namespaces.lua`, `db:RegisterNamespace(name, schema)` gives a module its own database over `MyAddonDB.namespaces[name]`, in AceDB-3.0's namespace layout, following the parent's profile: every profile operation of the parent reaches every namespace.
 - **Spec profiles.** `db:SetSpecProfile(index, name)` assigns a profile to a specialization (Retail, Mists of Pandaria Classic) or a talent group (Classic Era, Season of Discovery, Hardcore), and the database switches to it when the player changes specialization, while EventKit is embedded; `db:ApplySpecProfile()` does it by hand. See *Spec profiles* in the API.
 - **Change notifications.** `db:OnChange(scope, callback)` returns a SignalKit connection called after every validated write.
 - **Versioned migrations.** `options.migrations[n]` runs once, in ascending order, from the stored version to `options.version`, each on a copy of the saved table that replaces it only when the step returns, so a failing step leaves nothing half-applied and is retried on untouched data.
@@ -46,7 +47,7 @@ What each piece promises:
 - **Compaction at logout.** When EventKit is embedded, every database compacts itself on `PLAYER_LOGOUT`.
 - **Views hold their saved tables.** A view keeps the table it reads until a SettingsKit mutation may have changed it. After editing the saved variable yourself once the database is open, call `db:Resync()`.
 - **Reads cost what AceDB's do.** A view reads through chained tables, so `db.profile.scale` is answered by the VM without a SettingsKit call (about 10 ns against AceDB-3.0's 3.5 ns on host Lua; revision 13 took 110 ns), and views are built on first use, so `Open` holds less than AceDB-3.0's database. While a database is open its saved tables read their defaults, as AceDB's do; use `rawget` to test what is saved. `db:Getter("profile", "scale")` returns a function answering exactly what `db.profile.scale` does, for handing a reader around.
-- **Bounded by default, opened on purpose.** The secret-value scan of a written table (`maxScannedEntries`, an `Open` option that accepts `SettingsKit.UNBOUNDED`), profile-name length and path-key length (`SettingsKit:SetLimits`) each have a documented default; see *Limits* in the API.
+- **Bounded by default, opened on purpose.** The secret-value scan of a written table (`maxScannedEntries`, an `Open` option that accepts `SettingsKit.UNBOUNDED`), the namespaces a database registers (`maxNamespaces`, 256, the same), profile-name length and path-key length (`SettingsKit:SetLimits`) each have a documented default; see *Limits* in the API.
 
 ## Migrating from AceDB-3.0
 
@@ -55,17 +56,20 @@ What each piece promises:
 | `AceDB:New(name, defaults, true)` | `SettingsKit:Open(name, schema, { defaultProfile = "Default" })` |
 | `AceDB:New(name, defaults)` (a profile per character) | `SettingsKit:Open(name, schema, { defaultProfile = "char" })` |
 | `db.profile`, `db.global`, `db.char`, `db.realm`, `db.class`, `db.faction` | The same names, as validated views. |
-| `db.race`, `db.factionrealm`, `db.factionrealmregion`, `db.locale` | No scope: declare a keyed `map` in `global` and index it yourself. |
+| `db.race`, `db.factionrealm`, `db.factionrealmregion`, `db.locale` | The same names (revision 15), keyed as AceDB keys them; declare them in the schema. |
 | `["*"]` and `["**"]` defaults | A `map` whose `values` is `S.optional(record, {})`: every key reads the record's defaults until written. |
 | `db:GetCurrentProfile()` | `db:GetProfile()` |
 | `db:GetProfiles()` (a table and a count) | `db:GetProfiles()` (a new sorted array) |
-| `db:SetProfile`, `db:CopyProfile`, `db:ResetProfile`, `db:DeleteProfile` | The same names; deleting a missing profile is refused. |
+| `db:SetProfile`, `db:CopyProfile`, `db:ResetProfile`, `db:DeleteProfile` | The same names; copying or deleting a missing profile is refused. |
+| `db:CopyProfile(name, true)`, `db:DeleteProfile(name, true)` (`silent`) | `db:CopyProfile(name, { missingOk = true })`, `db:DeleteProfile(name, { missingOk = true })`, which answer `false`. |
 | `db:ResetDB()` | `db:ResetDatabase()` |
-| `db:RegisterNamespace(name, defaults)` | No namespaces in API 1: open a second database. |
+| `db:RegisterNamespace(name, defaults)` | `db:RegisterNamespace(name, schema)` with the Namespaces part; the saved layout is AceDB's. |
+| `db:GetNamespace(name)`, `db:GetNamespace(name, true)` | `db:GetNamespace(name)`, `db:GetNamespace(name, { missingOk = true })`. |
 | `db:RegisterDefaults(defaults)` | The schema passed to `Open`. |
 | Defaults copied into the saved tables, so `MyAddonDB.profiles.Default.scale` reads the default | The same while the database is open: saved tables read their scalar defaults through a metatable (revision 14); `rawget` sees only what is saved, and nothing is written. |
 | Character key from `UnitNameUnmodified("player") .. " - " .. GetRealmName()` | The same key (revision 14), `SettingsKit:GetCharacterKey()`; `UnitName` only where the client has no `UnitNameUnmodified`. AceDB's ruleset keys on WoW Forever (interface 1.60) are not followed: that client is not supported. |
 | Callbacks `OnProfileChanged(event, db, name)` and the other three | `db:OnProfileChanged(function(db, name, previous) end)`, `OnProfileCopied`, `OnProfileReset`, `OnProfileDeleted`. |
+| Callbacks `OnNewProfile`, `OnProfileShutdown`, `OnDatabaseShutdown`, `OnDatabaseReset` | `db:OnNewProfile(function(db, name))`, `db:OnProfileShutdown(function(db, name))` (also passes the profile being left), `db:OnDatabaseShutdown(function(db))` (with EventKit), `db:OnDatabaseReset(function(db))`. `OnNewProfile` for the profile `Open` created: `db:IsNewProfile()`. |
 | Values equal to their defaults stripped at logout | `db:Compact()`, run at logout while EventKit is embedded. |
 
 Existing AceDB data is imported by BridgeKit (`ImportAceDB`, `AceDBMigration`); the full guide is in [`docs/MIGRATING_FROM_ACE3.md`](../../docs/MIGRATING_FROM_ACE3.md).
@@ -98,6 +102,10 @@ Libs\MoltenCodes\settingsKit\SettingsKit.lua
 ```
 
 Minimum footprint: embed 4 files: `registry/Registry.lua`, `signalKit/SignalKit.lua`, `schemaKit/SchemaKit.lua`, `settingsKit/SettingsKit.lua`.
+
+Optional part, after the core: `settingsKit/parts/SettingsKit-Namespaces.lua`
+for `db:RegisterNamespace` and `db:GetNamespace`. Without it those two
+methods raise a message naming the file to add.
 
 Direct runtime dependencies: Registry API 2, SchemaKit API 1, SignalKit API 1.
 Every file above is required; omitting one makes this package raise at

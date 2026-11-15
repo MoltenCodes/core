@@ -658,16 +658,17 @@ end)
 | `AceDB:New(name, defaults, true)` | `SettingsKit:Open(name, schema, { defaultProfile = "Default" })` |
 | `AceDB:New(name, defaults)` (per-character profile) | `SettingsKit:Open(name, schema, { defaultProfile = "char" })` |
 | `db.profile`, `db.global`, `db.char`, `db.realm`, `db.class`, `db.faction` | the same names, as validated views |
-| `db.race`, `db.factionrealm`, `db.factionrealmregion`, `db.locale` | no scope: declare a keyed `map` in `global` and index it by the key yourself |
+| `db.race`, `db.factionrealm`, `db.factionrealmregion`, `db.locale` | the same names (SettingsKit revision 15), keyed as AceDB keys them; declare them in the schema |
 | `["*"]` and `["**"]` defaults | a `map` whose `values` is `S.optional(record, {})`: every key reads the record's field defaults until written |
 | `db:SetProfile(name)`, `db:GetCurrentProfile()` | `db:SetProfile(name)`, `db:GetProfile()` |
 | `db:GetProfiles()` → table, count | `db:GetProfiles()` → a new sorted array |
-| `db:CopyProfile(name)`, `db:ResetProfile()`, `db:DeleteProfile(name)` | the same names; deleting a missing profile is refused (Ace3's `silent` has no equivalent) |
+| `db:CopyProfile(name)`, `db:ResetProfile()`, `db:DeleteProfile(name)` | the same names; copying or deleting a missing profile is refused unless `{ missingOk = true }` (Ace3's `silent`), which answers `false` |
 | `db:ResetDB()` | `db:ResetDatabase()` |
-| `db:RegisterNamespace(name, defaults)` | no namespaces yet: open a second database or declare a field |
+| `db:RegisterNamespace(name, defaults)`, `db:GetNamespace(name, silent)` | `db:RegisterNamespace(name, schema)` and `db:GetNamespace(name, { missingOk = true })` with `settingsKit\parts\SettingsKit-Namespaces.lua`; the saved layout is AceDB's, and the parent's profile operations reach every namespace |
 | `db:RegisterDefaults(defaults)` | the schema passed to `Open` |
 | callbacks `OnProfileChanged(event, db, name)`, `OnProfileCopied`, `OnProfileReset`, `OnProfileDeleted` | `db:OnProfileChanged(function(db, name, previous))`, `OnProfileCopied(db, from, name)`, `OnProfileReset(db, name)`, `OnProfileDeleted(db, name)` |
-| `OnDatabaseShutdown` | `LifecycleKit:ForAddon(ADDON_NAME):OnShutdown(callback)` |
+| callbacks `OnNewProfile`, `OnProfileShutdown`, `OnDatabaseReset` | `db:OnNewProfile(function(db, name))`, `db:OnProfileShutdown(function(db, name))` (also passes the profile being left), `db:OnDatabaseReset(function(db))`; for the profile `Open` created, `db:IsNewProfile()` |
+| `OnDatabaseShutdown` | `db:OnDatabaseShutdown(function(db))` with EventKit, before the logout compaction; without EventKit, `LifecycleKit:ForAddon(ADDON_NAME):OnShutdown(callback)` |
 | defaults copied into the saved tables, so `MyAddonDB.profiles.Default.scale` reads the default | the same while the database is open: SettingsKit gives the saved tables a metatable answering their scalar defaults; `rawget`, `next` and `pairs` see only what is saved, and nothing is written to disk |
 | character key `UnitNameUnmodified("player") .. " - " .. GetRealmName()` | the same key, answered by `SettingsKit:GetCharacterKey()`; WoW Forever's ruleset keys are not followed (the client is not supported) |
 | stripping values equal to defaults at logout | `db:Compact()`, run at logout when EventKit is loaded |
@@ -1542,7 +1543,6 @@ ToastKit:Show({ title = "Profile copied", text = "Raid → Solo", duration = 4 }
 |---|---|
 | AceGUI `Icon`, `InteractiveLabel`, `Frame:SetStatusText`, the LibSharedMedia widget set | No equivalent. `TreeGroup`, `TabGroup` and `DropdownGroup` exist as `childGroups` pages in the options renderer, not as widgets of their own. |
 | AceTab completion in arbitrary edit boxes | Not planned; CommandKit completes its own commands. |
-| AceDB namespaces, and the `race`, `factionrealm`, `factionrealmregion` and `locale` scopes | Not in SettingsKit API 1; use a second database or map fields. BridgeKit's importer maps existing data. |
 | LibCustomGlow-1.0 autocast and proc glows, LibEditMode frame settings, LibRangeCheck-3.0 item checks | Not carried over; each Kit's README says why. |
 | Reading or writing AceComm and AceSerializer traffic | BridgeKit. |
 | Converting AceConfig tables and importing AceDB data | BridgeKit. |

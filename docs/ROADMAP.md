@@ -5671,7 +5671,15 @@ Namespace costs measured outside the bench (scripts above, same host):
    `Scopes` table, lazy key reads, `createdProfiles`, `state.parts`, the
    cascade hook points and their order), CHANGELOG 0.6.0, `tests/README.md`,
    the client suite's `EXPECTED.md`.
-9. Status: recorded 2026-11-15; code follows.
+9. Status: implemented 2026-11-15, 0.6.0, revision 15, 72 specs (370 in all).
+   Deviations: after a cascaded operation, namespace signals fire signal by
+   signal across all namespaces, then the parent's; held core memory rose
+   about 24 KB (to 211 KB, mostly new messages and constants) against the 5 KB
+   estimated, and open-empty is about 8% heavier in instructions; reads,
+   writes and profile switches are unchanged. Switching a profile with ten
+   namespaces costs 0.25x AceDB's time and allocates nothing (AceDB 1.9 KB); a
+   namespace holds 4.0 KB against AceDB's 3.3 KB. The main chunk is down to
+   193 locals.
 
 ---
 
@@ -5826,7 +5834,8 @@ Namespace costs measured outside the bench (scripts above, same host):
    (the child's fields, the cascade phases, the dispatch entries, the
    upgrade rules), CHANGELOG (in the 0.6.0 entry), `tests/README.md`, the
    client suite's `EXPECTED.md` and `.toc` (the part's file).
-9. Status: recorded 2026-11-15; code follows.
+9. Status: implemented 2026-11-15, part revision 1, 33.9 KB held only by
+   addons that embed it.
 
 **moduleKit (package O): the AceAddon conveniences: intended state, module defaults and prototypes, finding addons, a module-created notice** — a change to facade `ModuleKit`
 
@@ -6481,7 +6490,7 @@ Namespace costs measured outside the bench (scripts above, same host):
       becomes one small closure over the handler and the name, built at
       `Define` and shared by every option of that `Define` with the same
       handler and name; it looks the method up on every call (late binding)
-      and calls `handler[name](handler, info, ...)`. A method removed after
+      and calls the method `name` on `handler` with `(handler, info, ...)`. A method removed after
       `Define` raises `OptionsKit (MyAddon) general.scale: handler method
       "GetX" is missing` when called. Because the closure is stored where
       the function would be (`_get`, `_set`, `_validate`, `_func`, `_values`,

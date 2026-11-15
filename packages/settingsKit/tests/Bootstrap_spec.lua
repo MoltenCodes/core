@@ -461,6 +461,56 @@ describe("SettingsKit bootstrap", function()
     assert.are.equal(2, #TestEnv.TakeReportedErrors())
   end)
 
+  it(
+    "upgrades revision 14 in place: its databases gain the lifecycle signals and namespaces",
+    function()
+      TestEnv.Reset()
+      TestEnv.InstallWowApi()
+      require("Registry")
+      require("SignalKit")
+      require("EventKit")
+      local S = require("SchemaKit")
+      local previous = TestEnv.LoadRevision(14)
+      TestEnv.SetPlayer()
+      local state = rawget(previous, "_state")
+      local schema = { profile = S.table({ fields = { scale = S.optional(S.number(), 1) } }) }
+      local db = previous:Open("MyAddonDB", schema)
+      local changed = 0
+      db:OnProfileChanged(function()
+        changed = changed + 1
+      end)
+      local getter = db:Getter("profile", "scale")
+      -- Revision 14 had none of the tables revision 15 shares.
+      state.parts, state.helpers, state.createdProfiles = nil, nil, nil
+
+      local upgraded = TestEnv.ReloadPackage()
+      assert.are.equal(previous, upgraded)
+      assert.are.equal(15, upgraded.REVISION)
+      assert.is_table(state.parts)
+      assert.is_table(state.helpers)
+      assert.is_table(state.createdProfiles)
+      assert.are.equal(db, upgraded:Open("MyAddonDB"))
+      -- Revision 14 kept no record of the profile its Open created.
+      assert.is_false(db:IsNewProfile())
+
+      local log = {}
+      db:OnProfileShutdown(function(_, name)
+        log[#log + 1] = "shutdown " .. name
+      end)
+      db:OnNewProfile(function(_, name)
+        log[#log + 1] = "new " .. name
+      end)
+      TestEnv.LoadNamespaces()
+      local child = db:RegisterNamespace("Bars", schema)
+      db:SetProfile("Other")
+      assert.are.same({ "shutdown Default", "new Other" }, log)
+      assert.are.equal(1, changed)
+      assert.are.equal("Other", child:GetProfile())
+      db.profile.scale = 2
+      assert.are.equal(2, getter())
+    end
+  )
+
   it("loads without EventKit", function()
     local SettingsKit, Registry = TestEnv.NewPackageWithoutEventKit()
     assert.are.equal(SettingsKit, Registry:Get("settingsKit", 1))

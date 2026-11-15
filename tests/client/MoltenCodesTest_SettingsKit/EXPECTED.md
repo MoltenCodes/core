@@ -114,19 +114,26 @@ MoltenCodes Test: SKIP settingsKit.persistence: persistence step two: the PLAYER
 MoltenCodes Test: PASS settingsKit.specProfiles: GetSpecIndex answers the kind of this flavour: specialization on Retail and Mists of Pandaria Classic, talent group on Classic Era
 MoltenCodes Test: SKIP settingsKit.specProfiles: after a specialization change between two runs, the database already switched to the profile assigned to the new index -- first run of this session: the next test assigns a profile to every index; change specialization and run again
 MoltenCodes Test: PASS settingsKit.specProfiles: SetSpecProfile for the current index switches at once; every other index is recorded without switching
+MoltenCodes Test: PASS settingsKit.aceParity: race, factionrealm, factionrealmregion and locale are keyed as AceDB-3.0 keys them from the live client
+MoltenCodes Test: PASS settingsKit.aceParity: SetProfile fires OnProfileShutdown before the switch, then OnNewProfile, then OnProfileChanged
+MoltenCodes Test: PASS settingsKit.aceParity: a namespace of the account database is stored in namespaces.<name> in AceDB-3.0's layout
+MoltenCodes Test: SKIP settingsKit.aceParity: after /reload, the kept namespace came back from disk and the logout cleanup removed the empty one -- first run: the previous test writes the namespaces; /reload and run again
 MoltenCodes Test: SKIP settingsKit.cleanup: cleanup: once persistence step two passed, both saved variables are emptied so the files hold no data after the next /reload -- persistence step two has not passed yet; the saved tables are kept for the run after /reload
-MoltenCodes Test: settingsKit: 39 passed, 0 failed, 4 skipped, 0 timed out (43 tests)
+MoltenCodes Test: settingsKit: 42 passed, 0 failed, 5 skipped, 0 timed out (47 tests)
 MoltenCodes Test: results saved in MoltenCodesTestResults; /reload or log out to write them to disk.
 ```
 
-The totals line reads `39 passed, 0 failed, 4 skipped, 0 timed out (43 tests)`.
+The totals line reads `42 passed, 0 failed, 5 skipped, 0 timed out (47 tests)`.
 The step-one test logs `marker written: <date> #<number>; now /reload and run
 /mct run settingsKit again`.
 
 After run 1 and the `/reload`, the account file holds exactly what step one
 wrote and nothing the other tests wrote (their After hooks removed it), and
 no default (`anchor` was written equal to its default and removed by the
-logout compaction):
+logout compaction). Its `namespaces` section holds the kept namespace the
+`aceParity` test wrote and not the empty one, which the logout cleanup removed
+(SettingsKit revision 15 with the Namespaces part; without the part both
+namespace tests are `SKIP` and the section is empty):
 
 ```lua
 MoltenCodesTest_SettingsKitDB = {
@@ -140,7 +147,10 @@ MoltenCodesTest_SettingsKitDB = {
   },
   ["profiles"] = { ["<name> - <realm>"] = { ["scale"] = 1.25 } },
   ["char"] = { ["<name> - <realm>"] = { ["note"] = "<date> #<number>" } },
-  ["profileKeys"] = {}, ["realm"] = {}, ["class"] = {}, ["faction"] = {}, ["namespaces"] = {},
+  ["profileKeys"] = {}, ["realm"] = {}, ["class"] = {}, ["faction"] = {},
+  ["namespaces"] = {
+    ["MoltenCodesTestKept"] = { ["profiles"] = { ["<name> - <realm>"] = { ["size"] = 7 } } },
+  },
   ["specProfiles"] = {},
 }
 ```
@@ -196,12 +206,16 @@ MoltenCodes Test: PASS settingsKit.persistence: persistence step two: the PLAYER
 MoltenCodes Test: PASS settingsKit.specProfiles: GetSpecIndex answers the kind of this flavour: specialization on Retail and Mists of Pandaria Classic, talent group on Classic Era
 MoltenCodes Test: SKIP settingsKit.specProfiles: after a specialization change between two runs, the database already switched to the profile assigned to the new index -- first run of this session: the next test assigns a profile to every index; change specialization and run again
 MoltenCodes Test: PASS settingsKit.specProfiles: SetSpecProfile for the current index switches at once; every other index is recorded without switching
+MoltenCodes Test: PASS settingsKit.aceParity: race, factionrealm, factionrealmregion and locale are keyed as AceDB-3.0 keys them from the live client
+MoltenCodes Test: PASS settingsKit.aceParity: SetProfile fires OnProfileShutdown before the switch, then OnNewProfile, then OnProfileChanged
+MoltenCodes Test: PASS settingsKit.aceParity: a namespace of the account database is stored in namespaces.<name> in AceDB-3.0's layout
+MoltenCodes Test: PASS settingsKit.aceParity: after /reload, the kept namespace came back from disk and the logout cleanup removed the empty one
 MoltenCodes Test: PASS settingsKit.cleanup: cleanup: once persistence step two passed, both saved variables are emptied so the files hold no data after the next /reload
-MoltenCodes Test: settingsKit: 41 passed, 0 failed, 2 skipped, 0 timed out (43 tests)
+MoltenCodes Test: settingsKit: 45 passed, 0 failed, 2 skipped, 0 timed out (47 tests)
 MoltenCodes Test: results saved in MoltenCodesTestResults; /reload or log out to write them to disk.
 ```
 
-The totals line reads `41 passed, 0 failed, 2 skipped, 0 timed out (43 tests)`.
+The totals line reads `45 passed, 0 failed, 2 skipped, 0 timed out (47 tests)`.
 Step two logs `marker restored by the client: <token>` and `verified at
 <date>`; the compaction test logs `restored profile keys: scale`; the cleanup
 test logs `both saved variables are empty; /reload or log out to write the
@@ -212,8 +226,8 @@ empty files`. Now `/reload` once more (step 4 above).
 After the cleanup test, every test that needs the two databases ends as
 `SKIP` with `the cleanup test emptied both saved variables in this session;
 /reload to test again`, and the cleanup test with `already emptied in this
-session; /reload writes the empty files`: the totals read `14 passed, 0 failed,
-29 skipped, 0 timed out (43 tests)` (the facade, migration and spec-profile
+session; /reload writes the empty files`: the totals read `17 passed, 0 failed,
+30 skipped, 0 timed out (47 tests)` (the facade, migration, spec-profile and the three `aceParity`
 tests still run; the spec-profile switching test passes, since run 2 assigned
 the profiles in this session). After the next `/reload` the procedure starts again at run 1.
 
@@ -289,9 +303,9 @@ event EventKit connects the compaction to (in `events.json` of all three),
 ### Retail (12.1)
 
 The lines above: run 1 ends with
-`MoltenCodes Test: settingsKit: 39 passed, 0 failed, 4 skipped, 0 timed out (43 tests)`
+`MoltenCodes Test: settingsKit: 42 passed, 0 failed, 5 skipped, 0 timed out (47 tests)`
 and run 2 with
-`MoltenCodes Test: settingsKit: 41 passed, 0 failed, 2 skipped, 0 timed out (43 tests)`,
+`MoltenCodes Test: settingsKit: 45 passed, 0 failed, 2 skipped, 0 timed out (47 tests)`,
 with the persistence and cleanup skips listed there and no other.
 
 ### Classic Era (1.15) and Mists of Pandaria Classic (5.5)
@@ -308,13 +322,13 @@ document them), and whether it actually makes secrets, which
 `issecretvalue(secretwrap(true)) == true`.
 
 - The client makes secrets: the totals lines are Retail's,
-  run 1 `MoltenCodes Test: settingsKit: 39 passed, 0 failed, 4 skipped, 0 timed out (43 tests)`,
-  run 2 `MoltenCodes Test: settingsKit: 41 passed, 0 failed, 2 skipped, 0 timed out (43 tests)`.
+  run 1 `MoltenCodes Test: settingsKit: 42 passed, 0 failed, 5 skipped, 0 timed out (47 tests)`,
+  run 2 `MoltenCodes Test: settingsKit: 45 passed, 0 failed, 2 skipped, 0 timed out (47 tests)`.
 - The client has both functions but makes no secrets: in both runs the six
   tests print these lines in place of their `PASS` lines, and the totals
   lines are
-  run 1 `MoltenCodes Test: settingsKit: 31 passed, 0 failed, 9 skipped, 0 timed out (40 tests)`,
-  run 2 `MoltenCodes Test: settingsKit: 33 passed, 0 failed, 7 skipped, 0 timed out (40 tests)`:
+  run 1 `MoltenCodes Test: settingsKit: 34 passed, 0 failed, 10 skipped, 0 timed out (44 tests)`,
+  run 2 `MoltenCodes Test: settingsKit: 37 passed, 0 failed, 7 skipped, 0 timed out (44 tests)`:
 
 ```text
 MoltenCodes Test: SKIP settingsKit.secrets: a secret string and a secret number stored in the raw saved table behind profile.label and profile.frame.x read back through the views still secret, of their types, without raising -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
@@ -338,7 +352,7 @@ MoltenCodes Test: SKIP settingsKit.secrets: OnChange and Validate refuse a secre
 ```
 
 Running again in the same session after the cleanup test reads
-`11 passed, 0 failed, 29 skipped, 0 timed out (40 tests)` on every flavour
+`14 passed, 0 failed, 30 skipped, 0 timed out (44 tests)` on every flavour
 and in every case, since the six secrets tests skip there either way.
 
 ## What each test proves
@@ -387,6 +401,10 @@ and in every case, since the six secrets tests skip there either way.
 | `GetSpecIndex answers the kind of this flavour ...` | `"specialization"` where `WOW_PROJECT_ID` is 1 or 19, `"talentGroup"` elsewhere, and a number for the count. The log gives the index, the count and the kind the live client answers. |
 | `after a specialization change between two runs ...` | Run after a specialization change in the same session: the scratch database already uses the profile assigned to the new index, so SettingsKit's shared listener reacted to the client's own events. `SKIP` on the first run of a session. |
 | `SetSpecProfile for the current index switches at once ...` | Assigning every other index changes nothing; assigning the current index switches at once, `GetSpecProfile` reads it back and `ApplySpecProfile` then answers `false`. `SKIP` when the client answers no index (a Retail character without a specialization). |
+| `race, factionrealm, factionrealmregion and locale ...` | A scratch database declaring the four scopes stores each written entry under the key AceDB-3.0 computes from the live client: `UnitRace`'s second result, `"<faction> - <realm>"`, that plus `" - <region>"` (`GetCurrentRegion()` named US, KR, EU, TW or CN, else `GetCurrentRegionName()`, else `TR`), and `GetLocale()` in lower case. The log gives the race, region and locale. Proves `UnitRace` on Mists of Pandaria Classic and Classic Era, whose documentation omits it. |
+| `SetProfile fires OnProfileShutdown before the switch ...` | The three signals fire in that order around a switch to a new scratch profile, and `IsNewProfile` answers `true`. |
+| `a namespace of the account database is stored ...` | With the Namespaces part: `namespaces.MoltenCodesTestKept.profiles["<name> - <realm>"].size` is 7 in the raw table, with no `profileKeys`, and the namespace follows the account profile. `SKIP` without the part. |
+| `after /reload, the kept namespace came back ...` | Run 2: in the table the client restored, the kept namespace holds `size = 7` and `MoltenCodesTestEmpty`, registered with defaults only, is gone, so the logout cleanup inside `namespaces` ran before the client wrote the file. Run 1: `SKIP`. |
 | `cleanup: once persistence step two passed ...` | Run 2: sets both saved-variable globals to `nil`, so the next `/reload` writes files without them. Run 1: `SKIP`, keeping the tables for run 2. |
 
 ## What counts as unexpected
