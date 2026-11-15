@@ -130,6 +130,10 @@
   - changed-files:
       - any-glob-to-any-file: "packages/timerKit/**"
 
+"kit: tooltipKit":
+  - changed-files:
+      - any-glob-to-any-file: "packages/tooltipKit/**"
+
 "kit: widgetKit":
   - changed-files:
       - any-glob-to-any-file: "packages/widgetKit/**"

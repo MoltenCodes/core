@@ -78,6 +78,7 @@ body:
         - signalKit
         - testKit
         - timerKit
+        - tooltipKit
         - widgetKit
         - Not sure
         - None (tooling or documentation)

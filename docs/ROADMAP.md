@@ -1579,18 +1579,21 @@ its code. Order:
    icons or custom widgets inside cells (later, if an addon needs them),
    sorting or filtering the rows.
 3. Dependencies: registry API 2 and poolKit API 1, both required. Host
-   requirement: `CreateFrame`, `UIParent`, `GetCursorPosition` (for the
-   auto-hide check) and the client's font objects.
+   requirement: `CreateFrame`, `UIParent` and the client's font objects
+   (the auto-hide check asks each frame's `IsMouseOver`, so
+   `GetCursorPosition` turned out not to be needed).
 4. Surface: `TooltipKit:Acquire(key, columns, ...justify)` → tooltip (an
    open tooltip under `key` is returned as it is); `TooltipKit:Release(
    tooltip)`; `TooltipKit:IsAcquired(key)`; on a tooltip: `AddHeader(...)`
    and `AddLine(...)` → line index, `AddSeparator(height?, r, g, b, a)`,
    `SetCell(line, column, text, options?)` (`span`, `justify`, `font`,
-   `allowSecret`), `SetLineColor` / `SetCellColor`, `SetLineScript(line,
+   `allowSecret`), `SetLineColor` (the line's background) and
+   `SetCellTextColor` (a cell's text; it replaced the planned
+   `SetCellColor`, because lists colour names, not boxes), `SetLineScript(line,
    script, handler, arg)` for `OnMouseUp`, `OnEnter`, `OnLeave`, `Clear()`,
    `SetMaxHeight(pixels|nil)`, `SmartAnchorTo(frame)`,
    `SetAutoHideDelay(seconds|nil, alternateFrame?)`, `Show()`, `Hide()`,
-   `GetLineCount()`; `SetLimits{ maxTooltips, maxLines, maxColumns }` /
+   `IsShown()`, `GetLineCount()`, `GetColumnCount()`, `GetFrame()`; `SetLimits{ maxTooltips, maxLines, maxColumns }` /
    `GetLimits()`.
 5. Ownership: a tooltip is borrowed from the moment `Acquire` returns it
    until `Release` (or its auto-hide, which releases it); a released
@@ -1618,7 +1621,9 @@ its code. Order:
 8. Docs: README (with the migration from LibQTip-1.0), API.md, CHANGELOG,
    tests/README; EMBEDDING footprint and host-requirements rows;
    ARCHITECTURE's package list.
-9. Status: recorded 2026-11-15; code starts on the owner's go.
+9. Status: implemented 2026-11-15 after the owner's go, 0.1.0, revision 1,
+   43 specs; the client suite (`tests/client/MoltenCodesTest_TooltipKit`)
+   is written and has not been run in a client. Ticked once it has.
 
 #### Package N — bridgeKit, migrating from Ace3
 

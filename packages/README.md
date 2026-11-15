@@ -35,6 +35,7 @@ Current packages:
 - [`compatKit`](compatKit/) — versioned shims applied once per session with a host opt-out, provider registries with liveness probes and a deterministic fallback cascade, the catalogue of taint-hostile subsystems as data.
 - [`commKit`](commKit/) — addon messaging: chunk protocol, bounded reassembly, refusing priority queues, session bandwidth budget, sync sets.
 - [`widgetKit`](widgetKit/) — pooled versioned widgets, List/Fill/Flow layouts, anchors, position bindings, OptionsKit renderer.
+- [`tooltipKit`](tooltipKit/) — multi-column tooltips: keyed, pooled, bounded; headers, spans, colours, line handlers, scrolling, smart anchoring, auto-hide.
 - [`launcherKit`](launcherKit/) — minimap buttons for BrokerKit objects: any minimap shape, LibDBIcon's saved fields, Retail's addon compartment.
 - [`menuKit`](menuKit/) — checked, bounded menus on Blizzard's Menu API: context menus, dropdown menus, removable extensions of Blizzard's tagged menus.
 - [`panelKit`](panelKit/) — OptionsKit trees in Blizzard's settings panel: a category or subcategory per tree, drawn by WidgetKit only while shown.
