@@ -438,7 +438,7 @@ raises Ace's message (`Method <name> doesn't exist in handler for type
 | `get(info)` for `color` | `r, g, b, a = get(aceInfo)` (four results, `AceConfigDialog-3.0.lua:211-215`); returns a new `{ r, g, b[, a] }` table, or `nil` when `r` is `nil` |
 | `get(info)` for `multiselect` | `get(aceInfo, key)` for each key of the current `values` (`1333`, `1353`); returns a new map of the booleans |
 | `set(info, value)` | `set(aceInfo, value)`; `color`: `set(aceInfo, r, g, b, a)`; `multiselect`: `set(aceInfo, key, state)` for each key whose state differs from what `get(aceInfo, key)` answers (Ace calls it per key, `893`) |
-| `validate(info, value)` | `validate(aceInfo, <value in the same shape as set>)`: `true` accepts; a string refuses with that message; anything else refuses with the option's `usage`, or `"invalid value"` (Ace composes the same choices, `741-750`); a secret result refuses without being compared |
+| `validate(info, value)` | `validate(aceInfo, <value in the same shape as set>)`: a string refuses with that message; `false` or `nil` refuses with the option's `usage`, or `"invalid value"`; any other answer accepts, as Ace reads it (`741-750`; corrected after step N2's review, which found that Ace accepts every truthy answer); a secret result refuses without being compared |
 | `func(info)` | `func(aceInfo)` |
 | `disabled(info)`, `hidden(info)` | the Ace predicate with `aceInfo`; OptionsKit tests the answer secret-safely |
 | `desc(info)` (a function) | the Ace `desc` with `aceInfo` |
@@ -508,7 +508,7 @@ original Ace keys, so an addon can translate paths it stored or prints.
 
 `evaluatedOnce`, `presentation`, `customControl`, `perInterfaceFlag`,
 `confirmOnValue`, `dynamicConfirm`, `cannotOverrideAncestor`, `noAccessor`,
-`missingMethod`, `unknownType`, `unknownField`, `pluginShadowed`, `lineCount`,
+`missingMethod`, `unknownType`, `unknownField`, `malformedField`, `pluginShadowed`, `lineCount`,
 `defaultBound`, `stepNotEnforced`, `valueKey`, `sortingKey`, `emptyValues`,
 `multiselectTristate`, `fontSize`, `identifier`, `boundToDatabase`,
 `replaced`, `sourceFunction`. Each is documented with its Ace citation in the
@@ -1120,3 +1120,4 @@ were asked.
 | 14 | Fixtures are recorded by `python3 -m tooling.fixtures.ace_serializer`, which runs the pinned Ace3 (fetched and checksummed by `tooling.bench.ace3`, outside the repository) under host Lua 5.1 over our own inputs and commits only its output, with provenance, as `packages/bridgeKit/tests/fixtures/AceSerializerFixtures.lua` (2026-11-15). | 3.2, 13.1 |
 | 15 | The reader computes `mantissa * 2^exponent` as Ace does, except where `2^exponent` alone underflows (an exponent below -1074): there it scales a finite mantissa with `ldexp`, so a subnormal number Ace's writer produces and Ace's own reader reads as `0` reads back exactly. An escape Ace cannot read (anything after a tilde but `@` to `}`, pinned by the fixtures) is the reason `"invalidEscape"`, added to the vocabulary of section 5.6 (2026-11-15; narrowed after the step's read-only review). | 5.6, 8.2 |
 | 16 | The AceConfig adapter as built in step N2: a field no kind knows is reported (`dropped`, `unknownField`, added to section 6.5), because Ace's validator refuses it and silently losing it would hide a typo; `missingMethod` is a `changed` entry, because the option is still converted and the wrapper raises Ace's message only if the method is still missing when called; a `disabled` or `hidden` a group defines stays on the group and is also resolved onto each option below it, so OptionsKit's ancestor rule and Ace's nearest-definition rule meet; a source function and an addon's `name` function that raise propagate unchanged (2026-11-15). | 5.3, 6.2, 6.5 |
+| 17 | From step N2's read-only review: a field Ace draws but OptionsKit would refuse at `Define` (a non-table `args` or plugin, a NaN `order`, a non-positive `step`, a soft bound outside the bounds, crossed bounds) is reported (`malformedField`, added to section 6.5) rather than making `Define` raise; a defaulted bound never crosses the bound the option gives; plugins merge in the sorted order of their names; `optionCount` and `maxDepth` measure the tree OptionsKit receives, `replace` tables included; report paths cut long keys, `paths`, `bind` and `replace` never do; `DefineAceConfig` opens `maxDynamicEntries` to the largest values table (2026-11-15). | 5.3, 5.4, 6.2, 6.5 |

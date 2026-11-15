@@ -956,6 +956,198 @@ describe("BridgeKit ConvertAceConfig", function()
     end)
   end)
 
+  describe("what the read-only review of step N2 found", function()
+    it("keeps the whole key in paths, bind and replace, and cuts it only in the report", function()
+      local long = string.rep("a", 40)
+      local other = string.rep("a", 32) .. "bbbbbbbb"
+      local conversion = BridgeKit:ConvertAceConfig(
+        "MyAddon",
+        root({
+          [long] = stored("toggle"),
+          [other] = stored("toggle"),
+        }),
+        { bind = { [long] = "profile.x" } }
+      )
+      assert.are.same({ long }, conversion.paths[long])
+      assert.are.same({ other }, conversion.paths[other])
+      assert.are.equal("profile.x", conversion.tree.args[long].bind)
+      assert.are.equal(string.rep("a", 32) .. "...", conversion.report.entries[1].path)
+    end)
+
+    it("counts and measures a replaced group", function()
+      local conversion = BridgeKit:ConvertAceConfig(
+        "MyAddon",
+        root({
+          profiles = { type = "group", name = "P", args = {} },
+        }),
+        {
+          replace = {
+            profiles = {
+              type = "group",
+              name = "P",
+              args = { a = { type = "group", name = "A", args = { b = stored("toggle") } } },
+            },
+          },
+        }
+      )
+      assert.are.equal(3, conversion.maxDepth)
+      assert.are.equal(3, conversion.optionCount)
+    end)
+
+    it("counts in optionCount only the options the tree holds", function()
+      local conversion = BridgeKit:ConvertAceConfig(
+        "MyAddon",
+        root({
+          kept = stored("toggle"),
+          none = { type = "input", name = "None" },
+          empty = stored("select", { values = {} }),
+        })
+      )
+      assert.are.equal(1, conversion.optionCount)
+      assert.are.equal(1, conversion.report.counts.converted)
+    end)
+
+    it("hides on any truthy answer once flags are combined, and never tests a secret", function()
+      local answer = "yes"
+      local conversion = BridgeKit:ConvertAceConfig(
+        "MyAddon",
+        root({
+          a = stored("toggle", {
+            hidden = function()
+              return answer
+            end,
+            dialogHidden = false,
+          }),
+        })
+      )
+      local hidden = conversion.tree.args.a.hidden
+      assert.is_true(hidden({}))
+      answer = {}
+      Env.MarkSecret(answer)
+      assert.is_false(hidden({}))
+    end)
+
+    it("accepts any validate answer but a string, false or nil, as Ace does", function()
+      local answer = 1
+      local conversion = BridgeKit:ConvertAceConfig(
+        "MyAddon",
+        root({
+          a = stored("input", {
+            validate = function()
+              return answer
+            end,
+          }),
+        })
+      )
+      local validate = conversion.tree.args.a.validate
+      assert.are.same({ true }, { validate({}, "x") })
+      answer = nil
+      assert.are.same({ false, "invalid value" }, { validate({}, "x") })
+    end)
+
+    it("places a secret multiselect state unexamined and always writes its key", function()
+      local secret = {}
+      Env.MarkSecret(secret)
+      local writes = 0
+      local conversion = BridgeKit:ConvertAceConfig(
+        "MyAddon",
+        root({
+          parts = {
+            type = "multiselect",
+            name = "Parts",
+            values = { a = "A" },
+            get = function()
+              return secret
+            end,
+            set = function()
+              writes = writes + 1
+            end,
+          },
+        })
+      )
+      local parts = conversion.tree.args.parts
+      assert.are.equal(secret, parts.get({}).a)
+      parts.set({}, { a = true })
+      assert.are.equal(1, writes)
+    end)
+
+    it(
+      "reports keys and fields Ace's validator refuses, and merges plugins in name order",
+      function()
+        local conversion = BridgeKit:ConvertAceConfig(
+          "MyAddon",
+          root({ [1] = stored("toggle") }, {
+            plugins = {
+              b = { x = stored("toggle", { name = "From b" }) },
+              a = { x = stored("toggle", { name = "From a" }) },
+              c = 5,
+            },
+          })
+        )
+        assert.are.equal("unsupported (unknownType)", noted(conversion.report, "", "args"))
+        assert.are.equal("From b", conversion.tree.args.x.name)
+        assert.are.equal("dropped (pluginShadowed)", noted(conversion.report, "", "plugins"))
+        local found = false
+        for _, entry in ipairs(conversion.report.entries) do
+          found = found or entry.reason == "malformedField"
+        end
+        assert.is_true(found)
+        local bad = BridgeKit:ConvertAceConfig(
+          "MyAddon",
+          root({ g = { type = "group", name = "G", args = 5 } })
+        )
+        assert.are.equal("dropped (malformedField)", noted(bad.report, "g", "args"))
+      end
+    )
+
+    it("reports a missing method of a callback evaluated once and of confirm", function()
+      local conversion = BridgeKit:ConvertAceConfig(
+        "MyAddon",
+        root({
+          a = stored("toggle", { order = "MissingOrder" }),
+          run = {
+            type = "execute",
+            name = "Run",
+            func = function() end,
+            confirm = "MissingConfirm",
+          },
+        }, { handler = {} })
+      )
+      local order = entriesFor(conversion.report, "a", "order")
+      assert.are.same({ "evaluatedOnce", "missingMethod" }, { order[1].reason, order[2].reason })
+      local confirm = entriesFor(conversion.report, "run", "confirm")
+      assert.are.same(
+        { "dynamicConfirm", "missingMethod" },
+        { confirm[1].reason, confirm[2].reason }
+      )
+    end)
+
+    it("drops range hints and bounds OptionsKit would refuse instead of failing Define", function()
+      local conversion = BridgeKit:ConvertAceConfig(
+        "MyAddon",
+        root({
+          steps = stored("range", { min = 0, max = 1, step = 0, bigStep = -1 }),
+          soft = stored("range", { min = 0, max = 1, softMin = -1, softMax = 2 }),
+          onlyMax = stored("range", { max = -10 }),
+          onlySoftMax = stored("range", { softMax = -5 }),
+          crossed = stored("range", { min = 5, max = 1 }),
+          badOrder = stored("toggle", { order = 0 / 0 }),
+        })
+      )
+      local args = conversion.tree.args
+      assert.is_nil(args.steps.step)
+      assert.is_nil(args.steps.bigStep)
+      assert.is_nil(args.soft.softMin)
+      assert.is_nil(args.soft.softMax)
+      assert.are.same({ -math.huge, -10 }, { args.onlyMax.min, args.onlyMax.max })
+      assert.is_true(args.onlySoftMax.min <= args.onlySoftMax.max)
+      assert.is_nil(args.crossed)
+      assert.is_nil(args.badOrder.order)
+      assert.are.equal("unsupported (malformedField)", noted(conversion.report, "crossed", "min"))
+      assert.are.equal("dropped (malformedField)", noted(conversion.report, "badOrder", "order"))
+    end)
+  end)
+
   describe("reports", function()
     it("holds every action, keeps no value and truncates at maxReportEntries", function()
       BridgeKit:SetLimits({ maxReportEntries = 2 })
@@ -1087,7 +1279,7 @@ describe("BridgeKit DefineAceConfig", function()
     local line
     local ok, failure = pcall(function()
       line = debug.getinfo(1, "l").currentline + 1
-      BridgeKit:DefineAceConfig("MyAddon", root({ scale = stored("range", { min = 5, max = 1 }) }))
+      BridgeKit:DefineAceConfig("MyAddon", root({ label = stored("input", { pattern = "a[" }) }))
     end)
     assert.is_false(ok)
     assert.is_truthy(
@@ -1099,7 +1291,50 @@ describe("BridgeKit DefineAceConfig", function()
           .. ": BridgeKit:DefineAceConfig OptionsKit:Define"
       )
     )
-    assert.is_truthy(failure:find("min must not be greater than max", 1, true))
+    assert.is_truthy(failure:find("pattern", 1, true))
+  end)
+
+  it("defines a tree whose replaced group is deeper than the rest", function()
+    local BridgeKit, OptionsKit = Env.NewPackageWithOptionsKit()
+    local tree = BridgeKit:DefineAceConfig(
+      "MyAddon",
+      root({
+        enable = stored("toggle"),
+        profiles = { type = "group", name = "AceDBOptions", args = {} },
+      }),
+      {
+        replace = {
+          profiles = {
+            type = "group",
+            name = "Profiles",
+            args = { reset = { type = "execute", name = "Reset", func = function() end } },
+          },
+        },
+      }
+    )
+    assert.is_not_nil(tree)
+    tree:Execute("profiles.reset")
+    OptionsKit:Undefine("MyAddon")
+  end)
+
+  it("defines a select with more values than OptionsKit's default allows", function()
+    local BridgeKit, OptionsKit = Env.NewPackageWithOptionsKit()
+    local values = {}
+    for index = 1, 1500 do
+      values["v" .. index] = "Value " .. index
+    end
+    local tree =
+      BridgeKit:DefineAceConfig("MyAddon", root({ pick = stored("select", { values = values }) }))
+    assert.is_not_nil(tree)
+    OptionsKit:Undefine("MyAddon")
+  end)
+
+  it("defines a tree with keys longer than a report shows", function()
+    local BridgeKit, OptionsKit = Env.NewPackageWithOptionsKit()
+    local long = string.rep("a", 40)
+    local tree = BridgeKit:DefineAceConfig("MyAddon", root({ [long] = stored("toggle") }))
+    assert.is_nil(tree:Get(long))
+    OptionsKit:Undefine("MyAddon")
   end)
 
   it("raises at the caller without OptionsKit", function()

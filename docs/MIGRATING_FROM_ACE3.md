@@ -1007,7 +1007,8 @@ end
   name is looked up on its handler when it is called, as Ace3 does.
 - Every field that is dropped, renamed or changes meaning (presentation
   fields, `step` not being enforced, a `name` function evaluated once, ...)
-  is in the report; `strict = true` turns any of them into an error.
+  is in the report; `strict = true` turns any of them but a rename into an
+  error.
 - `ConvertAceConfig` returns the plain tree and the report without defining
   anything, which also works without OptionsKit loaded.
 - Keys that are not identifiers are renamed (`"my key"` becomes `my_key`);

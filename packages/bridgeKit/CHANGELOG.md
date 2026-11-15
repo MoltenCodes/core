@@ -21,7 +21,14 @@ unchanged.
 - `BridgeKit:FormatReport(report[, maxLines])` and the report shape shared
   with the coming AceDB importer; the `maxReportEntries` limit (1024,
   `UNBOUNDED` allowed).
-- 187 specs (was 142): new `AceConfig_spec.lua`, every reason of the
+- Fixed before release, from the read-only review of the step: a `replace`
+  group deeper than the rest of the tree, keys longer than 32 bytes in
+  `paths`, `bind` and `replace`, truthy `hidden` answers once flags combine,
+  `validate` answers Ace accepts, secret multiselect states, sorting keys and
+  font sizes, fields OptionsKit would refuse (now `malformedField` entries),
+  plugins merged in name order, non-string keys and malformed `args` reported,
+  `missingMethod` for every callback kind, and values tables larger than 1024.
+- 199 specs (was 142): new `AceConfig_spec.lua`, every reason of the
   vocabulary, inheritance, the callback shapes, renaming, `bind`, `replace`,
   `strict`, the limits, the errors, and a converted tree defined in OptionsKit
   and driven through `Get`, `Set`, `Validate`, `Execute` and `Describe`.

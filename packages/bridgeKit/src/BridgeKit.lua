@@ -1103,6 +1103,12 @@ local IDENTIFIER_PATTERN = "^[%a_][%w_]*$"
 -- The longest key a report path shows before it is cut, as SettingsKit cuts.
 local PATH_KEY_LIMIT = 32
 
+-- OptionsKit's ceiling on keys per option path; also bounds the measure of a
+-- replacement option.
+local MAX_OPTION_DEPTH = 32
+
+local measureOption
+
 -- A conversion error is raised with this prefix, which no text an addon's own
 -- error carries starts with, and re-raised at the caller's line by the public
 -- method without it.
@@ -1205,6 +1211,41 @@ local function methodExists(spec)
   return type(handler) == "table" and type(handler[spec.method]) == "function"
 end
 
+---Whether `value` is secret on this client; never tests it otherwise.
+---@param value any
+---@return boolean
+local function isSecretValue(value)
+  local probe = readSecretProbe()
+  return probe ~= nil and type(value) ~= "nil" and probe(value) == true
+end
+
+---A multiselect state as OptionsKit holds it: a secret answer is placed
+---unexamined, any other is read for truth.
+---@param answer any
+---@return any
+local function stateOf(answer)
+  if isSecretValue(answer) then
+    return answer
+  end
+  return answer and true or false
+end
+
+---Call a callback once at conversion, reporting it `evaluatedOnce`, and also
+---`missingMethod` when its method names nothing; `nil` when it cannot run.
+---@param work table
+---@param spec table
+---@param context table
+---@param field string
+---@return any
+local function evaluateOnce(work, spec, context, field)
+  noteEntry(work.report, context.path, field, "changed", "evaluatedOnce")
+  if not methodExists(spec) then
+    noteEntry(work.report, context.path, field, "changed", "missingMethod")
+    return nil
+  end
+  return (callAce(spec, context.aceInfo, field))
+end
+
 ---Note a method name that names nothing on its handler at conversion.
 ---@param work table
 ---@param spec table|false|nil
@@ -1252,7 +1293,7 @@ local function anyOf(predicates)
   for index = 1, count do
     if type(predicates[index]) ~= "boolean" then
       allBooleans = false
-    elseif predicates[index] == true then
+    elseif predicates[index] then
       return true
     end
   end
@@ -1266,8 +1307,10 @@ local function anyOf(predicates)
       if type(predicate) == "function" then
         answer = predicate(info)
       end
+      -- A secret answer counts as false and is never tested for truth;
+      -- any other truthy answer hides, as OptionsKit and Ace both read it.
       local probe = readSecretProbe()
-      if answer == true and not (probe ~= nil and probe(answer) == true) then
+      if not (probe ~= nil and type(answer) ~= "nil" and probe(answer) == true) and answer then
         return true
       end
     end
@@ -1293,6 +1336,10 @@ local function convertKeys(work, args, where)
     end
     if type(key) == "string" then
       originals[#originals + 1] = key
+    else
+      -- OptionsKit keys are identifiers, and Ace's validator refuses any key
+      -- that is not a string; such an option cannot be carried over.
+      work.nonStringKeys = (work.nonStringKeys or 0) + 1
     end
   end
   table.sort(originals)
@@ -1323,7 +1370,33 @@ local function convertKeys(work, args, where)
   return convertedFor, originals
 end
 
-local convertOption
+local convertOption, convertBody
+
+---The options and levels of an OptionsKit option given to `replace`: the
+---option itself and every option below it, and the depth of its deepest
+---descendant (0 for the option alone). Bounded by `MAX_OPTION_DEPTH`, which
+---also stops a cyclic table.
+---@param option any
+---@param level integer
+---@return integer options
+---@return integer levels
+function measureOption(option, level)
+  if type(option) ~= "table" or level > MAX_OPTION_DEPTH then
+    return 1, 0
+  end
+  local options, levels = 1, 0
+  local args = rawget(option, "args")
+  if type(args) == "table" then
+    for _, child in next, args do
+      local childOptions, childLevels = measureOption(child, level + 1)
+      options = options + childOptions
+      if childLevels + 1 > levels then
+        levels = childLevels + 1
+      end
+    end
+  end
+  return options, levels
+end
 
 ---The Ace `info` table of one option (AceConfigDialog-3.0.lua:201-209): the
 ---original keys at `1..n`, the app name at `[0]` and `appName`, the source
@@ -1385,8 +1458,7 @@ local function convertName(work, aceOption, target, context)
   end
   local spec = callbackSpec(name, context.handler)
   if spec then
-    noteEntry(work.report, context.path, "name", "changed", "evaluatedOnce")
-    local result = methodExists(spec) and callAce(spec, context.aceInfo, "name") or nil
+    local result = evaluateOnce(work, spec, context, "name")
     local probe = work.probe
     if probe ~= nil and type(result) ~= "nil" and probe(result) == true then
       conversionError(context.where .. ".name must not return a secret value")
@@ -1407,18 +1479,21 @@ end
 local function convertOrder(work, aceOption, target, context)
   local order = readField(work, aceOption, "order", context.where)
   if type(order) == "number" then
-    target.order = order
+    if order == order then
+      target.order = order
+    else
+      noteEntry(work.report, context.path, "order", "dropped", "malformedField")
+    end
     return
   end
   local spec = callbackSpec(order, context.handler)
   if spec then
-    noteEntry(work.report, context.path, "order", "changed", "evaluatedOnce")
-    local result = methodExists(spec) and callAce(spec, context.aceInfo, "order") or nil
+    local result = evaluateOnce(work, spec, context, "order")
     local probe = work.probe
     if probe ~= nil and type(result) ~= "nil" and probe(result) == true then
       conversionError(context.where .. ".order must not return a secret value")
     end
-    if type(result) == "number" then
+    if type(result) == "number" and result == result then
       target.order = result
     end
   end
@@ -1541,6 +1616,9 @@ local function convertValues(work, aceOption, context)
     if count == 0 then
       return nil, nil
     end
+    if count > work.largestValues then
+      work.largestValues = count
+    end
     return copy, copy
   end
   local spec = callbackSpec(values, context.handler)
@@ -1583,8 +1661,7 @@ local function convertSorting(work, aceOption, target, staticValues, context)
   end
   local spec = callbackSpec(sorting, context.handler)
   if spec then
-    noteEntry(work.report, context.path, "sorting", "changed", "evaluatedOnce")
-    sorting = methodExists(spec) and callAce(spec, context.aceInfo, "sorting") or nil
+    sorting = evaluateOnce(work, spec, context, "sorting")
   end
   if type(sorting) ~= "table" or staticValues == nil then
     noteEntry(work.report, context.path, "sorting", "dropped", "sortingKey")
@@ -1593,7 +1670,7 @@ local function convertSorting(work, aceOption, target, staticValues, context)
   local copy = {}
   for index = 1, #sorting do
     local key = sorting[index]
-    if type(key) == "nil" or staticValues[key] == nil then
+    if type(key) == "nil" or isSecretValue(key) or staticValues[key] == nil then
       noteEntry(work.report, context.path, "sorting", "dropped", "sortingKey")
       return
     end
@@ -1610,10 +1687,10 @@ end
 ---@param context table
 ---@return boolean converted
 local function convertAccessors(work, target, context)
-  local bindPath = work.bind[context.path]
+  local bindPath = work.bind[context.optionPath]
   if bindPath ~= nil then
     target.bind = bindPath
-    work.boundPaths[context.path] = true
+    work.boundPaths[context.optionPath] = true
     noteEntry(work.report, context.path, nil, "changed", "boundToDatabase")
     return true
   end
@@ -1643,14 +1720,16 @@ local function convertAccessors(work, target, context)
     target.get = function(info)
       local states = {}
       for key in next, keysOf(info) do
-        states[key] = callAce(getSpec, aceInfo, "get", key) == true
+        states[key] = stateOf(callAce(getSpec, aceInfo, "get", key))
       end
       return states
     end
     target.set = function(info, states)
       for key in next, keysOf(info) do
         local wanted = states[key] == true
-        if (callAce(getSpec, aceInfo, "get", key) == true) ~= wanted then
+        local current = callAce(getSpec, aceInfo, "get", key)
+        -- A secret state cannot be compared, so its key is always written.
+        if isSecretValue(current) or (current and true or false) ~= wanted then
           callAce(setSpec, aceInfo, "set", key, wanted)
         end
       end
@@ -1666,9 +1745,9 @@ local function convertAccessors(work, target, context)
   return true
 end
 
----Wrap the resolved `validate`: `true` accepts, a string refuses with that
----message, anything else with the option's `usage` or `"invalid value"`; a
----secret answer refuses without being compared (design section 6.1).
+---Wrap the resolved `validate`: a string refuses with that message, `false`
+---or `nil` with the option's `usage` or `"invalid value"`, anything else
+---accepts, as in Ace; a secret answer refuses without being compared.
 ---@param work table
 ---@param target table
 ---@param context table
@@ -1685,13 +1764,15 @@ local function convertValidate(work, target, context)
     if probe ~= nil and type(answer) ~= "nil" and probe(answer) == true then
       return false, fallback
     end
-    if answer == true then
-      return true
-    end
+    -- Ace refuses only a string (its message), `false` or `nil`; any other
+    -- answer accepts (AceConfigDialog-3.0.lua:741-750).
     if type(answer) == "string" then
       return false, answer
     end
-    return false, fallback
+    if not answer then
+      return false, fallback
+    end
+    return true
   end
   if kind == "color" then
     target.validate = function(_, color)
@@ -1703,7 +1784,8 @@ local function convertValidate(work, target, context)
     target.validate = function(info, states)
       for key in next, keysOf(info) do
         local wanted = states[key] == true
-        if not getSpec or (callAce(getSpec, aceInfo, "get", key) == true) ~= wanted then
+        local current = getSpec and callAce(getSpec, aceInfo, "get", key) or nil
+        if not getSpec or isSecretValue(current) or (current and true or false) ~= wanted then
           local ok, message = verdict(callAce(spec, aceInfo, "validate", key, wanted))
           if not ok then
             return false, message
@@ -1738,6 +1820,7 @@ local function convertConfirm(work, aceOption, target, context)
     target.confirm = type(confirmText) == "string" and confirmText or true
   elseif callbackSpec(confirm, context.handler) then
     noteEntry(work.report, context.path, "confirm", "changed", "dynamicConfirm")
+    checkMethod(work, callbackSpec(confirm, context.handler), context.path, "confirm")
     target.confirm = type(confirmText) == "string" and confirmText or true
   end
 end
@@ -1758,10 +1841,10 @@ local function convertOwnFields(work, aceOption, target, spec, context)
     local value = readField(work, aceOption, field, where)
     if type(value) ~= "nil" then
       if rule == "keep" then
-        if KEPT_TYPES[field][type(value)] then
+        if KEPT_TYPES[field][type(value)] and (type(value) ~= "number" or value == value) then
           target[field] = value
         else
-          noteEntry(report, path, field, "dropped", "presentation")
+          noteEntry(report, path, field, "dropped", "malformedField")
         end
       elseif rule == "drop" then
         noteEntry(report, path, field, "dropped", "presentation")
@@ -1778,9 +1861,7 @@ local function convertOwnFields(work, aceOption, target, spec, context)
         else
           local callback = callbackSpec(value, context.handler)
           if callback then
-            noteEntry(report, path, field, "changed", "evaluatedOnce")
-            local answer = methodExists(callback) and callAce(callback, context.aceInfo, "hasAlpha")
-              or nil
+            local answer = evaluateOnce(work, callback, context, "hasAlpha")
             local probe = work.probe
             if probe ~= nil and type(answer) ~= "nil" and probe(answer) == true then
               conversionError(where .. ".hasAlpha must not return a secret value")
@@ -1793,10 +1874,9 @@ local function convertOwnFields(work, aceOption, target, spec, context)
         local size = value
         local callback = type(value) == "function" and callbackSpec(value, context.handler) or nil
         if callback then
-          noteEntry(report, path, field, "changed", "evaluatedOnce")
-          size = methodExists(callback) and callAce(callback, context.aceInfo, "fontSize") or nil
+          size = evaluateOnce(work, callback, context, "fontSize")
         end
-        if type(size) == "string" and FONT_SIZES[size] then
+        if type(size) == "string" and not isSecretValue(size) and FONT_SIZES[size] then
           target.fontSize = size
         else
           noteEntry(report, path, field, "dropped", "fontSize")
@@ -1815,15 +1895,48 @@ local function convertOwnFields(work, aceOption, target, spec, context)
   if spec.kind == "range" then
     local minimum = readField(work, aceOption, "min", where)
     local maximum = readField(work, aceOption, "max", where)
-    if type(minimum) ~= "number" then
+    if type(minimum) ~= "number" or minimum ~= minimum then
+      -- The dialog's own bound (AceConfigDialog-3.0.lua:877), unless it would
+      -- cross the bound the option gives.
       minimum = type(target.softMin) == "number" and -math.huge or 0
+      if type(maximum) == "number" and maximum < minimum then
+        minimum = -math.huge
+      end
       noteEntry(report, path, "min", "changed", "defaultBound")
     end
-    if type(maximum) ~= "number" then
+    if type(maximum) ~= "number" or maximum ~= maximum then
       maximum = type(target.softMax) == "number" and math.huge or 100
+      if maximum < minimum then
+        maximum = math.huge
+      end
       noteEntry(report, path, "max", "changed", "defaultBound")
     end
+    if minimum > maximum then
+      noteEntry(report, path, "min", "unsupported", "malformedField")
+      return false
+    end
     target.min, target.max = minimum, maximum
+    -- OptionsKit refuses hints it cannot honour; Ace draws them anyway.
+    for _, hint in ipairs({ "step", "bigStep" }) do
+      if type(target[hint]) == "number" and not (target[hint] > 0) then
+        target[hint] = nil
+        noteEntry(report, path, hint, "dropped", "malformedField")
+      end
+    end
+    for _, hint in ipairs({ "softMin", "softMax" }) do
+      if type(target[hint]) == "number" and (target[hint] < minimum or target[hint] > maximum) then
+        target[hint] = nil
+        noteEntry(report, path, hint, "dropped", "malformedField")
+      end
+    end
+    if
+      type(target.softMin) == "number"
+      and type(target.softMax) == "number"
+      and target.softMin > target.softMax
+    then
+      target.softMin, target.softMax = nil, nil
+      noteEntry(report, path, "softMin", "dropped", "malformedField")
+    end
     if type(target.step) == "number" then
       noteEntry(report, path, "step", "changed", "stepNotEnforced")
     end
@@ -1862,19 +1975,35 @@ local function mergedArgs(work, aceGroup, context)
     for key, option in next, args do
       merged[key] = option
     end
+  elseif type(args) ~= "nil" then
+    noteEntry(work.report, context.path, "args", "dropped", "malformedField")
   end
   local plugins = readField(work, aceGroup, "plugins", context.where)
   if type(plugins) == "table" then
-    for _, pluginArgs in next, plugins do
+    -- Plugins are merged in the sorted order of their names, so which of two
+    -- plugins defining one key wins does not depend on `next`.
+    local names = {}
+    for name in next, plugins do
+      if type(name) == "string" then
+        names[#names + 1] = name
+      end
+    end
+    table.sort(names)
+    for _, name in ipairs(names) do
+      local pluginArgs = rawget(plugins, name)
       if type(pluginArgs) == "table" then
         for key, option in next, pluginArgs do
-          if type(args) == "table" and rawget(args, key) ~= nil then
+          if type(merged[key]) ~= "nil" then
             noteEntry(work.report, context.path, "plugins", "dropped", "pluginShadowed")
           end
           merged[key] = option
         end
+      else
+        noteEntry(work.report, context.path, "plugins", "dropped", "malformedField")
       end
     end
+  elseif type(plugins) ~= "nil" then
+    noteEntry(work.report, context.path, "plugins", "dropped", "malformedField")
   end
   return merged
 end
@@ -1886,7 +2015,11 @@ end
 ---@param context table
 local function convertChildren(work, aceGroup, target, context)
   local args = mergedArgs(work, aceGroup, context)
+  work.nonStringKeys = 0
   local convertedFor, order = convertKeys(work, args, context.where .. ".args")
+  if work.nonStringKeys > 0 then
+    noteEntry(work.report, context.path, "args", "unsupported", "unknownType")
+  end
   target.args = {}
   local ancestorFlags = {
     disabled = context.ancestorFlags.disabled
@@ -1913,7 +2046,10 @@ local function convertChildren(work, aceGroup, target, context)
       local key = convertedFor[aceKey]
       local childKeys = extendKeys(context.keys, key)
       local childAceKeys = extendKeys(context.aceKeys, aceKey)
+      -- The report shows a path with long keys cut; `bind`, `replace` and
+      -- `paths` use the whole one.
       local childPath = renderPath(childKeys)
+      local childOptionPath = table.concat(childKeys, ".")
       if key ~= aceKey then
         noteEntry(work.report, childPath, nil, "renamed", "identifier")
       end
@@ -1922,6 +2058,7 @@ local function convertChildren(work, aceGroup, target, context)
         aceKeys = childAceKeys,
         aceKey = aceKey,
         path = childPath,
+        optionPath = childOptionPath,
         where = context.where
           .. ".args"
           .. (
@@ -1953,12 +2090,23 @@ function convertOption(work, aceOption, context)
   end
 
   local path = context.path
-  local replacement = work.replace[path]
+  local replacement = work.replace[context.optionPath]
   if replacement ~= nil then
-    work.replaced[path] = true
+    work.replaced[context.optionPath] = true
     noteEntry(work.report, path, nil, "changed", "replaced")
-    work.optionCount = work.optionCount + 1
-    work.paths[path] = context.aceKeys
+    -- The replacement's own options and depth count toward what OptionsKit
+    -- checks, so `maxDepth` and `optionCount` describe the tree it receives.
+    local options, levels = measureOption(replacement, 0)
+    work.optionCount = work.optionCount + options
+    if exceeds(work.optionCount, work.maxOptions) then
+      conversionError(
+        "source has more than options.maxOptions (" .. tostring(work.maxOptions) .. ") options"
+      )
+    end
+    if depth + levels > work.deepest then
+      work.deepest = depth + levels
+    end
+    work.paths[context.optionPath] = context.aceKeys
     return replacement
   end
 
@@ -1982,6 +2130,31 @@ function convertOption(work, aceOption, context)
   context.aceInfo = aceInfoFor(work, context.aceKeys, aceOption, context.handler)
 
   local target = { type = spec.kind }
+  local converted = convertBody(work, aceOption, spec, target, context)
+  if not converted then
+    if depth > 0 then
+      work.optionCount = work.optionCount - 1
+    end
+    return nil
+  end
+  -- A converted option is counted, never listed: the report lists what changed.
+  if depth > 0 then
+    work.report.counts.converted = work.report.counts.converted + 1
+    work.paths[context.optionPath] = context.aceKeys
+  end
+  return target
+end
+
+---Convert the fields of one option into `target`. Returns `false` when the
+---option cannot exist in OptionsKit.
+---@param work table
+---@param aceOption table
+---@param spec table the kind's entry in `KIND_FIELDS`
+---@param target table
+---@param context table
+---@return boolean
+function convertBody(work, aceOption, spec, target, context)
+  local path, depth = context.path, #context.keys
   if depth > 0 or type(rawget(aceOption, "name")) ~= "nil" then
     convertName(work, aceOption, target, context)
   end
@@ -2020,18 +2193,18 @@ function convertOption(work, aceOption, context)
     convertChildren(work, aceOption, target, context)
   else
     if not convertOwnFields(work, aceOption, target, spec, context) then
-      return nil
+      return false
     end
     if spec.value then
       if not convertAccessors(work, target, context) then
-        return nil
+        return false
       end
       convertValidate(work, target, context)
     elseif spec.kind == "execute" then
       local funcSpec = callbackSpec(context.resolved.func, context.handler)
       if not funcSpec then
         noteEntry(work.report, path, "func", "unsupported", "noAccessor")
-        return nil
+        return false
       end
       checkMethod(work, funcSpec, path, "func")
       local aceInfo = context.aceInfo
@@ -2041,14 +2214,7 @@ function convertOption(work, aceOption, context)
     end
   end
   convertConfirm(work, aceOption, target, context)
-  -- A converted option is counted, never listed: the report lists what changed.
-  if depth > 0 then
-    work.report.counts.converted = work.report.counts.converted + 1
-  end
-  if depth > 0 then
-    work.paths[path] = context.aceKeys
-  end
-  return target
+  return true
 end
 
 -- Conversion methods ---------------------------------------------------------
@@ -2071,7 +2237,6 @@ end
 -- OptionsKit's own defaults, which the conversion applies too.
 local DEFAULT_MAX_OPTIONS = 1024
 local DEFAULT_OPTION_DEPTH = 8
-local MAX_OPTION_DEPTH = 32
 
 ---Raise at the caller's caller: `label` and the problem.
 ---@param label string
@@ -2230,6 +2395,7 @@ local function convert(appName, source, read)
     replaced = {},
     paths = {},
     optionCount = 0,
+    largestValues = 0,
     maxOptions = read.maxOptions,
     maxDepth = read.maxDepth,
     deepest = 0,
@@ -2244,6 +2410,7 @@ local function convert(appName, source, read)
     aceKeys = {},
     aceKey = appName,
     path = "",
+    optionPath = "",
     where = "source",
     inherited = {},
     ancestorFlags = {},
@@ -2262,6 +2429,7 @@ local function convert(appName, source, read)
     paths = work.paths,
     maxDepth = math.max(work.deepest, 1),
     optionCount = work.optionCount,
+    largestValues = work.largestValues,
   }
 end
 
@@ -2358,6 +2526,10 @@ local function defineAceConfig(self, addonName, source, options)
     db = read.db,
     maxOptions = read.maxOptions == UNBOUNDED and OptionsKit.UNBOUNDED or read.maxOptions,
     maxDepth = conversion.maxDepth,
+    -- A values table larger than OptionsKit's default is the addon's own data,
+    -- which Ace accepted; the tree is defined with room for it.
+    maxDynamicEntries = conversion.largestValues > DEFAULT_MAX_OPTIONS and conversion.largestValues
+      or nil,
   })
   if not ok then
     local message = type(result) == "string" and string.gsub(result, "^[^\n]-:%d+: ", "")

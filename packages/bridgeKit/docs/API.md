@@ -169,7 +169,7 @@ Returns a **conversion**:
 | `report` | What changed (see [Reports](#reports)). |
 | `paths` | Every converted option path to the original Ace keys, `{ ["general.my_key"] = { "general", "my key" } }`, so an addon can translate paths it stored or prints. |
 | `maxDepth` | The longest option path, in keys (at least 1). |
-| `optionCount` | Options converted, groups included, the root excluded. |
+| `optionCount` | The options the converted tree holds, groups and every option inside a `replace` table included, the root excluded: what `Define` counts against `maxOptions`. |
 
 | Option | Default | Meaning |
 |---|---|---|
@@ -207,11 +207,11 @@ Ace's own message,
 
 | OptionsKit callback | Calls the Ace callback as |
 |---|---|
-| `get` | `get(info)`, its first result; `color`: `r, g, b, a = get(info)`, returned as a new `{ r, g, b[, a] }`, or `nil` when `r` is `nil`; `multiselect`: `get(info, key)` for every key of the current values, returned as a new map of booleans |
-| `set(value)` | `set(info, value)`; `color`: `set(info, r, g, b, a)`; `multiselect`: `set(info, key, state)` for each key whose state differs from what `get(info, key)` answers |
-| `validate(value)` | `validate(info, <the value in set's shape>)`; for a `multiselect`, once per changed key. `true` accepts, a string refuses with that message, anything else with the option's `usage` or `"invalid value"`; a secret answer refuses without being compared |
+| `get` | `get(info)`, its first result; `color`: `r, g, b, a = get(info)`, returned as a new `{ r, g, b[, a] }`, or `nil` when `r` is `nil`; `multiselect`: `get(info, key)` for every key of the current values, returned as a new map of booleans (a secret state placed unexamined) |
+| `set(value)` | `set(info, value)`; `color`: `set(info, r, g, b, a)`; `multiselect`: `set(info, key, state)` for each key whose state differs from what `get(info, key)` answers, or whose current state is secret |
+| `validate(value)` | `validate(info, <the value in set's shape>)`; for a `multiselect`, once per changed key. A string refuses with that message, `false` or `nil` with the option's `usage` or `"invalid value"`, and any other answer accepts, as in Ace (`741-750`); a secret answer refuses without being compared |
 | `func` | `func(info)` |
-| `disabled`, `hidden` | the Ace predicate with `info`; OptionsKit counts a secret answer as `false` |
+| `disabled`, `hidden` | the Ace predicate with `info`; any truthy answer counts, and a secret answer counts as `false` without being tested, as OptionsKit counts it |
 | `desc` | the Ace `desc` with `info`; `""` when it gives no string |
 | `values` | the Ace `values` with `info`; entries whose key is not a string or number, or whose label is not a string, are left out |
 
@@ -233,7 +233,9 @@ not enforced by OptionsKit, where the dialog snaps to it (`880`).
 
 **Keys.** OptionsKit accepts identifiers as keys (`[%a_][%w_]*`); Ace accepts
 any string without control characters (`AceConfigRegistry-3.0.lua:197-205`).
-A key that is not an identifier is renamed: every byte outside `[%w_]` becomes
+A key longer than 32 bytes is cut and marked `...` in report paths only;
+`paths`, `bind` and `replace` use the whole key. A key that is not an
+identifier is renamed: every byte outside `[%w_]` becomes
 `_`, a leading digit gets a leading `_`, an empty key becomes `_`, and a
 collision with a sibling gets `_2`, `_3`, ... in the sorted order of the
 original keys, so the result is the same every time. Identifiers keep their
@@ -243,18 +245,19 @@ names.
 
 | Reason | Action | When | Ace3 |
 |---|---|---|---|
-| `evaluatedOnce` | changed | a `name`, `order`, `sorting`, `hasAlpha` or `fontSize` function or method, called once | the dialog calls them on every redraw |
-| `presentation` | dropped | a field that only chooses a presentation, or a kept field of a type OptionsKit refuses | `AceConfigRegistry-3.0.lua:71-195` |
+| `evaluatedOnce` | changed | a `name`, `order`, `sorting` or `hasAlpha` function or method, or a `fontSize` function, called once | the dialog calls them on every redraw |
+| `presentation` | dropped | a field that only chooses a presentation | `AceConfigRegistry-3.0.lua:71-195` |
+| `malformedField` | dropped / unsupported | a field of a type or value OptionsKit refuses although Ace draws it: `args` or a plugin that is not a table, a NaN `order`, a `step` or `bigStep` not above 0, a `softMin` or `softMax` outside the bounds or crossed; `unsupported` for a range whose `min` lies above its `max` | |
 | `customControl` | dropped | `control`, `dialogControl`, `dropdownControl`, `itemControl` | AceGUI widget names |
 | `perInterfaceFlag` | changed / dropped | the `*Hidden` and `*Inline` flags of `uiType`, folded into `hidden` and `inline`; the others dropped | `AceConfigDialog-3.0.lua:923-931` |
 | `confirmOnValue` | dropped | `confirm` on a value option: OptionsKit confirms only before `Execute` | `765-803` |
 | `dynamicConfirm` | changed | a `confirm` function or method on an `execute`, which becomes `confirm = true` (or `confirmText`) | |
 | `cannotOverrideAncestor` | changed | an option clearing a `disabled` or `hidden` an ancestor sets | |
 | `noAccessor` | unsupported | a value option without `get` or `set`, or an `execute` without `func`, after inheritance | |
-| `missingMethod` | changed | a method name that names nothing on its handler at conversion; the wrapper raises Ace's message if it is still missing when called | `218-221` |
-| `unknownType` | unsupported | an option whose `type` is unknown (`tristate` included, which no dialog draws), or that is not a table | `AceConfigRegistry-3.0.lua:231-235` |
+| `missingMethod` | changed | a method name that names nothing on its handler at conversion, for a wrapped callback, one evaluated once and `confirm`; the wrapper raises Ace's message if it is still missing when called | `218-221` |
+| `unknownType` | unsupported | an option whose `type` is unknown (`tristate` included, which no dialog draws), that is not a table, or whose key in `args` is not a string (reported once per group, field `args`) | `AceConfigRegistry-3.0.lua:231-235` |
 | `unknownField` | dropped | a field no kind knows | Ace's validator refuses it |
-| `pluginShadowed` | dropped | an `args` key a plugin key replaces | `AceConfigDialog-3.0.lua:117-127` |
+| `pluginShadowed` | dropped | an `args` key a plugin key replaces, or a key an earlier plugin defines, plugins merged in the sorted order of their names | `AceConfigDialog-3.0.lua:117-127` |
 | `lineCount` | changed | `multiline` given as a line count, which becomes `true` | |
 | `defaultBound` | changed | a `range` without `min` or `max` | `877` |
 | `stepNotEnforced` | changed | a `range` with a `step` | `880` |
@@ -270,21 +273,26 @@ names.
 
 ### Errors
 
-At the caller's line: a bad `appName`, a `source` that is not a table or a
-function, a source function that does not return a table
+At the caller's line: a bad `appName` or option, a `source` that is not a
+table or a function, a source function that does not return a table
 (`BridgeKit:ConvertAceConfig source function did not return a table`), a root
 that is not a group (`source.type must be "group" at the root`, the rule of
-`AceConfigRegistry-3.0.lua:319-321`), an unknown or malformed option, a limit
-passed, and a secret anywhere in an option's fields, named by its path:
+`AceConfigRegistry-3.0.lua:319-321`), a `bind` or `replace` path that names no
+converted option, a limit passed, and a secret anywhere in an option's fields,
+keys or results evaluated at conversion, named by its path:
 `BridgeKit:ConvertAceConfig source.args.general.disabled must not be a secret
-value`. An error the addon's own callback raises during the conversion (a
-`name` function, the source function) propagates unchanged.
+value`. An option whose type is unknown or that is not a table is no error:
+it is left out and reported (`unknownType`). An error the addon's own callback
+raises during the conversion (a `name` function, the source function)
+propagates unchanged.
 
 ## `BridgeKit:DefineAceConfig(addonName, source[, options])`
 
 `ConvertAceConfig(addonName, source, options)`, then `OptionsKit:Define(addonName,
 conversion.tree, { db = options.db, maxOptions = options.maxOptions, maxDepth =
-conversion.maxDepth })`. Returns the tree handle and the report. Accepts
+conversion.maxDepth })`, with `maxDynamicEntries` raised to the largest
+`values` table when one holds more than 1024 entries (the addon's own data,
+which Ace accepted). Returns the tree handle and the report. Accepts
 every conversion option plus `db`, the SettingsKit database `bind` needs.
 Without OptionsKit: `BridgeKit:DefineAceConfig requires OptionsKit API 1,
 which is not loaded (absent)`. An error `Define` raises (a pattern it refuses,
