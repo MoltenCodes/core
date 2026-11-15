@@ -58,6 +58,7 @@ body:
         - commandKit
         - commKit
         - compatKit
+        - dialogKit
         - eventKit
         - hookKit
         - interopKit

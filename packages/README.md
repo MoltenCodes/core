@@ -35,6 +35,7 @@ Current packages:
 - [`compatKit`](compatKit/) — versioned shims applied once per session with a host opt-out, provider registries with liveness probes and a deterministic fallback cascade, the catalogue of taint-hostile subsystems as data.
 - [`commKit`](commKit/) — addon messaging: chunk protocol, bounded reassembly, refusing priority queues, session bandwidth budget, sync sets.
 - [`widgetKit`](widgetKit/) — pooled versioned widgets, List/Fill/Flow layouts, anchors, position bindings, OptionsKit renderer.
+- [`dialogKit`](dialogKit/) — confirmation and input dialogs without StaticPopupDialogs: one frame of their own, a bounded queue, Escape, timeouts.
 - [`barKit`](barKit/) — status and timer bars on the client's StatusBar: labels, icons, colours, secret values passed through, pausable countdowns.
 - [`tooltipKit`](tooltipKit/) — multi-column tooltips: keyed, pooled, bounded; headers, spans, colours, line handlers, scrolling, smart anchoring, auto-hide.
 - [`launcherKit`](launcherKit/) — minimap buttons for BrokerKit objects: any minimap shape, LibDBIcon's saved fields, Retail's addon compartment.

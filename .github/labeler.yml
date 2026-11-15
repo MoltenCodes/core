@@ -46,6 +46,10 @@
   - changed-files:
       - any-glob-to-any-file: "packages/compatKit/**"
 
+"kit: dialogKit":
+  - changed-files:
+      - any-glob-to-any-file: "packages/dialogKit/**"
+
 "kit: eventKit":
   - changed-files:
       - any-glob-to-any-file: "packages/eventKit/**"

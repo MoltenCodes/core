@@ -38,6 +38,7 @@ packages/
 ├── launcherKit/
 ├── tooltipKit/
 ├── barKit/
+├── dialogKit/
 ├── <future-package>/
 └── ...
 ```
@@ -46,7 +47,7 @@ Every visible directory directly under `packages/` is considered a publishable p
 
 ## Package naming
 
-Public framework capability packages use an Apple-style `Kit` suffix. The canonical machine-readable package ID is lowerCamelCase (`signalKit`, `eventKit`, `lifecycleKit`, `moduleKit`, `timerKit`, `schedulerKit`, `poolKit`, `clientKit`, `cacheKit`, `profileKit`, `readinessKit`, `schemaKit`, `localeKit`, `hookKit`, `settingsKit`, `optionsKit`, `commandKit`, `codecKit`, `interopKit`, `mediaKit`, `testKit`, `commKit`, `widgetKit`, `apiKit`, `brokerKit`, `logKit`, `compatKit`, `bridgeKit`, `panelKit`, `menuKit`, `launcherKit`, `tooltipKit`, `barKit`), while the Lua facade/module name is PascalCase (`SignalKit`, `EventKit`, `LifecycleKit`, `ModuleKit`, `TimerKit`, `SchedulerKit`, `PoolKit`, `ClientKit`, `CacheKit`, `ProfileKit`, `ReadinessKit`, `SchemaKit`, `LocaleKit`, `HookKit`, `SettingsKit`, `OptionsKit`, `CommandKit`, `CodecKit`, `InteropKit`, `MediaKit`, `TestKit`, `CommKit`, `WidgetKit`, `ApiKit`, `BrokerKit`, `LogKit`, `CompatKit`, `BridgeKit`, `PanelKit`, `MenuKit`, `LauncherKit`, `TooltipKit`, `BarKit`).
+Public framework capability packages use an Apple-style `Kit` suffix. The canonical machine-readable package ID is lowerCamelCase (`signalKit`, `eventKit`, `lifecycleKit`, `moduleKit`, `timerKit`, `schedulerKit`, `poolKit`, `clientKit`, `cacheKit`, `profileKit`, `readinessKit`, `schemaKit`, `localeKit`, `hookKit`, `settingsKit`, `optionsKit`, `commandKit`, `codecKit`, `interopKit`, `mediaKit`, `testKit`, `commKit`, `widgetKit`, `apiKit`, `brokerKit`, `logKit`, `compatKit`, `bridgeKit`, `panelKit`, `menuKit`, `launcherKit`, `tooltipKit`, `barKit`, `dialogKit`), while the Lua facade/module name is PascalCase (`SignalKit`, `EventKit`, `LifecycleKit`, `ModuleKit`, `TimerKit`, `SchedulerKit`, `PoolKit`, `ClientKit`, `CacheKit`, `ProfileKit`, `ReadinessKit`, `SchemaKit`, `LocaleKit`, `HookKit`, `SettingsKit`, `OptionsKit`, `CommandKit`, `CodecKit`, `InteropKit`, `MediaKit`, `TestKit`, `CommKit`, `WidgetKit`, `ApiKit`, `BrokerKit`, `LogKit`, `CompatKit`, `BridgeKit`, `PanelKit`, `MenuKit`, `LauncherKit`, `TooltipKit`, `BarKit`, `DialogKit`).
 
 `registry` / `Registry` is an infrastructure exception because it provides package identity and revision reconciliation rather than a framework capability surface.
 
@@ -290,3 +291,5 @@ The dependency layer directly above Registry holds the Kits that need nothing el
 `tooltipKit` depends on Registry API 2 and PoolKit API 1. It draws keyed multi-column tooltips on frames of its own: a tooltip frame with a scroll frame and its content, and one frame per line with a font string per column, both from PoolKit pools that keep every released frame, because the client never frees one. Layout runs when a shown tooltip changes or at `Show`, never per frame; an auto-hiding tooltip asks `IsMouseOver` of itself, its anchor and an alternate frame while shown. Pool factories, resets and frame scripts call through a dispatch table in the shared state, so an upgrade reaches frames an older copy made.
 
 `barKit` depends on Registry API 2 and PoolKit API 1. A bar is the client's own `StatusBar`, taken from a PoolKit pool that keeps every released frame, so a Retail 12.x secret value (health, power) reaches the fill untouched. A timer bar runs one `OnUpdate` while it counts down and writes its time text only when it changes; a status, paused or stopped bar runs nothing. The pool's factory and reset and the bars' `OnUpdate` call through a dispatch table in the shared state.
+
+`dialogKit` depends only on Registry API 2. It draws every dialog on one named frame of its own with the client's button and input-box templates, instead of adding entries to Blizzard's `StaticPopupDialogs`, and adds that frame's name to `UISpecialFrames` so Escape hides it. One dialog is shown at a time and the others wait in a bounded queue; each ends exactly once, through a protected callback. The frame's scripts call through a dispatch table in the shared state.
