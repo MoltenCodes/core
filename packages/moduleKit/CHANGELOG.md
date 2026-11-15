@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.8.6 — 2026-11-15
+
+- Fixed: a refused `Inject(map)` stored the aliases sorted before the refused target, and a refused first `Inject` left the module an empty injection specification of its own. `docs/API.md` promises a refusal "before anything changes": every target of a map is now checked before the first alias is stored, and the specification is created only when an alias is stored.
+- Fixed: `Module:Enable()` after the container's shutdown recorded the module as wanted before refusing, so `GetEnableState().wanted` turned `true` for a call that raised. The shutdown check now runs first, with the same message at the caller's line.
+- Fixed a typo in the 0.8.4 entry ("no longer claims").
+- Implementation revision 20. Package state is unchanged; an in-place upgrade over revision 19 needs no migration (the existing upgrade specs, which load the previous revision's state, cover it).
+- 244 specs (242 before): the refused map leaves the specification as it was, and `Enable` refused after shutdown keeps the module unwanted.
+
 ## 0.8.5 — 2026-09-25
 
 - Performance, no contract change. Host benchmark `addonModules` (Lua 5.1, 3 rounds, ModuleKit ÷ AceAddon-3.0 from the same interleaved run; other agents were benchmarking concurrently, load average about 2 before and 5.8 after, so compare the ratios and the byte counts, not the absolute times):
@@ -22,7 +30,7 @@
 
 ## 0.8.4 — 2026-09-24
 
-- Secret values: INTERNALS.md (*Absent and secret values*) no longer claim that comparing a secret with anything, `nil` included, raises, or that a raw identity test is safe whatever the other side. They state what was measured on Retail 12.1.0 b69933 (2026-09-24): a secret compared with a value of its own type raises (`==`, `~=`, `<`, `<=` and `rawequal` alike) and a secret used as a table key raises, while a comparison with `nil` or with a value of another type answers without raising. The `type(value) == "nil"` rule stays, as the repository's uniform rule that never compares anything. Documentation only; the implementation revision is unchanged.
+- Secret values: INTERNALS.md (*Absent and secret values*) no longer claims that comparing a secret with anything, `nil` included, raises, or that a raw identity test is safe whatever the other side. They state what was measured on Retail 12.1.0 b69933 (2026-09-24): a secret compared with a value of its own type raises (`==`, `~=`, `<`, `<=` and `rawequal` alike) and a secret used as a table key raises, while a comparison with `nil` or with a value of another type answers without raising. The `type(value) == "nil"` rule stays, as the repository's uniform rule that never compares anything. Documentation only; the implementation revision is unchanged.
 
 ## 0.8.3 — 2026-09-24
 

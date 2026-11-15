@@ -34,6 +34,18 @@ describe("ModuleKit intent versus fact", function()
 
   after_each(TestEnv.Reset)
 
+  it("keeps a module unwanted when Enable is refused after shutdown", function()
+    local addon = ModuleKit:ForAddon("MyAddon")
+    local module = addon:CreateModule("UI")
+    TestEnv.LoadAddon("MyAddon")
+    TestEnv.Login()
+    module:Disable()
+    TestEnv.Logout()
+
+    assert.is_false(pcall(module.Enable, module))
+    assert.are.same({ wanted = false, actual = false }, module:GetEnableState())
+  end)
+
   it("starts every module wanted, not enabled and unblocked", function()
     local module = ModuleKit:ForAddon("MyAddon"):CreateModule("UI")
 

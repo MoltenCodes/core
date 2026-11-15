@@ -364,7 +364,7 @@ The per-module steady state is one module table, its resolved injection table an
 | Field | Created by | Absent reads as |
 |---|---|---|
 | `_hardDependencies`, `_optionalDependencies`, `_before`, `_after` | the first constraint of that kind | the shared `EMPTY_NAME_SET` (`moduleNameSet`) |
-| `_injectSpec` | the first `Inject` | the shared `EMPTY_NAME_SET` |
+| `_injectSpec` | the first `Inject` that stores an alias (a refused one creates nothing) | the shared `EMPTY_NAME_SET` |
 | `_requiredAddons` | the first `requiresAddons` entry | the shared `NO_REQUIRED_ADDONS` (`moduleRequiredAddons`) |
 | `_lastError`, `_hasLastError`, `_blockedBy`, `_enableBlockedBy` | a recorded failure or block | no failure, no block |
 | `_scopeOpen` | the first enable | closed |

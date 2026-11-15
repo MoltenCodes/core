@@ -134,6 +134,19 @@ describe("ModuleKit dependency injection", function()
 
     assert.are.same({ "First", "Second" }, calls)
   end)
+  it("refuses an Inject map with a bad target before storing any alias", function()
+    local addon = ModuleKit:ForAddon("MyAddon")
+    local fresh = addon:CreateModule("Fresh")
+    -- `a` sorts before the empty target of `b`: it used to be stored first.
+    assert.is_false(pcall(fresh.Inject, fresh, { a = "Config", b = "" }))
+    assert.is_nil(rawget(fresh, "_injectSpec"))
+
+    local module = addon:CreateModule("UI")
+    module:Inject("kept", "Config")
+    assert.is_false(pcall(module.Inject, module, { a = "Config", b = 1 }))
+    assert.are.same({ kept = "Config" }, rawget(module, "_injectSpec"))
+  end)
+
   it("rejects nil factory results", function()
     local addon = ModuleKit:ForAddon("MyAddon")
     addon:ProvideTransient("Broken", function()

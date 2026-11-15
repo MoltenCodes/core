@@ -35,7 +35,7 @@
 
 local PACKAGE_NAME = "moduleKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 19
+local IMPLEMENTATION_REVISION = 20
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_LIFECYCLE_API = 1
 local STATE_SCHEMA = 1
@@ -2987,6 +2987,19 @@ local function moduleAfter(self, moduleName)
 end
 
 ---Record injection aliases on `module`.
+---Return the module's own injection specification, creating it on the first
+---alias; until then the module reads the shared empty set.
+---@param module ModuleKit.Module
+---@return table<string, string> specification
+local function ownInjectSpecification(module)
+  local specification = rawget(module, "_injectSpec")
+  if specification == nil then
+    specification = {}
+    rawset(module, "_injectSpec", specification)
+  end
+  return specification
+end
+
 ---@param module ModuleKit.Module
 ---@param aliasOrMap any one alias, or an alias-to-name map
 ---@param target any target name, when a single alias was given
@@ -2995,13 +3008,6 @@ local function addInjections(module, aliasOrMap, target, level)
   ensureDefinitionMutable(module, "Inject", level + 1)
   ensureNotShutdown(rawget(module, "_addon"), "ModuleKit.Module:Inject", level + 1)
 
-  -- The first alias gives the module its own specification table; until
-  -- then it reads the shared empty set.
-  local specification = rawget(module, "_injectSpec")
-  if specification == nil then
-    specification = {}
-    rawset(module, "_injectSpec", specification)
-  end
   if type(aliasOrMap) == "table" and type(target) == "nil" then
     local aliases = {}
     for alias in next, aliasOrMap do
@@ -3015,18 +3021,27 @@ local function addInjections(module, aliasOrMap, target, level)
     end
     table.sort(aliases)
 
+    -- Every target is checked before the first alias is stored, so a refused
+    -- map leaves the specification as it was (`docs/API.md`: refused "before
+    -- anything changes").
+    for index = 1, #aliases do
+      validateNonEmptyString(
+        rawget(aliasOrMap, aliases[index]),
+        "ModuleKit.Module:Inject target",
+        level + 1
+      )
+    end
+    local specification = ownInjectSpecification(module)
     for index = 1, #aliases do
       local alias = aliases[index]
-      local dependency = rawget(aliasOrMap, alias)
-      validateNonEmptyString(dependency, "ModuleKit.Module:Inject target", level + 1)
-      rawset(specification, alias, dependency)
+      rawset(specification, alias, rawget(aliasOrMap, alias))
     end
     return
   end
 
   validateNonEmptyString(aliasOrMap, "ModuleKit.Module:Inject alias", level + 1)
   validateNonEmptyString(target, "ModuleKit.Module:Inject target", level + 1)
-  rawset(specification, aliasOrMap, target)
+  rawset(ownInjectSpecification(module), aliasOrMap, target)
 end
 
 ---Declare injection aliases.
@@ -3058,6 +3073,9 @@ end
 ---@param self ModuleKit.Module
 ---@return ModuleKit.Module self
 local function moduleEnable(self)
+  -- Refused before the wanted state is recorded: a refused call must not
+  -- change what `GetEnableState` reports. `enableWithPolicy` checks again.
+  ensureNotShutdown(self._addon, "ModuleKit.Module:Enable", 3)
   self._wantedEnabled = true
   enableWithPolicy(self)
   raiseCaptured(recoverBlockedDependents(self._addon))
