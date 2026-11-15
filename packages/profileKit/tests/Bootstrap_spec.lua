@@ -194,7 +194,7 @@ describe("ProfileKit bootstrap", function()
 
       local current = Env.ReloadPackage()
       assert.are.equal(previous, current)
-      assert.are.equal(previousRevision + 1, current.REVISION)
+      assert.is_true(current.REVISION > previousRevision)
       assert.are.equal(state, current._state)
       assert.are.equal(section, current:Section("carried"))
       assert.are.equal(3, current:Report()[1].total)
@@ -206,6 +206,39 @@ describe("ProfileKit bootstrap", function()
       end)
     end
   )
+
+  it("upgrades a revision 3 package in place to a working file that names keys by type", function()
+    local previousRevision = 3
+    Env.Reset()
+    Env.InstallWowApi()
+    require("Registry")
+    local previous = loadSourceAsRevision(previousRevision)
+    previous:Enable()
+    local section = previous:Section("carried")
+    previous:SetLimits({ maxSections = 4 })
+    local state = previous._state
+
+    local current = Env.ReloadPackage()
+    assert.are.equal(previous, current)
+    assert.is_true(current.REVISION > previousRevision)
+    assert.are.equal(state, current._state)
+    assert.are.equal(section, current:Section("carried"))
+    assert.are.same({ maxSections = 4 }, current:GetLimits())
+    local converted = false
+    local key = setmetatable({}, {
+      __tostring = function()
+        converted = true
+        return "converted"
+      end,
+    })
+    Env.expectErrorContaining(
+      "ProfileKit:SetLimits limits.<table> is not a recognised limit",
+      function()
+        current:SetLimits({ [key] = 1 })
+      end
+    )
+    assert.is_false(converted)
+  end)
 
   it("refuses corrupted shared state on reload", function()
     local ProfileKit = Env.NewPackage()

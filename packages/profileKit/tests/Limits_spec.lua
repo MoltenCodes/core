@@ -137,6 +137,29 @@ describe("ProfileKit limits", function()
     assertReportedAt(line, "ProfileKit:SetLimits limits.1 is not a recognised limit", ok, value)
   end)
 
+  it("names a table key by its type without running its __tostring", function()
+    local converted = false
+    local key = setmetatable({}, {
+      __tostring = function()
+        converted = true
+        error("foreign __tostring ran", 0)
+      end,
+    })
+    local line
+    local ok, value = pcall(function()
+      line = currentLine() + 1
+      ProfileKit:SetLimits({ [key] = 1 })
+    end)
+    assertReportedAt(
+      line,
+      "ProfileKit:SetLimits limits.<table> is not a recognised limit",
+      ok,
+      value
+    )
+    assert.is_false(converted)
+    assert.are.same({ maxSections = 256 }, ProfileKit:GetLimits())
+  end)
+
   it("refuses a limits argument that is not a table at the caller", function()
     local line
     local ok, value = pcall(function()

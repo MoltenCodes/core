@@ -19,7 +19,8 @@ The ProfileKit suite covers:
 - the limits: `GetLimits` defaults and fresh tables, `SetLimits` raising and
   lowering `maxSections` (lowering evicts nothing), `UNBOUNDED` honoured, and
   invalid values, unknown names and non-facade receivers refused at the
-  caller's line without changing anything;
+  caller's line without changing anything, and a table key named by its type
+  without running its `__tostring`;
 - `Report` ordering and fresh tables, `Reset`, and `Disable` then `Enable`
   keeping sections and statistics;
 - `Enable` declining with `"unavailable"` on a host without `debugprofilestop`;
@@ -27,7 +28,7 @@ The ProfileKit suite covers:
 - duplicate embedded loading, refusal to downgrade, an in-place upgrade to the
   next revision (the real source with its revision constant rewritten) that
   keeps the set limits and the `UNBOUNDED` sentinel, an in-place upgrade from
-  revisions 1 and 2 to the working file, and corrupted-state refusals;
+  revisions 1, 2 and 3 to the working file, and corrupted-state refusals;
 - secret values (a `issecretvalue` stub installed before load): a secret
   `maxSections` and a secret receiver refused at the caller's line, a secret
   section name refused by `Section` and by the disabled and enabled `Measure`

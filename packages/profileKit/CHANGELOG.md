@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.1.6 — 2026-11-15
+
+- Fixed: `SetLimits` built its unknown-limit message with `tostring(key)`, so a key that is a table or userdata with a `__tostring` metamethod ran that foreign code inside ProfileKit. The metamethod could raise or answer a secret value, and the caller then saw its error instead of the real refusal. A string key is still shown as written and a number or boolean key through `tostring` (no foreign code runs for those, so `limits.1` is unchanged); any other key is named by its type: `ProfileKit:SetLimits limits.<table> is not a recognised limit`, at the caller's line, with no limit changed. `docs/API.md` documents the form under *Limits* and *Errors*.
+- Implementation revision 4. No state changed: an in-place upgrade from revision 3 keeps every section, its statistics, the enabled binding and the limits, and re-binds the methods.
+- Specs: a table key whose `__tostring` raises is refused by its type at the caller without running it, and an in-place upgrade from revision 3; the revision 2 upgrade spec no longer assumes the working revision is 3. 81 → 83 specs.
+
+## 0.1.5 — 2026-11-15
+
+- `docs/API.md` did not state the implementation revision, how the file is loaded, or what it raises at load. It now has *Loading*: the load order, the Registry lookup, implementation revision 3, and the three load-time errors (`requires Registry API 2 to be loaded first`, `requires a valid Registry API 2 facade`, `package state is corrupted or incomplete`). Documentation only: implementation revision 3 is unchanged.
+
 ## 0.1.4 — 2026-09-24
 
 - Fixed: `Section(name)` and `Measure(name, fn, ...)`, enabled and disabled, refuse a secret `name` (Retail 12.x) at the caller's line with `ProfileKit:<Method> name must not be a secret value`, after the string type check and before the name is compared with `""` or used as a key of the section index. A secret string compared with a string, or used as a table key, raises at that line (measured on Retail 12.1.0 b69933), which reported the failure inside ProfileKit instead. Nothing is created and `fn` is not called. The probe is the `issecretvalue` bound once at load; a client without it refuses nothing.

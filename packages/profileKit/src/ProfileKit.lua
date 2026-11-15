@@ -30,7 +30,7 @@
 
 local PACKAGE_NAME = "profileKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 3
+local IMPLEMENTATION_REVISION = 4
 local REQUIRED_REGISTRY_API = 2
 local STATE_SCHEMA = 1
 
@@ -338,6 +338,25 @@ local function validateFacade(receiver, label, level)
   end
 end
 
+---Name a caller's table key in a refusal without running its `__tostring`.
+---
+---`tostring` on a table or userdata runs the key's `__tostring`, foreign code
+---that can raise or answer a secret and so replace the real refusal. A string
+---is shown as written and a number or boolean through `tostring`, which runs
+---no foreign code for them; anything else is named by its type, as `<table>`.
+---@param key any a table key, which `next` never returns as `nil`
+---@return string
+local function describeKey(key)
+  local keyType = type(key)
+  if keyType == "string" then
+    return key
+  end
+  if keyType == "number" or keyType == "boolean" then
+    return tostring(key)
+  end
+  return "<" .. keyType .. ">"
+end
+
 ---Refuse a `SetLimits` argument before any limit changes, so a call with one
 ---bad entry leaves every limit as it was.
 ---@param limits any
@@ -349,7 +368,10 @@ local function validateLimitUpdate(limits, level)
   local key = next(limits)
   while type(key) ~= "nil" do
     if type(key) ~= "string" or LIMIT_NAME_SET[key] ~= true then
-      error("ProfileKit:SetLimits limits." .. tostring(key) .. " is not a recognised limit", level)
+      error(
+        "ProfileKit:SetLimits limits." .. describeKey(key) .. " is not a recognised limit",
+        level
+      )
     end
     local value = rawget(limits, key)
     -- The secret check comes first: comparing a secret with a number

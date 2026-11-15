@@ -3,6 +3,31 @@
 ProfileKit API generation **1** provides named performance sections measured in
 milliseconds of addon CPU time, a sorted report, and zero cost while disabled.
 
+Implementation revision: **4**.
+
+## Loading
+
+Runtime files must be loaded in dependency order:
+
+```text
+Registry.lua
+ProfileKit.lua
+```
+
+Portable WoW code resolves the package through Registry:
+
+```lua
+local ProfileKit = MoltenCodes.Registries[2]:Get("profileKit", 1)
+```
+
+Loaded without Registry API 2, `ProfileKit.lua` raises `MoltenCodes ProfileKit
+requires Registry API 2 to be loaded first`; over a Registry whose facade has no
+`Bootstrap`, `MoltenCodes ProfileKit requires a valid Registry API 2 facade`. A
+shared package state that fails validation raises `MoltenCodes ProfileKit
+package state is corrupted or incomplete` instead of being overwritten.
+`debugprofilestop` and `issecretvalue` are optional; see
+[Time and the clock](#time-and-the-clock).
+
 ## Public surface
 
 Package facade:
@@ -180,7 +205,8 @@ local limits = ProfileKit:GetLimits() -- a fresh table; allocates
 `SetLimits` accepts any subset of the limits and returns nothing. It raises at
 the caller's line, **before changing anything**, when `limits` is not a table,
 names an unknown limit (`ProfileKit:SetLimits limits.<name> is not a recognised
-limit`) or gives a value that is neither a positive integer nor
+limit`; a string, number or boolean key is shown as written, any other key by
+its type, as `limits.<table>`, so a key's `__tostring` never runs) or gives a value that is neither a positive integer nor
 `ProfileKit.UNBOUNDED` (`ProfileKit:SetLimits limits.maxSections must be a
 positive integer or ProfileKit.UNBOUNDED`). A secret value (Retail 12.x) is
 refused with that same message before it is compared with anything, when the
@@ -218,7 +244,7 @@ Argument errors are raised at the caller's line:
 - `ProfileKit.Section:Begin must be called on a ProfileKit section` (enabled only)
 - `ProfileKit.Section:End must be called on a ProfileKit section` (enabled only)
 - `ProfileKit:SetLimits limits must be a table`
-- `ProfileKit:SetLimits limits.<name> is not a recognised limit`
+- `ProfileKit:SetLimits limits.<name> is not a recognised limit` (a key that is not a string, number or boolean is named by its type, as `limits.<table>`)
 - `ProfileKit:SetLimits limits.maxSections must be a positive integer or ProfileKit.UNBOUNDED` (also for a secret value)
 - `ProfileKit:SetLimits must be called on the ProfileKit facade; use ProfileKit:SetLimits(...)` (and the same for `GetLimits`)
 
