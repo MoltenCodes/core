@@ -821,6 +821,8 @@ scripts:Test(
 
     frame:Show()
     frame:Hide()
+    -- Replaced on purpose: the Kit looks the method up at each call.
+    ---@diagnostic disable-next-line: duplicate-set-field
     function receiver:OnShow()
       seen[#seen + 1] = "replaced"
     end

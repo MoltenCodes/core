@@ -1020,6 +1020,8 @@ busSuite:Test(
     end
     track(bus:Subscribe("Method", receiver))
     bus:Publish("Method", 1)
+    -- Replaced on purpose: the Kit looks the method up at each call.
+    ---@diagnostic disable-next-line: duplicate-set-field
     function receiver:Method(value)
       calls[#calls + 1] = "replaced:" .. tostring(value)
     end

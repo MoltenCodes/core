@@ -640,6 +640,8 @@ dispatch:Test(
     ctx:Expect(receiverSeen == receiver):ToBe(true)
     ctx:Expect(eventSeen):ToBe(CVAR_EVENT)
 
+    -- Replaced on purpose: the Kit looks the method up at each call.
+    ---@diagnostic disable-next-line: duplicate-set-field
     function receiver:OnProbe(_, cvarName)
       if namesProbeCVar(cvarName) then
         replacedCalls = replacedCalls + 1
