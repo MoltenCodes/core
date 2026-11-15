@@ -38,6 +38,7 @@ body:
         - localeKit
         - logKit
         - mediaKit
+        - menuKit
         - moduleKit
         - optionsKit
         - panelKit

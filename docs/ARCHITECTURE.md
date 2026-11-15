@@ -34,6 +34,7 @@ packages/
 ├── apiKit/
 ├── bridgeKit/
 ├── panelKit/
+├── menuKit/
 ├── <future-package>/
 └── ...
 ```
@@ -42,7 +43,7 @@ Every visible directory directly under `packages/` is considered a publishable p
 
 ## Package naming
 
-Public framework capability packages use an Apple-style `Kit` suffix. The canonical machine-readable package ID is lowerCamelCase (`signalKit`, `eventKit`, `lifecycleKit`, `moduleKit`, `timerKit`, `schedulerKit`, `poolKit`, `clientKit`, `cacheKit`, `profileKit`, `readinessKit`, `schemaKit`, `localeKit`, `hookKit`, `settingsKit`, `optionsKit`, `commandKit`, `codecKit`, `interopKit`, `mediaKit`, `testKit`, `commKit`, `widgetKit`, `apiKit`, `brokerKit`, `logKit`, `compatKit`, `bridgeKit`, `panelKit`), while the Lua facade/module name is PascalCase (`SignalKit`, `EventKit`, `LifecycleKit`, `ModuleKit`, `TimerKit`, `SchedulerKit`, `PoolKit`, `ClientKit`, `CacheKit`, `ProfileKit`, `ReadinessKit`, `SchemaKit`, `LocaleKit`, `HookKit`, `SettingsKit`, `OptionsKit`, `CommandKit`, `CodecKit`, `InteropKit`, `MediaKit`, `TestKit`, `CommKit`, `WidgetKit`, `ApiKit`, `BrokerKit`, `LogKit`, `CompatKit`, `BridgeKit`, `PanelKit`).
+Public framework capability packages use an Apple-style `Kit` suffix. The canonical machine-readable package ID is lowerCamelCase (`signalKit`, `eventKit`, `lifecycleKit`, `moduleKit`, `timerKit`, `schedulerKit`, `poolKit`, `clientKit`, `cacheKit`, `profileKit`, `readinessKit`, `schemaKit`, `localeKit`, `hookKit`, `settingsKit`, `optionsKit`, `commandKit`, `codecKit`, `interopKit`, `mediaKit`, `testKit`, `commKit`, `widgetKit`, `apiKit`, `brokerKit`, `logKit`, `compatKit`, `bridgeKit`, `panelKit`, `menuKit`), while the Lua facade/module name is PascalCase (`SignalKit`, `EventKit`, `LifecycleKit`, `ModuleKit`, `TimerKit`, `SchedulerKit`, `PoolKit`, `ClientKit`, `CacheKit`, `ProfileKit`, `ReadinessKit`, `SchemaKit`, `LocaleKit`, `HookKit`, `SettingsKit`, `OptionsKit`, `CommandKit`, `CodecKit`, `InteropKit`, `MediaKit`, `TestKit`, `CommKit`, `WidgetKit`, `ApiKit`, `BrokerKit`, `LogKit`, `CompatKit`, `BridgeKit`, `PanelKit`, `MenuKit`).
 
 `registry` / `Registry` is an infrastructure exception because it provides package identity and revision reconciliation rather than a framework capability surface.
 
@@ -102,6 +103,7 @@ registry
 ├──→ hookKit
 ├──→ interopKit
 ├──→ bridgeKit
+├──→ menuKit
 ├──→ poolKit
 │       ├──→ codecKit
 │       └──→ widgetKit   (also needs signalKit)
@@ -275,3 +277,5 @@ The dependency layer directly above Registry holds the Kits that need nothing el
 `widgetKit` depends on Registry API 2, PoolKit API 1 and SignalKit API 1. It owns a versioned registry of widget types, each drawn from one capped, generation-stamped PoolKit pool; containers laid out by registered layout functions only when asked, never from `OnSizeChanged`; a plain anchor value type with position bindings; and a renderer for OptionsKit trees. OptionsKit, SchedulerKit and MediaKit are found at call time through `Registry:Find`, adding no load-order edge; a SettingsKit scope view is accepted as the position storage table without WidgetKit depending on SettingsKit.
 
 `panelKit` depends on Registry API 2, WidgetKit API 1 and OptionsKit API 1, all required. It puts an OptionsKit tree in Blizzard's settings panel through the client's `Settings` API (`RegisterCanvasLayoutCategory`, `RegisterCanvasLayoutSubcategory`, `RegisterAddOnCategory`, `OpenToCategory`), wrapped rather than rebuilt, with one plain canvas frame per panel. The page is drawn with `WidgetKit:RenderOptions` into a pooled `ScrollFrame` when Blizzard shows the canvas and released when it hides it, so a hidden page holds no widget. The canvas keeps its scripts for the session, so they call through a dispatch table in the shared state that every revision rewrites.
+
+`menuKit` depends only on Registry API 2. It turns menus described as plain tables into Blizzard's Menu API calls (`MenuUtil.CreateContextMenu`, a `DropdownButton`'s `SetupMenu`, `Menu.ModifyMenu` for Blizzard's tagged menus), wrapped rather than rebuilt: Blizzard draws every menu. A menu is checked and translated each time it opens and nothing is kept between openings; only the extensions of tagged menus are retained, bounded, until removed. The generators and callbacks handed to Blizzard call through a dispatch table in the shared state, so an upgraded revision fills menus set up by an older one.

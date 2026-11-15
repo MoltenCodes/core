@@ -1497,9 +1497,12 @@ its code. Order:
    each callback run on the client.
 8. Docs: README, API.md (the entry table field by field, and how each maps
    to `MenuUtil`), CHANGELOG, tests/README; EMBEDDING footprint and
-   host-requirements rows; ARCHITECTURE's package list; the Ace3 migration
-   guide's dropdown section.
-9. Status: recorded 2026-11-15; code starts on the owner's go.
+   host-requirements rows; ARCHITECTURE's package list; EMBEDDING's user
+   interface section. (The Ace3 migration guide gets no section: Ace3 has no
+   menu library.)
+9. Status: implemented 2026-11-15 after the owner's go, 0.1.0, revision 1,
+   45 specs; the client suite (`tests/client/MoltenCodesTest_MenuKit`) is
+   written and has not been run in a client. Ticked once it has.
 
 #### Package N — bridgeKit, migrating from Ace3
 

@@ -70,6 +70,10 @@
   - changed-files:
       - any-glob-to-any-file: "packages/mediaKit/**"
 
+"kit: menuKit":
+  - changed-files:
+      - any-glob-to-any-file: "packages/menuKit/**"
+
 "kit: moduleKit":
   - changed-files:
       - any-glob-to-any-file: "packages/moduleKit/**"

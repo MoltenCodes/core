@@ -151,6 +151,7 @@ registry
 ├──→ hookKit
 ├──→ interopKit
 ├──→ bridgeKit
+├──→ menuKit
 ├──→ poolKit
 │       ├──→ codecKit
 │       └──→ widgetKit   (also needs signalKit)
@@ -202,6 +203,7 @@ lifecycleKit/LifecycleKit.lua
 localeKit/LocaleKit.lua
 logKit/LogKit.lua
 mediaKit/MediaKit.lua
+menuKit/MenuKit.lua
 moduleKit/ModuleKit.lua
 optionsKit/OptionsKit.lua
 widgetKit/WidgetKit.lua
@@ -246,7 +248,7 @@ optional and found at call time, so embedding one Kit costs this many files:
 
 | Files | Kit | Alongside `registry/Registry.lua` |
 |---|---|---|
-| 2 | `clientKit`, `cacheKit`, `compatKit`, `profileKit`, `schemaKit`, `localeKit`, `hookKit`, `interopKit`, `bridgeKit`, `poolKit`, `signalKit`, `timerKit` | nothing |
+| 2 | `clientKit`, `cacheKit`, `compatKit`, `profileKit`, `schemaKit`, `localeKit`, `hookKit`, `interopKit`, `bridgeKit`, `menuKit`, `poolKit`, `signalKit`, `timerKit` | nothing |
 | 3 | `apiKit` | nothing; the third file is the flavour file of the client you support (one more per further flavour) |
 | 3 | `codecKit` | `poolKit` |
 | 3 | `commandKit` | `schemaKit` |
@@ -653,6 +655,7 @@ actually touch, which is deliberately small:
 | `testKit` (development only) | LifecycleKit's and SchedulerKit's surfaces | `issecretvalue` (nothing treated as secret), `issecurevariable` (`ToBeSecure` fails), `GetTimePreciseSec` (`durationMs` 0), `geterrorhandler` (`print`), EventKit and TimerKit API 1 through `Registry:Find` |
 | `commKit` | SignalKit's, EventKit's, TimerKit's, SchedulerKit's and PoolKit's surfaces; `GetTimePreciseSec`; `C_ChatInfo.SendAddonMessage` (legacy global fallback; else `Send` refuses `"unavailable"`) | `C_ChatInfo.RegisterAddonMessagePrefix` and `IsAddonMessagePrefixRegistered` (legacy globals, then nothing registered), `C_ChatInfo.SendAddonMessageLogged` (logged sends refused), the events `CHAT_MSG_ADDON`, `CHAT_MSG_ADDON_LOGGED`, `GROUP_ROSTER_UPDATE`, `PLAYER_ENTERING_WORLD`, `GetFramerate` (no low-frame-rate mode), `UnitInParty` and `UnitInRaid` (no roster eviction; streams still expire), `Enum` (12.x values assumed), `securecallfunction` (`pcall`), `issecretvalue`, `geterrorhandler` (`print`), CodecKit API 1 (`SyncSet` raises), HookKit API 1 (outside traffic uncharged), SchemaKit API 1 (`schema` raises); LifecycleKit API 1 through `Registry:Find` (otherwise CommKit's own `PLAYER_LOGOUT` watcher closes its addon scopes) |
 | `widgetKit` | PoolKit's and SignalKit's surfaces; `CreateFrame` | `UIParent` (released frames rest on a hidden holder), `issecretvalue` (nothing secret), `geterrorhandler` (`print`), `ColorPickerFrame:SetupColorPickerAndShow` (a click fires the current colour), `IsAltKeyDown`, `IsControlKeyDown`, `IsShiftKeyDown` (no modifiers), OptionsKit API 1 through `Registry:Find` (`RenderOptions` raises at the caller), SchedulerKit API 1 (saves are immediate), MediaKit API 1 (`CreateMediaPicker` raises; the renderer uses the option's `values`) |
+| `menuKit` | `MenuUtil.CreateContextMenu`, `Menu.ModifyMenu` and `Menu.GetManager` (`Blizzard_Menu`; every method but `SetLimits` and `GetLimits` raises at the caller without them) | `issecretvalue` (nothing secret), `geterrorhandler` (`print`) |
 | `panelKit` | WidgetKit's and OptionsKit's surfaces; `CreateFrame`; `Settings.RegisterCanvasLayoutCategory`, `Settings.RegisterCanvasLayoutSubcategory` and `Settings.RegisterAddOnCategory` (`Register` raises at the caller) | `Settings.OpenToCategory` (`panel:Open` answers `nil, "unavailable"`), `issecretvalue` (nothing secret), `geterrorhandler` (`print`) |
 | `hookKit` | nothing but Lua 5.1 | `hooksecurefunc` (`SecureHook` raises at the caller), `issecurevariable` (nothing treated as secure), `Frame:HookScript` / `Frame:GetScript` / `Frame:SetScript` (the matching script hooks raise at the caller), `Frame:IsProtected` (frame not protected), `InCombatLockdown` (never in combat), `issecretvalue` (nothing is secret); LifecycleKit and EventKit API 1 through `Registry:Find` decide who closes an addon scope at logout (with neither, call `HookKit:CloseAddonScopes` on `PLAYER_LOGOUT`) |
 | `eventKit` | `CreateFrame`, `Frame:RegisterEvent`, `Frame:RegisterUnitEvent`, `Frame:UnregisterEvent`, `Frame:SetScript`; `CombatLogGetCurrentEventInfo`, or `C_CombatLog.GetCurrentEventInfo` without it, for `ConnectCombatLog` alone (with neither, as on retail 12, `IsCombatLogAvailable()` answers `false` and `ConnectCombatLog` raises at the caller) | `C_EventUtils.IsEventValid` (unknown event names reach `RegisterEvent` instead of being refused at the caller), `securecallfunction` (falls back to `xpcall`), `geterrorhandler` (falls back to `print`), SchedulerKit API 1 through `Registry:Find` (`Coalesce` refused, `Derive` recomputes synchronously); LifecycleKit API 1 through `Registry:Find` (addon scopes close at logout either way: through LifecycleKit when loaded, otherwise through EventKit's own `PLAYER_LOGOUT` listener) |
@@ -1100,6 +1103,13 @@ draws the tree into it with `RenderOptions` only while Blizzard shows the
 page; every widget goes back to its pool when the page is hidden. Blizzard
 cannot remove a category, so a registration lasts until logout. See
 [`panelKit/docs/API.md`](../packages/panelKit/docs/API.md).
+
+Menus go through Blizzard's Menu API as well. `MenuKit` (package `menuKit`)
+takes a menu described as a plain table and builds it with `MenuUtil`, so a
+context menu, a `DropdownButton`'s menu or a line added to one of Blizzard's
+own menus (`MenuKit:ExtendMenu("MENU_UNIT_SELF", ...)`) is drawn by the client
+itself; the deprecated UIDropDownMenu, a well-known source of taint, is never
+touched. See [`menuKit/docs/API.md`](../packages/menuKit/docs/API.md).
 
 ## Performance guidance
 
