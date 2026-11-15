@@ -72,7 +72,7 @@
 
 local PACKAGE_NAME = "commKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 9
+local IMPLEMENTATION_REVISION = 10
 
 -- The API generation of every package CommKit uses: required (Registry,
 -- SignalKit, EventKit, TimerKit, SchedulerKit, PoolKit) and optional
@@ -141,10 +141,10 @@ local WIRE = {
   last = 0x04,
   abort = 0x05,
   chunkHeaderBytes = 4,
-  forbiddenBytePattern = "[%z\n\r|]",
-  -- Raw messages (revision 8) are sent as written; only NUL is refused,
-  -- because the client cannot carry it. At most `maxRawParts` parts.
-  nulBytePattern = "%z",
+  -- The bytes a framed message may not hold (NUL, LF, CR, `|`) are found
+  -- with plain searches in `enqueueSend`. Raw messages (revision 8) are sent
+  -- as written; only NUL is refused, because the client cannot carry it. At
+  -- most `maxRawParts` parts.
   maxRawParts = 4096,
   maxPrefixBytes = 16,
   plain = { offset = 0x80, radix = 128 },
@@ -156,16 +156,13 @@ WIRE.plain.maxChunks = WIRE.plain.radix * WIRE.plain.radix - 1
 WIRE.logged.maxChunks = WIRE.logged.radix * WIRE.logged.radix - 1
 WIRE.singleControlText = string.char(WIRE.single)
 -- The end of a reassembly key, by stream id, for each digit scheme: the
--- channel marker and the id in decimal, as every revision writes keys.
--- Built once, because converting a number inside a concatenation formats it
--- with `sprintf` on every chunk.
+-- channel marker and the id in decimal, as every revision writes keys. Each
+-- one is made the first time its id is received and kept (at most `radix`
+-- per scheme), because converting a number inside a concatenation formats it
+-- with `sprintf` on every chunk. Nothing is built at load: a session that
+-- never receives a multi-chunk message holds none of them.
+WIRE.plain.keyMarker, WIRE.logged.keyMarker = "\t", "\tlogged\t"
 WIRE.plain.keySuffix, WIRE.logged.keySuffix = {}, {}
-for streamId = 0, WIRE.plain.radix - 1 do
-  WIRE.plain.keySuffix[streamId] = "\t" .. streamId
-end
-for streamId = 0, WIRE.logged.radix - 1 do
-  WIRE.logged.keySuffix[streamId] = "\tlogged\t" .. streamId
-end
 -- What a message whose size cannot be read (a secret argument) is charged:
 -- the most one addon message can cost.
 WIRE.unknownSizeBytes = WIRE.maxPrefixBytes + WIRE.maxMessageBytes
@@ -255,6 +252,15 @@ local CLIENT_RESULT = {
   registerDuplicate = 1,
   registerNames = { [2] = "invalidPrefix", [3] = "maxPrefixes" },
 }
+
+-- Host values resolved once, when this file loads: `issecretvalue` (`probe`),
+-- `securecallfunction` (`secureCall`), and the client's
+-- `Enum.SendAddonMessageResult.Success` (`sendSuccess`; `Enum` is fixed for
+-- the session). The client defines all three before any addon loads. A
+-- function absent at load is looked up again on every call
+-- (`HOST.probe or readHostFunction("issecretvalue")`), so one installed later
+-- is still used. Filled once `readHostFunction` exists, below.
+local HOST = {}
 
 -- The degraded modes and the throttle backoff.
 --
@@ -1261,12 +1267,21 @@ local function reportError(failure)
   print(failure)
 end
 
----Whether `value` is a secret value. The probe is looked up at every call, so
----a client without secret values treats nothing as secret.
+HOST.probe = readHostFunction("issecretvalue")
+do
+  local secureCall = readHostFunction("securecallfunction")
+  if secureCall ~= nil then
+    HOST.secureCall = secureCall
+  end
+end
+
+---Whether `value` is a secret value. The probe resolved at load is used, or,
+---when there was none then, the global's current value; a client without
+---secret values treats nothing as secret.
 ---@param value any
 ---@return boolean
 local function isSecret(value)
-  local probe = readHostFunction("issecretvalue")
+  local probe = HOST.probe or readHostFunction("issecretvalue")
   if probe == nil then
     return false
   end
@@ -1279,7 +1294,7 @@ end
 ---@param callback function
 ---@param ... any
 local function isolatedCall(callback, ...)
-  local secureCall = readHostFunction("securecallfunction")
+  local secureCall = HOST.secureCall or readHostFunction("securecallfunction")
   if secureCall ~= nil then
     -- securecallfunction reports an error through the host error handler
     -- itself.
@@ -1605,24 +1620,6 @@ local function chargeOutside(cost)
     tokens = floor
   end
   rawset(budget, "tokens", tokens)
-end
-
----Seconds until the bucket can pay `cost` bytes at the current rate. A cost
----above the capacity (a small `burst`, or the zoning mode's half second) is
----paid by a full bucket, so no chunk can wait forever.
----@param cost number
----@param currentTime number
----@return number
-local function secondsUntilAffordable(cost, currentTime)
-  local factor, capacity = currentMode(currentTime)
-  local rate = limits.maxCps * factor
-  local missing = math.min(cost, capacity) - budget.tokens
-  -- Less than a byte short is rounding in the refill arithmetic, not a
-  -- reason to wait a few nanoseconds.
-  if missing < 1 then
-    return 0
-  end
-  return missing / rate
 end
 
 ---Sample the frame rate: when the driver wakes from idle, then on a TimerKit
@@ -2126,23 +2123,25 @@ end
 ---does not name are throttles; a secret result cannot be read, so it names
 ---nothing and is a throttle too.
 ---@param result any
+---@param probe function|nil the secret probe the caller resolved, `nil` for none
 ---@return string outcome
 ---@return string|nil reason
-local function classifySendResult(result)
-  -- Asked first: every test below compares the result. The probe is read
-  -- once for the result and the client's `Success` entry, both on every
-  -- chunk.
-  local probe = readHostFunction("issecretvalue")
-  if probe ~= nil and probe(result) == true then
+local function classifySendResult(result, probe)
+  -- Asked first: every test below compares the result.
+  local secret = probe ~= nil and probe(result) == true
+  if secret then
     return "throttled", nil
   end
-  if type(result) == "nil" or result == true then
+  -- The common answer first, against the `Success` value read at load.
+  if type(result) == "nil" or result == true or result == HOST.sendSuccess then
     return SEND_STATE.sent, nil
   end
   if result == false then
     return SEND_STATE.failed, "GeneralError"
   end
-  -- `readEnumValue("SendAddonMessageResult", "Success", ...)`, inlined.
+  -- The client's current `Success`, for a client whose `Enum` arrived after
+  -- this file loaded (`readEnumValue`, inlined). Only a result that is not
+  -- the load-time `Success` gets here.
   local success = CLIENT_RESULT.sendSuccess
   local enums = readHostTable("Enum")
   local values = enums ~= nil and rawget(enums, "SendAddonMessageResult") or nil
@@ -2181,14 +2180,28 @@ local function classifySendResult(result)
   return SEND_STATE.failed, name
 end
 
----Hand one chunk to the client.
+-- The client's `Success` result, read once: `Enum` is fixed for the session.
+-- The documented number stands in on a client without it, or when the value
+-- the client gives is not a plain number.
+do
+  local enums = readHostTable("Enum")
+  local values = enums ~= nil and rawget(enums, "SendAddonMessageResult") or nil
+  local value = type(values) == "table" and rawget(values, "Success") or nil
+  if type(value) ~= "number" or (HOST.probe ~= nil and HOST.probe(value) == true) then
+    value = CLIENT_RESULT.sendSuccess
+  end
+  HOST.sendSuccess = value
+end
+
+---Hand one chunk to the client. The driver reads the send function and the
+---probe once per run and passes them in.
 ---@param record table
 ---@param chunk string
+---@param send function|nil the client's send function for this record's channel
+---@param probe function|nil the secret probe, `nil` for none
 ---@return string outcome
 ---@return string|nil reason
-local function transmit(record, chunk)
-  local functionName = record.logged and "SendAddonMessageLogged" or "SendAddonMessage"
-  local send = readChatFunction(functionName)
+local function transmit(record, chunk, send, probe)
   if send == nil then
     return SEND_STATE.failed, REASON.unavailable
   end
@@ -2199,7 +2212,7 @@ local function transmit(record, chunk)
     reportError(result)
     return SEND_STATE.failed, "error"
   end
-  local outcome, reason = classifySendResult(result)
+  local outcome, reason = classifySendResult(result, probe)
   return outcome, reason
 end
 
@@ -2480,6 +2493,24 @@ local function driveChunks()
   local currentTime = now()
   refill(currentTime)
   reinstatePipes(currentTime)
+  -- The host's functions are read once per run, not once per chunk: the
+  -- consumers' callbacks are held until the run ends, so between two chunks
+  -- of one run only the client's send function itself runs. A function
+  -- another addon replaces is used from the next run.
+  local probe = HOST.probe or readHostFunction("issecretvalue")
+  local sendPlain = readChatFunction("SendAddonMessage")
+  local sendLogged = readChatFunction("SendAddonMessageLogged")
+
+  -- The mode cannot change inside one run (one clock reading, no frame-rate
+  -- sample), so it and the rate are read once, and the cost and the wait
+  -- below are computed inline.
+  local factor, capacity = currentMode(currentTime)
+  local rate = limits.maxCps * factor
+  local overhead = limits.messageOverhead
+  -- While exactly one message is queued and its pipe is still at the ring
+  -- index served last, that pipe is the one the rotation serves next; only
+  -- the rotation slot of its priority is found again, without `peekNextPipe`.
+  local lastQueue, lastIndex, lastRecord = nil, 0, nil
 
   for _ = 1, POLICY.maxChunksPerRun do
     -- An emptied queue ends the run without walking the rotation.
@@ -2487,24 +2518,57 @@ local function driveChunks()
       finishRun(currentTime, false)
       return
     end
-    local queue, ringIndex, slot = peekNextPipe()
+    local queue, ringIndex, slot
+    local lastPipe = lastQueue ~= nil and lastQueue.ring[lastIndex] or nil
+    if
+      state.queuedMessages == 1
+      and lastRecord ~= nil
+      and lastPipe ~= nil
+      and lastPipe.fifo[1] == lastRecord
+    then
+      queue, ringIndex = lastQueue, lastIndex
+      local priority = lastRecord.priority
+      slot = state.rotationCursor
+      while PRIORITY_ROTATION[slot] ~= priority do
+        slot = slot % #PRIORITY_ROTATION + 1
+      end
+    else
+      queue, ringIndex, slot = peekNextPipe()
+    end
     if queue == nil then
       finishRun(currentTime, false)
       return
     end
     local pipe = queue.ring[ringIndex]
     local record = pipe.fifo[1]
-    assignStreamId(record)
+    lastQueue, lastIndex, lastRecord = queue, ringIndex, record
+    -- A message keeps the stream id its first chunk was given.
+    if record.nextIndex == 1 then
+      assignStreamId(record)
+    end
     local chunk, payloadBytes = buildChunk(record)
-    local cost = messageCost(#record.prefix, #chunk)
-    local wait = secondsUntilAffordable(cost, currentTime)
-    if wait > 0 then
-      scheduleDriver(wait, "budget")
+    local cost = #record.prefix + #chunk + overhead
+    -- The requirement is capped at the capacity, and less than a byte short
+    -- is rounding in the refill arithmetic, not a reason to wait: either would
+    -- otherwise leave a run waiting forever or re-arming nanosecond timers.
+    local missing = (cost < capacity and cost or capacity) - budget.tokens
+    if missing >= 1 then
+      scheduleDriver(missing / rate, "budget")
       return
     end
 
     advanceCursors(queue, ringIndex, slot)
-    local outcome, reason = transmit(record, chunk)
+    -- The send function of the record's channel, or `nil` when the client
+    -- lacks it (`transmit` then fails the message as unavailable).
+    local send = nil
+    if record.logged then
+      if sendLogged ~= nil then
+        send = sendLogged
+      end
+    elseif sendPlain ~= nil then
+      send = sendPlain
+    end
+    local outcome, reason = transmit(record, chunk, send, probe)
     if outcome == SEND_STATE.sent then
       acceptChunk(record, pipe, cost, #chunk, payloadBytes)
     elseif outcome == "throttled" then
@@ -3136,8 +3200,7 @@ end
 local function receiveChunk(control, prefix, text, distribution, sender, logged)
   local length = #text
   if
-    length < WIRE.chunkHeaderBytes
-    or (length == WIRE.chunkHeaderBytes) ~= (control == WIRE.abort)
+    length < WIRE.chunkHeaderBytes or (length == WIRE.chunkHeaderBytes) ~= (control == WIRE.abort)
   then
     count("chunksRefused")
     return
@@ -3158,7 +3221,12 @@ local function receiveChunk(control, prefix, text, distribution, sender, logged)
   end
   local streamId = streamByte - lowest
   local number = (highByte - lowest) * scheme.radix + lowByte - lowest
-  local key = prefix .. "\t" .. distribution .. "\t" .. sender .. scheme.keySuffix[streamId]
+  local suffix = scheme.keySuffix[streamId]
+  if suffix == nil then
+    suffix = scheme.keyMarker .. streamId
+    scheme.keySuffix[streamId] = suffix
+  end
+  local key = prefix .. "\t" .. distribution .. "\t" .. sender .. suffix
   if control == WIRE.first then
     openStream(key, prefix, distribution, sender, number, text, scheme)
   else
@@ -3185,7 +3253,7 @@ local function onAddonMessage(prefix, text, channel, sender, logged)
   -- A secret may not be used as a table key, compared or measured, so the
   -- check comes before the prefix lookup. The probe is read once for the
   -- four arguments, as `isSecret` would read it four times.
-  local probe = readHostFunction("issecretvalue")
+  local probe = HOST.probe or readHostFunction("issecretvalue")
   if
     probe ~= nil
     and (
@@ -3967,6 +4035,76 @@ function SendPath.targetFits(distribution, target)
   return true
 end
 
+---Send a one-chunk message at once, without a record, a pipe or a driver
+---run: the common case, where fairness and backoff have nothing to act on.
+---Taken only when no driver run is under way or scheduled, no held callback
+---is being flushed and nothing is queued. One bucket check (the refill and
+---the cost with one mode reading), then one client call.
+---
+---Returns `false` when the message must take the queue: the driver is busy
+---or the bucket cannot pay. Otherwise returns `true` and the outcome:
+---`"sent"` (statistics and bucket charged as `acceptChunk` and
+---`completeSend` would), or `"throttled"` or `"failed"` with the reason and
+---the time, which `enqueueSend` turns into what a driver run does next, so a
+---refusal never causes a second attempt within the same call.
+---@param prefix string
+---@param text string
+---@param distribution string
+---@param target string|number|nil
+---@param send function the client's send function for the channel
+---@return boolean attempted
+---@return string|nil outcome
+---@return string|nil reason
+---@return number|nil attemptTime
+function SendPath.sendAtOnce(prefix, text, distribution, target, send)
+  if
+    driver.running
+    or deferred.flushing > 0
+    or driver.job ~= false
+    or state.queuedMessages ~= 0
+  then
+    return false
+  end
+  -- What waking from idle does (`wakeDriver`, `runInline`).
+  local currentTime = sampleFrameRate(true)
+  installOutsideHooks(currentTime)
+  -- `refill` and the driver's bucket check, inline, with one mode reading.
+  local factor, capacity = currentMode(currentTime)
+  local lastRefill = budget.lastRefill
+  budget.lastRefill = currentTime
+  local tokens = budget.tokens
+  if lastRefill ~= false and currentTime > lastRefill then
+    tokens = tokens + (currentTime - lastRefill) * limits.maxCps * factor
+  end
+  if tokens > capacity then
+    tokens = capacity
+  end
+  budget.tokens = tokens
+  local chunk = WIRE.singleControlText .. text
+  local chunkBytes = #chunk
+  local cost = #prefix + chunkBytes + limits.messageOverhead
+  if (cost < capacity and cost or capacity) - tokens >= 1 then
+    return false
+  end
+  state.sendingOwnTraffic = true
+  local ok, result = pcall(send, prefix, chunk, distribution, target)
+  state.sendingOwnTraffic = false
+  if not ok then
+    reportError(result)
+    return true, SEND_STATE.failed, "error", currentTime
+  end
+  local outcome, reason =
+    classifySendResult(result, HOST.probe or readHostFunction("issecretvalue"))
+  if outcome ~= SEND_STATE.sent then
+    return true, outcome, reason, currentTime
+  end
+  budget.tokens = tokens - cost
+  statistics.chunksSent = statistics.chunksSent + 1
+  statistics.bytesSent = statistics.bytesSent + chunkBytes
+  count(STATISTIC_FOR.terminal[SEND_STATE.sent])
+  return true, SEND_STATE.sent
+end
+
 ---Queue a message after its arguments were validated, and send it at once
 ---when the driver is idle (`runInline`). Returns the handle, or `nil` and the
 ---refusal. Shared by `scope:Send` and the SyncSet replies.
@@ -4001,7 +4139,15 @@ enqueueSend = function(
   if not TARGETED_DISTRIBUTIONS[distribution] then
     target = nil
   end
-  if string.find(text, WIRE.forbiddenBytePattern) ~= nil then
+  -- Four plain finds, not one character class: Lua 5.1 tries a class at
+  -- every start position, which cost about 56 microseconds on 8,000 bytes
+  -- against under one for the four finds.
+  if
+    string.find(text, "\0", 1, true) ~= nil
+    or string.find(text, "\n", 1, true) ~= nil
+    or string.find(text, "\r", 1, true) ~= nil
+    or string.find(text, "|", 1, true) ~= nil
+  then
     return SendPath.refuse(REASON.forbiddenByte)
   end
 
@@ -4026,12 +4172,33 @@ enqueueSend = function(
     return SendPath.refuse(REASON.queueFull)
   end
   local functionName = logged and "SendAddonMessageLogged" or "SendAddonMessage"
-  if readChatFunction(functionName) == nil then
+  local sendFunction = readChatFunction(functionName)
+  if sendFunction == nil then
     return SendPath.refuse(REASON.unavailable)
   end
 
+  -- One chunk with no callbacks, sent at once when nothing else is queued
+  -- (`SendPath.sendAtOnce`). A message with callbacks keeps the queue path,
+  -- which holds them until the run ends.
+  local attempted, outcome, outcomeReason, attemptTime = false, nil, nil, nil
+  if totalChunks == 1 and onProgress == false and onComplete == false then
+    attempted, outcome, outcomeReason, attemptTime =
+      SendPath.sendAtOnce(prefix, text, distribution, target, sendFunction)
+  end
+  if outcome == SEND_STATE.sent then
+    count("messagesQueued")
+    -- A send handle has no `_schema`: nothing reads it, and its absence
+    -- means layout 1 (`LAYOUT.handle`). Four fields fit a four-slot hash.
+    return setmetatable({
+      _state = SEND_STATE.sent,
+      _bytesSent = length,
+      _bytesTotal = length,
+      _record = false,
+    }, HANDLE_METATABLE),
+      nil
+  end
+
   local handle = setmetatable({
-    _schema = LAYOUT.handle,
     _state = SEND_STATE.queued,
     _bytesSent = 0,
     _bytesTotal = length,
@@ -4063,6 +4230,19 @@ enqueueSend = function(
   local pending = rawget(scope, "_pending")
   pending[#pending + 1] = handle
   count("messagesQueued")
+  if attempted then
+    -- The one attempt `sendAtOnce` made was refused or raised: do what a
+    -- driver run does next, without sending again.
+    ---@cast attemptTime number
+    if outcome == "throttled" then
+      setPipeAside(queues[priority], record.pipe, attemptTime)
+      finishRun(attemptTime, false)
+      startSampler()
+    else
+      completeSend(record, SEND_STATE.failed, outcomeReason)
+    end
+    return handle, nil
+  end
   if not runInline() then
     wakeDriver()
   end
@@ -4082,7 +4262,7 @@ local function readSendRequest(request, level)
   validateKeys(request, OPTION_KEYS.sendRequest, label, level + 1)
   -- The probe is read once for every field below; `isSecret` would read it
   -- again for each. `nil` means a client without secret values.
-  local probe = readHostFunction("issecretvalue")
+  local probe = HOST.probe or readHostFunction("issecretvalue")
 
   local prefix = rawget(request, "prefix")
   if type(prefix) ~= "string" or (probe ~= nil and probe(prefix) == true) then
@@ -4183,7 +4363,7 @@ function SendPath.readRawRequest(request, level)
     error(label .. " must be a table", level)
   end
   validateKeys(request, OPTION_KEYS.sendRawRequest, label, level + 1)
-  local probe = readHostFunction("issecretvalue")
+  local probe = HOST.probe or readHostFunction("issecretvalue")
 
   local prefix = rawget(request, "prefix")
   validateBoundedString(prefix, label .. ".prefix", WIRE.maxPrefixBytes, level + 1)
@@ -4297,7 +4477,7 @@ function SendPath.enqueueRaw(
     target = nil
   end
   for index = 1, #parts do
-    if string.find(parts[index], WIRE.nulBytePattern) ~= nil then
+    if string.find(parts[index], "\0", 1, true) ~= nil then
       return SendPath.refuse(REASON.nulByte)
     end
   end
@@ -4316,7 +4496,6 @@ function SendPath.enqueueRaw(
   end
 
   local handle = setmetatable({
-    _schema = LAYOUT.handle,
     _state = SEND_STATE.queued,
     _bytesSent = 0,
     _bytesTotal = totalBytes,

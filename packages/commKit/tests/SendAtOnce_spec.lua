@@ -316,3 +316,209 @@ describe("CommKit queue records", function()
     assert.are.equal(0, (CommKit:GetQueueDepth()))
   end)
 end)
+
+-- Revision 10: a one-chunk message without callbacks, sent while nothing is
+-- queued and no driver run is under way or due, goes to the client at once
+-- without a record, a pipe or a driver run (`SendPath.sendAtOnce`). A refusal
+-- or a raise makes no second attempt: the message is queued and set aside, or
+-- completed as failed, as a driver run would.
+describe("CommKit sends one chunk at once without a record", function()
+  local CommKit, scope, state
+  before_each(function()
+    CommKit = TestEnv.NewPackage()
+    state = CommKit._state
+    scope = CommKit:CreateScope()
+  end)
+  after_each(TestEnv.Reset)
+
+  ---A plain one-chunk request.
+  ---@param text string?
+  ---@return table
+  local function plain(text)
+    return { prefix = PREFIX, text = text or "hello", distribution = "PARTY" }
+  end
+
+  it("makes one client call and keeps no record, counting as the queued path does", function()
+    local handle = scope:Send(plain())
+    assert.are.equal("sent", handle:GetState())
+    assert.are.equal(1, #TestEnv.Chat().attempts)
+    assert.are.equal(0, #state.spares.records)
+    assert.are.same({ 0, 0 }, { CommKit:GetQueueDepth() })
+    assert.is_false(state.driver.running)
+    assert.is_false(state.driver.job)
+    local statistics = CommKit:GetStatistics()
+    assert.are.equal(1, statistics.messagesQueued)
+    assert.are.equal(1, statistics.messagesSent)
+    assert.are.equal(1, statistics.chunksSent)
+    assert.are.equal(6, statistics.bytesSent)
+  end)
+
+  it("gives a send handle no _schema field, on either path", function()
+    local atOnce = scope:Send(plain())
+    TestEnv.HoldSends(CommKit)
+    local queued = scope:Send(plain("queued"))
+    assert.is_nil(rawget(atOnce, "_schema"))
+    assert.is_nil(rawget(queued, "_schema"))
+    assert.are.equal("queued", queued:GetState())
+  end)
+
+  it("keeps the record path for a message with callbacks", function()
+    local completed = false
+    local handle = scope:Send({
+      prefix = PREFIX,
+      text = "hello",
+      distribution = "PARTY",
+      onComplete = function()
+        completed = true
+      end,
+    })
+    assert.are.equal("sent", handle:GetState())
+    assert.are.equal(1, #state.spares.records)
+    assert.is_false(completed)
+    TestEnv.Tick()
+    assert.is_true(completed)
+  end)
+
+  it("queues behind a message already queued and sends nothing itself", function()
+    TestEnv.HoldSends(CommKit)
+    local first = scope:Send(plain("first"))
+    local second = scope:Send(plain("second"))
+    assert.are.same({ "queued", "queued" }, { first:GetState(), second:GetState() })
+    assert.are.equal(0, #TestEnv.Chat().attempts)
+    TestEnv.ReleaseSends(CommKit)
+    assert.are.same({ "sent", "sent" }, { first:GetState(), second:GetState() })
+  end)
+
+  it("makes one attempt when the client throttles it, then retries from the queue", function()
+    TestEnv.QueueSendResults(TestEnv.SEND_RESULT.AddonMessageThrottle)
+    local handle = scope:Send(plain())
+    assert.are.equal("queued", handle:GetState())
+    assert.are.equal(1, #TestEnv.Chat().attempts)
+    assert.are.equal(1, CommKit:GetStatistics().throttled)
+    TestEnv.Advance(1)
+    assert.are.equal("sent", handle:GetState())
+    assert.are.equal(2, #TestEnv.Chat().attempts)
+  end)
+
+  it("fails once when the client refuses it, without a second attempt", function()
+    TestEnv.QueueSendResults(TestEnv.SEND_RESULT.NotInGroup)
+    local handle = scope:Send(plain())
+    assert.are.equal("failed", handle:GetState())
+    assert.are.equal(1, #TestEnv.Chat().attempts)
+    TestEnv.Advance(1)
+    assert.are.equal(1, #TestEnv.Chat().attempts)
+    assert.are.equal(1, CommKit:GetStatistics().messagesFailed)
+  end)
+
+  it("fails once and reports once when the client's send raises", function()
+    local calls = 0
+    -- selene: allow(global_usage)
+    rawset(rawget(_G, "C_ChatInfo"), "SendAddonMessage", function()
+      calls = calls + 1
+      error("client send raised")
+    end)
+    TestEnv.TakeReportedErrors()
+    local handle = scope:Send(plain())
+    assert.are.equal("failed", handle:GetState())
+    assert.are.equal(1, calls)
+    assert.are.equal(1, #TestEnv.TakeReportedErrors())
+    TestEnv.Advance(1)
+    assert.are.equal(1, calls)
+  end)
+
+  it("uses a C_ChatInfo send function another addon replaced since the last send", function()
+    scope:Send(plain("before"))
+    local replaced = 0
+    -- selene: allow(global_usage)
+    rawset(rawget(_G, "C_ChatInfo"), "SendAddonMessage", function()
+      replaced = replaced + 1
+      return TestEnv.SEND_RESULT.Success
+    end)
+    local handle = scope:Send(plain("after"))
+    assert.are.equal("sent", handle:GetState())
+    assert.are.equal(1, replaced)
+  end)
+
+  it("refuses each forbidden byte at the first, middle and last position", function()
+    for _, byte in ipairs({ "\0", "\n", "\r", "|" }) do
+      for _, text in ipairs({ byte .. "ab", "a" .. byte .. "b", "ab" .. byte }) do
+        local handle, reason = scope:Send(plain(text))
+        assert.is_nil(handle)
+        assert.are.equal("forbiddenByte", reason)
+      end
+    end
+    local handle = scope:Send(plain(TestEnv.Text(254)))
+    assert.are.equal("sent", handle:GetState())
+    assert.are.equal(0, #state.spares.records)
+  end)
+
+  it("keeps the probe a copy resolved at load after the global goes away", function()
+    local received = {}
+    scope:Register(PREFIX, function(_, text)
+      received[#received + 1] = text
+    end)
+    -- selene: allow(global_usage)
+    rawset(_G, "issecretvalue", function(value)
+      return value == "\001secret"
+    end)
+    package.loaded["CommKit"] = nil
+    local upgraded = TestEnv.LoadRevision(CommKit.REVISION + 1)
+    -- selene: allow(global_usage)
+    rawset(_G, "issecretvalue", nil)
+    TestEnv.Deliver(PREFIX, "\001secret", "PARTY", "Friend-Realm")
+    assert.are.same({}, received)
+    assert.are.equal(1, upgraded:GetStatistics().secretsDropped)
+  end)
+
+  it("builds a reassembly key suffix only for a stream id it receives", function()
+    -- The suffix tables are file-local; the upvalue walk finds them.
+    local wire
+    local queue, seen, head = { CommKit }, { [CommKit] = true }, 1
+    while queue[head] ~= nil and wire == nil do
+      local item = queue[head]
+      head = head + 1
+      local function visit(name, value)
+        if name == "WIRE" and type(value) == "table" then
+          wire = value
+        elseif (type(value) == "function" or type(value) == "table") and not seen[value] then
+          seen[value] = true
+          queue[#queue + 1] = value
+        end
+      end
+      if type(item) == "function" then
+        local index = 1
+        while true do
+          local name, value = debug.getupvalue(item, index)
+          if name == nil then
+            break
+          end
+          visit(name, value)
+          index = index + 1
+        end
+      else
+        for key, value in next, item do
+          visit(nil, key)
+          visit(nil, value)
+        end
+      end
+    end
+    assert.is_table(wire)
+    assert.is_nil(next(wire.plain.keySuffix))
+    assert.is_nil(next(wire.logged.keySuffix))
+    local received = {}
+    scope:Register(PREFIX, function(_, text)
+      received[#received + 1] = text
+    end)
+    local text = TestEnv.Text(700)
+    scope:Send(plain(text))
+    TestEnv.Advance(10)
+    TestEnv.Loopback("Friend-Realm")
+    assert.are.same({ text }, received)
+    local count = 0
+    for _ in pairs(wire.plain.keySuffix) do
+      count = count + 1
+    end
+    assert.are.equal(1, count)
+    assert.is_nil(next(wire.logged.keySuffix))
+  end)
+end)

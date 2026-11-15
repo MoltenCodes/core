@@ -48,6 +48,7 @@ MoltenCodes Test: PASS commKit.facade: C_ChatInfo has every function CommKit cal
 MoltenCodes Test: PASS commKit.prefixes: Register has the real client register the prefix, IsAddonMessagePrefixRegistered then answers true, and registering it again answers DuplicatePrefix (answers and prefix count logged)
 MoltenCodes Test: SKIP commKit.prefixes: Register returns nil and 'maxPrefixes' when the client's prefix limit is reached -- not probed: reaching the limit would register many prefixes the client cannot unregister; packages/commKit/tests/Lifecycle_spec.lua covers the refusal
 MoltenCodes Test: PASS commKit.roundTrip: a short message whispered to the player's own character leaves inside Send, arrives once through CHAT_MSG_ADDON with its prefix, its text, WHISPER and the player as sender, and completes as sent after Send returned (round trip logged)
+MoltenCodes Test: PASS commKit.roundTrip: a short message without callbacks whispered to the player's own character is sent before Send returns and arrives once, byte-identical (the record-free path)
 MoltenCodes Test: PASS commKit.roundTrip: an empty message travels as the lone control byte 01 and is delivered as an empty string
 MoltenCodes Test: PASS commKit.roundTrip: a 252-byte single chunk holding every byte value Send accepts (01-FF but 0A, 0D and 7C) arrives byte-identical, carried on the wire as 01 plus the payload
 MoltenCodes Test: PASS commKit.roundTrip: a 2048-byte message leaves as nine chunks with onProgress after each, 251 bytes apiece, and is delivered once and byte-identical (per-chunk timing, budget and throttles logged)
@@ -73,7 +74,7 @@ MoltenCodes Test: PASS commKit.secrets: Register refuses a secret prefix and Set
 MoltenCodes Test: PASS commKit.secrets: a secret facade receiver, a secret ForAddon name and a secret maxRegistrations are refused at the calling line
 MoltenCodes Test: PASS commKit.secrets: SyncSet:Set refuses a secret value and a table holding one at the calling line
 MoltenCodes Test: SKIP commKit.secrets: a received message whose prefix, text, channel or sender is secret is dropped and counted in secretsDropped -- not producible solo: the client hands addon messages over as secrets only in restricted contexts such as encounters; packages/commKit/tests/Reassembly_spec.lua covers the drop
-MoltenCodes Test: commKit: 26 passed, 0 failed, 4 skipped, 0 timed out (30 tests)
+MoltenCodes Test: commKit: 27 passed, 0 failed, 4 skipped, 0 timed out (31 tests)
 MoltenCodes Test: results saved in MoltenCodesTestResults; /reload or log out to write them to disk.
 ```
 
@@ -140,8 +141,8 @@ MoltenCodes Test: SKIP commKit.syncSet: a SyncSet that whispers a request to the
 ```
 
 The name after `answered` is the key of `Enum.SendAddonMessageResult` the
-client returned. Seven tests are then skipped for that reason and the totals
-line reads `19 passed, 0 failed, 11 skipped, 0 timed out (30 tests)`. That is
+client returned. Eight tests are then skipped for that reason and the totals
+line reads `19 passed, 0 failed, 12 skipped, 0 timed out (31 tests)`. That is
 an answer, not a fault of the run: send it back. Two other run-time skips are
 possible: `the client did not accept the whisper to self within 8 s` (every
 attempt was throttled), and, for the raw-send test only,
@@ -153,7 +154,7 @@ Four `commKit.secrets` tests need the client's `issecretvalue` and
 `secretwrap`, which Retail 12.1 has. `secretwrap` only converts the value
 handed to it into a secret and changes no game state. A client without them
 prints these four lines instead, and the totals line reads
-`22 passed, 0 failed, 8 skipped, 0 timed out (30 tests)`:
+`23 passed, 0 failed, 8 skipped, 0 timed out (31 tests)`:
 
 ```text
 MoltenCodes Test: SKIP commKit.secrets: Send refuses a secret prefix, text, distribution, target and priority at the calling line, before comparing them, and queues nothing -- the client has no issecretvalue and secretwrap; the secret path was not exercised
@@ -181,7 +182,7 @@ the suite reads at load is missing on a Classic client.
 ### Retail (12.1)
 
 The lines above:
-`MoltenCodes Test: commKit: 26 passed, 0 failed, 4 skipped, 0 timed out (30 tests)`,
+`MoltenCodes Test: commKit: 27 passed, 0 failed, 4 skipped, 0 timed out (31 tests)`,
 with the four `SKIP` lines listed under them.
 
 ### Classic Era (1.15) and Mists of Pandaria Classic (5.5)
@@ -194,16 +195,16 @@ running client gives decide the totals:
   `issecretvalue` and `secretwrap`; the suite reads them at load. With both,
   and secrets made with them, the four `commKit.secrets` tests run and the
   totals line is Retail's:
-  `MoltenCodes Test: commKit: 26 passed, 0 failed, 4 skipped, 0 timed out (30 tests)`.
+  `MoltenCodes Test: commKit: 27 passed, 0 failed, 4 skipped, 0 timed out (31 tests)`.
   Without them, the four lines under
   [On a client without secret values](#on-a-client-without-secret-values)
   are `SKIP` and the totals line is
-  `MoltenCodes Test: commKit: 22 passed, 0 failed, 8 skipped, 0 timed out (30 tests)`.
+  `MoltenCodes Test: commKit: 23 passed, 0 failed, 8 skipped, 0 timed out (31 tests)`.
   A client that has both but makes no secret with them (`issecretvalue`
   does not report what `secretwrap` returns as secret;
   `Harness:CanMakeSecrets` measures this once at load) skips the same four
   tests with the reason below, and the totals line is again
-  `MoltenCodes Test: commKit: 22 passed, 0 failed, 8 skipped, 0 timed out (30 tests)`.
+  `MoltenCodes Test: commKit: 23 passed, 0 failed, 8 skipped, 0 timed out (31 tests)`.
 
   ```text
   MoltenCodes Test: SKIP commKit.secrets: Send refuses a secret prefix, text, distribution, target and priority at the calling line, before comparing them, and queues nothing -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
@@ -213,11 +214,11 @@ running client gives decide the totals:
   ```
 
 - **The whisper to your own character.** No Classic client has been measured
-  yet. If it refuses or never returns the whisper, the seven tests named under
+  yet. If it refuses or never returns the whisper, the eight tests named under
   [When the whisper to your own character does not come back](#when-the-whisper-to-your-own-character-does-not-come-back)
   end as `SKIP` with the client's answer, and the totals line reads
-  `19 passed, 0 failed, 11 skipped, 0 timed out (30 tests)` (with secret
-  values; without them `15 passed, 0 failed, 15 skipped`). Send that answer
+  `19 passed, 0 failed, 12 skipped, 0 timed out (31 tests)` (with secret
+  values; without them `15 passed, 0 failed, 16 skipped`). Send that answer
   back.
 
 ## Waiting in the queue
@@ -277,6 +278,7 @@ results.
 | `C_ChatInfo has every function CommKit calls ...` | `C_ChatInfo.IsAddonMessagePrefixRegistered`, `RegisterAddonMessagePrefix`, `SendAddonMessage` and `SendAddonMessageLogged` are functions, and the client's `Enum.SendAddonMessageResult` has `Success` 0, `AddonMessageThrottle` 3 and `ChannelThrottle` 8, and `Enum.RegisterAddonMessagePrefixResult` has `Success` 0, `DuplicatePrefix` 1, `InvalidPrefix` 2 and `MaxPrefixes` 3: the values docs/API.md says CommKit falls back to. Both enums are logged in full. |
 | `Register has the real client register the prefix ...` | After `Register("MCTCommKitReg", ...)`, the client's `IsAddonMessagePrefixRegistered` answers `true`, and a second `RegisterAddonMessagePrefix` of the same prefix answers `DuplicatePrefix`. The log gives the answer before (`false` on the first run of a session), the count of registered prefixes before and after (`GetRegisteredAddonMessagePrefixes`) and the second answer. |
 | `a short message whispered to the player's own character ...` | With the driver idle and the budget full, the 30-byte message leaves inside `Send`: the handle reads `sent` when `Send` returns, and `onComplete` has not run yet (it runs on CommKit's next driver run). A throttle answered inside `Send` would leave it queued for a retry; the log then shows the state and the throttle, and the state is not checked. It leaves as one addon message and comes back exactly once as `CHAT_MSG_ADDON`, and CommKit delivers it whole with the prefix, the text, `WHISPER` and your own name as sender; the handle reads `sent` with all 30 bytes. The log gives the state when `Send` returned, the time until `onComplete` ran and until the message came back, and the sender as the server wrote it. |
+| `a short message without callbacks whispered to the player's own character ...` | CommKit 0.5.3 sends a one-chunk message without callbacks inside `Send`, without building a queue record, when nothing else is queued: the handle is `sent` when `Send` returns (unless the client throttled it, which the log shows), `messagesSent` rose by one, and the text arrives once, byte-identical, from the player. |
 | `an empty message travels as the lone control byte 01 ...` | The one-byte addon message `01` survives the server, and CommKit delivers `""`. |
 | `a 252-byte single chunk holding every byte value ...` | Every byte value `Send` accepts, 01 to FF except 0A, 0D and 7C, crosses the server unchanged in one addon message (`01` plus the 252 bytes, 253 on the wire), including the bytes 80 to FF that CommKit's chunk headers rely on. On a difference the log names the first differing byte. |
 | `a 2048-byte message leaves as nine chunks ...` | The message leaves as nine addon messages; `onProgress` runs after each with 251, 502, ... 2008, 2048 of 2048 bytes; the wire shows `02`, seven `03` and `04`, every chunk 255 bytes but the last (44), header digits in 80-FF, one stream id, and the chunk count 9; CommKit delivers the message once, byte-identical, only after the last chunk arrived. CommKit's listener and the test's wire observer run on the same `CHAT_MSG_ADDON` event, so the test places the delivery by counting, not by the clock: when each of the first eight chunks was recorded nothing had been delivered, and the delivery sits next to the record of the ninth, just before it when CommKit's listener runs first (as on Retail 12.1.0 b69933) or just after it otherwise. The log says which. The run of 2026-09-25 failed here only because the test compared clock readings and expected the delivery after the observer's last record. The log gives the moment each `onProgress` ran (after `Send` returned: with a full budget the nine chunks leave inside `Send`, and their callbacks follow on CommKit's next driver run) and each wire message arrived, the budget before and after, and the counters, `throttled` included (0 expected; a throttle is retried and still passes). |
@@ -304,7 +306,7 @@ results.
 
 - Any `FAIL` or `TIMEOUT` line, a `SKIP` other than the four above on Retail
   12.1 (or the whisper-to-self skips described above), or a totals line other
-  than `26 passed, 0 failed, 4 skipped, 0 timed out (30 tests)` (on a Classic
+  than `27 passed, 0 failed, 4 skipped, 0 timed out (31 tests)` (on a Classic
   client, other than the totals lines under [Per flavour](#per-flavour)).
 - No login line, or `Expected.lua is missing`: the harness or the installer
   did not run as intended.

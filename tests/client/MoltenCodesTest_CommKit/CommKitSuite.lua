@@ -1098,6 +1098,42 @@ roundTrip:Test(
 )
 
 roundTrip:Test(
+  "a short message without callbacks whispered to the player's own character is sent before Send returns and arrives once, byte-identical (the record-free path)",
+  function(ctx)
+    local fullName, shortName = requirePlayerNames(ctx)
+    local scope = newCommScope()
+    local deliveries = collectDeliveries(ctx, scope, PREFIX.short)
+    local text = "sent at once by MoltenCodes CommKit"
+    local throttledBefore = CommKit:GetStatistics().throttled
+    local sentBefore = CommKit:GetStatistics().messagesSent
+
+    -- No callbacks: CommKit 0.5.3 hands such a message to the client inside
+    -- `Send` without building a queue record, when nothing else is queued.
+    local handle, reason = scope:Send(whisperToSelf(PREFIX.short, text, fullName))
+    ctx:Expect(reason):ToBeNil()
+    if type(handle) == "nil" then
+      return
+    end
+    local stateAfterSend = handle:GetState()
+    local throttledAtSend = CommKit:GetStatistics().throttled - throttledBefore
+    awaitDeliveries(ctx, deliveries, 1)
+    pause(ctx, 0.3)
+
+    ctx:Log(("state when Send returned %s (throttles %+d)"):format(stateAfterSend, throttledAtSend))
+    if throttledAtSend == 0 then
+      ctx:Expect(stateAfterSend):ToBe("sent")
+      ctx:Expect(CommKit:GetStatistics().messagesSent - sentBefore):ToBe(1)
+    end
+    ctx:Expect(#deliveries):ToBe(1)
+    ctx:Expect(deliveries[1].text):ToBe(text)
+    ctx:Expect(isPlayer(deliveries[1].sender, fullName, shortName)):ToBe(true)
+    ctx:Expect(handle:GetState()):ToBe("sent")
+    ctx:Expect(handle:GetBytesSent()):ToBe(#text)
+    ctx:Expect(scope:GetPendingCount()):ToBe(0)
+  end
+)
+
+roundTrip:Test(
   "an empty message travels as the lone control byte 01 and is delivered as an empty string",
   function(ctx)
     local fullName, shortName = requirePlayerNames(ctx)

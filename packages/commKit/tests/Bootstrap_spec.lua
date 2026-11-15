@@ -315,11 +315,57 @@ describe("CommKit bootstrap", function()
     TestEnv.Loopback("Friend-Realm")
     assert.are.same({ text }, received)
 
-    -- With the driver idle, a new message leaves inside `Send`.
+    -- With the driver idle, a new message leaves inside `Send`; a one-chunk
+    -- message without callbacks is sent at once (revision 10), without a
+    -- record, so the spare list stays empty.
     TestEnv.Advance(10)
     local next = scope:Send({ prefix = PREFIX, text = "after", distribution = "PARTY" })
     assert.are.equal("sent", next:GetState())
-    assert.are.equal(1, #olderState.spares.records)
+    assert.are.equal(0, #olderState.spares.records)
+  end)
+
+  it("upgrades a revision 9 state in place with a message queued and a stream open", function()
+    local older = TestEnv.Load({ commKitRevision = 9 })
+    assert.are.equal(9, older.REVISION)
+    local olderState = rawget(older, "_state")
+    local scope = older:CreateScope()
+    local received = {}
+    scope:Register(PREFIX, function(_, text)
+      received[#received + 1] = text
+    end)
+    -- An inbound stream left open: of a two-chunk message, only the first
+    -- chunk is delivered before the upgrade.
+    local peerText = TestEnv.Text(400)
+    scope:Send({ prefix = PREFIX, text = peerText, distribution = "PARTY" })
+    TestEnv.Advance(10)
+    local chunks = TestEnv.TakeOutbox()
+    assert.are.equal(2, #chunks)
+    TestEnv.Deliver(PREFIX, chunks[1].text, "PARTY", "Friend-Realm")
+    assert.are.same({}, received)
+    -- A multi-chunk message held in the queue, its handle carrying the
+    -- `_schema` field revision 9 wrote on every send handle.
+    TestEnv.HoldSends(older)
+    local text = TestEnv.Text(700)
+    local handle = scope:Send({ prefix = PREFIX, text = text, distribution = "PARTY" })
+    rawset(handle, "_schema", 1)
+    assert.are.equal("queued", handle:GetState())
+
+    package.loaded["CommKit"] = nil
+    local CommKit = require("CommKit")
+    assert.are.equal(older, CommKit)
+    assert.are.equal(10, CommKit.REVISION)
+    assert.are.equal(olderState, rawget(CommKit, "_state"))
+
+    TestEnv.Deliver(PREFIX, chunks[2].text, "PARTY", "Friend-Realm")
+    assert.are.same({ peerText }, received)
+    TestEnv.ReleaseSends(CommKit, 10)
+    assert.are.equal("sent", handle:GetState())
+    TestEnv.Loopback("Friend-Realm")
+    assert.are.same({ peerText, text }, received)
+    -- With nothing queued, a one-chunk message now leaves without a record.
+    local after = scope:Send({ prefix = PREFIX, text = "after", distribution = "PARTY" })
+    assert.are.equal("sent", after:GetState())
+    assert.is_nil(rawget(after, "_schema"))
   end)
 
   it("upgrades a revision 6 state in place and keeps looking for HookKit", function()
