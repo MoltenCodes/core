@@ -239,6 +239,50 @@ describe("CodecKit bootstrap", function()
     assert.are.equal(0, pool:GetActiveCount())
   end)
 
+  it("upgrades a revision 6 copy in place and compresses natively afterwards", function()
+    TestEnv.Reset()
+    require("Registry")
+    require("PoolKit")
+    local record = TestEnv.InstallEncodingUtil()
+    -- Revision 6 had no native path: the copy is loaded with it removed, so
+    -- the stand-in is present but never called until the upgrade.
+    local older = TestEnv.LoadRevision(
+      6,
+      "local native = compressNatively(work, bytes, level)",
+      "local native = nil"
+    )
+    assert.are.equal(6, older.REVISION)
+    older:SetLimits({ maxDepth = 14 })
+    local state = older._state
+    local pool = state.pool
+    local text = string.rep("an upgrade keeps every frame readable; ", 8)
+    local _, olderBytes = older:Compress(text)
+    local _, olderFrame = older:Encode({ text, 6 }, { compress = "deflate", channel = "addon" })
+    assert.are.equal(0, #record.compressCalls)
+
+    package.loaded["CodecKit"] = nil
+    local CodecKit = require("CodecKit")
+    assert.are.equal(older, CodecKit)
+    assert.is_true(CodecKit.REVISION > 6)
+    assert.are.equal(state, CodecKit._state)
+    assert.are.equal(CodecKit.REVISION, CodecKit._state.runtimeRevision)
+    assert.are.equal(pool, CodecKit._state.pool)
+    assert.are.equal(14, CodecKit:GetLimits().maxDepth)
+
+    local _, nativeBytes = CodecKit:Compress(text)
+    assert.are.equal(1, #record.compressCalls)
+    assert.are.equal(TestEnv.StoredDeflate(text), nativeBytes)
+    assert.are_not.equal(olderBytes, nativeBytes)
+    assert.are.same({ true, text }, { CodecKit:Decompress(olderBytes) })
+    local ok, decoded = CodecKit:Decode(olderFrame, { channel = "addon" })
+    assert.is_true(ok)
+    assert.are.same({ text, 6 }, decoded)
+
+    TestEnv.RemoveEncodingUtil()
+    assert.are.equal(olderBytes, select(2, CodecKit:Compress(text)))
+    assert.are.equal(0, pool:GetActiveCount())
+  end)
+
   it("requires Registry", function()
     TestEnv.Reset()
     local ok, value = pcall(require, "CodecKit")

@@ -260,6 +260,135 @@ function CodecKitTestEnv.Unhex(text)
   )
 end
 
+-- The client's encoding functions -----------------------------------------
+--
+-- `C_EncodingUtil` and `Enum` are not among the globals the shared fixture
+-- owns, so this environment installs and removes them itself: both
+-- environments' `Reset` is wrapped to clear them.
+
+---Clear the stand-in `C_EncodingUtil` and `Enum`.
+local function clearEncodingGlobals()
+  setGlobal("C_EncodingUtil", nil)
+  setGlobal("Enum", nil)
+end
+
+for _, environment in ipairs({ CodecKitTestEnv, Async }) do
+  local frameworkReset = environment.Reset
+  environment.Reset = function()
+    clearEncodingGlobals()
+    frameworkReset()
+  end
+end
+
+---Write `input` as raw DEFLATE stored blocks (RFC 1951 3.2.4), at most
+---65535 bytes each. A second DEFLATE encoder, independent of CodecKit's, so
+---its bytes always differ from the Lua compressor's for the inputs the specs
+---use and any inflater reads them.
+---@param input string
+---@return string
+local function storedDeflate(input)
+  local parts = {}
+  local position = 1
+  repeat
+    local length = math.min(65535, #input - position + 1)
+    local final = position + length > #input and 1 or 0
+    local complement = 65535 - length
+    parts[#parts + 1] = string.char(
+      final,
+      length % 256,
+      math.floor(length / 256),
+      complement % 256,
+      math.floor(complement / 256)
+    )
+    parts[#parts + 1] = input:sub(position, position + length - 1)
+    position = position + length
+  until position > #input
+  return table.concat(parts)
+end
+CodecKitTestEnv.StoredDeflate = storedDeflate
+
+---What a stand-in `CompressString` does, by mode name. Every mode but
+---`stored` models a client answer CodecKit must not trust.
+local COMPRESS_MODES = {
+  stored = function(source)
+    return storedDeflate(source)
+  end,
+  raise = function()
+    error("stand-in CompressString raised", 2)
+  end,
+  nothing = function() end,
+  number = function()
+    return 42
+  end,
+  empty = function()
+    return ""
+  end,
+  table = function()
+    return {}
+  end,
+  oversized = function(source)
+    return storedDeflate(source) .. string.rep("\0", #source + 1)
+  end,
+}
+
+---Install a stand-in for the client's `C_EncodingUtil`.
+---
+---`CompressString` answers as `options.mode` says (`"stored"` by default),
+---or as `options.compress(source, method, level)` when given, and records
+---every call. `DecompressString` is installed too and records its calls, so a
+---spec can prove CodecKit never inflates natively. `options.withoutCompress`
+---leaves `CompressString` out; `options.compressValue` puts that value in its
+---place instead. `options.enum`, when given, is installed as the global
+---`Enum`.
+---@param options { mode: string?, compress: function?, withoutCompress: boolean?, compressValue: any, enum: table? }?
+---@return { compressCalls: table[], decompressCalls: integer }
+function CodecKitTestEnv.InstallEncodingUtil(options)
+  options = options or {}
+  local record = { compressCalls = {}, decompressCalls = 0 }
+  local answer = options.compress or COMPRESS_MODES[options.mode or "stored"]
+  if answer == nil then
+    error("CodecKitTestEnv.InstallEncodingUtil: unknown mode " .. tostring(options.mode), 2)
+  end
+  local namespace = {
+    DecompressString = function()
+      record.decompressCalls = record.decompressCalls + 1
+      error("CodecKit must not inflate natively", 2)
+    end,
+  }
+  if options.compressValue ~= nil then
+    namespace.CompressString = options.compressValue
+  elseif not options.withoutCompress then
+    namespace.CompressString = function(source, method, level)
+      record.compressCalls[#record.compressCalls + 1] =
+        { source = source, method = method, level = level }
+      return answer(source, method, level)
+    end
+  end
+  setGlobal("C_EncodingUtil", namespace)
+  if options.enum ~= nil then
+    setGlobal("Enum", options.enum)
+  end
+  return record
+end
+
+---Set the global `C_EncodingUtil` or `Enum` to any value, such as one of the
+---wrong type, to model a client that answers something unexpected. `Reset`
+---clears it.
+---@param name "C_EncodingUtil"|"Enum"
+---@param value any
+function CodecKitTestEnv.SetEncodingGlobal(name, value)
+  if name ~= "C_EncodingUtil" and name ~= "Enum" then
+    error("CodecKitTestEnv.SetEncodingGlobal sets only C_EncodingUtil and Enum", 2)
+  end
+  setGlobal(name, value)
+end
+
+---Remove the stand-in `C_EncodingUtil` and `Enum`, as on a client without
+---them, without resetting anything else.
+function CodecKitTestEnv.RemoveEncodingUtil()
+  clearEncodingGlobals()
+end
+
 ---Read the CodecKit source text from `package.path`.
 ---@return string text
 ---@return string path
@@ -302,15 +431,22 @@ local function replaceOnce(text, find, replacement)
 end
 
 ---Load the CodecKit source again as a copy carrying `revision`, the way a
----newer embedded copy loads over an older one in the client.
+---newer embedded copy loads over an older one in the client. `find` and
+---`replacement`, when given, replace one more piece of source text, to model
+---what that older revision did differently.
 ---@param revision integer
+---@param find string? plain source text that must occur exactly once
+---@param replacement string?
 ---@return table CodecKit
-function CodecKitTestEnv.LoadRevision(revision)
+function CodecKitTestEnv.LoadRevision(revision, find, replacement)
   local text, path = readSource()
   local patched, replacements =
     text:gsub("local IMPLEMENTATION_REVISION = %d+", "local IMPLEMENTATION_REVISION = " .. revision)
   if replacements ~= 1 then
     error("CodecKitTestEnv.LoadRevision could not find IMPLEMENTATION_REVISION", 2)
+  end
+  if find ~= nil then
+    patched = replaceOnce(patched, find, replacement)
   end
 
   local chunk = assert(loadstring(patched, "@" .. path))

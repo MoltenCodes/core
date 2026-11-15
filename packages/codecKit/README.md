@@ -26,7 +26,7 @@ What each piece promises:
 - **Exact values.** Integers up to 2^53 are written as varint integers; every other number — fractions, larger integers, both infinities, NaN, −0, subnormal numbers — is its IEEE-754 bit pattern, so nothing is lost to `tostring`. Strings carry every byte. Tables keep array, map and mixed parts; cycles are refused with `"cycle"`, functions and userdata with `"unsupportedType"`.
 - **Never raises on input.** `Decode`, `Deserialize`, `Decompress` and the channel decoders return `false, reason` for any string, from a fixed vocabulary, and stay within the limits whatever the string holds.
 - **Bounded by default.** `maxDepth` 16, `maxValues` 65536, `maxStringLength` 65536, `maxOutputBytes` 1 MiB and `maxListValues` 4096, shared by every consumer, changed with `SetLimits`; `CodecKit.UNBOUNDED` lifts `maxValues` and `maxStringLength`, which `maxOutputBytes` still bounds. The output limit also caps what inflating a hostile stream can produce.
-- **Standard compression.** `Compress` writes raw DEFLATE that any inflater reads, and `Decompress` reads any raw DEFLATE stream; levels 1 to 9.
+- **Standard compression.** `Compress` writes raw DEFLATE that any inflater reads, and `Decompress` reads any raw DEFLATE stream; levels 1 to 9. Where the client has `C_EncodingUtil.CompressString`, inputs of 64 bytes or more are compressed there, natively and many times faster; the frames are the same format, so every revision decodes them, and inflating stays CodecKit's own.
 - **Every stage on its own.** `Serialize`/`Deserialize`, `Compress`/`Decompress`, `EncodeForAddon`/`DecodeForAddon`, `EncodeForPrint`/`DecodeForPrint`; `EncodeMany`/`DecodeMany` for argument lists of up to `maxListValues` values (4096 by default), `nil`s included.
 - **Never freezes a frame.** `EncodeAsync` and `DecodeAsync` run on a SchedulerKit scope and yield when the frame budget is spent.
 - **Re-entrant and cheap.** Serialising reuses one work record and writes the frame straight into one buffer, and the compression and print stages lease their buffers from a PoolKit table pool and return them on every path; encoding a small value again allocates nothing.
@@ -55,6 +55,7 @@ load.
 Optional: SchedulerKit API 1, used only by `EncodeAsync` and `DecodeAsync`.
 CodecKit looks it up with `Registry:Find` when one of them is called, so it may
 load in any order; without it those two methods raise at the caller and
-everything else works. The one host facility CodecKit reads, `issecretvalue`,
-is looked up at every call; on a client without it nothing is treated as
-secret.
+everything else works. The two host facilities CodecKit reads are looked up
+at every call: `issecretvalue` (on a client without it nothing is treated as
+secret) and `C_EncodingUtil.CompressString` (without it every input is
+compressed in Lua; every supported client documents it).

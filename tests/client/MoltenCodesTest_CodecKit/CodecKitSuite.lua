@@ -22,6 +22,11 @@
 --     `C_EncodingUtil.CompressString` output inflated by CodecKit, with the
 --     client's Base64 and CBOR logged next to CodecKit's print channel and
 --     serialiser for the same input (sizes and milliseconds);
+--   * the native compression path of revision 7: `Compress` byte for byte
+--     the client's `CompressString` from 64 bytes on, the roster round trip
+--     through it, `EncodeAsync` on the Lua encoder past 256 KiB, what
+--     `DecompressString` does with trailing bytes and a truncated stream
+--     (logged for a later revision), and the native encoder's time;
 --   * the cost on the client of a realistic 50 KB table, synchronously and
 --     through `EncodeAsync`/`DecodeAsync` on a SchedulerKit scope;
 --   * that no decoder raises on a few thousand strings made by the client's
@@ -1259,6 +1264,236 @@ interopTest(
       end)
     end
     logComparison(ctx, "decode printable text", #unprinted, unprintMs, unbase64, unbase64Ms)
+  end
+)
+
+-- codecKit.native ---------------------------------------------------------------------------
+--
+-- Revision 7 compresses inputs of 64 bytes or more with the client's
+-- CompressString and keeps inflating in Lua. These tests prove the native
+-- path runs, that its frames read back, and log what a later revision needs
+-- before it inflates natively: what DecompressString does with bytes after
+-- the final block and with a truncated stream.
+
+local native = newSuite("native", { timeoutSeconds = PERFORMANCE_TIMEOUT_SECONDS })
+
+--- Why the native tests are skipped on a client without CompressString.
+local NATIVE_SKIP_REASON =
+  "the client has no C_EncodingUtil.CompressString; CodecKit compresses in Lua here and the native path was not exercised"
+
+---Register `body` as a test when the client has `CompressString` (and
+---`DecompressString`, which the trailing-bytes test calls), and as a skipped
+---test naming why otherwise.
+---@param name string
+---@param body fun(ctx: TestKit.Context)
+local function nativeTest(name, body)
+  if INTEROP_AVAILABLE then
+    native:Test(name, body)
+  else
+    native:Skip(name, NATIVE_SKIP_REASON)
+  end
+end
+
+--- CodecKit's levels and the client level each maps onto.
+local NATIVE_LEVELS = {
+  { level = 1, name = "OptimizeForSpeed", documented = 1 },
+  { level = 6, name = "Default", documented = 0 },
+  { level = 9, name = "OptimizeForSize", documented = 2 },
+}
+
+---Repeat `bytes` until the result is exactly `length` bytes long.
+---@param bytes string
+---@param length integer
+---@return string
+local function repeatTo(bytes, length)
+  local copies = math.ceil(length / #bytes)
+  return string.rep(bytes, copies):sub(1, length)
+end
+
+nativeTest(
+  "CodecKit:Compress of 64 bytes or more is CompressString's Deflate output byte for byte at levels 1, 6 and 9 (OptimizeForSpeed, Default, OptimizeForSize), and a 32-byte message is one final block CodecKit inflates",
+  function(ctx)
+    local deflateMethod = enumValue("CompressionMethod", "Deflate", 0)
+    for _, input in ipairs(interopInputs()) do
+      for _, mapping in ipairs(NATIVE_LEVELS) do
+        local ok, compressed = CodecKit:Compress(input.bytes, { level = mapping.level })
+        ctx:Expect(ok):ToBe(true)
+        local clientLevel = enumValue("CompressionLevel", mapping.name, mapping.documented)
+        local clientBytes = callClient(compressString, input.bytes, deflateMethod, clientLevel)
+        local same = type(clientBytes) == "string" and clientBytes == compressed
+        ctx:Log(
+          ("%s level %d: CodecKit wrote %d bytes, CompressString %s %s; identical: %s"):format(
+            input.label,
+            mapping.level,
+            #compressed,
+            mapping.name,
+            type(clientBytes) == "string" and (#clientBytes .. " bytes") or type(clientBytes),
+            tostring(same)
+          )
+        )
+        if #input.bytes >= 64 then
+          ctx:Expect(same):ToBe(true)
+        else
+          -- One final block: header bits 1 then 00 (stored) or 01 (fixed).
+          local firstBits = compressed:byte(1) % 8
+          ctx:Expect(firstBits == 1 or firstBits == 3):ToBe(true)
+        end
+        local inflated, output = CodecKit:Decompress(compressed)
+        ctx:Expect(inflated):ToBe(true)
+        ctx:Expect(output == input.bytes):ToBe(true)
+        ctx:Yield()
+      end
+    end
+  end
+)
+
+nativeTest(
+  "the export Encode of the 50 KB roster on the native path decodes back to an equal table, and EncodeAsync of ten 30 KiB strings (300 KiB serialised, over the 256 KiB native threshold) stays on the yielding Lua encoder over at least two rendered frames and decodes back",
+  function(ctx)
+    local roster = buildRoster()
+    local encodeMs, exportText = timed(function()
+      local _, text = CodecKit:Encode(roster, EXPORT_OPTIONS)
+      return text
+    end)
+    local decodeMs, decoded = timed(function()
+      local ok, value = CodecKit:Decode(exportText, { channel = "print" })
+      if not ok then
+        return nil
+      end
+      return value
+    end)
+    ctx:Log(
+      ("native export Encode: %d characters in %s; Decode (Lua inflater) in %s"):format(
+        #exportText,
+        milliseconds(encodeMs),
+        milliseconds(decodeMs)
+      )
+    )
+    ctx:Expect(decoded):ToEqual(roster)
+    ctx:Yield()
+
+    -- Ten strings, each under the default maxStringLength of 65536, so the
+    -- shared limits stay as they are.
+    local chunk = repeatTo(buildProse(), 30 * 1024)
+    local large = {}
+    for index = 1, 10 do
+      large[index] = chunk
+    end
+    local options = { compress = "deflate" }
+    local _, nativeFrame = CodecKit:Encode(large, options)
+    local scope = trackScope(SchedulerKit:CreateScope())
+    local encoded = { calls = 0, ok = false, result = nil }
+    CodecKit:EncodeAsync(large, options, scope, function(ok, text)
+      encoded.calls = encoded.calls + 1
+      encoded.ok = ok
+      encoded.result = text
+    end)
+    local predicateCalls = 0
+    local pendingAfterFrames = 0
+    local finished = waitUntil(ctx, function()
+      predicateCalls = predicateCalls + 1
+      local done = encoded.calls > 0
+      if not done and predicateCalls > 1 then
+        pendingAfterFrames = pendingAfterFrames + 1
+      end
+      return done
+    end, ASYNC_WAIT_SECONDS)
+    ctx:Expect(finished):ToBe(true)
+    ctx:Expect(encoded.ok):ToBe(true)
+    ctx:Log(
+      ("EncodeAsync of %d strings of %d bytes: pending after %d rendered frames; %d bytes against %d from the synchronous native Encode"):format(
+        #large,
+        #chunk,
+        pendingAfterFrames,
+        type(encoded.result) == "string" and #encoded.result or 0,
+        #nativeFrame
+      )
+    )
+    ctx:Expect(pendingAfterFrames >= 1):ToBe(true)
+    ctx:Expect(encoded.result ~= nativeFrame):ToBe(true)
+    local ok, value = CodecKit:Decode(encoded.result)
+    ctx:Expect(ok):ToBe(true)
+    ctx:Expect(value):ToEqual(large)
+    ok, value = CodecKit:Decode(nativeFrame)
+    ctx:Expect(ok):ToBe(true)
+    ctx:Expect(value):ToEqual(large)
+  end
+)
+
+nativeTest(
+  "DecompressString is logged on a valid stream followed by trailing bytes and on a truncated stream, the condition for native inflation in a later revision, while CodecKit:Decompress refuses them with trailingData and truncated",
+  function(ctx)
+    local deflateMethod = enumValue("CompressionMethod", "Deflate", 0)
+    local prose = buildProse()
+    local stream = callClient(compressString, prose, deflateMethod)
+    local clientInflate = decompressString
+    ctx:Expect(type(stream)):ToBe("string")
+    if type(stream) ~= "string" or type(clientInflate) ~= "function" then
+      return
+    end
+    local cases = {
+      { label = "three trailing bytes", bytes = stream .. "\0\1\2", reason = "trailingData" },
+      { label = "one trailing zero byte", bytes = stream .. "\0", reason = "trailingData" },
+      {
+        label = "the last four bytes cut",
+        bytes = stream:sub(1, #stream - 4),
+        reason = "truncated",
+      },
+    }
+    for _, case in ipairs(cases) do
+      local succeeded, result = pcall(clientInflate, case.bytes, deflateMethod)
+      local answer
+      if not succeeded then
+        answer = "raised: " .. tostring(result)
+      elseif type(result) == "string" then
+        answer = ("returned %d bytes, %s the input"):format(
+          #result,
+          result == prose and "equal to" or "different from"
+        )
+      else
+        answer = "returned " .. type(result)
+      end
+      ctx:Log(("DecompressString on %s: %s"):format(case.label, answer))
+      local ok, reason = CodecKit:Decompress(case.bytes)
+      ctx:Expect(ok):ToBe(false)
+      ctx:Expect(reason):ToBe(case.reason)
+    end
+  end
+)
+
+nativeTest(
+  "CompressString at Default and OptimizeForSize is timed on 256 KiB and 1 MiB of roster bytes, and CodecKit inflates the 256 KiB results",
+  function(ctx)
+    local deflateMethod = enumValue("CompressionMethod", "Deflate", 0)
+    local _, serialized = CodecKit:Serialize(buildRoster())
+    for _, size in ipairs({ 262144, 1048576 }) do
+      local input = repeatTo(serialized, size)
+      for _, mapping in ipairs({ NATIVE_LEVELS[2], NATIVE_LEVELS[3] }) do
+        local clientLevel = enumValue("CompressionLevel", mapping.name, mapping.documented)
+        local elapsed, compressed = timed(function()
+          return (callClient(compressString, input, deflateMethod, clientLevel))
+        end)
+        ctx:Expect(type(compressed)):ToBe("string")
+        ctx:Log(
+          ("CompressString %s of %d KiB: %s bytes in %s, %.4f ms per KiB"):format(
+            mapping.name,
+            size / 1024,
+            type(compressed) == "string" and tostring(#compressed) or type(compressed),
+            milliseconds(elapsed),
+            elapsed / (size / 1024)
+          )
+        )
+        if size == 262144 and type(compressed) == "string" then
+          local inflateMs, inflated = timed(function()
+            local _, bytes = CodecKit:Decompress(compressed)
+            return bytes
+          end)
+          ctx:Expect(inflated == input):ToBe(true)
+          ctx:Log(("CodecKit:Decompress of it: %s"):format(milliseconds(inflateMs)))
+        end
+        ctx:Yield()
+      end
+    end
   end
 )
 

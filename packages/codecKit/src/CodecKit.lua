@@ -6,9 +6,12 @@
 --   serialise        a type byte and a payload per value: varint integers,
 --                    exact IEEE-754 doubles, length-prefixed raw strings, and
 --                    tables in array, map or mixed layout. Cycles are refused.
---   compress         raw DEFLATE (RFC 1951) written in pure Lua: LZ77 over hash
---                    chains, then per block the cheapest of stored, fixed
---                    Huffman and dynamic Huffman.
+--   compress         raw DEFLATE (RFC 1951): the client's
+--                    `C_EncodingUtil.CompressString` where it exists and the
+--                    input is 64 bytes or more, otherwise pure Lua (LZ77 over
+--                    hash chains, then per block the cheapest of stored,
+--                    fixed Huffman and dynamic Huffman). Inflating is always
+--                    the pure Lua inflater.
 --   channel-encode   `addon` escapes the four bytes the addon channel cannot
 --                    carry and the escape byte itself; `print` maps
 --                    everything onto 85 printable ASCII characters for chat
@@ -22,7 +25,9 @@
 -- stages lease their sinks from a table pool and return them on every path,
 -- so calls are re-entrant). The
 -- asynchronous variants find SchedulerKit API 1 through `Registry:Find` when
--- they are called; without it they raise at the caller.
+-- they are called; without it they raise at the caller. The client's
+-- `C_EncodingUtil.CompressString` is optional and looked up at every call;
+-- without it every frame is compressed in Lua, as revision 6 did.
 --
 -- `docs/API.md` specifies the wire format byte by byte; `docs/INTERNALS.md`
 -- describes the compressor and the buffers.
@@ -40,6 +45,7 @@
 --   Huffman codes ......... length-limited code construction and decoders
 --   Compressor ............ LZ77 matching, block choice and bit output
 --   Decompressor .......... stored, fixed and dynamic block inflation
+--   Native compressor ..... C_EncodingUtil.CompressString, with its fallbacks
 --   Addon channel ......... the escape table
 --   Print channel ......... the 85-character alphabet
 --   Frames ................ the header and the composition of the stages
@@ -51,7 +57,7 @@
 
 local PACKAGE_NAME = "codecKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 6
+local IMPLEMENTATION_REVISION = 7
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_POOLKIT_API = 1
 local OPTIONAL_SCHEDULERKIT_API = 1
@@ -2772,9 +2778,136 @@ do
   end
 end
 
+-- Native compressor ----------------------------------------------------------
+--
+-- Where the client has `C_EncodingUtil.CompressString`, the compression stage
+-- runs there with `Enum.CompressionMethod.Deflate`: raw DEFLATE (RFC 1951),
+-- the format the Lua compressor writes, made by native code tens of times
+-- faster. The frame is unchanged, version 1 with the deflate flag, and the
+-- inflater of every revision reads any conforming raw DEFLATE stream, so a
+-- peer on an older revision decodes it. The bytes differ from the Lua
+-- compressor's; docs/API.md already says encoded bytes are not a content
+-- hash.
+--
+-- Inflation stays in Lua. A frame carries no declared size, checksum or end
+-- marker of its own, so nothing could tell whether the native inflater
+-- accepted a stream (bytes after the final block, say) that the Lua inflater
+-- refuses with a documented reason. docs/INTERNALS.md records the client
+-- check a later revision needs first.
+
+local compressNatively
+
+do
+  -- Below this many bytes the Lua compressor writes one literal or stored
+  -- block without allocating anything but its output, which is what addon
+  -- messages mostly are; a native call would not be cheaper there.
+  local NATIVE_MINIMUM_BYTES = 64
+
+  -- An asynchronous call takes the native compressor up to this much input.
+  -- One native call cannot yield, so a larger input stays on the Lua
+  -- compressor, which yields between slices of the frame budget.
+  local ASYNC_NATIVE_MAXIMUM_BYTES = 262144
+
+  -- The value `EncodingUtilDocumentation.lua` gives
+  -- `Enum.CompressionMethod.Deflate` on every flavour, used when the client's
+  -- `Enum` does not answer. The level numbers are in `readClientLevel`.
+  local DOCUMENTED_DEFLATE_METHOD = 0
+
+  ---Read `Enum.<enumName>.<fieldName>` from the client, or `documented` when
+  ---the client has no such number.
+  ---@param enumName string
+  ---@param fieldName string
+  ---@param documented integer
+  ---@return integer
+  local function readEnumValue(enumName, fieldName, documented)
+    -- Enum is a World of Warcraft client table reachable only through the global table.
+    -- selene: allow(global_usage)
+    local enums = rawget(_G, "Enum")
+    local enum = type(enums) == "table" and rawget(enums, enumName) or nil
+    local value = type(enum) == "table" and rawget(enum, fieldName) or nil
+    if type(value) == "number" then
+      return value
+    end
+    return documented
+  end
+
+  ---The client's `Enum.CompressionLevel` value for CodecKit's `level`: 1 to 3
+  ---favour speed, as the greedy Lua levels do, 4 to 6 are the client's
+  ---default, and 7 to 9 favour size. Each field is named literally, with the
+  ---number `EncodingUtilDocumentation.lua` documents for it.
+  ---@param level integer 1 to 9
+  ---@return integer
+  local function readClientLevel(level)
+    if level <= 3 then
+      return readEnumValue("CompressionLevel", "OptimizeForSpeed", 1)
+    end
+    if level <= 6 then
+      return readEnumValue("CompressionLevel", "Default", 0)
+    end
+    return readEnumValue("CompressionLevel", "OptimizeForSize", 2)
+  end
+
+  ---Return the client's `C_EncodingUtil.CompressString`, or `nil`. Read at
+  ---every call, as `issecretvalue` is, so nothing is cached in the package
+  ---state an upgrade hands over.
+  ---@return function|nil
+  local function readCompressString()
+    -- C_EncodingUtil is a World of Warcraft client API reachable only through the global table.
+    -- selene: allow(global_usage)
+    local encodingUtil = rawget(_G, "C_EncodingUtil")
+    if type(encodingUtil) ~= "table" then
+      return nil
+    end
+    local compressString = rawget(encodingUtil, "CompressString")
+    if type(compressString) ~= "function" then
+      return nil
+    end
+    return compressString
+  end
+
+  ---Compress `bytes` with the client's compressor, or answer `nil` when the
+  ---Lua compressor must run instead: a short input, an asynchronous call over
+  ---`ASYNC_NATIVE_MAXIMUM_BYTES`, a client without the function, or a native
+  ---call that raised, returned nothing, returned something other than a
+  ---non-empty string, or returned more than `maxOutputBytes`. In the last
+  ---case the Lua compressor decides, so a refusal is exactly the one the Lua
+  ---path gives.
+  ---@param work table
+  ---@param bytes string
+  ---@param level integer 1 to 9
+  ---@return string|nil compressed
+  function compressNatively(work, bytes, level)
+    local length = #bytes
+    if length < NATIVE_MINIMUM_BYTES then
+      return nil
+    end
+    if work.context and length > ASYNC_NATIVE_MAXIMUM_BYTES then
+      return nil
+    end
+    local compressString = readCompressString()
+    if type(compressString) ~= "function" then
+      return nil
+    end
+    local method = readEnumValue("CompressionMethod", "Deflate", DOCUMENTED_DEFLATE_METHOD)
+    local nativeLevel = readClientLevel(level)
+    -- The function and its arguments go to pcall directly, so no closure is
+    -- made per call. The client documents that it may return nothing.
+    local ok, result = pcall(compressString, bytes, method, nativeLevel)
+    if not ok or type(result) ~= "string" then
+      return nil
+    end
+    local resultLength = #result
+    if resultLength == 0 or resultLength > work.maxOutputBytes then
+      return nil
+    end
+    return result
+  end
+end
+
 -- Compression stage ----------------------------------------------------------
 
----Compress `bytes` into a string, bounded by `maxOutputBytes` on both sides.
+---Compress `bytes` into a string, bounded by `maxOutputBytes` on both sides:
+---natively where the client can, otherwise with the Lua compressor.
 ---@param work table
 ---@param bytes string
 ---@param level integer
@@ -2783,6 +2916,10 @@ end
 local function compressBytes(work, bytes, level)
   if #bytes > work.maxOutputBytes then
     return false, REASON.maxOutputBytes
+  end
+  local native = compressNatively(work, bytes, level)
+  if type(native) == "string" then
+    return true, native
   end
   local sink = openSink(work.pooled)
   compressInto(work, sink, bytes, level)

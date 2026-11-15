@@ -22,13 +22,15 @@ MoltenCodes Test: test suites loaded for codecKit. Type /mct run codecKit to run
 
 Within about ten seconds, exactly these lines, in this order (`PASS` is green
 in the client). The performance and interoperability tests compress a 50 KB
-table several times, the fuzz tests decode 3500 strings six ways each, and the
-three allocation tests each run full garbage collections first, so the client
-may stutter for a moment; the `EncodeAsync`/`DecodeAsync` test spreads its
-work over rendered frames and takes about a second:
+table several times, the native tests compress up to 1 MiB with the client's
+encoder and 300 KiB with CodecKit's own, the fuzz tests decode 3500 strings
+six ways each, and the three allocation tests each run full garbage
+collections first, so the client may stutter for a moment; the two
+`EncodeAsync` tests spread their work over rendered frames and take a few
+seconds together:
 
 ```text
-MoltenCodes Test: running codecKit: 9 suites. Results follow when every test has finished.
+MoltenCodes Test: running codecKit: 10 suites. Results follow when every test has finished.
 MoltenCodes Test: PASS codecKit.facade: Registry:Get('codecKit', 1) is the CodecKit facade with API 1, its sixteen methods, FORMAT_VERSION 1, the 85-character PRINT_ALPHABET and UNBOUNDED
 MoltenCodes Test: PASS codecKit.facade: the installed CodecKit carries the revision of the committed manifest
 MoltenCodes Test: PASS codecKit.facade: the client's Lua has string.byte, string.char, math.floor, math.frexp, math.ldexp and unpack, all CodecKit computes with; bit, C_EncodingUtil, SendAddonMessage, issecretvalue and SchedulerKit logged
@@ -42,6 +44,10 @@ MoltenCodes Test: PASS codecKit.channels: a decoder told options.channel refuses
 MoltenCodes Test: PASS codecKit.interop: C_EncodingUtil.DecompressString with Enum.CompressionMethod.Deflate inflates CodecKit:Compress output at levels 1, 6 and 9 for prose, random binary, a 32-byte message and the serialised 50 KB roster
 MoltenCodes Test: PASS codecKit.interop: CodecKit:Decompress inflates C_EncodingUtil.CompressString raw Deflate output at the client's Default, OptimizeForSpeed and OptimizeForSize levels for the same four inputs
 MoltenCodes Test: PASS codecKit.interop: on the 50 KB roster CodecKit and C_EncodingUtil are logged side by side (Serialize vs SerializeCBOR, Compress vs CompressString, EncodeForPrint vs EncodeBase64, and back), and CodecKit's print text is exactly 25% larger than its input
+MoltenCodes Test: PASS codecKit.native: CodecKit:Compress of 64 bytes or more is CompressString's Deflate output byte for byte at levels 1, 6 and 9 (OptimizeForSpeed, Default, OptimizeForSize), and a 32-byte message is one final block CodecKit inflates
+MoltenCodes Test: PASS codecKit.native: the export Encode of the 50 KB roster on the native path decodes back to an equal table, and EncodeAsync of ten 30 KiB strings (300 KiB serialised, over the 256 KiB native threshold) stays on the yielding Lua encoder over at least two rendered frames and decodes back
+MoltenCodes Test: PASS codecKit.native: DecompressString is logged on a valid stream followed by trailing bytes and on a truncated stream, the condition for native inflation in a later revision, while CodecKit:Decompress refuses them with trailingData and truncated
+MoltenCodes Test: PASS codecKit.native: CompressString at Default and OptimizeForSize is timed on 256 KiB and 1 MiB of roster bytes, and CodecKit inflates the 256 KiB results
 MoltenCodes Test: PASS codecKit.performance: a 288-member guild roster serialises to 48-56 KB, and Serialize, Compress, EncodeForPrint, EncodeForAddon, the whole export Encode and its Decode are each timed on the client and give back an equal table
 MoltenCodes Test: PASS codecKit.performance: EncodeAsync of the 50 KB roster on a SchedulerKit scope spreads over at least two rendered frames and hands its callback exactly the synchronous export string, and DecodeAsync gives back an equal table
 MoltenCodes Test: PASS codecKit.malformed: 1000 random byte strings of 0 to 64 bytes from the client's math.random make none of the six decoders raise, and every refusal is a documented reason
@@ -61,7 +67,7 @@ MoltenCodes Test: PASS codecKit.secrets: EncodeMany and Serialize refuse a secre
 MoltenCodes Test: PASS codecKit.secrets: EncodeAsync refuses a secret deep in the value at the calling line, schedules no job and never calls back
 MoltenCodes Test: PASS codecKit.secrets: a secret string handed to Decode, DecodeMany, Deserialize, Decompress, DecodeForAddon and DecodeForPrint is refused at the calling line before anything reads it
 MoltenCodes Test: PASS codecKit.secrets: a secret options.level, a secret options.channel and a secret SetLimits maxDepth are refused at the calling line and the limits stay as they were
-MoltenCodes Test: codecKit: 32 passed, 0 failed, 0 skipped, 0 timed out (32 tests)
+MoltenCodes Test: codecKit: 36 passed, 0 failed, 0 skipped, 0 timed out (36 tests)
 MoltenCodes Test: results saved in MoltenCodesTestResults; /reload or log out to write them to disk.
 ```
 
@@ -107,20 +113,24 @@ MoltenCodes Test: SKIP codecKit.secrets: a secret options.level, a secret option
 
 ### On a client without `C_EncodingUtil`
 
-The three `codecKit.interop` tests need `C_EncodingUtil.CompressString` and
-`C_EncodingUtil.DecompressString`, which Retail 12.1 documents
-(`packages/apiKit/metadata/retail/namespaces.json`). A client without them
-prints these three lines instead:
+The three `codecKit.interop` tests and the four `codecKit.native` tests need
+`C_EncodingUtil.CompressString` and `C_EncodingUtil.DecompressString`, which
+Retail 12.1 documents (`packages/apiKit/metadata/retail/namespaces.json`). A
+client without them prints these seven lines instead:
 
 ```text
 MoltenCodes Test: SKIP codecKit.interop: C_EncodingUtil.DecompressString with Enum.CompressionMethod.Deflate inflates CodecKit:Compress output at levels 1, 6 and 9 for prose, random binary, a 32-byte message and the serialised 50 KB roster -- the client has no C_EncodingUtil.CompressString and DecompressString; interoperability was not exercised
 MoltenCodes Test: SKIP codecKit.interop: CodecKit:Decompress inflates C_EncodingUtil.CompressString raw Deflate output at the client's Default, OptimizeForSpeed and OptimizeForSize levels for the same four inputs -- the client has no C_EncodingUtil.CompressString and DecompressString; interoperability was not exercised
 MoltenCodes Test: SKIP codecKit.interop: on the 50 KB roster CodecKit and C_EncodingUtil are logged side by side (Serialize vs SerializeCBOR, Compress vs CompressString, EncodeForPrint vs EncodeBase64, and back), and CodecKit's print text is exactly 25% larger than its input -- the client has no C_EncodingUtil.CompressString and DecompressString; interoperability was not exercised
+MoltenCodes Test: SKIP codecKit.native: CodecKit:Compress of 64 bytes or more is CompressString's Deflate output byte for byte at levels 1, 6 and 9 (OptimizeForSpeed, Default, OptimizeForSize), and a 32-byte message is one final block CodecKit inflates -- the client has no C_EncodingUtil.CompressString; CodecKit compresses in Lua here and the native path was not exercised
+MoltenCodes Test: SKIP codecKit.native: the export Encode of the 50 KB roster on the native path decodes back to an equal table, and EncodeAsync of ten 30 KiB strings (300 KiB serialised, over the 256 KiB native threshold) stays on the yielding Lua encoder over at least two rendered frames and decodes back -- the client has no C_EncodingUtil.CompressString; CodecKit compresses in Lua here and the native path was not exercised
+MoltenCodes Test: SKIP codecKit.native: DecompressString is logged on a valid stream followed by trailing bytes and on a truncated stream, the condition for native inflation in a later revision, while CodecKit:Decompress refuses them with trailingData and truncated -- the client has no C_EncodingUtil.CompressString; CodecKit compresses in Lua here and the native path was not exercised
+MoltenCodes Test: SKIP codecKit.native: CompressString at Default and OptimizeForSize is timed on 256 KiB and 1 MiB of roster bytes, and CodecKit inflates the 256 KiB results -- the client has no C_EncodingUtil.CompressString; CodecKit compresses in Lua here and the native path was not exercised
 ```
 
 With both missing, the totals line reads
-`24 passed, 0 failed, 8 skipped, 0 timed out (32 tests)`; with only one
-missing, `27 passed, 0 failed, 5 skipped` or `29 passed, 0 failed, 3 skipped`.
+`24 passed, 0 failed, 12 skipped, 0 timed out (36 tests)`; with only one
+missing, `31 passed, 0 failed, 5 skipped` or `29 passed, 0 failed, 7 skipped`.
 On Retail 12.1 any `SKIP` is unexpected.
 
 ## Per flavour
@@ -142,12 +152,12 @@ client.
 ### Retail (12.1)
 
 The lines above:
-`MoltenCodes Test: codecKit: 32 passed, 0 failed, 0 skipped, 0 timed out (32 tests)`,
+`MoltenCodes Test: codecKit: 36 passed, 0 failed, 0 skipped, 0 timed out (36 tests)`,
 with no `SKIP` line.
 
 ### Classic Era (1.15) and Mists of Pandaria Classic (5.5)
 
-The `running` line (9 suites) and every test line are the same as Retail's,
+The `running` line (10 suites) and every test line are the same as Retail's,
 in the same order; the facade test logs which `C_EncodingUtil` functions the
 Classic client has. Whether the five `codecKit.secrets` tests run depends on
 one answer only the running client gives: whether it has the global functions
@@ -156,17 +166,17 @@ suite reads them at load).
 
 - With both functions, and secrets made with them, the totals line is
   Retail's:
-  `MoltenCodes Test: codecKit: 32 passed, 0 failed, 0 skipped, 0 timed out (32 tests)`.
+  `MoltenCodes Test: codecKit: 36 passed, 0 failed, 0 skipped, 0 timed out (36 tests)`.
 - Without them, the five lines under
   [On a client without secret values](#on-a-client-without-secret-values)
   are `SKIP` and the totals line is
-  `MoltenCodes Test: codecKit: 27 passed, 0 failed, 5 skipped, 0 timed out (32 tests)`.
+  `MoltenCodes Test: codecKit: 31 passed, 0 failed, 5 skipped, 0 timed out (36 tests)`.
 
 A client that has both functions but makes no secret with them
 (`issecretvalue` does not report what `secretwrap` returns as secret;
 `Harness:CanMakeSecrets` measures this once at load) skips the same five
 tests with another reason, and the totals line is again
-`MoltenCodes Test: codecKit: 27 passed, 0 failed, 5 skipped, 0 timed out (32 tests)`:
+`MoltenCodes Test: codecKit: 31 passed, 0 failed, 5 skipped, 0 timed out (36 tests)`:
 
 ```text
 MoltenCodes Test: SKIP codecKit.secrets: Encode refuses a secretwrap value at the top, in an array, as a map value and three tables deep, each at the calling line, and leaves no pooled table leased -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
@@ -198,6 +208,10 @@ are unexpected there too.
 | `C_EncodingUtil.DecompressString with Enum.CompressionMethod.Deflate inflates ...` | docs/API.md's claim that `Compress` "writes raw DEFLATE that any inflater reads", against the client's own inflater: prose, 4 KB of random bytes (stored blocks), a 32-byte message (the short-input path) and the serialised roster, each at levels 1, 6 and 9, inflate to the exact input. The log gives each size. |
 | `CodecKit:Decompress inflates C_EncodingUtil.CompressString raw Deflate output ...` | The converse claim, "`Decompress` reads any raw DEFLATE stream", against the client's own encoder at its three `Enum.CompressionLevel` values. The log gives the client's size and first four bytes: a zlib wrapper would show as `78 ..`, which would mean `Enum.CompressionMethod.Deflate` is not raw DEFLATE. |
 | `on the 50 KB roster CodecKit and C_EncodingUtil are logged side by side ...` | Only CodecKit is asserted (`Deserialize` gives back an equal table; the print text is exactly `5 * floor(n / 4)` plus `k + 1` characters). The log is the comparison CodecKit documents no compatibility for: sizes and milliseconds of `Serialize` and `Deserialize` against `C_EncodingUtil`'s own serialiser and its reader, `Compress` level 6 against `CompressString` Default, both inflaters, `EncodeForPrint` (base 85, +25%) against `EncodeBase64` (+33%) and both decoders. |
+| `CodecKit:Compress of 64 bytes or more is CompressString's Deflate output byte for byte ...` | Revision 7's native path runs: for prose, 4 KB of random bytes and the serialised roster, `Compress` at levels 1, 6 and 9 is exactly what `CompressString` writes with `Deflate` at `OptimizeForSpeed`, `Default` and `OptimizeForSize`, and CodecKit's Lua inflater reads it back. The 32-byte message stays on the Lua encoder (one final stored or fixed block). The log gives each size and whether the bytes were identical. |
+| `the export Encode of the 50 KB roster on the native path ...` | A natively compressed export string decodes with the Lua inflater every revision shares, so a peer on any earlier revision reads it; and `EncodeAsync` over 256 KiB of serialised bytes keeps the yielding Lua encoder (its frame differs from the synchronous native one, spans at least two rendered frames, and decodes to an equal table). The log gives the native encode and decode times. |
+| `DecompressString is logged on a valid stream followed by trailing bytes ...` | Only CodecKit is asserted (`"trailingData"` for one and three trailing bytes, `"truncated"` for a stream cut by four bytes). The log is what a later revision needs before it inflates natively: whether `DecompressString` raises, returns nothing, or returns the input for each of the three streams. Send these three lines with the results. |
+| `CompressString at Default and OptimizeForSize is timed on 256 KiB and 1 MiB ...` | The native encoder's time per KiB on the client, which docs/API.md's Cost section has as an expectation only, and the 256 KiB threshold `EncodeAsync` uses (the 256 KiB call should take a few milliseconds). CodecKit inflates the 256 KiB results exactly. |
 | `a 288-member guild roster serialises to 48-56 KB ...` | The realistic payload's cost on the client's CPU clock (`debugprofilestop`): `Serialize`, `Compress` (with ms per KiB, to compare with docs/API.md's desktop "Cost" table), `EncodeForPrint`, `EncodeForAddon`, the whole export `Encode` and its `Decode`, and an uncompressed addon-channel round trip, each in a step of its own. Both round trips give back an equal table and no pooled table stays leased. |
 | `EncodeAsync of the 50 KB roster on a SchedulerKit scope ...` | "Never freezes a frame" on the real frame loop: the job is still pending after at least one rendered frame at SchedulerKit's 2 ms budget, its callback runs once with exactly the synchronous export string, and `DecodeAsync` gives back an equal table. The log gives the frames, game time and CPU time. |
 | `1000 random byte strings ...`, `1000 random bodies behind a version byte ...`, `1000 random mutations of valid frames ...`, `500 random strings of print characters ...` | The non-raising contract on 3500 strings made by the client's `math.random`, each fed to all six decoders: nothing raises, every answer is `true` with a value or `false` with a reason from the documented vocabulary, and afterwards no pooled table is leased and the limits are unchanged. The log counts each reason; a failure logs the offending string in hexadecimal. |
@@ -218,7 +232,7 @@ are unexpected there too.
 ## What counts as unexpected
 
 - Any `FAIL` or `TIMEOUT` line, a `SKIP` line on Retail 12.1, or a totals
-  line other than `32 passed, 0 failed, 0 skipped, 0 timed out (32 tests)`
+  line other than `36 passed, 0 failed, 0 skipped, 0 timed out (36 tests)`
   (on a Classic client, other than the two totals lines under
   [Per flavour](#per-flavour)).
 - No login line, or `Expected.lua is missing`: the harness or the installer
@@ -232,6 +246,11 @@ are unexpected there too.
   inflater refused CodecKit's stream, or CodecKit refused the client's (with
   CodecKit's reason and the client's first bytes). Either contradicts
   docs/API.md's "Standard compression" and must be reported, not retried.
+- A native test failing: `identical: false` in the first means a level maps
+  onto another client level than docs/API.md says, or the client's encoder
+  is not deterministic; a failed decode in the second means the Lua inflater
+  refused the client's stream, which contradicts docs/API.md's compatibility
+  promise. Report either with the log.
 - A fuzz test failing: the log holds the method and the offending string in
   hexadecimal. That is a defect in CodecKit's non-raising contract.
 - An allocation test failing: its log gives the measured deltas. Say which

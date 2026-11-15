@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.2.0 — 2026-11-15
+
+Native compression, as recorded in docs/ROADMAP.md ("codecKit native DEFLATE", core decision 16). The wire format is unchanged: frames are version 1, and every frame any revision wrote decodes as before.
+
+- **The compression stage runs in the client** where `C_EncodingUtil.CompressString` exists: an input of 64 bytes or more is compressed there with `Enum.CompressionMethod.Deflate`, raw DEFLATE, and the result is the frame body. `level` maps 1–3 to `OptimizeForSpeed`, 4–6 to `Default` and 7–9 to `OptimizeForSize`; the method and levels are read from the client's `Enum`, or are the documented numbers when it has none. `EncodeAsync` uses the client's encoder for up to 256 KiB of serialised bytes and the yielding Lua encoder above. A native call that raises, returns nothing, returns anything but a non-empty string or returns more than `maxOutputBytes` falls back to the Lua encoder, so every refusal is the one revision 6 gave. Inputs under 64 bytes stay on the Lua encoder, which allocates nothing for them.
+- **Compatibility.** The frames the client's encoder writes decode on every earlier revision, whose inflater reads any raw DEFLATE stream, and on clients without `C_EncodingUtil`. Their bytes differ from the Lua encoder's; without `C_EncodingUtil`, as on the host, every byte is what revision 6 wrote.
+- **Inflating stays in Lua on every client.** Deviation from the record, which allowed native inflation behind a 16 KiB input bound once the client showed it refuses bytes after the final DEFLATE block: a frame has no declared length, checksum or end marker of its own, so CodecKit could not tell whether the client's inflater accepted a stream its own inflater refuses with a documented reason. Native inflation waits for a later revision and the client checks `docs/INTERNALS.md` lists.
+- No public member is added, and the state layout is unchanged: the client's functions are read at every call and nothing is kept in `_state`. `Bootstrap_spec.lua` loads a revision 6 copy (without the native path), upgrades it in place, keeps the state table, the limits and the pool, and compresses natively afterwards.
+- Docs: API.md (the optional facility, which encoder runs, compatibility, the cost of each, the deviation), INTERNALS.md (the native compressor and why inflation stays in Lua), README, tests/README.
+- Specs: new `Native_spec.lua` (17 specs) with a `C_EncodingUtil` stand-in in `CodecKitTestEnv`; the revision 6 upgrade in `Bootstrap_spec.lua`. 146 specs.
+- Client suite: a `codecKit.native` suite (four tests) checks the native path byte for byte against `CompressString`, round-trips the 50 KB roster through it, logs what `DecompressString` does with trailing bytes and a truncated stream (the condition for native inflation), and times the native encoder on 256 KiB and 1 MiB. Implementation revision 7.
+
 ## 0.1.6 — 2026-11-15
 
 Clean-up from an audit. The wire format is unchanged, byte for byte, and so is every reason a call returns.

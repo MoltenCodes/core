@@ -2,7 +2,7 @@
 
 CodecKit API generation **1** turns Lua values into transport-safe strings and back in three composable stages — serialise, compress, channel-encode — behind a two-byte, self-describing header. Decoding never raises on malformed input.
 
-Implementation revision: **6**. Wire format version: **1** (`CodecKit.FORMAT_VERSION`).
+Implementation revision: **7**. Wire format version: **1** (`CodecKit.FORMAT_VERSION`).
 
 ## Loading
 
@@ -28,8 +28,9 @@ CodecKit does not rely on `require()` at runtime. Loading it without Registry ra
 |---|---|---|
 | SchedulerKit API 1 | `EncodeAsync`, `DecodeAsync` | Both raise at the caller: `CodecKit:EncodeAsync requires SchedulerKit API 1, which is not loaded (absent)`. Everything else works. |
 | `issecretvalue` | refusing secret values | Nothing is treated as secret. |
+| `C_EncodingUtil.CompressString` | the compression stage, for inputs of 64 bytes or more (see [Compression](#compression)) | Every input is compressed in Lua, byte for byte as revision 6 did. |
 
-SchedulerKit is found with `Registry:Find("schedulerKit", 1)` when an asynchronous method is called, so it may load in any order. `issecretvalue` is looked up at every call, as SchemaKit does.
+SchedulerKit is found with `Registry:Find("schedulerKit", 1)` when an asynchronous method is called, so it may load in any order. `issecretvalue` and `C_EncodingUtil` are looked up at every call, as SchemaKit does. `C_EncodingUtil` is documented on Retail since 11.1.5, on Mists of Pandaria Classic since 5.5.0 and on Classic Era since 1.15.8, so every supported client has it.
 
 ## Public surface
 
@@ -41,7 +42,7 @@ SchedulerKit is found with `Registry:Find("schedulerKit", 1)` when an asynchrono
 | `DecodeMany(text[, options])` | `true, ...` or `false, reason` | Decode a list into as many values as were encoded; a single-value frame gives one value. Never raises on malformed text. |
 | `Serialize(value)` | `true, bytes` or `false, reason` | Stage 1 alone, without a header. |
 | `Deserialize(bytes)` | `true, value` or `false, reason` | Its inverse. |
-| `Compress(bytes[, options])` | `true, bytes` or `false, reason` | Stage 2 alone: raw DEFLATE. `options.level` from 1 to 9. |
+| `Compress(bytes[, options])` | `true, bytes` or `false, reason` | Stage 2 alone: raw DEFLATE, by the client's encoder where it has one (see [Compression](#compression)). `options.level` from 1 to 9. |
 | `Decompress(bytes)` | `true, bytes` or `false, reason` | Its inverse; also inflates raw DEFLATE from other encoders. |
 | `EncodeForAddon(bytes)` / `DecodeForAddon(text)` | `true, string` or `false, reason` | Stage 3 for the addon channel. |
 | `EncodeForPrint(bytes)` / `DecodeForPrint(text)` | `true, string` or `false, reason` | Stage 3 for chat and export strings. |
@@ -194,7 +195,13 @@ Nothing else is checked. In particular the reader accepts, and decodes to the va
 
 ### Compression
 
-Raw DEFLATE (RFC 1951): no zlib or gzip wrapper, no checksum. The encoder writes stored, fixed-Huffman and dynamic-Huffman blocks, choosing per block whichever is smallest; the decoder inflates all three from any conforming encoder. `level` trades time for size: levels 1 to 3 take matches greedily, 4 to 9 defer each match by one byte when the next is longer, and the chain length ranges from 4 candidates at level 1 to 256 at levels 7 and 9. Inputs under 64 bytes are written as one literal or stored block without matching. [`INTERNALS.md`](INTERNALS.md#compressor) has the table, and [Cost](#cost) the time per KiB at each level.
+Raw DEFLATE (RFC 1951): no zlib or gzip wrapper, no checksum. The decoder is CodecKit's own Lua inflater on every client and inflates stored, fixed-Huffman and dynamic-Huffman blocks from any conforming encoder.
+
+**Which encoder runs.** On a client with `C_EncodingUtil.CompressString`, an input of 64 bytes or more is compressed there with `Enum.CompressionMethod.Deflate`, which is raw DEFLATE (the Retail client suite inflates its output with CodecKit and CodecKit's output with the client). `level` maps onto the client's three levels: 1 to 3 to `OptimizeForSpeed`, 4 to 6 to `Default`, 7 to 9 to `OptimizeForSize`. `EncodeAsync` uses the client's encoder for at most 256 KiB of serialised bytes, because one native call cannot yield, and the Lua encoder above that. If the client's function raises, returns nothing, returns anything but a non-empty string, or returns more than `maxOutputBytes`, the Lua encoder runs instead, so a refusal is always the Lua encoder's. Everywhere else, and always below 64 bytes, the Lua encoder runs: it writes stored, fixed-Huffman and dynamic-Huffman blocks, choosing per block whichever is smallest.
+
+**Compatibility.** Both encoders write version 1 frames with the deflate flag, and every revision's inflater reads both, so a frame compressed by the client decodes on a peer running any earlier revision and on a client without `C_EncodingUtil`. The bytes differ: the client's encoder is not CodecKit's, so the same value compresses to different bytes on a client with and one without it (see [Well-formed input](#well-formed-input): encoded bytes are not a content hash). Without `C_EncodingUtil` the bytes are exactly what revision 6 wrote.
+
+**Lua encoder levels.** `level` trades time for size: levels 1 to 3 take matches greedily, 4 to 9 defer each match by one byte when the next is longer, and the chain length ranges from 4 candidates at level 1 to 256 at levels 7 and 9. Inputs under 64 bytes are written as one literal or stored block without matching. [`INTERNALS.md`](INTERNALS.md#compressor) has the table, and [Cost](#cost) the time per KiB at each level.
 
 ### Addon channel
 
@@ -300,7 +307,7 @@ See [`schemaKit/docs/API.md`](../../schemaKit/docs/API.md). Never run a decoded 
 
 ## Cost
 
-Measured with Lua 5.1.5 on a desktop. For a 10 KiB English Markdown sample:
+The tables below are the Lua stages, measured with Lua 5.1.5 on a desktop. They are what compression costs on a client without `C_EncodingUtil`, for inputs under 64 bytes, and for `EncodeAsync` above 256 KiB; everywhere else the client's encoder compresses (see the end of this section). For a 10 KiB English Markdown sample:
 
 | Level | Output | Ratio | Compress | Inflate |
 |---|---|---|---|---|
@@ -319,12 +326,14 @@ Compression time depends on the input as much as on the level. Per KiB of input,
 | 8 | 0.58 ms | 1.96 ms |
 | 9 | 0.71 ms | 2.46 ms |
 
-Inflating costs about 0.12 ms per KiB of output at any level, and print-encoding about 0.08 ms per KiB. **Synchronous callers should stay at level 6 or below**; for large exports at level 7 to 9, or any compression that might pass a few dozen KiB, use `EncodeAsync`, which spreads the work over frames. The default level is 6.
+Inflating, which is always the Lua inflater, costs about 0.12 ms per KiB of output at any level, and print-encoding about 0.08 ms per KiB. **Synchronous callers should stay at level 6 or below**; for large exports at level 7 to 9, or any compression that might pass a few dozen KiB, use `EncodeAsync`, which spreads the work over frames. The default level is 6.
 
 - **Serialising** allocates the output string and nothing else but `table.concat`'s own working buffer: the fragment buffer and the work record are one record the package reuses from call to call. An uncompressed `Encode` writes the header, the body and, for the addon channel, its escapes straight into that buffer, so on the `none` and `addon` channels the frame is the only string it builds. Encoding the same small value again allocates nothing.
 - **Decoding a serialised body** allocates the tables it returns and the strings in them; `DecodeMany` also allocates one array for the entries of a list. A binary frame, and an addon frame with nothing to unescape, are read in place; an addon frame with escapes costs one unescaped copy of the frame.
 - **Compressing** an input under 64 bytes writes one literal or stored block and allocates nothing beyond its output (0.001 KiB per call measured for 32 bytes). From 64 bytes the matcher allocates working arrays proportional to the input (a few tens of bytes per input byte: the byte array, the hash chains and the tokens) plus about 35 to 40 KiB of code tables **per block** (a block covers at most 32 KiB of input); all of it is garbage after the call. **Inflating** allocates an output array of about 16 bytes per output byte.
 - One `table.concat` per stage output, and one more per 4096 fragments of serialised output or per 1024 of a compression or print stage's.
+
+**The client's encoder.** Where `C_EncodingUtil.CompressString` compresses, none of the Lua compressor's working arrays or code tables are allocated; the call allocates its result string. Its speed on the client has not been measured yet: the client suite logs it (see `tests/client/MoltenCodesTest_CodecKit/EXPECTED.md`). For scale, measured on the host with the same inputs (Apple M5 Pro, a loaded machine, 2026-11-15), C zlib's raw DEFLATE cost 0.013 to 0.032 ms per KiB at level 6 against CodecKit's 0.57 ms, 18 to 43 times less, with output within 0.3% of CodecKit's size; that is an expectation for the client, not a measurement of it.
 
 ## Deviations from the planned contract
 
@@ -340,8 +349,9 @@ The nine-point plan in `docs/ROADMAP.md` is followed except where recorded here:
 - **`Compress` and every decoding stage refuse input larger than `maxOutputBytes`** (print text is measured before whitespace is stripped), so the limit bounds each stage's input as well as its output.
 - **Levels 8 and 9 cap their hash chains at 192 and 256 candidates** instead of zlib's 1024 and 4096, which keeps level 9 within about three times level 6 in pure Lua (2.7 times measured on the worst case above, down from 27 times).
 - **Inputs under 64 bytes skip matching** and are written as one fixed-Huffman literal block or one stored block.
+- **Revision 7 compresses with the client's encoder** where `C_EncodingUtil.CompressString` exists and inflates in Lua everywhere. Native inflation is left for a later revision: a frame carries no declared length or checksum that could show the client's inflater accepted a stream the Lua inflater refuses, such as bytes after the final block; [`INTERNALS.md`](INTERNALS.md#native-compressor) names the client checks that come first.
 - **Additions:** `EncodeMany` and `DecodeMany` for argument lists (at most `maxListValues` entries, 4096 by default and at most 7900, because `DecodeMany` returns them through `unpack`, which Lua 5.1 bounds), `CodecKit.UNBOUNDED` for `maxValues` and `maxStringLength`, `PRINT_ALPHABET`, and the `"channelMismatch"` assertion.
 
 ## Upgrades
 
-The package state (`_state`) holds the shared limits, the `UNBOUNDED` sentinel and the table pool, and all three are kept across an in-place upgrade: a newer compatible revision replaces the facade's functions, inherits the limits a consumer set, and keeps leasing from the same pool. The wire format belongs to the format version, not to the revision, so frames written by any revision of API generation 1 decode in every other.
+The package state (`_state`) holds the shared limits, the `UNBOUNDED` sentinel and the table pool, and all three are kept across an in-place upgrade: a newer compatible revision replaces the facade's functions, inherits the limits a consumer set, and keeps leasing from the same pool. The wire format belongs to the format version, not to the revision, so frames written by any revision of API generation 1 decode in every other, the frames revision 7 compresses with the client's encoder included. Revision 7 adds nothing to `_state`.

@@ -1972,7 +1972,7 @@ code and treated as agreed as under decision 15.
 - [ ] **widgetKit** virtualised lists (`ScrollList`).
 - [x] **rangeKit** — unit range estimates (2026-11-15; client suite not run).
 - [x] **unitFrameKit** — the unit frame shown for a unit (2026-11-15; client suite not run).
-- [ ] **codecKit** native DEFLATE through `C_EncodingUtil`.
+- [x] **codecKit** native DEFLATE through `C_EncodingUtil`: compression only, codecKit 0.2.0 revision 7 (2026-11-15; client suite not run).
 
 **clientKit deprecation warnings (W13)** — an addition to facade `ClientKit`
 
@@ -2678,7 +2678,17 @@ copy; spells absent from a flavour or from the player's spellbook drop out:
    the host facilities in Embedding), CHANGELOG, tests/README,
    EXPECTED.md for the client suite; `docs/EMBEDDING.md` host-requirements
    row for codecKit (Friday applies it).
-9. Status: recorded 2026-11-15 under core decision 16; code follows.
+9. Status: implemented 2026-11-15 under core decision 16, 0.2.0, revision
+   7, 146 specs. Recorded deviation: native compression only. A frame has
+   no declared length, checksum or end marker of its own, so CodecKit
+   cannot tell whether the client's inflater accepted a stream its own
+   inflater refuses (bytes after the final block); inflating stays in Lua
+   on every client, with no native inflate code. A later revision may
+   inflate natively, behind the 16 KiB bound of point 4, once the client
+   suite's `codecKit.native` trailing-bytes test has shown what
+   `DecompressString` does (docs/INTERNALS.md, "Native compressor"). The
+   client suite (`tests/client/MoltenCodesTest_CodecKit`, now 36 tests) is
+   not run yet.
 
 #### Package N — bridgeKit, migrating from Ace3
 
