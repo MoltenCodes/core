@@ -67,7 +67,7 @@
 
 local PACKAGE_NAME = "eventKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 18
+local IMPLEMENTATION_REVISION = 19
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_SIGNAL_API = 1
 local STATE_SCHEMA = 9
@@ -393,7 +393,6 @@ end
 ---The channels registered against one normalized unit-token set.
 ---@class EventKit.UnitGroup
 ---@field key string Normalized, order-independent unit-set key.
----@field units string[] Sorted, de-duplicated unit tokens.
 ---@field channels table<string, EventKit.Channel>
 ---@field frame WowFrame? `nil` once the group has released its Frame.
 
@@ -766,8 +765,9 @@ local function refuseUnknownEvent(eventName, description, level)
   end
 end
 
----Validate an event name a public method will register: its type, whether it
----is secret, then whether the client knows it, in that order.
+---Validate an event name a public method will register: whether it is
+---secret, then its type, then whether the client knows it, in that order. The
+---secret refusal comes first so that no later test compares a secret value.
 ---@param eventName any
 ---@param label string qualified public method name, used in the argument error
 ---@param level integer stack level the failure is reported at
@@ -1011,10 +1011,9 @@ local function releaseUnitGroup(group)
 end
 
 ---Return the group owning `key`, creating it and its Frame on demand.
----@param units string[]
 ---@param key string
 ---@return EventKit.UnitGroup
-local function ensureUnitGroup(units, key)
+local function ensureUnitGroup(key)
   local groups = rawget(state, "unitGroups")
   local group = rawget(groups, key)
   if group ~= nil then
@@ -1023,7 +1022,6 @@ local function ensureUnitGroup(units, key)
 
   group = {
     key = key,
-    units = units,
     channels = {},
     frame = nil,
   }
@@ -1110,7 +1108,7 @@ end
 ---@param level integer stack level the failure is reported at
 ---@return EventKit.Channel
 local function createUnitChannel(eventName, units, key, label, level)
-  local group = ensureUnitGroup(units, key)
+  local group = ensureUnitGroup(key)
   local channels = rawget(group, "channels")
   local existingChannel = rawget(channels, eventName)
   if existingChannel ~= nil then
@@ -1119,11 +1117,17 @@ local function createUnitChannel(eventName, units, key, label, level)
 
   local frame = rawget(group, "frame")
   local registerUnitEvent = requireFrameMethod(frame, "RegisterUnitEvent")
-  local registered = registerUnitEvent(frame, eventName, unpackValues(units, 1, #units))
-  if registered == false then
+  -- Protected so that a host that raises, like one that answers `false`,
+  -- releases a group created only for this registration; otherwise its
+  -- Frame would count against `maxUnitFrames` for the rest of the session.
+  local ok, registered = pcall(registerUnitEvent, frame, eventName, unpackValues(units, 1, #units))
+  if not ok or registered == false then
     if next(channels) == nil then
       -- The group exists only because this registration was attempted.
       releaseUnitGroup(group)
+    end
+    if not ok then
+      error(registered, 0)
     end
     error(label .. " could not register event " .. eventName, level)
   end

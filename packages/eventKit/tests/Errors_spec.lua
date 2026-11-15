@@ -167,6 +167,31 @@ describe("EventKit errors", function()
     assert.are.equal(2, #frame.registerUnitEventCalls)
   end)
 
+  it("releases a new unit group when RegisterUnitEvent raises", function()
+    -- selene: allow(global_usage)
+    local createFrame = rawget(_G, "CreateFrame")
+    -- selene: allow(global_usage)
+    rawset(_G, "CreateFrame", function(...)
+      local frame = createFrame(...)
+      frame.RegisterUnitEvent = function()
+        error("host refused", 0)
+      end
+      return frame
+    end)
+
+    expectErrorContaining("host refused", function()
+      EventKit:ConnectUnit("UNIT_HEALTH", function() end, "player")
+    end)
+    -- selene: allow(global_usage)
+    rawset(_G, "CreateFrame", createFrame)
+
+    -- The group is gone and its Frame waits on the free list, so a failed
+    -- registration does not count against `maxUnitFrames` for the session.
+    assert.is_nil(next(EventKit._state.unitGroups))
+    assert.are.equal(1, EventKit._state.unitFrameCount)
+    assert.are.equal(1, #EventKit._state.unitFrames)
+  end)
+
   it("reports a listener error instead of raising it", function()
     EventKit:Connect("CUSTOM_EVENT", function()
       error("listener failure")

@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.9.6 — 2026-11-15
+
+- Fixed a unit group leaking when the host's `RegisterUnitEvent` raised. A group created for that registration kept its Frame although no channel used it, so it was never released; after 64 such failures (the default `maxUnitFrames`) a valid `ConnectUnit` was refused. The registration is now protected: a host that raises releases the new group exactly like one that returns `false`, and its error then reaches the caller unchanged. `ConnectUnit`, `OnceUnit`, their scope forms and the `units` option of `Coalesce` and `Derive` share that path. Regression specs in `Errors_spec.lua` and `Coalesce_spec.lua`.
+- A new unit group no longer records its unit list (`units`), which nothing read; a group an older copy built keeps the field, unread (`Bootstrap_spec.lua`).
+- Corrected the documented order of the event-name check: the name is refused as a secret first, then checked for its type, then with the client. The 0.9.0 entry below says "type, then secret"; the code checks the secret first, which is the safe order, and the source comment and `docs/API.md` now say so.
+- `docs/API.md` names the current implementation revision (it still said 16) and documents the release of a group whose registration the host refused.
+- Implementation revision 19. `_state` stays at schema 9: an in-place upgrade from revision 18 keeps facade, state, listeners and unit groups. API generation 1 is unchanged.
+
 ## 0.9.5 — 2026-09-25
 
 Performance round 2: cheaper `Coalesce` handles. Implementation revision 18; API generation 1 is unchanged.

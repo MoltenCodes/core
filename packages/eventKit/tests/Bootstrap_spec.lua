@@ -2,7 +2,7 @@ local TestEnv = require("EventKitTestEnv")
 
 ---The implementation revision `src/EventKit.lua` carries; `Manifest_spec.lua`
 ---pins the same number against `package.manifest.json`.
-local CURRENT_REVISION = 18
+local CURRENT_REVISION = 19
 
 local function expectErrorContaining(expected, callback)
   local ok, message = pcall(callback)
@@ -631,6 +631,33 @@ describe("EventKit package bootstrap", function()
       assert.are.same({ "CUSTOM_EVENT", "COMBAT_LOG_EVENT_UNFILTERED" }, frame.unregisterEventCalls)
     end
   )
+
+  it("keeps a unit group the previous revision built, with its units field", function()
+    TestEnv.Reset()
+    TestEnv.InstallWowApi()
+    require("Registry")
+    require("SignalKit")
+
+    local legacy = TestEnv.LoadSourceAtRevision(CURRENT_REVISION - 1)
+    local units = {}
+    local connection = legacy:ConnectUnit("UNIT_HEALTH", function(_, unit)
+      units[#units + 1] = unit
+    end, "player")
+    local group = legacy._state.unitGroups["6:player"]
+    -- Revisions before 19 recorded the unit list; nothing reads it.
+    rawset(group, "units", { "player" })
+
+    local EventKit = require("EventKit")
+    assert.are.equal(legacy, EventKit)
+    TestEnv.Emit("UNIT_HEALTH", "player")
+    assert.are.same({ "player" }, units)
+    -- A group this revision builds carries no unit list.
+    EventKit:ConnectUnit("UNIT_HEALTH", function() end, "target")
+    assert.is_nil(rawget(EventKit._state.unitGroups["6:target"], "units"))
+
+    connection:Disconnect()
+    assert.is_nil(EventKit._state.unitGroups["6:player"])
+  end)
 
   it("upgrades the previous revision in place, keeping facade, state and listeners", function()
     TestEnv.Reset()

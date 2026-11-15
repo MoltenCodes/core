@@ -86,6 +86,23 @@ describe("EventKit Coalesce", function()
     assert.are.same({ BAG_UPDATE_DELAYED = true }, byPayload)
   end)
 
+  it("releases a new unit group when RegisterUnitEvent raises", function()
+    EventKit:ConnectUnit("UNIT_POWER_UPDATE", function() end, "focus"):Disconnect()
+    -- The released Frame is the one the next unit set re-purposes.
+    local frame = EventKit._state.unitFrames[1]
+    frame.RegisterUnitEvent = function()
+      error("host refused", 0)
+    end
+
+    local ok, message = pcall(function()
+      EventKit:Coalesce("UNIT_HEALTH", 1, function() end, { units = { "player" } })
+    end)
+    assert.is_false(ok)
+    assert.are.equal("host refused", message)
+    assert.is_nil(next(EventKit._state.unitGroups))
+    assert.are.equal(1, #EventKit._state.unitFrames)
+  end)
+
   it("subscribes unit events through ConnectUnit semantics", function()
     local delivered = nil
     EventKit:Coalesce("UNIT_HEALTH", 1, function(set)
@@ -412,7 +429,7 @@ describe("EventKit Coalesce across an upgrade", function()
     package.loaded["EventKit"] = nil
     local EventKit = require("EventKit")
     assert.are.equal(legacy, EventKit)
-    assert.are.equal(18, EventKit.REVISION)
+    assert.are.equal(19, EventKit.REVISION)
 
     Scheduled.Emit("UNIT_HEALTH", "player")
     fireLatest()

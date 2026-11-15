@@ -2,7 +2,7 @@
 
 EventKit API generation 1 provides lazy World of Warcraft event subscriptions with SignalKit API 1's dispatch semantics.
 
-Implementation revision: **16**.
+Implementation revision: **19**.
 
 EventKit is multi-tenant: one shared instance serves every addon in a WoW session.
 
@@ -534,7 +534,10 @@ A unit group is released as soon as its last channel loses its last listener.
 Releasing detaches the Frame's `OnEvent` handler — so an event the host already
 queued cannot reach a group that no longer exists — and returns the Frame to a
 free list. The next unit set to be subscribed re-purposes a free Frame:
-`RegisterUnitEvent` re-points it and `UnregisterEvent` clears it again.
+`RegisterUnitEvent` re-points it and `UnregisterEvent` clears it again. A
+group created for a registration the host refuses, by returning `false` or by
+raising, is released the same way before the error reaches the caller (a
+raising host since revision 19).
 
 WoW Frames cannot be destroyed, so the meaningful bound is on how many EventKit
 ever creates. That number is the shared `maxUnitFrames` limit, **64** by default
@@ -710,6 +713,11 @@ promises.
 
 Registry owns one stable EventKit table for `(eventKit, API 1)`. Compatible higher implementation revisions update that table in place. Existing connection handles resolve methods through a stable shared `Connection` method table; Frames created since revision 2 resolve their dispatcher through `_state`, and revision-1 Frames through the reserved facade fields described under *Reserved fields*. Scopes and `Coalesce`/`Derive` handles are validated by metatables kept in `_state`, and handle listeners resolve their behaviour through it, so handles created by an older copy run the newer code.
 
+Revision 19 keeps `_state` at schema 9 and changes behaviour only: a unit
+group whose first registration the host refuses by raising is released, and a
+new unit group no longer records its unit list (nothing read it); a group an
+older copy built keeps its `units` field, unread.
+
 Revision 18 keeps `_state` at schema 9. `Coalesce` handles it builds share
 one SchedulerKit scope, created in `_state` on first use, instead of one each;
 a handle an older copy built keeps its own scope, which its `Close` still
@@ -877,9 +885,10 @@ Measured on Retail 12.1.0 (2026-09-24), that error reads
 `Frame:RegisterEvent(): Attempt to register unknown event "X"` and carries no
 caller position, so the mistake could not be traced to the line that made it.
 
-- **Order.** The name is checked for its type, then for being a
-  [secret value](#secret-values), then with the client, so a wrong type or a
-  secret is refused before the client is asked.
+- **Order.** The name is checked for being a
+  [secret value](#secret-values), then for its type, then with the client, so
+  a secret or a wrong type is refused before the client is asked, and no test
+  compares a secret.
 - **Probed once.** EventKit looks `C_EventUtils.IsEventValid` up once, when its
   file loads, as it does with the rest of the client's fixed API set. A client
   without it (older classic clients) keeps the previous behaviour: the name
