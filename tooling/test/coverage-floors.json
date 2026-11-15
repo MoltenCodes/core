@@ -11,6 +11,7 @@
   "eventKit": 96,
   "hookKit": 97,
   "interopKit": 96,
+  "launcherKit": 96,
   "lifecycleKit": 96,
   "localeKit": 97,
   "logKit": 98,

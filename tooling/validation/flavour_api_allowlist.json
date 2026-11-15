@@ -20,6 +20,34 @@
       "flavours": ["retail", "classic-mop", "classic-era", "ptr", "beta"],
       "guard": "packages/bridgeKit/src/BridgeKit.lua:4251",
       "reason": "The dynamic global is the addon's own saved variable named by the caller, not a client API; readSource raises at the caller unless it holds a table, and its callers use only that returned table."
+    },
+    {
+      "package": "launcherKit",
+      "api": "GameTooltip.SetOwner",
+      "flavours": ["retail", "classic-mop", "classic-era", "ptr", "beta"],
+      "guard": "packages/launcherKit/src/LauncherKit.lua:594",
+      "reason": "GameTooltip is the client's own tooltip frame on every flavour; SetOwner, GetOwner, Show and Hide are its widget methods, which the captured documentation does not list as members of a global. The helper returns unless the global is a table, and every other tooltip use in the package goes through this helper."
+    },
+    {
+      "package": "launcherKit",
+      "api": "GameTooltip.Show",
+      "flavours": ["retail", "classic-mop", "classic-era", "ptr", "beta"],
+      "guard": "packages/launcherKit/src/LauncherKit.lua:594",
+      "reason": "GameTooltip is the client's own tooltip frame on every flavour; SetOwner, GetOwner, Show and Hide are its widget methods, which the captured documentation does not list as members of a global. The helper returns unless the global is a table, and every other tooltip use in the package goes through this helper."
+    },
+    {
+      "package": "launcherKit",
+      "api": "GameTooltip.GetOwner",
+      "flavours": ["retail", "classic-mop", "classic-era", "ptr", "beta"],
+      "guard": "packages/launcherKit/src/LauncherKit.lua:606",
+      "reason": "GameTooltip is the client's own tooltip frame on every flavour; SetOwner, GetOwner, Show and Hide are its widget methods, which the captured documentation does not list as members of a global. The helper returns unless the global is a table, and every other tooltip use in the package goes through this helper."
+    },
+    {
+      "package": "launcherKit",
+      "api": "GameTooltip.Hide",
+      "flavours": ["retail", "classic-mop", "classic-era", "ptr", "beta"],
+      "guard": "packages/launcherKit/src/LauncherKit.lua:606",
+      "reason": "GameTooltip is the client's own tooltip frame on every flavour; SetOwner, GetOwner, Show and Hide are its widget methods, which the captured documentation does not list as members of a global. The helper returns unless the global is a table, and every other tooltip use in the package goes through this helper."
     }
   ]
 }

@@ -1,0 +1,11 @@
+## Interface: 120105, 50504, 20506, 11509
+## Title: MoltenCodes Test: LauncherKit
+## Notes: Real-client test suites for MoltenCodes LauncherKit. Run them with /mct run launcherKit. They put one button on your minimap for the session.
+## Author: MoltenCodes
+## Version: 1.0.0
+## Dependencies: MoltenCodesTest
+## X-Category: Development Tools
+## X-License: MIT
+
+# Development only: never ship this addon. See tests/client/README.md.
+LauncherKitSuite.lua

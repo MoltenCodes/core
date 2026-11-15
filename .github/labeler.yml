@@ -54,6 +54,10 @@
   - changed-files:
       - any-glob-to-any-file: "packages/interopKit/**"
 
+"kit: launcherKit":
+  - changed-files:
+      - any-glob-to-any-file: "packages/launcherKit/**"
+
 "kit: lifecycleKit":
   - changed-files:
       - any-glob-to-any-file: "packages/lifecycleKit/**"

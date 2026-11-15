@@ -66,6 +66,7 @@ Current package entry points:
 - [`CompatKit`](../packages/compatKit/README.md) — versioned shims with a host opt-out, provider registries with a fallback cascade, the taint catalogue as data.
 - [`CommKit`](../packages/commKit/README.md) — addon messaging with bounded reassembly, refusing queues, a session bandwidth budget and sync sets.
 - [`WidgetKit`](../packages/widgetKit/README.md) — pooled, versioned widgets, explicit layouts, anchors and an options renderer.
+- [`LauncherKit`](../packages/launcherKit/README.md) — minimap buttons for BrokerKit objects, in LibDBIcon's saved fields, and Retail's addon compartment.
 - [`MenuKit`](../packages/menuKit/README.md) — checked, bounded menus on Blizzard's Menu API, with removable extensions of Blizzard's menus.
 - [`PanelKit`](../packages/panelKit/README.md) — OptionsKit trees in Blizzard's settings panel, drawn by WidgetKit only while shown.
 - [`ApiKit`](../packages/apiKit/README.md) — the flavour-aware, typed wrapper over the World of Warcraft API, generated from the client's own documentation tables: `local api = wow.retail.api`.

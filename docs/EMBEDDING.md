@@ -164,6 +164,7 @@ registry
 └──→ signalKit
        ├──→ mediaKit
        ├──→ brokerKit
+       │       └──→ launcherKit
        ├──→ logKit
        ↓
      eventKit
@@ -199,6 +200,7 @@ commandKit/CommandKit.lua
 compatKit/CompatKit.lua
 hookKit/HookKit.lua
 interopKit/InteropKit.lua
+launcherKit/LauncherKit.lua
 lifecycleKit/LifecycleKit.lua
 localeKit/LocaleKit.lua
 logKit/LogKit.lua
@@ -256,6 +258,7 @@ optional and found at call time, so embedding one Kit costs this many files:
 | 3 | `readinessKit`, `schedulerKit` | `timerKit` |
 | 4 | `lifecycleKit` | `signalKit`, `eventKit` |
 | 4 | `optionsKit`, `settingsKit` | `schemaKit`, `signalKit` |
+| 4 | `launcherKit` | `signalKit`, `brokerKit` |
 | 4 | `widgetKit` | `poolKit`, `signalKit` |
 | 5 | `moduleKit` | `signalKit`, `eventKit`, `lifecycleKit` |
 | 7 | `panelKit` | `signalKit`, `poolKit`, `schemaKit`, `optionsKit`, `widgetKit` |
@@ -655,6 +658,7 @@ actually touch, which is deliberately small:
 | `testKit` (development only) | LifecycleKit's and SchedulerKit's surfaces | `issecretvalue` (nothing treated as secret), `issecurevariable` (`ToBeSecure` fails), `GetTimePreciseSec` (`durationMs` 0), `geterrorhandler` (`print`), EventKit and TimerKit API 1 through `Registry:Find` |
 | `commKit` | SignalKit's, EventKit's, TimerKit's, SchedulerKit's and PoolKit's surfaces; `GetTimePreciseSec`; `C_ChatInfo.SendAddonMessage` (legacy global fallback; else `Send` refuses `"unavailable"`) | `C_ChatInfo.RegisterAddonMessagePrefix` and `IsAddonMessagePrefixRegistered` (legacy globals, then nothing registered), `C_ChatInfo.SendAddonMessageLogged` (logged sends refused), the events `CHAT_MSG_ADDON`, `CHAT_MSG_ADDON_LOGGED`, `GROUP_ROSTER_UPDATE`, `PLAYER_ENTERING_WORLD`, `GetFramerate` (no low-frame-rate mode), `UnitInParty` and `UnitInRaid` (no roster eviction; streams still expire), `Enum` (12.x values assumed), `securecallfunction` (`pcall`), `issecretvalue`, `geterrorhandler` (`print`), CodecKit API 1 (`SyncSet` raises), HookKit API 1 (outside traffic uncharged), SchemaKit API 1 (`schema` raises); LifecycleKit API 1 through `Registry:Find` (otherwise CommKit's own `PLAYER_LOGOUT` watcher closes its addon scopes) |
 | `widgetKit` | PoolKit's and SignalKit's surfaces; `CreateFrame` | `UIParent` (released frames rest on a hidden holder), `issecretvalue` (nothing secret), `geterrorhandler` (`print`), `ColorPickerFrame:SetupColorPickerAndShow` (a click fires the current colour), `IsAltKeyDown`, `IsControlKeyDown`, `IsShiftKeyDown` (no modifiers), OptionsKit API 1 through `Registry:Find` (`RenderOptions` raises at the caller), SchedulerKit API 1 (saves are immediate), MediaKit API 1 (`CreateMediaPicker` raises; the renderer uses the option's `values`) |
+| `launcherKit` | BrokerKit's surface; `Minimap` and `CreateFrame` (`Register` raises at the caller); `GetCursorPosition` while a button is dragged | `GameTooltip` (no tooltip; `OnEnter` instead), `GetMinimapShape` (the minimap counts as round), `AddonCompartmentFrame` (`AddToCompartment` answers `nil, "unavailable"`; Retail only), `issecretvalue` (nothing secret), `geterrorhandler` (`print`) |
 | `menuKit` | `MenuUtil.CreateContextMenu`, `Menu.ModifyMenu` and `Menu.GetManager` (`Blizzard_Menu`; every method but `SetLimits` and `GetLimits` raises at the caller without them) | `issecretvalue` (nothing secret), `geterrorhandler` (`print`) |
 | `panelKit` | WidgetKit's and OptionsKit's surfaces; `CreateFrame`; `Settings.RegisterCanvasLayoutCategory`, `Settings.RegisterCanvasLayoutSubcategory` and `Settings.RegisterAddOnCategory` (`Register` raises at the caller) | `Settings.OpenToCategory` (`panel:Open` answers `nil, "unavailable"`), `issecretvalue` (nothing secret), `geterrorhandler` (`print`) |
 | `hookKit` | nothing but Lua 5.1 | `hooksecurefunc` (`SecureHook` raises at the caller), `issecurevariable` (nothing treated as secure), `Frame:HookScript` / `Frame:GetScript` / `Frame:SetScript` (the matching script hooks raise at the caller), `Frame:IsProtected` (frame not protected), `InCombatLockdown` (never in combat), `issecretvalue` (nothing is secret); LifecycleKit and EventKit API 1 through `Registry:Find` decide who closes an addon scope at logout (with neither, call `HookKit:CloseAddonScopes` on `PLAYER_LOGOUT`) |
@@ -1110,6 +1114,12 @@ context menu, a `DropdownButton`'s menu or a line added to one of Blizzard's
 own menus (`MenuKit:ExtendMenu("MENU_UNIT_SELF", ...)`) is drawn by the client
 itself; the deprecated UIDropDownMenu, a well-known source of taint, is never
 touched. See [`menuKit/docs/API.md`](../packages/menuKit/docs/API.md).
+
+A minimap button is `LauncherKit` (package `launcherKit`): a BrokerKit object
+on the minimap's edge, its position, hidden and locked state in your saved
+variables under LibDBIcon-1.0's field names, and on Retail an entry in
+Blizzard's addon compartment. See
+[`launcherKit/docs/API.md`](../packages/launcherKit/docs/API.md).
 
 ## Performance guidance
 

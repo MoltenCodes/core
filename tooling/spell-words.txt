@@ -30,7 +30,8 @@ soundkit
 strlenutf
 
 # World of Warcraft terms, and fragments of event and variable names
-# (`PLAYER_REGEN_ENABLED`, `CURSEFORGE_PROJECT_ID`, `WOWI_ID`).
+# (`PLAYER_REGEN_ENABLED`, `CURSEFORGE_PROJECT_ID`, `WOWI_ID`), and the minimap
+# shape names of the `GetMinimapShape` convention (`TRICORNER-TOPLEFT`).
 ARIALN
 CLEU
 COMMANDKIT
@@ -58,6 +59,7 @@ Soulbound
 spellbook
 tocname
 transmog
+TRICORNER
 UIDROPDOWNMENU
 Wago
 WOWGUID

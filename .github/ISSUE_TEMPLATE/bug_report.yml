@@ -60,6 +60,7 @@ body:
         - eventKit
         - hookKit
         - interopKit
+        - launcherKit
         - lifecycleKit
         - localeKit
         - logKit

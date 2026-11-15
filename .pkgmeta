@@ -155,3 +155,5 @@ move-folders:
   MoltenCodes/packages/panelKit/docs: MoltenCodes/panelKit/docs
   MoltenCodes/packages/menuKit/src: MoltenCodes/menuKit
   MoltenCodes/packages/menuKit/docs: MoltenCodes/menuKit/docs
+  MoltenCodes/packages/launcherKit/src: MoltenCodes/launcherKit
+  MoltenCodes/packages/launcherKit/docs: MoltenCodes/launcherKit/docs

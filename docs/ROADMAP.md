@@ -1525,10 +1525,10 @@ its code. Order:
 3. Dependencies: registry API 2 and brokerKit API 1, both required (a
    launcher shows a BrokerKit object); SignalKit comes with BrokerKit. Host
    requirement: `Minimap`, `CreateFrame`, `GameTooltip`.
-4. Surface: `LauncherKit:Register(objectName, storage, options?)` →
-   launcher; `launcher:Show()`, `Hide()`, `IsShown()`, `Lock()`,
+4. Surface: `LauncherKit:Register(objectName, storage)` → launcher (the
+   `options` argument was dropped while building: nothing needed one); `launcher:Show()`, `Hide()`, `IsShown()`, `Lock()`,
    `Unlock()`, `IsLocked()`, `Refresh()` (read the storage again, after a
-   profile switch), `GetButton()`; `LauncherKit:Get(objectName)`;
+   profile switch), `GetButton()` (its icon texture is `button.icon`); `LauncherKit:Get(objectName)`;
    `LauncherKit:AddToCompartment(objectName)` → `true`, or `nil` and
    `"unavailable"` (no AddonCompartment) or `"already"`;
    `SetLimits{ maxLaunchers }` / `GetLimits()`.
@@ -1556,7 +1556,9 @@ its code. Order:
 8. Docs: README (with the migration from LibDBIcon), API.md, CHANGELOG,
    tests/README; EMBEDDING footprint and host-requirements rows;
    ARCHITECTURE's package list.
-9. Status: recorded 2026-11-15; code starts on the owner's go.
+9. Status: implemented 2026-11-15 after the owner's go, 0.1.0, revision 1,
+   39 specs; the client suite (`tests/client/MoltenCodesTest_LauncherKit`)
+   is written and has not been run in a client. Ticked once it has.
 
 #### Package N — bridgeKit, migrating from Ace3
 
