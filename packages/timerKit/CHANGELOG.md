@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.8.0 — 2026-11-15
+
+- Added pausable timers, implementation revision 12, as recorded in `docs/ROADMAP.md` ("timerKit pausable timers", package M, worklist item W15): `timer:Pause()`, `timer:Resume()` and `timer:IsPaused()`, and the state `"paused"`. A pause cancels the host handle and keeps the remainder; a resume asks `C_Timer.NewTimer` for that remainder, and a repeating timer returns to its interval after that first fire. Recorded deviation: built on `C_Timer` handles, not an animation host, so TimerKit keeps no frame.
+- `Cancel`, `Restart`, `CancelAll` and `Close` treat a paused timer as running; `Start` answers `false` for it; `GetRemaining` answers the kept seconds; `GetActiveCount` counts it. The remainder lives in the existing `_deadline` field, so pausing allocates no field; the start, cancel and fire paths of a timer never paused are unchanged.
+- 12 specs (`tests/Pause_spec.lua`).
+
 ## 0.7.1 — 2026-11-15
 
 - `docs/API.md` (Native boundary) no longer says that LifecycleKit and EventKit are looked up only inside `ForAddon`. They are also looked up during an in-place upgrade, to give the addon scopes an older revision created their logout route, and at shutdown, where route 2's `OnShutdown` callback asks whether a LifecycleKit that closes TimerKit's scopes has replaced the older one. Documentation only; the implementation revision stays 11.

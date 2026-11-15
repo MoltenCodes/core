@@ -1405,8 +1405,9 @@ its code. Order:
         dropped as before otherwise.
 - [ ] **barKit** (status and timer bars), **dialogKit**, **toastKit**,
       **bindingKit**, **glowKit** and **editModeKit** (Edit Mode
-      integration): implemented, client suites not run; timerKit's
-      engine-driven ticker (W15).
+      integration): implemented, client suites not run.
+- [x] **timerKit** pausable timers (W15): `Pause`, `Resume`, `IsPaused` on
+      `C_Timer` handles, revision 12 (2026-11-15).
 
 **panelKit** — facade `PanelKit`
 
@@ -1925,8 +1926,9 @@ its code. Order:
 3. Dependencies: unchanged, registry API 2. `GetTimePreciseSec` measures
    the remainder; without it a paused timer keeps its full delay.
 4. Surface: `timer:Pause()` → `true`, or `false` unless it was running;
-   `timer:Resume()` → `true`, or `false` unless it was paused, raising at
-   the caller in a closed scope; `timer:IsPaused()`. `GetState` may answer
+   `timer:Resume()` → `true`, or `false` unless it was paused (a closed
+   scope has cancelled its paused timers, so `Resume` then answers
+   `false`); `timer:IsPaused()`. `GetState` may answer
    the new state `"paused"`; `GetRemaining` answers the kept remainder
    while paused, `GetDeadline` `nil`, `IsPending` `false`. `Start` on a
    paused timer answers `false`; `Cancel`, `Restart`, `CancelAll` and
@@ -1944,12 +1946,14 @@ its code. Order:
    remainders, a repeating timer back on its interval, a stale callback of
    the paused handle ignored, pause without a clock, the methods' `false`
    answers, cancel, restart, `CancelAll` and `Close` of a paused timer,
-   resume in a closed scope, receiver errors at the caller, an upgrade from
+   resume after a closed scope, receiver errors at the caller, an upgrade from
    revision 11 keeping timers and a timer paused after it.
 8. Docs: API.md (pausing, the state table, the methods), INTERNALS.md (the
    `_deadline` field while paused, the resume closure), CHANGELOG, README,
    tests/README; Package I's deferred item and package M's checklist.
-9. Status: recorded 2026-11-15 under core decision 15; code follows.
+9. Status: implemented 2026-11-15 under core decision 15, 0.8.0, revision
+   12, 12 specs. No client suite: pausing uses only `C_Timer` handles the
+   existing TimerKit client suite already proves.
 
 #### Package N — bridgeKit, migrating from Ace3
 

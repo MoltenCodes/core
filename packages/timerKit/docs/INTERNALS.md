@@ -28,9 +28,9 @@ A timer is a table only TimerKit writes. Its private fields:
 | `_callback` | The owner's callback. |
 | `_delay` | The delay or interval in seconds. |
 | `_repeating` | `true` on a repeating timer. Absent on a one-shot timer built by revision 10 or later, `false` on one an older revision built; both read as not repeating. |
-| `_state` | `"idle"`, `"running"`, `"completed"` or `"cancelled"`. |
+| `_state` | `"idle"`, `"running"`, `"paused"` (revision 12), `"completed"` or `"cancelled"`. |
 | `_native` | The host handle of the current start while running, `false` otherwise (`nil` on a timer an older revision left idle). |
-| `_deadline` | The `GetTimePreciseSec()` instant of the next fire while running, or `false`. |
+| `_deadline` | The `GetTimePreciseSec()` instant of the next fire while running; the seconds left while paused, so pausing adds no field and never rehashes the timer; `false` otherwise. |
 | `_userData` | The value `SetUserData` attached. |
 | `_generation` | Only on timers revision 9 or older built: the counter their host callbacks are bound to. |
 
@@ -81,3 +81,7 @@ A newer revision must keep publishing every entry an older revision's callbacks 
 A newer revision keeps `_state`, the prototypes and the metatables, rewrites the prototypes' methods and the dispatch entries, and leaves every timer and scope object in place. Timers an older revision built keep their field layout; the table above says how each difference reads.
 
 Revision 11 changes no state and no layout. A timer revision 10 started keeps its handle and its callback closure, which calls `dispatch.fireStarted` and so runs the new code; cancelling it after the upgrade calls its handle's `Cancel` directly.
+
+## Pausing (revision 12)
+
+`pauseTimer` unbinds `_native` before calling the handle's `Cancel`, as a cancellation does, sets `_state = "paused"` and keeps the remainder in `_deadline`; it moves `_generation` on for a timer revision 9 or older built, so a callback of that era goes stale too. The timer stays in its scope's active set. `armRemainder` builds a closure that resolves `dispatch.fireResumed` at call time, calls `C_Timer.NewTimer(remaining, closure)` first and only then marks the timer running, so a raising constructor leaves it paused. `fireResumedTimer` applies the same stale check as `fireTimer`; for a repeating timer it cancels the timer logically, calls `armTimer` for a ticker of the interval and then runs the callback.

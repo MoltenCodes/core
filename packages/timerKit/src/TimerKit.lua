@@ -25,7 +25,8 @@
 --   In-place upgrade ...... revision-5 shutdown subscriptions released,
 --                           revision-7 logout fields added
 --   Generic helpers ....... error capture and argument validation
---   Timer internals ....... start, cancel, fire, restart, deadlines
+--   Timer internals ....... start, cancel, fire, restart, deadlines,
+--                           pause and resume (revision 12)
 --   Scope internals ....... active-set bookkeeping, bulk cancel, close
 --   Logout coverage ....... who closes an addon scope at logout, decided at
 --                           the first ForAddon (LifecycleKit, EventKit, none)
@@ -36,7 +37,7 @@
 
 local PACKAGE_NAME = "timerKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 11
+local IMPLEMENTATION_REVISION = 12
 local REQUIRED_REGISTRY_API = 2
 local STATE_SCHEMA = 1
 
@@ -71,8 +72,8 @@ local TIMER_OPTION_KEYS = {
 -- tables, so the editor-facing contract is declared here as LuaCATS classes
 -- rather than inferred from those assignments.
 
----Logical state of a TimerKit timer.
----@alias TimerKit.TimerState "idle"|"running"|"completed"|"cancelled"
+---Logical state of a TimerKit timer; `"paused"` from revision 12.
+---@alias TimerKit.TimerState "idle"|"running"|"paused"|"completed"|"cancelled"
 
 ---A timer callback, invoked with the logical timer handle that fired.
 ---@alias TimerKit.Callback fun(timer: TimerKit.Timer)
@@ -98,6 +99,9 @@ local TIMER_OPTION_KEYS = {
 ---@field Restart fun(self: TimerKit.Timer): boolean
 ---@field GetRemaining fun(self: TimerKit.Timer): number?
 ---@field GetDeadline fun(self: TimerKit.Timer): number?
+---@field Pause fun(self: TimerKit.Timer): boolean
+---@field Resume fun(self: TimerKit.Timer): boolean
+---@field IsPaused fun(self: TimerKit.Timer): boolean
 
 ---An ownership scope for timers, closed by its owner or, for an addon scope,
 ---through `TimerKit:CloseAddonScopes`.
@@ -261,6 +265,9 @@ local function validatePublicSurface(implementation)
     and type(rawget(Timer, "Restart")) == "function"
     and type(rawget(Timer, "GetRemaining")) == "function"
     and type(rawget(Timer, "GetDeadline")) == "function"
+    and type(rawget(Timer, "Pause")) == "function"
+    and type(rawget(Timer, "Resume")) == "function"
+    and type(rawget(Timer, "IsPaused")) == "function"
     and type(rawget(Scope, "New")) == "function"
     and type(rawget(Scope, "After")) == "function"
     and type(rawget(Scope, "Every")) == "function"
@@ -612,9 +619,11 @@ end
 
 ---Cancel `timer` logically, then ask the host to cancel its native handle.
 ---@param timer TimerKit.TimerRecord
----@return boolean cancelled `false` when the timer was not running.
+---@return boolean cancelled `false` when the timer was neither running nor paused.
 local function cancelTimer(timer)
-  if timer._state ~= "running" then
+  -- A paused timer is cancelled like a running one; it holds no handle.
+  local timerState = timer._state
+  if timerState ~= "running" and timerState ~= "paused" then
     return false
   end
 
@@ -758,16 +767,118 @@ local function armTimer(timer, scope, level)
   end
 end
 
+-- Pausing (revision 12) ---------------------------------------------------
+--
+-- A pause cancels the host handle and keeps what is left of the delay in
+-- `_deadline`, which holds an instant only while the timer runs; the state
+-- says which. Resuming asks the host for a one-shot of that remainder whose
+-- callback goes through `fireResumed`: a one-shot timer completes as usual,
+-- and a repeating one is armed again as a ticker of its interval before its
+-- callback runs, so a `Cancel` inside the callback cancels that ticker.
+-- docs/ROADMAP.md, "timerKit pausable timers", records why this is built on
+-- `C_Timer` handles rather than an animation host.
+
+---Forward the callback of a resumed timer's one-shot to the running
+---revision's `fireResumed`, as `dispatchFire` does for an ordinary start.
+---@param timer TimerKit.TimerRecord
+---@param native table|userdata|nil the host handle of the resume
+---@return boolean fired
+local function dispatchResumedFire(timer, native)
+  local dispatchTable = state.dispatch
+  local fire = type(dispatchTable) == "table" and dispatchTable.fireResumed or nil
+  if type(fire) ~= "function" then
+    error("MoltenCodes TimerKit runtime dispatch is corrupted", 0)
+  end
+  return fire(timer, native)
+end
+
+---Deliver the one-shot of a resume, ignoring it unless that resume is still
+---the timer's current start.
+---@param timer TimerKit.TimerRecord
+---@param native table|userdata the handle the firing callback was created for
+---@return boolean fired
+local function fireResumedTimer(timer, native)
+  if timer._state ~= "running" or not rawequal(timer._native, native) then
+    return false
+  end
+  if timer._repeating ~= true then
+    return deliverTimer(timer)
+  end
+  -- Back on the interval. The timer is cancelled logically first, so a host
+  -- constructor that raises leaves it cancelled rather than running without
+  -- a handle; `armTimer` puts it back in its scope's active set.
+  timer._native = false
+  timer._state = "cancelled"
+  timer._deadline = false
+  detachActive(timer._scope, timer)
+  armTimer(timer, timer._scope, 2)
+  timer._callback(timer)
+  return true
+end
+
+---Ask the host for a one-shot of `remaining` seconds for a paused timer and
+---mark it running. Like `armTimer`, the host is asked first, so a constructor
+---that raises leaves the timer paused.
+---@param timer TimerKit.TimerRecord
+---@param remaining number seconds left when the timer was paused
+---@param level integer stack level the failure is reported at
+local function armRemainder(timer, remaining, level)
+  local native
+  local callback = function()
+    return dispatchResumedFire(timer, native)
+  end
+  local handle = nativeNewTimer(remaining, callback)
+  if not handle then
+    error("MoltenCodes TimerKit host returned an invalid native timer handle", level)
+  end
+  native = handle
+  timer._native = handle
+  timer._state = "running"
+  timer._deadline = deadlineAfter(remaining)
+end
+
+---Pause a running timer, keeping what is left of its delay.
+---@param timer TimerKit.TimerRecord
+---@return boolean paused `false` when the timer was not running.
+local function pauseTimer(timer)
+  if timer._state ~= "running" then
+    return false
+  end
+  -- Without a clock (no deadline was kept) the full delay is left.
+  local remaining = timer._delay
+  local deadline = timer._deadline
+  if type(deadline) == "number" then
+    remaining = deadline - now()
+    if remaining < 0 then
+      remaining = 0
+    end
+  end
+  -- Unbind the host callback before cancelling it, as `cancelTimer` does; a
+  -- revision 9 callback is made stale by the generation.
+  local native = timer._native
+  timer._native = false
+  timer._state = "paused"
+  timer._deadline = remaining
+  local generation = timer._generation
+  if generation ~= nil then
+    timer._generation = generation + 1
+  end
+  if native then
+    native:Cancel()
+  end
+  return true
+end
+
 -- The caller has already validated `timer`; `level` identifies that caller so a
 -- closed-scope or invalid-host-handle failure still reports at its line.
 ---Start `timer` and bind a fresh host callback to the handle it creates.
 ---@param timer TimerKit.TimerRecord
 ---@param methodName string public method name, used in the argument error
 ---@param level integer stack level the failure is reported at
----@return boolean started `false` when the timer was already running.
+---@return boolean started `false` when the timer was already running or paused.
 local function startTimer(timer, methodName, level)
   local previousState = timer._state
-  if previousState == "running" then
+  if previousState == "running" or previousState == "paused" then
     return false
   end
 
@@ -801,7 +912,8 @@ local function restartTimer(timer, methodName, level)
     error(methodName .. " cannot restart a timer in a closed scope", level)
   end
 
-  if timer._state == "running" then
+  local timerState = timer._state
+  if timerState == "running" or timerState == "paused" then
     cancelTimer(timer)
   end
   return startTimer(timer, methodName, level + 1)
@@ -1308,14 +1420,19 @@ local function timerGetDeadline(self)
   return deadline
 end
 
----Return the seconds left until this timer fires next, or `nil` when it is not
----running. Never negative: a timer the host has not delivered yet although its
+---Return the seconds left until this timer fires next, the seconds it kept
+---when paused, or `nil` when it is neither running nor paused. Never negative: a timer the host has not delivered yet although its
 ---deadline passed reports `0`.
 ---@param self TimerKit.TimerRecord
 ---@return number? remaining seconds, an estimate; see `GetDeadline`
 local function timerGetRemaining(self)
   validateTimer(self, "TimerKit.Timer:GetRemaining", 3)
-  if rawget(self, "_state") ~= "running" then
+  local timerState = rawget(self, "_state")
+  if timerState == "paused" then
+    -- A paused timer keeps its remainder in `_deadline`; see "Pausing".
+    return rawget(self, "_deadline")
+  end
+  if timerState ~= "running" then
     return nil
   end
   local deadline = rawget(self, "_deadline")
@@ -1327,6 +1444,36 @@ local function timerGetRemaining(self)
     return 0
   end
   return remaining
+end
+
+---Pause a running timer; `Resume` starts it again with what was left.
+---@param self TimerKit.TimerRecord
+---@return boolean paused `false` when the timer was not running.
+local function timerPause(self)
+  validateTimer(self, "TimerKit.Timer:Pause", 3)
+  return pauseTimer(self)
+end
+
+---Resume a paused timer with what was left of its delay; a repeating timer
+---returns to its interval after that first fire. A paused timer's scope is
+---never closed: closing a scope cancels its paused timers.
+---@param self TimerKit.TimerRecord
+---@return boolean resumed `false` when the timer was not paused.
+local function timerResume(self)
+  validateTimer(self, "TimerKit.Timer:Resume", 3)
+  if rawget(self, "_state") ~= "paused" then
+    return false
+  end
+  armRemainder(self, rawget(self, "_deadline"), 3)
+  return true
+end
+
+---Return whether the timer is paused.
+---@param self TimerKit.TimerRecord
+---@return boolean paused
+local function timerIsPaused(self)
+  validateTimer(self, "TimerKit.Timer:IsPaused", 3)
+  return rawget(self, "_state") == "paused"
 end
 
 -- Scope public methods ------------------------------------------------------
@@ -1512,6 +1659,9 @@ rawset(Timer, "Cancel", timerCancel)
 rawset(Timer, "Restart", timerRestart)
 rawset(Timer, "GetRemaining", timerGetRemaining)
 rawset(Timer, "GetDeadline", timerGetDeadline)
+rawset(Timer, "Pause", timerPause)
+rawset(Timer, "Resume", timerResume)
+rawset(Timer, "IsPaused", timerIsPaused)
 
 rawset(Scope, "New", scopeNew)
 rawset(Scope, "After", scopeAfter)
@@ -1544,6 +1694,8 @@ local dispatch = rawget(state, "dispatch")
 -- older created, which pass the timer's generation instead.
 rawset(dispatch, "fireStarted", fireTimer)
 rawset(dispatch, "fire", fireLegacyTimer)
+-- Revision 12: the one-shot a `Resume` asks the host for.
+rawset(dispatch, "fireResumed", fireResumedTimer)
 -- No revision from 6 on calls `closeScope` through dispatch. It stays published
 -- for the shutdown wrappers of revision 5 and older, in case one could not be
 -- disconnected during the upgrade; see `releaseInheritedShutdownSubscriptions`.

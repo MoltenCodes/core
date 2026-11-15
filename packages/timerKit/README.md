@@ -19,6 +19,8 @@ end)
 
 `timer:GetRemaining()` and `timer:GetDeadline()` answer "how long until this fires?" for a running timer and return `nil` otherwise. They read `GetTimePreciseSec`, which is optional: on a host without it TimerKit still loads, and both methods return `nil`.
 
+`timer:Pause()` keeps what is left of a running timer's delay and `timer:Resume()` starts it again for that remainder; a repeating timer then returns to its interval. Both are built on `C_Timer` handles: no frame, nothing per frame.
+
 TimerKit adds a logical timer state machine, restart/cancel guards against stale native callbacks, deterministic scope cleanup, and per-addon ownership without exposing native FunctionContainer details to consumers.
 
 Use `TimerKit:CreateScope()` for manually owned groups and `TimerKit:ForAddon(addonName)` for the addon's canonical scope. `TimerKit:CloseAddonScopes(addonName)` closes the addon scope and cancels every timer in it. An addon scope closes at logout whenever LifecycleKit or EventKit is loaded, and otherwise by your own call: TimerKit finds either through `Registry:Find` without depending on it (see "At logout" in [`docs/API.md`](docs/API.md)). Package-level `TimerKit:New` / `After` / `Every` are convenience methods backed by an internal manual scope and are therefore not tied to an addon.

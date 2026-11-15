@@ -19,7 +19,7 @@ Timer handles:
 
 | Method | Purpose |
 |---|---|
-| `GetState()` | Return `idle`, `running`, `completed`, or `cancelled`. |
+| `GetState()` | Return `idle`, `running`, `paused`, `completed`, or `cancelled`. |
 | `GetDelay()` | Return the configured delay/interval in seconds. |
 | `GetScope()` | Return the owning TimerKit scope. |
 | `GetUserData()` | Return the opaque value attached by the owner, or `nil`. |
@@ -27,11 +27,14 @@ Timer handles:
 | `IsRepeating()` | Return whether the timer is repeating. |
 | `IsPending()` | Return whether the logical timer is running. |
 | `IsCancelled()` | Return whether it was logically cancelled. |
-| `Start()` | Start an idle/completed/cancelled timer; return `false` if already running. |
-| `Cancel()` | Cancel a running timer; return `false` if it is not running. |
+| `Start()` | Start an idle/completed/cancelled timer; return `false` if already running or paused. |
+| `Cancel()` | Cancel a running or paused timer; return `false` otherwise. |
 | `Restart()` | Cancel if necessary and start again; the earlier start's native callback is ignored. |
-| `GetRemaining()` | Seconds until the next fire while running; `nil` otherwise. |
+| `GetRemaining()` | Seconds until the next fire while running, the seconds kept while paused; `nil` otherwise. |
 | `GetDeadline()` | Monotonic instant of the next fire while running; `nil` otherwise. |
+| `Pause()` | Pause a running timer, keeping what is left of its delay; return `false` if it is not running. Revision 12. |
+| `Resume()` | Resume a paused timer for what was left; return `false` if it is not paused. Revision 12. |
+| `IsPaused()` | Return whether the timer is paused. Revision 12. |
 
 Scopes:
 
@@ -44,7 +47,7 @@ Scopes:
 | `Close()` | Terminally close the scope after best-effort cancellation. |
 | `IsClosed()` | Return whether the scope is terminally closed. |
 | `GetAddonName()` | Return the owning addon name, or `nil` for manual scopes. |
-| `GetActiveCount()` | Return the number of logically running timers. |
+| `GetActiveCount()` | Return the number of logically running or paused timers. |
 
 ## Basic timers
 
@@ -212,7 +215,25 @@ idle ──Start──> running ──fire──> completed
 
 Repeating timers remain `running` after each callback until cancelled or restarted.
 
+From revision 12, `Pause` takes a running timer to `paused` and `Resume` takes it back to `running`; `Cancel` and `Restart` work from `paused` as from `running`. See "Pausing".
+
 `Cancel()` and `Start()` are idempotent with respect to an already-satisfied state: cancelling a non-running timer and starting an already-running timer return `false` rather than creating duplicate native work.
+
+## Pausing
+
+```lua
+local cooldown = TimerKit:After(30, onReady)
+cooldown:Pause()           -- true; cooldown:GetRemaining() keeps, say, 12.5
+cooldown:Resume()          -- true; fires 12.5 seconds from now
+```
+
+- `Pause()` cancels the host handle and keeps the seconds left until the next fire: the deadline minus `GetTimePreciseSec()`, never below 0, or the full delay on a host without the clock. A late host's remainder is 0. While paused, `GetRemaining()` answers those seconds, `GetDeadline()` `nil`, `IsPending()` `false` and `GetState()` `"paused"`.
+- `Resume()` asks the host for a one-shot of the kept seconds. A one-shot timer completes when it fires. A repeating timer runs its callback then and is armed again as a ticker of its interval just before that callback, so a `Cancel` inside it cancels the ticker. A host constructor that raises leaves the timer paused, or, for that re-arm of a repeating timer, cancelled.
+- A paused timer stays in its scope: `GetActiveCount()` counts it, `CancelAll()` and `Close()` cancel it. `Resume()` on a timer a closed scope cancelled answers `false`.
+- `Start()` on a paused timer answers `false`; `Restart()` cancels it and starts its full delay.
+- A paused timer holds no host handle, and a callback of the handle it held is ignored.
+
+This is built on `C_Timer` handles, not on an animation host, so TimerKit keeps no frame and does no work per frame (docs/ROADMAP.md, "timerKit pausable timers").
 
 ## Stale callback protection
 

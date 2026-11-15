@@ -35,6 +35,7 @@ Spec files:
 | `ErrorLevels_spec.lua` | every argument failure at the caller's line |
 | `UserData_spec.lua` | opaque per-timer user data |
 | `Remaining_spec.lua` | `GetRemaining`/`GetDeadline` in every state, restarts, late hosts, rolled-back starts |
+| `Pause_spec.lua` | `Pause`/`Resume`/`IsPaused` of one-shot and repeating timers, stale callbacks, cancel, restart and scope cleanup of paused timers, host failures, no clock, an upgrade from revision 11 |
 | `Allocation_spec.lua` | a repeating tick and a cancellation allocate nothing |
 | `Property_spec.lua` | deterministic mixed operations keep the scope active count consistent |
 | `Bootstrap_spec.lua` | duplicate loading, Registry publication, loading with Registry alone, the revision-1, revision-5 and revision-7 upgrades and the previous-revision upgrade, older revisions' deadlines, no `GetTimePreciseSec` |
