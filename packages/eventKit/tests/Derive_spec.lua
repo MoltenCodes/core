@@ -241,10 +241,11 @@ describe("EventKit Derive", function()
   end)
 end)
 
-describe("EventKit Derive without SchedulerKit", function()
+describe("EventKit Derive without TimerKit", function()
   local EventKit
   before_each(function()
     EventKit = TestEnv.NewPackage()
+    TestEnv.LoadCoalescing()
   end)
   after_each(TestEnv.Reset)
 

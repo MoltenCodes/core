@@ -5,12 +5,17 @@ EventKit is MoltenCodes' World of Warcraft event bridge. It turns Frame `OnEvent
 ## Package contract
 
 - Package: `eventKit`
-- Version: `0.10.0`
+- Version: `0.11.0`
 - API generation: `1`
-- Implementation revision: `21`
+- Implementation revision: `22`; part `Coalescing`: revision `1`
 - Runtime dependencies: Registry API 2, SignalKit API 1
-- Optional partners: SchedulerKit API 1, found at call time by `Coalesce` and `Derive`;
-  LifecycleKit API 1, found by the first `ForAddon` to close addon scopes at logout
+- Parts: `Coalescing` (`src/parts/EventKit-Coalescing.lua`): `Coalesce` and
+  `Derive`, timed by TimerKit; optional, embedded after the core
+  ([ADR 0001](../../docs/decisions/0001-kit-core-and-parts.md))
+- Optional partners: LifecycleKit API 1, found by the first `ForAddon` to close
+  addon scopes at logout; for the Coalescing part, TimerKit API 1 (its timing)
+  and SchedulerKit API 1 with its Coalescing and Lanes parts (only for a `lane`),
+  both found at call time
 
 EventKit is multi-tenant: one shared instance serves every addon in a WoW
 session. That shapes five of its guarantees:
@@ -96,8 +101,8 @@ being dispatched: a scoped `PLAYER_LOGOUT` listener still runs even when its
 scope is closed first.
 
 Bursts of events coalesce into one callback, and derived values recompute once
-per burst, when SchedulerKit is loaded (found at call time; EventKit does not
-depend on it):
+per burst, with the Coalescing part embedded; TimerKit times them (found at
+call time; EventKit does not depend on it):
 
 ```lua
 events:Coalesce({ "UNIT_HEALTH", "UNIT_MAXHEALTH" }, 0.1, function(units)
@@ -109,8 +114,9 @@ end)
 local freeSlots = events:Derive("BAG_UPDATE_DELAYED", countFreeSlots)
 ```
 
-Without SchedulerKit, `Coalesce` is refused and `Derive` recomputes on every
-event. See [Coalescing events](docs/API.md#coalescing-events).
+Without TimerKit, `Coalesce` is refused and `Derive` recomputes on every
+event; without the part, both raise with the file to embed. See
+[Coalescing events](docs/API.md#coalescing-events).
 
 See [`docs/API.md`](docs/API.md) for the full public contract and edge-case
 semantics, including the two ways to listen to the payload-free combat-log
@@ -130,7 +136,7 @@ channels.
 | `self:UnregisterAllEvents()` | `scope:DisconnectAll()`, or `scope:Close()` to end the scope (a manual scope can be opened again with `scope:Reopen()`); an addon scope closes at logout by itself |
 | a Frame of your own with `RegisterUnitEvent` (AceEvent has no unit form) | `scope:ConnectUnit("EVENT", callback, unit1[, unit2])` |
 | `COMBAT_LOG_EVENT_UNFILTERED` and `CombatLogGetCurrentEventInfo()` in every handler | `scope:ConnectCombatLog(subEvent, callback)`, one client read per event for every listener |
-| AceBucket `RegisterBucketEvent(events, interval, callback)` | `scope:Coalesce(events, interval, callback)`, with SchedulerKit embedded; the set's values are `true`, not counts |
+| AceBucket `RegisterBucketEvent(events, interval, callback)` | `scope:Coalesce(events, interval, callback)`, with the Coalescing part (`eventKit\parts\EventKit-Coalescing.lua`) and TimerKit embedded; no SchedulerKit needed; the set's values are `true`, not counts |
 | AceBucket `UnregisterBucket(handle)` | `handle:Close()` |
 | AceEvent `RegisterMessage`, `SendMessage` | SignalKit buses: `SignalKit:ForAddon(addonName)` |
 
@@ -153,8 +159,21 @@ Minimum footprint: embed 3 files: `registry/Registry.lua`, `signalKit/SignalKit.
 
 Direct runtime dependencies: Registry API 2, SignalKit API 1.
 Every file above is required; omitting one makes this package raise at
-load. SchedulerKit is optional and is not part of this load order: when an
-addon also embeds it (after TimerKit, its one required dependency besides
-Registry), `Coalesce` and `Derive` find it when they are called. LifecycleKit
-is optional too: when it is loaded, `ForAddon` leaves the logout closing of
+load. `Coalesce` and `Derive` are the optional Coalescing part, embedded
+after the core and after TimerKit, which times them:
+
+```toc
+Libs\MoltenCodes\timerKit\TimerKit.lua
+Libs\MoltenCodes\eventKit\parts\EventKit-Coalescing.lua
+```
+
+`python3 -m tooling.package.embeds eventKit/Coalescing` prints the full list.
+Without the part the two methods raise at the caller with the file to embed,
+and `EventKit:HasPart("Coalescing")` answers `false`. SchedulerKit is needed
+only for a `lane`, with its Coalescing and Lanes parts. LifecycleKit is
+optional too: when it is loaded, `ForAddon` leaves the logout closing of
 addon scopes to it.
+
+Memory (resident on Lua 5.1 with debug information, measured 2026-11-15):
+the core holds 85 KB and the Coalescing part 37 KB; before the split the
+single file held 106 KB.

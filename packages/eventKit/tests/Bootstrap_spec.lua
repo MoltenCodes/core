@@ -2,7 +2,7 @@ local TestEnv = require("EventKitTestEnv")
 
 ---The implementation revision `src/EventKit.lua` carries; `Manifest_spec.lua`
 ---pins the same number against `package.manifest.json`.
-local CURRENT_REVISION = 21
+local CURRENT_REVISION = 22
 
 local function expectErrorContaining(expected, callback)
   local ok, message = pcall(callback)
@@ -505,6 +505,7 @@ describe("EventKit package bootstrap", function()
     }
 
     local EventKit = require("EventKit")
+    TestEnv.LoadCoalescing()
     local state = EventKit._state
     assert.are.equal(CURRENT_REVISION, EventKit.REVISION)
     assert.are.equal(10, state.schema)
@@ -873,6 +874,7 @@ describe("EventKit package bootstrap", function()
       end)
 
       local EventKit = require("EventKit")
+      TestEnv.LoadCoalescing()
       local _, revision = Registry:Get("eventKit", 1)
       assert.are.equal(legacy, EventKit)
       assert.are.equal(CURRENT_REVISION, revision)

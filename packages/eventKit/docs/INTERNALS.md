@@ -117,32 +117,66 @@ The combat-log router is an ordinary connection on the
 `COMBAT_LOG_EVENT_UNFILTERED` channel whose callback reads the client once and
 walks the matching route, then the wildcard route, with `deliverListeners`.
 
-## Coalesce handles
+## Coalescing handles and the part
 
-A `Coalesce` handle is written with eight fields (`_kind`, `_closed`,
-`_byEvent`, `_connections`, `_timing` and the three scope links), so its hash
-part has eight slots. It carries neither `_schedulerScope` nor `_signal`:
-its SchedulerKit timing handle lives in one SchedulerKit scope that every
-`Coalesce` handle shares, kept in `_state.coalesceSchedulerScope` and created
-on first use (again if something closed it), and a `Coalesce` handle never has
-an `OnChange` signal. `closeCompositeHandle` reads both fields as `false` when
-absent, writes them only when present (writing even `nil` to a missing key
-could grow the full hash part), and closes a `Coalesce` handle's timing handle
-directly with `Close`, which also cancels its timer. Sharing the scope saves a
-SchedulerKit scope per handle and the TimerKit scope SchedulerKit creates for a
-scope's first timer; the handle's own `Close` is what releases its timing, so
-nothing needed that scope to be the handle's own. A `Derive` handle keeps its
-own SchedulerKit scope.
+`Coalesce` and `Derive` live in `src/parts/EventKit-Coalescing.lua`. The core
+keeps what it needs whether or not the part is loaded:
 
-`findSchedulerKit` remembers the facade the first successful lookup returned
-(Registry hands every compatible revision the same facade table) and does not
-remember a failure, so a SchedulerKit loaded after a refused call is found.
-The per-event path (`onCompositeEvent`) records the key itself instead of
-calling a helper, and `readEventList` drops duplicate names by scanning the
-names kept so far, which the 32-event bound keeps short, instead of building a
-second lookup table.
+- the shared metatables and method tables (`compositeMetatables`,
+  `compositePrototypes`), created by the core so a part another addon loads
+  finds them;
+- `closeCompositeHandle`, because a scope sweep releases handles: it
+  disconnects the handle's event connections, unlinks it from its scope,
+  closes a SchedulerKit timing handle or scope when one is present, cancels a
+  TimerKit timer when one is present and empties the collected set, and
+  disconnects `OnChange` listeners. `state.composites.close` is always the
+  core's;
+- the part interface: `_state.parts` (part name to `{ revision = n }`),
+  `_state.helpers` (the core functions the part calls: validation, channels,
+  scope links, `closeCompositeHandle`, error reporting), overwritten by every
+  core revision that loads, and `_state.partInterface` (1);
+- the stubs for the four part members, installed only while
+  `parts.Coalescing` is absent, so a core that upgrades after the part loaded
+  leaves the part's members alone;
+- while the part is absent, `composites.onEvent`, `recompute` and `wake` are
+  `closeUnservedComposite`: a handle an earlier single-file revision built is
+  closed the first time one of them reaches it, and the first such close is
+  reported once (`unservedCompositeReported`).
+
+A handle times itself one of two ways, told apart by `_timing`:
+
+- **TimerKit** (every handle the part builds without a `lane`): a `Coalesce`
+  handle has sixteen fields (`_kind`, `_closed`, `_byEvent`, `_connections`,
+  the three scope links, `_callback`, `_interval`, `_maxKeys`, `_set`,
+  `_spare`, `_keyCount`, `_timer`, `_delivered`, `_firing`), so its hash part
+  is sixteen slots; `_refused` and the reused `_statsView` are written when
+  first needed. A `Derive` handle has `_delay` (a number, or `false` when it
+  was built without TimerKit and recomputes synchronously), `_timer` and
+  `_lastCall`. Every timer lives in one TimerKit scope,
+  `_state.compositeTimerScope`, created on the first arm (again if it was
+  closed), and runs one shared callback that finds its handle through the
+  timer's user data, checks that the handle still points at that timer, and
+  calls `state.composites.wake`. Arming therefore allocates no closure, and a
+  higher part revision serves timers armed before it loaded.
+- **SchedulerKit** (`_timing` holds a SchedulerKit handle): a handle with a
+  `lane`, timed by SchedulerKit's `Coalesce` in one shared SchedulerKit scope
+  (`_state.coalesceSchedulerScope`), or a handle a revision before 22 built.
+  Every method forwards to `_timing`, as before.
+
+The per-event path (`onCompositeEvent`) records the key itself, inline. The
+TimerKit lookup remembers the facade the first successful `Registry:Find`
+returned and not a failure; the SchedulerKit lookup does the same, and
+`HasPart("Coalescing")` and `HasPart("Lanes")` are asked on every lane call,
+so parts loaded later are seen.
 
 ## Upgrades
+
+Revision 22 keeps schema 10 and adds `parts`, `helpers` and `partInterface`
+to any state that lacks them. The commit installs the stubs and the
+`closeUnservedComposite` entries only while `parts.Coalescing` is absent; the
+part, loading next, replaces them and adopts revision 21's handles, which keep
+their SchedulerKit `_timing`. `closeCompositeHandle` releases both timing
+kinds, so a scope closes every handle whichever revision built it.
 
 Revision 21 moves the state to schema 10 and adds `connectionMetatable`. The
 schema-9 branch of the bootstrap converts every connection of revisions 17 to

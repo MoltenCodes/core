@@ -2,7 +2,7 @@
 
 EventKit API generation 1 provides lazy World of Warcraft event subscriptions with SignalKit API 1's dispatch semantics.
 
-Implementation revision: **20**.
+Implementation revision: **22**. Part `Coalescing`: revision **1**.
 
 EventKit is multi-tenant: one shared instance serves every addon in a WoW session.
 
@@ -14,7 +14,38 @@ Runtime files must be loaded in dependency order:
 Registry.lua
 SignalKit.lua
 EventKit.lua
+parts/EventKit-Coalescing.lua   (optional: Coalesce and Derive)
 ```
+
+### Parts
+
+EventKit is a core and one optional part
+([ADR 0001](../../../docs/decisions/0001-kit-core-and-parts.md)). The core is
+every subscription, scope and limit. The **Coalescing** part,
+`parts/EventKit-Coalescing.lua`, adds [`Coalesce` and `Derive`](#coalescing-events);
+it loads after the core, and it needs TimerKit to time them (and SchedulerKit,
+with its Coalescing and Lanes parts, only for a `lane`). `python3 -m
+tooling.package.embeds eventKit/Coalescing` prints the lines for an
+`embeds.xml`.
+
+Without the part the four members stay on the facade and the scope prototype,
+so every embedded copy's surface check still accepts them, and raise at the
+caller's line with the file to embed:
+
+```text
+EventKit:Coalesce is in EventKit's Coalescing part, which is not loaded: add eventKit\parts\EventKit-Coalescing.lua to embeds.xml after eventKit\EventKit.lua
+```
+
+(`EventKit:Derive`, `EventKit.Scope:Coalesce` and `EventKit.Scope:Derive` the
+same way). `EventKit:HasPart(name)` answers whether a part is installed in the
+session (`EventKit:HasPart("Coalescing")`); code that uses a part optionally
+asks it, because a stub satisfies `type(EventKit.Coalesce) == "function"`. A
+name that is not a string raises `EventKit:HasPart name must be a part name
+string`.
+
+A part loaded without its core raises `MoltenCodes EventKit part Coalescing
+requires EventKit API 1 to be loaded first`. Two addons may embed different
+revisions of the part; the highest serves both, as for the core.
 
 Portable WoW code should resolve the package through Registry:
 
@@ -26,7 +57,7 @@ EventKit does not rely on `require()` at runtime.
 
 The facade carries two read-only constants: `EventKit.API`, the API generation
 (`1`), and `EventKit.REVISION`, the implementation revision of the copy that
-is active in the session (`21` for this one). A newer embedded copy replaces
+is active in the session (`22` for this one). A newer embedded copy replaces
 `REVISION` when it upgrades the facade in place. Loading errors are listed
 under [Error messages](#error-messages).
 
@@ -430,24 +461,37 @@ package-level one does, and a spec guards that it allocates nothing per event.
 
 ## Coalescing events
 
-`Coalesce` and `Derive` are the event half of the framework's coalescing
-family. The timing half — `Debounce`, `Coalesce`, `Watch` and lanes — lives in
-SchedulerKit, and the family is documented once, in SchedulerKit's
-[`docs/API.md`](../../schedulerKit/docs/API.md#coalescing-and-lanes). EventKit
-supplies the subscriptions; SchedulerKit supplies when things run.
+`Coalesce` and `Derive` are the [Coalescing part](#parts). They are the event
+half of the framework's coalescing family, whose other half (`Debounce`,
+`Coalesce`, `Watch` and lanes for any code) is SchedulerKit's
+([`docs/API.md`](../../schedulerKit/docs/API.md#coalescing-and-lanes)). Since
+revision 22 they time themselves on TimerKit, with the rules below, which are
+the ones SchedulerKit documents for its own `Coalesce` and `Debounce`; only a
+`lane` goes through SchedulerKit.
 
-### SchedulerKit is optional
+### TimerKit is optional
 
-EventKit does not depend on SchedulerKit: coalescing is the one feature that
-needs a scheduler, and requiring it would triple EventKit's footprint for every
-addon that only wants events. Both methods find
-SchedulerKit API 1 through `Registry:Find` **when they are called**, so it may
-load after EventKit.
+EventKit does not depend on TimerKit or SchedulerKit. The part finds TimerKit
+API 1 through `Registry:Find` **when a method is called**, so it may load after
+EventKit, and remembers it once found. SchedulerKit API 1 is looked up only for
+a `lane`.
 
-| | With SchedulerKit | Without it |
+| | With TimerKit | Without it |
 |---|---|---|
-| `Coalesce` | One callback per interval. | Refused at the caller: `EventKit:Coalesce requires SchedulerKit API 1, which is not available (absent)`. Nothing is registered. |
-| `Derive` | Recompute debounced, by default to the next frame. | Recompute synchronously on every event. It still works; it just does not coalesce. |
+| `Coalesce` | One callback per interval. | Refused at the caller: `EventKit:Coalesce requires TimerKit API 1, which is not available (absent)`. Nothing is registered. |
+| `Coalesce` with `lane` | Timed by SchedulerKit's `Coalesce`, which needs SchedulerKit with its Coalescing and Lanes parts. | The same: TimerKit is not used. |
+| `Derive` | Recompute after a quiet period, by default the next frame. | Recompute synchronously on every event. It still works; it just does not coalesce. |
+
+A `lane` without SchedulerKit is refused with `<Method> requires SchedulerKit
+API 1, which is not available (<reason>)`; with a SchedulerKit whose
+Coalescing or Lanes part is not loaded, with `<Method> with a lane needs
+SchedulerKit's Lanes part, which is not loaded: add
+schedulerKit\parts\SchedulerKit-Lanes.lua to embeds.xml after
+schedulerKit\SchedulerKit.lua` (or `Coalescing`, with its file).
+
+Before revision 22 the table read "SchedulerKit is optional": `Coalesce` was
+refused and `Derive` recomputed synchronously whenever SchedulerKit was
+absent, even with TimerKit loaded.
 
 ### `EventKit:Coalesce(events, intervalSeconds, callback[, options])`
 
@@ -471,27 +515,36 @@ end, { units = { "player", "target" } })
 |---|---|
 | `byEvent` | Key the set by event name instead of the first payload argument. |
 | `units` | One or two unit tokens: the events are registered with `ConnectUnit` semantics, including its two-token limit. |
-| `maxKeys` | Distinct keys one interval may hold; SchedulerKit's default is 256. Past it, new keys are refused and counted. |
-| `lane` | A SchedulerKit lane every delivery goes through. |
+| `maxKeys` | Distinct keys one interval may hold; default **256**. Past it, a new key is refused and counted; a key already in the set is still updated. |
+| `lane` | A SchedulerKit lane every delivery goes through (SchedulerKit's `Coalesce` then times the handle). |
 
 - Every value in the set is `true`. An event whose first argument is `nil`
   (or NaN, or a [secret value](#secret-values)) is keyed by its event name, so
   `BAG_UPDATE_DELAYED` still counts.
-- **The set is reused.** Without a lane it is emptied as soon as the callback
-  returns; delivered through a lane it lives until the lane job reaches a
-  terminal state, across retries, and is emptied then. Do not keep it; copy
-  what you need.
+- **One timer per burst.** The first key arms one TimerKit timer for
+  `intervalSeconds`; later keys in the interval only join the set. An
+  interval of `0` means the next frame.
+- **The set is reused.** It is one of two tables the handle swaps at every
+  delivery. Without a lane it is emptied as soon as the callback returns;
+  delivered through a lane it lives until the lane job reaches a terminal
+  state, across retries, and is emptied then. Do not keep it; copy what you
+  need. Keys recorded while the callback runs go into the other table and
+  arrive with the next interval.
+- If TimerKit cannot arm the timer on the first key, the failure is raised to
+  that event's dispatch, which reports it through the listener isolation; the
+  key stays collected, and the next event arms the timer again (or `Flush()`
+  delivers it).
 - A raising callback is reported through the host error handler, as any
-  listener is.
+  listener is; the next interval delivers as usual.
 
 The handle:
 
 | Method | Purpose |
 |---|---|
-| `Flush()` | Deliver now; `false` when nothing was collected, or `false, "deferred"` / `false, "dropped"` when a lane did not take the delivery. |
+| `Flush()` | Deliver now and cancel the interval's timer; `false` when nothing was collected or when called from inside the handle's own callback, or `false, "deferred"` / `false, "dropped"` when a lane did not take the delivery. |
 | `IsPending()` | Whether payloads wait for delivery. |
-| `GetStats()` | SchedulerKit's `{ keys, refused, delivered, deferred, dropped }`, in a reused table. |
-| `Close()` | Unregister the events, drop what was collected, leave the scope. Terminal; `false` if already closed. |
+| `GetStats()` | `{ keys, refused, delivered, deferred, dropped }`, in one table reused by every call. `deferred` and `dropped` count only lane deliveries. |
+| `Close()` | Unregister the events, drop what was collected, cancel the timer, leave the scope. Terminal; `false` if already closed. A closed handle still answers `IsPending` (`false`) and `GetStats`. |
 | `IsClosed()` | Whether the handle is closed. |
 
 ### `EventKit:Derive(events, compute[, options])`
@@ -510,9 +563,21 @@ print(freeSlots:Get())
 
 | Option | Meaning |
 |---|---|
-| `delaySeconds` | Quiet period before recomputing; `0`, the default, is the next frame. Uses SchedulerKit's `Debounce`. |
+| `delaySeconds` | Quiet period before recomputing; `0`, the default, is the next frame. |
 | `equals` | `fun(previous, current): boolean` deciding whether a new value is the same; `==` when omitted. |
 | `units` | One or two unit tokens, as for `Coalesce`. |
+
+**The quiet period.** Each event (or `Invalidate()`) restarts it by recording
+the time on `GetTimePreciseSec`, the clock TimerKit's deadlines use. The first
+call of a burst arms one timer for `delaySeconds`; a call inside the window
+does not re-arm it. When the timer wakes before the burst has been quiet for
+`delaySeconds`, it re-arms once for the remainder, never longer than the delay
+itself; a timer that wakes within one millisecond of its due time counts as
+due. On a host without `GetTimePreciseSec` the recompute runs when the timer
+wakes. If TimerKit cannot arm the timer on the first call of a burst, the
+failure is raised to that caller (the event's dispatch reports it, or
+`Invalidate()` raises it) and nothing stays pending. Whether a handle uses
+TimerKit is decided when it is created.
 
 | Method | Purpose |
 |---|---|
@@ -535,30 +600,31 @@ answer cannot be tested as a boolean, so it is never read as "equal"
 
 `scope:Coalesce` and `scope:Derive` put the handle into the scope. The handle
 counts as **one** member in `GetActiveCount()`; `DisconnectAll()` and `Close()`
-release it with everything it owns — its event registrations and its
-SchedulerKit timing handle — and closing a scope during a
-dispatch defers that, as for any connection. The handle's own event
+release it with everything it owns — its event registrations and its timer
+(or, for a lane, its SchedulerKit timing handle) — and closing a scope during
+a dispatch defers that, as for any connection. The core closes handles, so a
+scope releases them whether or not the part is loaded. The handle's own event
 connections are internal and belong to no scope. A `Derive` whose `compute`
 closes the scope it is being created in is refused with `EventKit.Scope:Derive
 cannot connect in a closed scope` and leaves nothing registered.
 
-The timing handles of `Coalesce` handles live in one SchedulerKit scope private
-to EventKit (since revision 18; before, each handle created a scope of its
-own), and each `Derive` handle creates its own. Neither is SchedulerKit's
-package-level scope, so closing that from elsewhere cannot silently stop a
-handle; a `Derive` whose timing handle is closed anyway falls back to
-recomputing synchronously.
+The timers live in one TimerKit scope private to the part, created with the
+first timer and created again if it was ever closed; it is not TimerKit's
+package-level scope, so closing that from elsewhere cannot stop a handle. Lane
+handles keep their SchedulerKit timing in one SchedulerKit scope private to
+EventKit, as since revision 18.
 
 ### Cost
 
-The per-event path is one isolated listener call and one table write into a
-reused set: a spec guards that steady-state events allocate nothing. Creating a
-`Coalesce` handle allocates its record, its event list, one closure, the
-SchedulerKit timing handle and the event connections: about 2 KB for two events
-on Lua 5.1 (3.7 KB before revision 18, when each handle also had a SchedulerKit
-scope, and a TimerKit scope once its timer first armed). SchedulerKit is looked
-up through `Registry:Find` until it is found and not again afterwards. Creating
-a `Derive` handle also allocates its own SchedulerKit scope.
+The per-event path is one isolated listener call, one table write into a
+reused set and, at the first key of an interval, one TimerKit timer: a spec
+guards that steady-state events allocate nothing. Creating and closing a
+`Coalesce` handle for two events allocates about 1.8 KB on Lua 5.1, and a live
+one holds about 1.2 KB (its record of 16 fields, two sets, its event list, one
+closure and its event connections), with no SchedulerKit handle. TimerKit is
+looked up through `Registry:Find` until it is found and not again afterwards.
+The Coalescing part itself holds about 42 KB resident when loaded; an addon
+that does not embed it pays nothing for it.
 
 ## Connection API
 
@@ -800,7 +866,9 @@ listed under [Secret values](#secret-values).
 | a connecting scope method, `Coalesce` or `Derive` on a closed scope | `<Method> cannot connect in a closed scope` |
 | `connection:Disconnect()`, `connection:IsConnected()` without a handle | `EventKit:Disconnect must be called on a connection handle; use connection:Disconnect()`; the same for `IsConnected` |
 | `Coalesce`, `Derive` | `<Method> events must be an event name or a non-empty array of them`; `<Method> events must contain only non-empty strings`; `<Method> accepts at most 32 distinct events`; `<Method> options must be a table`; `<Method> options contains unknown field "<field>"` (the first unknown field in sorted order; a key that is not a string, number or boolean is named by its type, `"<table>"`, and its `__tostring` never runs) |
-| `Coalesce` | `<Method> intervalSeconds must be a finite number greater than or equal to zero`; `<Method> byEvent must be a boolean`; `<Method> requires SchedulerKit API 1, which is not available (<reason>)`, with Registry's `Find` reason; `<Method>: <SchedulerKit's refusal>` for a `maxKeys` or `lane` option SchedulerKit refuses, its position removed |
+| `Coalesce` | `<Method> intervalSeconds must be a finite number greater than or equal to zero`; `<Method> byEvent must be a boolean`; `<Method> requires TimerKit API 1, which is not available (<reason>)`, with Registry's `Find` reason; `<Method>: SchedulerKit.Scope:Coalesce maxKeys must be a finite positive integer` (or `... must not be a secret value`), the wording SchedulerKit gave it before revision 22, kept; with a `lane`: `<Method> requires SchedulerKit API 1, which is not available (<reason>)`, `<Method> with a lane needs SchedulerKit's <Part> part, which is not loaded: add <file> to embeds.xml after schedulerKit\\SchedulerKit.lua`, and `<Method>: <SchedulerKit's refusal>` for a `maxKeys` or `lane` SchedulerKit refuses, its position removed |
+| `Coalesce`, `Derive` and their scope forms without the Coalescing part | `<Method> is in EventKit's Coalescing part, which is not loaded: add eventKit\\parts\\EventKit-Coalescing.lua to embeds.xml after eventKit\\EventKit.lua` |
+| `HasPart` | `EventKit:HasPart name must be a part name string` |
 | `Derive` | `<Method> compute must be a function`; `<Method> delaySeconds must be a finite number greater than or equal to zero`; `<Method> equals must be a function` |
 | a `Coalesce` or `Derive` handle method on something else | `EventKit.CoalesceHandle:<Method> must be called on an EventKit coalesce handle`; `EventKit.DeriveHandle:<Method> must be called on an EventKit derived value` |
 | `OnChange` | `EventKit.DeriveHandle:OnChange callback must be a function`; `EventKit.DeriveHandle:OnChange cannot subscribe to a closed derived value` |
@@ -825,6 +893,22 @@ facade`, `MoltenCodes EventKit requires SignalKit API 1 to be loaded first`,
 ## Embedded copies and upgrades
 
 Registry owns one stable EventKit table for `(eventKit, API 1)`. Compatible higher implementation revisions update that table in place. Existing connection handles resolve methods through a stable shared `Connection` method table; Frames created since revision 2 resolve their dispatcher through `_state`, and revision-1 Frames through the reserved facade fields described under *Reserved fields*. Scopes and `Coalesce`/`Derive` handles are validated by metatables kept in `_state`, and handle listeners resolve their behaviour through it, so handles created by an older copy run the newer code.
+
+Revision 22 splits EventKit into a core and the Coalescing part and keeps
+`_state` at schema 10; it adds the part interface (`parts`, `helpers`,
+`partInterface`). Revision 21 was the last single file. A core of revision 22
+loading over it installs the [stubs](#parts) for `Coalesce` and `Derive`, and
+the Coalescing part, when it loads with the core, replaces them and adopts
+revision 21's live handles: they keep their SchedulerKit timing until they
+close, while handles the part builds use TimerKit. When the part is not
+loaded, the core cannot run that code: such a handle is closed the first time
+an event, its timer or its scope reaches it, and the host error handler is
+told once which file to embed. Revision 21 loaded after a core-only revision
+22 is the lower revision and yields, so its addon gets the stub's error. No
+revision of EventKit has been published, so only development copies can meet
+either case. A part keeps its own revision in `_state.parts`: the highest
+revision of the part serves every addon, and a core upgraded after the part
+loaded leaves the part's members in place and serves it through `helpers`.
 
 Revision 21 moves `_state` to schema 10. Connection handles keep their fields
 in the array part under one metatable in `_state` (`connectionMetatable`).

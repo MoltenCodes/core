@@ -39,13 +39,14 @@ MoltenCodes Test: PASS eventKit.scopes: a scope's DisconnectAll ends its connect
 MoltenCodes Test: PASS eventKit.scopes: a closed scope refuses Connect at the calling line
 MoltenCodes Test: PASS eventKit.scopes: ForAddon with this test addon's name returns one open scope that names the addon
 MoltenCodes Test: PASS eventKit.coalesce: Coalesce delivers two CVar changes inside one 0.25-second interval as one callback keyed by event name
+MoltenCodes Test: PASS eventKit.coalesce: Coalesce without a lane is timed by TimerKit inside the Coalescing part, with no SchedulerKit handle
 MoltenCodes Test: PASS eventKit.coalesce: Derive recomputes after a CVar change and OnChange reports the new and the previous value
 MoltenCodes Test: PASS eventKit.errors: Connect with an event name that is not a string names EventKitSuite.lua at the calling line
 MoltenCodes Test: PASS eventKit.errors: ConnectUnit with three distinct unit tokens is refused at the calling line
 MoltenCodes Test: PASS eventKit.errors: Connect to an event name the client does not know is refused on every attempt, at the calling line where the client can tell, and caches nothing
 MoltenCodes Test: PASS eventKit.combatLog: ConnectCombatLog does what docs/API.md documents for the combat-log reader this client has (every fact is logged)
 MoltenCodes Test: SKIP eventKit.allocation: dispatch allocates nothing per event (allocation guard) -- not measurable here without side effects: EventKit has no public dispatch entry point, and no harmless event can be raised thousands of times without the client's own handlers allocating; packages/eventKit/tests guards it
-MoltenCodes Test: eventKit: 19 passed, 0 failed, 1 skipped, 0 timed out (20 tests)
+MoltenCodes Test: eventKit: 20 passed, 0 failed, 1 skipped, 0 timed out (21 tests)
 MoltenCodes Test: results saved in MoltenCodesTestResults; /reload or log out to write them to disk.
 ```
 
@@ -93,7 +94,7 @@ reuse, because the client never frees a Frame.
 
 | Test | Proves in the real client |
 |---|---|
-| `Registry:Get('eventKit', 1) is the EventKit facade ...` | The facade the client loaded is API 1 and carries `Connect`, `Once`, `ConnectUnit`, `OnceUnit`, `ConnectCombatLog`, `IsCombatLogAvailable`, `CreateScope`, `ForAddon`, `CloseAddonScopes`, `Coalesce`, `Derive`, `SetLimits`, `GetLimits` and the `UNBOUNDED` sentinel. |
+| `Registry:Get('eventKit', 1) is the EventKit facade ...` | The facade the client loaded is API 1 and carries `Connect`, `Once`, `ConnectUnit`, `OnceUnit`, `ConnectCombatLog`, `IsCombatLogAvailable`, `CreateScope`, `ForAddon`, `CloseAddonScopes`, `Coalesce`, `Derive`, `HasPart`, `SetLimits`, `GetLimits` and the `UNBOUNDED` sentinel. |
 | `the installed EventKit carries the revision ...` | Registry's selected revision and the facade's `REVISION` are both the committed manifest's, not an older or newer embedded copy. |
 | `a C_CVar.SetCVar change reaches two Connect listeners ...` | A CVAR_UPDATE the client raises reaches both listeners in connection order, with the event name first, then the CVar name and the value that was written. The log says whether it arrived before `SetCVar` returned. |
 | `a method-name Connect calls the receiver's method ...` | A real CVar change reaches `receiver:OnProbe("CVAR_UPDATE", ...)` connected with `Connect(event, receiver, "OnProbe")`; after the method is replaced on the receiver, the next change runs the replacement, so the method is looked up at every delivery. |
@@ -107,6 +108,7 @@ reuse, because the client never frees a Frame.
 | `a closed scope refuses Connect at the calling line` | The closed-scope error names this file at the calling line. |
 | `ForAddon with this test addon's name ...` | `ForAddon` returns the same open scope every time, naming this addon, and `DisconnectAll` empties it. |
 | `Coalesce delivers two CVar changes ...` | Two real events inside one interval produce one callback holding `CVAR_UPDATE` alone, and no second callback follows within half a second. |
+| `Coalesce without a lane is timed by TimerKit ...` | With EventKit's Coalescing part and TimerKit in the bundle, `HasPart("Coalescing")` answers `true`, the handle holds no SchedulerKit timing handle, and two real CVar changes are delivered once. The log says whether SchedulerKit was loaded; the result must not depend on it. |
 | `Derive recomputes after a CVar change ...` | The derived value follows the CVar within three seconds and `OnChange` reports the new and the previous value once. |
 | `Connect with an event name that is not a string ...` | The argument error names this file at the calling line. |
 | `ConnectUnit with three distinct unit tokens ...` | The two-slot refusal names this file at the calling line, with the documented message. |
@@ -173,9 +175,9 @@ chat line is the same `PASS`.
 
 | Client | Totals line | SKIP lines |
 |---|---|---|
-| Retail (`_retail_`) | `MoltenCodes Test: eventKit: 19 passed, 0 failed, 1 skipped, 0 timed out (20 tests)` | the allocation line above |
-| Classic Era (`_classic_era_`) | `MoltenCodes Test: eventKit: 19 passed, 0 failed, 1 skipped, 0 timed out (20 tests)` | same as Retail |
-| Mists of Pandaria Classic (`_classic_`) | `MoltenCodes Test: eventKit: 19 passed, 0 failed, 1 skipped, 0 timed out (20 tests)` | same as Retail |
+| Retail (`_retail_`) | `MoltenCodes Test: eventKit: 20 passed, 0 failed, 1 skipped, 0 timed out (21 tests)` | the allocation line above |
+| Classic Era (`_classic_era_`) | `MoltenCodes Test: eventKit: 20 passed, 0 failed, 1 skipped, 0 timed out (21 tests)` | same as Retail |
+| Mists of Pandaria Classic (`_classic_`) | `MoltenCodes Test: eventKit: 20 passed, 0 failed, 1 skipped, 0 timed out (21 tests)` | same as Retail |
 
 No EventKit test needs combat, a group, a second character or another addon,
 so the package has no combat suites. The combat-log reader on the Classic
@@ -185,7 +187,7 @@ that would need combat nearby.
 ## What counts as unexpected
 
 - Any `FAIL` or `TIMEOUT` line, any `SKIP` other than the allocation one, or a
-  totals line other than `19 passed, 0 failed, 1 skipped, 0 timed out (20 tests)`,
+  totals line other than `20 passed, 0 failed, 1 skipped, 0 timed out (21 tests)`,
   on any of the three clients.
 - No login line, or `Expected.lua is missing`: the harness or the installer did
   not run as intended.

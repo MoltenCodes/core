@@ -7,7 +7,7 @@ local function fireLatest()
   return Scheduled.FireNative(#Scheduled.NativeTimers())
 end
 
----Copy a delivered set, which SchedulerKit wipes as soon as the callback returns.
+---Copy a delivered set, which is emptied as soon as the callback returns.
 local function copy(set)
   local result = {}
   for key, value in pairs(set) do
@@ -248,50 +248,64 @@ describe("EventKit Coalesce", function()
   end)
 end)
 
-describe("EventKit Coalesce without SchedulerKit", function()
+describe("EventKit Coalesce without TimerKit", function()
   local EventKit
   before_each(function()
     EventKit = TestEnv.NewPackage()
+    TestEnv.LoadCoalescing()
   end)
   after_each(TestEnv.Reset)
 
   it("refuses at the caller's line and registers nothing", function()
     expectErrorAtThisSpec(
-      "EventKit:Coalesce requires SchedulerKit API 1, which is not available (absent)",
+      "EventKit:Coalesce requires TimerKit API 1, which is not available (absent)",
       function()
         EventKit:Coalesce("UNIT_HEALTH", 1, function() end)
       end
     )
     local scope = EventKit:CreateScope()
-    expectErrorAtThisSpec("EventKit.Scope:Coalesce requires SchedulerKit API 1", function()
+    expectErrorAtThisSpec("EventKit.Scope:Coalesce requires TimerKit API 1", function()
       scope:Coalesce("UNIT_HEALTH", 1, function() end)
     end)
     assert.are.equal(0, #TestEnv.Frames())
     assert.are.equal(0, scope:GetActiveCount())
   end)
+
+  it("still asks for SchedulerKit when a lane is given", function()
+    expectErrorAtThisSpec(
+      "EventKit:Coalesce requires SchedulerKit API 1, which is not available (absent)",
+      function()
+        EventKit:Coalesce("UNIT_HEALTH", 1, function() end, { lane = {} })
+      end
+    )
+    assert.are.equal(0, #TestEnv.Frames())
+  end)
 end)
 
 describe("EventKit Coalesce handle cost", function()
-  local EventKit, SchedulerKit
+  local EventKit
   before_each(function()
-    EventKit, SchedulerKit = Scheduled.NewEventKit()
+    EventKit = Scheduled.NewEventKit()
   end)
   after_each(Scheduled.Reset)
 
-  it("keeps every handle's timing in one shared SchedulerKit scope", function()
+  it("keeps every handle's timer in the part's one TimerKit scope", function()
     local first = EventKit:Coalesce("UNIT_HEALTH", 0.5, function() end)
     local second = EventKit:CreateScope():Coalesce("UNIT_AURA", 0.5, function() end)
+    assert.is_nil(rawget(EventKit._state, "compositeTimerScope"))
 
-    local shared = rawget(EventKit._state, "coalesceSchedulerScope")
+    Scheduled.Emit("UNIT_HEALTH", "player")
+    Scheduled.Emit("UNIT_AURA", "player")
+    local shared = rawget(EventKit._state, "compositeTimerScope")
     assert.are.equal("table", type(shared))
-    assert.is_false(shared:IsClosed())
+    assert.are.equal(2, shared:GetActiveCount())
     assert.is_nil(rawget(first, "_schedulerScope"))
-    assert.is_nil(rawget(second, "_schedulerScope"))
-    assert.are.equal(shared, rawget(rawget(first, "_timing"), "_scope"))
-    assert.are.equal(shared, rawget(rawget(second, "_timing"), "_scope"))
+    assert.is_nil(rawget(first, "_timing"))
+    assert.is_nil(rawget(second, "_timing"))
+    assert.are.equal(first, rawget(first, "_timer"):GetUserData())
   end)
 
-  it("closes only its own timing handle and cancels its pending delivery", function()
+  it("closes only its own timer and cancels its pending delivery", function()
     local closedDeliveries, openDeliveries = 0, 0
     local closing = EventKit:Coalesce("UNIT_HEALTH", 0.5, function()
       closedDeliveries = closedDeliveries + 1
@@ -302,8 +316,9 @@ describe("EventKit Coalesce handle cost", function()
     Scheduled.Emit("UNIT_HEALTH", "player")
 
     assert.is_true(closing:Close())
-    assert.is_true(rawget(closing, "_timing"):IsClosed())
+    assert.is_false(rawget(closing, "_timer"))
     assert.is_false(closing:IsPending())
+    assert.are.equal(0, closing:GetStats().keys)
     assert.is_true(open:IsPending())
     for index = 1, #Scheduled.NativeTimers() do
       Scheduled.FireNative(index)
@@ -313,24 +328,26 @@ describe("EventKit Coalesce handle cost", function()
     assert.is_false(closing:Close())
   end)
 
-  it("replaces a shared scope that was closed", function()
+  it("replaces a TimerKit scope that was closed", function()
     EventKit:Coalesce("UNIT_HEALTH", 0.5, function() end)
-    local shared = rawget(EventKit._state, "coalesceSchedulerScope")
+    Scheduled.Emit("UNIT_HEALTH", "player")
+    local shared = rawget(EventKit._state, "compositeTimerScope")
     shared:Close()
 
     local deliveries = 0
     local handle = EventKit:Coalesce("UNIT_AURA", 0.5, function()
       deliveries = deliveries + 1
     end)
-    local replacement = rawget(EventKit._state, "coalesceSchedulerScope")
-    assert.are_not.equal(shared, replacement)
     Scheduled.Emit("UNIT_AURA", "player")
+    local replacement = rawget(EventKit._state, "compositeTimerScope")
+    assert.are_not.equal(shared, replacement)
     fireLatest()
     assert.are.equal(1, deliveries)
     assert.is_true(handle:Close())
   end)
 
   it("still closes the SchedulerKit scope of a handle an older revision built", function()
+    local SchedulerKit = require("SchedulerKit")
     local handle = EventKit:Coalesce("UNIT_HEALTH", 0.5, function() end)
     -- Revisions before 18 gave each handle a SchedulerKit scope of its own.
     local ownScope = SchedulerKit:CreateScope()
@@ -342,7 +359,7 @@ describe("EventKit Coalesce handle cost", function()
     assert.is_false(rawget(handle, "_schedulerScope"))
   end)
 
-  it("looks SchedulerKit up once and reuses what it found", function()
+  it("looks TimerKit up once and reuses what it found", function()
     EventKit:Coalesce("UNIT_HEALTH", 0.5, function() end):Close()
     local Registry = require("Registry")
     local find = Registry.Find
@@ -353,6 +370,7 @@ describe("EventKit Coalesce handle cost", function()
     end
     local ok, failure = pcall(function()
       EventKit:Coalesce("UNIT_HEALTH", 0.5, function() end):Close()
+      EventKit:Derive("UNIT_HEALTH", function() end):Close()
     end)
     Registry.Find = find
     assert.is_true(ok, tostring(failure))
@@ -403,20 +421,20 @@ describe("EventKit Coalesce handle cost", function()
   end)
 end)
 
-describe("EventKit Coalesce with SchedulerKit loaded later", function()
+describe("EventKit Coalesce with TimerKit loaded later", function()
   after_each(Scheduled.Reset)
 
-  it("finds SchedulerKit once it loads after a refused call", function()
+  it("finds TimerKit once it loads after a refused call", function()
     Scheduled.Reset()
     Scheduled.InstallWowApi()
     require("Registry")
     require("SignalKit")
     local EventKit = require("EventKit")
+    TestEnv.LoadCoalescing()
     local ok = pcall(EventKit.Coalesce, EventKit, "UNIT_HEALTH", 0.5, function() end)
     assert.is_false(ok)
 
     require("TimerKit")
-    require("SchedulerKit")
     local handle = EventKit:Coalesce("UNIT_HEALTH", 0.5, function() end)
     assert.is_false(handle:IsClosed())
     assert.is_true(handle:Close())
@@ -431,8 +449,8 @@ describe("EventKit Coalesce across an upgrade", function()
     Scheduled.InstallWowApi()
     require("Registry")
     require("SignalKit")
-    local legacy = TestEnv.LoadSourceAtRevision(17)
     require("TimerKit")
+    local legacy = TestEnv.LoadSourceAtRevision(17)
     local SchedulerKit = require("SchedulerKit")
     local deliveries = 0
     local handle = legacy:Coalesce("UNIT_HEALTH", 0.5, function()
@@ -444,8 +462,9 @@ describe("EventKit Coalesce across an upgrade", function()
 
     package.loaded["EventKit"] = nil
     local EventKit = require("EventKit")
+    TestEnv.LoadCoalescing()
     assert.are.equal(legacy, EventKit)
-    assert.are.equal(21, EventKit.REVISION)
+    assert.are.equal(22, EventKit.REVISION)
 
     Scheduled.Emit("UNIT_HEALTH", "player")
     fireLatest()

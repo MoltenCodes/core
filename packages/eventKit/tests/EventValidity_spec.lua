@@ -312,6 +312,7 @@ describe("EventKit event-name validation", function()
     local EventKit
     before_each(function()
       EventKit = TestEnv.NewPackage()
+      TestEnv.LoadCoalescing()
     end)
 
     it("leaves an unknown name to the host's registration, as before", function()

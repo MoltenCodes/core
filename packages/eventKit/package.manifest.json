@@ -2,10 +2,11 @@
   "name": "eventKit",
   "displayName": "EventKit",
   "description": "A lazy World of Warcraft event bridge built on MoltenCodes SignalKit.",
-  "version": "0.10.0",
+  "summary": "Lazy game-event subscriptions on SignalKit, unit-event filtering and combat-log routing by sub-event.",
+  "version": "0.11.0",
   "license": "MIT",
   "api": 1,
-  "revision": 21,
+  "revision": 22,
   "dependencies": {
     "registry": {
       "api": 2
@@ -17,9 +18,25 @@
   "optionalDependencies": {
     "lifecycleKit": {
       "api": 1
-    },
-    "schedulerKit": {
-      "api": 1
+    }
+  },
+  "parts": {
+    "Coalescing": {
+      "description": "Coalesce and Derive: events collected into one callback per interval, and values recomputed after a quiet period, timed by TimerKit (a lane by SchedulerKit).",
+      "revision": 1,
+      "dependencies": {},
+      "optionalDependencies": {
+        "schedulerKit": {
+          "api": 1,
+          "parts": [
+            "Coalescing",
+            "Lanes"
+          ]
+        },
+        "timerKit": {
+          "api": 1
+        }
+      }
     }
   }
 }

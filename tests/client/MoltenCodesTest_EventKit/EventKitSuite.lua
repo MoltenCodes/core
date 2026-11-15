@@ -14,7 +14,8 @@
 --     `GetFramesRegisteredForEvent` and `Frame:IsEventRegistered`;
 --   * listener error isolation through the client's real `securecallfunction`
 --     and error handler;
---   * scopes, `Coalesce` and `Derive` (SchedulerKit is in the bundle);
+--   * scopes, and `Coalesce` and `Derive` from the Coalescing part, timed by
+--     TimerKit (both are in the bundle);
 --   * argument errors pointing at this file as the client names it, including
 --     EventKit's refusal of an event name the client does not know (checked
 --     with `C_EventUtils.IsEventValid`, or left to the client's `RegisterEvent`
@@ -55,7 +56,7 @@ end
 
 local REGISTRY_API = 2
 local EVENT_KIT_API = 1
-local SCHEDULER_KIT_API = 1
+local TIMER_KIT_API = 1
 local PACKAGE_ID = "eventKit"
 
 --- The CVar the tests change to make the client raise CVAR_UPDATE. It is
@@ -126,6 +127,7 @@ local FACADE_METHODS = {
   "CloseAddonScopes",
   "Coalesce",
   "Derive",
+  "HasPart",
   "SetLimits",
   "GetLimits",
 }
@@ -176,9 +178,13 @@ local EventKit = EventKitOrNil
 local getFramesRegisteredForEvent = readHost("GetFramesRegisteredForEvent")
 local REGISTRATIONS_READABLE = type(getFramesRegisteredForEvent) == "function"
 
---- Read once at load: `Coalesce` and `Derive` find SchedulerKit when they are
---- called, and the coalesce suite registers its tests as skipped without it.
-local SCHEDULER_KIT_LOADED = type(Registry:Get("schedulerKit", SCHEDULER_KIT_API)) ~= "nil"
+--- Read once at load: `Coalesce` and `Derive` are EventKit's Coalescing part,
+--- timed by TimerKit, which they find when they are called. The coalesce suite
+--- registers its tests as skipped without either.
+local hasPart = rawget(EventKit, "HasPart")
+local COALESCING_READY = type(hasPart) == "function"
+  and hasPart(EventKit, "Coalescing") == true
+  and type(Registry:Get("timerKit", TIMER_KIT_API)) ~= "nil"
 
 -- Helpers ---------------------------------------------------------------------------
 
@@ -1005,16 +1011,16 @@ scopes:Test(
 
 local coalesce = newSuite("coalesce")
 
---- Why the coalesce tests are skipped without SchedulerKit.
-local COALESCE_SKIP_REASON =
-  "SchedulerKit API 1 is not loaded; Coalesce and Derive were not exercised"
+--- Why the coalesce tests are skipped without the part or TimerKit.
+local COALESCE_SKIP_REASON = "EventKit's Coalescing part or TimerKit API 1 is not loaded;"
+  .. " Coalesce and Derive were not exercised"
 
----Register `body` as a test when SchedulerKit is loaded, and as a skipped test
----naming why otherwise.
+---Register `body` as a test when the Coalescing part and TimerKit are loaded,
+---and as a skipped test naming why otherwise.
 ---@param name string
 ---@param body fun(ctx: TestKit.Context)
 local function coalesceTest(name, body)
-  if SCHEDULER_KIT_LOADED then
+  if COALESCING_READY then
     coalesce:Test(name, body)
   else
     coalesce:Skip(name, COALESCE_SKIP_REASON)
@@ -1048,6 +1054,25 @@ coalesceTest(
     ctx:Log(("deliveries: %d"):format(#deliveries))
     ctx:Expect(second):ToBe(false)
     ctx:Expect(deliveries[1]):ToEqual({ CVAR_EVENT })
+  end
+)
+
+coalesceTest(
+  "Coalesce without a lane is timed by TimerKit inside the Coalescing part, with no SchedulerKit handle",
+  function(ctx)
+    local handle = EventKit:Coalesce(CVAR_EVENT, COALESCE_INTERVAL_SECONDS, ignore)
+    trackClosable(handle)
+    ctx:Log(("SchedulerKit loaded: %s"):format(tostring(Registry:Get("schedulerKit", 1) ~= nil)))
+    ctx:Expect(EventKit:HasPart("Coalescing")):ToBe(true)
+    ctx:Expect(rawget(handle, "_timing")):ToBe(nil)
+    flipProbeCVar(ctx)
+    flipProbeCVar(ctx)
+    ctx
+      :Expect(waitUntil(ctx, function()
+        return not handle:IsPending()
+      end, LOCAL_EVENT_TIMEOUT_SECONDS))
+      :ToBe(true)
+    ctx:Expect(handle:GetStats().delivered):ToBe(1)
   end
 )
 

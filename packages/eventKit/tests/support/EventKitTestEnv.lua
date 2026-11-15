@@ -3,13 +3,17 @@
 --- The World of Warcraft stubs, the `package.loaded` bookkeeping and the error
 --- capture live in the shared `FrameworkTestEnv` fixture at `tests/support/`.
 --- What stays here is this package's own module load order, and a second
---- environment for the specs that need SchedulerKit.
+--- environment for the specs that need the Coalescing part and its timers.
 ---
---- SchedulerKit is an optional partner of EventKit: `Coalesce` and `Derive`
---- find it through `Registry:Find` when they are called. The manifest declares
---- it under `optionalDependencies`, so the test runner puts SchedulerKit and
---- the TimerKit it needs on `LUA_PATH` for this suite while the release load
---- order ignores them.
+--- `Coalesce` and `Derive` are EventKit's Coalescing part
+--- (`EventKit-Coalescing`), timed by TimerKit; a `lane` uses SchedulerKit's
+--- `Coalesce`. Both Kits are optional: the part finds them through
+--- `Registry:Find` when it needs them. The manifest declares them under the
+--- part's `optionalDependencies`, so the test runner puts them on `LUA_PATH`
+--- for this suite while the release load order ignores them. `NewPackage`
+--- loads the core alone; `LoadCoalescing` adds the part on top, and the
+--- `Scheduled` environment loads TimerKit, SchedulerKit (with its own parts
+--- when they exist) and the part.
 ---
 --- LifecycleKit is optional too: an addon scope asks it, through
 --- `Registry:Find`, whether it closes the scope at logout. The manifest
@@ -111,11 +115,52 @@ function EventKitTestEnv.InstallWowApi()
   EventKitTestEnv.InstallCombatLogEventInfo()
 end
 
----Reset the shared fixture, unload LifecycleKit and forget the combat-log fake,
----including a `C_CombatLog` namespace a spec installed. The shared fixture does
----not own that global, because only EventKit reads it.
+-- Part modules no environment's chain lists, unloaded by every reset.
+local PART_MODULES = {
+  "EventKit-Coalescing",
+  "SchedulerKit-Coalescing",
+  "SchedulerKit-Lanes",
+  "SchedulerKit-Watch",
+}
+
+---Unload every part module, so the next load runs each part file again.
+local function unloadParts()
+  for index = 1, #PART_MODULES do
+    package.loaded[PART_MODULES[index]] = nil
+  end
+end
+
+---Load EventKit's Coalescing part on top of the core a spec loaded.
+---@return table EventKit
+function EventKitTestEnv.LoadCoalescing()
+  return require("EventKit-Coalescing")
+end
+
+---Load SchedulerKit's Coalescing and Lanes parts when this tree has them. A
+---single-file SchedulerKit has both already, so their absence is no error.
+function EventKitTestEnv.LoadSchedulerLaneParts()
+  for _, moduleName in ipairs({ "SchedulerKit-Coalescing", "SchedulerKit-Lanes" }) do
+    local found = false
+    for template in string.gmatch(package.path, "[^;]+") do
+      local file = io.open((string.gsub(template, "%?", moduleName)), "rb")
+      if file ~= nil then
+        file:close()
+        found = true
+        break
+      end
+    end
+    if found then
+      require(moduleName)
+    end
+  end
+end
+
+---Reset the shared fixture, unload LifecycleKit and the parts and forget the
+---combat-log fake, including a `C_CombatLog` namespace a spec installed. The
+---shared fixture does not own that global, because only EventKit reads it.
 function EventKitTestEnv.Reset()
   resetFixture()
+  unloadParts()
   package.loaded["LifecycleKit"] = nil
   -- selene: allow(global_usage)
   rawset(_G, "C_CombatLog", nil)
@@ -126,7 +171,7 @@ function EventKitTestEnv.Reset()
   eventValidityChecks = 0
 end
 
----Load Registry, SignalKit and EventKit, as `NewPackage` does, on a client
+---Load Registry, SignalKit, EventKit and its Coalescing part on a client
 ---whose `C_EventUtils.IsEventValid` knows exactly `names` (the "present"
 ---profile).
 ---@param names string[] the event names the client knows
@@ -139,7 +184,9 @@ function EventKitTestEnv.NewPackageKnowingEvents(names)
   EventKitTestEnv.InstallEventValidity(names)
   local Registry = require("Registry")
   local SignalKit = require("SignalKit")
-  return require("EventKit"), Registry, SignalKit
+  local EventKit = require("EventKit")
+  EventKitTestEnv.LoadCoalescing()
+  return EventKit, Registry, SignalKit
 end
 
 ---Set what `CombatLogGetCurrentEventInfo()` returns next: exactly these
@@ -171,8 +218,8 @@ function EventKitTestEnv.LoadLifecycleKit()
   return require("LifecycleKit")
 end
 
----An environment that also loads SchedulerKit and its required dependencies,
----for the coalescing specs. The chain is in dependency order; use
+---An environment that also loads TimerKit, SchedulerKit and the Coalescing
+---part, for the coalescing specs. The chain is in dependency order; use
 ---`NewEventKit` to get the two packages the specs use.
 local Scheduled = FrameworkTestEnv.New({
   modules = {
@@ -184,11 +231,23 @@ local Scheduled = FrameworkTestEnv.New({
   },
 })
 
----Load the full chain and return EventKit and SchedulerKit.
+local resetScheduled = Scheduled.Reset
+
+---Reset the chain and unload the parts loaded on top of it.
+function Scheduled.Reset()
+  resetScheduled()
+  unloadParts()
+end
+
+---Load the full chain with SchedulerKit's lane parts and EventKit's
+---Coalescing part, and return EventKit and SchedulerKit.
 ---@return table EventKit
 ---@return table SchedulerKit
 function Scheduled.NewEventKit()
   local SchedulerKit, _, _, EventKit = Scheduled.NewPackage()
+  unloadParts()
+  EventKitTestEnv.LoadSchedulerLaneParts()
+  EventKitTestEnv.LoadCoalescing()
   return EventKit, SchedulerKit
 end
 
@@ -205,33 +264,73 @@ function Scheduled.NewEventKitKnowingEvents(names)
   require("SignalKit")
   local EventKit = require("EventKit")
   require("TimerKit")
-  return EventKit, require("SchedulerKit")
+  local SchedulerKit = require("SchedulerKit")
+  EventKitTestEnv.LoadSchedulerLaneParts()
+  EventKitTestEnv.LoadCoalescing()
+  return EventKit, SchedulerKit
 end
 
 EventKitTestEnv.Scheduled = Scheduled
+
+---An environment with TimerKit and no SchedulerKit, for the specs that show
+---the Coalescing part times itself by TimerKit alone.
+local Timed = FrameworkTestEnv.New({
+  modules = { "Registry", "SignalKit", "EventKit", "TimerKit" },
+})
+
+local resetTimed = Timed.Reset
+
+---Reset the chain and unload the parts loaded on top of it.
+function Timed.Reset()
+  resetTimed()
+  unloadParts()
+end
+
+---Load the chain and the Coalescing part, and return EventKit and TimerKit.
+---@return table EventKit
+---@return table TimerKit
+function Timed.NewEventKit()
+  local TimerKit, _, _, EventKit = Timed.NewPackage()
+  unloadParts()
+  EventKitTestEnv.LoadCoalescing()
+  return EventKit, TimerKit
+end
+
+EventKitTestEnv.Timed = Timed
+
+---Read a module's source from `package.path`.
+---@param moduleName string
+---@return string source
+---@return string path
+local function readModuleSource(moduleName)
+  -- Lua 5.1 has no `package.searchpath`, so walk the templates by hand.
+  for template in string.gmatch(package.path, "[^;]+") do
+    local candidate = string.gsub(template, "%?", moduleName)
+    local file = io.open(candidate, "rb")
+    if file ~= nil then
+      local source = file:read("*a")
+      file:close()
+      return source, candidate
+    end
+  end
+  error("EventKitTestEnv cannot find " .. moduleName .. ".lua on package.path", 3)
+end
 
 ---Run the EventKit source once more as a copy carrying `revision`, the way a
 ---second addon embedding a different copy would. The copy is the current
 ---source with only `IMPLEMENTATION_REVISION` changed, so it stands in for an
 ---older or newer revision whose `_state` schema matches this one.
+---
+---Revisions before 22 were one file with `Coalesce` and `Derive` in it. For
+---such a revision the Coalescing part's source runs right after the copy, and
+---the part interface is then removed from the state, so the copy looks like
+---the single-file revision it stands in for: its members work, and no part is
+---recorded. `coreOnly` skips the part, for a copy of revision 22 or later.
 ---@param revision integer
+---@param coreOnly boolean? load only the core, as a split revision without the part
 ---@return table EventKit the facade the copy returned
-function EventKitTestEnv.LoadSourceAtRevision(revision)
-  -- Lua 5.1 has no `package.searchpath`, so walk the templates by hand.
-  local path, file = nil, nil
-  for template in string.gmatch(package.path, "[^;]+") do
-    local candidate = string.gsub(template, "%?", "EventKit")
-    file = io.open(candidate, "rb")
-    if file ~= nil then
-      path = candidate
-      break
-    end
-  end
-  if file == nil then
-    error("EventKitTestEnv cannot find EventKit.lua on package.path", 2)
-  end
-  local source = file:read("*a")
-  file:close()
+function EventKitTestEnv.LoadSourceAtRevision(revision, coreOnly)
+  local source, path = readModuleSource("EventKit")
 
   local patched, count = source:gsub(
     "local IMPLEMENTATION_REVISION = %d+",
@@ -242,7 +341,21 @@ function EventKitTestEnv.LoadSourceAtRevision(revision)
     error("EventKitTestEnv found no IMPLEMENTATION_REVISION in " .. path, 2)
   end
   local chunk = assert(loadstring(patched, "@" .. path))
-  return chunk()
+  local facade = chunk()
+  if coreOnly == true or revision >= 22 then
+    return facade
+  end
+  local copyState = rawget(facade, "_state")
+  if rawget(facade, "REVISION") ~= revision or type(copyState) ~= "table" then
+    -- Another revision owns the package; this copy yielded.
+    return facade
+  end
+  local partSource, partPath = readModuleSource("EventKit-Coalescing")
+  assert(loadstring(partSource, "@" .. partPath))()
+  rawset(copyState, "parts", nil)
+  rawset(copyState, "helpers", nil)
+  rawset(copyState, "partInterface", nil)
+  return facade
 end
 
 return EventKitTestEnv

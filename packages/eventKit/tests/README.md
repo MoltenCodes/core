@@ -17,8 +17,10 @@ It also covers:
   and failure handling, closing (also during a dispatch, with the deferred
   sweep), caller-line errors, receiver validation, addon scopes and the
   two-step shutdown wiring;
-- `Coalesce`: the payload set, `byEvent` and `nil`-payload keying, unit events, `maxKeys`, `Flush`, scope release (also mid-dispatch), refusal without SchedulerKit, caller-line errors, and an allocation guard;
-- `Derive`: recompute, debounce, `delaySeconds`, `OnChange`, `equals`, `Invalidate`, raising compute and listeners, `Close` (which disconnects the change listeners) and scope release, a compute that closes its own scope, and the synchronous path without SchedulerKit;
+- the Coalescing part (revision 22): its bootstrap (the revision its file carries, the refusal without the core or the part interface, an equal or newer revision left alone, a higher one taking over live handles and timers, a core upgraded after it serving it), the core's stubs at the caller's line with the file to embed, `HasPart`, scopes closing without the part, and the upgrade from the single-file revision 21 (live handles adopted with the part, closed and reported once without it, a scope closing them, revision 21 yielding to a core-only revision 22);
+- the TimerKit timing, with no SchedulerKit loaded: the first key arming one timer, `maxKeys` refusals and counts with its default of 256, the two reused sets, keys recorded during the callback, a zero interval, a timer TimerKit cannot arm keeping the key, `Flush` inside the callback, `GetStats` in one table, a raising callback reported, a stale host callback ignored, the kept `maxKeys` wording; `Derive`'s quiet period re-armed for the remainder, the next-frame default, no clock, a timer TimerKit cannot arm raised to `Invalidate`, close cancelling; and the `lane` path through SchedulerKit with its parts refused by name;
+- `Coalesce`: the payload set, `byEvent` and `nil`-payload keying, unit events, `maxKeys`, `Flush`, scope release (also mid-dispatch), refusal without TimerKit, caller-line errors, and an allocation guard;
+- `Derive`: recompute, debounce, `delaySeconds`, `OnChange`, `equals`, `Invalidate`, raising compute and listeners, `Close` (which disconnects the change listeners) and scope release, a compute that closes its own scope, and the synchronous path without TimerKit;
 - the shared `maxUnitFrames` limit: its default, `SetLimits` raising and
   lowering it without eviction, the refusal of `EventKit.UNBOUNDED` and of
   invalid values at the caller's line, atomic updates, and `GetLimits` copies;
@@ -80,7 +82,7 @@ It also covers:
   installed after load honoured when there was none;
 - the connection receiver test by metatable identity (strings, numbers, a
   foreign table with the prototype as `__index`);
-- in-place upgrade from implementation revision 20 (every reachable
+- in-place upgrade from implementation revision 21 (the single file, in `Parts_spec.lua`), from revision 20 (every reachable
   connection converted to the array layout in place: regular, scoped, scoped
   one-shot, unit, combat-log, addon scope; scope links and one-shot counts
   rebuilt; order kept; an unreachable disconnected handle still answering),
@@ -107,22 +109,30 @@ It also covers:
 | `EventValidity_spec.lua` | Unknown event names refused through `C_EventUtils.IsEventValid`, with the function present and absent. |
 | `LogoutCoverage_spec.lua` | The logout routes, subscription release, scoped `PLAYER_LOGOUT` listeners around the close, re-examination, routes across an upgrade. |
 | `Scope_spec.lua` | Manual and addon scopes, deferred close, `CloseAddonScopes`. |
-| `Coalesce_spec.lua` | `Coalesce`, with and without SchedulerKit, and with SchedulerKit loaded after a refused call; the shared SchedulerKit scope, one lookup, the handle cost, the revision-17 upgrade, and a table option key named by its type without running its `__tostring`. |
-| `Derive_spec.lua` | `Derive`, with and without SchedulerKit. |
+| `Coalesce_spec.lua` | `Coalesce`, with and without TimerKit, and with TimerKit loaded after a refused call; the part's one TimerKit scope, one lookup, the handle cost, the revision-17 upgrade, and a table option key named by its type without running its `__tostring`. |
+| `Derive_spec.lua` | `Derive`, with and without TimerKit. |
+| `Parts_spec.lua` | The Coalescing part's bootstrap and revisions, the core's stubs and `HasPart`, the upgrade from the single-file revision 21 and the yield. |
+| `Timing_spec.lua` | Every TimerKit timing rule of `Coalesce` and `Derive` with no SchedulerKit loaded, and the `lane` path. |
 | `Limits_spec.lua` | `SetLimits`, `GetLimits`, `EventKit.UNBOUNDED`, the `maxUnitFrames` limit, and a table limit key named by its type without running its `__tostring`. |
 | `ListenerStorage_spec.lua` | Listener arrays in and out of a dispatch, the channel pool, handle-only allocation guards (unscoped and scoped handle bounds). |
 | `MethodForm_spec.lua` | The method-name form of the four connecting methods and their scope forms. |
 | `Reopen_spec.lua` | `Scope:Reopen`, including a close and reopen inside a dispatch. |
 | `ProtectedWalk_spec.lua` | When the listener walk is protected, the one-shot count, the depth after a raising release. |
 
-`EventKitTestEnv.LoadSourceAtRevision(revision)` runs the EventKit source again
-with only its revision changed, standing in for another embedded copy whose
-`_state` schema matches.
+`EventKitTestEnv.LoadSourceAtRevision(revision[, coreOnly])` runs the EventKit
+source again with only its revision changed, standing in for another embedded
+copy whose `_state` schema matches. For a revision before 22, the last of
+which was a single file, it also runs the Coalescing part and then removes the
+part interface from the state, so the copy looks like that single file.
 
-`EventKitTestEnv.Scheduled` is a second environment that also loads
-TimerKit and SchedulerKit (LifecycleKit is optional for both and not loaded). The manifest names SchedulerKit under
-`optionalDependencies`, so the runner puts those sources on `LUA_PATH` for this
-suite; the release load order ignores optional dependencies.
+`EventKitTestEnv.NewPackage()` loads the core alone; `LoadCoalescing()` adds
+the part. `EventKitTestEnv.Scheduled` is a second environment that also loads
+TimerKit, SchedulerKit with its Coalescing and Lanes parts, and EventKit's
+part; `EventKitTestEnv.Timed` loads TimerKit and the part without
+SchedulerKit (LifecycleKit is optional for all and not loaded). The part's
+manifest entry names TimerKit and SchedulerKit under `optionalDependencies`,
+so the runner puts those sources on `LUA_PATH` for this suite; the release
+load order ignores optional dependencies.
 
 `EventKitTestEnv.lua` supplies a narrow fake WoW Frame boundary. Production APIs are not added solely for tests.
 
