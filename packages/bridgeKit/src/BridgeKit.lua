@@ -285,6 +285,47 @@ local EXPONENT_BOUND = 2200
 ---@class BridgeKit.DefineOptions: BridgeKit.ConvertOptions
 ---@field db table? The SettingsKit database `bind` paths need.
 
+---The options `OpenAceComm` accepts.
+---@class BridgeKit.AceCommOptions
+---@field priority ("ALERT"|"NORMAL"|"BULK")? Default `"NORMAL"`; fixed per prefix while a channel is open on it.
+---@field wire integer? The wire version; only `1`.
+---@field ambiguate boolean? Default `true`: pass the sender through `Ambiguate(sender, "none")`.
+
+---What `channel:Send` accepts.
+---@class BridgeKit.AceCommSendRequest
+---@field text string The whole text, 1 byte or more, no NUL.
+---@field distribution string As CommKit's `SendRaw` takes it.
+---@field target string? As CommKit's `SendRaw` takes it.
+---@field onProgress function? As CommKit's `SendRaw` takes it.
+---@field onComplete function? As CommKit's `SendRaw` takes it.
+
+---An AceComm-3.0 channel `OpenAceComm` returns.
+---@class BridgeKit.AceCommChannel
+---@field Send fun(self: BridgeKit.AceCommChannel, request: BridgeKit.AceCommSendRequest): table|nil, string?
+---@field Close fun(self: BridgeKit.AceCommChannel): boolean
+---@field IsClosed fun(self: BridgeKit.AceCommChannel): boolean
+---@field GetPrefix fun(self: BridgeKit.AceCommChannel): string
+---@field GetPriority fun(self: BridgeKit.AceCommChannel): "ALERT"|"NORMAL"|"BULK"
+---@field GetWireVersion fun(self: BridgeKit.AceCommChannel): integer
+
+---What `GetStatistics` returns: the AceComm counters since load and the
+---streams held now.
+---@class BridgeKit.Statistics
+---@field aceMessagesSent integer
+---@field acePartsSent integer
+---@field aceMessagesReceived integer
+---@field aceBytesReceived integer
+---@field aceStreamsOpened integer
+---@field aceStreamsCompleted integer
+---@field aceStreamsReplaced integer A new `01` while a stream was held.
+---@field aceStreamsExpired integer
+---@field aceStreamsOversize integer
+---@field aceStreamsRefusedQuota integer
+---@field aceOrphanParts integer `02` or `03` without a stream.
+---@field aceReservedControl integer `05` to `09`.
+---@field openStreams integer
+---@field spoolBytes integer
+
 ---What BridgeKit reproduces of Ace3.
 ---@class BridgeKit.Baseline
 ---@field commit string The Ace3 commit the formats were read from.
@@ -306,8 +347,8 @@ local EXPONENT_BOUND = 2200
 ---@field PreviewAceDB fun(self: BridgeKit, source: table|string, plan: BridgeKit.ImportPlan): BridgeKit.Report, string?
 ---@field ImportAceDB fun(self: BridgeKit, source: table|string, targetName: string, plan: BridgeKit.ImportPlan): BridgeKit.Report|nil, string?, BridgeKit.Report?
 ---@field AceDBMigration fun(self: BridgeKit, plan: BridgeKit.ImportPlan): fun(raw: table)
----@field OpenAceComm fun(self: BridgeKit, scope: table, prefix: string, callback: fun(prefix: string, message: string, distribution: string, sender: string), options: table?): table|nil, string?
----@field GetStatistics fun(self: BridgeKit): table
+---@field OpenAceComm fun(self: BridgeKit, scope: table, prefix: string, callback: fun(prefix: string, message: string, distribution: string, sender: string), options: BridgeKit.AceCommOptions?): BridgeKit.AceCommChannel|nil, string?
+---@field GetStatistics fun(self: BridgeKit): BridgeKit.Statistics
 ---@field AceSerialize fun(self: BridgeKit, ...: any): boolean, string|BridgeKit.WriteReason
 ---@field AceDeserialize fun(self: BridgeKit, text: string): boolean, ...
 ---@field SetLimits fun(self: BridgeKit, limits: BridgeKit.Limits)
@@ -582,8 +623,10 @@ end
 -- limits the call started with and the secret probe. The state lives in
 -- upvalues and the two tables are reused from call to call, as AceSerializer
 -- reuses its piece array; both are emptied after each call so they keep no
--- value alive. Nothing the writer calls can call back into it, so one state
--- serves every call. A token and its data are separate pieces, so writing one
+-- value alive. The only outside code the writer calls is the client's
+-- `issecretvalue`: a call it makes into the writer again is refused (one
+-- state serves one call at a time), and an error it raises still empties the
+-- state before it propagates. A token and its data are separate pieces, so writing one
 -- allocates no joined string. `writeValue` returns `false` and a reason to
 -- unwind; a secret is the reason `"secret"`, which the public method turns
 -- into an error at its caller, because an error raised this deep would point
@@ -592,6 +635,7 @@ end
 local serialize
 do
   local pieces, onPath = {}, {}
+  local writing = false
   local pieceCount, byteCount, valueCount = 0, 0, 0
   local probe, maxDepth, maxValues, maxStringLength, maxTextBytes
 
@@ -738,12 +782,16 @@ do
   ---@return boolean ok
   ---@return string textOrReason
   function serialize(secretProbe, ...)
+    if writing then
+      return false, "reentered"
+    end
+    writing = true
     pieceCount, byteCount, valueCount = 0, 0, 0
     probe = secretProbe
     maxDepth, maxValues = limits.maxDepth, limits.maxValues
     maxStringLength, maxTextBytes = limits.maxStringLength, limits.maxTextBytes
-    local ok, reason = writeValues(...)
-    local text = ok and table.concat(pieces, "", 1, pieceCount) or nil
+    local called, ok, reason = pcall(writeValues, ...)
+    local text = called and ok and table.concat(pieces, "", 1, pieceCount) or nil
     for index = 1, pieceCount do
       pieces[index] = nil
     end
@@ -751,6 +799,11 @@ do
       onPath[key] = nil
     end
     probe = nil
+    writing = false
+    if not called then
+      -- The secret probe raised; its error goes on unchanged.
+      error(ok, 0)
+    end
     if not ok then
       -- A failed write always names its reason.
       ---@cast reason string
@@ -4836,6 +4889,23 @@ do
 
   local ChannelMethods = {}
 
+  ---Raise at the caller's caller unless `self` is a channel: a dot call
+  ---(`channel.Send(request)`) shifts the arguments.
+  ---@param self any
+  ---@param method string
+  local function requireChannel(self, method)
+    if getmetatable(self) ~= CHANNEL_METATABLE then
+      error(
+        "BridgeKit channel:"
+          .. method
+          .. " must be called on a BridgeKit channel; use channel:"
+          .. method
+          .. "(...)",
+        3
+      )
+    end
+  end
+
   ---Send a text as AceComm sends it, through the channel's CommKit scope.
   ---Returns CommKit's send handle, or `nil` and `"closed"`, `"nulByte"`,
   ---`"tooLarge"` or a refusal of CommKit's `SendRaw`.
@@ -4845,9 +4915,7 @@ do
   ---@return string|nil reason
   function ChannelMethods.Send(self, request)
     local label = "BridgeKit channel:Send"
-    if getmetatable(self) ~= CHANNEL_METATABLE then
-      error(label .. " must be called on a BridgeKit channel; use channel:Send(...)", 2)
-    end
+    requireChannel(self, "Send")
     if type(request) ~= "table" then
       error(label .. " request must be a table", 2)
     end
@@ -4911,9 +4979,7 @@ do
   ---@param self table
   ---@return boolean
   function ChannelMethods.Close(self)
-    if getmetatable(self) ~= CHANNEL_METATABLE then
-      error("BridgeKit channel:Close must be called on a BridgeKit channel; use channel:Close()", 2)
-    end
+    requireChannel(self, "Close")
     local wasClosed = self:IsClosed()
     rawset(self, "_closed", true)
     local connection = rawget(self, "_connection")
@@ -4935,24 +5001,31 @@ do
   ---@param self table
   ---@return boolean
   function ChannelMethods.IsClosed(self)
+    requireChannel(self, "IsClosed")
     return rawget(self, "_closed") == true or not rawget(self, "_connection"):IsConnected()
   end
 
+  ---The prefix the channel was opened on.
   ---@param self table
   ---@return string
   function ChannelMethods.GetPrefix(self)
+    requireChannel(self, "GetPrefix")
     return rawget(self, "_prefix")
   end
 
+  ---The priority the channel sends with.
   ---@param self table
   ---@return "ALERT"|"NORMAL"|"BULK"
   function ChannelMethods.GetPriority(self)
+    requireChannel(self, "GetPriority")
     return rawget(self, "_priority")
   end
 
+  ---The wire version the channel speaks.
   ---@param self table
   ---@return integer
   function ChannelMethods.GetWireVersion(self)
+    requireChannel(self, "GetWireVersion")
     return rawget(self, "_wire")
   end
 
@@ -5068,8 +5141,8 @@ do
   ---@param scope table a CommKit scope
   ---@param prefix string
   ---@param callback fun(prefix: string, message: string, distribution: string, sender: string)
-  ---@param options table?
-  ---@return table|nil channel
+  ---@param options BridgeKit.AceCommOptions?
+  ---@return BridgeKit.AceCommChannel|nil channel
   ---@return string|nil reason
   function openAceComm(self, scope, prefix, callback, options)
     local label = "BridgeKit:OpenAceComm"
@@ -5140,7 +5213,7 @@ do
 
   ---The AceComm counters and the current stream totals, in a fresh table.
   ---@param self BridgeKit
-  ---@return table
+  ---@return BridgeKit.Statistics
   function getStatistics(self)
     validateFacade(self, "BridgeKit:GetStatistics", 3)
     releaseDeadPrefixes()
@@ -5169,6 +5242,9 @@ local function aceSerialize(self, ...)
   local ok, result = serialize(readSecretProbe(), ...)
   if not ok and result == "secret" then
     error("BridgeKit:AceSerialize value must not contain a secret value", 2)
+  end
+  if not ok and result == "reentered" then
+    error("BridgeKit:AceSerialize cannot be called from inside its own issecretvalue check", 2)
   end
   return ok, result
 end

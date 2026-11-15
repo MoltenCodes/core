@@ -12,7 +12,8 @@ python3 -m tooling.bench.client_install --wow-dir "/Applications/World of Warcra
 ```
 
 Without it, those two tests are skipped with the reason (see
-[Without Ace3](#without-ace3)). No result has been recorded in the client yet;
+[Without Ace3](#without-ace3)). Where the suite narrows the design's section
+13.2 (no 64 KB message, no typed command), design decision 22 says why. No result has been recorded in the client yet;
 the lines below are what the code and the host specs predict.
 
 **What this test sends.** Every message is a `WHISPER` addon message

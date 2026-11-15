@@ -5,10 +5,10 @@ without breaking what its players already have. Its canonical design is
 [`docs/BRIDGE_KIT_DESIGN.md`](../../../docs/BRIDGE_KIT_DESIGN.md); this
 document is the contract of what the current revision ships.
 
-**Revision 3 ships the AceSerializer-3.0 wire format** (design step N1,
-revision 1), **the AceConfig-3.0 adapter** (step N2, revision 2) **and the
-AceDB-3.0 importer** (step N3). The AceComm channel follows in a later
-revision (design section 15); until then its methods do not exist.
+**Revision 4 ships all four parts**: the AceSerializer-3.0 wire format
+(design step N1, revision 1), the AceConfig-3.0 adapter (step N2, revision 2),
+the AceDB-3.0 importer (step N3, revision 3) and the AceComm-3.0 channel
+(step N4, revision 4).
 
 Everything here reproduces Ace3 at commit
 `5e2e0d3b3fd125ef1518744c6a9dd21f68f6e773`, AceSerializer-3.0 `MINOR` 5. The

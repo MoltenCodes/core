@@ -394,4 +394,47 @@ describe("BridgeKit AceSerializer", function()
       )
     end)
   end)
+
+  describe("the reused writer state", function()
+    it("keeps nothing from a refused write: the same table writes afterwards", function()
+      local inner = { fn = print }
+      local value = { inner = inner }
+      assert.are.same({ false, "unsupportedType" }, { BridgeKit:AceSerialize(value) })
+      inner.fn = nil
+      assert.are.same({ true, "^1^T^Sinner^T^t^t^^" }, { BridgeKit:AceSerialize(value) })
+    end)
+
+    it("empties its state when issecretvalue raises, and lets the error through", function()
+      local value = { { "boom" } }
+      -- selene: allow(global_usage)
+      rawset(_G, "issecretvalue", function(candidate)
+        if candidate == "boom" then
+          error("probe failed", 0)
+        end
+        return false
+      end)
+      local ok, failure = pcall(BridgeKit.AceSerialize, BridgeKit, value)
+      assert.is_false(ok)
+      assert.are.equal("probe failed", failure)
+      -- selene: allow(global_usage)
+      rawset(_G, "issecretvalue", nil)
+      assert.are.same({ true, "^1^T^N1^T^N1^Sboom^t^t^^" }, { BridgeKit:AceSerialize(value) })
+    end)
+
+    it("refuses a call issecretvalue makes back into AceSerialize", function()
+      -- selene: allow(global_usage)
+      rawset(_G, "issecretvalue", function()
+        BridgeKit:AceSerialize("again")
+        return false
+      end)
+      local ok, failure = pcall(BridgeKit.AceSerialize, BridgeKit, "x")
+      assert.is_false(ok)
+      assert.is_truthy(
+        tostring(failure):find("cannot be called from inside its own issecretvalue check", 1, true)
+      )
+      -- selene: allow(global_usage)
+      rawset(_G, "issecretvalue", nil)
+      assert.are.same({ true, "^1^Sx^^" }, { BridgeKit:AceSerialize("x") })
+    end)
+  end)
 end)

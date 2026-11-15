@@ -511,5 +511,33 @@ describe("BridgeKit AceComm channel", function()
       assert.are.equal(1, #received)
       assert.are.equal(10, BridgeKit:GetStatistics().aceMessagesReceived)
     end)
+
+    it("raises at the caller for a dot call of any channel method", function()
+      local channel = openRecording()
+      for _, method in ipairs({
+        "Send",
+        "Close",
+        "IsClosed",
+        "GetPrefix",
+        "GetPriority",
+        "GetWireVersion",
+      }) do
+        local ok, failure = pcall(function()
+          -- Not a tail call, so this line stays on the stack.
+          local result = channel[method]()
+          return result
+        end)
+        assert.is_false(ok)
+        assert.is_truthy(tostring(failure):find("AceComm_spec.lua:", 1, true), method)
+        assert.is_truthy(
+          tostring(failure):find(
+            "BridgeKit channel:" .. method .. " must be called on a BridgeKit channel",
+            1,
+            true
+          ),
+          method
+        )
+      end
+    end)
   end)
 end)

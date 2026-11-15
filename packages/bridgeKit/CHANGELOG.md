@@ -26,6 +26,18 @@ generation 1, implementation revision 4.
   upgrade run the newer receive code; an upgrade adds the state and the new
   limits' defaults.
 
+- `AceSerialize` and `AceDeserialize` keep their state in reused upvalues
+  instead of a record per call, write a token and its data as separate
+  pieces, and cut tokens with one pattern match each: a small encode allocates
+  198 bytes (Ace3: 201) instead of 1655, and both run closer to Ace3's speed
+  (docs/BENCHMARKS.md). Every check stays; the recorded Ace3 fixtures pass
+  byte for byte.
+- The writer empties its state when a replaced `issecretvalue` raises, and
+  refuses a call that `issecretvalue` makes back into `AceSerialize` (step
+  N5's acceptance review).
+- Every channel method raises at the caller for a dot call, and the channel,
+  its options, its send request and the statistics have LuaCATS classes.
+
 ### Fixed (from step N3's read-only review)
 
 - AceDB defaults are read as AceDB reads them: `"**"` merges into an explicit
