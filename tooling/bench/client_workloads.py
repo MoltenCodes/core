@@ -160,11 +160,3 @@ CLIENT_WORKLOADS: tuple[ClientWorkload, ...] = (
 #: Client workloads by name.
 BY_NAME: dict[str, ClientWorkload] = {workload.name: workload for workload in CLIENT_WORKLOADS}
 
-#: The client runner's own modules besides the workloads: installed into the
-#: harness with the workloads and required by name.
-CLIENT_SUPPORT_MODULES: tuple[str, ...] = (
-    "ClientBench",
-    "ClientHost",
-    "clientWorkloads.Adapters",
-    "clientWorkloads.FrameStats",
-)

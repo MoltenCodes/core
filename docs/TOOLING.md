@@ -100,8 +100,10 @@ job that runs repository tooling — the Lua tests, the linter, the spell check,
 the bundle build, repository validation, the commit-subject check and the
 release workflow's verification — runs on both the floor (3.10) and the current
 release (3.14), so the documented minimum is exercised rather than merely
-asserted. There is no exemption: a job that could only run on the newer
-interpreter would make the floor a claim instead of a supported version.
+asserted. The one job on 3.14 alone is coverage, which runs the same test
+orchestration the test job already runs on both interpreters, under LuaCov; a
+job that could only run on the newer interpreter would make the floor a claim
+instead of a supported version.
 
 The canonical commands are documented in [`DEVELOPMENT.md`](DEVELOPMENT.md).
 

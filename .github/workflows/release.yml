@@ -135,6 +135,9 @@ jobs:
       - name: Validate repository
         run: python3 -m tooling.validation.validate_repository
 
+      - name: Check client API availability on every promised flavour
+        run: python3 -m tooling.validation.flavour_api
+
       - name: Run tooling unit tests
         run: python3 -m unittest discover -s tooling/tests -p "test_*.py"
 

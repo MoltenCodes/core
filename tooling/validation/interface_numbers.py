@@ -19,6 +19,7 @@ from __future__ import annotations
 import argparse
 import datetime
 import json
+import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -107,6 +108,10 @@ def _parse_client(index: int, entry: Any) -> SupportedClient:
     )
 
 
+#: `verified` is a calendar date written exactly as YYYY-MM-DD.
+ISO_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
 def parse_supported_clients(data: Any) -> SupportedClients:
     """Validate the decoded JSON table and convert it to `SupportedClients`.
 
@@ -118,6 +123,10 @@ def parse_supported_clients(data: Any) -> SupportedClients:
 
     verified = data["verified"]
     try:
+        # `fromisoformat` alone is not enough: Python 3.11 and later also
+        # accept `20261115` and week dates, and the tooling runs on 3.10 too.
+        if not isinstance(verified, str) or ISO_DATE_RE.match(verified) is None:
+            raise ValueError(verified)
         datetime.date.fromisoformat(verified)
     except (TypeError, ValueError):
         raise SupportedClientsError("verified must be an ISO date (YYYY-MM-DD)") from None

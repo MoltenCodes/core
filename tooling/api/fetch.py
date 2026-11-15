@@ -491,7 +491,7 @@ def _build_parser() -> argparse.ArgumentParser:
         prog="python3 -m tooling.api.fetch",
         description=(
             "Fetch one apiKit flavour's API documentation tables from the mirror "
-            "at a pinned commit into a directory outside the repository."
+            "at a pinned commit into a directory of your choice (keep it outside the repository: captures are not committed)."
         ),
     )
     parser.add_argument("--flavour", required=True, help="flavour id from tooling/api/flavours.json")

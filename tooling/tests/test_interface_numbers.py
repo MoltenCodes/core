@@ -86,6 +86,15 @@ class SupportedClientsParsingTests(unittest.TestCase):
         with self.assertRaisesRegex(module.SupportedClientsError, "ISO date"):
             module.parse_supported_clients(table)
 
+    def test_verified_refuses_forms_newer_pythons_accept(self):
+        # Python 3.11 and later read these with `date.fromisoformat`; 3.10 does not.
+        for text in ("20261115", "2026-W46", "2026-W46-1"):
+            with self.subTest(verified=text):
+                table = self.table()
+                table["verified"] = text
+                with self.assertRaisesRegex(module.SupportedClientsError, "ISO date"):
+                    module.parse_supported_clients(table)
+
     def test_empty_client_list_is_rejected(self):
         table = self.table()
         table["clients"] = []

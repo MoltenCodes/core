@@ -150,7 +150,7 @@ def resolve_layout(wow_dir: Path, flavour_directory: str) -> ClientLayout:
             "(the client creates Interface/AddOns the first time it starts)"
         )
     if not is_inside(addons_dir, root):
-        raise InstallError(f"{addons_dir} leaves {root} through a symbolic link; refusing")
+        raise InstallError(f"{addons_dir} is outside the game folder {root}; refusing")
     return ClientLayout(root, flavour_dir, addons_dir)
 
 

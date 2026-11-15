@@ -177,7 +177,8 @@ class CatalogueTests(unittest.TestCase):
 
     def test_every_required_module_is_installed(self) -> None:
         installed = {name for name, _ in client_install.module_sources()}
-        for name in client_workloads.CLIENT_SUPPORT_MODULES:
+        # The client runner's own modules besides the workloads.
+        for name in ("ClientBench", "ClientHost", "clientWorkloads.Adapters", "clientWorkloads.FrameStats"):
             self.assertIn(name, installed)
         pattern = re.compile(r'require\("([A-Za-z.]+)"\)')
         for name, path in client_install.module_sources():

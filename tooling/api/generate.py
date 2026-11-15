@@ -169,16 +169,8 @@ def _write_trees(result: GenerateResult) -> None:
 
 
 def _history_entry(metadata: model.FlavourMetadata, comparison: diff.Diff | None, report: str | None) -> diff.HistoryEntry:
-    provenance = metadata.provenance
-    return diff.HistoryEntry(
-        build=provenance.build,
-        version=provenance.version,
-        commit=provenance.commit,
-        committed_at=provenance.committed_at,
-        captured_on=provenance.captured_on,
-        counts=comparison.counts() if comparison is not None else {},
-        report=report,
-    )
+    counts = comparison.counts() if comparison is not None else {}
+    return diff.HistoryEntry.from_provenance(metadata.provenance, counts, report)
 
 
 def plan_flavour(

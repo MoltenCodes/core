@@ -185,7 +185,7 @@ local function greet(self)
   -- ClientKit probes what the running client can do. Test a capability like
   -- this one rather than a version number: the answer stays right when a
   -- patch moves a feature between flavours. Secret values exist on Retail
-  -- 12.x only; see docs/EMBEDDING.md.
+  -- 12.0 and later and on the current Classic clients; see docs/EMBEDDING.md.
   local L = Kits.LocaleKit:GetLocale(ADDON_NAME)
   local secretValues = Kits.ClientKit:Has("secretValues") and L["yes"] or L["no"]
   say(
@@ -205,8 +205,8 @@ end
 local function waitForSpellData(self)
   local gate = Kits.ReadinessKit:Gate(ADDON_NAME .. ".spellData", function()
     -- Absence of a value the addon did not create is tested with `type`, the
-    -- repository rule: it never compares anything, and on Retail 12.x a client
-    -- value may be secret (docs/EMBEDDING.md, "Secret values").
+    -- repository rule: it never compares anything, and a client value may be
+    -- secret (docs/EMBEDDING.md, "Secret values").
     return type(Kits.ClientKit:GetSpellInfo(SPELL_ID)) ~= "nil"
   end, { intervalSeconds = 1, timeoutSeconds = 30 })
   self.spellGate = gate
