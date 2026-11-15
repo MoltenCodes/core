@@ -62,6 +62,27 @@ describe("DialogKit bootstrap", function()
     end
   )
 
+  it("upgrades revision 1 in place: its frame then ignores a parent's hide", function()
+    -- Install the host stand-ins, then start over with a copy carrying
+    -- revision 1, the way an older addon's embedded copy loads first.
+    TestEnv.NewPackage()
+    TestEnv.SetGlobal("MoltenCodes", nil)
+    package.loaded.Registry = nil
+    package.loaded.DialogKit = nil
+    require("Registry")
+    local old = TestEnv.LoadRevision(1)
+    local dialog = old:Show({ text = "kept" })
+    local frame = TestEnv.GetGlobal(old.FRAME_NAME)
+
+    local upgraded = TestEnv.ReloadPackage()
+    assert.are.equal(old, upgraded)
+    assert.is_true(upgraded.REVISION > 1)
+    frame:GetScript("OnHide")(frame)
+    assert.is_true(dialog:IsShown())
+    TestEnv.PressEscape()
+    assert.is_false(dialog:IsShown())
+  end)
+
   it("refuses shared state whose limit holds an invalid value", function()
     local DialogKit = TestEnv.NewPackage()
     rawset(DialogKit._state.limits, "maxQueued", 0)

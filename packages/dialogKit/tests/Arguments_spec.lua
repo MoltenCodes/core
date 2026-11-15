@@ -168,6 +168,74 @@ describe("DialogKit arguments and secrets", function()
     )
   end)
 
+  it(
+    "refuses a secret button text without offering allowSecret, which never applies to it",
+    function()
+      TestEnv.InstallSecretProbe()
+      local secret = TestEnv.NewSecret()
+      for _, field in ipairs({ "accept", "cancel" }) do
+        local ok, failure = pcall(DialogKit.Show, DialogKit, {
+          text = "x",
+          allowSecret = true,
+          [field] = secret,
+        })
+        assert.is_false(ok)
+        assert.is_truthy(
+          tostring(failure):find(
+            "DialogKit:Show options." .. field .. " must not be a secret value",
+            1,
+            true
+          )
+        )
+        assert.is_nil(tostring(failure):find("allowSecret", 1, true))
+      end
+    end
+  )
+
+  it("refuses a secret cancel at the caller's line, before comparing it", function()
+    TestEnv.InstallSecretProbe()
+    for _, secret in ipairs({ TestEnv.NewSecret(), TestEnv.MarkSecret(7) }) do
+      local line = debug.getinfo(1, "l").currentline + 2
+      local ok, failure = pcall(function()
+        DialogKit:Show({ text = "x", cancel = secret })
+      end)
+      assert.is_false(ok)
+      assert.is_truthy(
+        tostring(failure):find("DialogKit:Show options.cancel must not be a secret value", 1, true)
+      )
+      assert.is_nil(tostring(failure):find("allowSecret", 1, true))
+      assert.is_truthy(tostring(failure):find("Arguments_spec.lua:" .. line, 1, true))
+    end
+  end)
+
+  it(
+    "hands a secret number text to the font string unconverted, and refuses it without allowSecret",
+    function()
+      TestEnv.InstallSecretProbe()
+      local secretNumber = TestEnv.MarkSecret(1234)
+      TestEnv.expectErrorContaining(
+        "DialogKit:Show options.text must not be a secret value; pass allowSecret = true to draw one",
+        function()
+          DialogKit:Show({ text = secretNumber })
+        end
+      )
+      DialogKit:Show({ text = secretNumber, allowSecret = true })
+      -- The client accepts a secret in `SetText`; `tostring` would convert it.
+      assert.are.equal(secretNumber, TestEnv.GetGlobal(DialogKit.FRAME_NAME).text:GetText())
+    end
+  )
+
+  it("draws a secret text that raises when converted or concatenated", function()
+    TestEnv.InstallSecretProbe()
+    local secret = TestEnv.NewSecret()
+    assert.has_error(function()
+      return tostring(secret)
+    end)
+    local dialog = DialogKit:Show({ text = secret, allowSecret = true })
+    assert.is_true(dialog:IsShown())
+    assert.are.equal(secret, TestEnv.GetGlobal(DialogKit.FRAME_NAME).text:GetText())
+  end)
+
   it("refuses to show without CreateFrame or UIParent", function()
     TestEnv.SetGlobal("UIParent", nil)
     TestEnv.expectErrorContaining("needs the client's CreateFrame and UIParent", function()

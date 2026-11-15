@@ -10,7 +10,8 @@
 ---   the cursor       `SetMouseOver(frame, over)` gives a frame an
 ---                    `IsMouseOver` answering `over`, which the shared stub
 ---                    does not model;
----   secret values    `InstallSecretProbe` and `NewSecret`;
+---   secret values    `InstallSecretProbe`, `NewSecret` (raising when compared,
+---                    concatenated or converted) and `MarkSecret`;
 ---   upgrades         `LoadRevision`.
 local FrameworkTestEnv = require("FrameworkTestEnv")
 
@@ -85,6 +86,10 @@ end
 local sharedReset = DialogKitTestEnv.Reset
 function DialogKitTestEnv.Reset()
   sharedReset()
+  -- Values `MarkSecret` marked, numbers among them, are never collected.
+  for value in pairs(secrets) do
+    secrets[value] = nil
+  end
   DialogKitTestEnv.SetGlobal("GetTime", nil)
   DialogKitTestEnv.SetGlobal("UISpecialFrames", nil)
 end
@@ -116,12 +121,42 @@ function DialogKitTestEnv.InstallSecretProbe()
   end)
 end
 
----A value `issecretvalue` reports as secret once the probe is installed.
+---Raise as the client does when a secret value is compared, concatenated or
+---converted.
+local function refuseSecretUse()
+  error("attempt to use a secret value", 2)
+end
+
+--- What a stand-in secret does when DialogKit touches it the way the client
+--- refuses (Retail 12.x): comparing, ordering, concatenating or converting it
+--- raises. Lua 5.1 runs `__eq` only between two tables, so `secret ~= false`
+--- cannot be made to raise here; the specs pin that check by its message.
+local SECRET_METATABLE = {
+  __eq = refuseSecretUse,
+  __lt = refuseSecretUse,
+  __le = refuseSecretUse,
+  __concat = refuseSecretUse,
+  __tostring = refuseSecretUse,
+}
+
+---A value `issecretvalue` reports as secret once the probe is installed. It
+---raises when compared with another table, ordered, concatenated or passed
+---to `tostring`.
 ---@return table secret
 function DialogKitTestEnv.NewSecret()
-  local secret = {}
+  local secret = setmetatable({}, SECRET_METATABLE)
   secrets[secret] = true
   return secret
+end
+
+---Make `value`, such as a number, a value `issecretvalue` reports as secret,
+---for paths that read the secret's type (`type` of a secret number answers
+---`"number"` in the client). Cleared by `Reset`.
+---@param value any
+---@return any value
+function DialogKitTestEnv.MarkSecret(value)
+  secrets[value] = true
+  return value
 end
 
 ---Load the DialogKit source again as a copy carrying `revision`, the way a

@@ -2,7 +2,7 @@
 
 DialogKit API generation **1** shows confirmation and input dialogs on one frame of its own, one at a time, with a bounded queue, Escape through `UISpecialFrames`, timeouts and callbacks that run exactly once.
 
-Implementation revision: **1**.
+Implementation revision: **2**.
 
 ## Loading
 
@@ -43,7 +43,7 @@ Every promised client defines `UISpecialFrames` the same way, as the list of fra
 | `MAX_QUEUED` | `16`, the default `maxQueued`. |
 | `FRAME_NAME` | `"MoltenCodesDialogKitFrame"`, the dialog frame's global name. |
 | `UNBOUNDED` | Sentinel `maxQueued` accepts to lift the bound. |
-| `API`, `REVISION` | `1`, `1`. |
+| `API`, `REVISION` | `1`, `2`. |
 
 A dialog:
 
@@ -80,6 +80,8 @@ Any other field is refused at the caller. When no dialog is shown, the new one i
 | The accept button, or Enter in the input line | `onAccept(data, inputText)` | — |
 | The cancel button | `onCancel(data, reason)` | `"cancel"` |
 | Escape in the input line, or Escape through `UISpecialFrames` (the frame hidden by anything but DialogKit) | `onCancel` | `"escape"` |
+
+A parent hiding is not an ending: when the player hides the interface (Alt+Z hides `UIParent`), the client runs the frame's `OnHide` while its own shown flag stays set, and the dialog stays, shown again with its parent (revision 2). A timeout counts on `GetTime` meanwhile, so a dialog whose timeout ran out while hidden ends at its next frame on screen.
 | The timeout | `onCancel` | `"timeout"` |
 | `dialog:Hide()`, `DialogKit:HideAll()` | `onCancel` | `"hidden"` |
 
@@ -87,7 +89,7 @@ A dialog ends once; afterwards `Hide` answers `false` and the callbacks are neve
 
 ## Secret values
 
-A secret `text` is refused unless `allowSecret` is `true`; every other option, the limits and the receivers are checked with `issecretvalue` first and refused at the caller. `data` is never inspected.
+A secret `text` is refused unless `allowSecret` is `true`, before anything converts or compares it. With `allowSecret` it reaches the font string unconverted (`SetText` accepts a secret); only a plain number is converted with `tostring`. Every other option, the limits and the receivers are checked with `issecretvalue` first, before any comparison, and refused at the caller. `data` is never inspected.
 
 ## Limits
 
@@ -100,6 +102,35 @@ Lowering `maxQueued` keeps every waiting dialog and refuses the next. The limit 
 ## Error behaviour
 
 Argument errors raise at the caller's line: `DialogKit:Show options.timeout must be a number above 0`; methods called on anything but a dialog raise `DialogKit.Dialog:Hide must be called on a DialogKit dialog; use dialog:Hide(...)`. What the client calls (the buttons, Enter, Escape, the timeout) never raises.
+
+Every message, raised at the caller's line. `<method>` is the public name called, such as `DialogKit:Show` or `DialogKit.Dialog:Hide`.
+
+| Message | Raised by |
+|---|---|
+| `<method> must be called on the DialogKit facade; use <method>(...)` | a facade method called on anything but `DialogKit` |
+| `<method> must be called on a DialogKit dialog; use dialog:<name>(...)` | a dialog method called on anything but a dialog handle |
+| `DialogKit:Show options must be a table` | `Show` without an option table |
+| `DialogKit:Show options holds an unknown field; see docs/API.md for the fields it accepts` | a field the options table above does not list |
+| `DialogKit:Show options.allowSecret must be a boolean` | |
+| `DialogKit:Show options.text must not be a secret value; pass allowSecret = true to draw one` | a secret `text` without `allowSecret` |
+| `DialogKit:Show options.<accept or cancel> must not be a secret value` | a secret button text; `allowSecret` covers only `text`. Revision 2 checks a secret `cancel` before comparing it with `false` (revision 1 compared it first, which raises on Retail) and no longer names the `allowSecret` remedy here. |
+| `DialogKit:Show options.<text, accept or cancel> must be a non-empty string or a number` | a missing `text`, or a text that is neither |
+| `DialogKit:Show options.<onAccept or onCancel> must be a function or nil` | |
+| `DialogKit:Show options.input must be a boolean` | |
+| `DialogKit:Show options.inputText must be a string` | |
+| `DialogKit:Show options.maxLetters must be a positive integer` | |
+| `DialogKit:Show options.timeout must be a number above 0` | also NaN and infinity |
+| `DialogKit:Show options.key must be a non-empty string` | |
+| `DialogKit:Show needs the client's CreateFrame and UIParent, which this host does not have` | |
+| `DialogKit:Show holds at most <n> waiting dialogs; raise maxQueued with DialogKit:SetLimits` | a full queue |
+| `DialogKit:SetLimits limits must be a table` | |
+| `DialogKit:SetLimits limits holds an unknown field; it accepts maxQueued` | |
+| `DialogKit:SetLimits limits.maxQueued must not be a secret value` | |
+| `DialogKit:SetLimits limits.maxQueued must be a positive integer or DialogKit.UNBOUNDED` | |
+
+`DialogKit needs the client's UIParent` is raised without a position only by a host that removed `UIParent` after `Show` checked it.
+
+Loading raises `MoltenCodes DialogKit requires Registry API 2 to be loaded first`, `MoltenCodes DialogKit requires a valid Registry API 2 facade` or `MoltenCodes DialogKit package state is corrupted or incomplete`.
 
 ## Performance
 

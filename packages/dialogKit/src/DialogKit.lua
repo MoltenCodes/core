@@ -36,7 +36,7 @@
 
 local PACKAGE_NAME = "dialogKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 1
+local IMPLEMENTATION_REVISION = 2
 local REQUIRED_REGISTRY_API = 2
 local STATE_SCHEMA = 1
 
@@ -356,8 +356,8 @@ end
 ---@param label string public method name, used in the argument error
 ---@param level integer stack level the failure is reported at
 local function validateFacade(receiver, label, level)
-  -- `type` first: a secret receiver is never a table, and only a table is compared.
-  if type(receiver) ~= "table" or receiver ~= DialogKit then
+  -- The secret probe first, so a secret receiver is never compared.
+  if isSecret(receiver) or type(receiver) ~= "table" or receiver ~= DialogKit then
     error(label .. " must be called on the DialogKit facade; use " .. label .. "(...)", level)
   end
 end
@@ -391,11 +391,15 @@ end
 ---Raise at the caller unless `value` is a non-empty string or a number.
 ---@param value any
 ---@param where string
----@param allowSecret boolean
+---@param allowSecret boolean|nil `true` accepts a secret; `false` refuses it
+---and names the `allowSecret` option; `nil` refuses it for a text that option
+---never covers (the button texts)
 ---@param level integer stack level the failure is reported at
 local function validateText(value, where, allowSecret, level)
   if isSecret(value) then
-    if not allowSecret then
+    if allowSecret == nil then
+      error(where .. " must not be a secret value", level)
+    elseif not allowSecret then
       error(where .. " must not be a secret value; pass allowSecret = true to draw one", level)
     end
     return
@@ -432,11 +436,16 @@ local function readShowOptions(options, level)
   validateText(options.text, label .. " options.text", allowSecret == true, level + 1)
   local accept = options.accept
   if type(accept) ~= "nil" then
-    validateText(accept, label .. " options.accept", false, level + 1)
+    validateText(accept, label .. " options.accept", nil, level + 1)
   end
+  -- `false` asks for one button. A secret is refused before that comparison,
+  -- because comparing a secret raises inside DialogKit, not at the caller.
   local cancel = options.cancel
+  if isSecret(cancel) then
+    error(label .. " options.cancel must not be a secret value", level)
+  end
   if type(cancel) ~= "nil" and cancel ~= false then
-    validateText(cancel, label .. " options.cancel", false, level + 1)
+    validateText(cancel, label .. " options.cancel", nil, level + 1)
   end
   for _, field in ipairs({ "onAccept", "onCancel" }) do
     local callback = options[field]
@@ -555,7 +564,14 @@ local function present(record)
   local frame = dialogFrame()
   local text, input = frame.text, frame.input
   local acceptButton, cancelButton = frame.acceptButton, frame.cancelButton
-  text:SetText(type(record.text) == "number" and tostring(record.text) or record.text)
+  -- A secret (only with `allowSecret`) goes to the font string as it is: the
+  -- client draws a secret there, while converting it would raise. A plain
+  -- number is drawn as its text.
+  local shownText = record.text
+  if not isSecret(shownText) and type(shownText) == "number" then
+    shownText = tostring(shownText)
+  end
+  text:SetText(shownText)
   local textHeight = text:GetStringHeight()
   if isSecret(textHeight) or type(textHeight) ~= "number" then
     textHeight = 12
@@ -670,10 +686,20 @@ end
 
 ---The frame was hidden by something else than DialogKit: Escape through
 ---`UISpecialFrames`, or another addon.
+---
+---The client also runs `OnHide` when only a parent hides, the frame's own
+---shown flag staying set: the player hiding the interface (Alt+Z) hides
+---`UIParent`. That is not the dialog being dismissed, so it stays and shows
+---again with its parent.
 function dispatch.frameHidden()
-  if rawget(state, "shown") then
-    finishShown(false, REASON_ESCAPE)
+  if not rawget(state, "shown") then
+    return
   end
+  local frame = rawget(state, "frame")
+  if frame and type(frame.IsShown) == "function" and frame:IsShown() then
+    return
+  end
+  finishShown(false, REASON_ESCAPE)
 end
 
 ---Every frame of a shown dialog with a timeout.

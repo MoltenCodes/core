@@ -51,6 +51,19 @@ describe("DialogKit dialogs", function()
     assert.are.equal("DialogKit.Dialog", getmetatable(dialog))
   end)
 
+  it("keeps the dialog when only a parent hides, as when the player hides the interface", function()
+    local dialog = DialogKit:Show(recording("Keep me", { timeout = 10 }))
+    -- The client runs OnHide on every child of a frame that hides
+    -- (warcraft.wiki.gg, the OnHide script handler page); the dialog frame's own shown flag
+    -- stays set. Hiding UIParent (Alt+Z) is the common case.
+    frame():GetScript("OnHide")(frame())
+    assert.are.same({}, events)
+    assert.is_true(dialog:IsShown())
+    -- Escape hides the frame itself, which still cancels it.
+    TestEnv.PressEscape()
+    assert.are.same({ { "cancel", "Keep me", "escape" } }, events)
+  end)
+
   it("shows one button with cancel = false, and numbers as text", function()
     DialogKit:Show({ text = 42, cancel = false })
     assert.are.equal("42", frame().text:GetText())
