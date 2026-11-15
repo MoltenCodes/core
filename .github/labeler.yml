@@ -54,6 +54,10 @@
   - changed-files:
       - any-glob-to-any-file: "packages/dialogKit/**"
 
+"kit: editModeKit":
+  - changed-files:
+      - any-glob-to-any-file: "packages/editModeKit/**"
+
 "kit: eventKit":
   - changed-files:
       - any-glob-to-any-file: "packages/eventKit/**"

@@ -4,7 +4,7 @@
 [![Release](https://img.shields.io/github/v/release/MoltenCodes/core?include_prereleases&sort=semver)](https://github.com/MoltenCodes/core/releases)
 
 A modular Lua 5.1 framework for professional World of Warcraft addon
-development: 38 small packages, called Kits, each independently versioned,
+development: 39 small packages, called Kits, each independently versioned,
 tested and publishable, that an addon embeds one by one or loads together as the
 standalone addon `MoltenCodes`.
 
@@ -16,7 +16,7 @@ bounded by default and safe around the Retail secret-value and taint rules.
 
 ## Packages
 
-Thirty-seven release packages and one development package. Each links to its
+Thirty-eight release packages and one development package. Each links to its
 README; its full contract is the package's `docs/API.md`.
 
 | Package | Purpose |
@@ -48,6 +48,7 @@ README; its full contract is the package's `docs/API.md`.
 | [`compatKit`](packages/compatKit/) | Versioned shims with a host opt-out, provider registries with a fallback cascade, and the catalogue of taint-hostile subsystems as data. |
 | [`commKit`](packages/commKit/) | Addon messaging of any length: a chunk protocol with bounded reassembly, refusing priority queues, a session bandwidth budget and sync sets. |
 | [`widgetKit`](packages/widgetKit/) | Pooled, versioned widgets with explicit layouts, saveable anchors and an OptionsKit renderer. |
+| [`editModeKit`](packages/editModeKit/) | Addon frames in Blizzard's Edit Mode: a labelled overlay drags each frame while Edit Mode is open, its position saved per layout and put back on a layout switch. |
 | [`glowKit`](packages/glowKit/) | Glows that draw the eye to a frame, pixel lines running round its edge or a pulsing border, keyed per frame, pooled and bounded. |
 | [`bindingKit`](packages/bindingKit/) | Override key bindings in named scopes (commands, button clicks, Lua functions) that never touch the player's own, applied after combat when set during it. |
 | [`toastKit`](packages/toastKit/) | Short notifications that stack at one anchor, hold under the cursor and fade out, with icons and click handlers, pooled and bounded. |
@@ -146,7 +147,7 @@ answers `--help`.
 ├── examples/                # a complete example addon, loaded by its own spec
 ├── lychee.toml              # Markdown link-check configuration
 ├── meta/                    # editor-only LuaCATS definitions, including the game API
-├── packages/                # the 38 Kits, one directory each (see packages/README.md)
+├── packages/                # the 39 Kits, one directory each (see packages/README.md)
 ├── pyproject.toml           # the supported Python floor for the tooling
 ├── selene.toml              # Selene configuration for runtime Lua
 ├── selene-tests.toml        # Selene configuration for test Lua

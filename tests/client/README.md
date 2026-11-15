@@ -65,6 +65,7 @@ tests/client/
 ├── MoltenCodesTest_ToastKit/          # the test addon of the `toastKit` package (.toc, suite, EXPECTED.md); it shows a few toasts for a moment
 ├── MoltenCodesTest_BindingKit/        # the test addon of the `bindingKit` package (.toc, suite, EXPECTED.md); it binds and clears one key of its own
 ├── MoltenCodesTest_GlowKit/           # the test addon of the `glowKit` package (.toc, suite, EXPECTED.md); it shows a glow for a moment
+├── MoltenCodesTest_EditModeKit/       # the test addon of the `editModeKit` package (.toc, suite, EXPECTED.md); one test asks you to open and close Edit Mode
 ├── MoltenCodesTest_BrokerKit/         # the test addon of the `brokerKit` package (.toc, LibDataBrokerStandIn.lua, suite, EXPECTED.md)
 ├── MoltenCodesTest_LogKit/            # the test addon of the `logKit` package (.toc, suite, EXPECTED.md)
 ├── MoltenCodesTest_CompatKit/         # the test addon of the `compatKit` package (.toc, suite, EXPECTED.md)

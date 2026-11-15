@@ -42,6 +42,7 @@ packages/
 ├── toastKit/
 ├── bindingKit/
 ├── glowKit/
+├── editModeKit/
 ├── <future-package>/
 └── ...
 ```
@@ -50,7 +51,7 @@ Every visible directory directly under `packages/` is considered a publishable p
 
 ## Package naming
 
-Public framework capability packages use an Apple-style `Kit` suffix. The canonical machine-readable package ID is lowerCamelCase (`signalKit`, `eventKit`, `lifecycleKit`, `moduleKit`, `timerKit`, `schedulerKit`, `poolKit`, `clientKit`, `cacheKit`, `profileKit`, `readinessKit`, `schemaKit`, `localeKit`, `hookKit`, `settingsKit`, `optionsKit`, `commandKit`, `codecKit`, `interopKit`, `mediaKit`, `testKit`, `commKit`, `widgetKit`, `apiKit`, `brokerKit`, `logKit`, `compatKit`, `bridgeKit`, `panelKit`, `menuKit`, `launcherKit`, `tooltipKit`, `barKit`, `dialogKit`, `toastKit`, `bindingKit`, `glowKit`), while the Lua facade/module name is PascalCase (`SignalKit`, `EventKit`, `LifecycleKit`, `ModuleKit`, `TimerKit`, `SchedulerKit`, `PoolKit`, `ClientKit`, `CacheKit`, `ProfileKit`, `ReadinessKit`, `SchemaKit`, `LocaleKit`, `HookKit`, `SettingsKit`, `OptionsKit`, `CommandKit`, `CodecKit`, `InteropKit`, `MediaKit`, `TestKit`, `CommKit`, `WidgetKit`, `ApiKit`, `BrokerKit`, `LogKit`, `CompatKit`, `BridgeKit`, `PanelKit`, `MenuKit`, `LauncherKit`, `TooltipKit`, `BarKit`, `DialogKit`, `ToastKit`, `BindingKit`, `GlowKit`).
+Public framework capability packages use an Apple-style `Kit` suffix. The canonical machine-readable package ID is lowerCamelCase (`signalKit`, `eventKit`, `lifecycleKit`, `moduleKit`, `timerKit`, `schedulerKit`, `poolKit`, `clientKit`, `cacheKit`, `profileKit`, `readinessKit`, `schemaKit`, `localeKit`, `hookKit`, `settingsKit`, `optionsKit`, `commandKit`, `codecKit`, `interopKit`, `mediaKit`, `testKit`, `commKit`, `widgetKit`, `apiKit`, `brokerKit`, `logKit`, `compatKit`, `bridgeKit`, `panelKit`, `menuKit`, `launcherKit`, `tooltipKit`, `barKit`, `dialogKit`, `toastKit`, `bindingKit`, `glowKit`, `editModeKit`), while the Lua facade/module name is PascalCase (`SignalKit`, `EventKit`, `LifecycleKit`, `ModuleKit`, `TimerKit`, `SchedulerKit`, `PoolKit`, `ClientKit`, `CacheKit`, `ProfileKit`, `ReadinessKit`, `SchemaKit`, `LocaleKit`, `HookKit`, `SettingsKit`, `OptionsKit`, `CommandKit`, `CodecKit`, `InteropKit`, `MediaKit`, `TestKit`, `CommKit`, `WidgetKit`, `ApiKit`, `BrokerKit`, `LogKit`, `CompatKit`, `BridgeKit`, `PanelKit`, `MenuKit`, `LauncherKit`, `TooltipKit`, `BarKit`, `DialogKit`, `ToastKit`, `BindingKit`, `GlowKit`, `EditModeKit`).
 
 `registry` / `Registry` is an infrastructure exception because it provides package identity and revision reconciliation rather than a framework capability surface.
 
@@ -302,3 +303,5 @@ The dependency layer directly above Registry holds the Kits that need nothing el
 `bindingKit` depends only on Registry API 2. It keeps an addon's key bindings as override bindings on an owner frame per named scope, so the player's saved bindings are never touched and an addon clears only its own. A key bound to a Lua function clicks a hidden named button of the package's own, reused from a free list. A change made in combat waits, and one event frame applies every waiting scope at `PLAYER_REGEN_ENABLED`; the buttons' and the event frame's scripts call through a dispatch table in the shared state.
 
 `glowKit` depends on Registry API 2 and PoolKit API 1. A glow is an overlay frame of its own, from a PoolKit pool that keeps every released frame, laid over the target as its child, so it runs nothing while the target is hidden; Blizzard's spell-activation overlay is never touched. A pixel glow moves a few textures round the edge and a pulse glow breathes one alpha, each on one `OnUpdate`. The pool's factory and reset and the overlays' updates call through a dispatch table in the shared state.
+
+`editModeKit` depends on Registry API 2 only. It listens to `EventRegistry`'s `EditMode.Enter` and `EditMode.Exit` and to `EDIT_MODE_LAYOUTS_UPDATED`, and reads the active layout's name from `EditModeManagerFrame`; Blizzard's Edit Mode frames are never hooked or changed. Each registered frame gets an overlay frame of its own, a child of it, that drags it while Edit Mode is open; its centre offset from `UIParent`'s centre is saved per layout in the addon's storage. A move of a protected frame in combat waits for `PLAYER_REGEN_ENABLED`. The callbacks, the event script and the drag scripts call through a dispatch table in the shared state.

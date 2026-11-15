@@ -35,6 +35,7 @@ body:
         - compatKit
         - dialogKit
         - Documentation
+        - editModeKit
         - eventKit
         - glowKit
         - hookKit

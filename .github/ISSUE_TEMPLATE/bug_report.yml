@@ -60,6 +60,7 @@ body:
         - commKit
         - compatKit
         - dialogKit
+        - editModeKit
         - eventKit
         - glowKit
         - hookKit

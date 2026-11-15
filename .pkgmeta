@@ -169,3 +169,5 @@ move-folders:
   MoltenCodes/packages/bindingKit/docs: MoltenCodes/bindingKit/docs
   MoltenCodes/packages/glowKit/src: MoltenCodes/glowKit
   MoltenCodes/packages/glowKit/docs: MoltenCodes/glowKit/docs
+  MoltenCodes/packages/editModeKit/src: MoltenCodes/editModeKit
+  MoltenCodes/packages/editModeKit/docs: MoltenCodes/editModeKit/docs

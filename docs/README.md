@@ -66,6 +66,7 @@ Current package entry points:
 - [`CompatKit`](../packages/compatKit/README.md) — versioned shims with a host opt-out, provider registries with a fallback cascade, the taint catalogue as data.
 - [`CommKit`](../packages/commKit/README.md) — addon messaging with bounded reassembly, refusing queues, a session bandwidth budget and sync sets.
 - [`WidgetKit`](../packages/widgetKit/README.md) — pooled, versioned widgets, explicit layouts, anchors and an options renderer.
+- [`EditModeKit`](../packages/editModeKit/README.md) — Edit Mode for addon frames: a labelled overlay that drags each frame, positions saved per Edit Mode layout.
 - [`GlowKit`](../packages/glowKit/README.md) — pixel and pulse glows on pooled overlays, keyed per frame.
 - [`BindingKit`](../packages/bindingKit/README.md) — override key bindings in named scopes, applied after combat when set during it.
 - [`ToastKit`](../packages/toastKit/README.md) — short notifications that stack, hold under the cursor and fade out.

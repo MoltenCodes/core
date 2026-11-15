@@ -1402,9 +1402,10 @@ its code. Order:
       - **bridgeKit**: `ConvertAceConfig` carries `childGroups` over when
         the registered OptionsKit publishes `CHILD_GROUPS`, and reports it
         dropped as before otherwise.
-- [ ] **barKit** (status and timer bars), **dialogKit**, **toastKit** and
-      **bindingKit** and **glowKit**: implemented, client suites not run;
-      Edit Mode integration, timerKit's engine-driven ticker (W15).
+- [ ] **barKit** (status and timer bars), **dialogKit**, **toastKit**,
+      **bindingKit**, **glowKit** and **editModeKit** (Edit Mode
+      integration): implemented, client suites not run; timerKit's
+      engine-driven ticker (W15).
 
 **panelKit** — facade `PanelKit`
 
@@ -1901,7 +1902,11 @@ its code. Order:
    saved and restored.
 8. Docs: README (with the migration from LibEditMode), API.md, CHANGELOG,
    tests/README; EMBEDDING rows; ARCHITECTURE's package list.
-9. Status: recorded 2026-11-15 under core decision 15; code follows.
+9. Status: implemented 2026-11-15 under core decision 15, 0.1.0, revision
+   1, 28 specs; the client suite (`tests/client/MoltenCodesTest_EditModeKit`)
+   is written and has not been run in a client. Overlays given back by
+   `Unregister` are kept on a free list of the state rather than a PoolKit
+   pool, so the dependency stays registry only.
 
 #### Package N — bridgeKit, migrating from Ace3
 

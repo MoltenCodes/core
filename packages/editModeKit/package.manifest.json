@@ -1,0 +1,14 @@
+{
+  "name": "editModeKit",
+  "displayName": "EditModeKit",
+  "description": "Blizzard Edit Mode for World of Warcraft addon frames: a labelled overlay that drags the frame while Edit Mode is open, its position saved per layout and restored on a layout switch.",
+  "version": "0.1.0",
+  "license": "MIT",
+  "api": 1,
+  "revision": 1,
+  "dependencies": {
+    "registry": {
+      "api": 2
+    }
+  }
+}
