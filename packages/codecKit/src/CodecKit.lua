@@ -57,7 +57,7 @@
 
 local PACKAGE_NAME = "codecKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 8
+local IMPLEMENTATION_REVISION = 9
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_POOLKIT_API = 1
 local OPTIONAL_SCHEDULERKIT_API = 1
@@ -322,11 +322,23 @@ then
   error("MoltenCodes CodecKit requires PoolKit API 1 to be loaded first", 2)
 end
 
+-- The client defines `issecretvalue` before any addon loads, so it is resolved
+-- once, here. When it is absent at load, `readSecretProbe` looks the global up
+-- on every call instead, so a probe installed later is still honoured.
+-- issecretvalue is a World of Warcraft client API reachable only through the global table.
+-- selene: allow(global_usage)
+local loadedSecretProbe = rawget(_G, "issecretvalue")
+if type(loadedSecretProbe) ~= "function" then
+  loadedSecretProbe = nil
+end
+
 ---Return the host's `issecretvalue`, or `nil` on a client without secret
----values. Read at every public call, as SchemaKit does, so the probe may be
----installed after CodecKit loaded.
+---values: the probe resolved at load, else the global's current value.
 ---@return (fun(value: any): boolean)|nil
 local function readSecretProbe()
+  if loadedSecretProbe ~= nil then
+    return loadedSecretProbe
+  end
   -- issecretvalue is a World of Warcraft client API reachable only through the global table.
   -- selene: allow(global_usage)
   local probe = rawget(_G, "issecretvalue")
@@ -535,7 +547,7 @@ local idleWork = newWork()
 ---`SetLimits` during an asynchronous job does not change it mid-way.
 ---@param pooled boolean `true` for a synchronous call
 ---@return table work
-local function openWork(pooled)
+local function openWork(pooled, probe)
   local work = pooled and idleWork or false
   if work then
     idleWork = false
@@ -544,7 +556,12 @@ local function openWork(pooled)
   end
   work.pooled = pooled
   work.context = false
-  work.isSecret = readSecretProbe() or false
+  -- A caller that already read the probe for its options passes it (`false`
+  -- for none), so one call reads it once.
+  if probe == nil then
+    probe = readSecretProbe() or false
+  end
+  work.isSecret = probe
   -- The limits table is the package's own and has no metatable, so indexing
   -- it is a raw read. Only `maxValues` and `maxStringLength` may hold the
   -- `UNBOUNDED` sentinel; `SetLimits` refuses it for the other three.
@@ -701,7 +718,42 @@ for raw, escaped in pairs(ADDON_ESCAPES) do
   ADDON_UNESCAPES[escaped] = raw
 end
 local ADDON_ESCAPE_PATTERN = "[%z\n\r|\255]"
-local ADDON_FORBIDDEN_PATTERN = "[%z\n\r|]"
+
+---Whether `text` holds, from byte `start` on, a byte the addon channel cannot
+---carry (NUL, LF, CR or `|`). Four plain finds: Lua 5.1 tries a character
+---class such as `"[%z\n\r|]"` at every start position, which costs about a
+---hundred times as much on a 20 KB frame.
+---@param text string
+---@param start integer
+---@return boolean
+local function holdsForbiddenByte(text, start)
+  return find(text, "\0", start, true) ~= nil
+    or find(text, "\n", start, true) ~= nil
+    or find(text, "\r", start, true) ~= nil
+    or find(text, "|", start, true) ~= nil
+end
+
+---Whether `text` holds, from byte `start` on, a byte the addon channel
+---escapes: a forbidden byte or the escape byte itself.
+---@param text string
+---@param start integer
+---@return boolean
+local function holdsEscapeByte(text, start)
+  return holdsForbiddenByte(text, start) or find(text, "\255", start, true) ~= nil
+end
+
+-- Short strings already known to need no addon-channel escape. Whether a
+-- string needs escaping depends only on its bytes, and a payload repeats its
+-- keys and many values, so one hash lookup replaces the scan for them. Bounded:
+-- at most `CLEAN_TEXT_LIMIT` strings of at most `CLEAN_TEXT_MAX_LENGTH` bytes,
+-- recorded once and never wiped (a version that emptied itself when full
+-- thrashed on large payloads). It holds up to about 14 KB of strings for the
+-- session; strings are never collected from weak tables in Lua 5.1, so the
+-- size cap is the bound. A secret never reaches it: `writeValue` asks first.
+local CLEAN_TEXT_LIMIT = 256
+local CLEAN_TEXT_MAX_LENGTH = 32
+local cleanText = {}
+local cleanTextCount = 0
 local ADDON_BAD_ESCAPE_PATTERN = "\255[^0-4]"
 local ADDON_SEQUENCE_PATTERN = "\255[0-4]"
 
@@ -726,8 +778,8 @@ local ADDON_SEQUENCE_PATTERN = "\255[0-4]"
 -- `maxOutputBytes` bounds the serialised stage by itself; the escaped frame is
 -- measured once it is joined.
 --
--- The hot paths of `writeValue` append to the buffer inline instead of calling
--- `writeByte`, and the buffer is folded into a chunk at the end of a value
+-- `writeValue` appends to the buffer inline, reading and writing its count
+-- and size once per value, and the buffer is folded into a chunk at the end of a value
 -- when it has reached `WRITER_FOLD_SIZE` fragments. Between two such checks
 -- the writer appends at most a scalar (ten fragments: a string's type byte,
 -- an eight-byte length and its text) plus nine per table header it opens on
@@ -735,15 +787,23 @@ local ADDON_SEQUENCE_PATTERN = "\255[0-4]"
 -- size even at the deepest nesting `maxDepth` allows.
 
 -- One-character strings for every byte value, and the same with the addon
--- channel's five escapes applied.
+-- channel's five escapes applied. Filled by the first writer opened
+-- (`fillByteText`), not at load, so a session that loads CodecKit and never
+-- encodes does not hold them; each table keeps its identity.
 local BYTE_TEXT = {}
 local ADDON_BYTE_TEXT = {}
-for value = 0, 255 do
-  BYTE_TEXT[value] = char(value)
-  ADDON_BYTE_TEXT[value] = char(value)
-end
-for raw, escaped in pairs(ADDON_ESCAPES) do
-  ADDON_BYTE_TEXT[byte(raw)] = escaped
+local byteTextFilled = false
+
+---Fill `BYTE_TEXT` and `ADDON_BYTE_TEXT`, once.
+local function fillByteText()
+  for value = 0, 255 do
+    BYTE_TEXT[value] = char(value)
+    ADDON_BYTE_TEXT[value] = char(value)
+  end
+  for raw, escaped in pairs(ADDON_ESCAPES) do
+    ADDON_BYTE_TEXT[byte(raw)] = escaped
+  end
+  byteTextFilled = true
 end
 
 ---Start writing into the work record's writer.
@@ -751,6 +811,9 @@ end
 ---@param byteText table `BYTE_TEXT`, or `ADDON_BYTE_TEXT` to escape as it writes
 ---@param header string|nil written first, as is, and not counted in `size`
 local function openWriter(writer, byteText, header)
+  if not byteTextFilled then
+    fillByteText()
+  end
   writer.byteText = byteText
   writer.escapeStrings = byteText == ADDON_BYTE_TEXT
   writer.size = 0
@@ -787,15 +850,6 @@ local function foldWriter(writer)
   writer.chunkCount = chunkCount
   releaseTexts(writer)
   writer.count = 0
-end
-
----@param writer table
----@param value integer 0 to 255
-local function writeByte(writer, value)
-  local count = writer.count + 1
-  writer[count] = writer.byteText[value]
-  writer.count = count
-  writer.size = writer.size + 1
 end
 
 ---Write a varint, after a type byte unless `typeByte` is `false`: seven bits
@@ -1078,7 +1132,10 @@ function writeValue(work, writer, value, depth)
     pause(work)
   end
 
+  -- The buffer's count and size are read once and written once per scalar,
+  -- not once per fragment: this runs for every value of every payload.
   local kind = type(value)
+  local count, size
   if kind == "string" then
     local length = #value
     if length > work.maxStringLength then
@@ -1086,58 +1143,75 @@ function writeValue(work, writer, value, depth)
     end
     if length < 128 then
       local byteText = writer.byteText
-      local count = writer.count
+      count = writer.count
       writer[count + 1] = byteText[TYPE_STRING]
       writer[count + 2] = byteText[length]
-      writer.count = count + 2
-      writer.size = writer.size + 2
+      count = count + 2
+      size = writer.size + 2 + length
     else
       writeTagged(writer, TYPE_STRING, length)
+      count = writer.count
+      size = writer.size + length
     end
     if length > 0 then
       -- The string's bytes as one fragment, escaped first when the writer
       -- escapes for the addon channel and the string holds such a byte.
-      writer.size = writer.size + length
-      if writer.escapeStrings and find(value, ADDON_ESCAPE_PATTERN) then
-        value = gsub(value, ADDON_ESCAPE_PATTERN, ADDON_ESCAPES)
+      if writer.escapeStrings and cleanText[value] == nil then
+        if holdsEscapeByte(value, 1) then
+          value = gsub(value, ADDON_ESCAPE_PATTERN, ADDON_ESCAPES)
+        elseif length <= CLEAN_TEXT_MAX_LENGTH and cleanTextCount < CLEAN_TEXT_LIMIT then
+          cleanText[value] = true
+          cleanTextCount = cleanTextCount + 1
+        end
       end
-      local count = writer.count + 1
+      count = count + 1
       writer[count] = value
-      writer.count = count
       local textCount = writer.textCount + 1
       writer.textSlots[textCount] = count
       writer.textCount = textCount
     end
+    writer.count = count
+    writer.size = size
   elseif kind == "number" then
     -- `value == value` first: NaN takes the general path, which recognises
     -- it before any ordered comparison.
     if value == value and value > 0 and value < 128 and value % 1 == 0 then
       local byteText = writer.byteText
-      local count = writer.count
+      count = writer.count
       writer[count + 1] = byteText[TYPE_POSITIVE_INTEGER]
       writer[count + 2] = byteText[value]
-      writer.count = count + 2
-      writer.size = writer.size + 2
+      count = count + 2
+      writer.count = count
+      size = writer.size + 2
+      writer.size = size
     else
       writeNumber(writer, value)
+      count, size = writer.count, writer.size
     end
-  elseif kind == "boolean" then
-    writeByte(writer, value and TYPE_TRUE or TYPE_FALSE)
-  elseif kind == "nil" then
-    writeByte(writer, TYPE_NIL)
+  elseif kind == "boolean" or kind == "nil" then
+    count = writer.count + 1
+    if kind == "nil" then
+      writer[count] = writer.byteText[TYPE_NIL]
+    else
+      writer[count] = writer.byteText[value and TYPE_TRUE or TYPE_FALSE]
+    end
+    writer.count = count
+    size = writer.size + 1
+    writer.size = size
   elseif kind == "table" then
     local ok, reason = writeTable(work, writer, value, depth + 1)
     if not ok then
       return false, reason
     end
+    count, size = writer.count, writer.size
   else
     return false, REASON.unsupportedType
   end
 
-  if writer.size > work.maxOutputBytes then
+  if size > work.maxOutputBytes then
     return false, REASON.maxOutputBytes
   end
-  if writer.count >= WRITER_FOLD_SIZE then
+  if count >= WRITER_FOLD_SIZE then
     foldWriter(writer)
   end
   return true
@@ -1512,72 +1586,97 @@ do
 
   local sort = table.sort
 
+  -- The symbol and fixed-code tables below are built on the first Lua
+  -- compression or decompression (`buildTables`), not at load: they hold
+  -- about 59 KB, and a session that never compresses, or whose client
+  -- compresses natively, never needs them. Each table keeps its identity, so
+  -- the functions below capture it once; only its contents arrive later.
+
   -- Powers of two, looked up rather than computed in the bit loops. The
   -- largest exponent read is 16, the widest field (a stored block's length).
   local POW2 = {}
-  for exponent = 0, 16 do
-    POW2[exponent] = 2 ^ exponent
-  end
-
   -- Length symbols 257..285 as indexes 0..28: base length and extra bits.
   local LENGTH_BASE = {}
   local LENGTH_EXTRA = {}
   -- Distance symbols 0..29: base distance and extra bits.
   local DISTANCE_BASE = {}
   local DISTANCE_EXTRA = {}
-  do
-        -- stylua: ignore start
-        local lengthBases = {
-            3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15, 17, 19, 23, 27, 31,
-            35, 43, 51, 59, 67, 83, 99, 115, 131, 163, 195, 227, 258,
-        }
-        local lengthExtras = {
-            0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2,
-            3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 0,
-        }
-        local distanceBases = {
-            1, 2, 3, 4, 5, 7, 9, 13, 17, 25, 33, 49, 65, 97, 129, 193,
-            257, 385, 513, 769, 1025, 1537, 2049, 3073, 4097, 6145, 8193, 12289, 16385, 24577,
-        }
-        local distanceExtras = {
-            0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6,
-            7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 13, 13,
-        }
-    -- stylua: ignore end
-    for index = 1, #lengthBases do
-      LENGTH_BASE[index - 1] = lengthBases[index]
-      LENGTH_EXTRA[index - 1] = lengthExtras[index]
-    end
-    for index = 1, #distanceBases do
-      DISTANCE_BASE[index - 1] = distanceBases[index]
-      DISTANCE_EXTRA[index - 1] = distanceExtras[index]
-    end
-  end
-
   -- Match length 3..258 to its length index 0..28. Filled in ascending order so
   -- 258 ends on its own symbol (285) rather than on 284's range.
   local LENGTH_INDEX = {}
-  for index = 0, 28 do
-    local base = LENGTH_BASE[index]
-    for length = base, math.min(base + POW2[LENGTH_EXTRA[index]] - 1, MAX_MATCH) do
-      LENGTH_INDEX[length] = index
-    end
-  end
-
   -- Distance to symbol: direct for 1..256; above that every symbol boundary is
   -- a multiple of 128 plus one, so `(distance - 1) / 128` indexes a small table.
   local DISTANCE_SMALL = {}
   local DISTANCE_LARGE = {}
-  for symbol = 0, DISTANCE_SYMBOLS - 1 do
-    local first = DISTANCE_BASE[symbol]
-    local last = first + POW2[DISTANCE_EXTRA[symbol]] - 1
-    for distance = first, math.min(last, 256) do
-      DISTANCE_SMALL[distance] = symbol
+  -- The fixed Huffman code lengths (RFC 1951 3.2.6).
+  local FIXED_LITERAL_LENGTHS = {}
+  local FIXED_DISTANCE_LENGTHS = {}
+
+  ---Fill the symbol tables above. Called once, by `buildTables`.
+  local function fillSymbolTables()
+    for exponent = 0, 16 do
+      POW2[exponent] = 2 ^ exponent
     end
-    if last > 256 then
-      for group = floor((math.max(first, 257) - 1) / 128), floor((last - 1) / 128) do
-        DISTANCE_LARGE[group] = symbol
+    do
+          -- stylua: ignore start
+          local lengthBases = {
+              3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15, 17, 19, 23, 27, 31,
+              35, 43, 51, 59, 67, 83, 99, 115, 131, 163, 195, 227, 258,
+          }
+          local lengthExtras = {
+              0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2,
+              3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 0,
+          }
+          local distanceBases = {
+              1, 2, 3, 4, 5, 7, 9, 13, 17, 25, 33, 49, 65, 97, 129, 193,
+              257, 385, 513, 769, 1025, 1537, 2049, 3073, 4097, 6145, 8193, 12289, 16385, 24577,
+          }
+          local distanceExtras = {
+              0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6,
+              7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 13, 13,
+          }
+      -- stylua: ignore end
+      for index = 1, #lengthBases do
+        LENGTH_BASE[index - 1] = lengthBases[index]
+        LENGTH_EXTRA[index - 1] = lengthExtras[index]
       end
+      for index = 1, #distanceBases do
+        DISTANCE_BASE[index - 1] = distanceBases[index]
+        DISTANCE_EXTRA[index - 1] = distanceExtras[index]
+      end
+    end
+
+    for index = 0, 28 do
+      local base = LENGTH_BASE[index]
+      for length = base, math.min(base + POW2[LENGTH_EXTRA[index]] - 1, MAX_MATCH) do
+        LENGTH_INDEX[length] = index
+      end
+    end
+
+    for symbol = 0, DISTANCE_SYMBOLS - 1 do
+      local first = DISTANCE_BASE[symbol]
+      local last = first + POW2[DISTANCE_EXTRA[symbol]] - 1
+      for distance = first, math.min(last, 256) do
+        DISTANCE_SMALL[distance] = symbol
+      end
+      if last > 256 then
+        for group = floor((math.max(first, 257) - 1) / 128), floor((last - 1) / 128) do
+          DISTANCE_LARGE[group] = symbol
+        end
+      end
+    end
+
+    for symbol = 0, 287 do
+      local length = 8
+      if symbol >= 144 and symbol <= 255 then
+        length = 9
+      elseif symbol >= 256 and symbol <= 279 then
+        length = 7
+      end
+      FIXED_LITERAL_LENGTHS[symbol] = length
+    end
+    for symbol = 0, 31 do
+      FIXED_DISTANCE_LENGTHS[symbol] = 5
     end
   end
 
@@ -1592,22 +1691,6 @@ do
 
   -- The order the code-length code lengths are sent in (RFC 1951 3.2.7).
   local CODE_LENGTH_ORDER = { 16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15 }
-
-  -- The fixed Huffman code lengths (RFC 1951 3.2.6).
-  local FIXED_LITERAL_LENGTHS = {}
-  for symbol = 0, 287 do
-    local length = 8
-    if symbol >= 144 and symbol <= 255 then
-      length = 9
-    elseif symbol >= 256 and symbol <= 279 then
-      length = 7
-    end
-    FIXED_LITERAL_LENGTHS[symbol] = length
-  end
-  local FIXED_DISTANCE_LENGTHS = {}
-  for symbol = 0, 31 do
-    FIXED_DISTANCE_LENGTHS[symbol] = 5
-  end
 
   -- Compression levels: how far to follow a hash chain (`chain`), when a match
   -- is long enough to stop looking (`nice`), when to quarter the chain because
@@ -1853,10 +1936,22 @@ do
     return { lookup = lookup, minLength = minLength, maxLength = maxLength }
   end
 
-  local FIXED_LITERAL_CODES = canonicalCodes(FIXED_LITERAL_LENGTHS, 288)
-  local FIXED_DISTANCE_CODES = canonicalCodes(FIXED_DISTANCE_LENGTHS, DISTANCE_SYMBOLS)
-  local FIXED_LITERAL_DECODER = buildDecoder(FIXED_LITERAL_LENGTHS, 288) --[[@as table]]
-  local FIXED_DISTANCE_DECODER = buildDecoder(FIXED_DISTANCE_LENGTHS, 32) --[[@as table]]
+  -- The fixed codes and decoders, built with the tables above.
+  local FIXED_LITERAL_CODES, FIXED_DISTANCE_CODES
+  local FIXED_LITERAL_DECODER, FIXED_DISTANCE_DECODER
+  local tablesBuilt = false
+
+  ---Build every table the Lua compressor and inflater read, once per load of
+  ---this file. Both entry points call it first; after that they allocate
+  ---nothing for tables.
+  local function buildTables()
+    fillSymbolTables()
+    FIXED_LITERAL_CODES = canonicalCodes(FIXED_LITERAL_LENGTHS, 288)
+    FIXED_DISTANCE_CODES = canonicalCodes(FIXED_DISTANCE_LENGTHS, DISTANCE_SYMBOLS)
+    FIXED_LITERAL_DECODER = buildDecoder(FIXED_LITERAL_LENGTHS, 288) --[[@as table]]
+    FIXED_DISTANCE_DECODER = buildDecoder(FIXED_DISTANCE_LENGTHS, 32) --[[@as table]]
+    tablesBuilt = true
+  end
 
   -- Compressor -----------------------------------------------------------------
   --
@@ -2381,6 +2476,9 @@ do
   ---@param input string
   ---@param level integer 1 to 9
   function compressInto(work, sink, input, level)
+    if not tablesBuilt then
+      buildTables()
+    end
     local settings = LEVELS[level]
     local length = #input
     if length < TINY_INPUT_BYTES then
@@ -2717,6 +2815,9 @@ do
   ---@return boolean ok
   ---@return string|nil reason
   function inflateInto(work, sink, input)
+    if not tablesBuilt then
+      buildTables()
+    end
     local reader = {
       input = input,
       inputLength = #input,
@@ -2997,7 +3098,7 @@ local function decodeForAddon(work, text, start)
   if #text - start + 1 > work.maxOutputBytes then
     return false, REASON.maxOutputBytes
   end
-  if find(text, ADDON_FORBIDDEN_PATTERN, start) then
+  if holdsForbiddenByte(text, start) then
     return false, REASON.forbiddenByte
   end
   -- The last byte is the body's own whenever the body is not empty, and a
@@ -3030,9 +3131,15 @@ local PRINT_EXCLUDED = {
   [125] = true, -- } chat raid-target substitutions
 }
 local PRINT_BASE = 85
+-- Digit to byte and byte to digit. Filled on the first print-safe encode or
+-- decode (`buildPrintTables`), not at load, as most sessions never use the
+-- print channel; each table keeps its identity.
 local PRINT_CODES = {}
 local PRINT_DIGITS = {}
-do
+local printTablesBuilt = false
+
+---Fill `PRINT_CODES` and `PRINT_DIGITS` from the alphabet rule, once.
+local function buildPrintTables()
   local digit = 0
   for code = 33, 126 do
     if not PRINT_EXCLUDED[code] then
@@ -3041,11 +3148,24 @@ do
       digit = digit + 1
     end
   end
-  if digit ~= PRINT_BASE then
+  printTablesBuilt = true
+end
+
+-- The alphabet is public (`CodecKit.PRINT_ALPHABET`), so it is built at load,
+-- by the same rule, without the two tables.
+local PRINT_ALPHABET
+do
+  local codes = {}
+  for code = 33, 126 do
+    if not PRINT_EXCLUDED[code] then
+      codes[#codes + 1] = code
+    end
+  end
+  if #codes ~= PRINT_BASE then
     error("MoltenCodes CodecKit print alphabet must have 85 characters", 2)
   end
+  PRINT_ALPHABET = char(unpack(codes))
 end
-local PRINT_ALPHABET = char(unpack(PRINT_CODES, 0, PRINT_BASE - 1))
 local PRINT_MAX_GROUP = 4294967295
 -- Exactly the characters `%s` strips on decode, so a print frame may start
 -- with any of them.
@@ -3082,6 +3202,9 @@ end
 ---@return boolean ok
 ---@return string textOrReason
 local function encodeForPrint(work, bytes)
+  if not printTablesBuilt then
+    buildPrintTables()
+  end
   local length = #bytes
   local groups = floor(length / 4)
   local rest = length % 4
@@ -3161,6 +3284,9 @@ end
 ---@return boolean ok
 ---@return string bytesOrReason
 local function decodeForPrint(work, text)
+  if not printTablesBuilt then
+    buildPrintTables()
+  end
   -- The raw input, whitespace included, is bounded before any work on it.
   if #text > work.maxOutputBytes then
     return false, REASON.maxOutputBytes
@@ -3357,7 +3483,7 @@ local function decodeFrame(work, text, expectedChannel, allowList)
       -- addon stage would return its input unchanged, so only its input
       -- limit is left to check; with one, it runs in full and refuses
       -- exactly as it always did.
-      if find(text, ADDON_ESCAPE_PATTERN, 3) then
+      if holdsEscapeByte(text, 3) then
         ok, body = decodeForAddon(work, text, 3)
         if not ok then
           return false, body
@@ -3366,7 +3492,9 @@ local function decodeFrame(work, text, expectedChannel, allowList)
         return false, REASON.maxOutputBytes
       end
     end
-  elseif PRINT_DIGITS[first] ~= nil or WHITESPACE[first] then
+  elseif (first >= 33 and first <= 126 and not PRINT_EXCLUDED[first]) or WHITESPACE[first] then
+    -- A print digit (the alphabet rule, read without the digit table, which
+    -- is built only for print frames) or whitespace.
     local frame
     ok, frame = decodeForPrint(work, text)
     if not ok then
@@ -3453,8 +3581,7 @@ local function containsSecret(work, value, depth)
     if
       not isArrayKey(key, arrayLength)
       and (
-        containsSecret(work, key, depth + 1)
-        or containsSecret(work, rawget(value, key), depth + 1)
+        containsSecret(work, key, depth + 1) or containsSecret(work, rawget(value, key), depth + 1)
       )
     then
       return true
@@ -3518,16 +3645,41 @@ local function refuseSecretSetting(value, label, name, level)
   end
 end
 
----Refuse option keys outside `known`.
+---Name a table key in a refusal without running the caller's code: a string
+---as itself, a number or boolean as written, anything else by its type
+---(`<table>`), because `tostring` would run a `__tostring` metamethod. A key
+---the probe reports secret never reaches this: it is refused first.
+---@param key any
+---@return string
+local function describeKey(key)
+  local kind = type(key)
+  if kind == "string" then
+    return key
+  end
+  if kind == "number" or kind == "boolean" then
+    return tostring(key)
+  end
+  return "<" .. kind .. ">"
+end
+
+---Refuse option keys outside `known`, and a secret key before it is used to
+---index `known` (the client would raise inside CodecKit).
 ---@param options table
 ---@param known table<string, true>
 ---@param label string
 ---@param level integer
-local function validateOptionKeys(options, known, label, level)
+---@param probe function|false|nil the call's `issecretvalue`; read here when `nil`
+local function validateOptionKeys(options, known, label, level, probe)
+  if probe == nil then
+    probe = readSecretProbe() or false
+  end
   local key = next(options)
   while type(key) ~= "nil" do
+    if probe and probe(key) then
+      error(label .. " options must not have a secret key", level)
+    end
     if type(key) ~= "string" or known[key] ~= true then
-      error(label .. " options." .. tostring(key) .. " is not a recognised option", level)
+      error(label .. " options." .. describeKey(key) .. " is not a recognised option", level)
     end
     key = next(options, key)
   end
@@ -3563,30 +3715,64 @@ local function readChannel(channel, label, level)
   return channel
 end
 
----Validate encode options and return the stages they select.
+---Validate encode options and return the stages they select. One pass, in the
+---order the separate helpers checked (unknown keys, then `compress`, `channel`
+---and `level`, each refused when secret before it is compared), with the
+---probe read once by the caller.
 ---@param options any
 ---@param label string
 ---@param level integer
+---@param probe function|false the call's `issecretvalue`, `false` for none
 ---@return string compress
 ---@return string channel
 ---@return integer compressionLevel
-local function readEncodeOptions(options, label, level)
+local function readEncodeOptions(options, label, level, probe)
   if type(options) == "nil" then
     return "none", "none", DEFAULT_LEVEL
   end
   if type(options) ~= "table" then
     error(label .. " options must be a table or nil", level)
   end
-  validateOptionKeys(options, ENCODE_OPTION_KEYS, label, level + 1)
+  validateOptionKeys(options, ENCODE_OPTION_KEYS, label, level + 1, probe)
   local compress = rawget(options, "compress")
-  refuseSecretSetting(compress, label, "options.compress", level + 1)
   if type(compress) == "nil" then
     compress = "none"
-  elseif type(compress) ~= "string" or COMPRESSIONS[compress] ~= true then
-    error(label .. ' options.compress must be "none" or "deflate"', level)
+  else
+    if probe and probe(compress) then
+      error(label .. " options.compress must not be a secret value", level)
+    end
+    if type(compress) ~= "string" or COMPRESSIONS[compress] ~= true then
+      error(label .. ' options.compress must be "none" or "deflate"', level)
+    end
   end
-  local channel = readChannel(rawget(options, "channel"), label, level + 1) or "none"
-  return compress, channel, readLevel(rawget(options, "level"), label, level + 1)
+  local channel = rawget(options, "channel")
+  if type(channel) == "nil" then
+    channel = "none"
+  else
+    if probe and probe(channel) then
+      error(label .. " options.channel must not be a secret value", level)
+    end
+    if type(channel) ~= "string" or CHANNELS[channel] ~= true then
+      error(label .. ' options.channel must be "none", "addon" or "print"', level)
+    end
+  end
+  local compressionLevel = rawget(options, "level")
+  if type(compressionLevel) == "nil" then
+    compressionLevel = DEFAULT_LEVEL
+  else
+    if probe and probe(compressionLevel) then
+      error(label .. " options.level must not be a secret value", level)
+    end
+    if
+      type(compressionLevel) ~= "number"
+      or compressionLevel % 1 ~= 0
+      or compressionLevel < 1
+      or compressionLevel > 9
+    then
+      error(label .. " options.level must be an integer from 1 to 9", level)
+    end
+  end
+  return compress, channel, compressionLevel
 end
 
 ---Validate decode options and return the channel a frame must use, if any.
@@ -3666,10 +3852,14 @@ local function validateLimitUpdate(limits, level)
   if type(limits) ~= "table" then
     error("CodecKit:SetLimits limits must be a table", level)
   end
+  local probe = readSecretProbe()
   local key = next(limits)
   while type(key) ~= "nil" do
+    if probe ~= nil and probe(key) then
+      error("CodecKit:SetLimits limits must not have a secret key", level)
+    end
     if type(key) ~= "string" or LIMIT_CEILINGS[key] == nil then
-      error("CodecKit:SetLimits limits." .. tostring(key) .. " is not a recognised limit", level)
+      error("CodecKit:SetLimits limits." .. describeKey(key) .. " is not a recognised limit", level)
     end
     local value = rawget(limits, key)
     local ceiling = LIMIT_CEILINGS[key]
@@ -3710,8 +3900,9 @@ local DECODE_ASYNC_OPTIONS = { name = "CodecKit:DecodeAsync" }
 ---@return string textOrReason
 local function encode(self, value, options)
   validateFacade(self, "CodecKit:Encode", 3)
-  local compress, channel, level = readEncodeOptions(options, "CodecKit:Encode", 3)
-  local work = openWork(true)
+  local probe = readSecretProbe() or false
+  local compress, channel, level = readEncodeOptions(options, "CodecKit:Encode", 3, probe)
+  local work = openWork(true, probe)
   local ok, result = encodeFrame(work, value, nil, compress, channel, level)
   closeWork(work)
   refuseSecret(ok, result, "CodecKit:Encode", 3)
@@ -3742,10 +3933,11 @@ end
 ---@return string textOrReason
 local function encodeMany(self, options, ...)
   validateFacade(self, "CodecKit:EncodeMany", 3)
-  local compress, channel, level = readEncodeOptions(options, "CodecKit:EncodeMany", 3)
+  local probe = readSecretProbe() or false
+  local compress, channel, level = readEncodeOptions(options, "CodecKit:EncodeMany", 3, probe)
   local count = select("#", ...)
   local values = { ... }
-  local work = openWork(true)
+  local work = openWork(true, probe)
   local ok, result = encodeFrame(work, values, count, compress, channel, level)
   closeWork(work)
   refuseSecret(ok, result, "CodecKit:EncodeMany", 3)
@@ -3863,9 +4055,10 @@ end
 local function encodeAsync(self, value, options, scope, callback)
   local label = "CodecKit:EncodeAsync"
   validateFacade(self, label, 3)
-  local compressName, channel, level = readEncodeOptions(options, label, 3)
+  local probe = readSecretProbe() or false
+  local compressName, channel, level = readEncodeOptions(options, label, 3, probe)
   validateAsyncTarget(scope, callback, label, 3)
-  local work = openWork(false)
+  local work = openWork(false, probe)
   if work.isSecret and containsSecret(work, value, 0) then
     error(label .. " value must not contain a secret value", 2)
   end

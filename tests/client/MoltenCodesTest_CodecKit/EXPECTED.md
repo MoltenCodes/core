@@ -61,13 +61,14 @@ MoltenCodes Test: PASS codecKit.errors: Encode called with a dot names CodecKitS
 MoltenCodes Test: PASS codecKit.errors: an unknown option key, a channel outside its set, level 10 and Compress options that are not a table are refused at the calling line
 MoltenCodes Test: PASS codecKit.errors: Decode of a number and DecodeForAddon of a table are refused at the calling line, because the non-raising contract covers strings only
 MoltenCodes Test: PASS codecKit.errors: SetLimits with UNBOUNDED for maxDepth is refused at the calling line with its reason, and the limits stay as they were
+MoltenCodes Test: PASS codecKit.errors: a SetLimits key and an Encode option key that are tables with a __tostring are refused at the calling line, named <table>, and the metamethod never runs
 MoltenCodes Test: PASS codecKit.errors: EncodeAsync with a table that is not a scope, and with a closed SchedulerKit scope, is refused at the calling line and never calls back
 MoltenCodes Test: PASS codecKit.secrets: Encode refuses a secretwrap value at the top, in an array, as a map value and three tables deep, each at the calling line, and leaves no pooled table leased
 MoltenCodes Test: PASS codecKit.secrets: EncodeMany and Serialize refuse a secret argument at the calling line
 MoltenCodes Test: PASS codecKit.secrets: EncodeAsync refuses a secret deep in the value at the calling line, schedules no job and never calls back
 MoltenCodes Test: PASS codecKit.secrets: a secret string handed to Decode, DecodeMany, Deserialize, Decompress, DecodeForAddon and DecodeForPrint is refused at the calling line before anything reads it
 MoltenCodes Test: PASS codecKit.secrets: a secret options.level, a secret options.channel and a secret SetLimits maxDepth are refused at the calling line and the limits stay as they were
-MoltenCodes Test: codecKit: 36 passed, 0 failed, 0 skipped, 0 timed out (36 tests)
+MoltenCodes Test: codecKit: 37 passed, 0 failed, 0 skipped, 0 timed out (37 tests)
 MoltenCodes Test: results saved in MoltenCodesTestResults; /reload or log out to write them to disk.
 ```
 
@@ -129,8 +130,8 @@ MoltenCodes Test: SKIP codecKit.native: CompressString at Default and OptimizeFo
 ```
 
 With both missing, the totals line reads
-`24 passed, 0 failed, 12 skipped, 0 timed out (36 tests)`; with only one
-missing, `31 passed, 0 failed, 5 skipped` or `29 passed, 0 failed, 7 skipped`.
+`25 passed, 0 failed, 12 skipped, 0 timed out (37 tests)`; with only one
+missing, `32 passed, 0 failed, 5 skipped` or `30 passed, 0 failed, 7 skipped`.
 On Retail 12.1 any `SKIP` is unexpected.
 
 ## Per flavour
@@ -152,7 +153,7 @@ client.
 ### Retail (12.1)
 
 The lines above:
-`MoltenCodes Test: codecKit: 36 passed, 0 failed, 0 skipped, 0 timed out (36 tests)`,
+`MoltenCodes Test: codecKit: 37 passed, 0 failed, 0 skipped, 0 timed out (37 tests)`,
 with no `SKIP` line.
 
 ### Classic Era (1.15) and Mists of Pandaria Classic (5.5)
@@ -166,17 +167,17 @@ suite reads them at load).
 
 - With both functions, and secrets made with them, the totals line is
   Retail's:
-  `MoltenCodes Test: codecKit: 36 passed, 0 failed, 0 skipped, 0 timed out (36 tests)`.
+  `MoltenCodes Test: codecKit: 37 passed, 0 failed, 0 skipped, 0 timed out (37 tests)`.
 - Without them, the five lines under
   [On a client without secret values](#on-a-client-without-secret-values)
   are `SKIP` and the totals line is
-  `MoltenCodes Test: codecKit: 31 passed, 0 failed, 5 skipped, 0 timed out (36 tests)`.
+  `MoltenCodes Test: codecKit: 32 passed, 0 failed, 5 skipped, 0 timed out (37 tests)`.
 
 A client that has both functions but makes no secret with them
 (`issecretvalue` does not report what `secretwrap` returns as secret;
 `Harness:CanMakeSecrets` measures this once at load) skips the same five
 tests with another reason, and the totals line is again
-`MoltenCodes Test: codecKit: 31 passed, 0 failed, 5 skipped, 0 timed out (36 tests)`:
+`MoltenCodes Test: codecKit: 32 passed, 0 failed, 5 skipped, 0 timed out (37 tests)`:
 
 ```text
 MoltenCodes Test: SKIP codecKit.secrets: Encode refuses a secretwrap value at the top, in an array, as a map value and three tables deep, each at the calling line, and leaves no pooled table leased -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
@@ -222,6 +223,7 @@ are unexpected there too.
 | `an unknown option key, a channel outside its set, level 10 ...` | Each option refusal at the calling line with docs/API.md's wording. |
 | `Decode of a number and DecodeForAddon of a table ...` | The non-raising contract covers strings only: a non-string raises at the calling line. |
 | `SetLimits with UNBOUNDED for maxDepth ...` | The refusal names the reason and the range at the calling line, and nothing changes. |
+| `a SetLimits key and an Encode option key that are tables with a __tostring ...` | CodecKit 0.2.2 names a key that is not a string, number or boolean by its type: both refusals say `<table>` at the calling line, the key's `__tostring` never runs, and the limits stay as they were. Revision 8 and earlier built these messages with `tostring(key)`. |
 | `EncodeAsync with a table that is not a scope, and with a closed SchedulerKit scope ...` | Both scope refusals at the calling line, and no callback. |
 | `Encode refuses a secretwrap value at the top, in an array, ...` | A genuine secret anywhere in the value is refused at the calling line with `CodecKit:Encode value must not contain a secret value`, CodecKit's own message, so CodecKit found it before the client's comparison error could; no pooled table stays leased and the limits are unchanged. The log records whether the client lets a table hold a secret key at all (the CacheKit client run measured that reading `t[secret]` raises `cannot be indexed with secret keys` on Retail 12.1.0 b69933, so a refusal is expected), which is the only way docs/API.md's "in a key" case could arise. |
 | `EncodeMany and Serialize refuse a secret argument ...` | The same refusal on the two other encoders. |
@@ -232,7 +234,7 @@ are unexpected there too.
 ## What counts as unexpected
 
 - Any `FAIL` or `TIMEOUT` line, a `SKIP` line on Retail 12.1, or a totals
-  line other than `36 passed, 0 failed, 0 skipped, 0 timed out (36 tests)`
+  line other than `37 passed, 0 failed, 0 skipped, 0 timed out (37 tests)`
   (on a Classic client, other than the two totals lines under
   [Per flavour](#per-flavour)).
 - No login line, or `Expected.lua is missing`: the harness or the installer

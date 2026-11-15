@@ -69,7 +69,9 @@ load.
 Optional: SchedulerKit API 1, used only by `EncodeAsync` and `DecodeAsync`.
 CodecKit looks it up with `Registry:Find` when one of them is called, so it may
 load in any order; without it those two methods raise at the caller and
-everything else works. The two host facilities CodecKit reads are looked up
-at every call: `issecretvalue` (on a client without it nothing is treated as
-secret) and `C_EncodingUtil.CompressString` (without it every input is
-compressed in Lua; every supported client documents it).
+everything else works. CodecKit reads two host facilities: `issecretvalue`, resolved once
+at load and looked up at every call only when it was absent then (on a client
+without it nothing is treated as secret), and `C_EncodingUtil.CompressString`,
+looked up at every call (without it every input is compressed in Lua; every
+supported client documents it). The byte, print and DEFLATE tables are built
+on first use, so loading CodecKit costs about 87 KB less until a stage runs.

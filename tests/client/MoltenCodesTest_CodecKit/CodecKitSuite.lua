@@ -1929,6 +1929,31 @@ errors:Test(
 )
 
 errors:Test(
+  "a SetLimits key and an Encode option key that are tables with a __tostring are refused at the calling line, named <table>, and the metamethod never runs",
+  function(ctx)
+    local before = CodecKit:GetLimits()
+    local runs = 0
+    local key = setmetatable({}, {
+      __tostring = function()
+        runs = runs + 1
+        return "ran"
+      end,
+    })
+    local lines = { start = 0 }
+    expectErrorAtCallingLine(ctx, function()
+      lines.start = currentLine()
+      CodecKit:SetLimits({ [key] = 1 })
+    end, lines, "CodecKit:SetLimits limits.<table> is not a recognised limit")
+    expectErrorAtCallingLine(ctx, function()
+      lines.start = currentLine()
+      CodecKit:Encode(SAMPLE_VALUE, { [key] = true })
+    end, lines, "CodecKit:Encode options.<table> is not a recognised option")
+    ctx:Expect(runs):ToBe(0)
+    ctx:Expect(CodecKit:GetLimits()):ToEqual(before)
+  end
+)
+
+errors:Test(
   "EncodeAsync with a table that is not a scope, and with a closed SchedulerKit scope, is refused at the calling line and never calls back",
   function(ctx)
     local calls = 0

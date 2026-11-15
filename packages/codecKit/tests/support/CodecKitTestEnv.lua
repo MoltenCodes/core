@@ -88,8 +88,9 @@ function Async.TickUntil(isDone, maxTicks)
 end
 
 ---Install an `issecretvalue` stub that reports every value in `secrets` as
----secret. CodecKit looks the probe up at every call, so the stub may be
----installed after the package has loaded; `Reset` removes it.
+---secret. CodecKit resolves the probe at load and, when there was none then,
+---looks the global up at every call, so the stub may be installed after the
+---package has loaded; `Reset` removes it.
 ---@param secrets table<any, true>
 function CodecKitTestEnv.InstallSecretProbe(secrets)
   setGlobal("issecretvalue", function(value)

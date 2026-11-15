@@ -317,7 +317,7 @@ describe("CodecKit bootstrap", function()
     package.loaded["CodecKit"] = nil
     local CodecKit = require("CodecKit")
     assert.are.equal(older, CodecKit)
-    assert.are.equal(8, CodecKit.REVISION)
+    assert.are.equal(9, CodecKit.REVISION)
     assert.are.equal(state, CodecKit._state)
     assert.are.equal(CodecKit.REVISION, CodecKit._state.runtimeRevision)
     assert.are.equal(pool, CodecKit._state.pool)
@@ -327,6 +327,49 @@ describe("CodecKit bootstrap", function()
     assert.are.equal(2, #record.compressCalls)
     assert.are.equal(0, pool:GetActiveCount())
   end)
+
+  it(
+    "upgrades a revision 8 copy in place and names a table key without running it afterwards",
+    function()
+      TestEnv.Reset()
+      require("Registry")
+      require("PoolKit")
+      -- Revision 8 built the refusal with `tostring(key)`.
+      local older = TestEnv.LoadRevision(
+        8,
+        '" options." .. describeKey(key) .. " is not a recognised option"',
+        '" options." .. tostring(key) .. " is not a recognised option"'
+      )
+      assert.are.equal(8, older.REVISION)
+      older:SetLimits({ maxDepth = 8 })
+      local input = string.rep("an upgrade keeps compressing; ", 10)
+      local _, compressed = older:Compress(input)
+      local _, encoded = older:Encode({ "kept", 1 }, { channel = "addon" })
+      local state = older._state
+
+      package.loaded["CodecKit"] = nil
+      local CodecKit = require("CodecKit")
+      assert.are.equal(older, CodecKit)
+      assert.are.equal(9, CodecKit.REVISION)
+      assert.are.equal(state, CodecKit._state)
+      assert.are.equal(8, CodecKit:GetLimits().maxDepth)
+      assert.are.equal(input, select(2, CodecKit:Decompress(compressed)))
+      assert.are.same({ "kept", 1 }, select(2, CodecKit:Decode(encoded)))
+      assert.are.equal(encoded, select(2, CodecKit:Encode({ "kept", 1 }, { channel = "addon" })))
+
+      local runs = 0
+      local key = setmetatable({}, {
+        __tostring = function()
+          runs = runs + 1
+          return "ran"
+        end,
+      })
+      TestEnv.expectErrorContaining("options.<table> is not a recognised option", function()
+        CodecKit:Encode(1, { [key] = true })
+      end)
+      assert.are.equal(0, runs)
+    end
+  )
 
   it("requires Registry", function()
     TestEnv.Reset()

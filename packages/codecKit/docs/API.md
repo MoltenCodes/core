@@ -2,7 +2,7 @@
 
 CodecKit API generation **1** turns Lua values into transport-safe strings and back in three composable stages — serialise, compress, channel-encode — behind a two-byte, self-describing header. Decoding never raises on malformed input.
 
-Implementation revision: **8**. Wire format version: **1** (`CodecKit.FORMAT_VERSION`).
+Implementation revision: **9**. Wire format version: **1** (`CodecKit.FORMAT_VERSION`).
 
 ## Loading
 
@@ -30,7 +30,7 @@ CodecKit does not rely on `require()` at runtime. Loading it without Registry ra
 | `issecretvalue` | refusing secret values | Nothing is treated as secret. |
 | `C_EncodingUtil.CompressString` | the compression stage, for inputs of 64 bytes or more (see [Compression](#compression)) | Every input is compressed in Lua, byte for byte as revision 6 did. |
 
-SchedulerKit is found with `Registry:Find("schedulerKit", 1)` when an asynchronous method is called, so it may load in any order. `issecretvalue` and `C_EncodingUtil` are looked up at every call, as SchemaKit does. `C_EncodingUtil` is documented on Retail since 11.1.5, on Mists of Pandaria Classic since 5.5.0 and on Classic Era since 1.15.8, so every supported client has it.
+SchedulerKit is found with `Registry:Find("schedulerKit", 1)` when an asynchronous method is called, so it may load in any order. `C_EncodingUtil` is looked up at every call. `issecretvalue` is resolved once when CodecKit loads (the client defines it before any addon runs) and, when it was absent then, looked up at every call, so a probe installed later is still honoured. `C_EncodingUtil` is documented on Retail since 11.1.5, on Mists of Pandaria Classic since 5.5.0 and on Classic Era since 1.15.8, so every supported client has it.
 
 ## Public surface
 
@@ -64,7 +64,7 @@ SchedulerKit is found with `Registry:Find("schedulerKit", 1)` when an asynchrono
 | `level` | the same, and `Compress` | integer 1 (fastest) to 9 (smallest) | 6 |
 | `channel` | `Decode`, `DecodeMany`, `DecodeAsync` | `"none"`, `"addon"`, `"print"` | not checked |
 
-A decoder does not need options: the header says which stages to reverse. `options.channel` on a decoder is an assertion — a frame encoded for any other channel is refused with `"channelMismatch"`, so a handler for addon messages can refuse a pasted export string. An unknown option key, or a value outside its set, raises at the caller.
+A decoder does not need options: the header says which stages to reverse. `options.channel` on a decoder is an assertion — a frame encoded for any other channel is refused with `"channelMismatch"`, so a handler for addon messages can refuse a pasted export string. An unknown option key, or a value outside its set, raises at the caller. A key that is not a string is named by its type in the message (`CodecKit:Encode options.<table> is not a recognised option`; a number or boolean as written), so a key's `__tostring` never runs inside CodecKit; the same holds for `SetLimits` keys (`CodecKit:SetLimits limits.<table> is not a recognised limit`).
 
 ## The non-raising contract
 
@@ -283,7 +283,7 @@ The callback is never called when the job is cancelled, by `job:Cancel()`, `scop
 
 ## Secret values
 
-Retail clients hand addon code **secret values** in restricted contexts; see [`EMBEDDING.md` → Secret values](../../../docs/EMBEDDING.md#secret-values-retail-12x). CodecKit asks `issecretvalue` about every value before anything else touches it, and a secret anywhere in the value — at the top, in a table value, in a key, deep in a nested table — raises at the caller: `CodecKit:Encode value must not contain a secret value`. `EncodeAsync` scans the value for secrets at the call, visiting values in the encoder's order and stopping where the encoder would refuse with `"maxDepth"` or `"maxValues"`, so its refusal is at the caller too. A decoding or stage method refuses a secret string argument the same way, and a secret option value (`compress`, `channel`, `level`) or `SetLimits` value is refused before anything compares it: `CodecKit:Encode options.level must not be a secret value`, `CodecKit:SetLimits limits.maxDepth must not be a secret value`. A secret receiver or `options` argument is tested with `type` before anything compares it and is refused at the caller with the ordinary message: `CodecKit:Encode must be called on the CodecKit facade; use CodecKit:Encode(...)`, `CodecKit:Encode options must be a table or nil`.
+Retail clients hand addon code **secret values** in restricted contexts; see [`EMBEDDING.md` → Secret values](../../../docs/EMBEDDING.md#secret-values-retail-12x). CodecKit asks `issecretvalue` about every value before anything else touches it, and a secret anywhere in the value — at the top, in a table value, in a key, deep in a nested table — raises at the caller: `CodecKit:Encode value must not contain a secret value`. `EncodeAsync` scans the value for secrets at the call, visiting values in the encoder's order and stopping where the encoder would refuse with `"maxDepth"` or `"maxValues"`, so its refusal is at the caller too. A decoding or stage method refuses a secret string argument the same way, and a secret option value (`compress`, `channel`, `level`) or `SetLimits` value is refused before anything compares it: `CodecKit:Encode options.level must not be a secret value`, `CodecKit:SetLimits limits.maxDepth must not be a secret value`. A secret key in `options` or in a `SetLimits` table is refused before it is used to look the name up: `CodecKit:Encode options must not have a secret key`, `CodecKit:SetLimits limits must not have a secret key`. A secret receiver or `options` argument is tested with `type` before anything compares it and is refused at the caller with the ordinary message: `CodecKit:Encode must be called on the CodecKit facade; use CodecKit:Encode(...)`, `CodecKit:Encode options must be a table or nil`.
 
 ## Security: decoded data is untrusted
 
@@ -332,6 +332,16 @@ Inflating, which is always the Lua inflater, costs about 0.12 ms per KiB of outp
 - **Decoding a serialised body** allocates the tables it returns and the strings in them; `DecodeMany` also allocates one array for the entries of a list. A binary frame, and an addon frame with nothing to unescape, are read in place; an addon frame with escapes costs one unescaped copy of the frame.
 - **Compressing** an input under 64 bytes writes one literal or stored block and allocates nothing beyond its output (0.001 KiB per call measured for 32 bytes). From 64 bytes the matcher allocates working arrays proportional to the input (a few tens of bytes per input byte: the byte array, the hash chains and the tokens) plus about 35 to 40 KiB of code tables **per block** (a block covers at most 32 KiB of input); all of it is garbage after the call. **Inflating** allocates an output array of about 16 bytes per output byte.
 - One `table.concat` per stage output, and one more per 4096 fragments of serialised output or per 1024 of a compression or print stage's.
+- **Built on first use** (revision 9 and later): the one-character byte strings on the first encode, the print alphabet's digit tables on the first print-safe encode or decode, and the DEFLATE symbol and fixed-code tables on the first Lua compression or decompression. A session that loads CodecKit and never uses a stage does not hold its tables (about 87 KB together); the first use pays the build once.
+- **Clean-string cache**: on the addon channel, short strings (32 bytes or less) found to need no escape are remembered, up to 256 of them for the session, so a repeated key costs one table lookup instead of a scan. They are recorded once and never dropped, so the cache holds up to about 14 KB of the strings it has seen. The addon channel's byte scans use one plain search per byte instead of a character class, which on a 20 KB frame is about a hundred times cheaper.
+- **Against AceSerializer-3.0** on the host benchmark (`python3 -m tooling.bench.run --workload codec`, the addon channel, compression off), CodecKit's time ÷ AceSerializer's
+
+| Case | Revision 8 ÷ Ace3 | Revision 9 ÷ Ace3 |
+|---|---:|---:|
+| encode small / medium / large | 1.62 / 1.62 / 1.24× | 1.37 / 1.35 / 1.18× |
+| decode small / medium / large | 1.24 / 1.12 / 0.86× | 1.07 / 0.95 / 0.74× |
+
+  Both columns come from one session on 2026-11-15, on a machine that was not idle. Encoding stays above AceSerializer's: the remaining cost is per value (the secret probe, the value count and the bounds), not per call.
 
 **The client's encoder.** Where `C_EncodingUtil.CompressString` compresses, none of the Lua compressor's working arrays or code tables are allocated; the call allocates its result string. Its speed on the client has not been measured yet: the client suite logs it (see `tests/client/MoltenCodesTest_CodecKit/EXPECTED.md`). For scale, measured on the host with the same inputs (Apple M5 Pro, a loaded machine, 2026-11-15), C zlib's raw DEFLATE cost 0.013 to 0.032 ms per KiB at level 6 against CodecKit's 0.57 ms, 18 to 43 times less, with output within 0.3% of CodecKit's size; that is an expectation for the client, not a measurement of it.
 
@@ -354,4 +364,4 @@ The nine-point plan in `docs/ROADMAP.md` is followed except where recorded here:
 
 ## Upgrades
 
-The package state (`_state`) holds the shared limits, the `UNBOUNDED` sentinel and the table pool, and all three are kept across an in-place upgrade: a newer compatible revision replaces the facade's functions, inherits the limits a consumer set, and keeps leasing from the same pool. The wire format belongs to the format version, not to the revision, so frames written by any revision of API generation 1 decode in every other, the frames revisions 7 and later compress with the client's encoder included. Revisions 7 and 8 add nothing to `_state`.
+The package state (`_state`) holds the shared limits, the `UNBOUNDED` sentinel and the table pool, and all three are kept across an in-place upgrade: a newer compatible revision replaces the facade's functions, inherits the limits a consumer set, and keeps leasing from the same pool. The wire format belongs to the format version, not to the revision, so frames written by any revision of API generation 1 decode in every other, the frames revisions 7 and later compress with the client's encoder included. Revisions 7, 8 and 9 add nothing to `_state`; revision 9's lazily built tables and its clean-string cache are file-local, so each revision builds its own on first use.

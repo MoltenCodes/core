@@ -26,7 +26,7 @@ The **writer** collects the serialised bytes:
 
 | Field | Meaning |
 |---|---|
-| `[1..count]` | Fragments: one-byte strings from a table built at load, string values, and the frame header. |
+| `[1..count]` | Fragments: one-byte strings from a table filled when the first writer opens (`fillByteText`), string values, and the frame header. |
 | `byteText` | The byte table in use: plain, or with the addon channel's five escapes applied. |
 | `escapeStrings` | Whether string values are escaped for the addon channel as they are written. |
 | `size` | Serialised bytes so far, before escaping, for the `maxOutputBytes` check after every value. |
@@ -121,8 +121,12 @@ Revision 7 hands the compression stage to the client's `C_EncodingUtil.CompressS
 
 ## Print channel
 
-A group of four bytes is at most 2^32 − 1 and five base-85 digits at most 85^5 − 1, both exact in doubles, so the arithmetic is plain division and remainder. The alphabet is computed at load from printable ASCII minus the excluded characters, and the load fails loudly if it does not come to 85.
+A group of four bytes is at most 2^32 − 1 and five base-85 digits at most 85^5 − 1, both exact in doubles, so the arithmetic is plain division and remainder. The alphabet is computed at load from printable ASCII minus the excluded characters, and the load fails loudly if it does not come to 85. The digit tables (`PRINT_CODES`, `PRINT_DIGITS`) are filled by `buildPrintTables` on the first print-safe encode or decode; the frame reader recognises a print frame by the alphabet rule itself (printable ASCII outside `PRINT_EXCLUDED`), so it needs neither table.
 
 ## Upgrades
 
-A newer revision keeps `_state` (limits, the `UNBOUNDED` sentinel and pool) and rewrites the facade's functions and constants. Sinks exist only during a call, and the idle work record is file-local: each revision builds its own and holds nothing in it between calls, so no object carries state from the revision that built it. No revision so far has changed the state layout: revisions 2 to 8 inherit the state revision 1 built unchanged, and so will a later revision that keeps schema 1. Revision 7's native compressor added no field, and neither did revision 8: both read the client's functions at every call.
+A newer revision keeps `_state` (limits, the `UNBOUNDED` sentinel and pool) and rewrites the facade's functions and constants. Sinks exist only during a call, and the idle work record is file-local: each revision builds its own and holds nothing in it between calls, so no object carries state from the revision that built it. No revision so far has changed the state layout: revisions 2 to 8 inherit the state revision 1 built unchanged, and so will a later revision that keeps schema 1. Revision 7's native compressor added no field, and neither did revision 8: both read the client's functions at every call. Revision 9 adds no field either. What it builds lazily is file-local and constant: the byte text (`fillByteText`, on the first writer), the print digit tables (`buildPrintTables`) and the DEFLATE symbol and fixed-code tables (`buildTables`, called first by `compressInto` and `inflateInto`; each table is declared at load and only filled later, so the functions capture it once). Keeping them in `_state` would need validation and a layout for constant data an upgraded revision can rebuild once.
+
+**Load-time probe and options.** `issecretvalue` is resolved once at load (`loadedSecretProbe`); `readSecretProbe` returns it, or looks the global up when it was absent then. An encoding method reads the probe once and passes it to `readEncodeOptions`, which checks the keys, `compress`, `channel` and `level` in one pass in the same order and with the same messages as the earlier helpers, and to `openWork`, which no longer reads it again.
+
+**Clean-string cache and plain scans.** `writeValue` keeps `cleanText`, a set of at most 256 strings of at most 32 bytes that the addon-channel scan found clean; a hit skips the scan. It is filled once and never wiped, and only after `writeValue` asked the probe, so a secret never becomes a key. `holdsForbiddenByte` and `holdsEscapeByte` scan with one plain `string.find` per byte; Lua 5.1 tries a character class at every start position. `writeValue` reads and writes the buffer's `count` and `size` once per value.

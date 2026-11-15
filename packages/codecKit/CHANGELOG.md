@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.2 — 2026-11-15
+
+- Fixed: `validateOptionKeys` and `SetLimits` built their refusal with `tostring(key)`, so a table key with a `__tostring` metamethod ran the caller's code inside CodecKit, which could raise its own error or answer a secret. A key is now named as itself (a string), as written (a number or boolean) or by its type: `CodecKit:Encode options.<table> is not a recognised option`, `CodecKit:SetLimits limits.<table> is not a recognised limit`. A secret key is refused first, before it is used to look the name up, with `options must not have a secret key` or `limits must not have a secret key`. `KeyDescriptions_spec.lua` holds the regression specs; the client suite gains the same check.
+- Memory: the one-character byte strings (built on the first encode), the print digit tables (the first print-safe encode or decode) and the DEFLATE symbol and fixed-code tables (the first Lua compression or decompression) are no longer built at load. A session that loads CodecKit and never uses a stage holds about 87 KB less (DEFLATE 59.0 KB, byte text 18.5 KB, print 9.3 KB); the first use pays the build once. `PRINT_ALPHABET` is still built at load.
+- Performance: a bounded clean-string cache (at most 256 strings of at most 32 bytes, recorded once, up to about 14 KB held) skips the addon-channel escape scan for repeated keys and values; the escape and forbidden-byte scans use plain searches instead of a character class; encode options are read in one pass with the secret probe read once per call; `writeValue` reads and writes the buffer counters once per value. Host benchmark against AceSerializer-3.0, same session (2026-11-15): encode small, medium and large 1.62, 1.62, 1.24× → 1.37, 1.35, 1.18×; decode 1.24, 1.12, 0.86× → 1.07, 0.95, 0.74×. Decoding is now below AceSerializer's cost for medium and large payloads; encoding is not.
+- The secret probe follows the rule every Kit follows: `issecretvalue` is resolved once when the file loads, and looked up at every call only when it was absent then.
+- Implementation revision 9. No state field changed: an in-place upgrade from revision 8 keeps the limits, the sentinel and the pool, and frames either revision wrote decode in the other (`Bootstrap_spec.lua`, "upgrades a revision 8 copy in place ...").
+- Specs: 149 → 165 (`KeyDescriptions_spec.lua`, `LoadCost_spec.lua`, the upgrade from revision 8).
+
 ## 0.2.1 — 2026-11-15
 
 Review fix. The wire format is unchanged, and every frame any revision wrote decodes as before.
