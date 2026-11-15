@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.6.9 — 2026-11-15
+
+- The secret-value probe is resolved once at load. `isSecret` read `rawget(_G, "issecretvalue")` and tested its type on every check; it now keeps the probe the client defined before any addon ran, and reads the global again (accepting only a function) only when no probe existed at load, so a probe a test host or shim installs later is still honoured. One global read and one `type` call fewer per secret check in the client; messages and levels are unchanged.
+- `docs/API.md` documents the instance field `_halted` (*Halted state*, *The `_halted` field*) as a stable part of API generation 1: `false` from creation, `true` from the moment `Halt` begins and before any subscriber runs. ModuleKit reads it on every module enable instead of calling `IsHalted` twice.
+- Implementation revision 18. No state changed: an upgrade over revision 17 replaces the functions and keeps every instance, callback and limit (the previous-revision upgrade specs).
+- Three new specs. `SecretValues_spec.lua` checks that a probe present at load is used without reading the global again and that a non-function global is ignored; `Halt_spec.lua` checks that `_halted` is set before the first `OnHalted` subscriber runs.
+
 ## 0.6.8 — 2026-11-15
 
 - Fixed: an unrecognised `SetLimits` key, or a key written to `LifecycleKit.CLOSES_ADDON_SCOPES`, that is a table (or any other value with a `__tostring` metamethod) was passed to `tostring` to build the refusal. That ran the caller's `__tostring` inside LifecycleKit: foreign code that could raise, or answer a secret value on Retail, and so replace the real refusal with its own error. A new `describeKey` names such a key by its type instead: `LifecycleKit:SetLimits limits.<table> is not a recognised limit`, `LifecycleKit.CLOSES_ADDON_SCOPES is read-only; field "<table>" cannot be written`. A key `issecretvalue` reports secret is named `<secret value>` instead of being converted. A string key is shown as written and a number or boolean as before, so every documented message for those is unchanged. `docs/API.md` documents the form under *Argument errors* and `CLOSES_ADDON_SCOPES`.

@@ -35,7 +35,7 @@
 
 local PACKAGE_NAME = "lifecycleKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 17
+local IMPLEMENTATION_REVISION = 18
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_SIGNAL_API = 1
 local REQUIRED_EVENT_KIT_API = 1
@@ -336,13 +336,32 @@ end
 ---type, or using it as a key, raises inside LifecycleKit instead of at the
 ---caller. Values LifecycleKit did not create are tested for absence with
 ---`type(value) == "nil"`, the repository rule, and a secret is refused first.
----@param value any
----@return boolean
-local function isSecret(value)
+---
+---The probe is resolved once, when this file loads: every client defines it
+---before any addon runs. When it was absent at load (a test host, or a shim
+---installed later), each call reads the global again and accepts it only as a
+---function, so a probe installed after load is still honoured.
+---@type fun(value: any): boolean
+local isSecret
+do
   -- issecretvalue is a World of Warcraft client API reachable only through the global table.
   -- selene: allow(global_usage)
-  local isSecretValue = rawget(_G, "issecretvalue")
-  return type(isSecretValue) == "function" and isSecretValue(value) == true
+  local loadedIsSecretValue = rawget(_G, "issecretvalue")
+  if type(loadedIsSecretValue) ~= "function" then
+    loadedIsSecretValue = nil
+  end
+
+  function isSecret(value)
+    local probe = loadedIsSecretValue
+    if probe == nil then
+      -- selene: allow(global_usage)
+      probe = rawget(_G, "issecretvalue")
+      if type(probe) ~= "function" then
+        return false
+      end
+    end
+    return probe(value) == true
+  end
 end
 
 ---Name a caller's table key in a refusal without running its `__tostring`.

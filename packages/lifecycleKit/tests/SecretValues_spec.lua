@@ -105,4 +105,41 @@ describe("LifecycleKit secret values", function()
     life:SetCombatQueueLimit(8)
     assert.are.equal(8, life:GetCombatQueueLimit())
   end)
+
+  it("uses the probe present at load without reading the global again", function()
+    -- The module chain is loaded by hand so the probe exists before
+    -- LifecycleKit's file runs, as it does in every client.
+    TestEnv.Reset()
+    TestEnv.InstallWowApi()
+    local secret = {}
+    -- selene: allow(global_usage)
+    rawset(_G, "issecretvalue", function(value)
+      return rawequal(value, secret)
+    end)
+    require("Registry")
+    require("SignalKit")
+    require("EventKit")
+    LifecycleKit = require("LifecycleKit")
+    -- A replacement installed after load is never consulted: the probe the
+    -- client defined before any addon ran is the one LifecycleKit keeps.
+    local consulted = false
+    -- selene: allow(global_usage)
+    rawset(_G, "issecretvalue", function()
+      consulted = true
+      return false
+    end)
+
+    expectRefusalAtCaller("LifecycleKit:ForAddon addonName must not be a secret value", function()
+      LifecycleKit:ForAddon(secret)
+    end)
+    assert.is_false(consulted)
+  end)
+
+  it("ignores an issecretvalue global that is not a function", function()
+    -- selene: allow(global_usage)
+    rawset(_G, "issecretvalue", true)
+
+    local life = LifecycleKit:ForAddon("MyAddon")
+    assert.is_true(life:DependsOn("OtherAddon"))
+  end)
 end)

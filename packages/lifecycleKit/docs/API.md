@@ -155,6 +155,18 @@ A halted addon does not close any of them at the halt. Event connections, hooks,
 
 Phase subscriptions after a halt follow the shutdown rule: a phase reached before the halt still replays, and every other phase returns an already-disconnected subscription. `OnHalted` replays for a halted addon, synchronously, with the reason, like the phase subscriptions. For an addon that has shut down, `OnHalted` returns an already-disconnected subscription.
 
+### The `_halted` field
+
+Every instance carries `_halted`, a boolean field LifecycleKit alone writes:
+`false` from creation, `true` from the moment `Halt` begins, before step 1
+above and before any subscriber runs, and never `false` again. It is part of
+API generation 1: its name and meaning stay for the life of the generation, so
+another Kit may read it with `rawget(instance, "_halted") == true` instead of
+calling `IsHalted()`. ModuleKit does exactly that on every module enable,
+where the method call would cost more than the check. An instance made by a
+revision older than the halted state has no field, and `nil` correctly reads
+as "not halted". Write nothing to it: `Halt` is the only way in.
+
 ### Dependencies between addons
 
 `DependsOn(otherAddonName)` records that this addon cannot work without another one. The name is matched exactly, like `ForAddon`, and the other addon does not need a lifecycle instance yet. The call returns `true` when it recorded the dependency and `false` when it was already recorded. An addon records at most `maxDependencies` dependencies, **16** unless changed with `LifecycleKit:SetLimits` (see [Limits](#limits)); the next one is refused with `nil, "full"`. A halted or shut-down addon refuses new dependencies with `nil, "halted"` or `nil, "shutdown"`. Declaring the addon itself raises an argument error.
@@ -250,7 +262,10 @@ not to raise (measured on Retail 12.1.0 b69933, see
 LifecycleKit still tests every value it did not create for absence with
 `type(value) == "nil"`, the repository rule, which never compares anything, and
 refuses a secret at the caller before it would compare one (revision 14 and
-later):
+later). The probe, `issecretvalue`, is read once when the file loads, since
+every client defines it before any addon runs; only when it was absent at load
+does each check read the global again, accepting it only as a function, so a
+probe installed later is still honoured (revision 18):
 
 | Call | Message |
 |---|---|
@@ -294,7 +309,7 @@ State written by revisions before 12 has neither field; an upgrade seeds the def
 
 ## Dependencies
 
-The facade carries two read-only constants: `LifecycleKit.API`, the API generation (`1`), and `LifecycleKit.REVISION`, the implementation revision of the copy that is active in the session (`17` for this one). A newer embedded copy replaces `REVISION` when it upgrades the facade in place.
+The facade carries two read-only constants: `LifecycleKit.API`, the API generation (`1`), and `LifecycleKit.REVISION`, the implementation revision of the copy that is active in the session (`18` for this one). A newer embedded copy replaces `REVISION` when it upgrades the facade in place.
 
 LifecycleKit API 1 requires:
 
@@ -312,6 +327,6 @@ Host API read directly: `C_AddOns.IsAddOnLoaded` (falling back to the legacy `Is
 
 Compatible embedded copies share one LifecycleKit facade and state through Registry. Pending phase subscriptions created by the previous compatible implementation revision remain valid across an in-place upgrade; the upgrade releases per-instance state that the newer revision no longer owns.
 
-Revisions 8 to 17 keep schema 3. Upgrading from revision 7, 8, 9, 10, 11, 12, 13, 14 or 15 replaces its shared host watchers, which would otherwise keep calling the older revision's handlers: revision 7's logout handler closes no HookKit scope and no bus, revision 8's no CommandKit scope, revision 9's no CommKit scope, and no revision before 12 closes a TimerKit or SchedulerKit scope. Revision 13 adds `CLOSES_ADDON_SCOPES` without a schema change: an upgrade seeds the capability set into the state (`addonScopeCapabilities`) and publishes it. Revision 14 refuses secret arguments before comparing them and changes no state. Revision 15 creates the signals of the three repeating notices on first subscription instead of with the instance; an instance an older revision created keeps the signals it has, with their subscribers, and one it lacks is created when first needed. Revision 16 changes no state; when an upgrade catches up a login its watchers missed, it re-reads the combat state before any addon enters `ready`, as `PLAYER_LOGIN` does, and still re-reads it when an `OnReady` callback raises. Revision 17 changes no state; it names an unrecognised `SetLimits` key or a `CLOSES_ADDON_SCOPES` write key without passing a table key to `tostring`.
+Revisions 8 to 18 keep schema 3. Upgrading from revision 7, 8, 9, 10, 11, 12, 13, 14 or 15 replaces its shared host watchers, which would otherwise keep calling the older revision's handlers: revision 7's logout handler closes no HookKit scope and no bus, revision 8's no CommandKit scope, revision 9's no CommKit scope, and no revision before 12 closes a TimerKit or SchedulerKit scope. Revision 13 adds `CLOSES_ADDON_SCOPES` without a schema change: an upgrade seeds the capability set into the state (`addonScopeCapabilities`) and publishes it. Revision 14 refuses secret arguments before comparing them and changes no state. Revision 15 creates the signals of the three repeating notices on first subscription instead of with the instance; an instance an older revision created keeps the signals it has, with their subscribers, and one it lacks is created when first needed. Revision 16 changes no state; when an upgrade catches up a login its watchers missed, it re-reads the combat state before any addon enters `ready`, as `PLAYER_LOGIN` does, and still re-reads it when an `OnReady` callback raises. Revision 17 changes no state; it names an unrecognised `SetLimits` key or a `CLOSES_ADDON_SCOPES` write key without passing a table key to `tostring`. Revision 18 changes no state; it resolves `issecretvalue` once at load (see [Argument errors](#argument-errors)) and documents the `_halted` instance field.
 
 Revision 7 changed the package state from schema 2 to schema 3. Upgrading from an older revision adds the shared combat flag (seeded from `InCombatLockdown()`), the instance list (inherited instances in name order) and every instance's combat queue, dependency list and halted flag, and replaces the older revision's shared host watchers with its own, because a watcher keeps calling the handler of the revision that installed it. Pending deferred calls and notice subscriptions are carried across a same-revision reload unchanged. Bootstrap is idempotent for the current implementation revision: if a prior live upgrade accepted the Registry revision but host event registration failed before shared watchers were fully established, a later compatible copy retries the missing watcher setup instead of silently returning an incomplete runtime state. If a one-shot global phase passed while that watcher was absent, bootstrap also reconciles existing instances from the observable host/package state.

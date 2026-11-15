@@ -115,6 +115,20 @@ describe("LifecycleKit Halt", function()
     }, received)
   end)
 
+  it("sets the documented _halted field before the first OnHalted subscriber runs", function()
+    local life = LifecycleKit:ForAddon("MyAddon")
+    assert.is_false(rawget(life, "_halted"))
+    local seen
+    life:OnHalted(function(instance)
+      seen = rawget(instance, "_halted")
+    end)
+
+    life:Halt("broken")
+
+    assert.is_true(seen)
+    assert.is_true(rawget(life, "_halted"))
+  end)
+
   it("delivers every OnHalted subscriber and re-raises the first error", function()
     local life = LifecycleKit:ForAddon("MyAddon")
     local errorObject = { reason = "halted callback failure" }

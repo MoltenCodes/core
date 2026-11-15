@@ -12,9 +12,9 @@ WoW APIs are simulated by the shared fixture and `support/LifecycleKitTestEnv.lu
 | `Isolation_spec.lua` | one addon's failing callback does not starve another of a global phase |
 | `Errors_spec.lua` | argument validation, pinned `file:line` error positions, error-object propagation |
 | `Bootstrap_spec.lua` | registration, duplicate embedding, newer-revision refusal (including one without `CLOSES_ADDON_SCOPES`), watcher repair, upgrades from revisions 3 and 6 and from the previous revision (checked against the table-key limit refusal) |
-| `SecretValues_spec.lua` | secret addon names, halt reasons and limits refused at the caller before a comparison; a secret `CLOSES_ADDON_SCOPES` write key named by a placeholder; dot calls with a secret receiver |
+| `SecretValues_spec.lua` | secret addon names, halt reasons and limits refused at the caller before a comparison; a secret `CLOSES_ADDON_SCOPES` write key named by a placeholder; dot calls with a secret receiver; the probe kept from load, and a non-function `issecretvalue` global ignored |
 | `CombatGate_spec.lua` | `IsInCombat` (including its value inside `OnReady` at `PLAYER_LOGIN`), `WhenOutOfCombat`, `OnCombatStart` / `OnCombatEnd`, notice signals created on first subscription |
-| `Halt_spec.lua` | `Halt`, `OnHalted`, `DependsOn`, `OnDependencyHalted` |
+| `Halt_spec.lua` | `Halt`, `OnHalted`, `DependsOn`, `OnDependencyHalted`; the documented `_halted` field set before the first `OnHalted` subscriber |
 | `EventScopes_spec.lua` | closing the addon's EventKit scope at shutdown, its combat-log listeners included |
 | `OwnedScopes_spec.lua` | closing the TimerKit, SchedulerKit, HookKit, CommandKit and CommKit scopes and the SignalKit bus at shutdown, their order and first-error precedence, older TimerKit and SchedulerKit revisions without `CloseAddonScopes`, and the upgrades from revisions 7 to 12 |
 | `Capabilities_spec.lua` | `CLOSES_ADDON_SCOPES`: published, listed, read-only (a table key named by its type without running its `__tostring`), one table across reloads, seeded into older state, and exactly what shutdown closes |
