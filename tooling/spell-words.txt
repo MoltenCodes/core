@@ -36,8 +36,10 @@ ARIALN
 assistable
 autocast
 cancelaura
+Cata
 CLEU
 COMMANDKIT
+Cooldowns
 CURSEFORGE
 dataobj
 enderneko
@@ -64,6 +66,7 @@ MOLTENCODESTEST
 myaddon
 Nevcairiel
 nilable
+Pandaren
 Pandaria
 Quadrata
 raidpet

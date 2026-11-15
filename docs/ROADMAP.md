@@ -5358,6 +5358,476 @@ Client facts used, read 2026-11-15 from Gethe/wow-ui-source
    Depends on PanelKit's owner for its manifest contract and load check
    (point 3); nothing else blocks.
 
+**SettingsKit namespaces, the four AceDB scopes and the remaining AceDB callbacks** (two records)
+
+Basis: the decision 18 Ace3 gap diagnosis (namespaces, scopes and callbacks;
+usage counted in sixteen open-source Ace3 addons), ADRs 0001 and 0003, and
+AceDB-3.0's behaviour, read for behaviour only (nothing copied). Measurements:
+host Lua 5.1.5 on a loaded machine, so ratios, not absolute times, are the
+evidence. "Measured" means run; "estimate" means priced from measurements.
+
+**Client facts used**
+
+Read 2026-11-15 from Gethe/wow-ui-source, branches `live` `297d7aa` (12.1.5,
+70783), `classic` `e5d9b3a` (5.5.4, 70631), `classic_era` `4192ac6` (1.15.9,
+70576), the commits `packages/apiKit/metadata/*/provenance.json` was captured
+from.
+
+| Function | `live` | `classic` (Mists) | `classic_era` | Notes |
+|---|---|---|---|---|
+| `UnitRace(unit)` → `localizedRaceName, englishRaceName, raceID` | documented, `UnitDocumentation.lua:2836`, `SecretWhenUnitIdentityRestricted = true`, `MayReturnNothing = true` | not documented; called by Blizzard's own UI: `Blizzard_CharacterFrame/Cata/PaperDollFrame.lua:3896` (`local race, fileName = UnitRace(unit)`) | not documented; called by Blizzard's own UI: `Blizzard_CharacterFrame/Vanilla/PaperDollFrame.lua:91` | AceDB keys `race` by the second result |
+| `UnitFactionGroup(unit)` → `factionGroupTag, localized` | `UnitDocumentation.lua:1179`, no secret flag | `:689` | `:689` | already used by SettingsKit |
+| `GetRealmName()` | in `metadata/retail/namespaces.json` | in `classic-mop` | in `classic-era` | already used |
+| `GetCurrentRegion()` → `region` (number) | `LocaleDocumentation.lua:40` | `:38` | `:38` | |
+| `GetCurrentRegionName()` → `regionName` (string) | `ExpansionDocumentation.lua:46` | absent from `ExpansionDocumentation.lua` | absent | AceDB calls it unguarded on every client (`AceDB-3.0.lua:285`), which suggests the classic clients have it undocumented; **not verified**, so SettingsKit guards it and falls back as AceDB does |
+| `GetLocale()` → `localeName` | `LocaleDocumentation.lua:49` | `:47` | `:47` | |
+
+The flavour gate was run on a scratch copy of the repository with the four
+reads added through SettingsKit's existing `callHost` helper (which returns
+nothing unless the global is a function): `python3 -m
+tooling.validation.flavour_api --package settingsKit` passes, with `UnitRace`
+and `GetCurrentRegionName` reported as **guarded** on `classic-mop` and
+`classic-era`. An allow-list entry for them would therefore be stale, and the
+gate fails stale entries. See the report for the shared-file text this leads
+to (a `host_names.json` entry instead).
+
+AceDB-3.0's rules, read at `ac3d122`:
+
+- Scope keys (`AceDB-3.0.lua:255-291`), read once when the library loads:
+  `race` = second result of `UnitRace("player")`; `factionrealm` =
+  `UnitFactionGroup("player") .. " - " .. GetRealmName()`;
+  `factionrealmregion` = that `.. " - " ..` region, where the region is
+  `({ "US", "KR", "EU", "TW", "CN" })[GetCurrentRegion()]`, else
+  `GetCurrentRegionName()` unless it is `""`, else `"TR"`;
+  `locale` = `GetLocale():lower()`.
+- Callbacks: `OnNewProfile(db, key)` when a profile section is first created
+  (`:215`, lazily, on the first `db.profile` access after `New`, `SetProfile`
+  or `ResetDB`); `OnProfileShutdown(db)` at the start of `SetProfile`, before
+  anything changes (`:502`); `OnDatabaseShutdown(db)` at `PLAYER_LOGOUT`, for
+  every database, before defaults are stripped (`:397`); `OnDatabaseReset(db)`
+  in `ResetDB`, followed by `OnProfileChanged` (`:731-733`).
+- Namespaces (`:743-786`, `initdb` `:296-384`, logout `:391-440`): a child
+  database over `sv.namespaces[name]` in AceDB's own layout minus
+  `profileKeys`; it shares the parent's profile key; `SetProfile`,
+  `CopyProfile`, `ResetProfile` and `DeleteProfile` cascade to every
+  registered child (each child fires its own callbacks) and, for copy, reset
+  and delete, to the raw `profiles` of namespaces nobody registered this
+  session; `ResetDB` rebuilds every child; children expose only
+  `RegisterDefaults` and `ResetProfile` of the profile methods; at logout
+  empty sections and empty profiles inside namespaces, then empty namespaces,
+  are removed. `RegisterNamespace` raises for a name already registered;
+  `GetNamespace(name, silent)` raises for a missing one unless `silent`.
+
+Corpus facts that shaped the design (`ace3-gaps/corpus`):
+
+- Namespaces: 8/16 addons, 63 registrations, 145 `GetNamespace` calls.
+  `Bartender4/Options/PresetsForever.lua:40` and 25 more sites write presets
+  through `db:GetNamespace("ActionBars").profile`, so a child's views must
+  take validated writes like a database's.
+- Callbacks registered **on a namespace**: `oRA3/modules/Cooldowns/Cooldowns.lua:1118`
+  (`self.db` is the namespace from `:1042`) listens to `OnProfileShutdown`.
+  So children carry their own profile signals; the parent's alone is not
+  enough (the gap report's "fire the parent's signals once" is refined below).
+- `OnNewProfile`: `Bartender4/Bartender4.lua:49` and `:112-118` rely on it
+  firing for the **first** profile of a new character, created right after
+  `New`. SettingsKit's `Open` creates that profile before any listener can
+  connect, hence `db:IsNewProfile()` below.
+- `BigWigs/Core/Core.lua:609` registers one namespace per boss module it
+  loads, which is why the namespace bound defaults well above the gap
+  report's 64.
+
+Baseline measured for this record (one run, `bench-before.json`, against
+AceDB-3.0 in the same run; MoltenCodes `ad2626a`, SettingsKit revision 14):
+
+| Case | SettingsKit ns/op | AceDB ns/op | Ratio | SettingsKit B/op | AceDB B/op |
+|---|---:|---:|---|---:|---:|
+| open-empty | 6,624 | 2,190 | 3.03x | 3,691 | 3,299 |
+| open-populated | 9,580 | 4,195 | 2.28x | 4,704 | 3,792 |
+| switch-profile | 590 | 3,040 | 0.19x | 0 | 496 |
+| read-default | 14.6 | 3.9 | 3.76x | 0 | 0 |
+| read-saved | 10.4 | 3.5 | 2.95x | 0 | 0 |
+| read-nested | 13.2 | 6.8 | 1.95x | 0 | 0 |
+| read-entry-default | 21.0 | 10.9 | 1.93x | 0 | 0 |
+| read-getter | 25.5 | 15.4 | 1.65x | 0 | 0 |
+| write-scalar | 319 | 8.5 | different work | 0 | 0 |
+| write-nested | 557 | 5.2 | different work | 0 | 0 |
+| retained per open database | 4,400 B | 3,872 B | 1.14x | | |
+
+Namespace costs measured outside the bench (scripts above, same host):
+
+| Measurement | Value |
+|---|---|
+| AceDB `RegisterNamespace` with a small profile default, then one `child.profile` read | 2,696 ns, 3,297 B allocated, 3,294 B held per namespace |
+| AceDB `SetProfile` between two existing profiles, no namespaces / 10 namespaces | 444 ns, 0 B / 10,524 ns, 2,044 B allocated |
+| SettingsKit `Open` with a small profile-only schema, then one read (upper bound of a child's registration: it also creates the global, nine layout sections, runs the migration check and joins the logout list) | 6,900 ns, 4,764 B allocated, 4,472 B held |
+| SettingsKit `SetProfile` between two existing profiles, one database | 780 ns, 0 B |
+| Held by compiled chunks (`compile_held.lua`) | SettingsKit.lua 186.1 KB (5,390 lines); AceDB-3.0 36.4 KB; CallbackHandler-1.0 10.8 KB |
+
+---
+
+**settingsKit AceDB scopes, profile lifecycle signals, `missingOk`, and the core side of namespaces** — a change to facade `SettingsKit`
+
+1. Package `settingsKit`, facade `SettingsKit`, API generation 1 (additive),
+   version 0.6.0 (from 0.5.0), implementation revision 15 (from 14), database
+   layout 4 and node layout 4 unchanged (no new field on a database or node
+   that does not use the new features; see 5).
+2. Purpose: close the settingsKit items of the gap report's work package 10
+   in the core, and give the Namespaces part (next record) the hooks it needs,
+   without touching a read or write path.
+   a. **Four declarable scopes with AceDB's keys**: `race`, `factionrealm`,
+      `factionrealmregion`, `locale`, in sections of the same names. Keys as
+      AceDB computes them (client facts above), so data BridgeKit imports
+      from AceDB keeps its keys verbatim. Each key is read **only when the
+      schema declares its scope**, once per `Open` (as the existing four are),
+      through `callHost`, every answer probed with `issecretvalue` first; a
+      database that declares none of them makes no new host call. A scope
+      whose key cannot be read is unavailable, with the existing message
+      form: `race` needs `UnitRace("player")`; `factionrealm` and
+      `factionrealmregion` need `UnitFactionGroup("player")` and
+      `GetRealmName()` (the region always resolves, falling back to `"TR"` as
+      AceDB does); `locale` needs `GetLocale()`. They are keyed sections like
+      `realm` and `class`: views, `OnChange`, `Getter`, `Validate`, `Pairs`,
+      `Compact` (an emptied entry is removed) and logout compaction treat
+      them alike. The new sections are created by `Open` (writable database)
+      only when declared, and their layout check (present but not a table is
+      refused) runs only when declared, so saved data that holds an
+      unrelated top-level `race` key, which SettingsKit never read, still
+      opens.
+      **Core, not a part (weighed, 0/16 use):** the four scopes are rows in
+      the scope tables plus about 40 lines of key reading (about 1.5 KB held,
+      estimate at 35 KB per 1,000 lines). A part would need the core's scope
+      lists made extensible from outside (they are walked by `Open`,
+      compaction, rebinding and `findRoot`), which costs about as much in the
+      core as the rows themselves, plus the part's own header and bootstrap
+      (about 1 KB) and an embed line. Not loading them would save almost
+      nothing, so they stay in the core and cost nothing at run time unless
+      declared.
+   b. **Four more profile lifecycle signals**, through the existing lazy
+      design (`_signals`, created by the first connection, so `Open`
+      allocates nothing more and a database nobody listens to keeps its 16
+      hash slots):
+      - `db:OnNewProfile(callback)` → `callback(db, name)`, when SettingsKit
+        creates the current profile's table: `SetProfile` (spec switches
+        included), `ResetDatabase`, and `CopyProfile`/`ResetProfile` when
+        the current profile's table was missing. Fires after the operation's
+        changes, before its other signals (so a listener that fills the new
+        profile runs before `OnProfileChanged` listeners read it, as in
+        AceDB).
+      - `db:OnProfileShutdown(callback)` → `callback(db, name)`, at the start
+        of a `SetProfile` that will switch (not for the current name, not on
+        a read-only database), **before anything changes**: `db.profile` is
+        still the old profile. A raising listener stops the switch before
+        anything changed (the error reaches the caller's line, as every
+        SettingsKit signal's does). AceDB passes no name; the name of the
+        profile being left is added because the listener otherwise has to
+        call `db:GetProfile()`.
+      - `db:OnDatabaseShutdown(callback)` → `callback(db)`, at
+        `PLAYER_LOGOUT` (with EventKit, as logout compaction), for every
+        database on the logout list in the order opened, **before** that
+        database is compacted, so a listener's final writes are compacted
+        too. Fires for a read-only database as well (which is then not
+        compacted). A raising listener is reported through the host error
+        handler and never stops another database's shutdown or compaction.
+        Without EventKit nothing fires; the docs keep pointing to
+        LifecycleKit's `OnShutdown` for that case.
+      - `db:OnDatabaseReset(callback)` → `callback(db)`, from
+        `ResetDatabase`, first, before its existing `OnProfileReset` and
+        `OnProfileChanged` (whose behaviour is unchanged).
+      Callbacks are functions, like the four existing `On*` methods; the
+      method-name form of decision 0003 is not extended to SettingsKit here
+      (0003 names the runtime Kits; adding it to every `On*` method of
+      SettingsKit is a separate record if wanted).
+   c. **`db:IsNewProfile()`** → whether the current profile's table was
+      created during this session (by `Open`, `SetProfile`, a spec switch or
+      `ResetDatabase`). Needed because `Open` creates a new character's
+      first profile before any `OnNewProfile` listener can connect, and the
+      corpus relies on hearing about that profile
+      (`Bartender4/Bartender4.lua:49`). Kept in a weak-keyed table in
+      `state`, not on the database, so a database keeps its hash size.
+   d. **`missingOk`** (gap report 3.6 last row): `db:CopyProfile(from,
+      options?)` and `db:DeleteProfile(name, options?)` accept
+      `{ missingOk = true }` and then return `false` instead of raising when
+      the named profile does not exist; both now return `true` when they
+      did their work (they returned nothing). The options table is checked
+      like `Open`'s: unknown fields, a secret key or value, and a
+      non-boolean `missingOk` are refused at the caller's line. Every other
+      refusal (copying the current profile onto itself, deleting the current
+      profile, too deep) is unchanged.
+   e. **Core side of namespaces** (the part does the rest, next record):
+      - `state.parts` (decision 0001, point 4) for part state, created by
+        this revision and by the upgrade from 14.
+      - A database that has namespaces holds one extra field, `_namespaces`
+        (created by the part's first `RegisterNamespace`). The profile
+        methods ask `rawget(db, "_namespaces")` once and, only when present,
+        call the part's cascade through `state.dispatch`, at three fixed
+        points: before the change (refusals and `OnProfileShutdown`), after
+        the parent's change and before the parent's post signals (the
+        children's changes and signals), and from compaction (manual and
+        logout) and `Resync`. A database without namespaces pays one
+        `rawget` per profile operation, nothing on reads or writes.
+      - A namespace child is a database table with the same private layout
+        and the same metatable (so views, `OnChange`, `Getter`, `Validate`,
+        `Pairs` work unchanged and at the same speed), marked by `_parent`.
+        The core's `SetProfile`, `CopyProfile`, `DeleteProfile`,
+        `ResetDatabase`, `SetSpecProfile` and `ApplySpecProfile` refuse a
+        child at the caller's line, naming the parent:
+        `SettingsKit.Database:SetProfile cannot be called on namespace Bars of MyAddonDB; call it on MyAddonDB's database`.
+        `ResetProfile` on a child empties only that namespace's current
+        profile (AceDB's child behaviour). `GetProfiles` and
+        `GetSpecProfile` on a child answer the parent's. `GetSavedVariable`
+        on a child answers the parent's global name; messages name the
+        namespace (`SettingsKit (MyAddonDB namespace Bars) db.class is unavailable: ...`).
+      - `RegisterNamespace` and `GetNamespace` read on a database while the
+        part is not loaded raise at the reading line (decision 0001, point
+        5), built only on that miss path of `databaseIndex`:
+        `SettingsKit.Database:RegisterNamespace is in SettingsKit's Namespaces part, which is not loaded: add settingsKit\parts\SettingsKit-Namespaces.lua`.
+      - `Open` accepts `maxNamespaces` (a positive integer or
+        `SettingsKit.UNBOUNDED`, default 256, checked like
+        `maxScannedEntries`), stored on the database only when passed, so the
+        default costs no field. It is accepted without the part and bounds
+        `RegisterNamespace`.
+   Non-goals: AceDB's `RegisterDefaults` (the schema is fixed at `Open` by
+   design), `GetProfiles(tbl)` reuse, method-name callbacks on SettingsKit's
+   `On*` methods (above), WoW Forever's ruleset keys (not a supported
+   client), reading scope keys again when the faction changes mid-session (a
+   Neutral Pandaren keeps `Neutral` keys until the next `Open`, as AceDB
+   keeps them until reload), lazy layout sections for the existing scopes.
+3. Dependencies: registry API 2, schemaKit API 1, signalKit API 1, eventKit
+   API 1 optional; all unchanged. Host: `UnitRace`, `GetCurrentRegion`,
+   `GetCurrentRegionName`, `GetLocale`, read through `callHost` (guarded by
+   `type(...) == "function"`), each answer checked with `issecretvalue`
+   first; `GetCurrentRegion`'s answer must be a non-secret number to index
+   the region table.
+4. Surface: `db:OnNewProfile`, `db:OnProfileShutdown`, `db:OnDatabaseShutdown`,
+   `db:OnDatabaseReset`, `db:IsNewProfile`; the `options` argument of
+   `CopyProfile` and `DeleteProfile` and their `true`/`false` returns; the
+   `maxNamespaces` option of `Open`; scopes `race`, `factionrealm`,
+   `factionrealmregion`, `locale` (`db.race` and the rest, and the scope
+   names accepted by `OnChange`, `Getter`, `Validate`); four sections in *The
+   saved table*. Every `On*` returns a SignalKit connection and refuses a
+   non-function callback and a non-database receiver at the caller's line.
+   Behaviour changes, all in CHANGELOG and `docs/API.md`: `CopyProfile` and
+   `DeleteProfile` return a boolean; the `namespaces` row of *The saved
+   table* stops being "reserved" (next record).
+5. Ownership: signals live in the database's lazily created `_signals` (as
+   today); `createdProfiles` (weak-keyed database to a set of names) and
+   `parts` in `state`; the cascade entry points in `state.dispatch`, set by
+   the part, never overwritten by a core revision. Main-chunk locals: the
+   four scope tables (`SCOPE_NAMES`, `SCOPE_SECTIONS`, `SCOPE_SET`,
+   `UNAVAILABLE_REASONS`) fold into one `Scopes` table, freeing three locals;
+   every new helper lives in a table or a `do` block, so the main chunk ends
+   at or below today's 195 (the ratchet only goes down). In-place upgrade
+   from revision 14: `state.parts` and `state.createdProfiles` are created;
+   databases opened by revision 14 gain the new methods through the shared
+   prototype, keep their scopes (the new ones were never declared there) and
+   their signals; a database whose current profile revision 14 created reads
+   `IsNewProfile() == false` (not recorded then, documented).
+6. Performance and memory (host Lua; against AceDB in the same bench run):
+
+   | Case | Today (rev 14) | Expected | Basis |
+   |---|---|---|---|
+   | read-default, read-saved, read-nested, read-entry-default, read-getter | 3.76x, 2.95x, 1.95x, 1.93x, 1.65x | unchanged (no code added on a read) | by construction; bench re-run in phase 2 |
+   | write-scalar, write-nested | 319 ns, 557 ns | unchanged (no code added on a write) | by construction |
+   | open-empty, open-populated | 3.03x / 3,691 B, 2.28x / 4,704 B | within noise; bytes unchanged (no new field, no new table unless a new scope is declared) | the scope loop walks 10 rows instead of 6: about 20 to 40 ns, under 1% (estimate) |
+   | switch-profile | 590 ns, 0 B (0.19x) | at most 620 ns, 0 B | three more `rawget`s (shutdown signal, namespaces, new-profile record) per switch (estimate) |
+   | Open declaring all four new scopes | — | about +4 host calls and four small tables in a new saved variable (about 160 B) | estimate |
+   | core held memory | 186.1 KB | about 191 KB (+5 KB: scopes 1.5 KB, signals and `IsNewProfile` 2 KB, `missingOk` 0.5 KB, namespace hooks 1 KB) | estimate at 35 KB per 1,000 lines |
+
+   No allocation on reads, writes or switches. `OnDatabaseShutdown` costs
+   one `rawget` per database at logout when nobody listens.
+7. Tests: each new scope declared and read, its key from the stubbed host
+   (race file name; faction and realm; the region table, then
+   `GetCurrentRegionName`, then `"TR"`, with `GetCurrentRegion` absent,
+   secret, out of range, and `GetCurrentRegionName` absent, empty, secret;
+   `GetLocale():lower()`), unavailable when its host call is absent,
+   secret, empty or `nil`, with the message; no host call for an undeclared
+   new scope (a counting stub); the new sections created only when
+   declared, a present non-table one refused only when declared;
+   compaction removing an emptied entry of a new scope; `OnNewProfile` from
+   `SetProfile`, a spec switch, `ResetDatabase`, and not from switching to
+   an existing profile; `OnProfileShutdown` before the change (the listener
+   sees the old `db.profile`), not for the current name, a raising listener
+   leaving the profile not switched; `OnDatabaseShutdown` at logout before
+   compaction (its write compacted), for a read-only database, a raising
+   listener reported and the next database still compacted; `OnDatabaseReset`
+   first in `ResetDatabase`; `IsNewProfile` after `Open` of a new character,
+   after `Open` of an existing one, after `SetProfile`; `missingOk` for both
+   methods, the options refusals at the caller's line (ErrorLevels), the new
+   return values; a child refused by each profile method with the message
+   naming the parent; the not-loaded message for `RegisterNamespace` and
+   `GetNamespace`; `maxNamespaces` option checks; the upgrade from revision
+   14 with an open database, its listeners and getters; `Allocation_spec`
+   unchanged for reads, writes and switches; main-chunk locals at or below
+   195. Client suite (never run): the four keys equal AceDB's rule computed
+   in the suite from the client calls; `OnProfileShutdown` and `OnNewProfile`
+   order around `SetProfile`.
+8. Docs: README (migration table rows for the four scopes, the callbacks,
+   `silent`), `docs/API.md` (*Host facilities* rows for the four calls,
+   *Public surface*, *The saved table* rows, *Profiles* (`missingOk`,
+   returns), *Change signals* (the four signals and their order), *Error
+   behaviour*, *Performance*, revision 15 under *Embedded copies and
+   upgrades*; also fix the stale "Implementation revision: **13**" line at
+   the top, which still reads 13 at revision 14), `docs/INTERNALS.md` (the
+   `Scopes` table, lazy key reads, `createdProfiles`, `state.parts`, the
+   cascade hook points and their order), CHANGELOG 0.6.0, `tests/README.md`,
+   the client suite's `EXPECTED.md`.
+9. Status: recorded 2026-11-15; code follows.
+
+---
+
+**settingsKit Namespaces part: AceDB namespaces in the saved layout** — a new part `Namespaces` of facade `SettingsKit`
+
+1. Package `settingsKit`, facade `SettingsKit`, part `Namespaces`, file
+   `src/parts/SettingsKit-Namespaces.lua`, part revision 1 (`PART_REVISION`),
+   needs the core at revision 15 or later (it requires `state.parts` and
+   raises `MoltenCodes SettingsKit part Namespaces requires SettingsKit API 1 to be loaded first`
+   without it, decision 0001 point 3). Manifest `parts.Namespaces`:
+   `{ "description": "db:RegisterNamespace and db:GetNamespace: child databases with their own schema over the saved variable's namespaces section, in AceDB's layout, following the parent's profile.", "revision": 1, "dependencies": {}, "optionalDependencies": {} }`.
+2. Purpose: AceDB's most used runtime gap (8/16 addons, 63 registrations,
+   145 `GetNamespace` calls) without costing an addon that does not use it.
+   a. **`db:RegisterNamespace(name, schema)`** → a child database over
+      `MyAddonDB.namespaces[name]`. `name`: a non-secret string of 1 to 64
+      bytes with a character other than whitespace. `schema`: what `Open`
+      takes (scope names to SchemaKit `table` nodes or sealed schemas, every
+      field optional), sealed and compiled the same way and sharing `Open`'s
+      plan cache, so namespaces registered with the same schema share one
+      plan. Registering a name again with the same schema table returns the
+      same child (as `Open` does for a saved variable); a different schema
+      raises. Refused at the caller's line: a child receiver (namespaces do
+      not nest), more than the database's `maxNamespaces` (default 256),
+      `namespaces[name]` or one of its sections present but not a table.
+      The child reads the scope keys at registration, as `Open` reads them,
+      except `char`, which is the parent's key so both agree.
+   b. **The saved layout is AceDB's namespace layout**: inside
+      `namespaces[name]`, the sections of the scopes the child declares
+      (`profiles`, `global`, `char`, `realm`, `class`, `faction`, `race`,
+      `factionrealm`, `factionrealmregion`, `locale`), keyed exactly as the
+      parent's sections are; no `profileKeys`, `specProfiles`, `version` or
+      nested `namespaces`. A writable parent gets `namespaces[name]`, the
+      declared sections and the current profile's table at registration; a
+      read-only parent gets none and the child reads what is saved or its
+      defaults. This replaces the `namespaces` row's "Reserved: SettingsKit
+      writes nothing here" (the row was reserved for exactly this; the
+      contract allows filling a reserved section additively). BridgeKit can
+      then import AceDB namespaces verbatim (see the report).
+   c. **`db:GetNamespace(name, options?)`** → the registered child; a name
+      nobody registered raises at the caller's line
+      (`SettingsKit.Database:GetNamespace name names no registered namespace`)
+      unless `options` is `{ missingOk = true }`, which answers `nil`
+      (AceDB's `silent`, in the `missingOk` form of the previous record).
+   d. **The child** is a database (previous record, 2e): views and their
+      read-through chains, `OnChange`, `Getter`, `Validate`, `Pairs`,
+      `Compact` (this namespace only), `Resync` (re-resolves its saved table
+      from the parent), `IsReadOnly` (the parent's), `GetProfile`,
+      `GetProfiles`, `IsNewProfile`, `ResetProfile` (this namespace's current
+      profile only), and the eight profile signals of its own. The profile
+      mutators of the parent are refused on it, naming the parent.
+   e. **Cascading profile operations.** Every refusal is decided before
+      anything changes, the namespaces' copy depth included, so an operation
+      either changes the parent and every child or nothing. Then, for the
+      parent's `SetProfile`, `CopyProfile`, `ResetProfile`, `DeleteProfile`
+      and `ResetDatabase`:
+      - signals that announce a change (`OnProfileShutdown`) fire on the
+        parent, then on each child in registration order, before anything
+        changes;
+      - the parent changes, then every child changes (no user code runs in
+        between): `SetProfile` points each child at the profile (creating
+        its table when the child declares `profile`); `CopyProfile` copies
+        each child's `profiles[from]` (an absent one empties the child's
+        current profile, as AceDB does); `ResetProfile` empties each child's
+        current profile; `DeleteProfile` removes each child's
+        `profiles[name]` and detaches its views of it; `ResetDatabase`
+        recreates each registered namespace's table and declared sections
+        in the wiped saved variable, re-points each child at it, detaches
+        every child profile view and republishes `child.profile`;
+      - the namespaces nobody registered this session (`namespaces[x]`
+        tables with a `profiles` table) get the raw part of the operation
+        AceDB gives them: copy (bounded by SchemaKit's `maxDepth`), reset
+        (removes `profiles[current]`) and delete (removes `profiles[name]`);
+        `SetProfile` and `ResetDatabase` need nothing for them;
+      - signals that report a change fire on each child, in registration
+        order, then on the parent, each with its usual arguments
+        (`OnNewProfile` first when that child's table was created). A
+        listener that raises stops the remaining signals and reaches the
+        caller's line with every change already made, as for any SettingsKit
+        signal.
+      Spec switches go through `SetProfile` and cascade with it.
+   f. **Compaction**: the parent's `Compact` also compacts every registered
+      child and returns the total. At logout, after the parent's
+      `OnDatabaseShutdown`, each child's `OnDatabaseShutdown` fires (in
+      registration order), then the parent and its children are compacted,
+      then, AceDB's logout cleanup inside `namespaces` only: empty profiles
+      and empty sections of every namespace table and then empty namespace
+      tables are removed. The parent's own layout stays eager, as `Open`
+      promises.
+   Non-goals: nested namespaces, per-namespace `version`/`migrations` (the
+   parent's migrations receive the whole saved table, `namespaces`
+   included), `GetNamespaces`/iteration of registered children, OptionsKit
+   `bind` to a namespace (`"ns:<name>.profile.key"`, work package 6's
+   optionsKit item: optionsKit's owner records it), an AddonKit form
+   building a namespace from plain defaults (addonKit's owner), BridgeKit's
+   import (bridgeKit's owner; text in the report).
+3. Dependencies: the SettingsKit core (API 1, revision 15 or later), found
+   through the Registry at file scope; nothing else. No host API of its own.
+4. Surface: `db:RegisterNamespace(name, schema)`, `db:GetNamespace(name,
+   options?)`, installed on the shared `Database` prototype, so databases
+   opened before the part loaded (or by an older core revision upgraded in
+   place) have them; the `namespaces` section's documented layout.
+5. Ownership: part state in `state.parts.Namespaces` (`revision`); the
+   cascade, compaction and resync entry points in `state.dispatch`, called by
+   the core only for a database holding `_namespaces`; a parent's children
+   in its `_namespaces` (`order`, an array in registration order, and
+   `byName`). Children are built by the active part revision through the
+   shared prototype and metatable, so a later core revision (in-place
+   upgrade) cascades to children registered before it, and a later part
+   revision takes over the dispatch entries for every existing parent
+   (the gap report's risk 6). The highest part revision wins: an equal or
+   older copy loaded later returns at once.
+6. Performance and memory (host Lua):
+
+   | Case | AceDB (measured) | Expected SettingsKit | Basis |
+   |---|---|---|---|
+   | register a namespace with one small profile default and read it | 2,696 ns, 3,294 B held | about 3,500 to 4,500 ns (1.3x to 1.7x), at most 3,300 B held | estimate: a whole `Open` of the same schema measures 6,900 ns and 4,472 B, and a child skips the global, seven of nine layout sections, the migration check, the profile-key lookup and the logout list |
+   | `SetProfile` with 10 namespaces | 10,524 ns, 2,044 B allocated | about 4,000 to 6,000 ns (0.4x to 0.6x), 0 B | estimate: one database's switch measures 780 ns; a child's share skips validation and `profileKeys` |
+   | reads and writes through a child's views | as the parent's | as the parent's | same code, same chains |
+   | a database without namespaces | — | one `rawget` per profile operation | by construction |
+   | part held memory | — | about 16 to 18 KB, only in addons that embed it | estimate: about 450 lines at 35 to 40 KB per 1,000 |
+
+   Proposed bench cases (shared tooling, see the report):
+   `register-namespace` and `switch-profile-namespaces` (10 children), both
+   with an AceDB side.
+7. Tests (`Namespaces_spec.lua` and additions to `Bootstrap_spec`,
+   `Manifest_spec`, `ErrorLevels_spec`, `Allocation_spec`, `Compact_spec`,
+   `SpecProfiles_spec`): registration and its refusals at the caller's line
+   (name, schema, nesting, bound, `UNBOUNDED`, a non-table namespace or
+   section, same schema returns the child, a different one raises); the
+   saved layout created (and nothing on a read-only parent);
+   `GetNamespace` with and without `missingOk`; child views read and write
+   with validation and `OnChange`; every profile method refused on a child
+   naming the parent, `ResetProfile` on a child; each cascading operation on
+   registered and unregistered namespaces, its signal order (shutdown parent
+   first; reports children first), a refusal leaving parent and children
+   unchanged, a raising child listener leaving every change made; spec
+   switches cascading; `ResetDatabase` re-pointing children and detaching
+   their profile views; parent `Compact` including children; logout:
+   shutdown order, compaction, removal of empty profiles, sections and
+   namespaces; the part loaded before and after a database is opened; the
+   part not loaded (the core's message); the part loaded twice (same and
+   older revision); a later core revision upgraded in place over a parent
+   with children still cascading; `Allocation_spec`: no allocation reading
+   or writing through a child, no allocation in a cascaded switch between
+   existing profiles. Client suite (never run): a namespace survives
+   `/reload` in the documented layout; `PLAYER_LOGOUT` removes an empty
+   namespace.
+8. Docs: README (namespaces, the AceDB migration rows `RegisterNamespace`,
+   `GetNamespace`), `docs/API.md` (*Loading* with the part's file, *Public
+   surface*, a *Namespaces* section, *The saved table* `namespaces` row and
+   the namespace layout, *Error behaviour*, *Performance*), `docs/INTERNALS.md`
+   (the child's fields, the cascade phases, the dispatch entries, the
+   upgrade rules), CHANGELOG (in the 0.6.0 entry), `tests/README.md`, the
+   client suite's `EXPECTED.md` and `.toc` (the part's file).
+9. Status: recorded 2026-11-15; code follows.
+
 #### Package N — bridgeKit, migrating from Ace3
 
 Decided 2026-09-25 with the project owner, from the external review that
