@@ -72,7 +72,7 @@ timer:Restart()
 - `callback` — required Lua function;
 - `repeating` — optional boolean, default `false`.
 
-Unknown option fields are rejected so misspellings cannot silently change timer behavior. When several unknown fields are present the message names the alphabetically first one.
+Unknown option fields are rejected so misspellings cannot silently change timer behavior. When several unknown fields are present the message names the alphabetically first one. A field name that is not a string, number or boolean is named by its type (`"<table>"`), so a key's `__tostring` never runs (revision 13).
 
 Timer callbacks receive the **logical TimerKit timer handle**, not the native `C_Timer` FunctionContainer.
 
@@ -349,7 +349,7 @@ message in the first table is raised at the caller's line (see
 | `<method> delay must be zero or greater` | a negative one-shot delay |
 | `<method> delay must be greater than zero for repeating timers` | a repeating interval of zero or less |
 | `<method> options must be a table` | `New` without an option table |
-| `<method> options contains unknown field "<name>"` | `New` with a field other than `delay`, `callback` and `repeating`; the alphabetically first one is named |
+| `<method> options contains unknown field "<name>"` | `New` with a field other than `delay`, `callback` and `repeating`; the alphabetically first one is named, a key that is not a string, number or boolean by its type (`"<table>"`) |
 | `<method> repeating must be a boolean` | `New` with a non-boolean `repeating` |
 | `<method> delay must not be a secret value` | `After`, `Every` and `New` with a secret delay or interval |
 | `<method> repeating must not be a secret value` | `New` with a secret `repeating` |

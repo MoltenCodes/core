@@ -252,6 +252,21 @@ describe("TimerKit bootstrap", function()
     assert.are.equal(1, fired)
     assert.is_true(ticker:Cancel())
     assert.are.equal(0, timers:GetActiveCount())
+
+    -- The working revision names a table option field by its type.
+    local ran = false
+    local key = setmetatable({}, {
+      __tostring = function()
+        ran = true
+        return "custom"
+      end,
+    })
+    local ok, message =
+      pcall(timers.New, timers, { delay = 1, callback = function() end, [key] = true })
+    assert.is_false(ok)
+    local expected = 'options contains unknown field "<table>"'
+    assert.is_truthy(string.find(message, expected, 1, true))
+    assert.is_false(ran)
   end)
 
   it("cancels and restarts a one-shot the previous revision started", function()

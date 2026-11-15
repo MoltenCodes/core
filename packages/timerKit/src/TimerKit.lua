@@ -37,7 +37,7 @@
 
 local PACKAGE_NAME = "timerKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 12
+local IMPLEMENTATION_REVISION = 13
 local REQUIRED_REGISTRY_API = 2
 local STATE_SCHEMA = 1
 
@@ -503,6 +503,25 @@ local function validateDelay(delay, repeating, methodName, level)
   end
 end
 
+---Name a caller's table key in a refusal without running its `__tostring`.
+---`tostring` on a table or userdata runs the caller's `__tostring`, foreign
+---code that may raise or answer a secret and so lose the real refusal. A
+---string is shown as written, a number or boolean through `tostring` (no
+---foreign code runs for those), and anything else by its type, as `<table>`.
+---A key read from a Lua table cannot be a secret: storing one raises.
+---@param key any
+---@return string
+local function describeKey(key)
+  local keyType = type(key)
+  if keyType == "string" then
+    return key
+  end
+  if keyType == "number" or keyType == "boolean" then
+    return tostring(key)
+  end
+  return "<" .. keyType .. ">"
+end
+
 ---Validate one `New`-style option table and unpack the values it carries.
 ---@param options any
 ---@param methodName string public method name, used in the argument errors
@@ -520,7 +539,7 @@ local function validateOptions(options, methodName, level)
   local firstUnknown = nil
   for key in next, options do
     if TIMER_OPTION_KEYS[key] ~= true then
-      local text = tostring(key)
+      local text = describeKey(key)
       if firstUnknown == nil or text < firstUnknown then
         firstUnknown = text
       end

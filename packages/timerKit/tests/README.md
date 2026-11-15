@@ -33,12 +33,12 @@ Spec files:
 | `LogoutCoverage_spec.lua` | the four logout routes, re-examination, subscription release on close, carrying routes across an upgrade |
 | `AddonScopes_spec.lua` | canonical per-addon scopes, `CloseAddonScopes`, terminal closure, unknown addons, facade receiver, manual scopes |
 | `Errors_spec.lua` | definition validation, non-finite delays, native creation and cancellation failures, the trusted host handle (a missing handle refused, one without `Cancel` raising only when cancelled) |
-| `ErrorLevels_spec.lua` | every argument failure at the caller's line |
+| `ErrorLevels_spec.lua` | every argument failure at the caller's line; a table option field named by its type without running its `__tostring` |
 | `UserData_spec.lua` | opaque per-timer user data |
 | `Remaining_spec.lua` | `GetRemaining`/`GetDeadline` in every state, restarts, late hosts, rolled-back starts |
 | `Pause_spec.lua` | `Pause`/`Resume`/`IsPaused` of one-shot and repeating timers, stale callbacks, cancel, restart and scope cleanup of paused timers, host failures, no clock, an upgrade from revision 11 |
 | `Allocation_spec.lua` | a repeating tick and a cancellation allocate nothing |
 | `Property_spec.lua` | deterministic mixed operations keep the scope active count consistent |
-| `Bootstrap_spec.lua` | duplicate loading, Registry publication, loading with Registry alone, the revision-1, revision-5 and revision-7 upgrades and the previous-revision upgrade, older revisions' deadlines, no `GetTimePreciseSec` |
+| `Bootstrap_spec.lua` | duplicate loading, Registry publication, loading with Registry alone, the revision-1, revision-5 and revision-7 upgrades and the previous-revision upgrade (which then names a table option field by its type), older revisions' deadlines, no `GetTimePreciseSec` |
 | `SecretValues_spec.lua` | secret arguments refused at the caller's line, secret user data accepted |
 | `Manifest_spec.lua` | runtime API and revision against `package.manifest.json` |

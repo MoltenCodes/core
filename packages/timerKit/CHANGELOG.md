@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.8.2 — 2026-11-15
+
+- Fixed: `TimerKit:New` and `TimerKit.Scope:New` named an unknown option field by passing the caller's key to `tostring`. `tostring` on a table or userdata runs its `__tostring`, foreign code that could raise (or answer a secret on Retail) inside TimerKit, so the caller saw that error instead of the real refusal. A string key is still shown as written and a number or boolean through `tostring`, which runs no foreign code, so `unknown field "aaa"` is unchanged; any other key is named by its type: `TimerKit.Scope:New options contains unknown field "<table>"`. Documented in `docs/API.md`.
+- Implementation revision 13. No state or layout changed: an upgrade over revision 12 replaces the methods and keeps every timer and scope.
+- Specs: a table option field whose `__tostring` raises is named by its type at the caller's line and its `__tostring` never runs, and a number key is still shown as written (`ErrorLevels_spec.lua`); the previous-revision upgrade spec checks the new message on the upgraded facade; the revision 11 pause upgrade spec no longer pins the working revision to 12. 119 → 120 specs.
+
 ## 0.8.1 — 2026-11-15
 
 - Documentation: the pausable timers of 0.8.0 left text that described only running timers. The README and `docs/API.md` ("Remaining time", "Timers started by an older revision", "Without `GetTimePreciseSec`", "State model", "Manual scopes", `CloseAddonScopes`, "Errors", "Cost", "Limits") now say what a paused timer answers and costs: `GetRemaining` its kept seconds, a pause without a deadline keeping the full delay, paused timers counted, cancelled and retained by their scope, `Pause` raising the host's `Cancel` failure and `Resume` the constructor's, and what `Resume` allocates. `docs/INTERNALS.md` adds paused timers to the active-set invariant, the `fireResumed` dispatch entry and the revision 12 upgrade note; `tests/README.md` lists the pause coverage; doc comments of `IsPending`, `Start`, `Cancel`, `GetRemaining`, `GetActiveCount` and the bulk snapshot include paused timers. Documentation only; the implementation revision stays 12.

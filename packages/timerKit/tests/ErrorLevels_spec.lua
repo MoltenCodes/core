@@ -212,4 +212,36 @@ describe("TimerKit error levels", function()
       facadeValue
     )
   end)
+
+  it("names a table option field by its type and never runs its __tostring", function()
+    local TimerKit = TestEnv.NewPackage()
+    local scope = TimerKit:CreateScope()
+    local ran = 0
+    local key = setmetatable({}, {
+      __tostring = function()
+        ran = ran + 1
+        error("foreign __tostring ran", 0)
+      end,
+    })
+    local line
+    local ok, value = pcall(function()
+      line = currentLine() + 1
+      scope:New({ delay = 1, callback = function() end, [key] = true })
+    end)
+    assertReportedAt(line, 'TimerKit.Scope:New options contains unknown field "<table>"', ok, value)
+    assert.are.equal(0, ran)
+
+    -- A number or boolean key is still shown as written.
+    local numberLine
+    local numberOk, numberValue = pcall(function()
+      numberLine = currentLine() + 1
+      scope:New({ delay = 1, callback = function() end, [7] = true })
+    end)
+    assertReportedAt(
+      numberLine,
+      'TimerKit.Scope:New options contains unknown field "7"',
+      numberOk,
+      numberValue
+    )
+  end)
 end)

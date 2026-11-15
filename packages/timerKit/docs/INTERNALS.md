@@ -85,6 +85,8 @@ Revision 11 changes no state and no layout. A timer revision 10 started keeps it
 
 Revision 12 changes no state and no layout either: it adds the state `"paused"`, which no older revision can have left, and the dispatch entry `fireResumed`. A timer an older revision started can be paused after the upgrade; its old callback is unbound by the pause like any other.
 
+Revision 13 changes no state and no layout either: a refusal names a table option field by its type instead of passing it to `tostring`.
+
 ## Pausing (revision 12)
 
 `pauseTimer` unbinds `_native` before calling the handle's `Cancel`, as a cancellation does, sets `_state = "paused"` and keeps the remainder in `_deadline`; it moves `_generation` on for a timer revision 9 or older built, so a callback of that era goes stale too. The timer stays in its scope's active set. `armRemainder` builds a closure that resolves `dispatch.fireResumed` at call time, calls `C_Timer.NewTimer(remaining, closure)` first and only then marks the timer running, so a raising constructor leaves it paused. `fireResumedTimer` applies the same stale check as `fireTimer`; for a repeating timer it cancels the timer logically, calls `armTimer` for a ticker of the interval and then runs the callback.
