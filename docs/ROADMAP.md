@@ -1267,10 +1267,12 @@ package M below.
       `## Notes`), read once per addon and cached. Registry's `Deprecate` and
       data-package kinds stay unbuilt until a consumer needs them.
       Done 2026-09-24 (clientKit 0.2.0, revision 2; revised in 0.2.1, revision 3).
-- [ ] Deferred to the user-interface phase: **timerKit** engine-driven
+- [x] Deferred to the user-interface phase: **timerKit** engine-driven
       pausable ticker (W15, needs an animation host; built in package M on
       `C_Timer` handles instead, see "timerKit pausable timers"), **frameKit** (W14,
-      folded into widgetKit's anchors), Registry deprecation warnings (W13).
+      folded into widgetKit's anchors, nothing further to build), Registry
+      deprecation warnings (W13; Registry's line budget is spent, so they are
+      a ClientKit capability, see "clientKit deprecation warnings" in package M).
 
 #### Package J — brokerKit
 
@@ -1954,6 +1956,679 @@ its code. Order:
 9. Status: implemented 2026-11-15 under core decision 15, 0.8.0, revision
    12, 12 specs. No client suite: pausing uses only `C_Timer` handles the
    existing TimerKit client suite already proves.
+
+**Further work, decided 2026-11-15 under core decision 16.** The owner asked
+to finish the remaining roadmap work before the real-client runs, which come
+last: the LibDualSpec counterpart, a ScrollBox list, range checking, a unit
+frame finder, and `C_EncodingUtil` where it gains performance, plus W13's
+deprecation warnings (W14's frameKit is folded into widgetKit's anchors).
+Each record below was researched from Blizzard's UI source, the client API
+documentation and the libraries it replaces (ideas only), written before its
+code and treated as agreed as under decision 15.
+
+- [ ] **clientKit** deprecation warnings (W13).
+- [ ] **settingsKit** spec profiles, with OptionsKit's `ProfileOptions` choice.
+- [ ] **widgetKit** virtualised lists (`ScrollList`).
+- [ ] **rangeKit** — unit range estimates.
+- [ ] **unitFrameKit** — the unit frame shown for a unit.
+- [ ] **codecKit** native DEFLATE through `C_EncodingUtil`.
+
+**clientKit deprecation warnings (W13)** — an addition to facade `ClientKit`
+
+1. Package `clientKit`, facade `ClientKit`, API generation 1 (additive),
+   version 0.3.0, implementation revision 6.
+2. Purpose: a Kit marks one of its own things as deprecated (an API
+   generation, a facade method, an option) with a replacement and a
+   removal plan, and the addon that still uses it is told once per call
+   site (or once per addon, when the Kit knows the addon) for the
+   session, never once per call. This is the part of W13 Registry's spent
+   line budget leaves to ClientKit, as `GetManifest` was; Registry is not
+   touched. A Kit finds ClientKit through `Registry:Find("clientKit", 1)`
+   at its first deprecated call and checks for `Deprecate`, so no Kit
+   gains a load-order edge and a session without ClientKit, or with an
+   older revision, simply reports nothing. Nothing is raised unless a
+   developer asks for it. Today no Kit has anything deprecated (no
+   `docs/API.md`, CHANGELOG or README marks a member deprecated), so the
+   capability ships with its specs and documentation and its first
+   consumer is the first Kit that deprecates. Non-goals: Blizzard's
+   deprecated globals (`Blizzard_Deprecated*`, switched by the
+   `loadDeprecationFallbacks` CVar), wrapping or replacing the deprecated
+   function for the Kit, removal scheduling, persisting reports across
+   sessions, Registry's data-package kinds.
+3. Dependencies: unchanged, registry API 2. Host requirements:
+   `debugstack` names the call site (all three flavours; without it the
+   site is unknown and reports fall back to once per addon given, else
+   once per deprecation); `geterrorhandler` carries the report (`print`
+   without it). The `debug` library is not used: the Retail client
+   publishes no `debug` global.
+4. Surface: `ClientKit:Deprecate(spec)` → reporter, with `name` (what is
+   deprecated, for example `"TimerKit:After"`, `"EventKit API 1"`,
+   `"SettingsKit:Open option legacy"`), `removal` (required: when or in
+   what it goes, for example `"TimerKit API 2"`) and `replacement`
+   (optional); a second `Deprecate` under the same name returns the same
+   reporter with the newer spec's text, so an upgraded Kit re-declaring
+   at load adds nothing. `reporter:Warn(level?, addonName?)`: `level` as
+   for `error` (default 2, the caller of the Kit's method); `addonName`,
+   when the Kit knows the consuming addon (a scope's owner), makes the
+   addon the once-key and skips `debugstack` after the first report.
+   `ClientKit:GetDeprecationReports()` → fresh array of fresh rows
+   `{ name, replacement, removal, addon, site }` in report order, for a
+   developer listing what this session used. `ClientKit:SetDeprecationMode(mode)`
+   and `GetDeprecationMode()`, one switch for the session: `"report"`
+   (default: record and hand to the error handler), `"silent"` (record
+   only), `"raise"` (development: raise the report at the consumer's line
+   on every call, unrecorded). `SetLimits{ maxDeprecations, maxReports }`
+   / `GetLimits()`. Report text: `MoltenCodes: TimerKit:After is
+   deprecated; use TimerKit:Delay. Removal: TimerKit API 2. Called from
+   MyAddon (Interface/AddOns/MyAddon/Core.lua:42).` The addon is the
+   folder after `Interface/AddOns/` in the `debugstack` frame (`/` or
+   `\`, bracketed or `[string "@..."]` form), or the `addonName` given,
+   or `"unknown"`.
+5. Ownership: reporters and their once-keys live for the session in
+   ClientKit's state, keyed by name, with the reporter prototype in state
+   so an upgraded revision rewrites `Warn` in place. Reports live until
+   the session ends; none is saved. A Kit calls `Warn` before it changes
+   any state, so `"raise"` leaves the Kit as it was. The mode is shared by
+   every addon in the session and is a developer switch, documented as
+   such.
+6. Performance and memory: nothing runs, and nothing is allocated beyond
+   four empty state tables, until a Kit calls `Deprecate`; a Kit that
+   deprecates nothing costs nothing. `Warn` on a deprecated path: one
+   mode comparison, then with `addonName` one table lookup after the
+   first report, otherwise one `debugstack(level + 1, 1, 0)` and one
+   lookup of the frame line in the reporter's once-table (no string is
+   concatenated before the lookup). Past `maxReports` every reporter stops
+   resolving sites and answers after the one comparison. `maxDeprecations`
+   defaults to 128 with a ceiling of 1024; a `Deprecate` past it returns
+   one shared inert reporter and reports the cap once, never raising at a
+   Kit's load. `maxReports` (recorded reports and once-keys for the
+   session) defaults to 256 with a ceiling of 4096. No `UNBOUNDED` for
+   either.
+7. Tests: a report through the error handler once per call site and once
+   per addon, a second call from the same site silent, two sites two
+   reports, the addon named from a `debugstack` frame in each written form
+   and `"unknown"` otherwise, a host without `debugstack` and without
+   `geterrorhandler`, the three modes (raise at the consumer's line with
+   an explicit level), `GetDeprecationReports` rows and their isolation, a
+   re-declared name returning the same reporter with the new text, both
+   limits and the inert reporter, the optional-Kit pattern through
+   `Registry:Find` with ClientKit absent and with revision 5, secret
+   values (spec fields, `addonName`, a secret frame line), receiver and
+   argument errors at the caller, an upgrade from revision 5 keeping
+   manifests and adding the deprecation state, manifest. A client suite
+   addition to `MoltenCodesTest_ClientKit` on Retail, Mists of Pandaria
+   Classic and Classic Era: the `debugstack` frame text logged and the
+   suite's own addon named in the report.
+8. Docs: API.md (a Deprecations section with the Kit-side pattern, the
+   modes, the report text; Limits rewritten, since ClientKit gains
+   `SetLimits`), CHANGELOG, README, tests/README; ARCHITECTURE's clientKit
+   paragraph; package I's deferred item and the clientKit checkbox.
+9. Status: recorded 2026-11-15 under core decision 16; code follows.
+
+**settingsKit spec profiles** — an addition to facade `SettingsKit`
+
+1. Package `settingsKit`, facade `SettingsKit`, API generation 1 (additive),
+   version 0.4.0, implementation revision 11.
+2. Purpose: a database switches its current profile by itself when the
+   player changes specialization, what LibDualSpec-1.0 gives AceDB-3.0
+   databases. Each character assigns a profile to a *spec index*; when the
+   index changes, the database calls its own `SetProfile` with the
+   assigned name, so `db.profile`, getters and `OnProfileChanged` follow
+   as for any switch. The spec index is the specialization on Retail and
+   Mists of Pandaria Classic (`C_SpecializationInfo.GetSpecialization()`,
+   1 to the class's count), and the active talent group on Classic Era,
+   Season of Discovery and Hardcore, where dual talent specialization is
+   the mechanism (`C_SpecializationInfo.GetActiveSpecGroup()`). Which of
+   the two is decided once from `WOW_PROJECT_ID`, with ClientKit's
+   literals: `1` and `19` mean specialization, anything else (or no
+   constant) means talent group, the answer every client has. This is
+   the roadmap's "spec-aware profiles" (settingsKit record, point 2),
+   which the saved-table contract lets generation 1 add as a new section.
+   Non-goals: the options UI (OptionsKit's `ProfileOptions`, a separate
+   capability with its own record), switching on Retail talent loadouts,
+   pet specializations, an enabled flag (no assignment means no
+   switching), importing LibDualSpec's AceDB namespace (a later bridgeKit
+   item).
+3. Dependencies: unchanged, registry API 2, schemaKit API 1, signalKit
+   API 1; EventKit API 1 stays optional through `Registry:Find` and is what
+   makes the switch automatic (without it, the addon calls
+   `db:ApplySpecProfile()` itself). Host requirements: `C_SpecializationInfo`
+   with `GetSpecialization`, `GetActiveSpecGroup`, `IsInitialized` and
+   `GetNumSpecializationsForClassID`, and `UnitClass` (third return, the
+   class ID), all in the generated documentation of `live`, `classic` and
+   `classic_era`; `GetNumTalentGroups` (not in the generated
+   documentation, used by Blizzard's Classic talent frame) for the
+   talent-group count, guarded. Every answer is checked with
+   `issecretvalue` first. Without `C_SpecializationInfo` the index is
+   unknown and nothing switches.
+4. Surface: `SettingsKit:GetSpecIndex()` → `index|nil, count, kind`
+   (`kind` is `"specialization"` or `"talentGroup"`; `nil` while the
+   client has no data yet or the player has no specialization, for
+   example Retail's starter specialization, whose index is above the
+   class's count); `db:SetSpecProfile(index, name?)` → `true`, or `false`
+   when the character key is unavailable: assigns profile `name` to spec
+   index `index` (a positive integer up to 8) for this character, `nil`
+   clears it, and applies it at once when `index` is the current one;
+   `db:GetSpecProfile(index)` → `name|nil`; `db:ApplySpecProfile()` →
+   `true` when it switched. Saved table: a new section `specProfiles`,
+   keyed by `"<name> - <realm>"`, each entry `{ [index] = profileName }`;
+   `Open` creates the section like the others and refuses a present
+   non-table; an entry that is not a usable profile name is ignored.
+   `DeleteProfile` removes assignments naming the deleted profile,
+   `ResetDatabase` empties the section, a read-only database refuses
+   `SetSpecProfile` and never switches. A manual `SetProfile` changes no
+   assignment; the next spec change applies the assignment again.
+5. Ownership: assignments live in the saved variable. One shared listener
+   for the session, in state and calling through the dispatch table,
+   connected to `PLAYER_ENTERING_WORLD`, `ACTIVE_TALENT_GROUP_CHANGED` and
+   `PLAYER_SPECIALIZATION_CHANGED` (`ConnectUnit`, `"player"`) the first
+   time a database has an assignment (at `Open` or `SetSpecProfile`), so an
+   addon that never uses spec profiles costs EventKit nothing. On each
+   event it reads the index once and applies it to every open database
+   with an assignment for that index; an unchanged index does nothing.
+   Databases opened by revision 10 or earlier gain the methods and the
+   switching through the rewritten prototype; the section is created at
+   their first `SetSpecProfile`.
+6. Performance and memory: nothing per frame and nothing on the read and
+   write paths of a view. A spec event costs two or three client calls and
+   one table lookup per open database; the switch itself is
+   `SetProfile`'s existing cost. No allocation until the first assignment
+   of a character (its entry table). The main chunk sits at 197 of Lua
+   5.1's 200 slots, so the new code goes in one `do` block with its own
+   locals.
+7. Tests: stand-ins for `C_SpecializationInfo`, `GetNumTalentGroups`,
+   `UnitClass`, `WOW_PROJECT_ID` and the three events through EventKit's
+   test environment; both kinds of index, a switch on each event, the
+   starter specialization and uninitialised data answering `nil`, no
+   switch without an assignment or for an unchanged index, assignment
+   applied at once, clearing, `DeleteProfile` and `ResetDatabase` removing
+   assignments, read-only refusal, no character key, without EventKit
+   (`ApplySpecProfile` only), the listener connected once and only when
+   used, a corrupted section and entries, secret answers from the client,
+   argument error levels, an upgrade from revision 10 keeping databases
+   and switching afterwards, manifest. A client-suite case on Retail (switch
+   specialization, see the profile follow) is written and not run.
+8. Docs: API.md (*Spec profiles*, the new saved-table section in *The
+   saved table*, *Embedded copies and upgrades* for revision 11),
+   INTERNALS.md (the shared listener and the section), README (a
+   migration table from LibDualSpec-1.0), CHANGELOG, tests/README;
+   ROADMAP's settingsKit record and package M checklist (Friday's).
+9. Status: recorded 2026-11-15 under core decision 16; code follows.
+
+**widgetKit virtualised lists** — an addition to facade `WidgetKit`
+
+1. Package `widgetKit`, facade `WidgetKit`, API generation 1 (additive),
+   version 0.4.0, implementation revision 12. One new base widget type,
+   `ScrollList`, at version 1; every other base type keeps its version.
+2. Purpose: a list that stays cheap however long it is. Only the rows the
+   list shows exist as frames; scrolling points them at other elements.
+   Built on Blizzard's ScrollBox framework (`Blizzard_SharedXML/Shared/Scroll`
+   and `DataProvider.lua`): a `WowScrollBoxList` frame, a `MinimalScrollBar`,
+   `CreateScrollBoxListLinearView`, `ScrollUtil.InitScrollBoxListWithScrollBar`
+   and `CreateDataProvider`. Retail, Mists of Pandaria Classic and Classic Era
+   ship these with the same code (branches `live` 12.1.5, `classic` 5.5.4 and
+   `classic_era` 1.15.9, read 2026-11-15; the only differences are Retail's
+   narration hooks and a return value in the tree view, neither used here).
+   What WidgetKit adds over calling the framework directly: a pooled widget
+   that lays out and releases like every other one, checked arguments, a
+   bounded element count, standard rows built once per row frame, a row
+   formatter that raises reported and never breaking Blizzard's update, and
+   single selection kept by WidgetKit. Recorded deviation: selection does not
+   use `ScrollUtil.AddSelectionBehavior`, because every select there walks the
+   whole data provider and allocates (`DeselectByPredicate`), and it reads an
+   element's own `selected` field as selected. Non-goals: grid, tree and
+   horizontal views; drag and drop; multi-selection; variable row heights
+   (`SetElementExtentCalculator` recomputes every element's extent on each
+   data change); custom row frames (a pooled list's rows go to the next
+   consumer of the widget, so rows built by one addon would carry their
+   children into another's list; such a list uses Blizzard's ScrollBox
+   directly); sorting (sort the array before handing it over); secret texts
+   in rows.
+3. Dependencies: unchanged (registry API 2, poolKit API 1, signalKit API 1).
+   Host requirement: `CreateFrame` with the templates `WowScrollBoxList`
+   (a `Frame`) and `MinimalScrollBar` (an `EventFrame`), and the globals
+   `CreateScrollBoxListLinearView`, `ScrollUtil` and `CreateDataProvider`.
+   Without them `Create("ScrollList")` raises at the caller before any frame
+   is made; the other widgets are unaffected.
+4. Surface: `WidgetKit:Create("ScrollList")` → list.
+   `list:SetRowHeight(pixels)` (a number of at least 8; default 20);
+   `list:SetFormatter(callback|nil)`, `callback(element, index)` → text,
+   icon? (default: `element.text` and `element.icon`);
+   `list:SetElements(elements, retainScroll?)`, an array of tables, copied,
+   at most `maxListElements`, every element checked before anything changes;
+   `list:Insert(element, index?)`, `list:Remove(element)` → `true` or `false`,
+   `list:Clear()`; `list:GetNumElements()`, `list:GetElement(index)`;
+   `list:Refresh()` (draw the shown rows again after elements changed in
+   place); `list:ScrollToElement(element, alignment?)` → `true` or `false`,
+   with `alignment` `"begin"`, `"center"` (default), `"end"` or `"nearest"`;
+   `list:SetValue(element|nil)`, `list:GetValue()`. Callbacks: a left click
+   selects the row's element and fires `OnValueChanged(element)` when it
+   changed; every click fires `OnClick(element, mouseButton)`. `SetDisabled`
+   ignores clicks and greys the rows. `WidgetKit:SetLimits{ maxListElements }`
+   joins the package limits.
+5. Ownership: the widget's frame, its `WowScrollBoxList`, its
+   `MinimalScrollBar` and its view are made once by the constructor and kept
+   for the widget's life. Row frames are made by the view's own frame pool
+   (`CreateFrameFactory`, keyed by the frame type `Button`), parented to the
+   scroll target and reused by the next use of the widget; each row's parts
+   (text, icon, highlight and selected textures) are made the first time the
+   view hands WidgetKit that frame and kept in a table of the widget, never
+   on the frame. Row click scripts call through the dispatch table, so an
+   upgraded revision takes them over. On release the view is flushed (every
+   row back to its pool, the data provider removed), row texts are cleared,
+   and the formatter, the value and every element reference are dropped.
+6. Performance and memory: frames per list are the rows its height shows,
+   plus one, made once and pooled by the view; with the 8-pixel minimum a
+   1080-pixel list holds at most 136. Row frames are the view's, not
+   WidgetKit's, so they do not count against the frame cap. An element costs
+   one array slot. Every data change costs one pass over the elements in
+   Blizzard's code (`RecalculateExtent` walks the provider even with a fixed
+   row height), so `Insert` and `Remove` are O(n) and many changes belong in
+   one `SetElements`. `SetElements` allocates one data provider; scrolling
+   allocates in Blizzard's view (a few tables per range change and accessor
+   closures per acquired row), nothing in WidgetKit. Selection is one field.
+   `maxListElements` defaults to 16384 and opens to `UNBOUNDED`: elements are
+   the consumer's tables, never frames.
+7. Tests: a package-local stand-in for the ScrollBox framework in
+   `tests/support/WidgetKitTestEnv.lua` (templates, view, data provider and
+   scroll bar recording what WidgetKit calls, and acquiring rows for a
+   visible range); acquire and release with rows back in the view's pool and
+   no element kept; standard rows built once per frame and reused across
+   uses; the formatter (default, custom, raising, a non-string or secret
+   text reported and shown empty); `SetElements` checks and limits
+   (`UNBOUNDED` included), selection kept when the selected element is in
+   the new list; `Insert`, `Remove`, `Clear`, `Refresh`; `ScrollToElement`
+   and each alignment; clicks, selection, both callbacks and a callback that
+   releases the list; `SetDisabled`; the refusal without the framework;
+   secret arguments refused; error levels; an upgrade from revision 11 that
+   keeps live widgets and adds the new limit; manifest. The existing client
+   suite (`tests/client/MoltenCodesTest_WidgetKit`) gains a Retail case: a
+   10000-element list shown, scrolled, a row clicked, a scroll to an
+   element, the list released with the view's frame count unchanged on the
+   next use, and the same in combat.
+8. Docs: README, API.md (the `ScrollList` section, the limit row, the
+   performance rows, the selection deviation), INTERNALS.md (rows in the
+   view's pool, the row-parts table), CHANGELOG, tests/README, the client
+   suite's EXPECTED.md; EMBEDDING's host-requirements row and package M's
+   checklist (Friday).
+9. Status: recorded 2026-11-15 under core decision 16; code follows.
+
+**rangeKit** — facade `RangeKit`
+
+1. Package `rangeKit`, facade `RangeKit`, API generation 1, version 0.1.0,
+   implementation revision 1.
+2. Purpose: an estimate of how far a unit is from the player, in whole
+   yards, and whether it is within a given distance: what
+   LibRangeCheck-3.0 gives unit frames, nameplates and range displays. The
+   client has no distance query for arbitrary units, so the estimate comes
+   from yes-or-no checks of known reach, sorted by range: the player's own
+   spells (`C_Spell.IsSpellInRange`, their reach read from
+   `C_Spell.GetSpellInfo` `minRange`/`maxRange`, never hard-coded) and the
+   interact distances of `CheckInteractDistance` (index 3, 7 yards, and
+   index 4, 28 yards, as warcraft.wiki.gg documents them). A small built-in
+   list per class names candidate spell IDs in four kinds, `harm`, `friend`,
+   `resurrect` and `pet`; only those `C_SpellBook.IsSpellInSpellBook` reports
+   are used, so one list serves every flavour and a spell missing from a
+   flavour simply drops out. The unit's kind picks the list: attackable
+   (`UnitCanAttack`), dead and assistable (`resurrect`), the pet (`pet`, then
+   `friend`), assistable (`friend`), anything else interact distances only.
+   A spell with a minimum range counts as in range when the client says so
+   or when a checker at or below that minimum says the unit is closer;
+   without such a checker it is left out. Spells whose `maxRange` is 0
+   (melee) are left out, since melee reach depends on both units' combat
+   reach, which the client does not expose. The checkers are rebuilt when
+   the spellbook or talents change, and listeners hear when the lists
+   change. The client refuses `CheckInteractDistance` from addon code in
+   combat for units the player cannot attack (protected by the 10.2.0
+   hotfix of 2023-11-16, enemy units allowed again by the hotfix of
+   2023-12-11); the Kit skips interact checkers for such units while
+   `InCombatLockdown()` is true, on every flavour. Non-goals: item-based
+   checkers (`C_Item.IsItemInRange`: the same combat refusal, item data that
+   must be requested from the server, and large per-flavour item lists),
+   race-specific interact distances, `UnitInRange` (group members only, a
+   single 40-yard answer, and secret on Retail), `UnitDistanceSquared`,
+   a result cache (a call is a handful of client checks; callers throttle),
+   handing out checker functions, and action-bar range
+   (`C_ActionBar.IsActionInRange`).
+3. Dependencies: registry API 2 only. EventKit is not used: one event frame
+   of the package's own listens to a few events, as EditModeKit does. Host
+   requirement: `CreateFrame`, `UnitClass`, `UnitExists`, `UnitCanAttack`,
+   `UnitCanAssist`, `UnitIsDeadOrGhost`, `InCombatLockdown`,
+   `C_Spell.GetSpellInfo`, `C_Spell.IsSpellInRange`,
+   `C_SpellBook.IsSpellInSpellBook` and `Enum.SpellBookSpellBank`, all
+   present on Retail 12.1.5, Mists of Pandaria Classic 5.5.4 and Classic Era
+   1.15.9 (apiKit's generated tables of the 2026-11-14 captures;
+   `UnitIsDeadOrGhost` is not in the Classic generated docs but Blizzard's
+   own `CompactUnitFrame.lua` on `classic_era` calls it). Without them
+   `GetRange` and `IsInRange` answer `nil`. `CheckInteractDistance` is
+   optional (no interact checkers without it). The rebuild events are
+   registered only when `C_EventUtils.IsEventValid` accepts them:
+   `SPELLS_CHANGED`, `LEARNED_SPELL_IN_SKILL_LINE`, `PLAYER_TALENT_UPDATE`,
+   `CHARACTER_POINTS_CHANGED` (all four in the generated docs of all three
+   flavours) and `UNIT_PET` for the player (pet spells).
+   `LEARNED_SPELL_IN_TAB` is not in any of the three captures and is not
+   used.
+4. Surface: `RangeKit:GetRange(unit)` → `minRange, maxRange` in yards
+   (`nil, nil` when the unit does not exist or no checker answers;
+   `maxRange` `nil` when the unit is beyond the longest checker; `0` as
+   `minRange` when the shortest checker says in range);
+   `RangeKit:IsInRange(unit, yards)` → `true` when `maxRange <= yards`,
+   `false` when `minRange >= yards`, `nil` when the estimate cannot decide;
+   `RangeKit:DescribeCheckers(kind)` → a fresh array of
+   `{ range, minRange, source }` (`source` such as `"spell:589"` or
+   `"interact:4"`) for `"harm"`, `"friend"`, `"resurrect"`, `"pet"` or
+   `"interact"`; `RangeKit:OnCheckersChanged(callback)` → connection
+   (`connection:Disconnect()`, `connection:IsConnected()`), called with no
+   arguments after a rebuild that changed any list;
+   `SetLimits{ maxListeners }` / `GetLimits()`. A unit token that is not a
+   string, or a secret value, raises at the caller; a client answer that is
+   a secret value counts as no answer.
+5. Ownership: the checker lists belong to the Kit, built at the first query
+   and rebuilt (and compared) on each rebuild event; nothing is kept per
+   unit. A connection belongs to its caller until `Disconnect`; a listener
+   that raises is reported through `geterrorhandler()` and the others still
+   run. An upgraded revision takes over the event frame and the listeners
+   through the stable closures in `_state`.
+6. Performance and memory: nothing runs per frame and no timer runs.
+   `GetRange` makes `UnitExists`, `UnitCanAttack`, `UnitCanAssist`,
+   `UnitIsDeadOrGhost` and `InCombatLockdown` calls plus a binary search of
+   the sorted list (at most four range checks for 16 entries, a `nil`
+   answer counted as out of range) and allocates nothing. A rebuild walks
+   the class's candidate list (at most 16 spells per kind) once. Each kind
+   holds at most 16 checkers plus the two interact entries; duplicate
+   ranges keep the first. `maxListeners` defaults to 32 with a ceiling of
+   256 and no `UNBOUNDED`.
+7. Tests: stand-ins for the spell, spellbook, unit and interact functions,
+   `InCombatLockdown` and the events; lists built per kind from known spells
+   only and sorted, ranges rounded, a duplicate range dropped, melee spells
+   left out, a minimum-range spell joined with a closer checker and left out
+   without one; `GetRange` brackets at both ends and between checkers, each
+   unit kind picking its list, a dead friendly unit, a missing unit;
+   interact checkers skipped in combat for a non-attackable unit and kept for
+   an attackable one; `IsInRange` true, false and undecided; rebuild on each
+   event with listeners called only on a change, a raising listener
+   isolated, disconnecting; missing host functions; limits and ceilings;
+   secret arguments and secret client answers; upgrade; manifest; error
+   levels. A client suite on Retail: the player's target bracketed by
+   `GetRange` while walking away, and the lists rebuilt after a talent
+   change.
+8. Docs: README (with the migration table from LibRangeCheck-3.0:
+   `GetRange`, the `Get*Checker` family to `IsInRange`, `CHECKERS_CHANGED`
+   to `OnCheckersChanged`, what is not carried over: items, `checkVisible`,
+   `noItems`, `maxCacheAge`), API.md (the per-class candidate list with its
+   source, the combat rule, the yard values), CHANGELOG, tests/README;
+   EMBEDDING rows; ARCHITECTURE's package list.
+9. Status: recorded 2026-11-15 under core decision 16; code follows.
+
+Candidate spell IDs (the built-in list; reach is read from the client).
+Taken from LibRangeCheck-3.0 minor 39 (MIT), which the Kit's code does not
+copy; spells absent from a flavour or from the player's spellbook drop out:
+
+| Class | `harm` | `friend` | `resurrect` | `pet` |
+|---|---|---|---|---|
+| Death Knight | 49576, 47541 | | 61999 | |
+| Demon Hunter | 185123, 183752 | | | |
+| Druid | 5176, 8921, 339, 33786 | 8936, 774, 5185 | 50769, 20484 | |
+| Evoker | 362969 | 361469, 355913 | 361227 | |
+| Hunter | 75, 466930, 2764 | | | 136 |
+| Mage | 133, 116, 118, 5019 | 1459, 475 | | |
+| Monk | 117952, 115546, 115078 | 116670, 115450 | 115178 | |
+| Paladin | 20271, 62124, 853, 20473 | 19750, 635, 85673 | 7328 | |
+| Priest | 589, 585, 8092, 5019 | 2061, 2050, 17, 527 | 2006 | |
+| Rogue | 2094, 921, 185565, 2764 | | | |
+| Shaman | 403, 188196, 370, 8042 | 331, 8004, 546 | 2008 | |
+| Warlock | 686, 5782, 172, 5019 | 5697 | 20707 | 755 |
+| Warrior | 355, 100, 5246, 2764 | | | |
+
+**unitFrameKit** — facade `UnitFrameKit`
+
+1. Package `unitFrameKit`, facade `UnitFrameKit`, API generation 1, version
+   0.1.0, implementation revision 1.
+2. Purpose: find the unit frame shown on screen for a unit token, what
+   LibGetFrame-1.0 gives WeakAuras to anchor an aura or a glow to a party or
+   raid member's frame. A scan walks the client's frames with
+   `EnumerateFrames`, in slices, and keeps every visible `Button` whose
+   `unit` attribute is set (with `unitsuffix` appended, as Blizzard's
+   `SecureButton_GetUnit` does), under its name or, for an unnamed frame,
+   its parent's name and parent key (`PartyFrame.MemberFrame1`). A query
+   reads each kept frame's `unit` attribute again, compares it with
+   `UnitIsUnit`, drops hidden frames, and ranks the matches: the caller's
+   patterns first, then frames of other addons, then Blizzard's frames
+   (`CompactRaidFrame%d`, `CompactRaidGroup%dMember%d`,
+   `CompactPartyFrameMember%d`, `PartyFrame.MemberFrame%d`,
+   `Boss%dTargetFrame`, then `PlayerFrame`, `TargetFrame`, `FocusFrame`).
+   Frames are sorted into kinds (`raid`, `party`, `boss`, `player`,
+   `target`, `targettarget`, `focus`); by default only `raid`, `party` and
+   `boss` frames answer, and a solo kind answers when the token asked for
+   is that kind's own token (`"target"` finds `TargetFrame`). Kinds of
+   other addons come from a short pattern table, each entry checked in that
+   addon's own published source and cited in `docs/API.md`; an entry that
+   cannot be checked is left out, and such an addon's frames are still
+   found, without a kind, ranked after the known ones. A nameplate is
+   `C_NamePlate.GetNamePlateForUnit(unit)` and its `UnitFrame` child. Every
+   name used exists on Retail, Mists of Pandaria Classic and Classic Era
+   (Blizzard's `Blizzard_UnitFrame`, `Blizzard_CompactRaidFrames` and
+   `Blizzard_NamePlates`, branches `live`, `classic` and `classic_era`,
+   read 2026-11-15). Non-goals: names or GUIDs in place of unit tokens,
+   per-addon workarounds (ElvUI's health bar, Cell's override hook),
+   third-party nameplate addons, arena frames, frame creation or anchoring
+   (the caller anchors), profiling.
+3. Dependencies: registry API 2 only. It keeps one event frame of its own,
+   so EventKit is not needed. Host requirement: `CreateFrame`,
+   `EnumerateFrames`, `UnitIsUnit`, `UnitExists`; without `EnumerateFrames`
+   nothing is kept and every query answers `nil`. `C_NamePlate` for
+   `GetNamePlate` (`nil` without it). `issecretvalue` where the client has
+   it: a secret `unit` attribute or a secret `UnitIsUnit` answer (Retail's
+   `Attributes` aspect and restricted unit comparisons) makes that frame no
+   match.
+4. Surface: `UnitFrameKit:GetUnitFrame(unit, options?)` → frame or `nil`,
+   with `kinds` (array of kinds in rank order), `priorities` (array of name
+   patterns ranked before everything else), `ignore` (array of name
+   patterns never answered); `UnitFrameKit:GetUnitFrames(unit, options?)`
+   → a new array of every match in rank order; `UnitFrameKit:GetNamePlate(unit)`
+   → frame or `nil`; `UnitFrameKit:Rescan()` (a scan starts on the next
+   client frame); `UnitFrameKit:IsScanning()`;
+   `UnitFrameKit:OnChange(callback)` → connection (`Disconnect()`,
+   `IsConnected()`), called after a scan once per frame whose unit
+   changed, with `(frame, unit, previousUnit)` (`previousUnit` `nil` for a
+   frame new to the cache, `unit` `nil` for one gone from it), which is
+   LibGetFrame's `FRAME_UNIT_ADDED`, `FRAME_UNIT_UPDATE` and
+   `FRAME_UNIT_REMOVED` in one; `UnitFrameKit:GetKindPatterns(kind)` → a
+   copy of the kind's patterns; `SetLimits{ maxFrames, scanFramesPerStep,
+   maxListeners }` / `GetLimits()`. A unit that is secret or not a
+   non-empty string, an unknown option or kind, a pattern list over 64
+   entries, or a callback that is not a function raise at the caller.
+5. Ownership: the Kit owns one event frame for the session. It scans on
+   first use, on `PLAYER_ENTERING_WORLD`, `GROUP_ROSTER_UPDATE`,
+   `PLAYER_REGEN_DISABLED`, `PLAYER_REGEN_ENABLED`,
+   `INSTANCE_ENCOUNTER_ENGAGE_UNIT` and `UNIT_PET` of a group member, each
+   coalesced into one scan one second later; a request during a scan
+   queues exactly one more. The cache holds frames, which the client never
+   frees, so it holds them strongly and replaces the whole cache at the end
+   of each scan. A connection lives until `Disconnect`; a callback that
+   raises is reported through `geterrorhandler` and the others still run.
+   Scanning and queries only read frames, so both run in combat.
+6. Performance and memory: the event frame's `OnUpdate` runs only while a
+   scan is waiting or running. A scan visits at most `scanFramesPerStep`
+   frames per client frame and keeps its place in `EnumerateFrames`, which
+   is safe because frames are never deleted and the walk follows creation
+   order; frames made during the scan come later in the walk and are seen.
+   Per frame visited it calls `IsForbidden`, `GetObjectType` and, for a
+   `Button`, `GetAttribute` and `IsVisible`, and allocates only for a kept
+   frame (its name and kind). The cache and the scan's working table swap
+   and are wiped, so a scan allocates no tables. A query reads at most
+   `maxFrames` entries, one attribute and one `UnitIsUnit` each, and
+   allocates nothing (`GetUnitFrames` allocates its result). Limits:
+   `maxFrames` (frames kept) 512, ceiling 4096; `scanFramesPerStep` 400,
+   ceiling 4000; `maxListeners` 64, ceiling 512; none `UNBOUNDED`. A scan
+   that reaches `maxFrames` keeps the first ones and reports once through
+   `geterrorhandler`. The cost of a full scan on a loaded Retail interface
+   is measured in the benchmark harness before the first release and
+   written into `docs/API.md`.
+7. Tests: stand-ins for `EnumerateFrames`, frames with attributes,
+   visibility and names, `UnitIsUnit`, `C_NamePlate` and the events; frames
+   found by attribute and by `unitsuffix`, unnamed frames named through
+   their parent key, forbidden, hidden and non-button frames skipped, aura
+   buttons (`type` `"cancelaura"`) skipped, the scan sliced per client frame
+   and resumed in place, frames created during a scan, rescans coalesced
+   and queued, ranking by caller patterns, other addons and Blizzard's
+   frames, kinds and the solo-token rule, `ignore`, `GetUnitFrames` order,
+   `OnChange` with added, changed and removed frames and a callback that
+   raises, nameplates, limits and ceilings, the `maxFrames` report, secret
+   arguments, secret attributes and secret `UnitIsUnit` answers, a host
+   without `EnumerateFrames`, upgrade, manifest, error levels. A client
+   suite on Retail: in a party with Blizzard's frames, `GetUnitFrame("party1")`
+   answers the shown party frame, and after `Rescan` with raid-style party
+   frames answers the compact one.
+8. Docs: README (with the migration from LibGetFrame-1.0), API.md (the
+   ranking, the kinds and their cited patterns, the measured scan cost),
+   CHANGELOG, tests/README; EMBEDDING rows; ARCHITECTURE's package list.
+9. Status: recorded 2026-11-15 under core decision 16; code follows.
+
+**codecKit native DEFLATE** — a change inside facade `CodecKit`
+
+1. Package `codecKit`, facade `CodecKit`, API generation 1 (no change to
+   the surface), version 0.2.0, implementation revision 7, wire format
+   version 1 (unchanged). Minor version because what a client with
+   `C_EncodingUtil` writes changes (different, equally valid DEFLATE
+   bytes), even though no member is added.
+2. Purpose: run the compression stage, and only that stage, through the
+   client's `C_EncodingUtil.CompressString` and `DecompressString` with
+   `Enum.CompressionMethod.Deflate` where the client has them, because that
+   is the one stage whose format the client implements exactly: raw DEFLATE
+   (RFC 1951), which the Retail client suite already proved interoperates
+   with CodecKit in both directions. Frames keep version 1 and the same
+   flags; every frame any revision wrote still decodes, and a frame written
+   through the native compressor decodes in revisions 1 to 6, whose inflater
+   reads any conforming raw DEFLATE stream. Non-goals, each because the
+   bytes would change: the serialiser (`SerializeCBOR`/`DeserializeCBOR` and
+   the JSON pair write other formats and cannot carry CodecKit's exact
+   doubles, `-0`, `nil` list entries, the argument-list type or the refusal
+   vocabulary), the print channel (CodecKit's base 85 over its own
+   85-character alphabet is not `EncodeBase64` in either RFC 4648 variant),
+   the addon channel (no native counterpart; it is one `gsub`), and the hex
+   functions (CodecKit has no hex stage). Also not a goal: byte-identical
+   compressed output across clients, which `docs/API.md` already disclaims
+   ("Encoded bytes are not a content hash").
+3. Dependencies: unchanged, registry API 2 and poolKit API 1, schedulerKit
+   API 1 optional. Host facility, optional: `C_EncodingUtil.CompressString`
+   and `C_EncodingUtil.DecompressString`, documented identically on `live`
+   since 11.1.5 (60428), `classic` since 5.5.0 (61767) and `classic_era`
+   since 1.15.8 (63829), so on every promised client (12.1.5, 5.5.4,
+   1.15.9); and `Enum.CompressionMethod.Deflate` (0) and
+   `Enum.CompressionLevel` (`Default` 0, `OptimizeForSpeed` 1,
+   `OptimizeForSize` 2), with the documented values used when `Enum` lacks
+   them. Both functions are looked up with `rawget(_G, "C_EncodingUtil")` at
+   every call, as `issecretvalue` is, each guarded with
+   `type(...) == "function"` for the flavour gate. Without them, or on the
+   host, every call takes the Lua path exactly as revision 6 does.
+4. Surface: none added. Which path ran is internal; the package test
+   environment's stand-in counts native calls, which is how the specs tell.
+   The level option keeps its 1 to 9 range and maps onto the client's
+   three: 1 to 3 to `OptimizeForSpeed`, 4 to 6 to `Default`, 7 to 9 to
+   `OptimizeForSize`. What stays on the Lua path, and why:
+   - compressing an input under 64 bytes (the existing literal or stored
+     block, which allocates nothing and is what addon messages mostly are);
+   - inflating an input larger than `maxOutputBytes / 64` bytes (16 KiB at
+     the default limit): DEFLATE expands at most about 1032 to 1, and the
+     native inflater only stops at its own 100 MiB cap
+     (`Constants.EncodingLimits.EncodingDecompressSizeLimit` = 104857600),
+     after which CodecKit can only measure the result. Below that bound the
+     worst native output is no larger than the 16 bytes per output byte the
+     Lua inflater already claims for an honest frame at the limit, so "a
+     DEFLATE bomb costs at most this much" keeps its meaning. A consumer that
+     raises `maxOutputBytes` raises the bound with it.
+   - any native failure. `DecompressString` raises on invalid data and both
+     functions may return nothing (`MayReturnNothing`), so each native call
+     runs under `pcall`; a raise, no result or a non-string result reruns the
+     stage on the Lua path, which returns the documented reason
+     (`"malformedDeflate"`, `"truncated"`, `"trailingData"`,
+     `"maxOutputBytes"`). Decoders still never raise, and every refusal
+     keeps the reason revision 6 returns.
+   - a native result is still measured against `maxOutputBytes` on both
+     stages, as the Lua path's is.
+   `EncodeAsync` and `DecodeAsync` use the native stage in one call when it
+   applies (it cannot yield, and host C zlib measured 20 to 150 times
+   cheaper than the Lua stage it replaces; see 6), and keep the sliced Lua
+   path above an internal `ASYNC_NATIVE_MAXIMUM_BYTES` of 256 KiB of stage
+   input, to be confirmed by the client measurement in 7.
+   Gate before the inflate half ships: the client suite must show what
+   `DecompressString` does with bytes after the final block. If it refuses
+   them, native inflation is adopted as above; if it accepts them, a frame
+   the Lua path refuses with `"trailingData"` would decode, so only native
+   compression ships and inflation stays Lua until the owner decides.
+5. Ownership: nothing new is held. No state field is added; the host
+   functions are read per call and never cached in `_state`, so a revision 6
+   copy upgraded in place and a revision 7 copy share the same state table,
+   limits, `UNBOUNDED` and pool. A string the client returns belongs to the
+   caller like any stage output.
+6. Performance and memory. Measured on the host (Apple M5 Pro, Lua 5.1.5,
+   load average about 30 to 40 during the runs, so read the ratios, not the
+   absolute times), CodecKit revision 6, per KiB of input: compress level 6
+   0.57 ms (prose, 10 and 50 KiB) and 0.48 ms (random); level 1 0.30 to
+   0.44 ms; level 9 0.57 to 0.64 ms; inflate 0.13 to 0.18 ms (prose) and
+   0.035 ms (stored blocks); print encode 0.09 ms, decode 0.12 ms; addon
+   escape 0.010 ms, unescape 0.016 ms. The same inputs through host C zlib
+   raw DEFLATE (window bits −15): compress level 6 0.013 to 0.032 ms, level
+   9 0.015 to 0.054 ms, inflate 0.001 to 0.002 ms; that is 18 to 43 times
+   cheaper to compress prose at level 6 and 110 to 150 times cheaper to
+   inflate it, with output within 0.3% of CodecKit's size at levels 6
+   and 9 (4508 against 4508 bytes, 18261 against 18237). Inferred, not
+   measured: the client's functions perform like host zlib; Blizzard does
+   not say which DEFLATE implementation they use, and the Retail client
+   suite logs `CompressString` and `DecompressString` timings beside
+   CodecKit's on a 50 KB roster, but that log was not kept in
+   `tests/client/results.json`. Published: WeakAuras issue 5835 calls the
+   native functions "substantially faster than LibDeflate+LibSerialize";
+   no adopter published numbers. Memory: the Lua compressor's working arrays
+   (a few tens of bytes per input byte and 35 to 40 KiB of code tables per
+   32 KiB block) and the Lua inflater's output array (about 16 bytes per
+   output byte) are not allocated on the native path; the native path
+   allocates its result string, and `pcall` is given the host function
+   and its arguments directly, so no closure is made per call. What does not
+   change: serialising (the `codec` host benchmark, 0.82 ms to encode and
+   0.65 ms to decode the large payload) and the print channel, which
+   together are the whole cost of an uncompressed frame.
+7. Tests, in the package's specs with a stand-in in
+   `tests/support/CodecKitTestEnv.lua`: a `C_EncodingUtil` whose
+   `CompressString` and `DecompressString` are a second, independent raw
+   DEFLATE (CodecKit's own Lua stages loaded as a separate copy, with stored
+   blocks forced for compression so its bytes differ) and count calls;
+   modes that raise, return nothing, return a non-string, accept trailing
+   bytes and refuse them. Specs: with the stand-in, `Compress`, `Encode`
+   with `compress = "deflate"` and both asynchronous variants call it at and
+   above 64 bytes and not below; its output decodes on the Lua path (stand-in
+   removed) and Lua output decodes through it; every golden compressed frame
+   of `FastPath_spec.lua` decodes through it; without it every golden frame
+   is written byte for byte as revision 6 wrote it; each failure mode falls
+   back and returns revision 6's reason; the inflate bound (an input of
+   `maxOutputBytes / 64` bytes goes native, one byte more does not, and a
+   raised `maxOutputBytes` moves it); `maxOutputBytes` on native results;
+   the level mapping; the async size threshold; a secret string is refused
+   before the stand-in is called; `Enum` missing uses the documented values;
+   `C_EncodingUtil` present without the two functions takes the Lua path;
+   the allocation specs unchanged without the stand-in and for inputs under
+   64 bytes with it; an in-place upgrade from revision 6 keeping state and
+   pool. Client suite (`tests/client/MoltenCodesTest_CodecKit`, never run by
+   tooling): the existing interop tests stay; added, with the facade test
+   logging which path runs: an `Encode`/`Decode` round trip of the 50 KB
+   roster on the native path that a revision 6 copy loaded beside it
+   decodes, and the reverse; `DecompressString` on a valid stream followed
+   by trailing bytes, logged and asserted against the gate in 4; a stream
+   that inflates past `maxOutputBytes`; the time of a 256 KiB and a 1 MiB
+   native compress at `OptimizeForSize` and inflate, to confirm the async
+   threshold; and the side-by-side timings of the existing log, written to
+   EXPECTED.md this time. Classic Era and Mists of Pandaria Classic runs
+   are required before the native path is called proven there.
+8. Docs: API.md (the compression section: which encoder runs where, the
+   level mapping, the inflate bound, the trailing-data finding, and the Cost
+   section with the native rows once measured on the client; the optional
+   facilities table gains `C_EncodingUtil`), INTERNALS.md (the native path,
+   its fallback and the bound), README (the "Standard compression" line and
+   the host facilities in Embedding), CHANGELOG, tests/README,
+   EXPECTED.md for the client suite; `docs/EMBEDDING.md` host-requirements
+   row for codecKit (Friday applies it).
+9. Status: recorded 2026-11-15 under core decision 16; code follows.
 
 #### Package N — bridgeKit, migrating from Ace3
 
