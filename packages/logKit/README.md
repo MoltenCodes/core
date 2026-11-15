@@ -47,7 +47,8 @@ Three contracts are worth knowing before the first message:
   [`docs/API.md`](docs/API.md#limits).
 
 Not in scope: log files (the client has none), remote shipping, and a viewer
-window (a later user-interface phase).
+window: none of the user-interface Kits draws one, and `History` gives an addon
+what its own window would show.
 
 See [`docs/API.md`](docs/API.md) for the complete contract and
 [`docs/INTERNALS.md`](docs/INTERNALS.md) for how it is built.

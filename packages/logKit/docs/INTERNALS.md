@@ -153,4 +153,6 @@ revision 3 (absence of outside values tested with `type`, secrets refused
 before comparison), which adopts a revision 1 or 2 state unchanged, and
 revision 4 (`"*"` refused as an addon name, the `clear` command and the
 installed-addon check), which adopts any older state unchanged and adds
-`dispatch.commandClear` like every other dispatch function.
+`dispatch.commandClear` like every other dispatch function. Revision 5 (an
+unknown `SetLimits` key that is not a string, number or boolean named by its
+type, without `tostring`) adopts any older state unchanged.

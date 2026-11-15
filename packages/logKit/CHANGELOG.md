@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.2.2 — 2026-11-15
+
+- Fixed: `SetLimits` built its unknown-limit message with `tostring(key)`. For a table or userdata key that runs the key's `__tostring`, foreign code that can raise or answer a secret, so the caller saw that code's error (or a message it chose) instead of the refusal. A string key is still shown as written and a number or boolean as its text (`limits.1 is not a recognised limit` is unchanged); any other key is named by its type, `LogKit:SetLimits limits.<table> is not a recognised limit`, and its `__tostring` never runs. Documented in `docs/API.md` *Errors*.
+- Implementation revision 5. No state changed: an upgrade over revision 4 replaces the methods and keeps every logger, level, sink, the journal and the limits.
+- Specs: 158 → 159. A table key whose `__tostring` records that it ran and raises is refused at the caller's line with `limits.<table>` and no limit changes; the in-place upgrade from the previous revision also checks the new message.
+
+## 0.2.1 — 2026-11-15
+
+- Documentation: the README put a viewer window out of scope as "a later user-interface phase". That phase has delivered its Kits and none of them draws a log viewer, so the README now says so and points to `History` for an addon that draws its own.
+- Documentation: `docs/API.md` ("Deviations from the planned contract") said "ProfileKit 0.1.0 has no sink". It still has none in its current version; the sentence no longer pins a version that has since moved on.
+- Documentation: the spec table in `tests/README.md` had no row for `SavedLevels_spec.lua`, and the bootstrap list did not mention the load refusals without Registry or SignalKit, the incomplete facade or Registry publication; both now do.
+- Documentation only: the implementation revision is unchanged (4).
+
 ## 0.2.0 — 2026-09-25
 
 Two defects in persisted levels a read-only audit found, and the fixes.

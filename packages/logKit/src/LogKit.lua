@@ -42,7 +42,7 @@
 
 local PACKAGE_NAME = "logKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 4
+local IMPLEMENTATION_REVISION = 5
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_SIGNALKIT_API = 1
 local OPTIONAL_COMMANDKIT_API = 1
@@ -1213,6 +1213,25 @@ end
 
 -- Limits ---------------------------------------------------------------------------
 
+---Name a caller's table key in a refusal without running its `__tostring`.
+---Converting a table or userdata key runs that metamethod, foreign code that
+---can raise or answer a secret and so replace the refusal it was meant to
+---describe. A string is shown as written and a number or boolean through
+---`tostring`, which runs no foreign code for them; anything else is named by
+---its type in angle brackets, such as `<table>`.
+---@param key any a key `next` read from a table, already checked not secret
+---@return string
+local function describeKey(key)
+  local kind = type(key)
+  if kind == "string" then
+    return key
+  end
+  if kind == "number" or kind == "boolean" then
+    return tostring(key)
+  end
+  return "<" .. kind .. ">"
+end
+
 ---Refuse a `SetLimits` argument before any limit changes, so a call with one
 ---bad entry leaves every limit as it was. A secret key or value is refused
 ---before it is used as a key or compared, because either raises.
@@ -1228,7 +1247,7 @@ local function validateLimitUpdate(limits, level)
       error("LogKit:SetLimits limits must not have a secret key", level)
     end
     if type(key) ~= "string" or LIMIT_NAME_SET[key] ~= true then
-      error("LogKit:SetLimits limits." .. tostring(key) .. " is not a recognised limit", level)
+      error("LogKit:SetLimits limits." .. describeKey(key) .. " is not a recognised limit", level)
     end
     local value = rawget(limits, key)
     if isSecret(value) then

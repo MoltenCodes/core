@@ -254,6 +254,24 @@ describe("LogKit limits", function()
     assertReportedAt(line, "LogKit:SetLimits limits must be a table", ok, value)
   end)
 
+  it("names a table key by its type without running its __tostring", function()
+    local converted = false
+    local key = setmetatable({}, {
+      __tostring = function()
+        converted = true
+        error("a caller's __tostring ran inside LogKit", 0)
+      end,
+    })
+    local line
+    local ok, value = pcall(function()
+      line = currentLine() + 1
+      LogKit:SetLimits({ [key] = 1 })
+    end)
+    assertReportedAt(line, "LogKit:SetLimits limits.<table> is not a recognised limit", ok, value)
+    assert.is_false(converted)
+    assert.are.same(DEFAULTS, LogKit:GetLimits())
+  end)
+
   it("refuses SetLimits and GetLimits called without the facade", function()
     local line
     local ok, value = pcall(function()

@@ -4,7 +4,7 @@ LogKit API generation **1** provides levelled, structured logging: one logger
 per addon with lazily formatted, secret-safe messages, a tri-state level, a
 bounded journal readable after the fact, and sinks.
 
-Implementation revision: **4**.
+Implementation revision: **5**.
 
 ## Loading
 
@@ -471,7 +471,7 @@ table key, does; measured on Retail 12.1.0 b69933):
 - `LogKit:BindLevels db must be a SettingsKit database`
 - `LogKit:BindLevels db must declare global.logLevels as an optional map of addon name to level name; see LogKit docs/API.md`
 - `LogKit:SetLimits limits must be a table`
-- `LogKit:SetLimits limits.<name> is not a recognised limit`
+- `LogKit:SetLimits limits.<name> is not a recognised limit`: a string key is shown as written, a number or boolean as its text, and any other key by its type (`limits.<table> is not a recognised limit`), so a key's `__tostring` never runs
 - `LogKit:SetLimits limits must not have a secret key` / `LogKit:SetLimits limits.<name> must not be a secret value`
 - `LogKit:SetLimits limits.journalCapacity must be an integer from 1 to 65536`
 - `LogKit:SetLimits limits.journalCapacity cannot be LogKit.UNBOUNDED: the ring is allocated when the journal is created`
@@ -527,8 +527,8 @@ The nine-point plan in `docs/ROADMAP.md` is followed except where recorded here:
   not strings or numbers are converted with `tostring` first, so `%s` behaves
   as in Lua 5.2 rather than raising as in Lua 5.1.
 - **The sink shape is `{ Write(record) }` or a function.** The plan says the
-  sink contract is one ProfileKit reports can share; ProfileKit 0.1.0 has no
-  sink (its `Report` returns rows), and CommandKit's sinks are chat-frame
+  sink contract is one ProfileKit reports can share; ProfileKit has no sink
+  (its `Report` returns rows), and CommandKit's sinks are chat-frame
   shaped (`{ AddMessage(text) }`). LogKit's record-based `Write` is the
   contract a future ProfileKit report sink would implement; a chat frame is
   adapted through `ChatSink`.
@@ -545,7 +545,7 @@ binding live in the shared package state, so an in-place upgrade keeps all of
 them: a logger created by an older embedded copy resolves to the newer copy's
 methods, a chat sink built by it writes through the newer copy, and the `/log`
 handlers dispatch through package state so a newer revision replaces their
-behaviour without registering again. Revisions 2, 3 and 4 kept the state
+behaviour without registering again. Revisions 2, 3, 4 and 5 kept the state
 layout of revision 1, so each takes an older state over as it is. Revision 4
 adds `dispatch.commandClear`; a `/log` an older copy registered reaches it
 through the top-level handler (above). A logger an older copy created for the

@@ -2,10 +2,10 @@
   "name": "logKit",
   "displayName": "LogKit",
   "description": "Levelled, structured logging for World of Warcraft addons: per-addon loggers with lazy secret-safe formatting, a tri-state level, a bounded journal and chat, callback and table sinks.",
-  "version": "0.2.0",
+  "version": "0.2.2",
   "license": "MIT",
   "api": 1,
-  "revision": 4,
+  "revision": 5,
   "dependencies": {
     "registry": {
       "api": 2

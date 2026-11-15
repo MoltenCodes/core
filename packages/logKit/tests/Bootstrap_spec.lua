@@ -37,7 +37,7 @@ describe("LogKit bootstrap", function()
     local LogKit, Registry = Env.NewPackage()
     assert.are.equal(LogKit, Registry:Get("logKit", 1))
     assert.are.equal(1, LogKit.API)
-    assert.are.equal(4, LogKit.REVISION)
+    assert.are.equal(5, LogKit.REVISION)
   end)
 
   it("reuses the shared facade, loggers, levels and journal on duplicate load", function()
@@ -127,7 +127,7 @@ describe("LogKit bootstrap", function()
 
     local LogKit = Env.ReloadPackage()
     assert.are.equal(previous, LogKit)
-    assert.are.equal(4, LogKit.REVISION)
+    assert.are.equal(5, LogKit.REVISION)
     assert.are.equal(logger, LogKit:ForAddon("Kept"))
     assert.are.equal("info", (logger:GetLevel()))
     assert.are.equal("error", LogKit:GetGlobalLevel())
@@ -149,7 +149,7 @@ describe("LogKit bootstrap", function()
   end)
 
   it(
-    "upgrades the previous revision's state in place and refuses a secret receiver afterwards",
+    "upgrades the previous revision's state in place and refuses a secret receiver and a table limit key afterwards",
     function()
       local shippedRevision = Env.NewPackage().REVISION
       Env.Reset()
@@ -187,6 +187,23 @@ describe("LogKit bootstrap", function()
         end
       )
       assert.are.equal("warn", LogKit:GetGlobalLevel())
+
+      -- The fix this revision carries: a table key is named by its type and
+      -- its `__tostring` never runs.
+      local converted = false
+      local key = setmetatable({}, {
+        __tostring = function()
+          converted = true
+          return "converted"
+        end,
+      })
+      Env.expectErrorContaining(
+        "LogKit:SetLimits limits.<table> is not a recognised limit",
+        function()
+          LogKit:SetLimits({ [key] = 1 })
+        end
+      )
+      assert.is_false(converted)
     end
   )
 

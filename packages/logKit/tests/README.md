@@ -64,13 +64,15 @@ The LogKit suite covers:
 - allocation guards on a disabled call, an enabled bare message with a sink, an
   enabled formatted message whose result is interned, `IsEnabled`/`GetLevel`,
   and filtered and unfiltered history walks;
-- duplicate embedded loading, refusal to downgrade, an in-place upgrade from
+- loading refused without Registry or SignalKit and over an incomplete facade,
+  Registry publication, duplicate embedded loading, refusal to downgrade, an
+  in-place upgrade from
   revision 1 (the real source loaded as revision 1, then the shipped revision
   over it) that keeps a logger, its override, the global level, a sink, the
   journal and a raised limit and then refuses a secret limit, an in-place
   upgrade from the previous revision (`REVISION - 1`) that keeps the state
   table, a logger, the global level and a sink and then refuses a secret
-  receiver, an in-place upgrade to the
+  receiver and names a table limit key by its type, an in-place upgrade to the
   next revision (the real source with its revision constant rewritten) that
   keeps loggers, levels, sinks, the journal, `LEVELS` and `UNBOUNDED`, an older
   chat sink routed through the newest `Write`, the slash command working across
@@ -96,8 +98,9 @@ load them.
 | `Journal_spec.lua` | ring order, filters, capacity changes, logging from a sink |
 | `Sinks_spec.lua` | function and table sinks, removal, isolation, `maxSinks`, the chat sink |
 | `SecretValues_spec.lua` | the placeholder and every secret refusal |
-| `Limits_spec.lua` | `SetLimits`, `GetLimits`, truncation, `UNBOUNDED`, the SignalKit interaction |
+| `Limits_spec.lua` | `SetLimits`, `GetLimits`, truncation, `UNBOUNDED`, the SignalKit interaction, a table key named by its type without running its `__tostring` |
 | `Command_spec.lua` | `RegisterCommand` and `/log` |
+| `SavedLevels_spec.lua` | the `"*"` name, `/log` levels for names without a logger, `/log show` and `/log clear` |
 | `BindLevels_spec.lua` | `BindLevels` against a real SettingsKit database |
 | `Allocation_spec.lua` | the allocation guards |
 | `ErrorLevels_spec.lua` | argument errors reported at the caller's line |
