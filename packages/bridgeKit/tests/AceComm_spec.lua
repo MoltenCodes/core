@@ -175,14 +175,11 @@ describe("BridgeKit AceComm channel", function()
         assert.are.same({ "new!" }, { received[1].message })
         assert.are.equal(1, #received)
         local statistics = BridgeKit:GetStatistics()
-        assert.are.same(
-          { 1, 2, 2 },
-          {
-            statistics.aceStreamsReplaced,
-            statistics.aceOrphanParts,
-            statistics.aceReservedControl,
-          }
-        )
+        assert.are.same({ 1, 2, 2 }, {
+          statistics.aceStreamsReplaced,
+          statistics.aceOrphanParts,
+          statistics.aceReservedControl,
+        })
       end
     )
 
