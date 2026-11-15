@@ -47,7 +47,7 @@
 
 local PACKAGE_NAME = "optionsKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 12
+local IMPLEMENTATION_REVISION = 13
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_SCHEMAKIT_API = 1
 local REQUIRED_SIGNALKIT_API = 1
@@ -119,6 +119,10 @@ local VALUE_KINDS = {
 local COMMON_FIELDS =
   { type = true, name = true, desc = true, order = true, disabled = true, hidden = true }
 
+-- The common fields a record keeps in `_hints` with the renderer hints
+-- (revision 13), so a value option keeps to 8 fields.
+local PRESENTATION_SET = { desc = true, order = true, disabled = true, hidden = true }
+
 -- Fields every value-carrying option accepts on top of the common ones.
 local VALUE_FIELDS = { get = true, set = true, bind = true, validate = true }
 
@@ -146,6 +150,23 @@ local KIND_FIELDS = {
   [KIND_HEADER] = {},
   [KIND_DESCRIPTION] = { fontSize = true },
 }
+
+-- The fields of each kind `Describe` reports as hints: the kind's own plain
+-- fields (`args` becomes the children, `values`, `sorting` and `func` are
+-- kept on their own) and the presentation fields every option shares.
+local HINT_FIELDS = {}
+for kind, fields in pairs(KIND_FIELDS) do
+  local hintFields = {}
+  for field in pairs(PRESENTATION_SET) do
+    hintFields[field] = true
+  end
+  for field in pairs(fields) do
+    if field ~= "args" and field ~= "values" and field ~= "sorting" and field ~= "func" then
+      hintFields[field] = true
+    end
+  end
+  HINT_FIELDS[kind] = hintFields
+end
 
 -- The SettingsKit scopes a `bind` path may start with.
 local BIND_SCOPES =
@@ -608,156 +629,213 @@ end
 
 -- Definition checks ----------------------------------------------------------
 --
--- Every check takes the label of the field it checks, such as
--- `OptionsKit:Define tree.args.general.args.scale.min`, so the message names
--- the whole path to the offending field. Labels are built at Define only.
+-- Every message names the whole path to the offending field, such as
+-- `OptionsKit:Define tree.args.general.args.scale.min`. A check receives the
+-- field's owner (an option's record, or a literal label such as
+-- `OptionsKit:ProfileOptions options`) and the field name, and builds the
+-- label only on the branch that raises (revision 13), so a valid tree builds
+-- none.
+
+-- The label of the root option, the start of every `Define` label.
+local DEFINE_LABEL = "OptionsKit:Define tree"
+
+---The label of the option at `path`: `DEFINE_LABEL` and `.args.<key>` for each
+---key of the path. Failure path only.
+---@param path string
+---@return string
+local function optionLabel(path)
+  if path == "" then
+    return DEFINE_LABEL
+  end
+  return DEFINE_LABEL .. ".args." .. string.gsub(path, "%.", ".args.")
+end
+
+---The label of `field` of `owner`, or of `owner` itself without a field.
+---Failure path only.
+---@param owner table|string an option's record, or a literal label
+---@param field string|nil
+---@return string
+local function labelOf(owner, field)
+  local label = owner
+  if type(owner) == "table" then
+    label = optionLabel(rawget(owner, "_path"))
+  end
+  ---@cast label string
+  if field ~= nil then
+    return label .. "." .. field
+  end
+  return label
+end
 
 ---@param value any
----@param label string
+---@param owner table|string the option record, or a literal label
+---@param field string|nil
 ---@param level integer
-local function checkOptionalString(value, label, level)
+local function checkOptionalString(value, owner, field, level)
   local valueType = type(value)
   if valueType ~= "nil" and valueType ~= "string" then
-    error(label .. " must be a string", level)
+    error(labelOf(owner, field) .. " must be a string", level)
   end
 end
 
 ---@param value any
----@param label string
+---@param owner table|string the option record, or a literal label
+---@param field string|nil
 ---@param level integer
-local function checkOptionalStringOrFunction(value, label, level)
+local function checkOptionalStringOrFunction(value, owner, field, level)
   local valueType = type(value)
   if valueType ~= "nil" and valueType ~= "string" and valueType ~= "function" then
-    error(label .. " must be a string or a function", level)
+    error(labelOf(owner, field) .. " must be a string or a function", level)
   end
 end
 
 ---@param value any
----@param label string
+---@param owner table|string the option record, or a literal label
+---@param field string|nil
 ---@param level integer
-local function checkOptionalBoolean(value, label, level)
+local function checkOptionalBoolean(value, owner, field, level)
   local valueType = type(value)
   if valueType ~= "nil" and valueType ~= "boolean" then
-    error(label .. " must be a boolean", level)
+    error(labelOf(owner, field) .. " must be a boolean", level)
   end
 end
 
 ---@param value any
----@param label string
+---@param owner table|string the option record, or a literal label
+---@param field string|nil
 ---@param level integer
-local function checkOptionalFunction(value, label, level)
+local function checkOptionalFunction(value, owner, field, level)
   local valueType = type(value)
   if valueType ~= "nil" and valueType ~= "function" then
-    error(label .. " must be a function", level)
+    error(labelOf(owner, field) .. " must be a function", level)
   end
 end
 
 ---@param value any
----@param label string
+---@param owner table|string the option record, or a literal label
+---@param field string|nil
 ---@param level integer
-local function checkNumber(value, label, level)
+local function checkNumber(value, owner, field, level)
   -- `value ~= value` is true for NaN only.
   if type(value) ~= "number" or value ~= value then
-    error(label .. " must be a number", level)
+    error(labelOf(owner, field) .. " must be a number", level)
   end
 end
 
 ---@param value any
----@param label string
+---@param owner table|string the option record, or a literal label
+---@param field string|nil
 ---@param level integer
-local function checkPositiveNumber(value, label, level)
+local function checkPositiveNumber(value, owner, field, level)
   if type(value) ~= "nil" then
-    checkNumber(value, label, level + 1)
+    checkNumber(value, owner, field, level + 1)
     if value <= 0 then
-      error(label .. " must be greater than 0", level)
+      error(labelOf(owner, field) .. " must be greater than 0", level)
     end
   end
 end
 
 ---@param value any
----@param label string
+---@param owner table|string the option record, or a literal label
+---@param field string|nil
 ---@param level integer
-local function checkPredicate(value, label, level)
+local function checkPredicate(value, owner, field, level)
   local valueType = type(value)
   if valueType ~= "nil" and valueType ~= "boolean" and valueType ~= "function" then
-    error(label .. " must be a boolean or a function", level)
+    error(labelOf(owner, field) .. " must be a boolean or a function", level)
   end
 end
 
 ---Refuse any field of `spec` that its kind does not accept.
 ---@param spec table
 ---@param kind OptionsKit.Kind
----@param label string
+---@param record table
 ---@param level integer
-local function checkKnownFields(spec, kind, label, level)
+local function checkKnownFields(spec, kind, record, level)
   local kindFields = KIND_FIELDS[kind]
+  local hintFields = HINT_FIELDS[kind]
   local isValueKind = VALUE_KINDS[kind] == true
+  local hints = nil
   for field, value in pairs(spec) do
     if type(field) ~= "string" then
-      error(label .. " contains a field that is not a string", level)
+      error(labelOf(record) .. " contains a field that is not a string", level)
     end
     -- Refused here, before any field is read: the checks and the record
     -- below test flags such as `disabled`, `tristate` and `hasAlpha` for
     -- truth, and compare numbers and strings, which raises inside
     -- OptionsKit for a secret (Retail 12.x) instead of at the caller.
     if isSecret(value) then
-      error(label .. "." .. field .. " must not be a secret value", level)
+      error(labelOf(record, field) .. " must not be a secret value", level)
     end
     if not (COMMON_FIELDS[field] or kindFields[field] or (isValueKind and VALUE_FIELDS[field])) then
-      error(label .. ' contains unknown field "' .. field .. '" for type "' .. kind .. '"', level)
+      error(
+        labelOf(record) .. ' contains unknown field "' .. field .. '" for type "' .. kind .. '"',
+        level
+      )
     end
+    -- The hints `Describe` reports, collected in the same walk (revision
+    -- 13); the checks below refuse a hint with a wrong value.
+    if hintFields[field] then
+      hints = hints or {}
+      hints[field] = value
+    end
+  end
+  -- Absent rather than a shared empty table: a record without hints keeps
+  -- the slot free. Readers use `NO_HINTS` instead.
+  if hints ~= nil then
+    rawset(record, "_hints", hints)
   end
 end
 
 ---Check the fields every option shares.
 ---@param spec table
 ---@param isRoot boolean
----@param label string
+---@param record table
 ---@param level integer
-local function checkCommonFields(spec, isRoot, label, level)
+local function checkCommonFields(spec, isRoot, record, level)
   if isRoot then
-    checkOptionalString(spec.name, label .. ".name", level + 1)
+    checkOptionalString(spec.name, record, "name", level + 1)
   elseif type(spec.name) ~= "string" then
-    error(label .. ".name must be a string", level)
+    error(labelOf(record, "name") .. " must be a string", level)
   end
-  checkOptionalStringOrFunction(spec.desc, label .. ".desc", level + 1)
+  checkOptionalStringOrFunction(spec.desc, record, "desc", level + 1)
   if type(spec.order) ~= "nil" then
-    checkNumber(spec.order, label .. ".order", level + 1)
+    checkNumber(spec.order, record, "order", level + 1)
   end
-  checkPredicate(spec.disabled, label .. ".disabled", level + 1)
-  checkPredicate(spec.hidden, label .. ".hidden", level + 1)
+  checkPredicate(spec.disabled, record, "disabled", level + 1)
+  checkPredicate(spec.hidden, record, "hidden", level + 1)
 end
 
 ---Check a `range` option's bounds.
 ---@param spec table
----@param label string
+---@param record table
 ---@param level integer
-local function checkRangeFields(spec, label, level)
-  checkNumber(spec.min, label .. ".min", level + 1)
-  checkNumber(spec.max, label .. ".max", level + 1)
+local function checkRangeFields(spec, record, level)
+  checkNumber(spec.min, record, "min", level + 1)
+  checkNumber(spec.max, record, "max", level + 1)
   if spec.min > spec.max then
-    error(label .. ".min must not be greater than max", level)
+    error(labelOf(record, "min") .. " must not be greater than max", level)
   end
-  checkPositiveNumber(spec.step, label .. ".step", level + 1)
-  checkPositiveNumber(spec.bigStep, label .. ".bigStep", level + 1)
+  checkPositiveNumber(spec.step, record, "step", level + 1)
+  checkPositiveNumber(spec.bigStep, record, "bigStep", level + 1)
   local softMin = spec.softMin
   local softMax = spec.softMax
   if type(softMin) ~= "nil" then
-    checkNumber(softMin, label .. ".softMin", level + 1)
+    checkNumber(softMin, record, "softMin", level + 1)
     if softMin < spec.min or softMin > spec.max then
-      error(label .. ".softMin must lie between min and max", level)
+      error(labelOf(record, "softMin") .. " must lie between min and max", level)
     end
   end
   if type(softMax) ~= "nil" then
-    checkNumber(softMax, label .. ".softMax", level + 1)
+    checkNumber(softMax, record, "softMax", level + 1)
     if softMax < spec.min or softMax > spec.max then
-      error(label .. ".softMax must lie between min and max", level)
+      error(labelOf(record, "softMax") .. " must lie between min and max", level)
     end
   end
   if type(softMin) ~= "nil" and type(softMax) ~= "nil" and softMin > softMax then
-    error(label .. ".softMin must not be greater than softMax", level)
+    error(labelOf(record, "softMin") .. " must not be greater than softMax", level)
   end
-  checkOptionalBoolean(spec.isPercent, label .. ".isPercent", level + 1)
+  checkOptionalBoolean(spec.isPercent, record, "isPercent", level + 1)
 end
 
 ---Orders the keys of a `values` table: numbers first, each type ascending.
@@ -775,29 +853,29 @@ end
 ---strings. Returns the copy and its keys, sorted for a deterministic schema.
 ---@param values table
 ---@param maxEntries number the tree's `maxDynamicEntries`, `math.huge` when unbounded
----@param label string
+---@param record table
 ---@param level integer
 ---@return table copy
 ---@return (string|number)[] keys
-local function copyValues(values, maxEntries, label, level)
+local function copyValues(values, maxEntries, record, level)
   local copy = {}
   local keys = {}
   for key, text in pairs(values) do
     local keyType = type(key)
     if keyType ~= "string" and keyType ~= "number" then
-      error(label .. " keys must be strings or numbers", level)
+      error(labelOf(record, "values") .. " keys must be strings or numbers", level)
     end
     if type(text) ~= "string" then
-      error(label .. " labels must be strings", level)
+      error(labelOf(record, "values") .. " labels must be strings", level)
     end
     copy[key] = text
     keys[#keys + 1] = key
   end
   if #keys == 0 then
-    error(label .. " must not be empty", level)
+    error(labelOf(record, "values") .. " must not be empty", level)
   end
   if #keys > maxEntries then
-    error(label .. " must have at most " .. maxEntries .. " entries", level)
+    error(labelOf(record, "values") .. " must have at most " .. maxEntries .. " entries", level)
   end
   return copy, keys
 end
@@ -806,15 +884,15 @@ end
 ---the values are a table, one of its keys.
 ---@param sorting any
 ---@param values table|false copied values, or `false` when they come from a function
----@param label string
+---@param record table
 ---@param level integer
 ---@return (string|number)[]|false copy
-local function copySorting(sorting, values, label, level)
+local function copySorting(sorting, values, record, level)
   if type(sorting) == "nil" then
     return false
   end
   if type(sorting) ~= "table" then
-    error(label .. " must be an array", level)
+    error(labelOf(record, "sorting") .. " must be an array", level)
   end
   local copy = {}
   local count = #sorting
@@ -822,16 +900,16 @@ local function copySorting(sorting, values, label, level)
     local key = sorting[index]
     local keyType = type(key)
     if keyType ~= "string" and keyType ~= "number" then
-      error(label .. " entries must be strings or numbers", level)
+      error(labelOf(record, "sorting") .. " entries must be strings or numbers", level)
     end
     if values and values[key] == nil then
-      error(label .. " entries must be keys of values", level)
+      error(labelOf(record, "sorting") .. " entries must be keys of values", level)
     end
     copy[index] = key
   end
   for key in pairs(sorting) do
     if type(key) ~= "number" or key < 1 or key > count or key % 1 ~= 0 then
-      error(label .. " must be an array", level)
+      error(labelOf(record, "sorting") .. " must be an array", level)
     end
   end
   return copy
@@ -840,19 +918,19 @@ end
 ---Parse `bind` into its scope and keys. Returns the scope name and an array of
 ---at least one key.
 ---@param bind any
----@param label string
+---@param record table
 ---@param level integer
 ---@return string scope
 ---@return string[] keys
-local function parseBind(bind, label, level)
+local function parseBind(bind, record, level)
   if type(bind) ~= "string" then
-    error(label .. " must be a string", level)
+    error(labelOf(record, "bind") .. " must be a string", level)
   end
   local scope = nil
   local keys = {}
   for segment in (bind .. "."):gmatch("([^.]*)%.") do
     if not segment:find(KEY_PATTERN) then
-      error(label .. ' "' .. bind .. '" must be dot-separated identifiers', level)
+      error(labelOf(record, "bind") .. ' "' .. bind .. '" must be dot-separated identifiers', level)
     end
     if scope == nil then
       scope = segment
@@ -862,14 +940,83 @@ local function parseBind(bind, label, level)
   end
   if scope == nil or BIND_SCOPES[scope] ~= true then
     error(
-      label .. ' "' .. bind .. '" must start with global, char, realm, class, faction or profile',
+      labelOf(record, "bind")
+        .. ' "'
+        .. bind
+        .. '" must start with global, char, realm, class, faction or profile',
       level
     )
   end
   if #keys == 0 then
-    error(label .. ' "' .. bind .. '" must name a value inside the scope', level)
+    error(labelOf(record, "bind") .. ' "' .. bind .. '" must name a value inside the scope', level)
   end
   return scope, keys
+end
+
+-- Record fields --------------------------------------------------------------
+--
+-- A record keeps only what it cannot derive (revision 13): its key, depth and
+-- bind text come from its path and parent when asked for, so the common
+-- option (name, description, get and set or bind, schema) keeps to the 8 hash
+-- slots of its constructor instead of 16. Records an older revision built
+-- still hold `_key`, `_depth`, `_bind` and `_bindCount`; the accessors below
+-- derive the same answers for them.
+
+---The key of `record` in its parent, or `false` for the root. Keys are
+---identifiers, so the path's last segment is the key; the string already
+---exists, so the match allocates nothing.
+---@param record table
+---@return string|false
+local function keyOf(record)
+  local path = rawget(record, "_path")
+  if path == "" then
+    return false
+  end
+  return (string.match(path, "[^.]+$"))
+end
+
+---How many groups lie above `record`: `0` for the root.
+---@param record table
+---@return integer
+local function depthOf(record)
+  local depth = 0
+  local parent = rawget(record, "_parent")
+  while parent do
+    depth = depth + 1
+    parent = rawget(parent, "_parent")
+  end
+  return depth
+end
+
+---The `bind` text of a bound record, rebuilt from its scope and keys (they
+---were split from it at `Define` on its dots). Failure and `Describe` paths.
+---@param record table
+---@return string
+local function bindTextOf(record)
+  return rawget(record, "_bindScope") .. "." .. table.concat(rawget(record, "_bindKeys"), ".")
+end
+
+---The presentation field `name` of `record` (`"desc"`, `"order"`,
+---`"disabled"` or `"hidden"`), or `nil`. A record revision 12 or earlier built
+---keeps it as its own field `legacyName` (`"_desc"`, ...), which is read
+---first.
+---@param record table
+---@param name string
+---@param legacyName string
+---@return any
+local function presentationOf(record, name, legacyName)
+  -- Records are OptionsKit's own tables without a metatable, so plain
+  -- indexing is a raw lookup without a call; this runs for every option a
+  -- `Describe` or an `IsDisabled` walk visits.
+  local legacy = record[legacyName]
+  if type(legacy) ~= "nil" then
+    return legacy
+  end
+  local hints = record._hints
+  if hints then
+    return hints[name]
+  end
+  return nil
 end
 
 -- Info tables ----------------------------------------------------------------
@@ -890,11 +1037,11 @@ local function infoOf(record)
   end
   -- The keys from the root down: collect them up the parent chain, then
   -- reverse them into the array part.
-  local depth = rawget(record, "_depth")
+  local depth = depthOf(record)
   info = { path = rawget(record, "_path"), kind = rawget(record, "_kind") }
   local node = record
   for index = depth, 1, -1 do
-    info[index] = rawget(node, "_key")
+    info[index] = keyOf(node)
     node = rawget(node, "_parent")
   end
   -- `node` is now the root, which alone keeps the tree.
@@ -986,15 +1133,15 @@ end
 ---and would report it at its own line; the protected call moves the report to
 ---the caller of `Define`.
 ---@param pattern string
----@param label string
+---@param record table
 ---@param level integer
 ---@return table schema
-function SharedSchemas.input(pattern, label, level)
+function SharedSchemas.input(pattern, record, level)
   local schema = SharedSchemas.patterns[pattern]
   if schema == nil then
     local built, result = pcall(SchemaKit.string, { pattern = pattern })
     if not built then
-      error(label .. ".pattern is not a valid Lua pattern", level)
+      error(labelOf(record, "pattern") .. " is not a valid Lua pattern", level)
     end
     schema = SchemaKit:Seal(result)
     SharedSchemas.patterns[pattern] = schema
@@ -1050,10 +1197,9 @@ end
 ---@param valuesFunction function|false a `select`/`multiselect` values function
 ---@param record table the option's record
 ---@param dynamicMax integer the map bound of a multiselect over a values function
----@param label string
 ---@param level integer
 ---@return table schema
-local function buildSchema(kind, spec, keys, valuesFunction, record, dynamicMax, label, level)
+local function buildSchema(kind, spec, keys, valuesFunction, record, dynamicMax, level)
   if kind == KIND_TOGGLE then
     if spec.tristate then
       return SharedSchemas.fixedSchema("tristate", function()
@@ -1079,7 +1225,7 @@ local function buildSchema(kind, spec, keys, valuesFunction, record, dynamicMax,
       SchemaKit.map({ keys = keyNode, values = SchemaKit.boolean(), max = dynamicMax })
     )
   elseif kind == KIND_INPUT and type(spec.pattern) ~= "nil" then
-    return SharedSchemas.input(spec.pattern, label, level + 1)
+    return SharedSchemas.input(spec.pattern, record, level + 1)
   elseif kind == KIND_COLOR then
     if spec.hasAlpha then
       return SharedSchemas.fixedSchema("colorAlpha", function()
@@ -1106,55 +1252,64 @@ end
 ---@param right table
 ---@return boolean
 local function compareRecords(left, right)
-  local leftOrder = rawget(left, "_order")
-  local rightOrder = rawget(right, "_order")
+  -- Only `Define` sorts, and only records it has just built, which have no
+  -- metatable: plain indexing is a raw lookup without a call, which matters
+  -- because `table.sort` calls this about n log n times.
+  local leftHints, rightHints = left._hints, right._hints
+  local leftOrder = leftHints and leftHints.order or DEFAULT_ORDER
+  local rightOrder = rightHints and rightHints.order or DEFAULT_ORDER
   if leftOrder ~= rightOrder then
     return leftOrder < rightOrder
   end
-  local leftName = rawget(left, "_name")
-  local rightName = rawget(right, "_name")
+  local leftName = left._name
+  local rightName = right._name
   if leftName ~= rightName then
     return leftName < rightName
   end
-  return rawget(left, "_key") < rawget(right, "_key")
+  return keyOf(left) < keyOf(right)
 end
 
 ---Fill the value fields of a record: schema, reader and writer, validator.
 ---@param context table build context
 ---@param record table
 ---@param spec table
----@param label string
 ---@param level integer
-local function buildValueFields(context, record, spec, label, level)
+local function buildValueFields(context, record, spec, level)
   local kind = rawget(record, "_kind")
 
   if type(spec.bind) ~= "nil" then
     if type(spec.get) ~= "nil" or type(spec.set) ~= "nil" then
-      error(label .. " must use either bind or get and set, not both", level)
+      error(labelOf(record) .. " must use either bind or get and set, not both", level)
     end
     local db = context.db
     if not db then
-      error(label .. ".bind needs a SettingsKit database passed as options.db", level)
+      error(labelOf(record, "bind") .. " needs a SettingsKit database passed as options.db", level)
     end
-    local scope, keys = parseBind(spec.bind, label .. ".bind", level + 1)
+    local scope, keys = parseBind(spec.bind, record, level + 1)
     -- `rawget`: SettingsKit raises at its own line when an undeclared or
     -- unavailable scope is read through the database's metatable.
     if type(rawget(db, scope)) ~= "table" then
-      error(label .. '.bind scope "' .. scope .. '" is not an available scope of options.db', level)
+      error(
+        labelOf(record, "bind")
+          .. ' scope "'
+          .. scope
+          .. '" is not an available scope of options.db',
+        level
+      )
     end
-    rawset(record, "_bind", spec.bind)
+    -- The bind text and the key count are derived when needed
+    -- (`bindTextOf`, `#keys`), so the record keeps to its 8 hash slots.
     rawset(record, "_bindScope", scope)
     rawset(record, "_bindKeys", keys)
-    rawset(record, "_bindCount", #keys)
   else
     if type(spec.get) ~= "function" or type(spec.set) ~= "function" then
-      error(label .. " needs get and set functions, or bind", level)
+      error(labelOf(record) .. " needs get and set functions, or bind", level)
     end
     rawset(record, "_get", spec.get)
     rawset(record, "_set", spec.set)
   end
 
-  checkOptionalFunction(spec.validate, label .. ".validate", level + 1)
+  checkOptionalFunction(spec.validate, record, "validate", level + 1)
   -- Absent fields stay `nil` rather than `false`: a value record then fits
   -- the 16 hash slots its constructor sized, instead of growing to 32.
   rawset(record, "_validate", spec.validate)
@@ -1162,9 +1317,9 @@ local function buildValueFields(context, record, spec, label, level)
   local keys = false ---@type (string|number)[]|false
   local valuesFunction = false ---@type function|false
   if kind == KIND_TOGGLE then
-    checkOptionalBoolean(spec.tristate, label .. ".tristate", level + 1)
+    checkOptionalBoolean(spec.tristate, record, "tristate", level + 1)
   elseif kind == KIND_RANGE then
-    checkRangeFields(spec, label, level + 1)
+    checkRangeFields(spec, record, level + 1)
   elseif kind == KIND_SELECT or kind == KIND_MULTISELECT then
     local values = spec.values
     local copied = false ---@type table|false
@@ -1175,28 +1330,23 @@ local function buildValueFields(context, record, spec, label, level)
       -- a table share its copy and sorted keys, which nothing modifies.
       local shared = context.valueCopies[values]
       if shared == nil then
-        local copy, sortedKeys =
-          copyValues(values, context.maxDynamicEntries, label .. ".values", level + 1)
+        local copy, sortedKeys = copyValues(values, context.maxDynamicEntries, record, level + 1)
         table.sort(sortedKeys, compareValueKeys)
         shared = { copy = copy, keys = sortedKeys }
         context.valueCopies[values] = shared
       end
       copied, keys = shared.copy, shared.keys
     else
-      error(label .. ".values must be a table or a function", level)
+      error(labelOf(record, "values") .. " must be a table or a function", level)
     end
     rawset(record, "_values", copied or valuesFunction)
-    rawset(
-      record,
-      "_sorting",
-      copySorting(spec.sorting, copied, label .. ".sorting", level + 1) or nil
-    )
+    rawset(record, "_sorting", copySorting(spec.sorting, copied, record, level + 1) or nil)
   elseif kind == KIND_INPUT then
-    checkOptionalString(spec.pattern, label .. ".pattern", level + 1)
-    checkOptionalBoolean(spec.multiline, label .. ".multiline", level + 1)
-    checkOptionalString(spec.usage, label .. ".usage", level + 1)
+    checkOptionalString(spec.pattern, record, "pattern", level + 1)
+    checkOptionalBoolean(spec.multiline, record, "multiline", level + 1)
+    checkOptionalString(spec.usage, record, "usage", level + 1)
   elseif kind == KIND_COLOR then
-    checkOptionalBoolean(spec.hasAlpha, label .. ".hasAlpha", level + 1)
+    checkOptionalBoolean(spec.hasAlpha, record, "hasAlpha", level + 1)
   end
 
   local dynamicMax = context.maxDynamicEntries
@@ -1206,34 +1356,13 @@ local function buildValueFields(context, record, spec, label, level)
   rawset(
     record,
     "_schema",
-    buildSchema(kind, spec, keys, valuesFunction, record, dynamicMax, label, level + 1)
+    buildSchema(kind, spec, keys, valuesFunction, record, dynamicMax, level + 1)
   )
 end
 
 -- The hints of every option that sets none: one shared empty table, which
 -- nothing writes to (`Describe` only reads the hints).
 local NO_HINTS = {}
-
----Copy the renderer hints of a kind into the record, for `Describe`.
----@param record table
----@param spec table
-local function copyHints(record, spec)
-  local kind = rawget(record, "_kind")
-  local hints = nil
-  local fields = KIND_FIELDS[kind]
-  for field in pairs(fields) do
-    -- `args` becomes the children, and `values`/`sorting` are copied on
-    -- their own; everything else is a plain value.
-    if field ~= "args" and field ~= "values" and field ~= "sorting" and field ~= "func" then
-      local value = spec[field]
-      if type(value) ~= "nil" then
-        hints = hints or {}
-        hints[field] = value
-      end
-    end
-  end
-  rawset(record, "_hints", hints or NO_HINTS)
-end
 
 ---When `spec` is a group `ProfileOptions` returned, remember its link and
 ---the path it lands at, so `define` can attach it once the whole tree is
@@ -1243,16 +1372,16 @@ end
 ---@param context table
 ---@param spec table
 ---@param path string
----@param label string
+---@param record table
 ---@param level integer
-local function collectProfileLink(context, spec, path, label, level)
+local function collectProfileLink(context, spec, path, record, level)
   local link = rawget(profileGroups, spec)
   if link == nil then
     return
   end
   if link.tree then
     error(
-      label
+      labelOf(record)
         .. ' is a profile group already defined in the tree of "'
         .. rawget(link.tree, "_addonName")
         .. '"; Undefine it first',
@@ -1262,7 +1391,7 @@ local function collectProfileLink(context, spec, path, label, level)
   local links = context.profileLinks
   for index = 1, #links do
     if links[index] == link then
-      error(label .. " is a profile group that already appears in this tree", level)
+      error(labelOf(record) .. " is a profile group that already appears in this tree", level)
     end
   end
   links[#links + 1] = link
@@ -1275,19 +1404,18 @@ local buildOption
 ---@param context table
 ---@param record table the group's record
 ---@param args any
----@param label string
+---@param depth integer the group's depth
 ---@param level integer
-local function buildChildren(context, record, args, label, level)
+local function buildChildren(context, record, args, depth, level)
   if type(args) ~= "table" then
-    error(label .. ".args must be a table", level)
+    error(labelOf(record, "args") .. " must be a table", level)
   end
   local children = {}
   for key, childSpec in pairs(args) do
     if type(key) ~= "string" or not key:find(KEY_PATTERN) then
-      error(label .. ".args keys must be identifiers (letters, digits and _)", level)
+      error(labelOf(record, "args") .. " keys must be identifiers (letters, digits and _)", level)
     end
-    children[#children + 1] =
-      buildOption(context, childSpec, record, key, label .. ".args." .. key, level + 1)
+    children[#children + 1] = buildOption(context, childSpec, record, key, depth + 1, level + 1)
   end
   table.sort(children, compareRecords)
   rawset(record, "_children", children)
@@ -1298,88 +1426,92 @@ end
 ---@param spec any
 ---@param parent table|false
 ---@param key string|false
----@param label string
+---@param depth integer how many groups lie above the option
 ---@param level integer
 ---@return table record
-buildOption = function(context, spec, parent, key, label, level)
+buildOption = function(context, spec, parent, key, depth, level)
+  local path = ""
+  if parent then
+    local parentPath = rawget(parent, "_path")
+    path = parentPath == "" and key or parentPath .. "." .. key
+  end
   if type(spec) ~= "table" then
-    error(label .. " must be an option table", level)
+    error(optionLabel(path) .. " must be an option table", level)
   end
   local kind = spec.type
   if isSecret(kind) then
-    error(label .. ".type must not be a secret value", level)
+    error(optionLabel(path) .. ".type must not be a secret value", level)
   end
   if type(kind) ~= "string" or KIND_FIELDS[kind] == nil then
-    error(label .. '.type must be an option type such as "group" or "toggle"', level)
+    error(optionLabel(path) .. '.type must be an option type such as "group" or "toggle"', level)
   end
-  checkKnownFields(spec, kind, label, level + 1)
+
+  -- Eight constructor entries, so Lua sizes an 8-slot hash part, which a
+  -- value option (kind, path, parent, name, get and set or bind, schema and
+  -- hints) fills without a rehash. `desc`, `order`, `disabled` and `hidden`
+  -- live in `_hints` with the renderer hints (`checkKnownFields`), and `_name` is
+  -- set once the fields are checked (it is tested for truth, which a secret
+  -- refuses). The checks below raise before the record is used. `_info` is
+  -- built on first use (`infoOf`); only the root keeps the tree.
+  local record = {
+    _kind = kind,
+    _path = path,
+    _parent = parent,
+    _name = false,
+    -- Listed to size the hash part; `nil` until set.
+    _hints = nil,
+    _get = nil,
+    _set = nil,
+    _schema = nil,
+  }
+  checkKnownFields(spec, kind, record, level + 1)
 
   local isRoot = parent == false
   if isRoot and kind ~= KIND_GROUP then
-    error(label .. '.type must be "group" at the root', level)
+    error(labelOf(record, "type") .. ' must be "group" at the root', level)
   end
-  checkCommonFields(spec, isRoot, label, level + 1)
+  checkCommonFields(spec, isRoot, record, level + 1)
+  rawset(record, "_name", spec.name or context.addonName)
 
-  local depth = 0
-  local path = ""
   if parent then
-    depth = rawget(parent, "_depth") + 1
     if depth > context.maxDepth then
-      error(label .. " is deeper than " .. context.maxDepth .. " levels", level)
+      error(labelOf(record) .. " is deeper than " .. context.maxDepth .. " levels", level)
     end
     context.count = context.count + 1
     if context.count > context.maxOptions then
       error(context.label .. " has more than " .. context.maxOptions .. " options", level)
     end
-    local parentPath = rawget(parent, "_path")
-    path = parentPath == "" and key or parentPath .. "." .. key
   end
 
-  -- `_desc`, `_disabled` and `_hidden` stay `nil` when absent, and `_info`
-  -- is built on first use (`infoOf`), so a value option's record keeps to
-  -- the 16 hash slots this constructor sizes. Only the root keeps the tree.
-  local record = {
-    _kind = kind,
-    _key = key,
-    _path = path,
-    _depth = depth,
-    _parent = parent,
-    _name = spec.name or context.addonName,
-    _desc = spec.desc,
-    _order = spec.order or DEFAULT_ORDER,
-    _disabled = spec.disabled,
-    _hidden = spec.hidden,
-  }
   if isRoot then
     rawset(record, "_tree", context.tree)
   end
-  copyHints(record, spec)
 
   if kind == KIND_GROUP then
-    checkOptionalBoolean(spec.inline, label .. ".inline", level + 1)
+    checkOptionalBoolean(spec.inline, record, "inline", level + 1)
     if
       type(spec.childGroups) ~= "nil"
       and (isSecret(spec.childGroups) or CHILD_GROUPS[spec.childGroups] ~= true)
     then
-      error(label .. '.childGroups must be "tab", "tree" or "select"', level)
+      error(labelOf(record, "childGroups") .. ' must be "tab", "tree" or "select"', level)
     end
-    collectProfileLink(context, spec, path, label, level + 1)
-    buildChildren(context, record, spec.args, label, level + 1)
+    collectProfileLink(context, spec, path, record, level + 1)
+    buildChildren(context, record, spec.args, depth, level + 1)
   elseif VALUE_KINDS[kind] then
-    buildValueFields(context, record, spec, label, level + 1)
+    buildValueFields(context, record, spec, level + 1)
   elseif kind == KIND_EXECUTE then
     if type(spec.func) ~= "function" then
-      error(label .. ".func must be a function", level)
+      error(labelOf(record, "func") .. " must be a function", level)
     end
     local confirm = spec.confirm
     local confirmType = type(confirm)
     if confirmType ~= "nil" and confirmType ~= "boolean" and confirmType ~= "string" then
-      error(label .. ".confirm must be a boolean or a string", level)
+      error(labelOf(record, "confirm") .. " must be a boolean or a string", level)
     end
     rawset(record, "_func", spec.func)
   elseif kind == KIND_DESCRIPTION then
     if type(spec.fontSize) ~= "nil" and FONT_SIZES[spec.fontSize] ~= true then
-      error(label .. '.fontSize must be "small", "medium" or "large"', level)
+      error(labelOf(record, "fontSize") .. ' must be "small", "medium" or "large"', level)
     end
   end
 
@@ -1447,7 +1579,7 @@ local function walkBound(tree, record, methodName, level)
     )
   end
   local keys = rawget(record, "_bindKeys")
-  local count = rawget(record, "_bindCount")
+  local count = #keys
   for index = 1, count - 1 do
     local nested = container[keys[index]]
     if type(nested) == "nil" then
@@ -1455,7 +1587,7 @@ local function walkBound(tree, record, methodName, level)
     end
     if type(nested) ~= "table" then
       error(
-        methodName .. ' bind path "' .. rawget(record, "_bind") .. '" does not lead to a table',
+        methodName .. ' bind path "' .. bindTextOf(record) .. '" does not lead to a table',
         level
       )
     end
@@ -1499,11 +1631,12 @@ end
 local function readValue(tree, record, methodName, level)
   if rawget(record, "_bindScope") then
     local container, index = walkBound(tree, record, methodName, level + 1)
-    local count = rawget(record, "_bindCount")
+    local keys = rawget(record, "_bindKeys")
+    local count = #keys
     if index < count then
       return nil
     end
-    return container[rawget(record, "_bindKeys")[count]]
+    return container[keys[count]]
   end
   return rawget(record, "_get")(infoOf(record))
 end
@@ -1527,7 +1660,7 @@ end
 local function writeBound(tree, record, value, methodName, level)
   local container, index = walkBound(tree, record, methodName, level + 1)
   local keys = rawget(record, "_bindKeys")
-  local count = rawget(record, "_bindCount")
+  local count = #keys
   local stored = value
   if index < count then
     if type(value) == "nil" then
@@ -1590,11 +1723,12 @@ end
 
 ---Evaluate one `disabled`/`hidden` field on `record` and its ancestors.
 ---@param record table|false
----@param field string `"_disabled"` or `"_hidden"`
+---@param field string `"disabled"` or `"hidden"`
+---@param legacyField string `"_disabled"` or `"_hidden"`, where revision 12 kept it
 ---@return boolean
-local function effectiveFlag(record, field)
+local function effectiveFlag(record, field, legacyField)
   while record do
-    local flag = rawget(record, field)
+    local flag = presentationOf(record, field, legacyField)
     if flag == true then
       return true
     end
@@ -1636,7 +1770,7 @@ end
 ---@param record table
 ---@return boolean
 local function isRecordDisabled(tree, record)
-  if effectiveFlag(record, "_disabled") then
+  if effectiveFlag(record, "disabled", "_disabled") then
     return true
   end
   if rawget(record, "_bindScope") then
@@ -1763,7 +1897,7 @@ end
 ---@return boolean
 local function treeIsHidden(self, path)
   validateTree(self, "OptionsKit.Tree:IsHidden", 3)
-  return effectiveFlag(findRecord(self, path, "OptionsKit.Tree:IsHidden", 3), "_hidden")
+  return effectiveFlag(findRecord(self, path, "OptionsKit.Tree:IsHidden", 3), "hidden", "_hidden")
 end
 
 ---Visit every option below the root depth-first, siblings in `order` then
@@ -1780,7 +1914,7 @@ local function treeWalk(self, visitor)
   local count = #walk
   for index = 1, count do
     local record = walk[index]
-    visitor(rawget(record, "_path"), rawget(record, "_kind"), rawget(record, "_depth"))
+    visitor(rawget(record, "_path"), rawget(record, "_kind"), depthOf(record))
   end
   return count
 end
@@ -1884,17 +2018,17 @@ local function describeRecord(tree, record, methodName, level)
   local node = {
     kind = kind,
     path = rawget(record, "_path"),
-    depth = rawget(record, "_depth"),
+    depth = depthOf(record),
     name = rawget(record, "_name"),
-    order = rawget(record, "_order"),
+    order = presentationOf(record, "order", "_order") or DEFAULT_ORDER,
     disabled = isRecordDisabled(tree, record),
-    hidden = effectiveFlag(record, "_hidden"),
+    hidden = effectiveFlag(record, "hidden", "_hidden"),
   }
-  local key = rawget(record, "_key")
+  local key = keyOf(record)
   if key then
     node.key = key
   end
-  local desc = rawget(record, "_desc")
+  local desc = presentationOf(record, "desc", "_desc")
   if type(desc) == "function" then
     desc = desc(infoOf(record))
     if type(desc) ~= "string" then
@@ -1909,8 +2043,11 @@ local function describeRecord(tree, record, methodName, level)
   if type(desc) == "string" then
     node.desc = desc
   end
-  for field, value in pairs(rawget(record, "_hints")) do
-    node[field] = value
+  for field, value in pairs(rawget(record, "_hints") or NO_HINTS) do
+    -- The presentation fields are reported above, resolved.
+    if not PRESENTATION_SET[field] then
+      node[field] = value
+    end
   end
 
   if kind == KIND_GROUP then
@@ -1924,9 +2061,8 @@ local function describeRecord(tree, record, methodName, level)
     local bound = rawget(record, "_bindScope") and rawget(tree, "_db") or false
     node.value = snapshotValue(readValue(tree, record, methodName, level + 1), bound, 1, nil)
     node.schema = rawget(record, "_schema"):Describe()
-    local bind = rawget(record, "_bind")
-    if bind then
-      node.bind = bind
+    if rawget(record, "_bindScope") then
+      node.bind = bindTextOf(record)
     end
     if kind == KIND_SELECT or kind == KIND_MULTISELECT then
       node.values = describeValues(record, methodName, level + 1)
@@ -2086,7 +2222,10 @@ local PROFILE_KEY_COPY_SOURCE = "copySource"
 local PROFILE_KEY_DELETE_TARGET = "deleteTarget"
 
 ---Find SettingsKit API 1 through the Registry, or `nil`. It is an optional
----dependency, so it is looked up at call time, never at load.
+---dependency, so it is looked up at call time, never at load. Not kept
+---between calls: `ProfileOptions` refuses at once when SettingsKit is gone
+---from the Registry (a retired copy, whose table is in no state to be used),
+---even for a database whose group it built.
 ---@return table|nil SettingsKit
 local function findSettingsKit()
   local findPackage = rawget(Registry, "Find")
@@ -2154,19 +2293,26 @@ local function readProfileOptions(options, level)
       error("OptionsKit:ProfileOptions options." .. field .. " must not be a secret value", level)
     end
   end
-  checkOptionalString(rawget(options, "name"), "OptionsKit:ProfileOptions options.name", level + 1)
+  checkOptionalString(
+    rawget(options, "name"),
+    "OptionsKit:ProfileOptions options",
+    "name",
+    level + 1
+  )
   local order = rawget(options, "order")
   if type(order) ~= "nil" then
-    checkNumber(order, "OptionsKit:ProfileOptions options.order", level + 1)
+    checkNumber(order, "OptionsKit:ProfileOptions options", "order", level + 1)
   end
   checkOptionalString(
     rawget(options, "description"),
-    "OptionsKit:ProfileOptions options.description",
+    "OptionsKit:ProfileOptions options",
+    "description",
     level + 1
   )
   checkOptionalFunction(
     rawget(options, "localize"),
-    "OptionsKit:ProfileOptions options.localize",
+    "OptionsKit:ProfileOptions options",
+    "localize",
     level + 1
   )
   return rawget(options, "name") or false,
@@ -2750,7 +2896,10 @@ end
 ---
 ---Every call runs every check (SettingsKit loaded, the database's methods,
 ---the options) before the cache is asked, so a cached answer never skips a
----refusal. A call answered from the cache allocates nothing.
+---refusal; a database that already has a group was checked when the group
+---was built, and its methods come from SettingsKit's prototype, so its method
+---probes are skipped (revision 13). A call answered from the cache allocates
+---nothing.
 ---@param _ OptionsKit
 ---@param db table a SettingsKit API 1 database
 ---@param options OptionsKit.ProfileOptionsOptions?
@@ -2760,7 +2909,9 @@ local function profileOptions(_, db, options)
   if SettingsKit == nil then
     error("OptionsKit:ProfileOptions needs SettingsKit API 1 to be loaded", 2)
   end
-  validateProfileDatabase(db, "OptionsKit:ProfileOptions db", 3)
+  if type(db) ~= "table" or rawget(profileLinksByDatabase, db) == nil then
+    validateProfileDatabase(db, "OptionsKit:ProfileOptions db", 3)
+  end
   local name, order, description, localize = readProfileOptions(options, 3)
 
   local cached = findCachedProfileLink(db, name, order, description, localize)
@@ -2970,7 +3121,7 @@ local function define(_, addonName, spec, options)
   }, TREE_METATABLE)
   context.db = db
   context.tree = tree
-  local root = buildOption(context, spec, false, false, context.label, 3)
+  local root = buildOption(context, spec, false, false, 0, 3)
   local walk = {}
   flatten(root, walk)
 

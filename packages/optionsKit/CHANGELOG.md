@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.6.2 — 2026-11-15
+
+Smaller records, labels built only on failure, a cheaper `ProfileOptions` (roadmap package O, "optionsKit smaller records", core decision 18). No surface change.
+
+- Changed (internal): the hints are collected in the walk that refuses unknown fields instead of a second walk over every field the kind accepts, and the sort comparator and the presentation reads index records directly (they have no metatable); `Define` runs 24 350 instructions for 50 options instead of 26 080.
+- Changed (internal): a record keeps to 8 hash fields for a value option with a getter and setter or a bind. The key and depth are derived from the path and the parent chain, the bind text from the scope and keys, the key count with `#`; the description, `order`, `disabled` and `hidden` live in the hints table with the renderer hints. Records older revisions built keep their fields and read the same.
+- Changed (internal): `Define` builds an error label only on the branch that raises; messages and levels are unchanged.
+- Changed (internal): `ProfileOptions` skips the method probes of a database that already has a group (checked when it was built). SettingsKit is still looked up on every call, so a call still refuses when SettingsKit is gone from the Registry, as `ProfileOptions_spec.lua` requires; keeping that lookup was recorded and is not done.
+- Measured on host Lua 5.1 (2026-11-15): `Define` allocates 580 B per option with a name, description, getter and setter (revision 12: 1 200 B) and the record holds 589 B (806 B); a 20-option tree with orders, ranges and selects holds 18.7 KB (20.8 KB). Each ratio against Ace3 in its own bench run (`python3 -m tooling.bench.run --workload options`, revision 12 then 13): define-50 0.92x to 0.78x (46.2 to 37.9 KB allocated), define-200 0.89x to 0.77x, profile-options-build 6.4x to 2.0x (with SettingsKit revision 14's method lookup), cmd-set-range 1.70x to 1.65x, cmd-set-select 1.57x to 1.48x, cmd-refused 1.34x to 1.18x, profile-choose-cmd 2.61x to 2.42x.
+- Implementation revision 13. No state changed: an in-place upgrade from revision 12 keeps every tree; their records read through the same accessors.
+- Specs: 203 → 208. `Records_spec.lua` (five: the 8-field record and its derived fields, `Define` allocation, a failure label, bind text, the upgrade from revision 12).
+
 ## 0.6.1 — 2026-11-15
 
 - Fixed: `ProfileOptions` kept returning a group without the spec-profile selects after SettingsKit gained spec profiles. A group built while SettingsKit (or its database) had no spec-profile methods was cached for the database and returned by every later call, so an in-place upgrade of SettingsKit to revision 11 or later in the same session (a newer copy embedded by an addon that loads afterwards) never reached the options screen. The cache now replaces such a link once the database and the facade offer the methods; the older group keeps working wherever it is held.
@@ -35,7 +47,7 @@ A contract change inside API generation 1, approved by the owner after the host 
   - `localize` runs for the fixed strings once per database and options, when the group is built. A call with another `localize` function (or another `name`, `order` or `description`) gets a group of its own, cached in turn, so no call ever receives a group labelled or translated for other options. The live descriptions and `new`'s messages still call it each time.
   - The same group object can now reach two trees. That stays refused, by the existing rule: `Define` refuses a profile group another defined tree holds (`... is a profile group already defined in the tree of "A"; Undefine it first`); after `Undefine` the next tree receives it and only that tree is notified. Two trees holding profile groups at once need two option sets or two databases.
 - Every check still runs on every call, before the cache is asked: SettingsKit must be loaded, `db` must offer the ten profile methods, and the options are checked, secret refusals included. A cached call allocates nothing. The per-character profile is read when the group is built and, while the client did not know the player then, again on later calls until it does.
-- Host benchmark (`python3 -m tooling.bench.run --workload options --rounds 3`, sides interleaved; load average about 2 before and 2.5 to 3 after, with other agents' work running):
+- Host benchmark (`python3 -m tooling.bench.run --workload options --rounds 3`, sides interleaved; load average about 2 before and 2.5 to 3 after, with other benchmarks and specs running):
 
   | Case | 0.3.0 (revision 7): ratio, bytes | 0.4.0 (revision 8): ratio, bytes |
   |---|---|---|
@@ -52,7 +64,7 @@ A contract change inside API generation 1, approved by the owner after the host 
 - **New: `tree:DescribeOption(path)`**, the node `Describe` would build for one option, or for a group and everything below it (`""` is the root, as `Describe`). Only that part's callbacks run (getter, `desc`, values function, predicates). `nil` for a path the tree does not have; a non-string or secret path raises at the caller. Additive: API generation 1 is kept, hence the minor version. CommandKit 0.2.6's `BindOptions` uses it to describe the one option a typed command names instead of the whole tree.
 - `Define` allocates a quarter of what it did and is no longer slower than AceConfigRegistry's validation. Options of one kind with the same inputs (`tristate`; `min` and `max`; `pattern`; `hasAlpha`; the keys of a `values` table) share one sealed schema for the session, instead of one SchemaKit node and sealed record per value option; a `select` or `multiselect` over a values function keeps a schema of its own. Options of one `Define` that name the same `values` table share its checked copy. An option's `info` is built the first time one of its callbacks runs and then reused, as before. A value option's record leaves absent fields out and keeps no prebuilt `Set` label (`Set` runs `Check` and builds the label only to raise), so it stays within the 16 hash slots its constructor sizes. Hints that set nothing share one empty table.
 - `ProfileOptions` shares one read-only predicate between its five changing options and one values function between the copy and delete selects (6,460 to 6,020 bytes per group). Everything else it allocates is the group the caller receives: a group per call, with its own link, is the documented contract (see below).
-- Host benchmark (`python3 -m tooling.bench.run --workload options --rounds 3`, against AceConfigRegistry-3.0, AceConfigCmd-3.0 and AceDBOptions-3.0; ratios from one run each, sides interleaved; the after-run under a load average of about 4.4 from other agents' work, the before-run about 2.2):
+- Host benchmark (`python3 -m tooling.bench.run --workload options --rounds 3`, against AceConfigRegistry-3.0, AceConfigCmd-3.0 and AceDBOptions-3.0; ratios from one run each, sides interleaved; the after-run under a load average of about 4.4 from other benchmarks and specs running, the before-run about 2.2):
 
   | Case | Before: ratio, bytes | After: ratio, bytes |
   |---|---|---|
