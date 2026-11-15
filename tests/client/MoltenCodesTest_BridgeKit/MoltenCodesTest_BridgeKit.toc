@@ -1,0 +1,11 @@
+## Interface: 120105, 50504, 20506, 11509
+## Title: MoltenCodes Test: BridgeKit
+## Notes: Real-client test suites for MoltenCodes BridgeKit. Run them with /mct run bridgeKit. They whisper addon messages to your own character only.
+## Author: MoltenCodes
+## Version: 1.0.0
+## Dependencies: MoltenCodesTest
+## X-Category: Development Tools
+## X-License: MIT
+
+# Development only: never ship this addon. See tests/client/README.md.
+BridgeKitSuite.lua
