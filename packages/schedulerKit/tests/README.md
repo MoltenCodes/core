@@ -37,8 +37,9 @@ Spec files:
 | `Delayed_spec.lua` | delayed and repeating work through TimerKit, the user-data seam, stale wakeups, scopes closed mid-callback |
 | `Limits_spec.lua` | `SetLimits` / `GetLimits`, `UNBOUNDED`, ceilings, the 33rd lane, wide debounce calls direct and through a lane, atomic validation |
 | `Scope_spec.lua` | lazy TimerKit scopes, cancellation, terminal close, self-closing jobs, addon scopes and `CloseAddonScopes` |
+| `Reopen_spec.lua` | `Scope:Reopen`: reopening a closed manual scope, the closed period staying cancelled, work after reopening, the addon-scope refusal, wrong receivers, a scope from the previous revision |
 | `LogoutCoverage_spec.lua` | the four logout routes, re-examination, subscription release on close, carrying routes across the revision-11 upgrade |
-| `Errors_spec.lua` | error isolation, `nil`/`false` error objects, tracebacks, arming and re-arm failures |
+| `Errors_spec.lua` | error isolation, `nil`/`false` error objects, tracebacks, arming and re-arm failures; receiver checks refusing strings, numbers and foreign-metatable tables |
 | `Traceback_spec.lua` | the two traceback sources: `debug.traceback`, preferred when both exist, and `debugstack` on a host without `debug.traceback` (a stub installed, and `debug` swapped for a copy without `traceback` only while the package loads); `tostring` rendering, resolution once at load, a failing source, neither source, the revision-14 upgrade on that host; the `xpcall` handler's `Watch`, `Debounce` and `Coalesce` reports from level 3 on both sources, and a lane submission's traceback |
 | `ErrorLevels_spec.lua` | `ShouldYield`, `Yield` and context receiver guards, and `CloseAddonScopes` argument and receiver errors, at the caller's line; every argument, closed-scope and wrong-receiver error of the package-level and scope `Schedule`, `NextFrame`, `After` and `Every`, and the wrong-receiver errors of `Scope:CancelAll`, `Scope:Close` and `Job:Cancel`, at the caller's line with no tail call into the Kit on the way (a line hook checks, since standard Lua 5.1 still counts the level of a tail-called frame); an unknown option field and limit key that is a table, named by its type at the caller's line without running its `__tostring`; the same after a revision-15 upgrade |
 | `Property_spec.lua` | randomized scope and package active-count invariants |
@@ -49,7 +50,7 @@ Spec files:
 | `Allocation_spec.lua` | the resume path allocates nothing; a never-drained priority queue keeps its indices at the front; a one-shot job under 1 KiB, a reused option table free, a `Coalesce` handle under 1 KiB |
 | `Lane_spec.lua` | lanes: sharing, `maxInFlight`, `minIntervalSeconds`, retries, `maxQueued`, `Close`, allocation-free refusals, family delivery |
 | `Bootstrap_spec.lua` | duplicate loading, live job identity, the revision-3, -6, -7, -9, -10, -12 and -17 upgrades and the previous-revision upgrade (worker state seeded, idle workers dropped, a started job finished, the table-key limit refusal), live family handles |
-| `SecretValues_spec.lua` | secret arguments, options, option field names, limits and coalesce keys refused with `... must not be a secret value` at the caller's line, the scheduling methods' included; a secret coalesce value delivered |
+| `SecretValues_spec.lua` | secret arguments, options, option field names, limits and coalesce keys refused with `... must not be a secret value` at the caller's line, the scheduling methods' included; a secret coalesce value delivered; the probe kept from load, a probe installed after load honoured, a non-function global ignored |
 | `Manifest_spec.lua` | runtime API and revision against `package.manifest.json` |
 
 `support/SchedulerKitTestEnv.lua` adds the optional-Kit loaders, `LoadRevision` (this source loaded as an older revision for upgrade specs) and `AllocatedKilobytes` (the allocation meter every allocation guard uses) to the shared fixture.

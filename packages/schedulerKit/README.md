@@ -15,7 +15,7 @@ SchedulerKit is **not** a preemptive thread scheduler. A Lua callback must eithe
 - coroutine-backed resumable jobs;
 - explicit cancellation handles;
 - delayed and fixed-delay repeating jobs through TimerKit;
-- manual and addon-owned cancellation scopes;
+- manual and addon-owned cancellation scopes; a closed manual scope can be reopened with `Scope:Reopen()`, which is how ModuleKit keeps a module's `scope.Jobs` across enable cycles;
 - addon scopes closed through `SchedulerKit:CloseAddonScopes(addonName)`; an addon scope closes at logout whenever LifecycleKit or EventKit is loaded, and otherwise by your own call (see "At logout" in [`docs/API.md`](docs/API.md));
 - callback-error isolation, captured tracebacks, and per-job diagnostics;
 - the coalescing family: `Debounce` (quiet-period calls with `leading` and `maxWaitSeconds`), `Coalesce` (keys collected once per interval), `Watch` (shared-ticker polling), and named **lanes** that ration a scarce resource with an in-flight cap, a minimum interval, retry with backoff and a bounded queue;

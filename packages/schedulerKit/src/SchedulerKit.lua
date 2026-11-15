@@ -45,7 +45,7 @@
 
 local PACKAGE_NAME = "schedulerKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 20
+local IMPLEMENTATION_REVISION = 21
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_TIMER_API = 1
 local STATE_SCHEMA = 1
@@ -148,7 +148,6 @@ local DUE_TOLERANCE_SECONDS = 0.001
 
 local DEBOUNCE_OPTION_KEYS = { leading = true, maxWaitSeconds = true, lane = true }
 local COALESCE_OPTION_KEYS = { maxKeys = true, lane = true }
-local WATCH_OPTION_KEYS = { everyTick = true }
 local LANE_OPTION_KEYS = {
   maxInFlight = true,
   minIntervalSeconds = true,
@@ -240,6 +239,7 @@ local SUBMIT_OPTION_KEYS = { priority = true, name = true, scope = true }
 ---@field CancelAll fun(self: SchedulerKit.Scope): boolean
 ---@field Close fun(self: SchedulerKit.Scope): boolean
 ---@field IsClosed fun(self: SchedulerKit.Scope): boolean
+---@field Reopen fun(self: SchedulerKit.Scope): boolean
 ---@field GetAddonName fun(self: SchedulerKit.Scope): string?
 ---@field GetActiveCount fun(self: SchedulerKit.Scope): integer
 ---@field Debounce fun(self: SchedulerKit.Scope, callback: function, delaySeconds: number, options: SchedulerKit.DebounceOptions?): SchedulerKit.DebounceHandle
@@ -519,17 +519,39 @@ end
 
 -- Secret values (Retail 12.0.0 and later) raise when compared, so an argument
 -- a check would compare is refused first, at the caller's line. The probe is
--- read once at load; a host without `issecretvalue` has no secret values.
+-- resolved once, when this file loads: every client defines it before any
+-- addon runs. Only when it was absent at load does a check read the global
+-- again, accepting it only as a function, so a probe a test host or shim
+-- installs later is still honoured. A host without one has no secret values.
+
+-- issecretvalue is a World of Warcraft client API reachable only through the global table.
+-- selene: allow(global_usage)
+local loadedIsSecretValue = rawget(_G, "issecretvalue")
+if type(loadedIsSecretValue) ~= "function" then
+  loadedIsSecretValue = nil
+end
+
+-- The helpers below are assigned in one `do` block, so the per-call fallback
+-- costs the main chunk no local of its own.
 local refuseSecretValue
 -- The bare probe, for hot paths that build their error label only on refusal.
 ---@type fun(value: any): boolean
 local isSecretValue
 do
-  -- issecretvalue is a World of Warcraft client API reachable only through the global table.
-  -- selene: allow(global_usage)
-  local nativeIsSecretValue = rawget(_G, "issecretvalue")
-  if type(nativeIsSecretValue) ~= "function" then
-    nativeIsSecretValue = nil
+  ---The probe a check should call: the one resolved at load, else the global
+  ---as it stands now, else `nil`.
+  ---@return (fun(value: any): boolean)|nil
+  local function currentSecretProbe()
+    local probe = loadedIsSecretValue
+    if probe ~= nil then
+      return probe
+    end
+    -- selene: allow(global_usage)
+    probe = rawget(_G, "issecretvalue")
+    if type(probe) ~= "function" then
+      return nil
+    end
+    return probe
   end
 
   ---Raise `<label> must not be a secret value` when `value` is secret.
@@ -537,7 +559,8 @@ do
   ---@param label string argument description, used in the argument error
   ---@param level integer stack level the failure is reported at
   function refuseSecretValue(value, label, level)
-    if nativeIsSecretValue ~= nil and nativeIsSecretValue(value) then
+    local probe = currentSecretProbe()
+    if probe ~= nil and probe(value) then
       error(label .. " must not be a secret value", level)
     end
   end
@@ -546,7 +569,8 @@ do
   ---@param value any
   ---@return boolean
   function isSecretValue(value)
-    return nativeIsSecretValue ~= nil and nativeIsSecretValue(value) == true
+    local probe = currentSecretProbe()
+    return probe ~= nil and probe(value) == true
   end
 end
 
@@ -1296,7 +1320,11 @@ end
 ---@param scope any receiver the public method was called on
 ---@param methodName string public method name, used in the argument error
 local function validateScope(scope, methodName)
-  if type(scope) ~= "table" or getmetatable(scope) ~= SCOPE_METATABLE then
+  -- `getmetatable` never raises and answers SchedulerKit's private metatable
+  -- only for a value that carries it, which only a table can, so a `type`
+  -- test first would prove nothing more. The same holds for every receiver
+  -- check below.
+  if getmetatable(scope) ~= SCOPE_METATABLE then
     error(methodName .. " must be called on a SchedulerKit scope", 3)
   end
 end
@@ -1304,7 +1332,7 @@ end
 ---@param job any receiver the public method was called on
 ---@param methodName string public method name, used in the argument error
 local function validateJob(job, methodName)
-  if type(job) ~= "table" or getmetatable(job) ~= JOB_METATABLE then
+  if getmetatable(job) ~= JOB_METATABLE then
     error(methodName .. " must be called on a SchedulerKit job", 3)
   end
 end
@@ -1312,7 +1340,7 @@ end
 ---@param context any receiver the public method was called on
 ---@param methodName string public method name, used in the argument error
 local function validateContext(context, methodName)
-  if type(context) ~= "table" or getmetatable(context) ~= CONTEXT_METATABLE then
+  if getmetatable(context) ~= CONTEXT_METATABLE then
     error(methodName .. " must be called on a SchedulerKit context", 3)
   end
 end
@@ -2403,7 +2431,7 @@ local function installCoalescingFamily()
   ---@param methodName string public method name, used in the argument error
   ---@param noun string what the receiver should have been, for the message
   local function validateMember(member, metatable, methodName, noun)
-    if type(member) ~= "table" or getmetatable(member) ~= metatable then
+    if getmetatable(member) ~= metatable then
       error(methodName .. " must be called on a SchedulerKit " .. noun, 3)
     end
   end
@@ -2412,7 +2440,7 @@ local function installCoalescingFamily()
   ---@param label string argument description, used in the argument error
   ---@param level integer stack level the failure is reported at
   local function validateOptionalLane(lane, label, level)
-    if type(lane) ~= "nil" and (type(lane) ~= "table" or getmetatable(lane) ~= LANE_METATABLE) then
+    if type(lane) ~= "nil" and getmetatable(lane) ~= LANE_METATABLE then
       error(label .. " must be a SchedulerKit lane", level)
     end
   end
@@ -3100,10 +3128,7 @@ local function installCoalescingFamily()
         validateNonEmptyString(name, "SchedulerKit.Lane:Submit name", 3)
       end
       scope = rawget(options, "scope")
-      if
-        type(scope) ~= "nil"
-        and (type(scope) ~= "table" or getmetatable(scope) ~= SCOPE_METATABLE)
-      then
+      if type(scope) ~= "nil" and getmetatable(scope) ~= SCOPE_METATABLE then
         error("SchedulerKit.Lane:Submit scope must be a SchedulerKit scope", 2)
       end
     end
@@ -3638,8 +3663,20 @@ local function installCoalescingFamily()
   ---@param value any stored for `key`; `true` when omitted
   ---@return boolean accepted `false` when the key was refused or the handle is closed.
   local function coalesceCall(member, key, value)
-    refuseSecretValue(key, "SchedulerKit coalesce handle key", 3)
-    if type(key) == "nil" or key ~= key then
+    -- One pass over the key: the probe, `nil` and NaN in one condition, so a
+    -- valid key costs no helper call and builds no message. The probe runs
+    -- first, because `key ~= key` raises on a secret. Only a refused key
+    -- reaches the statements that raise, each at the same level as before.
+    -- With no probe resolved at load (a test host), `isSecretValue` reads
+    -- the global as it stands, as every other check does.
+    local probe = loadedIsSecretValue
+    if
+      (probe ~= nil and probe(key) == true)
+      or (probe == nil and isSecretValue(key))
+      or type(key) == "nil"
+      or key ~= key
+    then
+      refuseSecretValue(key, "SchedulerKit coalesce handle key", 3)
       error("SchedulerKit coalesce handle key must not be nil or NaN", 2)
     end
     if member._closed == true then
@@ -4067,6 +4104,8 @@ local function installCoalescingFamily()
     linkMember(scope, member)
     return member
   end
+
+  local WATCH_OPTION_KEYS = { everyTick = true }
 
   ---Build a watcher in `scope`, joining or creating its interval group.
   ---@param scope SchedulerKit.Scope
@@ -5359,6 +5398,31 @@ rawset(Scope, "Every", scopeEvery)
 rawset(Scope, "CancelAll", scopeCancelAll)
 rawset(Scope, "Close", scopeClose)
 rawset(Scope, "IsClosed", scopeIsClosed)
+do
+  ---Reopen a closed manual scope, empty and usable like a new one.
+  ---
+  ---Closing cancelled every job, closed every `Debounce`, `Coalesce`, `Watch`
+  ---and lane handle, and closed the TimerKit scope behind the delays; none of
+  ---that comes back. The next delayed job creates a fresh TimerKit scope. This
+  ---is how a ModuleKit module keeps the same `scope.Jobs` object across its
+  ---enable cycles. An addon scope belongs to its addon's teardown, so closing it
+  ---stays terminal.
+  ---@param self SchedulerKit.Scope
+  ---@return boolean reopened `false` when the scope was open.
+  local function scopeReopen(self)
+    validateScope(self, "SchedulerKit.Scope:Reopen")
+    if type(rawget(self, "_addonName")) ~= "nil" then
+      error("SchedulerKit.Scope:Reopen cannot reopen an addon scope", 2)
+    end
+    if rawget(self, "_closed") ~= true then
+      return false
+    end
+    rawset(self, "_timerScope", false)
+    rawset(self, "_closed", false)
+    return true
+  end
+  rawset(Scope, "Reopen", scopeReopen)
+end
 rawset(Scope, "GetAddonName", scopeGetAddonName)
 rawset(Scope, "GetActiveCount", scopeGetActiveCount)
 rawset(SchedulerKit, "API", API_GENERATION)
@@ -5382,10 +5446,7 @@ rawset(SchedulerKit, "SetLimits", setLimits)
 rawset(SchedulerKit, "GetLimits", getLimits)
 
 local defaultScope = rawget(state, "defaultScope")
-if
-  defaultScope ~= false
-  and (type(defaultScope) ~= "table" or getmetatable(defaultScope) ~= SCOPE_METATABLE)
-then
+if defaultScope ~= false and getmetatable(defaultScope) ~= SCOPE_METATABLE then
   error("MoltenCodes SchedulerKit package state is corrupted or incomplete", 2)
 end
 

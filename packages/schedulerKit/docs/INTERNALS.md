@@ -257,6 +257,13 @@ Revision 20 adds one top-level slot (194 of 200 active; 218 declared in 197
 stack slots): `describeKey`, which the scheduling-option check, the
 installer's option-table check and `SetLimits` share to name an unknown key
 without running its `__tostring`. The installer gains one upvalue for it.
+Revision 21 keeps 194 active slots. It adds one top-level local, the probe
+resolved at load (`loadedIsSecretValue`), which the coalescing installer reads
+to test a coalesce key in one inline pass; the per-call fallback
+(`currentSecretProbe`) lives in the `do` block that assigns `refuseSecretValue`
+and `isSecretValue`, and `scopeReopen` in a `do` block of its own beside the
+scope methods' commit. `WATCH_OPTION_KEYS` moved into the installer, its only
+reader, which gives the slot back.
 New top-level code belongs in the installer or in a
 function of its own. The
 installer commits its own methods; only four hooks forward-declared above the

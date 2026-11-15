@@ -34,7 +34,7 @@ The package intentionally separates **when work becomes eligible** from **how mu
 | `SetLimits(limits)` / `GetLimits()` | Change or read the package-wide limits. See [Limits](#limits). |
 | `UNBOUNDED` | Sentinel a limit takes to be lifted, where that is allowed. |
 | `Priority` | The four priorities (`HIGH`, `NORMAL`, `LOW`, `IDLE`); see [Priorities](#priorities). |
-| `API`, `REVISION` | The API generation (`1`) and the implementation revision of the copy active in the session (`20` for this one); a newer embedded copy replaces `REVISION` when it upgrades the facade in place. |
+| `API`, `REVISION` | The API generation (`1`) and the implementation revision of the copy active in the session (`21` for this one); a newer embedded copy replaces `REVISION` when it upgrades the facade in place. |
 
 ### Job handles
 
@@ -62,6 +62,7 @@ The package intentionally separates **when work becomes eligible** from **how mu
 | `CancelAll()` | Best-effort cancel all active jobs while keeping the scope reusable. |
 | `Close()` | Terminally close the scope after best-effort cancellation. |
 | `IsClosed()` | Return whether the scope is terminally closed. |
+| `Reopen()` | Reopen a closed manual scope, empty; `false` when it was open. An addon scope raises. Revision 21. |
 | `GetAddonName()` | Return the owning addon name, or `nil` for a manual scope. |
 | `GetActiveCount()` | Return the number of non-terminal jobs owned by the scope. |
 | `Debounce(callback, delaySeconds[, options])` | `SchedulerKit:Debounce`, owned by this scope. |
@@ -406,7 +407,7 @@ Errors that do not come from the caller's arguments keep their own text without 
 
 ### Secret values
 
-A secret value (Retail 12.0.0 and later) raises when it is compared, so SchedulerKit refuses one before any check compares it, at the caller's line, with `<argument> must not be a secret value`. The refused arguments are those a check compares: a scope name (`SchedulerKit:ForAddon addonName must not be a secret value`, likewise `SchedulerKit:CloseAddonScopes addonName`), a lane name (`SchedulerKit:Lane name must not be a secret value`), the `priority` and `name` scheduling options (`SchedulerKit:Schedule priority must not be a secret value`), delays, intervals and budgets (`SchedulerKit:After delay must not be a secret value`, `SchedulerKit:SetFrameBudget milliseconds must not be a secret value`), every numeric and boolean option of `Lane`, `Debounce`, `Coalesce` and `Watch` (`SchedulerKit:Lane maxInFlight must not be a secret value`, `SchedulerKit:Debounce leading must not be a secret value`), a `SetLimits` value (`SchedulerKit:SetLimits limits.maxLanes must not be a secret value`), a field name of an option table, checked before it is looked up among the known fields (`SchedulerKit:Schedule options field name must not be a secret value`, likewise the options of `Lane`, its `retry` table (`SchedulerKit:Lane retry options field name`), `Lane:Submit`, `Debounce`, `Coalesce` and `Watch`) and a coalesce key (`SchedulerKit coalesce handle key must not be a secret value`). The refusal is raised at the level of the method's other argument errors, which is the caller's line. A coalesce value is only stored, so a secret one is accepted. An absent option is recognised by its type, never by comparing it with `nil`, and a value a callback hands to a raw `coroutine.yield` is type-checked before it is compared with the yield token. `issecretvalue` is read once at load; a host without it has no secret values.
+A secret value (Retail 12.0.0 and later) raises when it is compared, so SchedulerKit refuses one before any check compares it, at the caller's line, with `<argument> must not be a secret value`. The refused arguments are those a check compares: a scope name (`SchedulerKit:ForAddon addonName must not be a secret value`, likewise `SchedulerKit:CloseAddonScopes addonName`), a lane name (`SchedulerKit:Lane name must not be a secret value`), the `priority` and `name` scheduling options (`SchedulerKit:Schedule priority must not be a secret value`), delays, intervals and budgets (`SchedulerKit:After delay must not be a secret value`, `SchedulerKit:SetFrameBudget milliseconds must not be a secret value`), every numeric and boolean option of `Lane`, `Debounce`, `Coalesce` and `Watch` (`SchedulerKit:Lane maxInFlight must not be a secret value`, `SchedulerKit:Debounce leading must not be a secret value`), a `SetLimits` value (`SchedulerKit:SetLimits limits.maxLanes must not be a secret value`), a field name of an option table, checked before it is looked up among the known fields (`SchedulerKit:Schedule options field name must not be a secret value`, likewise the options of `Lane`, its `retry` table (`SchedulerKit:Lane retry options field name`), `Lane:Submit`, `Debounce`, `Coalesce` and `Watch`) and a coalesce key (`SchedulerKit coalesce handle key must not be a secret value`). The refusal is raised at the level of the method's other argument errors, which is the caller's line. A coalesce value is only stored, so a secret one is accepted. An absent option is recognised by its type, never by comparing it with `nil`, and a value a callback hands to a raw `coroutine.yield` is type-checked before it is compared with the yield token. `issecretvalue` is read once at load, since every client defines it before any addon runs; only when it was absent at load does a check read the global again, accepting it only as a function, so a probe a test host or shim installs later is still honoured (revision 21; before, a probe installed after load was never seen). A host without it has no secret values.
 
 A failure is signalled **once**. An operation that raises to its direct caller, such as `SchedulerKit:After` failing to arm its TimerKit delay, is not additionally pushed to the error handler; a failure on the driver path, where nothing above SchedulerKit can observe a raise, is reported instead of raised.
 
@@ -472,12 +473,27 @@ work:After(2, jobB)
 work:Every(10, jobC)
 
 work:CancelAll() -- reusable
-work:Close()     -- terminal
+work:Close()     -- terminal for what the scope held
+work:Reopen()    -- the same scope, empty and open again (manual scopes only)
 ```
 
 Scopes use intrusive active-job links rather than retaining an ever-growing history of completed jobs. Completed, cancelled, and failed jobs are removed in O(1) from scope ownership state.
 
 `CancelAll()` attempts every active job in deterministic creation order. If one cancellation raises, cleanup continues and the first error object is re-raised after the pass.
+
+### Reopening a manual scope
+
+`Reopen()` returns a closed manual scope to service: it answers `true` and the
+scope is open and empty, or `false` when it was open. Nothing the close ended
+comes back: its jobs stay cancelled, its `Debounce`, `Coalesce`, `Watch` and
+lane handles stay closed, and the TimerKit scope behind its delays is
+replaced by a fresh one at the next delayed job. It is what lets an owner keep
+one scope object across periods of activity, as ModuleKit does for
+`module.scope.Jobs` across a module's enable cycles. An addon scope
+(`ForAddon`) is closed by its addon's teardown, so closing it stays terminal:
+`Reopen` on one raises `SchedulerKit.Scope:Reopen cannot reopen an addon
+scope` at the caller's line. A wrong receiver raises the usual
+`SchedulerKit.Scope:Reopen must be called on a SchedulerKit scope`.
 
 ## Addon-owned scopes
 
@@ -907,6 +923,10 @@ The facade, Job/Scope/Context prototypes, metatables, ready queues, scopes, acti
 The installed OnUpdate trampoline does not permanently close over one implementation revision. It resolves the current shared dispatch function on every scheduler frame. TimerKit delay callbacks use the same dispatch indirection.
 
 A future compatible SchedulerKit revision can therefore update execution behavior while preserving existing facade, Job, Scope, Context, queue, and addon-scope identity.
+
+Revision 21 adds `Scope:Reopen` and changes no state: a revision-20 copy's
+jobs, scopes, workers, timers and handles carry over as they are, and a
+scope that copy created and closed can be reopened after the upgrade.
 
 Revision 20 changes messages only (an unknown option field or limit key that
 is not a string, number or boolean is named by its type instead of passed to

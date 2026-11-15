@@ -2,7 +2,7 @@ local TestEnv = require("SchedulerKitTestEnv")
 
 -- The implementation revision this suite was written against; Manifest_spec
 -- holds it to package.manifest.json.
-local CURRENT_REVISION = 20
+local CURRENT_REVISION = 21
 
 describe("SchedulerKit bootstrap", function()
   after_each(TestEnv.Reset)

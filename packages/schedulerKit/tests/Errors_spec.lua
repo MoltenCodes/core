@@ -140,3 +140,36 @@ describe("SchedulerKit error isolation", function()
     assert.are.equal(0, SchedulerKit:GetActiveCount())
   end)
 end)
+
+describe("SchedulerKit receiver checks", function()
+  after_each(TestEnv.Reset)
+
+  it("refuses strings, numbers and tables with other metatables as receivers", function()
+    local SchedulerKit = TestEnv.NewPackage()
+    local lane = SchedulerKit:Lane("receivers")
+    local debounced = SchedulerKit:Debounce(function() end, 1)
+    local methods = {
+      {
+        SchedulerKit.Scope.Schedule,
+        "SchedulerKit.Scope:Schedule must be called on a SchedulerKit scope",
+      },
+      { SchedulerKit.Job.Cancel, "SchedulerKit.Job:Cancel must be called on a SchedulerKit job" },
+      {
+        SchedulerKit.Context.ShouldYield,
+        "SchedulerKit.Context:ShouldYield must be called on a SchedulerKit context",
+      },
+      { getmetatable(lane).__index.Close, "must be called on a SchedulerKit lane" },
+      { getmetatable(debounced).__index.Close, "must be called on a SchedulerKit debounce" },
+    }
+    -- A string carries the string metatable; a table here carries a foreign
+    -- one. Neither is the Kit's private metatable, which is all the check asks.
+    local receivers = { "receiver", 7, {}, setmetatable({}, { __index = {} }) }
+    for _, case in ipairs(methods) do
+      for index = 1, #receivers do
+        local ok, message = pcall(case[1], receivers[index], function() end)
+        assert.is_false(ok)
+        assert.is_truthy(string.find(message, case[2], 1, true), message)
+      end
+    end
+  end)
+end)

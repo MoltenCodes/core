@@ -223,6 +223,7 @@ local SCOPE_METHODS = {
   "CancelAll",
   "Close",
   "IsClosed",
+  "Reopen",
   "GetAddonName",
   "GetActiveCount",
   "Debounce",
@@ -1488,6 +1489,38 @@ clockTest(
       startLine = currentLine()
       scope:Schedule(ignore)
     end, "SchedulerKit.Scope:Schedule cannot schedule work in a closed scope")
+    ctx:Expect(line):ToBe(startLine + 1)
+  end
+)
+
+clockTest(
+  scopes,
+  "Reopen returns a closed manual scope to service on the real C_Timer, keeps the closed period cancelled, and refuses an addon scope at the calling line",
+  function(ctx)
+    local scope = trackScope(SchedulerKit:CreateScope())
+    local ran = { before = 0, after = 0 }
+    scope:After(TICK_INTERVAL_SECONDS, function()
+      ran.before = ran.before + 1
+    end)
+    ctx:Expect(scope:Close()):ToBe(true)
+    ctx:Expect(scope:Reopen()):ToBe(true)
+    ctx:Expect(scope:Reopen()):ToBe(false)
+    ctx:Expect(scope:IsClosed()):ToBe(false)
+    local delayed = scope:After(TICK_INTERVAL_SECONDS, function()
+      ran.after = ran.after + 1
+    end)
+    waitUntil(ctx, function()
+      return delayed:GetState() == "completed"
+    end, TICK_INTERVAL_SECONDS + QUIET_WAIT_SECONDS + 1)
+    ctx:Expect(ran.before):ToBe(0)
+    ctx:Expect(ran.after):ToBe(1)
+
+    local addonScope = SchedulerKit:ForAddon(addonName)
+    local startLine = 0
+    local line = expectErrorAtCallingLine(ctx, function()
+      startLine = currentLine()
+      addonScope:Reopen()
+    end, "SchedulerKit.Scope:Reopen cannot reopen an addon scope")
     ctx:Expect(line):ToBe(startLine + 1)
   end
 )

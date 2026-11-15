@@ -317,3 +317,70 @@ describe("SchedulerKit and secret values", function()
     assert.are.equal(lane, SchedulerKit:Lane("ordinary"))
   end)
 end)
+
+describe("SchedulerKit secret probe resolution", function()
+  after_each(TestEnv.Reset)
+
+  it("keeps the probe present at load and never reads the global again", function()
+    local SchedulerKit = loadOnSecretHost()
+    local secret = TestEnv.NewSecretValue()
+    local consulted = false
+    -- selene: allow(global_usage)
+    rawset(_G, "issecretvalue", function()
+      consulted = true
+      return false
+    end)
+
+    local handle = SchedulerKit:Coalesce(noop, 1)
+    local line
+    local ok, value = pcall(function()
+      line = currentLine() + 1
+      handle(secret)
+    end)
+    assertReportedAt(line, "SchedulerKit coalesce handle key must not be a secret value", ok, value)
+    assert.is_false(consulted)
+  end)
+
+  it("honours a probe installed after load when none existed at load", function()
+    local SchedulerKit = TestEnv.NewPackage()
+    local secret = {}
+    -- selene: allow(global_usage)
+    rawset(_G, "issecretvalue", function(value)
+      return rawequal(value, secret)
+    end)
+
+    local handle = SchedulerKit:Coalesce(noop, 1)
+    local line
+    local ok, value = pcall(function()
+      line = currentLine() + 1
+      handle(secret)
+    end)
+    assertReportedAt(line, "SchedulerKit coalesce handle key must not be a secret value", ok, value)
+    local ordinary = {}
+    assert.is_true(handle(ordinary))
+  end)
+
+  it("ignores an issecretvalue global that is not a function", function()
+    local SchedulerKit = TestEnv.NewPackage()
+    -- selene: allow(global_usage)
+    rawset(_G, "issecretvalue", true)
+
+    local handle = SchedulerKit:Coalesce(noop, 1)
+    assert.is_true(handle("key"))
+  end)
+
+  it("still names nil and NaN keys at the caller's line", function()
+    local SchedulerKit = loadOnSecretHost()
+    local handle = SchedulerKit:Coalesce(noop, 1)
+    local cases = { { nil }, { 0 / 0 } }
+    for index = 1, #cases do
+      local key = cases[index][1]
+      local line
+      local ok, value = pcall(function()
+        line = currentLine() + 1
+        handle(key)
+      end)
+      assertReportedAt(line, "SchedulerKit coalesce handle key must not be nil or NaN", ok, value)
+    end
+  end)
+end)

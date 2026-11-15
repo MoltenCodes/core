@@ -50,6 +50,7 @@ MoltenCodes Test: PASS schedulerKit.jobErrors: the client's debug library is log
 MoltenCodes Test: PASS schedulerKit.jobErrors: a job that raises is failed with its original error object and a traceback naming SchedulerKitSuite.lua at the raising line, is reported once, and does not stop an unrelated job
 MoltenCodes Test: PASS schedulerKit.scopes: CancelAll stops a yielding job between slices and cancels a delayed and a repeating job before the real C_Timer fires, and the scope still runs new work
 MoltenCodes Test: PASS schedulerKit.scopes: Close cancels a delayed job before the real C_Timer fires, answers true then false, and the closed scope refuses Schedule at the calling line
+MoltenCodes Test: PASS schedulerKit.scopes: Reopen returns a closed manual scope to service on the real C_Timer, keeps the closed period cancelled, and refuses an addon scope at the calling line
 MoltenCodes Test: PASS schedulerKit.scopes: ForAddon with this test addon's name returns one open scope naming the addon, and its jobs run
 MoltenCodes Test: PASS schedulerKit.scopes: CloseAddonScopes stops a probe addon's yielding job and delayed job, answers true then false, and ForAddon keeps the closed scope
 MoltenCodes Test: SKIP schedulerKit.scopes: at logout this addon's scope is closed and its jobs cancelled -- not observable in a run: PLAYER_LOGOUT ends the session before a result could be printed or saved; packages/schedulerKit/tests/LogoutCoverage_spec.lua proves it
@@ -71,7 +72,7 @@ MoltenCodes Test: PASS schedulerKit.secrets: SetFrameBudget, SetRunawayThreshold
 MoltenCodes Test: PASS schedulerKit.secrets: Debounce leading, Coalesce maxKeys, Watch intervalSeconds and SetLimits maxLanes refuse a secret at the calling line and change no limit
 MoltenCodes Test: PASS schedulerKit.secrets: package-level Schedule priority and name, After delay and a scope's Every interval refuse a secret at the calling line and schedule nothing (messages logged)
 MoltenCodes Test: PASS schedulerKit.secrets: a coalesce handle refuses a secret key at the calling line and delivers a secret value still secret
-MoltenCodes Test: schedulerKit: 35 passed, 0 failed, 2 skipped, 0 timed out (37 tests)
+MoltenCodes Test: schedulerKit: 36 passed, 0 failed, 2 skipped, 0 timed out (38 tests)
 MoltenCodes Test: results saved in MoltenCodesTestResults; /reload or log out to write them to disk.
 ```
 
@@ -94,7 +95,7 @@ The five `schedulerKit.secrets` tests need the client's `issecretvalue` and
 `secretwrap`, which Retail 12.1 has. `secretwrap` only converts the value
 handed to it into a secret and changes no game state. A client without them
 prints these five lines instead, and the totals line reads
-`30 passed, 0 failed, 7 skipped, 0 timed out (37 tests)`:
+`31 passed, 0 failed, 7 skipped, 0 timed out (38 tests)`:
 
 ```text
 MoltenCodes Test: SKIP schedulerKit.secrets: ForAddon, CloseAddonScopes and Lane refuse a secret name at the calling line before comparing it -- the client has no issecretvalue and secretwrap; the secret path was not exercised
@@ -108,7 +109,7 @@ A client that has both functions but makes no secret with them (the harness
 asks once whether `issecretvalue` reports what `secretwrap` returns as
 secret) skips the same five tests with the harness's own reason, and the
 totals line is the same
-`30 passed, 0 failed, 7 skipped, 0 timed out (37 tests)`:
+`31 passed, 0 failed, 7 skipped, 0 timed out (38 tests)`:
 
 ```text
 MoltenCodes Test: SKIP schedulerKit.secrets: ForAddon, CloseAddonScopes and Lane refuse a secret name at the calling line before comparing it -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
@@ -141,7 +142,7 @@ either. No test needs combat.
 ### Retail (12.1)
 
 The lines above:
-`MoltenCodes Test: schedulerKit: 35 passed, 0 failed, 2 skipped, 0 timed out (37 tests)`,
+`MoltenCodes Test: schedulerKit: 36 passed, 0 failed, 2 skipped, 0 timed out (38 tests)`,
 with the two `SKIP` lines for the logout and the Watch tick.
 
 ### Classic Era (1.15) and Mists of Pandaria Classic (5.5)
@@ -154,12 +155,12 @@ client gives: whether its `secretwrap` makes a value `issecretvalue` reports
 as secret (both Classic flavours document the two functions).
 
 - When it does, the totals line is Retail's:
-  `MoltenCodes Test: schedulerKit: 35 passed, 0 failed, 2 skipped, 0 timed out (37 tests)`.
+  `MoltenCodes Test: schedulerKit: 36 passed, 0 failed, 2 skipped, 0 timed out (38 tests)`.
 - When it does not, the five lines under
   [On a client without secret values](#on-a-client-without-secret-values)
   with the reason `the client makes no secret values (...)` are `SKIP`, and
   the totals line is
-  `MoltenCodes Test: schedulerKit: 30 passed, 0 failed, 7 skipped, 0 timed out (37 tests)`.
+  `MoltenCodes Test: schedulerKit: 31 passed, 0 failed, 7 skipped, 0 timed out (38 tests)`.
 
 ## Visible side effects
 
@@ -212,7 +213,7 @@ method, so every such message names the same line number.
 
 | Test | Proves in the real client |
 |---|---|
-| `Registry:Get('schedulerKit', 1) is the SchedulerKit facade ...` | The facade the client loaded is API 1 with all twenty facade methods of docs/API.md, `UNBOUNDED`, and the priorities ordered `HIGH < NORMAL < LOW < IDLE`; a scope carries its twelve methods, a job its ten, and the context a running job receives its four; `GetJob` inside the job is the handle `Schedule` returned. |
+| `Registry:Get('schedulerKit', 1) is the SchedulerKit facade ...` | The facade the client loaded is API 1 with all twenty facade methods of docs/API.md, `UNBOUNDED`, and the priorities ordered `HIGH < NORMAL < LOW < IDLE`; a scope carries its thirteen methods, a job its ten, and the context a running job receives its four; `GetJob` inside the job is the handle `Schedule` returned. |
 | `the installed SchedulerKit carries the revision ...` | Registry's selected revision and the facade's `REVISION` are both the committed manifest's, not an older or newer embedded copy. |
 | `the frame budget is the 2 ms default ...` | With no other addon retuning SchedulerKit, the budget is 2 ms and the resume ceiling 1000; the runaway threshold reads 500 ms because the harness raised it for the run. The log gives all three. |
 | `GetTime stays fixed within a frame ...` | Over 5 ms of busy work in one frame, `GetTime` does not move (the frame key every frame-counting test relies on), `debugprofilestop` advances at least 5 ms, and `GetTimePreciseSec` advances at least as far less 0.5 ms; across the next rendered frame all three move. The log gives every delta: whether `debugprofilestop` counts only addon time or wall time shows as a difference between its delta and the wall clock's over a frame. |
@@ -228,6 +229,7 @@ method, so every such message names the same line number.
 | `a job that raises is failed ...` | A job raising a string fails; `GetError` names this file at the raising line; `GetErrorTraceback` holds a `stack traceback:` whose frames name this file at the raising line, written `SchedulerKitSuite.lua:<line>:` when SchedulerKit captured it with `debug.traceback` and `SchedulerKitSuite.lua]:<line>:` when it used the client's `debugstack` (the Retail client has no `debug` global). A job raising a table fails with that very table as `GetError`. Each failure reaches the error handler exactly once, as its traceback. A job scheduled after them completes without an error. |
 | `CancelAll stops a yielding job between slices ...` | A job that yields forever, an `After(0.25)` and an `Every(0.25)` job are all cancelled by `CancelAll`: no slice, delayed run or repeat follows within 0.6 s, and a new job in the same scope completes. |
 | `Close cancels a delayed job ...` | `Close` answers `true`, then `false`; the delayed job never runs; `Schedule` on the closed scope is refused with `SchedulerKit.Scope:Schedule cannot schedule work in a closed scope` at the calling line. |
+| `Reopen returns a closed manual scope to service ...` | A scope closed with a delayed job pending answers `true` to `Reopen`, then `false`; the job of the closed period never runs, while a job delayed after reopening runs once on the real `C_Timer`; `Reopen` on this addon's `ForAddon` scope is refused with `SchedulerKit.Scope:Reopen cannot reopen an addon scope` at the calling line. |
 | `ForAddon with this test addon's name ...` | `ForAddon("MoltenCodesTest_SchedulerKit")` returns the same open scope every time, naming the addon, and a job in it completes. The log says whether LifecycleKit is loaded and lists `schedulerKit` in `CLOSES_ADDON_SCOPES` (it should: that is the route that closes the scope at logout). |
 | `CloseAddonScopes stops a probe addon's yielding job ...` | `CloseAddonScopes` answers `false` for a name that never had a scope, `true` once the probe's job yielded twice, then `false`; the scope is closed and empty, `ForAddon` still returns it, and neither the yielding job nor the `After(0.25)` job runs again. |
 | `Debounce(0.1) called on five consecutive frames ...` | Five calls on five distinct frames produce no fire during the burst and exactly one afterwards, with the fifth call's argument, one delay (less 1 ms) to one delay plus two frames plus 20 ms after the last call. The log gives the delay. |
@@ -252,7 +254,7 @@ method, so every such message names the same line number.
 
 - Any `FAIL` or `TIMEOUT` line, a `SKIP` other than the two above on Retail
   12.1, or a totals line other than
-  `35 passed, 0 failed, 2 skipped, 0 timed out (37 tests)`; on a Classic
+  `36 passed, 0 failed, 2 skipped, 0 timed out (38 tests)`; on a Classic
   client, a `SKIP` or a totals line that [Per flavour](#per-flavour) does
   not list.
 - No login line, or `Expected.lua is missing`: the harness or the installer
