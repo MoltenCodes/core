@@ -47,6 +47,22 @@ What each piece promises:
 
 See [`docs/API.md`](docs/API.md) for the complete contract, and [`docs/INTERNALS.md`](docs/INTERNALS.md) for the parser's state machine and the state layout.
 
+### Moving from AceConsole-3.0, AceTab-3.0 and AceConfigCmd-3.0
+
+| Ace3 | CommandKit |
+|---|---|
+| `self:RegisterChatCommand("myaddon", "SlashCommand")`, which overwrites any earlier owner | `commands:Register("myaddon", { handler = function(context, ...) end })`, which returns `nil, "taken"` or `nil, "emote"` instead of overwriting |
+| `func(input, editBox)` receiving the raw text | The handler receives the parsed tokens (or the values its `arguments` schemas accepted); `context:GetRawText()` is the raw text |
+| `self:GetArgs(input, 2)` | `CommandKit:Parse(input)` or `CommandKit:ParseInto(input, array)`, which also keep colour-wrapped text and textures whole; usually `arguments` and `subcommands` in the spec make it unnecessary |
+| Parsing sub-commands by hand in `SlashCommand` | `subcommands = { show = { ... } }`, up to three levels, with generated usage |
+| `self:UnregisterChatCommand("myaddon")` | `commands:Unregister("myaddon")`; the slash name stays bound to an inert dispatcher (see "Inert globals" in the API) |
+| `self:Print(...)`, `self:Printf(format, ...)` | `context:Print(...)`, `context:Printf(template, ...)` inside a handler; `scope:SetSink(sink)` for another frame |
+| `self:IterateChatCommands()` | No equivalent; `commands:IsRegistered("myaddon")` answers for one name |
+| `AceTab:RegisterTabCompletion(...)` for your own command | A `complete` function in the spec, and `commands:EnableCompletion()`; CommandKit completes its own commands only |
+| `AceConfigCmd:CreateChatCommand("myaddon_options", "MyAddon")` | `commands:BindOptions(tree, "myaddon_options")` over an OptionsKit tree |
+
+[`docs/MIGRATING_FROM_ACE3.md`](../../docs/MIGRATING_FROM_ACE3.md#aceconsole-30) walks through a whole addon.
+
 ## Embedding
 
 [`../../docs/EMBEDDING.md`](../../docs/EMBEDDING.md) is the addon author's guide:

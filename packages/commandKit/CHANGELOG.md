@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.2.9 — 2026-11-15
+
+- Fixed: `CreateScope` and `ForAddon` built their unknown-option message, and `SetLimits` the label of every limit entry, with `tostring(key)`, so a key that is a table or userdata with a `__tostring` metamethod ran that foreign code inside CommandKit (in `SetLimits` before the key was even checked). The metamethod could raise or answer a secret value, and the caller then saw its error instead of the real refusal. A string key is still shown as written and a number or boolean key through `tostring` (no foreign code runs for those, so `limits.1` is unchanged); any other key is named by its type: `CommandKit:SetLimits limits.<table> is not a recognised limit` and `CommandKit:CreateScope options.<table> is not a recognised option`, at the caller's line, with nothing created or changed. `SetLimits` now builds its per-limit label only once the key is a recognised name. `docs/API.md` documents the form under *Error behaviour* and *Limits*.
+- Not changed: the display paths that convert with `tostring` on purpose (`context:Print`, the `select` and `multiselect` value text and key order in `BindOptions` listings, `matchValueKey`) are output, not refusals.
+- Implementation revision 9. No state or layout changed: an in-place upgrade from revision 8 keeps every scope, command, dispatcher and limit and replaces the methods.
+- Specs: a table key whose `__tostring` raises is refused by its type at the caller by `SetLimits`, `CreateScope` and `ForAddon` without running it, and the upgrade from revision 8. 172 → 174 specs.
+
+## 0.2.8 — 2026-11-15
+
+- The README had no migration table from AceConsole-3.0, the library CommandKit replaces, nor from AceTab-3.0 and AceConfigCmd-3.0 for the parts CommandKit covers. It now maps `RegisterChatCommand` (which overwrites, where `Register` refuses with `"taken"` or `"emote"`), the raw `input` (`context:GetRawText`), `GetArgs` (`Parse`, `ParseInto`), hand-parsed sub-commands, `UnregisterChatCommand` (the inert dispatcher), `Print` and `Printf`, `IterateChatCommands` (no equivalent), `RegisterTabCompletion` (`complete` and `EnableCompletion`) and `CreateChatCommand` (`BindOptions`), and links the walkthrough in `docs/MIGRATING_FROM_ACE3.md`.
+- `docs/API.md` *Error behaviour* gave three example messages and the receiver refusals; it now lists the rest: name and text arguments, `Parse` and `ParseInto`, scope options (a table with a metatable included), every spec and `arguments` refusal, a host without `SlashCmdList`, `SetSink`, `BindOptions`, the context methods and `SetLimits`. *Loading* gives the four load-time errors.
+- `tests/README.md` listed the in-place upgrades only up to revision 6; `Bootstrap_spec.lua` also upgrades revision 7, and the list now says so.
+- Documentation only: implementation revision 8 is unchanged.
+
 ## 0.2.7 — 2026-11-15
 
 - Fixed: a later `ForAddon` with a limit option set to `false` was refused with `... differs from the limit this addon's scope was created with` when the scope had been created with another limit, although `false` reads as an absent field everywhere else (`readScopeLimit`). `refuseConflictingOptions` now treats `false` as absent.

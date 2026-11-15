@@ -264,6 +264,31 @@ describe("CommandKit bootstrap", function()
     assert.is_true(current:CloseAddonScopes("Limited"))
   end)
 
+  it("upgrades a revision 8 package in place and names table keys by their type", function()
+    local current = upgradeFrom(8)
+    local converted = false
+    local key = setmetatable({}, {
+      __tostring = function()
+        converted = true
+        return "converted"
+      end,
+    })
+    TestEnv.expectErrorContaining(
+      "CommandKit:SetLimits limits.<table> is not a recognised limit",
+      function()
+        current:SetLimits({ [key] = 4 })
+      end
+    )
+    TestEnv.expectErrorContaining(
+      "CommandKit:ForAddon options.<table> is not a recognised option",
+      function()
+        current:ForAddon("MyAddon", { [key] = 4 })
+      end
+    )
+    assert.is_false(converted)
+    assert.is_true(current:CloseAddonScopes("MyAddon"))
+  end)
+
   it("requires Registry", function()
     TestEnv.Reset()
     TestEnv.InstallWowApi()

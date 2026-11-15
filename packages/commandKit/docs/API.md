@@ -2,7 +2,7 @@
 
 CommandKit API generation **1** provides slash commands for World of Warcraft addons: collision-safe registration owned by a scope, a hyperlink-aware argument parser, sub-commands with generated usage, schema-checked arguments, output sinks, optional tab completion, and a command line over an OptionsKit tree.
 
-Implementation revision: **8**.
+Implementation revision: **9**.
 
 ## Loading
 
@@ -20,7 +20,7 @@ Portable WoW code resolves the package through Registry:
 local CommandKit = MoltenCodes.Registries[2]:Get("commandKit", 1)
 ```
 
-CommandKit does not rely on `require()` at runtime.
+CommandKit does not rely on `require()` at runtime. Loaded without Registry API 2, `CommandKit.lua` raises `MoltenCodes CommandKit requires Registry API 2 to be loaded first`; over a Registry whose facade has no `Bootstrap`, `MoltenCodes CommandKit requires a valid Registry API 2 facade`; without SchemaKit, `MoltenCodes CommandKit requires SchemaKit API 1 to be loaded first`. A shared package state that fails validation raises `MoltenCodes CommandKit package state is corrupted or incomplete` instead of being overwritten.
 
 ### Optional dependencies and host facilities
 
@@ -436,6 +436,21 @@ MyAddon.lua:31: CommandKit.Scope:BindOptions requires OptionsKit API 1
 
 Calling a scope method on something that is not a scope raises `CommandKit.Scope:Register must be called on a CommandKit scope`; a facade method called with a dot raises `CommandKit:ForAddon must be called on the CommandKit facade; use CommandKit:ForAddon(...)`; `Register`, `BindOptions` and `EnableCompletion` on a closed scope raise `... cannot be used on a closed scope`.
 
+The other argument and spec messages, where `<label>` is the method and the field's path (`CommandKit.Scope:Register spec.subcommands.show`):
+
+| Raised by | Messages |
+|---|---|
+| A name or text argument (`Register`, `Unregister`, `IsRegistered`, `ForAddon`, `CloseAddonScopes`, `context:Fail`) | `<label> must be a non-empty string`; `<label> must not be a secret value`; for a slash or sub-command name also `<label> "<name>" must be letters, digits and underscores, starting with a letter, at most 32 long` |
+| `Parse`, `ParseInto` | `CommandKit:Parse text must be a string`; `CommandKit:Parse text must not be a secret value` (and `ParseInto`); `CommandKit:ParseInto array must be a table` |
+| `CreateScope`, `ForAddon` options | `<label> must be a table` (also for a table with a metatable); `<label>.<name> is not a recognised option` (a key that is not a string, number or boolean is named by its type, as `options.<table>`, so its `__tostring` never runs); the limit messages under [Limits](#limits) |
+| A spec | `<label> must be a table`; `<label>.handler must be a function`; `<label>.complete must be a function`; `<label>.usage must be a string` (and `description`); `<label> needs a handler or subcommands`; `<label>.arguments needs a handler to receive them`; `<label> keys must be sub-command names`; `<label> nests sub-commands deeper than 3 levels` |
+| A spec's `arguments` | `<label> must be a SchemaKit.array schema or a list of schemas`; `<label> must be a list of schemas` (a key that is no position); `<label> must be a list of at most 16 schemas` (a position past `maxPositions`); `<label> must be a non-empty list of schemas without holes` |
+| `Register` on a host without slash commands | `CommandKit.Scope:Register requires the host's SlashCmdList table` (and `BindOptions`) |
+| `SetSink` | `CommandKit.Scope:SetSink sink must be a table with an AddMessage method` |
+| `BindOptions` | `CommandKit.Scope:BindOptions requires OptionsKit API 1`; `CommandKit.Scope:BindOptions tree must be an OptionsKit tree`; `CommandKit.Scope:BindOptions options must be a table` |
+| The context | `CommandKit.Context:Print must be called on a CommandKit context` (every context method); `CommandKit.Context:Printf template must be a string` |
+| `SetLimits` | `CommandKit:SetLimits limits must be a table`; the value messages under [Limits](#limits) |
+
 What the user types is never an error: it is printed to the sink. Errors raised by your handler, `complete` function or sink are isolated during dispatch and completion and reported to the host error handler.
 
 ## Performance
@@ -479,7 +494,7 @@ CommandKit:SetLimits({ maxCaptured = CommandKit.UNBOUNDED, maxCompletions = 64 }
 local limits = CommandKit:GetLimits() -- a fresh table on every call
 ```
 
-`SetLimits` accepts any subset. It raises at the caller on a table that is not one, an unknown name (`CommandKit:SetLimits limits.<name> is not a recognised limit`), a value that is not a positive integer or `CommandKit.UNBOUNDED` (`must be a positive integer or CommandKit.UNBOUNDED`), a value above a ceiling (`must be an integer from 1 to <ceiling>`) and `UNBOUNDED` where it is refused (`cannot be CommandKit.UNBOUNDED: <reason>`), and it checks the whole table before changing anything, so a refused call changes nothing. **These limits are shared by every consumer in the session**: every embedded copy and every addon reads one set, so a library should rely on the defaults and an addon that raises a limit raises it for everybody. `GetLimits` returns `CommandKit.UNBOUNDED` itself for an unbounded limit.
+`SetLimits` accepts any subset. It raises at the caller on a table that is not one, an unknown name (`CommandKit:SetLimits limits.<name> is not a recognised limit`, with a key that is not a string, number or boolean named by its type, as `limits.<table>`), a value that is not a positive integer or `CommandKit.UNBOUNDED` (`must be a positive integer or CommandKit.UNBOUNDED`), a value above a ceiling (`must be an integer from 1 to <ceiling>`) and `UNBOUNDED` where it is refused (`cannot be CommandKit.UNBOUNDED: <reason>`), and it checks the whole table before changing anything, so a refused call changes nothing. **These limits are shared by every consumer in the session**: every embedded copy and every addon reads one set, so a library should rely on the defaults and an addon that raises a limit raises it for everybody. `GetLimits` returns `CommandKit.UNBOUNDED` itself for an unbounded limit.
 
 Lowering a limit never drops what is already kept: a scope past a lowered limit keeps its commands and refuses the next one, and a capture sink already longer than a lowered `maxCaptured` keeps its length instead of shrinking.
 
@@ -509,6 +524,6 @@ The nine-point plan in `docs/ROADMAP.md` is followed except where recorded here:
 
 Several addons may embed CommandKit; Registry selects the newest compatible revision and every copy shares one facade. An upgrade happens in place: scopes, commands, the slash dispatchers already in the client's tables and the completion replacement stay, because every one of them calls through shared package state that the newer copy rewrites. Scopes and contexts gain the newer copy's methods through the shared `CommandKit.Scope` and `CommandKit.Context` prototypes. The `CommandKit.UNBOUNDED` sentinel and the package-wide limits live in the package state too, so a newer copy publishes the same sentinel and inherits every limit a consumer set, and a scope keeps the limits it was created with.
 
-Revision 2 upgrades the addon scopes revision 1 built in place and arranges their [logout close](#at-logout) while it loads, for every open one. Revisions 3, 4, 5, 6, 7 and 8 change no layout: each takes over the state of the one before as it is. A command bound with `BindOptions` keeps the sub-command handlers of the revision that bound it, because they are compiled into its record; binding it again after the upgrade gives it the newer ones. A later revision keeps the `OnShutdown` subscriptions and the `PLAYER_LOGOUT` watcher it inherits: both call through the facade or the shared package state, so they run the newest code, and nothing is subscribed twice.
+Revision 2 upgrades the addon scopes revision 1 built in place and arranges their [logout close](#at-logout) while it loads, for every open one. Revisions 3, 4, 5, 6, 7, 8 and 9 change no layout: each takes over the state of the one before as it is. A command bound with `BindOptions` keeps the sub-command handlers of the revision that bound it, because they are compiled into its record; binding it again after the upgrade gives it the newer ones. A later revision keeps the `OnShutdown` subscriptions and the `PLAYER_LOGOUT` watcher it inherits: both call through the facade or the shared package state, so they run the newest code, and nothing is subscribed twice.
 
 Nothing survives `/reload`: commands are registered again when the addon loads.

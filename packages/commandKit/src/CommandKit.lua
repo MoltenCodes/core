@@ -53,7 +53,7 @@
 
 local PACKAGE_NAME = "commandKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 8
+local IMPLEMENTATION_REVISION = 9
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_SCHEMAKIT_API = 1
 local OPTIONAL_OPTIONSKIT_API = 1
@@ -3494,6 +3494,25 @@ local function readScopeLimit(options, field, label, level)
   return value
 end
 
+---Name a caller's table key in a refusal without running its `__tostring`.
+---
+---`tostring` on a table or userdata runs the key's `__tostring`, foreign code
+---that can raise or answer a secret and so replace the real refusal. A string
+---is shown as written and a number or boolean through `tostring`, which runs
+---no foreign code for them; anything else is named by its type, as `<table>`.
+---@param key any a table key, which `next` never returns as `nil`
+---@return string
+local function describeKey(key)
+  local keyType = type(key)
+  if keyType == "string" then
+    return key
+  end
+  if keyType == "number" or keyType == "boolean" then
+    return tostring(key)
+  end
+  return "<" .. keyType .. ">"
+end
+
 ---Check a scope option table and resolve its limits, raising at the caller
 ---before anything is created.
 ---@param options any
@@ -3508,7 +3527,7 @@ local function readScopeOptions(options, label, level)
   if present then
     for key in next, options do
       if type(key) ~= "string" or SCOPE_OPTION_FIELDS[key] == nil then
-        error(label .. "." .. tostring(key) .. " is not a recognised option", level)
+        error(label .. "." .. describeKey(key) .. " is not a recognised option", level)
       end
     end
   end
@@ -3687,10 +3706,13 @@ local function validateLimitUpdate(limits, level)
     error("CommandKit:SetLimits limits must be a table", level)
   end
   for key, value in next, limits do
-    local label = "CommandKit:SetLimits limits." .. tostring(key)
     if type(key) ~= "string" or rawget(sharedLimits, key) == nil then
-      error(label .. " is not a recognised limit", level)
+      error(
+        "CommandKit:SetLimits limits." .. describeKey(key) .. " is not a recognised limit",
+        level
+      )
     end
+    local label = "CommandKit:SetLimits limits." .. key
     local ceiling = LIMIT_CEILINGS[key]
     -- A secret is refused with the type message before any comparison;
     -- after this, `value == UNBOUNDED` compares a plain value.

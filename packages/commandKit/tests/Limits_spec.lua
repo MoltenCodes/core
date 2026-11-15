@@ -316,6 +316,40 @@ describe("CommandKit limits", function()
       )
       assert.are.same(before, CommandKit:GetLimits())
     end)
+
+    it("name a table key by its type without running its __tostring", function()
+      local converted = 0
+      local key = setmetatable({}, {
+        __tostring = function()
+          converted = converted + 1
+          error("foreign __tostring ran", 0)
+        end,
+      })
+      local before = CommandKit:GetLimits()
+      assertReportedAtCaller(
+        "CommandKit:SetLimits limits.<table> is not a recognised limit",
+        function(mark)
+          mark()
+          CommandKit:SetLimits({ [key] = 4 })
+        end
+      )
+      assertReportedAtCaller(
+        "CommandKit:CreateScope options.<table> is not a recognised option",
+        function(mark)
+          mark()
+          CommandKit:CreateScope({ [key] = 4 })
+        end
+      )
+      assertReportedAtCaller(
+        "CommandKit:ForAddon options.<table> is not a recognised option",
+        function(mark)
+          mark()
+          CommandKit:ForAddon("MyAddon", { [key] = 4 })
+        end
+      )
+      assert.are.equal(0, converted)
+      assert.are.same(before, CommandKit:GetLimits())
+    end)
   end)
 
   describe("across an upgrade", function()

@@ -149,4 +149,6 @@ Revision 4 changes no layout either and inherits revision 3's state unchanged; i
 
 Revision 7 changes no state layout and inherits revision 6's state unchanged. Records it compiles may share the `EMPTY` parts and `NO_ARGUMENTS` (above); records an older copy compiled keep their own tables, which dispatch reads the same way. Its taken check caches are file-level and start empty.
 
+Revision 9 changes no layout and inherits revision 8's state unchanged; it only names an unknown option or limit key by its type instead of converting it with `tostring`.
+
 Revision 6 changes no layout and inherits revision 5's state unchanged. Its taken check also asks the client's `hash_*` lookup tables and `IsSecureCmd`, and tells CommandKit's own entries there apart by `ownedKeys` and by the closures in `slashHandlers`, so a name an older copy registered is still CommandKit's after the upgrade.
