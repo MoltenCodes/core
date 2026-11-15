@@ -114,6 +114,21 @@ describe("ReadinessKit bootstrap", function()
     ready = true
     TestEnv.Poll(500)
     assert.are.same({ true }, results)
+
+    -- The working revision names a table option field by its type.
+    local ran = false
+    local key = setmetatable({}, {
+      __tostring = function()
+        ran = true
+        return "custom"
+      end,
+    })
+    TestEnv.expectErrorContaining('options contains unknown field "<table>"', function()
+      upgraded:Gate("bags", function()
+        return false
+      end, { [key] = 1 })
+    end)
+    assert.is_false(ran)
   end)
 
   it("requires Registry", function()

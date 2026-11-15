@@ -65,8 +65,8 @@ Every file above is required; omitting one makes this package raise at
 load.
 
 Optional: EventKit API 1, used only by `gate:ReprobeOn`. To re-probe on host
-events, embed SignalKit and EventKit as well, after Registry and before
-ReadinessKit (Registry, SignalKit, EventKit, TimerKit, ReadinessKit: five
-files). ReadinessKit lists EventKit only under `optionalDependencies` and looks
+events, embed SignalKit and EventKit as well, after Registry and before the
+first `ReprobeOn` call (for example Registry, SignalKit, EventKit, TimerKit,
+ReadinessKit: five files). ReadinessKit lists EventKit only under `optionalDependencies` and looks
 it up with `Registry:Find` when `ReprobeOn` is called, so without EventKit, or
 with an incompatible or retired one, only re-probing is unavailable.

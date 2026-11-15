@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.1.8 — 2026-11-15
+
+- Fixed: `Gate` named an unknown option field by passing the caller's key to `tostring`. `tostring` on a table or userdata runs its `__tostring`, foreign code that could raise (or answer a secret on Retail) inside ReadinessKit, so the caller saw that error instead of the real refusal. A string key is still shown as written and a number or boolean through `tostring`, which runs no foreign code, so `unknown field "aaa"` is unchanged; any other key is named by its type: `ReadinessKit:Gate options contains unknown field "<table>"`. Documented in `docs/API.md`.
+- Implementation revision 5. No state or gate layout changed: an upgrade over revision 4 replaces the methods and keeps every gate, waiter, poll timer and subscription.
+- Specs: a table option field whose `__tostring` raises is named by its type at the caller's line and its `__tostring` never runs (`ErrorLevels_spec.lua`); the previous-revision upgrade spec checks the new message on the upgraded facade. 100 → 101 specs.
+
+## 0.1.7 — 2026-11-15
+
+- `docs/API.md` now gives the message of every refusal it described only in words: the `Gate` option values (`intervalSeconds`, `timeoutSeconds`, `maxWaiters`), an `options` that is not a table and an unknown option field (`options contains unknown field "<name>"`), a bad `name` or `probe`, a callback that is not a function, a waiter method called on something that is not a waiter, `Await`, `Probe`, `Invalidate` and `ReprobeOn` on a closed gate, the two `WhenAll` refusals, and the load-time errors for a Registry without `Bootstrap` and a corrupted package state.
+- The README said SignalKit and EventKit must load before ReadinessKit for `ReprobeOn`. ReadinessKit looks EventKit up when `ReprobeOn` is called, so they only have to load before that call; the README now says so, as `docs/API.md` already did.
+- Documentation only: implementation revision 4 is unchanged.
+
 ## 0.1.6 — 2026-11-15
 
 - Documentation: `docs/API.md` states implementation revision 4 in its header (it still read 3), and its "Performance" row for a poll tick on a gate that is not ready counts two clock reads, one to timestamp the negative answer and one to measure the timeout, or one when `timeoutSeconds` is `false` (it said one). The source comments on `GetProbeErrorCount` and the round reset count a probe that answered a secret value as a failure, as the code has since revision 4. Comments and documentation only: the implementation revision is unchanged.

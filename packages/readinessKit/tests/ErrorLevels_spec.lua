@@ -301,4 +301,34 @@ describe("ReadinessKit error levels", function()
       value
     )
   end)
+
+  it("names a table option field by its type and never runs its __tostring", function()
+    local ran = 0
+    local key = setmetatable({}, {
+      __tostring = function()
+        ran = ran + 1
+        error("foreign __tostring ran", 0)
+      end,
+    })
+    local line
+    local ok, value = pcall(function()
+      line = currentLine() + 1
+      ReadinessKit:Gate("a", probe, { [key] = 1 })
+    end)
+    assertReportedAt(line, 'ReadinessKit:Gate options contains unknown field "<table>"', ok, value)
+    assert.are.equal(0, ran)
+
+    -- A number or boolean key is still shown as written.
+    local booleanLine
+    local booleanOk, booleanValue = pcall(function()
+      booleanLine = currentLine() + 1
+      ReadinessKit:Gate("a", probe, { [true] = 1 })
+    end)
+    assertReportedAt(
+      booleanLine,
+      'ReadinessKit:Gate options contains unknown field "true"',
+      booleanOk,
+      booleanValue
+    )
+  end)
 end)

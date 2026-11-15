@@ -40,7 +40,7 @@
 
 local PACKAGE_NAME = "readinessKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 4
+local IMPLEMENTATION_REVISION = 5
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_TIMERKIT_API = 1
 local OPTIONAL_EVENTKIT_API = 1
@@ -445,6 +445,25 @@ local function isPositiveFiniteNumber(value)
   return type(value) == "number" and value == value and value > 0 and value ~= math.huge
 end
 
+---Name a caller's table key in a refusal without running its `__tostring`.
+---`tostring` on a table or userdata runs the caller's `__tostring`, foreign
+---code that may raise or answer a secret and so lose the real refusal. A
+---string is shown as written, a number or boolean through `tostring` (no
+---foreign code runs for those), and anything else by its type, as `<table>`.
+---A key read from a Lua table cannot be a secret: storing one raises.
+---@param key any
+---@return string
+local function describeKey(key)
+  local keyType = type(key)
+  if keyType == "string" then
+    return key
+  end
+  if keyType == "number" or keyType == "boolean" then
+    return tostring(key)
+  end
+  return "<" .. keyType .. ">"
+end
+
 ---Refuse any field of an option table outside `GATE_OPTION_KEYS`. The caller
 ---has already checked that `options` is a table.
 ---@param options table
@@ -455,7 +474,7 @@ local function validateOptionKeys(options, level)
   local firstUnknown = nil
   for key in next, options do
     if GATE_OPTION_KEYS[key] ~= true then
-      local text = tostring(key)
+      local text = describeKey(key)
       if firstUnknown == nil or text < firstUnknown then
         firstUnknown = text
       end

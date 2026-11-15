@@ -2,7 +2,7 @@
 
 ReadinessKit API generation **1** provides named gates for host data that arrives after load: a gate probes a fact, polls it while it is not yet true, times out, remembers negative answers for one interval, and calls its waiters once with the outcome.
 
-Implementation revision: **4**.
+Implementation revision: **5**.
 
 ## Loading
 
@@ -20,7 +20,7 @@ These three files are the minimum footprint. ReadinessKit depends directly on Re
 local ReadinessKit = MoltenCodes.Registries[2]:Get("readinessKit", 1)
 ```
 
-ReadinessKit does not rely on `require()` at runtime. Loading it without Registry raises `MoltenCodes ReadinessKit requires Registry API 2 to be loaded first`; without TimerKit, `MoltenCodes ReadinessKit requires TimerKit API 1 to be loaded first`.
+ReadinessKit does not rely on `require()` at runtime. Loading it without Registry raises `MoltenCodes ReadinessKit requires Registry API 2 to be loaded first`; over a Registry whose facade has no `Bootstrap`, `MoltenCodes ReadinessKit requires a valid Registry API 2 facade`; without TimerKit, `MoltenCodes ReadinessKit requires TimerKit API 1 to be loaded first`. A shared package state that fails validation raises `MoltenCodes ReadinessKit package state is corrupted or incomplete` instead of being overwritten.
 
 ### Optional host facilities
 
@@ -87,7 +87,7 @@ end, { intervalSeconds = 1, timeoutSeconds = 20 })
 | `timeoutSeconds` | `30` | Seconds of polling before waiters are told `"timeout"`, or `false` for no timeout. |
 | `maxWaiters` | `64` | The most callbacks queued at once. A positive integer, or `ReadinessKit.UNBOUNDED` for no limit. |
 
-Unknown option fields are refused; with several, the message names the alphabetically first.
+Every option is validated at the caller's line: `ReadinessKit:Gate intervalSeconds must be a finite number greater than zero`, `ReadinessKit:Gate timeoutSeconds must be false or a finite number greater than zero`, `ReadinessKit:Gate maxWaiters must be a positive integer or ReadinessKit.UNBOUNDED`. An `options` that is not a table raises `ReadinessKit:Gate options must be a table`. Unknown option fields are refused with `ReadinessKit:Gate options contains unknown field "<name>"`; with several, the message names the alphabetically first. A field name that is not a string, number or boolean is named by its type (`"<table>"`), so a key's `__tostring` never runs. A `name` that is not a non-empty string raises `ReadinessKit:Gate name must be a non-empty string`, and a `probe` that is not a function `ReadinessKit:Gate probe must be a function`.
 
 A new gate is registered under `name` and runs `probe` once, at once. When that answers, the gate is ready and no timer is created. Otherwise the gate starts polling.
 
@@ -164,7 +164,7 @@ A refusal whose reason is a secret value is re-raised with the fixed text `(secr
 
 Marks the gate closed, cancels its poll timer, removes it from the shared name table (a later `Gate` with that name defines a new gate), calls every queued waiter with `false, "closed"`, and closes its EventKit scope. Returns `false` when it was already closed.
 
-After `Close`, `IsReady()` returns `false`, and `Await`, `Probe`, `Invalidate` and `ReprobeOn` raise at the caller. A failure EventKit re-raises while releasing the subscriptions is raised after the gate is fully closed and its waiters were called.
+After `Close`, `IsReady()` returns `false`, and `Await`, `Probe`, `Invalidate` and `ReprobeOn` raise at the caller: `ReadinessKit.Gate:Await cannot wait on a closed gate`, `ReadinessKit.Gate:Probe cannot probe a closed gate`, `ReadinessKit.Gate:Invalidate cannot invalidate a closed gate`, `ReadinessKit.Gate:ReprobeOn cannot subscribe a closed gate`. A failure EventKit re-raises while releasing the subscriptions is raised after the gate is fully closed and its waiters were called.
 
 ## `ReadinessKit:WhenAll(gates, callback)`
 
@@ -181,7 +181,7 @@ Queues one waiter on each gate and calls `callback` once:
 - with `true` when every gate is ready — at once when they already are, and at once for an empty list;
 - with `false, reason` for the first gate that times out or is closed; the waiters on the other gates are cancelled.
 
-A gate listed twice counts twice. The group is bounded by the gates' own caps: when any gate refuses with `"full"`, the waiters already queued are cancelled and `WhenAll` returns `nil, "full"`. The returned waiter's `Cancel()` cancels every per-gate waiter. `gates` must be an array of open gates; a closed gate raises at the caller. Callback errors follow `Await`: raised at the caller when the outcome is already known, reported to the host error handler otherwise.
+A gate listed twice counts twice. The group is bounded by the gates' own caps: when any gate refuses with `"full"`, the waiters already queued are cancelled and `WhenAll` returns `nil, "full"`. The returned waiter's `Cancel()` cancels every per-gate waiter. `gates` must be an array of open gates: anything else raises `ReadinessKit:WhenAll gates must be an array of ReadinessKit gates`, and a closed gate `ReadinessKit:WhenAll cannot wait on a closed gate`, both at the caller. Callback errors follow `Await`: raised at the caller when the outcome is already known, reported to the host error handler otherwise.
 
 ## Probes that raise
 
@@ -227,7 +227,7 @@ per name for the session, so it grows only with the names the consumer defines.
 
 ## Error behaviour
 
-Argument failures report the line that called the public method, never a line inside ReadinessKit. Messages name the method (`ReadinessKit:Gate`, `ReadinessKit.Gate:Await`, `ReadinessKit.Waiter:Cancel`, `ReadinessKit:WhenAll`). Calling a method on something that is not a gate raises `ReadinessKit.Gate:IsReady must be called on a ReadinessKit gate`.
+Argument failures report the line that called the public method, never a line inside ReadinessKit. Messages name the method (`ReadinessKit:Gate`, `ReadinessKit.Gate:Await`, `ReadinessKit.Waiter:Cancel`, `ReadinessKit:WhenAll`). Calling a method on something that is not a gate raises `ReadinessKit.Gate:IsReady must be called on a ReadinessKit gate`, and a waiter method on something that is not a waiter `ReadinessKit.Waiter:Cancel must be called on a ReadinessKit waiter`. A callback that is not a function raises `ReadinessKit.Gate:Await callback must be a function` (likewise `ReadinessKit:WhenAll callback`).
 
 A secret value (Retail 12.0.0 and later) cannot be compared or tested as a boolean, so it is refused before any check touches it, at the caller's line:
 
