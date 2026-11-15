@@ -577,396 +577,415 @@ end
 
 -- Writer ---------------------------------------------------------------------
 --
--- One call builds a work record: the output pieces, their byte total, the
--- values written, the tables on the current path (for cycles), the limits the
--- call started with and the secret probe. `writeValue` returns `false` and a
--- reason to unwind; a secret is the reason `"secret"`, which the public method
--- turns into an error at its caller, because an error raised this deep would
--- point inside BridgeKit.
+-- A call writes into the state below: the output pieces, their count and byte
+-- total, the values written, the tables on the current path (for cycles), the
+-- limits the call started with and the secret probe. The state lives in
+-- upvalues and the two tables are reused from call to call, as AceSerializer
+-- reuses its piece array; both are emptied after each call so they keep no
+-- value alive. Nothing the writer calls can call back into it, so one state
+-- serves every call. A token and its data are separate pieces, so writing one
+-- allocates no joined string. `writeValue` returns `false` and a reason to
+-- unwind; a secret is the reason `"secret"`, which the public method turns
+-- into an error at its caller, because an error raised this deep would point
+-- inside BridgeKit.
 
-local writeValue
+local serialize
+do
+  local pieces, onPath = {}, {}
+  local pieceCount, byteCount, valueCount = 0, 0, 0
+  local probe, maxDepth, maxValues, maxStringLength, maxTextBytes
 
----Append one piece to the output, refusing once it passes `maxTextBytes`.
----@param work table
----@param piece string
----@return boolean ok
-local function append(work, piece)
-  local bytes = work.bytes + #piece
-  if bytes > work.maxTextBytes then
-    return false
-  end
-  work.bytes = bytes
-  local pieces = work.pieces
-  pieces[#pieces + 1] = piece
-  return true
-end
+  local writeValue
 
----The `^N`, `^F` or infinity token of a number that is not NaN.
----@param value number
----@return string
-local function numberToken(value)
-  local text = tostring(value)
-  -- `tostring` writes 14 significant digits, which is exact for most numbers
-  -- people store; the rest are written as a mantissa and an exponent.
-  if tonumber(text) == value then
-    return "^N" .. text
-  end
-  if value == math.huge then
-    return "^N1.#INF"
-  end
-  if value == -math.huge then
-    return "^N-1.#INF"
-  end
-  local mantissa, exponent = frexp(value)
-  local mantissaText = string.format("%.0f", mantissa * MANTISSA_SCALE)
-  local exponentText = tostring(exponent - MANTISSA_BITS)
-  return "^F" .. mantissaText .. "^f" .. exponentText
-end
-
----Write the pairs of `value`, then its end code.
----@param work table
----@param value table
----@param depth integer the table's own depth
----@return boolean ok
----@return string|nil reason
-local function writeTable(work, value, depth)
-  if depth > work.maxDepth then
-    return false, WRITE_REASON.maxDepth
-  end
-  local onPath = work.onPath
-  if onPath[value] then
-    return false, WRITE_REASON.cycle
-  end
-  if not append(work, "^T") then
-    return false, WRITE_REASON.maxTextBytes
-  end
-  onPath[value] = true
-  for key, entry in next, value do
-    local ok, reason = writeValue(work, key, depth)
-    if ok then
-      ok, reason = writeValue(work, entry, depth)
+  ---Append one piece to the output, refusing once it passes `maxTextBytes`.
+  ---@param piece string
+  ---@return boolean ok
+  local function append(piece)
+    local bytes = byteCount + #piece
+    if bytes > maxTextBytes then
+      return false
     end
-    if not ok then
-      return false, reason
-    end
+    byteCount = bytes
+    pieceCount = pieceCount + 1
+    pieces[pieceCount] = piece
+    return true
   end
-  onPath[value] = nil
-  if not append(work, "^t") then
-    return false, WRITE_REASON.maxTextBytes
-  end
-  return true, nil
-end
 
----Write one value. `depth` is the depth of the table holding it, 0 at the top.
----@param work table
----@param value any
----@param depth integer
----@return boolean ok
----@return string|nil reason
-function writeValue(work, value, depth)
-  local probe = work.probe
-  if probe ~= nil and probe(value) == true then
-    return false, "secret"
-  end
-  local count = work.count + 1
-  if exceeds(count, work.maxValues) then
-    return false, WRITE_REASON.maxValues
-  end
-  work.count = count
-
-  local valueType = type(value)
-  local piece
-  if valueType == "string" then
-    if exceeds(#value, work.maxStringLength) then
-      return false, WRITE_REASON.maxStringLength
+  ---Append the `^N`, `^F` or infinity token of a number that is not NaN.
+  ---@param value number
+  ---@return boolean ok
+  local function appendNumber(value)
+    local text = tostring(value)
+    -- `tostring` writes 14 significant digits, which is exact for most
+    -- numbers people store; the rest are written as a mantissa and an
+    -- exponent.
+    if tonumber(text) == value then
+      return append("^N") and append(text)
     end
-    if stringFind(value, ESCAPE_PATTERN) ~= nil then
-      piece = "^S" .. string.gsub(value, ESCAPE_PATTERN, ESCAPE_FOR)
+    if value == math.huge then
+      return append("^N1.#INF")
+    end
+    if value == -math.huge then
+      return append("^N-1.#INF")
+    end
+    local mantissa, exponent = frexp(value)
+    return append("^F")
+      and append(string.format("%.0f", mantissa * MANTISSA_SCALE))
+      and append("^f")
+      and append(tostring(exponent - MANTISSA_BITS))
+  end
+
+  ---Write the pairs of `value`, then its end code.
+  ---@param value table
+  ---@param depth integer the table's own depth
+  ---@return boolean ok
+  ---@return string|nil reason
+  local function writeTable(value, depth)
+    if depth > maxDepth then
+      return false, WRITE_REASON.maxDepth
+    end
+    if onPath[value] then
+      return false, WRITE_REASON.cycle
+    end
+    if not append("^T") then
+      return false, WRITE_REASON.maxTextBytes
+    end
+    onPath[value] = true
+    for key, entry in next, value do
+      local ok, reason = writeValue(key, depth)
+      if ok then
+        ok, reason = writeValue(entry, depth)
+      end
+      if not ok then
+        return false, reason
+      end
+    end
+    onPath[value] = nil
+    if not append("^t") then
+      return false, WRITE_REASON.maxTextBytes
+    end
+    return true, nil
+  end
+
+  ---Write one value. `depth` is the depth of the table holding it, 0 at the
+  ---top.
+  ---@param value any
+  ---@param depth integer
+  ---@return boolean ok
+  ---@return string|nil reason
+  function writeValue(value, depth)
+    if probe ~= nil and probe(value) == true then
+      return false, "secret"
+    end
+    valueCount = valueCount + 1
+    if exceeds(valueCount, maxValues) then
+      return false, WRITE_REASON.maxValues
+    end
+
+    local valueType = type(value)
+    local written
+    if valueType == "string" then
+      if exceeds(#value, maxStringLength) then
+        return false, WRITE_REASON.maxStringLength
+      end
+      if stringFind(value, ESCAPE_PATTERN) ~= nil then
+        value = string.gsub(value, ESCAPE_PATTERN, ESCAPE_FOR)
+      end
+      written = append("^S") and append(value)
+    elseif valueType == "number" then
+      if value ~= value then
+        return false, WRITE_REASON.nan
+      end
+      written = appendNumber(value)
+    elseif valueType == "boolean" then
+      written = append(value and "^B" or "^b")
+    elseif valueType == "nil" then
+      written = append("^Z")
+    elseif valueType == "table" then
+      return writeTable(value, depth + 1)
     else
-      piece = "^S" .. value
+      return false, WRITE_REASON.unsupportedType
     end
-  elseif valueType == "number" then
-    if value ~= value then
-      return false, WRITE_REASON.nan
+    if not written then
+      return false, WRITE_REASON.maxTextBytes
     end
-    piece = numberToken(value)
-  elseif valueType == "boolean" then
-    piece = value and "^B" or "^b"
-  elseif valueType == "nil" then
-    piece = "^Z"
-  elseif valueType == "table" then
-    return writeTable(work, value, depth + 1)
-  else
-    return false, WRITE_REASON.unsupportedType
+    return true, nil
   end
-  if not append(work, piece) then
-    return false, WRITE_REASON.maxTextBytes
-  end
-  return true, nil
-end
 
----Serialise the values of an argument list.
----@param probe (fun(value: any): boolean)|nil
----@param ... any
----@return boolean ok
----@return string textOrReason
-local function serialize(probe, ...)
-  local work = {
-    pieces = {},
-    bytes = 0,
-    count = 0,
-    onPath = {},
-    probe = probe,
-    maxDepth = limits.maxDepth,
-    maxValues = limits.maxValues,
-    maxStringLength = limits.maxStringLength,
-    maxTextBytes = limits.maxTextBytes,
-  }
-  if not append(work, "^1") then
-    return false, WRITE_REASON.maxTextBytes
+  ---Write every value of an argument list.
+  ---@param ... any
+  ---@return boolean ok
+  ---@return string|nil reason
+  local function writeValues(...)
+    if not append("^1") then
+      return false, WRITE_REASON.maxTextBytes
+    end
+    for index = 1, select("#", ...) do
+      local ok, reason = writeValue((select(index, ...)), 0)
+      if not ok then
+        return false, reason
+      end
+    end
+    if not append("^^") then
+      return false, WRITE_REASON.maxTextBytes
+    end
+    return true, nil
   end
-  for index = 1, select("#", ...) do
-    local ok, reason = writeValue(work, (select(index, ...)), 0)
+
+  ---Serialise the values of an argument list.
+  ---@param secretProbe (fun(value: any): boolean)|nil
+  ---@param ... any
+  ---@return boolean ok
+  ---@return string textOrReason
+  function serialize(secretProbe, ...)
+    pieceCount, byteCount, valueCount = 0, 0, 0
+    probe = secretProbe
+    maxDepth, maxValues = limits.maxDepth, limits.maxValues
+    maxStringLength, maxTextBytes = limits.maxStringLength, limits.maxTextBytes
+    local ok, reason = writeValues(...)
+    local text = ok and table.concat(pieces, "", 1, pieceCount) or nil
+    for index = 1, pieceCount do
+      pieces[index] = nil
+    end
+    for key in next, onPath do
+      onPath[key] = nil
+    end
+    probe = nil
     if not ok then
       -- A failed write always names its reason.
       ---@cast reason string
       return false, reason
     end
+    ---@cast text string
+    return true, text
   end
-  if not append(work, "^^") then
-    return false, WRITE_REASON.maxTextBytes
-  end
-  return true, table.concat(work.pieces)
 end
 
 -- Reader ---------------------------------------------------------------------
 --
 -- The reader first removes every control byte and space from the text, as Ace
 -- does, then walks it token by token: a caret, one character (the code), and
--- the data up to the next caret. A reader record holds the text, the cursor
--- and the code and data of the current token. Nothing here can raise on any
--- string: every token is cut with `string.sub` at found positions, numbers are
--- read with `tonumber`, and the recursion is bounded by `maxDepth`.
+-- the data up to the next caret, cut by one `gmatch` step as Ace cuts them.
+-- The reader's state (the token iterator, the current token's code and data,
+-- the values read and the limits) lives in upvalues, like the writer's:
+-- nothing the reader calls can call back into it. Nothing here can raise on
+-- any string: tokens are cut by a pattern, numbers are read with `tonumber`,
+-- and the recursion is bounded by `maxDepth`.
 
--- The value a `^^` token reads as: the end of the values. Inside a table Ace
--- reads it as a missing key or value, which is a table format error.
-local END = {}
+local deserializeInto
+do
+  -- The value a `^^` token reads as: the end of the values. Inside a table
+  -- Ace reads it as a missing key or value, which is a table format error.
+  local END = {}
 
----Move the reader to the next token. Returns `false` when there is none: no
----caret left, or a caret that ends the text with no code after it.
----@param reader table
----@return boolean found
-local function nextToken(reader)
-  local text = reader.text
-  local caret = stringFind(text, "^", reader.cursor, true)
-  if caret == nil or caret == reader.length then
-    return false
-  end
-  local following = stringFind(text, "^", caret + 2, true)
-  local dataEnd = following and following - 1 or reader.length
-  reader.code = stringSub(text, caret + 1, caret + 1)
-  reader.data = stringSub(text, caret + 2, dataEnd)
-  reader.cursor = dataEnd + 1
-  return true
-end
+  local tokens, code, data
+  local valueCount, maxDepth, maxValues, maxStringLength
 
----Undo AceSerializer's string escaping, or `nil` for an escape Ace refuses.
----@param data string
----@return string|nil
-local function unescape(data)
-  if stringFind(data, "~", 1, true) == nil then
-    return data
+  ---Move to the next token. Returns `false` when there is none: no caret
+  ---left, or a caret that ends the text with no code after it.
+  ---@return boolean found
+  local function nextToken()
+    code, data = tokens()
+    return code ~= nil
   end
-  local invalid = false
-  local text = string.gsub(data, "~(.)", function(character)
-    local special = UNESCAPE_SPECIAL[character]
-    if special ~= nil then
-      return special
-    end
-    local byte = string.byte(character)
-    if byte < UNESCAPE_LOWEST or byte > UNESCAPE_HIGHEST then
-      invalid = true
-      return ""
-    end
-    return string.char(byte - 64)
-  end)
-  if invalid then
-    return nil
-  end
-  return text
-end
 
----The value of a `^F` token: `mantissa * 2^exponent`, as Ace computes it,
----with one exception. When `2^exponent` alone underflows to zero, which
----happens for some subnormal numbers Ace's own writer produces, Ace reads 0
----although the product is representable; BridgeKit scales a finite mantissa
----with `ldexp` there and reads the number back exactly. Everywhere else,
----overflow to infinity and NaN included, the two agree.
----@param mantissa number
----@param exponent number
----@return number
-local function scaleMantissa(mantissa, exponent)
-  if
-    exponent < SMALLEST_POWER_EXPONENT
-    and exponent % 1 == 0
-    and mantissa == mantissa
-    and mantissa ~= math.huge
-    and mantissa ~= -math.huge
-  then
-    if exponent < -EXPONENT_BOUND then
-      exponent = -EXPONENT_BOUND
+  ---Undo AceSerializer's string escaping, or `nil` for an escape Ace refuses.
+  ---@param escaped string
+  ---@return string|nil
+  local function unescape(escaped)
+    if stringFind(escaped, "~", 1, true) == nil then
+      return escaped
     end
-    return ldexp(mantissa, exponent)
+    local invalid = false
+    local text = string.gsub(escaped, "~(.)", function(character)
+      local special = UNESCAPE_SPECIAL[character]
+      if special ~= nil then
+        return special
+      end
+      local byte = string.byte(character)
+      if byte < UNESCAPE_LOWEST or byte > UNESCAPE_HIGHEST then
+        invalid = true
+        return ""
+      end
+      return string.char(byte - 64)
+    end)
+    if invalid then
+      return nil
+    end
+    return text
   end
-  return mantissa * 2 ^ exponent
-end
 
-local readValue
+  ---The value of a `^F` token: `mantissa * 2^exponent`, as Ace computes it,
+  ---with one exception. When `2^exponent` alone underflows to zero, which
+  ---happens for some subnormal numbers Ace's own writer produces, Ace reads 0
+  ---although the product is representable; BridgeKit scales a finite
+  ---mantissa with `ldexp` there and reads the number back exactly. Everywhere
+  ---else, overflow to infinity and NaN included, the two agree.
+  ---@param mantissa number
+  ---@param exponent number
+  ---@return number
+  local function scaleMantissa(mantissa, exponent)
+    if
+      exponent < SMALLEST_POWER_EXPONENT
+      and exponent % 1 == 0
+      and mantissa == mantissa
+      and mantissa ~= math.huge
+      and mantissa ~= -math.huge
+    then
+      if exponent < -EXPONENT_BOUND then
+        exponent = -EXPONENT_BOUND
+      end
+      return ldexp(mantissa, exponent)
+    end
+    return mantissa * 2 ^ exponent
+  end
 
----Read the pairs of a table after its `^T`, through its `^t`.
----@param reader table
----@param depth integer the table's own depth
----@return boolean ok
----@return any valueOrReason
-local function readTable(reader, depth)
-  if depth > reader.maxDepth then
-    return false, READ_REASON.maxDepth
-  end
-  local result = {}
-  while true do
-    if not nextToken(reader) then
-      return false, READ_REASON.missingTerminator
-    end
-    if reader.code == "t" then
-      return true, result
-    end
-    local ok, key = readValue(reader, depth)
-    if not ok then
-      return false, key
-    end
-    if key == nil or key == END then
-      return false, READ_REASON.tableFormat
-    end
-    if key ~= key then
-      return false, READ_REASON.invalidKey
-    end
-    if not nextToken(reader) then
-      return false, READ_REASON.missingTerminator
-    end
-    if reader.code == "t" then
-      return false, READ_REASON.unknownControl
-    end
-    local entry
-    ok, entry = readValue(reader, depth)
-    if not ok then
-      return false, entry
-    end
-    if entry == nil or entry == END then
-      return false, READ_REASON.tableFormat
-    end
-    result[key] = entry
-  end
-end
+  local readValue
 
----Read the value of the current token. `depth` is the depth of the table
----holding it, 0 at the top. A `^^` token reads as `END`.
----@param reader table
----@param depth integer
----@return boolean ok
----@return any valueOrReason
-function readValue(reader, depth)
-  local code, data = reader.code, reader.data
-  -- The end code is no value, so it does not count against `maxValues`.
-  if code == "^" then
-    return true, END
+  ---Read the pairs of a table after its `^T`, through its `^t`.
+  ---@param depth integer the table's own depth
+  ---@return boolean ok
+  ---@return any valueOrReason
+  local function readTable(depth)
+    if depth > maxDepth then
+      return false, READ_REASON.maxDepth
+    end
+    local result = {}
+    while true do
+      if not nextToken() then
+        return false, READ_REASON.missingTerminator
+      end
+      if code == "t" then
+        return true, result
+      end
+      local ok, key = readValue(depth)
+      if not ok then
+        return false, key
+      end
+      if key == nil or key == END then
+        return false, READ_REASON.tableFormat
+      end
+      if key ~= key then
+        return false, READ_REASON.invalidKey
+      end
+      if not nextToken() then
+        return false, READ_REASON.missingTerminator
+      end
+      if code == "t" then
+        return false, READ_REASON.unknownControl
+      end
+      local entry
+      ok, entry = readValue(depth)
+      if not ok then
+        return false, entry
+      end
+      if entry == nil or entry == END then
+        return false, READ_REASON.tableFormat
+      end
+      result[key] = entry
+    end
   end
-  local count = reader.count + 1
-  if exceeds(count, reader.maxValues) then
-    return false, READ_REASON.maxValues
-  end
-  reader.count = count
 
-  if code == "S" then
-    local text = unescape(data)
-    if text == nil then
-      return false, READ_REASON.invalidEscape
+  ---Read the value of the current token. `depth` is the depth of the table
+  ---holding it, 0 at the top. A `^^` token reads as `END`.
+  ---@param depth integer
+  ---@return boolean ok
+  ---@return any valueOrReason
+  function readValue(depth)
+    -- The end code is no value, so it does not count against `maxValues`.
+    if code == "^" then
+      return true, END
     end
-    if exceeds(#text, reader.maxStringLength) then
-      return false, READ_REASON.maxStringLength
+    valueCount = valueCount + 1
+    if exceeds(valueCount, maxValues) then
+      return false, READ_REASON.maxValues
     end
-    return true, text
-  elseif code == "N" then
-    local number = INFINITY_TEXT[data] or tonumber(data)
-    if number == nil then
-      return false, READ_REASON.invalidNumber
-    end
-    return true, number
-  elseif code == "F" then
-    local mantissa = tonumber(data)
-    if not nextToken(reader) or reader.code ~= "f" then
-      return false, READ_REASON.invalidFloat
-    end
-    local exponent = tonumber(reader.data)
-    if mantissa == nil or exponent == nil then
-      return false, READ_REASON.invalidFloat
-    end
-    return true, scaleMantissa(mantissa, exponent)
-  elseif code == "B" then
-    return true, true
-  elseif code == "b" then
-    return true, false
-  elseif code == "Z" then
-    return true, nil
-  elseif code == "T" then
-    return readTable(reader, depth + 1)
-  end
-  return false, READ_REASON.unknownControl
-end
 
----Read every top-level value of `text` into `values`, counting them in
----`values.n`.
----@param text string
----@param values table
----@return boolean ok
----@return string|nil reason
-local function deserializeInto(text, values)
-  if #text > limits.maxTextBytes then
-    return false, READ_REASON.maxTextBytes
-  end
-  local stripped = string.gsub(text, "[%c ]", "")
-  local reader = {
-    text = stripped,
-    length = #stripped,
-    cursor = 1,
-    code = false,
-    data = false,
-    count = 0,
-    maxDepth = limits.maxDepth,
-    maxValues = limits.maxValues,
-    maxStringLength = limits.maxStringLength,
-  }
-  if not nextToken(reader) or reader.code ~= "1" then
-    return false, READ_REASON.notAceSerializer
-  end
-  local maxListValues = limits.maxListValues
-  local listed = 0
-  while true do
-    if not nextToken(reader) then
-      return false, READ_REASON.missingTerminator
-    end
-    local ok, value = readValue(reader, 0)
-    if not ok then
-      return false, value
-    end
-    if value == END then
-      values.n = listed
+    if code == "S" then
+      local text = unescape(data)
+      if text == nil then
+        return false, READ_REASON.invalidEscape
+      end
+      if exceeds(#text, maxStringLength) then
+        return false, READ_REASON.maxStringLength
+      end
+      return true, text
+    elseif code == "N" then
+      local number = INFINITY_TEXT[data] or tonumber(data)
+      if number == nil then
+        return false, READ_REASON.invalidNumber
+      end
+      return true, number
+    elseif code == "F" then
+      local mantissa = tonumber(data)
+      if not nextToken() or code ~= "f" then
+        return false, READ_REASON.invalidFloat
+      end
+      local exponent = tonumber(data)
+      if mantissa == nil or exponent == nil then
+        return false, READ_REASON.invalidFloat
+      end
+      return true, scaleMantissa(mantissa, exponent)
+    elseif code == "B" then
+      return true, true
+    elseif code == "b" then
+      return true, false
+    elseif code == "Z" then
       return true, nil
+    elseif code == "T" then
+      return readTable(depth + 1)
     end
-    listed = listed + 1
-    if listed > maxListValues then
-      return false, READ_REASON.maxListValues
+    return false, READ_REASON.unknownControl
+  end
+
+  ---Read every top-level value after the `^1` start code into `values`.
+  ---@param values table
+  ---@return boolean ok
+  ---@return string|nil reason
+  local function readValues(values)
+    if not nextToken() or code ~= "1" then
+      return false, READ_REASON.notAceSerializer
     end
-    values[listed] = value
+    local maxListValues = limits.maxListValues
+    local listed = 0
+    while true do
+      if not nextToken() then
+        return false, READ_REASON.missingTerminator
+      end
+      local ok, value = readValue(0)
+      if not ok then
+        return false, value
+      end
+      if value == END then
+        values.n = listed
+        return true, nil
+      end
+      listed = listed + 1
+      if listed > maxListValues then
+        return false, READ_REASON.maxListValues
+      end
+      values[listed] = value
+    end
+  end
+
+  ---Read every top-level value of `text` into `values`, counting them in
+  ---`values.n`.
+  ---@param text string
+  ---@param values table
+  ---@return boolean ok
+  ---@return string|nil reason
+  function deserializeInto(text, values)
+    if #text > limits.maxTextBytes then
+      return false, READ_REASON.maxTextBytes
+    end
+    tokens = string.gmatch(string.gsub(text, "[%c ]", ""), "%^(.)([^%^]*)")
+    valueCount = 0
+    maxDepth, maxValues = limits.maxDepth, limits.maxValues
+    maxStringLength = limits.maxStringLength
+    local ok, reason = readValues(values)
+    -- Release the text and the last token, so no input is kept alive.
+    tokens, code, data = nil, nil, nil
+    return ok, reason
   end
 end
 
