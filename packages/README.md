@@ -8,45 +8,47 @@ A package owns its source, tests, documentation, changelog, and runtime dependen
 
 Current packages:
 
-- [`registry`](registry/) — shared package registration and revision resolution.
-- [`signalKit`](signalKit/) — deterministic pure-Lua callback dispatch and connection lifecycle, observer hooks, firing generations and journals, and named message buses with a declared topic policy.
-- [`eventKit`](eventKit/) — lazy WoW Frame-event subscriptions and unit-event filtering built on SignalKit.
-- [`lifecycleKit`](lifecycleKit/) — replay-aware per-addon loading, readiness, and shutdown coordination, a shared combat gate with a bounded out-of-combat queue, and a halted state announced to dependents.
-- [`moduleKit`](moduleKit/) — addon-scoped module lifecycle, dependency graphs, dependency injection, and dependency policies.
-- [`timerKit`](timerKit/) — cancelable one-shot/repeating timers, ownership scopes, and addon scopes closed at logout through LifecycleKit or EventKit when present.
-- [`schedulerKit`](schedulerKit/) — cooperative frame-budgeted scheduling, priorities, cancellation scopes, and delayed work.
-- [`poolKit`](poolKit/) — allocation-conscious bounded object pooling with deterministic ownership and cleanup.
-- [`clientKit`](clientKit/) — client flavour, build floor, probed capability flags, secret-value and frame-access probes, shims with one shape per host call, addon manifests, deprecation warnings.
-- [`cacheKit`](cacheKit/) — bounded LRU and TTL caches with negative entries, memoisation, snapshots with diffs, lazy namespace trees, ring queues, clear-on-event.
-- [`profileKit`](profileKit/) — zero-cost-when-off performance sections with count, total, spike and a report.
-- [`readinessKit`](readinessKit/) — named readiness gates for late host data: polling, timeouts, negative caching, bounded waiters.
-- [`schemaKit`](schemaKit/) — sealed value schemas with structured, secret-safe failures; the validation core for arguments, saved variables, options and messages.
-- [`localeKit`](localeKit/) — per-addon translations, missing-key reporting and coverage, indexed format specifiers.
-- [`hookKit`](hookKit/) — reversible, secure-first hooking of functions, methods and frame scripts.
-- [`settingsKit`](settingsKit/) — saved-variable databases: scopes, validated writes, wildcard defaults, profiles, migrations.
-- [`optionsKit`](optionsKit/) — typed, validated, introspectable options tree with no renderer.
-- [`commandKit`](commandKit/) — slash commands: hyperlink-aware parsing, generated usage, schema-checked arguments, sinks, completion, OptionsKit command line.
-- [`codecKit`](codecKit/) — serialise, compress and channel-encode values; decoding never raises.
-- [`interopKit`](interopKit/) — the LibStub bridge.
-- [`mediaKit`](mediaKit/) — typed media registry, font scripts, sorted lists, per-consumer defaults, LibSharedMedia bridge.
-- [`bridgeKit`](bridgeKit/) — migration from Ace3: AceSerializer-3.0 text written and read byte for byte, AceConfig-3.0 tables converted, AceDB-3.0 saved variables imported, AceComm-3.0 spoken through CommKit, all bounded.
-- [`brokerKit`](brokerKit/) — LibDataBroker-compatible data objects for display addons: typed attributes as plain fields, per-attribute change signals, sorted enumeration, two-way LibDataBroker-1.1 bridge.
-- [`logKit`](logKit/) — levelled, structured logging: per-addon loggers with lazy secret-safe formatting, a tri-state level, a bounded journal, chat, callback and table sinks.
-- [`compatKit`](compatKit/) — versioned shims applied once per session with a host opt-out, provider registries with liveness probes and a deterministic fallback cascade, the catalogue of taint-hostile subsystems as data.
-- [`commKit`](commKit/) — addon messaging: chunk protocol, bounded reassembly, refusing priority queues, session bandwidth budget, sync sets.
-- [`widgetKit`](widgetKit/) — pooled versioned widgets, List/Fill/Flow layouts, anchors, position bindings, OptionsKit renderer.
-- [`editModeKit`](editModeKit/) — Edit Mode for addon frames: a labelled overlay that drags each frame, positions saved per layout.
-- [`rangeKit`](rangeKit/) — unit range estimates in yards from the player's spells and interact distances.
-- [`unitFrameKit`](unitFrameKit/) — the unit frame shown for a unit token: a bounded scan, ranked matches across Blizzard's and other addons' frames, change notifications.
-- [`glowKit`](glowKit/) — glows: pixel lines running round a frame and a pulsing border, keyed per frame, on pooled overlays.
-- [`bindingKit`](bindingKit/) — override key bindings in named scopes: commands, button clicks and Lua functions, applied after combat when set during it.
-- [`toastKit`](toastKit/) — short notifications: titled toasts with icons and click handlers, stacked at one anchor, held under the cursor, fading out.
-- [`dialogKit`](dialogKit/) — confirmation and input dialogs without StaticPopupDialogs: one frame of their own, a bounded queue, Escape, timeouts.
-- [`barKit`](barKit/) — status and timer bars on the client's StatusBar: labels, icons, colours, secret values passed through, pausable countdowns.
-- [`tooltipKit`](tooltipKit/) — multi-column tooltips: keyed, pooled, bounded; headers, spans, colours, line handlers, scrolling, smart anchoring, auto-hide.
-- [`launcherKit`](launcherKit/) — minimap buttons for BrokerKit objects: any minimap shape, LibDBIcon's saved fields, Retail's addon compartment.
-- [`menuKit`](menuKit/) — checked, bounded menus on Blizzard's Menu API: context menus, dropdown menus, removable extensions of Blizzard's tagged menus.
-- [`panelKit`](panelKit/) — OptionsKit trees in Blizzard's settings panel: a category or subcategory per tree, drawn by WidgetKit only while shown.
-- [`addonKit`](addonKit/) — the single entry point for addon authors: `MoltenCodes:For(...)`, the addon object, databases from plain defaults, options and launcher helpers.
-- [`apiKit`](apiKit/) — the flavour-aware, typed wrapper over the World of Warcraft API (`wow.retail.api`, ...): direct aliases generated from the client's own documentation tables, LuaCATS types per flavour, the raw API always valid.
-- [`testKit`](testKit/) — development-only in-client test suites: phase-gated, SchedulerKit-driven, secret-safe expectations, structured results.
+<!-- generated:package-index -->
+- [`registry`](registry/) — Zero-dependency shared package registration, discovery and in-place revision upgrades.
+- [`addonKit`](addonKit/) — The single entry point for addon authors: `MoltenCodes:For(...)` with every Kit by name, an addon object over ModuleKit, databases from plain defaults, and one-call options panels and minimap launchers, with errors that say the fix.
+- [`apiKit`](apiKit/) — The flavour-aware, typed wrapper over the World of Warcraft API (`wow.retail.api`, ...), generated from the client's own documentation tables.
+- [`barKit`](barKit/) — Status and timer bars on the client's StatusBar, with secret values passed through and pausable countdowns, pooled and bounded.
+- [`bindingKit`](bindingKit/) — Override key bindings in named scopes (commands, button clicks, Lua functions) that never touch the player's own, applied after combat when set during it.
+- [`bridgeKit`](bridgeKit/) — Migration from Ace3: AceSerializer-3.0 text written and read byte for byte, AceConfig-3.0 tables converted to OptionsKit trees, AceDB-3.0 saved variables imported into SettingsKit, AceComm-3.0 spoken through CommKit.
+- [`brokerKit`](brokerKit/) — LibDataBroker-compatible data objects: typed attributes as plain fields, per-attribute change signals and a two-way LibDataBroker-1.1 bridge.
+- [`cacheKit`](cacheKit/) — Bounded LRU and TTL caches, memoisation, negative entries, lazy namespaces, bounded queues and snapshots with diffs.
+- [`clientKit`](clientKit/) — Client flavour, build floor, probed capability flags, secret-value and frame-access probes, and shims with one shape per host call.
+- [`codecKit`](codecKit/) — Serialise, compress and channel-encode values behind a self-describing header; decoding never raises.
+- [`commandKit`](commandKit/) — Slash commands with hyperlink-aware parsing, generated usage, schema-checked arguments, sinks, completion and an OptionsKit command line.
+- [`commKit`](commKit/) — Addon messaging of any length: a chunk protocol with bounded reassembly, refusing priority queues, a session bandwidth budget and sync sets.
+- [`compatKit`](compatKit/) — Versioned shims with a host opt-out, provider registries with a fallback cascade, and the catalogue of taint-hostile subsystems as data.
+- [`dialogKit`](dialogKit/) — Confirmation and input dialogs without StaticPopupDialogs: one frame of their own, a bounded queue, Escape through UISpecialFrames, timeouts.
+- [`editModeKit`](editModeKit/) — Addon frames in Blizzard's Edit Mode: a labelled overlay drags each frame while Edit Mode is open, its position saved per layout and put back on a layout switch.
+- [`eventKit`](eventKit/) — Lazy game-event subscriptions on SignalKit, unit-event filtering and combat-log routing by sub-event.
+- [`glowKit`](glowKit/) — Glows that draw the eye to a frame, pixel lines running round its edge or a pulsing border, keyed per frame, pooled and bounded.
+- [`hookKit`](hookKit/) — Reversible, secure-first hooking of functions, methods and frame scripts in three named semantics.
+- [`interopKit`](interopKit/) — The LibStub bridge: expose Kits to LibStub consumers and adopt LibStub libraries read-only.
+- [`launcherKit`](launcherKit/) — Minimap buttons for BrokerKit objects, dragged round any minimap shape, state in LibDBIcon's saved fields, and Retail's addon compartment.
+- [`lifecycleKit`](lifecycleKit/) — Replay-aware per-addon loading, readiness and shutdown, a shared combat gate with a bounded out-of-combat queue, and a halted state.
+- [`localeKit`](localeKit/) — Per-addon translations, missing-key reporting and coverage, indexed format specifiers.
+- [`logKit`](logKit/) — Levelled, structured logging with lazy secret-safe formatting, a bounded journal and chat, callback and table sinks.
+- [`mediaKit`](mediaKit/) — A typed media registry with font scripts, sorted cached lists, per-consumer defaults and LibSharedMedia adoption and mirroring.
+- [`menuKit`](menuKit/) — Menus described as checked, bounded tables and shown by Blizzard's Menu API: context menus, dropdowns and removable extensions of Blizzard's own menus.
+- [`moduleKit`](moduleKit/) — Addon-scoped module lifecycle, dependency graphs, dependency injection with checked interfaces, and dependency policies.
+- [`optionsKit`](optionsKit/) — A typed, validated, introspectable options tree bound to getters or a SettingsKit database, with no renderer.
+- [`panelKit`](panelKit/) — An OptionsKit tree in Blizzard's settings panel, as a category or subcategory, drawn by WidgetKit only while its page is shown.
+- [`poolKit`](poolKit/) — Allocation-conscious bounded object pooling with deterministic ownership and cleanup.
+- [`profileKit`](profileKit/) — Zero-cost-when-off performance sections with count, total, spike and a sorted report.
+- [`rangeKit`](rangeKit/) — Unit range estimates: the distance to a unit bracketed in yards from the player's own spells and the client's interact distances, and whether it is within a given range.
+- [`readinessKit`](readinessKit/) — Named readiness gates for host data that arrives after load: polling, timeouts, negative caching and bounded waiters.
+- [`schedulerKit`](schedulerKit/) — Cooperative, frame-budgeted scheduling with priorities, cancellation scopes and TimerKit delays.
+- [`schemaKit`](schemaKit/) — Sealed value schemas with structured, secret-safe failures: one validation core for arguments, saved variables, options and messages.
+- [`settingsKit`](settingsKit/) — Saved variables with scopes, schema-validated writes, defaults never written back, profiles and versioned migrations.
+- [`signalKit`](signalKit/) — Deterministic, re-entrant callback dispatch with explicit connection lifetimes, subscriber-transition hooks, journals and named message buses.
+- [`timerKit`](timerKit/) — Cancelable one-shot and repeating timers with ownership scopes, and addon scopes closed at logout through LifecycleKit or EventKit when present.
+- [`toastKit`](toastKit/) — Short notifications that stack at one anchor, hold under the cursor and fade out, with icons and click handlers, pooled and bounded.
+- [`tooltipKit`](tooltipKit/) — Multi-column tooltips, keyed and pooled, with headers, spans, colours, line handlers, scrolling, smart anchoring and auto-hide.
+- [`unitFrameKit`](unitFrameKit/) — The unit frame shown on screen for a unit token, what LibGetFrame-1.0 gives WeakAuras: a sliced scan of the client's frames, matches ranked across Blizzard's and other addons' unit frames, change notifications and nameplates.
+- [`widgetKit`](widgetKit/) — Pooled, versioned widgets with explicit layouts, saveable anchors and an OptionsKit renderer.
+- [`testKit`](testKit/) — Development only, never bundled: in-client test suites in LifecycleKit phases and SchedulerKit jobs, with structured results.
+<!-- /generated:package-index -->

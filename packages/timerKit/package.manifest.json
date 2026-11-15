@@ -2,6 +2,7 @@
   "name": "timerKit",
   "displayName": "TimerKit",
   "description": "Cancelable, scope-aware World of Warcraft timers with deterministic cleanup of addon-owned scopes.",
+  "summary": "Cancelable one-shot and repeating timers with ownership scopes, and addon scopes closed at logout through LifecycleKit or EventKit when present.",
   "version": "0.9.0",
   "license": "MIT",
   "api": 1,

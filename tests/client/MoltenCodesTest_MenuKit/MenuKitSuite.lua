@@ -288,7 +288,10 @@ menus:Test(
 
 -- menuKit.extensions ---------------------------------------------------------
 
-local extensions = newSuite("extensions", { timeoutSeconds = RIGHT_CLICK_SECONDS + 10 })
+local extensions = newSuite("extensions", {
+  timeoutSeconds = RIGHT_CLICK_SECONDS + 10,
+  interactive = "right-click your own unit frame when asked",
+})
 
 extensions:Test(
   "an extension of MENU_UNIT_SELF is reached when you right-click your own unit frame, and removed",

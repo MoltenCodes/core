@@ -23,9 +23,9 @@ local ADDON_NAME, ADDON_TABLE = ...
 local REGISTRY_API = 2
 
 --- Every Kit this addon calls directly, by package ID, with the API generation
---- it was written against. SignalKit, TimerKit, SchedulerKit, PoolKit and
---- HookKit are embedded too but reached only through other Kits: ModuleKit's
---- module scopes, EventKit's `Coalesce`, WidgetKit's pools.
+--- it was written against. SignalKit, TimerKit and HookKit are embedded too
+--- but reached only through other Kits: ModuleKit's module scopes and EventKit's
+--- `Coalesce`, which TimerKit times.
 local REQUIRED_APIS = {
   clientKit = 1,
   commandKit = 1,
@@ -246,7 +246,8 @@ local function connectScope(self)
 
   -- `EventKit:Coalesce`, owned by the scope: a burst of health events becomes
   -- one callback per interval, with the set of units that changed. It needs
-  -- SchedulerKit embedded. The set is reused: read it, never keep it.
+  -- EventKit's Coalescing part and TimerKit embedded. The set is reused: read
+  -- it, never keep it.
   events:Coalesce({ "UNIT_HEALTH", "UNIT_MAXHEALTH" }, HEALTH_INTERVAL_SECONDS, function(units)
     if not self.database.profile.announceHealth then
       return

@@ -2,6 +2,7 @@
   "name": "menuKit",
   "displayName": "MenuKit",
   "description": "Checked, bounded menus for World of Warcraft addons on Blizzard's Menu API: context menus, dropdown menus and removable extensions of Blizzard's tagged menus.",
+  "summary": "Menus described as checked, bounded tables and shown by Blizzard's Menu API: context menus, dropdowns and removable extensions of Blizzard's own menus.",
   "version": "0.1.1",
   "license": "MIT",
   "api": 1,

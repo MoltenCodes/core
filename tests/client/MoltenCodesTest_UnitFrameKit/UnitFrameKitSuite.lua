@@ -133,9 +133,10 @@ end
 
 ---Register a suite of this package whose tests end with the button hidden.
 ---@param part string
+---@param options MoltenCodesTest.SuiteOptions|nil
 ---@return TestKit.Suite
-local function newSuite(part)
-  local suite = Harness:Suite(PACKAGE_ID, part, addonName)
+local function newSuite(part, options)
+  local suite = Harness:Suite(PACKAGE_ID, part, addonName, options)
   suite:After(function()
     if button and not readHost("InCombatLockdown")() then
       button:Hide()
@@ -218,7 +219,9 @@ end)
 
 -- unitFrameKit.party -------------------------------------------------------
 
-local partySuite = newSuite("party")
+local partySuite = newSuite("party", {
+  interactive = "be in a party of two with Blizzard's party frames shown",
+})
 
 partySuite:Test("in a party, party1 answers a shown Blizzard party frame", function(ctx)
   if not readHost("UnitExists")("party1") then

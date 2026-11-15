@@ -21,6 +21,7 @@ body:
       description: The package the capability belongs to.
       multiple: true
       options:
+        # generated:kit-options
         - registry
         - addonKit
         - apiKit
@@ -35,6 +36,35 @@ body:
         - commKit
         - compatKit
         - dialogKit
+        - editModeKit
+        - eventKit
+        - glowKit
+        - hookKit
+        - interopKit
+        - launcherKit
+        - lifecycleKit
+        - localeKit
+        - logKit
+        - mediaKit
+        - menuKit
+        - moduleKit
+        - optionsKit
+        - panelKit
+        - poolKit
+        - profileKit
+        - rangeKit
+        - readinessKit
+        - schedulerKit
+        - schemaKit
+        - settingsKit
+        - signalKit
+        - timerKit
+        - toastKit
+        - tooltipKit
+        - unitFrameKit
+        - widgetKit
+        - testKit
+        # /generated:kit-options
         - Documentation
         - editModeKit
         - eventKit

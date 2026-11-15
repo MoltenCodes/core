@@ -139,7 +139,9 @@ end)
 
 -- rangeKit.player ----------------------------------------------------------
 
-local player = Harness:Suite(PACKAGE_ID, "player", addonName)
+local player = Harness:Suite(PACKAGE_ID, "player", addonName, {
+  interactive = "target a unit next to you, then walk 30 yards away when asked",
+})
 
 player:Test("the bracket of the target grows as the player walks away from it", function(ctx)
   print(

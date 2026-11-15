@@ -6,6 +6,11 @@
 # one Kit per pull request. Labels are only added, never removed, so a label a
 # maintainer sets by hand stays.
 
+# generated:kit-labeler
+"kit: registry":
+  - changed-files:
+      - any-glob-to-any-file: "packages/registry/**"
+
 "kit: addonKit":
   - changed-files:
       - any-glob-to-any-file: "packages/addonKit/**"
@@ -130,10 +135,6 @@
   - changed-files:
       - any-glob-to-any-file: "packages/readinessKit/**"
 
-"kit: registry":
-  - changed-files:
-      - any-glob-to-any-file: "packages/registry/**"
-
 "kit: schedulerKit":
   - changed-files:
       - any-glob-to-any-file: "packages/schedulerKit/**"
@@ -149,10 +150,6 @@
 "kit: signalKit":
   - changed-files:
       - any-glob-to-any-file: "packages/signalKit/**"
-
-"kit: testKit":
-  - changed-files:
-      - any-glob-to-any-file: "packages/testKit/**"
 
 "kit: timerKit":
   - changed-files:
@@ -174,6 +171,11 @@
   - changed-files:
       - any-glob-to-any-file: "packages/widgetKit/**"
 
+"kit: testKit":
+  - changed-files:
+      - any-glob-to-any-file: "packages/testKit/**"
+
+# /generated:kit-labeler
 "area: tooling":
   - changed-files:
       - any-glob-to-any-file:

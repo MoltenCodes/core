@@ -158,13 +158,17 @@ end
 
 ## 4. An options panel and a slash command
 
-Generate `embeds.xml` again with both parts (`addonKit/*`), PanelKit and
-CommandKit:
+Generate `embeds.xml` again with both parts (`addonKit/*`), PanelKit,
+CommandKit and OptionsKit's Profiles part (`optionsKit/Profiles`, for
+`ProfileOptions`):
 
 ```sh
-python3 -m tooling.package.embeds 'addonKit/*' commandKit eventKit moduleKit panelKit settingsKit \
-  --root 'Libs\MoltenCodes' --out embeds.xml
+python3 -m tooling.package.embeds 'addonKit/*' commandKit eventKit moduleKit optionsKit/Profiles \
+  panelKit settingsKit --root 'Libs\MoltenCodes' --out embeds.xml
 ```
+
+PanelKit draws the panel with WidgetKit's Renderer part, so the generator adds
+WidgetKit, its Renderer and the widget types the Renderer uses on its own.
 
 <!-- fixture: FirstAddon/step3/Core.lua -->
 ```lua
@@ -219,8 +223,8 @@ end
 Add `launcherKit` to the generator command:
 
 ```sh
-python3 -m tooling.package.embeds 'addonKit/*' commandKit eventKit launcherKit moduleKit panelKit settingsKit \
-  --root 'Libs\MoltenCodes' --out embeds.xml
+python3 -m tooling.package.embeds 'addonKit/*' commandKit eventKit launcherKit moduleKit \
+  optionsKit/Profiles panelKit settingsKit --root 'Libs\MoltenCodes' --out embeds.xml
 ```
 
 <!-- fixture: FirstAddon/step4/Core.lua -->
@@ -437,6 +441,7 @@ library, and AddonKit's README has a short table.
 | You see | Do |
 |---|---|
 | `MyAddon uses MoltenCodes TimerKit (API 1), which is not loaded` | Add the Kit to the generator command and generate `embeds.xml` again. |
+| `OptionsKit:ProfileOptions is in OptionsKit's Profiles part, which is not loaded: ...` | Add the part it names (`optionsKit/Profiles`) to the generator command and generate `embeds.xml` again. |
 | `MoltenCodes has no Kit or helper named ...; did you mean ...?` | Fix the spelling it suggests. |
 | `attempt to call method 'For' (a nil value)` | AddonKit is not loaded: `addonKit` is missing from `embeds.xml`, or `embeds.xml` is missing from the `.toc`. |
 | `... opened FirstAddonDB before ADDON_LOADED` | Open the database in `OnInitialize`, not at the top of the file. |

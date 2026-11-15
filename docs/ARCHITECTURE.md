@@ -2,59 +2,61 @@
 
 The repository is organized into independently publishable runtime packages.
 
+<!-- generated:package-tree -->
 ```text
 packages/
 ├── registry/
-├── signalKit/
-├── eventKit/
-├── lifecycleKit/
-├── moduleKit/
-├── timerKit/
-├── schedulerKit/
-├── poolKit/
-├── clientKit/
-├── cacheKit/
-├── profileKit/
-├── readinessKit/
-├── schemaKit/
-├── localeKit/
-├── hookKit/
-├── settingsKit/
-├── optionsKit/
-├── commandKit/
-├── codecKit/
-├── interopKit/
-├── mediaKit/
-├── brokerKit/
-├── logKit/
-├── compatKit/
-├── testKit/
-├── commKit/
-├── widgetKit/
-├── apiKit/
-├── bridgeKit/
-├── panelKit/
-├── menuKit/
-├── launcherKit/
-├── tooltipKit/
-├── barKit/
-├── dialogKit/
-├── toastKit/
-├── bindingKit/
-├── glowKit/
-├── editModeKit/
-├── rangeKit/
-├── unitFrameKit/
 ├── addonKit/
+├── apiKit/
+├── barKit/
+├── bindingKit/
+├── bridgeKit/
+├── brokerKit/
+├── cacheKit/
+├── clientKit/
+├── codecKit/
+├── commandKit/
+├── commKit/
+├── compatKit/
+├── dialogKit/
+├── editModeKit/
+├── eventKit/
+├── glowKit/
+├── hookKit/
+├── interopKit/
+├── launcherKit/
+├── lifecycleKit/
+├── localeKit/
+├── logKit/
+├── mediaKit/
+├── menuKit/
+├── moduleKit/
+├── optionsKit/
+├── panelKit/
+├── poolKit/
+├── profileKit/
+├── rangeKit/
+├── readinessKit/
+├── schedulerKit/
+├── schemaKit/
+├── settingsKit/
+├── signalKit/
+├── timerKit/
+├── toastKit/
+├── tooltipKit/
+├── unitFrameKit/
+├── widgetKit/
+├── testKit/
 ├── <future-package>/
 └── ...
 ```
+<!-- /generated:package-tree -->
 
 Every visible directory directly under `packages/` is considered a publishable package and must contain a valid `package.manifest.json`. Repository tooling deliberately rejects "ghost" package directories that are not represented by a manifest.
 
 ## Package naming
 
-Public framework capability packages use an Apple-style `Kit` suffix. The canonical machine-readable package ID is lowerCamelCase (`signalKit`, `eventKit`, `lifecycleKit`, `moduleKit`, `timerKit`, `schedulerKit`, `poolKit`, `clientKit`, `cacheKit`, `profileKit`, `readinessKit`, `schemaKit`, `localeKit`, `hookKit`, `settingsKit`, `optionsKit`, `commandKit`, `codecKit`, `interopKit`, `mediaKit`, `testKit`, `commKit`, `widgetKit`, `apiKit`, `brokerKit`, `logKit`, `compatKit`, `bridgeKit`, `panelKit`, `menuKit`, `launcherKit`, `tooltipKit`, `barKit`, `dialogKit`, `toastKit`, `bindingKit`, `glowKit`, `editModeKit`, `rangeKit`, `unitFrameKit`, `addonKit`), while the Lua facade/module name is PascalCase (`SignalKit`, `EventKit`, `LifecycleKit`, `ModuleKit`, `TimerKit`, `SchedulerKit`, `PoolKit`, `ClientKit`, `CacheKit`, `ProfileKit`, `ReadinessKit`, `SchemaKit`, `LocaleKit`, `HookKit`, `SettingsKit`, `OptionsKit`, `CommandKit`, `CodecKit`, `InteropKit`, `MediaKit`, `TestKit`, `CommKit`, `WidgetKit`, `ApiKit`, `BrokerKit`, `LogKit`, `CompatKit`, `BridgeKit`, `PanelKit`, `MenuKit`, `LauncherKit`, `TooltipKit`, `BarKit`, `DialogKit`, `ToastKit`, `BindingKit`, `GlowKit`, `EditModeKit`, `RangeKit`, `UnitFrameKit`, `AddonKit`).
+Public framework capability packages use an Apple-style `Kit` suffix. The canonical machine-readable package ID is lowerCamelCase (<!-- generated:package-ids -->`addonKit`, `apiKit`, `barKit`, `bindingKit`, `bridgeKit`, `brokerKit`, `cacheKit`, `clientKit`, `codecKit`, `commandKit`, `commKit`, `compatKit`, `dialogKit`, `editModeKit`, `eventKit`, `glowKit`, `hookKit`, `interopKit`, `launcherKit`, `lifecycleKit`, `localeKit`, `logKit`, `mediaKit`, `menuKit`, `moduleKit`, `optionsKit`, `panelKit`, `poolKit`, `profileKit`, `rangeKit`, `readinessKit`, `schedulerKit`, `schemaKit`, `settingsKit`, `signalKit`, `timerKit`, `toastKit`, `tooltipKit`, `unitFrameKit`, `widgetKit`, `testKit`<!-- /generated:package-ids -->), while the Lua facade/module name is PascalCase (<!-- generated:facade-names -->`AddonKit`, `ApiKit`, `BarKit`, `BindingKit`, `BridgeKit`, `BrokerKit`, `CacheKit`, `ClientKit`, `CodecKit`, `CommandKit`, `CommKit`, `CompatKit`, `DialogKit`, `EditModeKit`, `EventKit`, `GlowKit`, `HookKit`, `InteropKit`, `LauncherKit`, `LifecycleKit`, `LocaleKit`, `LogKit`, `MediaKit`, `MenuKit`, `ModuleKit`, `OptionsKit`, `PanelKit`, `PoolKit`, `ProfileKit`, `RangeKit`, `ReadinessKit`, `SchedulerKit`, `SchemaKit`, `SettingsKit`, `SignalKit`, `TimerKit`, `ToastKit`, `TooltipKit`, `UnitFrameKit`, `WidgetKit`, `TestKit`<!-- /generated:facade-names -->).
 
 `registry` / `Registry` is an infrastructure exception because it provides package identity and revision reconciliation rather than a framework capability surface.
 
@@ -79,7 +81,7 @@ packages/<name>/
 ├── README.md
 ├── package.manifest.json
 ├── docs/
-│   └── API.md              # required for packages declaring an API generation
+│   └── API.md              # required for packages declaring an API generation; the sections of CONTRIBUTING.md's skeleton
 ├── src/
 │   ├── <Facade>.lua        # the one top-level runtime file, loaded first
 │   ├── .luarc.json         # lua-language-server workspace for this directory
@@ -283,6 +285,14 @@ reader who knows one Kit can read the next:
   scripts and callbacks such a frame was given call through a dispatch table
   in the shared `_state`, which every revision rewrites, so an upgraded copy
   takes over frames an older copy created.
+- **Shared helpers are copies of one source.** The small helpers every Kit
+  carries (`isSecret`, `reportError`, `describeKey`, `validateFacade`, the
+  limits loop) are copied from `tooling/shared/lua/` between
+  `-- shared:begin` and `-- shared:end` markers, and
+  `python3 -m tooling.shared.sync --check` holds each copy to its source
+  ([`TOOLING.md`](TOOLING.md#shared-helper-blocks)). Kits convert to the
+  blocks one at a time; until then their hand-written helpers keep the
+  conventions above.
 
 ## Package by package
 

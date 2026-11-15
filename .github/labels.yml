@@ -50,6 +50,10 @@
   description: "The example addon under examples/."
 
 # Kit: one label per package under packages/, named after its package ID.
+# generated:kit-labels
+- name: "kit: registry"
+  color: "5319e7"
+  description: "The registry package."
 - name: "kit: addonKit"
   color: "5319e7"
   description: "The addonKit package."
@@ -143,9 +147,6 @@
 - name: "kit: readinessKit"
   color: "5319e7"
   description: "The readinessKit package."
-- name: "kit: registry"
-  color: "5319e7"
-  description: "The registry package."
 - name: "kit: schedulerKit"
   color: "5319e7"
   description: "The schedulerKit package."
@@ -158,9 +159,6 @@
 - name: "kit: signalKit"
   color: "5319e7"
   description: "The signalKit package."
-- name: "kit: testKit"
-  color: "5319e7"
-  description: "The testKit package."
 - name: "kit: timerKit"
   color: "5319e7"
   description: "The timerKit package."
@@ -176,6 +174,10 @@
 - name: "kit: widgetKit"
   color: "5319e7"
   description: "The widgetKit package."
+- name: "kit: testKit"
+  color: "5319e7"
+  description: "The testKit package."
+# /generated:kit-labels
 
 # Status: where the issue or pull request stands.
 - name: "needs triage"

@@ -164,13 +164,13 @@ registry
 │       ├──→ tooltipKit
 │       ├──→ barKit
 │       ├──→ toastKit
-│       ├──→ glowKit
-│       └──→ widgetKit   (also needs signalKit)
-│               └──→ panelKit   (also needs optionsKit)
+│       └──→ glowKit
+├──→ widgetKit   (its Position part also needs signalKit)
+│       └──→ panelKit   (also needs optionsKit and widgetKit's Renderer part)
 ├──→ timerKit
 │       ├──→ readinessKit
+│       ├──→ commKit   (also signalKit, eventKit, poolKit)
 │       └──→ schedulerKit
-│               ├──→ commKit   (also signalKit, eventKit, poolKit)
 │               └──→ testKit   (also lifecycleKit; development only, never bundled)
 └──→ signalKit
        ├──→ mediaKit
@@ -207,15 +207,21 @@ brokerKit/BrokerKit.lua
 cacheKit/CacheKit.lua
 clientKit/ClientKit.lua
 codecKit/CodecKit.lua
+codecKit/parts/CodecKit-Compression.lua
 eventKit/EventKit.lua
 timerKit/TimerKit.lua
-schedulerKit/SchedulerKit.lua
 commKit/CommKit.lua
+commKit/parts/CommKit-SyncSet.lua
+commKit/parts/CommKit-ChatThrottle.lua
 schemaKit/SchemaKit.lua
 commandKit/CommandKit.lua
+optionsKit/OptionsKit.lua
+commandKit/parts/CommandKit-Options.lua
+commandKit/parts/CommandKit-Completion.lua
 compatKit/CompatKit.lua
 dialogKit/DialogKit.lua
 editModeKit/EditModeKit.lua
+eventKit/parts/EventKit-Coalescing.lua
 glowKit/GlowKit.lua
 hookKit/HookKit.lua
 interopKit/InteropKit.lua
@@ -226,17 +232,34 @@ logKit/LogKit.lua
 mediaKit/MediaKit.lua
 menuKit/MenuKit.lua
 moduleKit/ModuleKit.lua
-optionsKit/OptionsKit.lua
+optionsKit/parts/OptionsKit-Profiles.lua
+optionsKit/parts/OptionsKit-Dynamic.lua
 widgetKit/WidgetKit.lua
+widgetKit/parts/WidgetKit-Containers.lua
+widgetKit/parts/WidgetKit-Text.lua
+widgetKit/parts/WidgetKit-Button.lua
+widgetKit/parts/WidgetKit-CheckBox.lua
+widgetKit/parts/WidgetKit-Slider.lua
+widgetKit/parts/WidgetKit-EditBox.lua
+widgetKit/parts/WidgetKit-Dropdown.lua
+widgetKit/parts/WidgetKit-ColorPicker.lua
+widgetKit/parts/WidgetKit-Renderer.lua
 panelKit/PanelKit.lua
 profileKit/ProfileKit.lua
 rangeKit/RangeKit.lua
 readinessKit/ReadinessKit.lua
+schedulerKit/SchedulerKit.lua
+schedulerKit/parts/SchedulerKit-Coalescing.lua
+schedulerKit/parts/SchedulerKit-Lanes.lua
+schedulerKit/parts/SchedulerKit-Watch.lua
 settingsKit/SettingsKit.lua
 settingsKit/parts/SettingsKit-Namespaces.lua
+signalKit/parts/SignalKit-Coalescing.lua
 toastKit/ToastKit.lua
 tooltipKit/TooltipKit.lua
 unitFrameKit/UnitFrameKit.lua
+widgetKit/parts/WidgetKit-ScrollList.lua
+widgetKit/parts/WidgetKit-Position.lua
 ```
 
 You can list the files directly in your `.toc`:
@@ -264,6 +287,22 @@ among themselves, because they depend only on the facade:
 apiKit/ApiKit.lua
 apiKit/flavours/Retail.lua
 ```
+
+The standalone `MoltenCodes` addon's `.toc`, and any `.toc` that
+`python3 -m tooling.package.embeds --toc` writes, ends each flavour file line
+with `[AllowLoadGameType standard]`, `[AllowLoadGameType mists]` or
+`[AllowLoadGameType vanilla]`, so a client compiles only its own flavour's
+tables (warcraft.wiki.gg, "TOC format": inline directives on file lines since
+patch 11.1.5, included in Mists of Pandaria Classic 5.5.4 and Classic Era
+1.15.9). An addon that lists the files in its own `.toc` can do the same:
+
+```toc
+Libs\MoltenCodes\apiKit\flavours\Retail.lua [AllowLoadGameType standard]
+Libs\MoltenCodes\apiKit\flavours\ClassicEra.lua [AllowLoadGameType vanilla]
+```
+
+`embeds.xml` has no such directive: there, list only the flavour files your
+addon ships.
 
 
 ### Choosing Kits and parts
@@ -304,19 +343,18 @@ files:
 <!-- generated:footprint -->
 | Files | Kit | Alongside `registry/Registry.lua` |
 |---|---|---|
-| 2 | `addonKit`, `apiKit`, `poolKit`, `bindingKit`, `bridgeKit`, `signalKit`, `cacheKit`, `clientKit`, `timerKit`, `schemaKit`, `compatKit`, `dialogKit`, `editModeKit`, `hookKit`, `interopKit`, `localeKit`, `menuKit`, `profileKit`, `rangeKit`, `unitFrameKit` | nothing |
+| 2 | `addonKit`, `apiKit`, `poolKit`, `bindingKit`, `bridgeKit`, `signalKit`, `cacheKit`, `clientKit`, `timerKit`, `schemaKit`, `compatKit`, `dialogKit`, `editModeKit`, `hookKit`, `interopKit`, `localeKit`, `menuKit`, `widgetKit`, `profileKit`, `rangeKit`, `unitFrameKit` | nothing |
 | 3 | `barKit`, `codecKit`, `glowKit`, `toastKit`, `tooltipKit` | `poolKit` |
 | 3 | `brokerKit`, `eventKit`, `logKit`, `mediaKit` | `signalKit` |
-| 3 | `schedulerKit`, `readinessKit` | `timerKit` |
+| 3 | `readinessKit`, `schedulerKit` | `timerKit` |
 | 3 | `commandKit` | `schemaKit` |
-| 4 | `widgetKit` | `poolKit`, `signalKit` |
 | 4 | `launcherKit` | `signalKit`, `brokerKit` |
 | 4 | `lifecycleKit` | `signalKit`, `eventKit` |
 | 4 | `optionsKit`, `settingsKit` | `schemaKit`, `signalKit` |
 | 5 | `moduleKit` | `signalKit`, `eventKit`, `lifecycleKit` |
-| 7 | `commKit` | `signalKit`, `eventKit`, `poolKit`, `timerKit`, `schedulerKit` |
+| 6 | `commKit` | `signalKit`, `eventKit`, `poolKit`, `timerKit` |
+| 6 | `panelKit` | `schemaKit`, `signalKit`, `optionsKit`, `widgetKit` |
 | 7 | `testKit` (development only) | `signalKit`, `eventKit`, `lifecycleKit`, `timerKit`, `schedulerKit` |
-| 7 | `panelKit` | `schemaKit`, `signalKit`, `optionsKit`, `poolKit`, `widgetKit` |
 
 Each Kit counts as one file here. `apiKit` also carries 5 further core files under `apiKit/flavours/`.
 <!-- /generated:footprint -->
@@ -337,7 +375,30 @@ part loads after its Kit's core and brings in what it needs:
 |---|---|---|---|
 | `addonKit/Composition` | `addonKit/parts/AddonKit-Composition.lua` | MC:Options (an options panel with its slash command) and MC:Launcher (a minimap button kept in the profile). | nothing |
 | `addonKit/Database` | `addonKit/parts/AddonKit-Database.lua` | MC:Database (a SettingsKit database from AceDB-style defaults, the schema inferred), MC.Range and MC.Enum. | nothing |
+| `codecKit/Compression` | `codecKit/parts/CodecKit-Compression.lua` | Raw DEFLATE compression and inflation: Compress, Decompress, compress = "deflate" on the encoders and compressed frames on decode, natively through C_EncodingUtil.CompressString where the client has it. | nothing |
+| `commKit/SyncSet` | `commKit/parts/CommKit-SyncSet.lua` | scope:SyncSet: named fields synchronised with peers by content hash, answering only with the fields that differ. | `codecKit` |
+| `commKit/ChatThrottle` | `commKit/parts/CommKit-ChatThrottle.lua` | scope:SendChat and Battle.net game data (scope:SendBattleNet, scope:RegisterBattleNet) through the shared bandwidth budget, the senders ChatThrottleLib throttles beside addon messages. | nothing |
+| `commandKit/Options` | `commandKit/parts/CommandKit-Options.lua` | Drive an OptionsKit tree from a slash command: the get, set, reset, list and exec verbs and AceConfigCmd's path syntax. | `signalKit`, `optionsKit` |
+| `commandKit/Completion` | `commandKit/parts/CommandKit-Completion.lua` | Tab completion in chat edit boxes: the scopes' own commands and AceTab-style completion providers. | nothing |
+| `eventKit/Coalescing` | `eventKit/parts/EventKit-Coalescing.lua` | Coalesce and Derive: events collected into one callback per interval, and values recomputed after a quiet period, timed by TimerKit (a lane by SchedulerKit). | nothing |
+| `optionsKit/Profiles` | `optionsKit/parts/OptionsKit-Profiles.lua` | OptionsKit:ProfileOptions: the ready-made group over a SettingsKit database's profiles, with the per-specialization choices. | nothing |
+| `optionsKit/Dynamic` | `optionsKit/parts/OptionsKit-Dynamic.lua` | Trees that change shape after Define: builder functions, tree:NotifyChange(), tree:Replace and tree:Remove. | nothing |
+| `schedulerKit/Coalescing` | `schedulerKit/parts/SchedulerKit-Coalescing.lua` | Debounce and Coalesce handles on the facade and on scopes, with the coalescing family's shared clock, member links and protected delivery. | nothing |
+| `schedulerKit/Lanes` | `schedulerKit/parts/SchedulerKit-Lanes.lua` | Named lanes that ration a resource: in-flight and interval limits, retries with backoff, and Debounce or Coalesce delivery through a lane. | `schedulerKit/Coalescing` |
+| `schedulerKit/Watch` | `schedulerKit/parts/SchedulerKit-Watch.lua` | Watch: poll a predicate on a shared per-interval ticker and call back when its result changes. | `schedulerKit/Coalescing` |
 | `settingsKit/Namespaces` | `settingsKit/parts/SettingsKit-Namespaces.lua` | db:RegisterNamespace and db:GetNamespace: child databases with their own schema over the saved variable's namespaces section, in AceDB's layout, following the parent's profile. | nothing |
+| `signalKit/Coalescing` | `signalKit/parts/SignalKit-Coalescing.lua` | Bucketed bus messages: collect a burst of publishes and deliver it once per interval. | `timerKit`, `schedulerKit`, `schedulerKit/Coalescing` |
+| `widgetKit/Containers` | `widgetKit/parts/WidgetKit-Containers.lua` | The container types Frame (a movable, resizable window), Group and ScrollFrame. | nothing |
+| `widgetKit/Text` | `widgetKit/parts/WidgetKit-Text.lua` | The display types Label, Heading and Spacer. | nothing |
+| `widgetKit/Button` | `widgetKit/parts/WidgetKit-Button.lua` | The Button type, key capture included. | nothing |
+| `widgetKit/CheckBox` | `widgetKit/parts/WidgetKit-CheckBox.lua` | The CheckBox type, two- or three-state. | nothing |
+| `widgetKit/Slider` | `widgetKit/parts/WidgetKit-Slider.lua` | The Slider type, a slider with a value box. | nothing |
+| `widgetKit/EditBox` | `widgetKit/parts/WidgetKit-EditBox.lua` | The EditBox type, single- and multi-line text entry. | nothing |
+| `widgetKit/Dropdown` | `widgetKit/parts/WidgetKit-Dropdown.lua` | The Dropdown type and CreateMediaPicker, a Dropdown over a MediaKit list. | nothing |
+| `widgetKit/ColorPicker` | `widgetKit/parts/WidgetKit-ColorPicker.lua` | The ColorPicker type, a swatch over the client colour picker. | nothing |
+| `widgetKit/ScrollList` | `widgetKit/parts/WidgetKit-ScrollList.lua` | The ScrollList type, a virtualised list over the client's ScrollBox framework. | nothing |
+| `widgetKit/Position` | `widgetKit/parts/WidgetKit-Position.lua` | WidgetKit.Anchor, the normalised anchor value type, and BindPosition, a frame's position kept in a storage table. | `signalKit` |
+| `widgetKit/Renderer` | `widgetKit/parts/WidgetKit-Renderer.lua` | RenderOptions: OptionsKit trees rendered into WidgetKit containers, with childGroups pages and extension points for later parts. | `widgetKit/Containers`, `widgetKit/Text`, `widgetKit/Button`, `widgetKit/CheckBox`, `widgetKit/Slider`, `widgetKit/EditBox`, `widgetKit/Dropdown`, `widgetKit/ColorPicker` |
 <!-- /generated:parts -->
 
 ## A complete example addon
@@ -404,6 +465,11 @@ by the example and are listed so the file is a complete template.
         doubles as the complete list; an addon keeps only the packages it uses,
         plus everything they depend on. Those marked "optional here" are not
         used by this example and can be removed from a copy of it.
+
+        Of the Kits' optional part files (`<kit>\parts\<Facade>-<Part>.lua`)
+        it lists only those the example uses; each loads after its Kit and
+        everything it needs. `python3 -m tooling.package.embeds` writes this
+        file for any selection of Kits and parts.
     -->
     <Script file="Libs\MoltenCodes\registry\Registry.lua" />
     <Script file="Libs\MoltenCodes\apiKit\ApiKit.lua" /> <!-- optional here -->
@@ -416,15 +482,17 @@ by the example and are listed so the file is a complete template.
     <Script file="Libs\MoltenCodes\brokerKit\BrokerKit.lua" /> <!-- optional here -->
     <Script file="Libs\MoltenCodes\cacheKit\CacheKit.lua" /> <!-- optional here -->
     <Script file="Libs\MoltenCodes\clientKit\ClientKit.lua" />
-    <Script file="Libs\MoltenCodes\poolKit\PoolKit.lua" /> <!-- WidgetKit needs it -->
+    <Script file="Libs\MoltenCodes\poolKit\PoolKit.lua" /> <!-- optional here: CommKit needs it -->
     <Script file="Libs\MoltenCodes\codecKit\CodecKit.lua" /> <!-- optional here -->
     <Script file="Libs\MoltenCodes\eventKit\EventKit.lua" />
     <Script file="Libs\MoltenCodes\timerKit\TimerKit.lua" /> <!-- module scope timers; ReadinessKit needs it -->
-    <Script file="Libs\MoltenCodes\schedulerKit\SchedulerKit.lua" /> <!-- EventKit:Coalesce needs it -->
     <Script file="Libs\MoltenCodes\commKit\CommKit.lua" /> <!-- optional here -->
     <Script file="Libs\MoltenCodes\schemaKit\SchemaKit.lua" />
     <Script file="Libs\MoltenCodes\commandKit\CommandKit.lua" />
+    <Script file="Libs\MoltenCodes\optionsKit\OptionsKit.lua" />
+    <Script file="Libs\MoltenCodes\commandKit\parts\CommandKit-Options.lua" /> <!-- BindOptions, which Commands.lua uses -->
     <Script file="Libs\MoltenCodes\compatKit\CompatKit.lua" /> <!-- optional here -->
+    <Script file="Libs\MoltenCodes\eventKit\parts\EventKit-Coalescing.lua" /> <!-- Coalesce, which Core.lua uses; TimerKit times it -->
     <Script file="Libs\MoltenCodes\hookKit\HookKit.lua" /> <!-- module scope hooks -->
     <Script file="Libs\MoltenCodes\interopKit\InteropKit.lua" /> <!-- optional here -->
     <Script file="Libs\MoltenCodes\lifecycleKit\LifecycleKit.lua" />
@@ -432,11 +500,21 @@ by the example and are listed so the file is a complete template.
     <Script file="Libs\MoltenCodes\logKit\LogKit.lua" /> <!-- optional here -->
     <Script file="Libs\MoltenCodes\mediaKit\MediaKit.lua" /> <!-- optional here -->
     <Script file="Libs\MoltenCodes\moduleKit\ModuleKit.lua" />
-    <Script file="Libs\MoltenCodes\optionsKit\OptionsKit.lua" />
+    <Script file="Libs\MoltenCodes\optionsKit\parts\OptionsKit-Profiles.lua" /> <!-- ProfileOptions, which Options.lua uses -->
     <Script file="Libs\MoltenCodes\profileKit\ProfileKit.lua" /> <!-- optional here -->
     <Script file="Libs\MoltenCodes\readinessKit\ReadinessKit.lua" />
+    <Script file="Libs\MoltenCodes\schedulerKit\SchedulerKit.lua" /> <!-- optional here: CommKit uses it when present -->
     <Script file="Libs\MoltenCodes\settingsKit\SettingsKit.lua" />
     <Script file="Libs\MoltenCodes\widgetKit\WidgetKit.lua" />
+    <Script file="Libs\MoltenCodes\widgetKit\parts\WidgetKit-Containers.lua" /> <!-- the Frame window Window.lua creates -->
+    <Script file="Libs\MoltenCodes\widgetKit\parts\WidgetKit-Text.lua" /> <!-- the Renderer needs this and the types below -->
+    <Script file="Libs\MoltenCodes\widgetKit\parts\WidgetKit-Button.lua" />
+    <Script file="Libs\MoltenCodes\widgetKit\parts\WidgetKit-CheckBox.lua" />
+    <Script file="Libs\MoltenCodes\widgetKit\parts\WidgetKit-Slider.lua" />
+    <Script file="Libs\MoltenCodes\widgetKit\parts\WidgetKit-EditBox.lua" />
+    <Script file="Libs\MoltenCodes\widgetKit\parts\WidgetKit-Dropdown.lua" />
+    <Script file="Libs\MoltenCodes\widgetKit\parts\WidgetKit-ColorPicker.lua" />
+    <Script file="Libs\MoltenCodes\widgetKit\parts\WidgetKit-Renderer.lua" /> <!-- RenderOptions, which Window.lua uses -->
 </Ui>
 ```
 
@@ -721,15 +799,15 @@ actually touch, which is deliberately small:
 | `settingsKit` | SchemaKit's and SignalKit's surfaces | `UnitName` and `GetRealmName` (`db.char`, and `db.realm` without `GetRealmName`, unavailable), `UnitClass` (`db.class` unavailable), `UnitFactionGroup` (`db.faction` unavailable); an unavailable scope raises at the reader; `issecretvalue` (nothing treated as secret), `geterrorhandler` (`print`), EventKit API 1 through `Registry:Find` (no compaction at `PLAYER_LOGOUT`; call `db:Compact()`; no automatic spec-profile switching; call `db:ApplySpecProfile()`), `C_SpecializationInfo`, `GetNumTalentGroups`, `WOW_PROJECT_ID` (no spec index: spec-profile assignments are kept and nothing switches) |
 | `optionsKit` | SchemaKit's and SignalKit's surfaces | `issecretvalue` (looked up at every call; absent: nothing is treated as secret), SettingsKit API 1 through `Registry:Find` (`Define` with `options.db` and `ProfileOptions` raise; `get`/`set` options unaffected); `UnitName` / `GetRealmName` (`ProfileOptions` then offers no per-character profile choice); SettingsKit revision 11 or later (`ProfileOptions` then carries no spec-profile selects); `UnitClass` / `GetSpecializationInfoForClassID` (spec selects labelled by index) |
 | `commandKit` | SchemaKit's surface; `SlashCmdList` (`Register` and `BindOptions` raise at the caller) | `SLASH_<key><n>`, `SecureCmdList`, `ChatTypeInfo`, `EMOTE<n>_CMD<m>` and `MAXEMOTEINDEX` (the taken check finds nothing), `DEFAULT_CHAT_FRAME` (`print`), `ChatEdit_CustomTabPressed` (`EnableCompletion` returns `false`), `ChatEdit_GetActiveWindow`, `geterrorhandler` (`print`), ClientKit API 1 / `issecretvalue`, OptionsKit API 1 (`BindOptions` raises), LocaleKit API 1 (`Printf` uses `string.format`); LifecycleKit and EventKit API 1 through `Registry:Find` decide who closes an addon scope at logout (with neither, call `CommandKit:CloseAddonScopes` on `PLAYER_LOGOUT`) |
-| `codecKit` | PoolKit's surface | SchedulerKit API 1 through `Registry:Find` (`EncodeAsync` and `DecodeAsync` raise at the caller), `issecretvalue` (looked up at every call; absent: nothing is treated as secret), `C_EncodingUtil.CompressString` and `Enum.CompressionMethod`/`Enum.CompressionLevel` (looked up at every call; absent: every input is compressed in Lua; documented on every supported client) |
+| `codecKit` | PoolKit's surface | SchedulerKit API 1 through `Registry:Find` (`EncodeAsync` and `DecodeAsync` raise at the caller), `issecretvalue` (looked up at every call; absent: nothing is treated as secret), `C_EncodingUtil.CompressString` and `Enum.CompressionMethod`/`Enum.CompressionLevel`, read by the Compression part (looked up at every call; absent: every input is compressed in Lua; documented on every supported client); the Compression part itself (absent: compressing raises at the caller naming `codecKit\parts\CodecKit-Compression.lua`, and a compressed frame decodes to `false, "compressionUnavailable"`) |
 | `interopKit` | nothing but Lua 5.1 | `LibStub` (every call returns `"absent"`), `issecretvalue` (nothing treated as secret) |
 | `bridgeKit` | nothing but Lua 5.1 | OptionsKit API 1 through `Registry:Find` (`DefineAceConfig` raises at the caller; `ConvertAceConfig` still returns a plain tree), SchemaKit API 1 (the AceDB importer raises at the caller), SettingsKit API 1 (its profile-name limit; 64 bytes without it), CommKit API 1 with raw addon messages (`OpenAceComm` raises at the caller without it), `Ambiguate` (absent: senders are passed unchanged), `GetTime` (absent: streams never expire, still bounded by `maxAceSpoolBytes`), `issecretvalue` (looked up at every call; absent: nothing is treated as secret) |
 | `brokerKit` | SignalKit's surface | `issecretvalue` (nothing is secret), `LibStub` and LibDataBroker-1.1 (`ExposeToLibDataBroker` and `AdoptFromLibDataBroker` return `false, "absent"`) |
 | `logKit` | SignalKit's surface (`NewJournal`, `GetLimits`; `maxJournalArguments` at least 4) | `GetTimePreciseSec` (record `time` is `false`), `issecretvalue` (nothing secret), `geterrorhandler` (failing sinks, format errors and refused journal firings fall back to `print`, also when the handler raises), `DEFAULT_CHAT_FRAME` (`ChatSink` prints), `SlashCmdList` (`RegisterCommand` returns `false, "unavailable"`), CommandKit API 1 through `Registry:Find` (`RegisterCommand` returns `false, "absent"`), SettingsKit API 1 through `Registry:Find` (`BindLevels` raises at the caller) |
 | `mediaKit` | SignalKit's surface | `GetLocale` (the client writes Latin), `issecretvalue` (nothing is secret), `LibStub` and LibSharedMedia-3.0 (`AdoptLibSharedMedia` and `MirrorToLibSharedMedia` return `false, "absent"`) |
 | `testKit` (development only) | LifecycleKit's and SchedulerKit's surfaces | `issecretvalue` (nothing treated as secret), `issecurevariable` (`ToBeSecure` fails), `GetTimePreciseSec` (`durationMs` 0), `geterrorhandler` (`print`), EventKit and TimerKit API 1 through `Registry:Find` |
-| `commKit` | SignalKit's, EventKit's, TimerKit's, SchedulerKit's and PoolKit's surfaces; `GetTimePreciseSec`; `C_ChatInfo.SendAddonMessage` (legacy global fallback; else `Send` refuses `"unavailable"`) | `C_ChatInfo.RegisterAddonMessagePrefix` and `IsAddonMessagePrefixRegistered` (legacy globals, then nothing registered), `C_ChatInfo.SendAddonMessageLogged` (logged sends refused), the events `CHAT_MSG_ADDON`, `CHAT_MSG_ADDON_LOGGED`, `GROUP_ROSTER_UPDATE`, `PLAYER_ENTERING_WORLD`, `GetFramerate` (no low-frame-rate mode), `UnitInParty` and `UnitInRaid` (no roster eviction; streams still expire), `Enum` (12.x values assumed), `securecallfunction` (`pcall`), `issecretvalue`, `geterrorhandler` (`print`), CodecKit API 1 (`SyncSet` raises), HookKit API 1 (outside traffic uncharged), SchemaKit API 1 (`schema` raises); LifecycleKit API 1 through `Registry:Find` (otherwise CommKit's own `PLAYER_LOGOUT` watcher closes its addon scopes) |
-| `widgetKit` | PoolKit's and SignalKit's surfaces; `CreateFrame`, the ScrollBox framework (`WowScrollBoxList`, `MinimalScrollBar`, `CreateScrollBoxListLinearView`, `ScrollUtil.InitScrollBoxListWithScrollBar`, `CreateDataProvider`; `Create("ScrollList")` raises at the caller) | `UIParent` (released frames rest on a hidden holder), `issecretvalue` (nothing secret), `geterrorhandler` (`print`), `ColorPickerFrame:SetupColorPickerAndShow` (a click fires the current colour), `IsAltKeyDown`, `IsControlKeyDown`, `IsShiftKeyDown` (no modifiers), OptionsKit API 1 through `Registry:Find` (`RenderOptions` raises at the caller), SchedulerKit API 1 (saves are immediate), MediaKit API 1 (`CreateMediaPicker` raises; the renderer uses the option's `values`) |
+| `commKit` | SignalKit's, EventKit's, TimerKit's and PoolKit's surfaces; `GetTimePreciseSec`; `C_ChatInfo.SendAddonMessage` (legacy global fallback; else `Send` refuses `"unavailable"`) | `C_ChatInfo.RegisterAddonMessagePrefix` and `IsAddonMessagePrefixRegistered` (legacy globals, then nothing registered), `C_ChatInfo.SendAddonMessageLogged` (logged sends refused), the events `CHAT_MSG_ADDON`, `CHAT_MSG_ADDON_LOGGED`, `GROUP_ROSTER_UPDATE`, `PLAYER_ENTERING_WORLD`, `GetFramerate` (no low-frame-rate mode), `UnitInParty` and `UnitInRaid` (no roster eviction; streams still expire), `Enum` (12.x values assumed), `securecallfunction` (`pcall`), `issecretvalue`, `geterrorhandler` (`print`), SchedulerKit API 1 (the send driver runs on a TimerKit timer instead of a SchedulerKit job), CodecKit API 1 (the SyncSet part needs it), the SyncSet and ChatThrottle parts (`scope:SyncSet`, `scope:SendChat` and the Battle.net senders raise at the caller naming the part's file), HookKit API 1 (outside traffic uncharged), SchemaKit API 1 (`schema` raises); LifecycleKit API 1 through `Registry:Find` (otherwise CommKit's own `PLAYER_LOGOUT` watcher closes its addon scopes) |
+| `widgetKit` | Registry's surface (the Position part: SignalKit's; the Renderer part: its type parts); `CreateFrame`, the ScrollBox framework (`WowScrollBoxList`, `MinimalScrollBar`, `CreateScrollBoxListLinearView`, `ScrollUtil.InitScrollBoxListWithScrollBar`, `CreateDataProvider`; `Create("ScrollList")` raises at the caller) | `UIParent` (released frames rest on a hidden holder), `issecretvalue` (nothing secret), `geterrorhandler` (`print`), `ColorPickerFrame:SetupColorPickerAndShow` (a click fires the current colour), `IsAltKeyDown`, `IsControlKeyDown`, `IsShiftKeyDown` (no modifiers), OptionsKit API 1 through `Registry:Find` (`RenderOptions` raises at the caller), SchedulerKit API 1 (saves are immediate), MediaKit API 1 (`CreateMediaPicker` raises; the renderer uses the option's `values`) |
 | `unitFrameKit` | nothing at load; `CreateFrame` and `EnumerateFrames` for scans (without them nothing is kept and every query answers `nil`) | `UnitIsUnit` (every query answers `nil`), `UnitExists` (every query looks), `C_NamePlate` (`GetNamePlate` answers `nil`), `issecretvalue` (nothing secret), `geterrorhandler` (`print`) |
 | `addonKit` | nothing | `issecretvalue` (nothing secret), `geterrorhandler` (`print`); every Kit through `Registry:Find` when it is first used (a helper whose Kit is missing raises at the caller with the file to add) |
 | `rangeKit` | nothing (without `UnitExists` every unit counts as missing: `nil`) | `CreateFrame` (no rebuild events until it exists), `C_EventUtils` (every rebuild event registered), `UnitClass`, `C_SpellBook`, `C_Spell`, `Enum` (no spell checkers), `CheckInteractDistance` (no interact checkers), `UnitCanAttack`, `UnitCanAssist`, `UnitIsDeadOrGhost`, `UnitIsUnit` (answer counts as no), `InCombatLockdown` (never in combat), `issecretvalue` (nothing secret), `geterrorhandler` (`print`) |
@@ -744,7 +822,7 @@ actually touch, which is deliberately small:
 | `menuKit` | `MenuUtil.CreateContextMenu`, `Menu.ModifyMenu` and `Menu.GetManager` (`Blizzard_Menu`; every method but `SetLimits` and `GetLimits` raises at the caller without them) | `issecretvalue` (nothing secret), `geterrorhandler` (`print`) |
 | `panelKit` | WidgetKit's and OptionsKit's surfaces; `CreateFrame`; `Settings.RegisterCanvasLayoutCategory`, `Settings.RegisterCanvasLayoutSubcategory` and `Settings.RegisterAddOnCategory` (`Register` raises at the caller) | `Settings.OpenToCategory` (`panel:Open` answers `nil, "unavailable"`), `issecretvalue` (nothing secret), `geterrorhandler` (`print`) |
 | `hookKit` | nothing but Lua 5.1 | `hooksecurefunc` (`SecureHook` raises at the caller), `issecurevariable` (nothing treated as secure), `Frame:HookScript` / `Frame:GetScript` / `Frame:SetScript` (the matching script hooks raise at the caller), `Frame:IsProtected` (frame not protected), `InCombatLockdown` (never in combat), `issecretvalue` (nothing is secret); LifecycleKit and EventKit API 1 through `Registry:Find` decide who closes an addon scope at logout (with neither, call `HookKit:CloseAddonScopes` on `PLAYER_LOGOUT`) |
-| `eventKit` | `CreateFrame`, `Frame:RegisterEvent`, `Frame:RegisterUnitEvent`, `Frame:UnregisterEvent`, `Frame:SetScript`; `CombatLogGetCurrentEventInfo`, or `C_CombatLog.GetCurrentEventInfo` without it, for `ConnectCombatLog` alone (with neither, as on retail 12, `IsCombatLogAvailable()` answers `false` and `ConnectCombatLog` raises at the caller) | `C_EventUtils.IsEventValid` (unknown event names reach `RegisterEvent` instead of being refused at the caller), `securecallfunction` (falls back to `xpcall`), `geterrorhandler` (falls back to `print`), SchedulerKit API 1 through `Registry:Find` (`Coalesce` refused, `Derive` recomputes synchronously); LifecycleKit API 1 through `Registry:Find` (addon scopes close at logout either way: through LifecycleKit when loaded, otherwise through EventKit's own `PLAYER_LOGOUT` listener) |
+| `eventKit` | `CreateFrame`, `Frame:RegisterEvent`, `Frame:RegisterUnitEvent`, `Frame:UnregisterEvent`, `Frame:SetScript`; `CombatLogGetCurrentEventInfo`, or `C_CombatLog.GetCurrentEventInfo` without it, for `ConnectCombatLog` alone (with neither, as on retail 12, `IsCombatLogAvailable()` answers `false` and `ConnectCombatLog` raises at the caller) | `C_EventUtils.IsEventValid` (unknown event names reach `RegisterEvent` instead of being refused at the caller), `securecallfunction` (falls back to `xpcall`), `geterrorhandler` (falls back to `print`), the Coalescing part (`Coalesce` and `Derive` raise at the caller naming `eventKit\parts\EventKit-Coalescing.lua`), TimerKit API 1 through `Registry:Find`, read by the part (`Coalesce` refused, `Derive` recomputes synchronously), SchedulerKit API 1 with its Coalescing and Lanes parts for a `lane` alone; LifecycleKit API 1 through `Registry:Find` (addon scopes close at logout either way: through LifecycleKit when loaded, otherwise through EventKit's own `PLAYER_LOGOUT` listener) |
 | `lifecycleKit` | EventKit's surface; the events `ADDON_LOADED`, `PLAYER_LOGIN`, `PLAYER_LOGOUT`, `PLAYER_REGEN_DISABLED`, `PLAYER_REGEN_ENABLED` | `C_AddOns.IsAddOnLoaded` (falls back to the legacy global), `IsLoggedIn`, `InCombatLockdown` (absent: never in combat), TimerKit, SchedulerKit, HookKit, CommandKit and CommKit API 1 through `Registry:Find` (at logout the addon's TimerKit, SchedulerKit, EventKit, HookKit, CommandKit and CommKit scopes and then its SignalKit bus are closed, in that order); publishes the read-only `LifecycleKit.CLOSES_ADDON_SCOPES` naming the seven packages it closes at shutdown, and pairs with any revision of them |
 | `readinessKit` | TimerKit's surface | `GetTimePreciseSec` (negative cache disabled, timeouts counted in polls), EventKit API 1 through `Registry:Find` (`gate:ReprobeOn` raises at the caller), `geterrorhandler` (probe and waiter failures fall back to `print`) |
 | `timerKit` | `C_Timer.NewTimer`, `C_Timer.NewTicker` | `GetTimePreciseSec` (`GetRemaining` and `GetDeadline` then return `nil`); LifecycleKit and EventKit API 1 through `Registry:Find` decide who closes the addon scope at logout (with neither, call `TimerKit:CloseAddonScopes` on `PLAYER_LOGOUT`) |
@@ -1285,13 +1363,15 @@ only if you use the parts that exist rather than rebuilding them.
 - **Do not do work per high-frequency event.** `UNIT_HEALTH`, `BAG_UPDATE`,
   `UNIT_AURA` and their kind arrive in bursts. `EventKit:Coalesce` delivers one
   callback per interval with the set of payloads, and `EventKit:Derive` keeps a
-  value recomputed from a set of events. Coalescing needs SchedulerKit loaded:
-  without it `Coalesce` is refused at the caller and `Derive` still works but
-  recomputes synchronously on every event.
+  value recomputed from a set of events. Both are EventKit's Coalescing part
+  (`eventKit\parts\EventKit-Coalescing.lua`), timed by TimerKit: without
+  TimerKit `Coalesce` is refused at the caller and `Derive` still works but
+  recomputes synchronously on every event. SchedulerKit is needed only for a
+  `lane`.
 - **Ration a server resource through a lane, and send addon messages through
   CommKit.** Inspect requests, `/who` and other calls the server throttles go
-  through one shared `SchedulerKit:Lane` (in-flight cap, minimum interval,
-  retry with backoff) rather than a private token bucket per addon. Addon
+  through one shared `SchedulerKit:Lane` (SchedulerKit's Lanes part: in-flight
+  cap, minimum interval, retry with backoff) rather than a private token bucket per addon. Addon
   messages are the one resource with its own owner: `CommKit` holds the
   session's bandwidth budget, chunks and reassembles, and refuses rather than
   grows when a queue is full.

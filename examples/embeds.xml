@@ -11,6 +11,11 @@
         doubles as the complete list; an addon keeps only the packages it uses,
         plus everything they depend on. Those marked "optional here" are not
         used by this example and can be removed from a copy of it.
+
+        Of the Kits' optional part files (`<kit>\parts\<Facade>-<Part>.lua`)
+        it lists only those the example uses; each loads after its Kit and
+        everything it needs. `python3 -m tooling.package.embeds` writes this
+        file for any selection of Kits and parts.
     -->
     <Script file="Libs\MoltenCodes\registry\Registry.lua" />
     <Script file="Libs\MoltenCodes\apiKit\ApiKit.lua" /> <!-- optional here -->
@@ -23,15 +28,17 @@
     <Script file="Libs\MoltenCodes\brokerKit\BrokerKit.lua" /> <!-- optional here -->
     <Script file="Libs\MoltenCodes\cacheKit\CacheKit.lua" /> <!-- optional here -->
     <Script file="Libs\MoltenCodes\clientKit\ClientKit.lua" />
-    <Script file="Libs\MoltenCodes\poolKit\PoolKit.lua" /> <!-- WidgetKit needs it -->
+    <Script file="Libs\MoltenCodes\poolKit\PoolKit.lua" /> <!-- optional here: CommKit needs it -->
     <Script file="Libs\MoltenCodes\codecKit\CodecKit.lua" /> <!-- optional here -->
     <Script file="Libs\MoltenCodes\eventKit\EventKit.lua" />
     <Script file="Libs\MoltenCodes\timerKit\TimerKit.lua" /> <!-- module scope timers; ReadinessKit needs it -->
-    <Script file="Libs\MoltenCodes\schedulerKit\SchedulerKit.lua" /> <!-- EventKit:Coalesce needs it -->
     <Script file="Libs\MoltenCodes\commKit\CommKit.lua" /> <!-- optional here -->
     <Script file="Libs\MoltenCodes\schemaKit\SchemaKit.lua" />
     <Script file="Libs\MoltenCodes\commandKit\CommandKit.lua" />
+    <Script file="Libs\MoltenCodes\optionsKit\OptionsKit.lua" />
+    <Script file="Libs\MoltenCodes\commandKit\parts\CommandKit-Options.lua" /> <!-- BindOptions, which Commands.lua uses -->
     <Script file="Libs\MoltenCodes\compatKit\CompatKit.lua" /> <!-- optional here -->
+    <Script file="Libs\MoltenCodes\eventKit\parts\EventKit-Coalescing.lua" /> <!-- Coalesce, which Core.lua uses; TimerKit times it -->
     <Script file="Libs\MoltenCodes\hookKit\HookKit.lua" /> <!-- module scope hooks -->
     <Script file="Libs\MoltenCodes\interopKit\InteropKit.lua" /> <!-- optional here -->
     <Script file="Libs\MoltenCodes\lifecycleKit\LifecycleKit.lua" />
@@ -39,9 +46,19 @@
     <Script file="Libs\MoltenCodes\logKit\LogKit.lua" /> <!-- optional here -->
     <Script file="Libs\MoltenCodes\mediaKit\MediaKit.lua" /> <!-- optional here -->
     <Script file="Libs\MoltenCodes\moduleKit\ModuleKit.lua" />
-    <Script file="Libs\MoltenCodes\optionsKit\OptionsKit.lua" />
+    <Script file="Libs\MoltenCodes\optionsKit\parts\OptionsKit-Profiles.lua" /> <!-- ProfileOptions, which Options.lua uses -->
     <Script file="Libs\MoltenCodes\profileKit\ProfileKit.lua" /> <!-- optional here -->
     <Script file="Libs\MoltenCodes\readinessKit\ReadinessKit.lua" />
+    <Script file="Libs\MoltenCodes\schedulerKit\SchedulerKit.lua" /> <!-- optional here: CommKit uses it when present -->
     <Script file="Libs\MoltenCodes\settingsKit\SettingsKit.lua" />
     <Script file="Libs\MoltenCodes\widgetKit\WidgetKit.lua" />
+    <Script file="Libs\MoltenCodes\widgetKit\parts\WidgetKit-Containers.lua" /> <!-- the Frame window Window.lua creates -->
+    <Script file="Libs\MoltenCodes\widgetKit\parts\WidgetKit-Text.lua" /> <!-- the Renderer needs this and the types below -->
+    <Script file="Libs\MoltenCodes\widgetKit\parts\WidgetKit-Button.lua" />
+    <Script file="Libs\MoltenCodes\widgetKit\parts\WidgetKit-CheckBox.lua" />
+    <Script file="Libs\MoltenCodes\widgetKit\parts\WidgetKit-Slider.lua" />
+    <Script file="Libs\MoltenCodes\widgetKit\parts\WidgetKit-EditBox.lua" />
+    <Script file="Libs\MoltenCodes\widgetKit\parts\WidgetKit-Dropdown.lua" />
+    <Script file="Libs\MoltenCodes\widgetKit\parts\WidgetKit-ColorPicker.lua" />
+    <Script file="Libs\MoltenCodes\widgetKit\parts\WidgetKit-Renderer.lua" /> <!-- RenderOptions, which Window.lua uses -->
 </Ui>

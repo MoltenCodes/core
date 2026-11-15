@@ -2,6 +2,7 @@
   "name": "settingsKit",
   "displayName": "SettingsKit",
   "description": "Saved variables for World of Warcraft addons: scoped databases with schema-validated writes, defaults that are never written back, profiles and versioned migrations.",
+  "summary": "Saved variables with scopes, schema-validated writes, defaults never written back, profiles and versioned migrations.",
   "version": "0.6.0",
   "license": "MIT",
   "api": 1,

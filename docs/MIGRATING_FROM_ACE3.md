@@ -249,13 +249,16 @@ function bags:OnEnable() end
   embedded.
 - **Logout.** Ace3 calls `OnDisable` only when you disable something;
   ModuleKit disables every module at logout, so `OnDisable` runs then too.
-- `NewModule` with a prototype and `SetDefaultModuleState(false)`: a module
-  that calls `self:Disable()` in `OnInitialize` stays disabled when the addon
-  becomes ready.
+- `NewModule` with a prototype and `SetDefaultModuleState(false)` exist
+  too (ModuleKit revision 23): `addon:SetDefaultModuleState(false)`,
+  `addon:SetDefaultModulePrototype(prototype)`, `module:SetEnabledState(state)`
+  and `addon:OnModuleCreated(callback)`; a module that calls `self:Disable()`
+  in `OnInitialize` stays disabled when the addon becomes ready.
 - `MyAddon:GetModule("Bags")` is `addon:GetModule("Bags")` (`nil` when
   absent); `IterateModules` is `addon:GetModules()`, an array in creation
   order.
-- `LibStub("AceAddon-3.0"):GetAddon("Other")` raises for an unknown addon;
+- `LibStub("AceAddon-3.0"):GetAddon("Other")` is `ModuleKit:FindAddon("Other")`
+  (`nil` for an unknown addon) and `IterateAddons` is `ModuleKit:GetAddons()`;
   `ModuleKit:ForAddon("Other")` creates the container on first use.
 - The lifecycle alone, without modules, is LifecycleKit:
   `LifecycleKit:ForAddon(ADDON_NAME):OnLoaded(function(instance) end)`,
@@ -396,19 +399,14 @@ self:RegisterBucketMessage("MyAddon_Changed", 1, "OnChanged")
 ```lua
 -- MoltenCodes
 local EventKit = Registry:Get("eventKit", 1)
-local SchedulerKit = Registry:Get("schedulerKit", 1)
 local SignalKit = Registry:Get("signalKit", 1)
 
 local health = EventKit:ForAddon(ADDON_NAME):Coalesce({ "UNIT_HEALTH", "UNIT_MAXHEALTH" }, 0.2, function(units)
   for unit in pairs(units) do end
 end)
 
-local changed = SchedulerKit:ForAddon(ADDON_NAME):Coalesce(function(keys)
-  for key in pairs(keys) do end
-end, 1)
-SignalKit:Bus("MyAddon"):Subscribe("Changed", function(key)
-  changed(key)
-end)
+-- SignalKit's Coalescing part: AceBucket's RegisterBucketMessage.
+local changed = SignalKit:Bus("MyAddon"):Coalesce({ "Changed" }, 1, MyAddon, "OnChanged")
 ```
 
 - The same interval rule: the first event starts the interval and the
@@ -419,8 +417,11 @@ end)
 - **The set is reused**: read it in the callback, never keep it.
 - One interval holds at most 256 distinct keys by default (`maxKeys`); past
   that, new keys are refused and counted.
-- `EventKit:Coalesce` needs SchedulerKit embedded. `health:Close()` is
-  `UnregisterBucket`.
+- `EventKit:Coalesce` is in EventKit's Coalescing part
+  (`eventKit\parts\EventKit-Coalescing.lua`), timed by TimerKit; SchedulerKit
+  is needed only for a `lane` (its Coalescing and Lanes parts). `bus:Coalesce`
+  is in SignalKit's Coalescing part (`signalKit\parts\SignalKit-Coalescing.lua`).
+  `health:Close()` is `UnregisterBucket`.
 - `options.units` registers unit events with a filter:
   `Coalesce(events, 0.2, callback, { units = { "player", "target" } })`.
 
@@ -805,30 +806,40 @@ rendering:Refresh()
   value is read with SettingsKit's defaults, written through its validated
   write, and `tree:Reset(path)` restores the default. An option that is not
   stored keeps its own `get(info)` and `set(info, value)`.
-- **No inheritance.** Ace3 lets a group's `handler`, `get`, `set`,
-  `validate`, `disabled` and `hidden` apply to everything below it. In
-  OptionsKit every value option names its own `get`/`set` or `bind`;
-  `disabled` and `hidden` on a group still apply to its children.
-- **Functions** are callbacks only (`get`, `set`, `validate`, `disabled`,
-  `hidden`, `values`, `func`, and `desc`). `name` and `order` are plain
-  values, and method-name strings do not exist: pass a function.
+- **Inheritance** works as in Ace3 (OptionsKit revision 15): a group's
+  `handler`, `get`, `set`, `validate`, `func` and `confirm` apply below it,
+  `false` stopping them; `disabled` and `hidden` on a group apply to every
+  option below it, whatever the option says.
+- **Functions and method names**: `name`, `order`, `width`, the image fields
+  and `fontSize` may be functions, resolved by `Describe`; a string naming a
+  method of the handler in force works in `get`, `set`, `validate`, `func`,
+  `disabled`, `hidden`, the `*Hidden` flags, `values`, `sorting` and `order`,
+  checked at `Define` ([ADR 0003](decisions/0003-method-name-callbacks.md)).
+  `confirm = "Method"` is the exception: a `confirm` string is the question.
 - **Value shapes.** A `color` value is a table `{ r, g, b[, a] }` (Ace3 passes
   four values); a `multiselect` value is a map of key to boolean (Ace3 calls
   `get(info, key)` and `set(info, key, state)` per key).
 - **`validate`** returns `true`, or `false` and a message (Ace3: `true` or the
   message string). A schema refusal raises at the caller of `Set`; a
   `validate` refusal is returned for the user.
-- **`confirm`** exists on `execute` only.
+- **`confirm`** works on every kind; a renderer asks
+  `tree:GetConfirmation(path, value)` before `Set`.
 - **Keys** in `args` are identifiers (`[%a_][%w_]*`).
 - `childGroups` (`"tab"`, `"tree"`, `"select"`) is the same hint on an
   OptionsKit group, and WidgetKit's renderer draws those groups as pages.
-- Presentation fields (`width`, `icon`, `image`, `descStyle`, the
-  `dialogControl` family, per-interface `guiHidden` and
-  `cmdHidden`) have no equivalent; OptionsKit refuses unknown fields at
-  `Define`.
-- **`NotifyChange`**: the rendering follows `tree:OnChange` by itself;
-  changes made outside the tree call `rendering:Refresh()`, typically from
-  `db:OnChange` and `db:OnProfileChanged`.
+- Presentation fields (`width`, `relWidth`, `icon`, `image`, `descStyle`,
+  `tooltipHyperlink`, the `dialogControl` family, `guiHidden`, `dialogHidden`,
+  `cmdHidden` and the `*Inline` flags) are accepted (revision 15);
+  `tree:IsHidden(path, "dialog")` and `Describe("cmd")` answer per interface.
+  `dropdownHidden`, `dropdownInline` and `dropdownControl` stay refused: no
+  Ace3 interface reads them.
+- **`NotifyChange`**: embed `optionsKit\parts\OptionsKit-Dynamic.lua`, then
+  edit the table you passed to `Define` (keep a reference) or define the tree
+  from a function, and call `tree:NotifyChange()`; renderers redraw through
+  `tree:OnStructureChanged`. `tree:Replace(path, option)` and
+  `tree:Remove(path)` change one subtree. Value changes made outside the tree
+  still call `rendering:Refresh()`, typically from `db:OnChange` and
+  `db:OnProfileChanged`.
 - **Command line**: CommandKit's syntax is `/myaddon set scale 1.25`, where
   AceConfigCmd's is `/myaddon scale 1.25`.
 - **`AddToBlizOptions(appName, name, parent)`** is
@@ -920,6 +931,8 @@ frame:Show()
 
 - Window positions persist with `frame:BindPosition(storage)`.
 
+- Embed only the parts you use: each AceGUI widget file maps to a WidgetKit part (`AceGUIWidget-Slider.lua` → `widgetKit\parts\WidgetKit-Slider.lua`); see the widgetKit README, "Coming from AceGUI-3.0". Creating a base type whose part is not embedded raises with the file to add.
+
 ## AceSerializer-3.0
 
 ```lua
@@ -938,7 +951,8 @@ local ok, kind, version, payload = CodecKit:DecodeMany(text, { channel = "addon"
 
 - **A different format.** CodecKit writes a binary frame escaped for the
   addon channel (or printable, `channel = "print"`, for export strings), with
-  optional DEFLATE compression (`compress = "deflate"`). An Ace3 peer cannot
+  optional DEFLATE compression (`compress = "deflate"`, in CodecKit's
+  Compression part, `codecKit\parts\CodecKit-Compression.lua`). An Ace3 peer cannot
   read it, and CodecKit does not read AceSerializer text; for that, see
   [reading and writing AceSerializer text](#reading-and-writing-aceserializer-text)
   and [talking to Ace3 peers](#talking-to-ace3-peers-during-the-move).
@@ -987,7 +1001,18 @@ local handle, refused = comm:Send({
   number of registrations; a send that does not fit is refused with a reason
   instead of queued forever.
 - **One budget for the session**, shared with every addon, replaces
-  ChatThrottleLib; priorities are weighted 4 : 2 : 1 per chunk.
+  ChatThrottleLib; priorities are weighted 4 : 2 : 1 per chunk. The budget
+  is mutual with ChatThrottleLib's: with HookKit, CommKit charges what other
+  code sends through `SendAddonMessage`, `SendAddonMessageLogged`,
+  `SendChatMessage` and, from CommKit revision 11, `C_BattleNet.SendGameData`,
+  and ChatThrottleLib hooks the same senders.
+- ChatThrottleLib's other senders are CommKit's ChatThrottle part
+  (`commKit\parts\CommKit-ChatThrottle.lua`):
+
+  | ChatThrottleLib | CommKit |
+  |---|---|
+  | `ChatThrottleLib:SendChatMessage(prio, prefix, text, chattype, language, destination, queueName, callbackFn, callbackArg)` | `comm:SendChat({ text = text, chatType = chattype, languageID = language, target = destination, priority = ..., onComplete = ... })`. SAY, YELL and CHANNEL need a hardware event: CommKit sends them inside the call or refuses with `"hardwareEvent"`, never queued (ChatThrottleLib queues them). |
+  | `ChatThrottleLib:BNSendGameData(prio, prefix, text, chattype, gameAccountID, queueName, callbackFn, callbackArg)` | `comm:SendBattleNet({ prefix = prefix, text = text, gameAccountID = gameAccountID, priority = ... })`, framed and chunked, received whole by `comm:RegisterBattleNet(prefix, callback)` with `callback(prefix, text, senderID)`. |
 - `sender` is the name exactly as the client reports it; AceComm passes it
   through `Ambiguate(sender, "none")` first (`AceComm-3.0.lua:244`).
 - `callbackFn` progress becomes `onProgress(handle, bytesSent, bytesTotal)`;
@@ -1114,10 +1139,12 @@ end
 - Your Ace3 `get`, `set`, `func` and `validate` handlers keep working: they
   are called with an Ace3-shaped `info`, inheritance resolved, and a method
   name is looked up on its handler when it is called, as Ace3 does.
-- Every field that is dropped, renamed or changes meaning (presentation
-  fields, `step` not being enforced, a `name` function evaluated once, ...)
-  is in the report; `strict = true` turns any of them but a rename into an
-  error.
+- Every field that is dropped, renamed or changes meaning is in the report;
+  `strict = true` turns any of them but a rename into an error. With
+  OptionsKit revision 15 and later the presentation fields, `confirm` on
+  value options and live `name`/`order` callbacks are carried over instead
+  (BridgeKit revision 8), and with OptionsKit's Dynamic part
+  `tree:NotifyChange()` converts your table again.
 - `ConvertAceConfig` returns the plain tree and the report without defining
   anything, which also works without OptionsKit loaded.
 - Keys that are not identifiers are renamed (`"my key"` becomes `my_key`);
@@ -1542,7 +1569,7 @@ ToastKit:Show({ title = "Profile copied", text = "Raid → Solo", duration = 4 }
 | Ace3 or library | Status |
 |---|---|
 | AceGUI `Icon`, `InteractiveLabel`, `Frame:SetStatusText`, the LibSharedMedia widget set | No equivalent. `TreeGroup`, `TabGroup` and `DropdownGroup` exist as `childGroups` pages in the options renderer, not as widgets of their own. |
-| AceTab completion in arbitrary edit boxes | Not planned; CommandKit completes its own commands. |
+| AceTab completion | Chat edit boxes: a CommandKit scope's `RegisterCompletion(name, pattern, provider)` (Completion part). Other edit boxes: not planned (the client calls `ChatEdit_CustomTabPressed` only from chat edit boxes, and a `HookScript` cannot stop another frame's `OnTabPressed`). |
 | LibCustomGlow-1.0 autocast and proc glows, LibEditMode frame settings, LibRangeCheck-3.0 item checks | Not carried over; each Kit's README says why. |
 | Reading or writing AceComm and AceSerializer traffic | BridgeKit. |
 | Converting AceConfig tables and importing AceDB data | BridgeKit. |

@@ -13,6 +13,10 @@ Everything registered through `self.scope` belongs to the addon object (or the
 module) and is released when it is disabled, so none of the recipes needs a
 clean-up. `self.scope` is available from `OnEnable` on.
 
+Where a recipe needs a Kit's optional part, it says so; give the part to the
+generator (`python3 -m tooling.package.embeds ... eventKit/Coalescing`) and it
+writes `embeds.xml` with everything the part needs, in load order.
+
 ## The addon object
 
 ```lua
@@ -57,8 +61,9 @@ self.scope.Events:Coalesce({ "UNIT_HEALTH", "UNIT_MAXHEALTH" }, 0.1, function(un
 end, { units = { "player", "target" } })
 ```
 
-Needs SchedulerKit embedded. This is AceBucket's interval: the first event
-starts it. Reference: [EventKit, Coalescing events](../packages/eventKit/docs/API.md#coalescing-events).
+Needs EventKit's Coalescing part (`eventKit\parts\EventKit-Coalescing.lua`) and
+TimerKit embedded; SchedulerKit is not needed. This is AceBucket's interval: the
+first event starts it. Reference: [EventKit, Coalescing events](../packages/eventKit/docs/API.md#coalescing-events).
 
 ## A repeating and a one-shot timer
 
@@ -139,6 +144,9 @@ self.panel = MC:Options({
 }, { db = self.db, slash = "myaddon" })
 ```
 
+Needs AddonKit's Composition part (`addonKit/Composition`), CommandKit, PanelKit
+and OptionsKit's Profiles part (`optionsKit/Profiles`) for `ProfileOptions`.
+PanelKit brings in WidgetKit's Renderer part and the widget types it draws with.
 Reference: [AddonKit, Composition part](../packages/addonKit/docs/API.md#composition-part),
 [OptionsKit](../packages/optionsKit/docs/API.md).
 
@@ -222,6 +230,7 @@ MC:Launcher({
 }, self.db)
 ```
 
+Needs AddonKit's Composition part and LauncherKit.
 Reference: [AddonKit, Launcher](../packages/addonKit/docs/API.md#mclauncherdefinition-db-field),
 [LauncherKit](../packages/launcherKit/docs/API.md).
 
@@ -239,7 +248,8 @@ window:AddChild(button)
 ```
 
 Declare `window = {}` in the profile defaults for the position. `window:Release()`
-gives the frames back. Reference: [WidgetKit](../packages/widgetKit/docs/API.md).
+gives the frames back. Needs WidgetKit's Containers, Button and Position parts
+(`widgetKit/Containers widgetKit/Button widgetKit/Position`). Reference: [WidgetKit](../packages/widgetKit/docs/API.md).
 
 ## A confirmation dialog
 

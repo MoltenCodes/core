@@ -95,8 +95,10 @@ WOWI
 # Ace3 names the migration guide and the bridgeKit design cite
 # (`AddToBlizOptions`, AceDB's `factionrealm` and `factionrealmregion` scopes).
 bliz
+chattype
 factionrealm
 factionrealmregion
+prio
 
 # Lua 5.1 standard library and language terms.
 collectgarbage

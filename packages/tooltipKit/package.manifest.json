@@ -2,6 +2,7 @@
   "name": "tooltipKit",
   "displayName": "TooltipKit",
   "description": "Multi-column tooltips for World of Warcraft addons: keyed, pooled and bounded, with headers, spans, colours, line handlers, scrolling, smart anchoring and auto-hide.",
+  "summary": "Multi-column tooltips, keyed and pooled, with headers, spans, colours, line handlers, scrolling, smart anchoring and auto-hide.",
   "version": "0.1.1",
   "license": "MIT",
   "api": 1,

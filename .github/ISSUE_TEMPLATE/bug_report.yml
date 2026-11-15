@@ -47,6 +47,7 @@ body:
       description: The package that misbehaves. If several are involved, choose each one.
       multiple: true
       options:
+        # generated:kit-options
         - registry
         - addonKit
         - apiKit
@@ -83,12 +84,13 @@ body:
         - schemaKit
         - settingsKit
         - signalKit
-        - testKit
         - timerKit
         - toastKit
         - tooltipKit
         - unitFrameKit
         - widgetKit
+        - testKit
+        # /generated:kit-options
         - Not sure
         - None (tooling or documentation)
     validations:

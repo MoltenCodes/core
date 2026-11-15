@@ -107,9 +107,10 @@ end
 
 ---Register a suite of this package whose tests end with the box unregistered.
 ---@param part string
+---@param options MoltenCodesTest.SuiteOptions|nil
 ---@return TestKit.Suite
-local function newSuite(part)
-  local suite = Harness:Suite(PACKAGE_ID, part, addonName)
+local function newSuite(part, options)
+  local suite = Harness:Suite(PACKAGE_ID, part, addonName, options)
   suite:After(function()
     if registration then
       registration:Unregister()
@@ -192,7 +193,9 @@ end)
 
 -- editModeKit.editMode -----------------------------------------------------
 
-local editModeSuite = newSuite("editMode")
+local editModeSuite = newSuite("editMode", {
+  interactive = "open and close Edit Mode when asked",
+})
 
 editModeSuite:Test("opening Edit Mode shows the overlay and closing it hides it", function(ctx)
   local _, handle = registered()

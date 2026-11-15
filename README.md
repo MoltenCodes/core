@@ -4,7 +4,7 @@
 [![Release](https://img.shields.io/github/v/release/MoltenCodes/core?include_prereleases&sort=semver)](https://github.com/MoltenCodes/core/releases)
 
 A modular Lua 5.1 framework for professional World of Warcraft addon
-development: 42 small packages, called Kits, each independently versioned,
+development: <!-- generated:package-total -->42<!-- /generated:package-total --> small packages, called Kits, each independently versioned,
 tested and publishable, that an addon embeds one by one or loads together as the
 standalone addon `MoltenCodes`.
 
@@ -16,53 +16,55 @@ bounded by default and safe around the Retail secret-value and taint rules.
 
 ## Packages
 
-Forty-one release packages and one development package. Each links to its
+<!-- generated:package-count-sentence -->Forty-one release packages and one development package.<!-- /generated:package-count-sentence --> Each links to its
 README; its full contract is the package's `docs/API.md`.
 
+<!-- generated:package-table -->
 | Package | Purpose |
 |---|---|
 | [`registry`](packages/registry/) | Zero-dependency shared package registration, discovery and in-place revision upgrades. |
-| [`signalKit`](packages/signalKit/) | Deterministic, re-entrant callback dispatch with explicit connection lifetimes, subscriber-transition hooks, journals and named message buses. |
-| [`eventKit`](packages/eventKit/) | Lazy game-event subscriptions on SignalKit, unit-event filtering and combat-log routing by sub-event. |
-| [`lifecycleKit`](packages/lifecycleKit/) | Replay-aware per-addon loading, readiness and shutdown, a shared combat gate with a bounded out-of-combat queue, and a halted state. |
-| [`moduleKit`](packages/moduleKit/) | Addon-scoped module lifecycle, dependency graphs, dependency injection with checked interfaces, and dependency policies. |
-| [`timerKit`](packages/timerKit/) | Cancelable one-shot and repeating timers with ownership scopes, and addon scopes closed at logout through LifecycleKit or EventKit when present. |
-| [`schedulerKit`](packages/schedulerKit/) | Cooperative, frame-budgeted scheduling with priorities, cancellation scopes and TimerKit delays. |
-| [`poolKit`](packages/poolKit/) | Allocation-conscious bounded object pooling with deterministic ownership and cleanup. |
-| [`clientKit`](packages/clientKit/) | Client flavour, build floor, probed capability flags, secret-value and frame-access probes, and shims with one shape per host call. |
-| [`cacheKit`](packages/cacheKit/) | Bounded LRU and TTL caches, memoisation, negative entries, lazy namespaces, bounded queues and snapshots with diffs. |
-| [`profileKit`](packages/profileKit/) | Zero-cost-when-off performance sections with count, total, spike and a sorted report. |
-| [`readinessKit`](packages/readinessKit/) | Named readiness gates for host data that arrives after load: polling, timeouts, negative caching and bounded waiters. |
-| [`schemaKit`](packages/schemaKit/) | Sealed value schemas with structured, secret-safe failures: one validation core for arguments, saved variables, options and messages. |
-| [`localeKit`](packages/localeKit/) | Per-addon translations, missing-key reporting and coverage, indexed format specifiers. |
-| [`hookKit`](packages/hookKit/) | Reversible, secure-first hooking of functions, methods and frame scripts in three named semantics. |
-| [`settingsKit`](packages/settingsKit/) | Saved variables with scopes, schema-validated writes, defaults never written back, profiles and versioned migrations. |
-| [`optionsKit`](packages/optionsKit/) | A typed, validated, introspectable options tree bound to getters or a SettingsKit database, with no renderer. |
-| [`commandKit`](packages/commandKit/) | Slash commands with hyperlink-aware parsing, generated usage, schema-checked arguments, sinks, completion and an OptionsKit command line. |
-| [`codecKit`](packages/codecKit/) | Serialise, compress and channel-encode values behind a self-describing header; decoding never raises. |
-| [`interopKit`](packages/interopKit/) | The LibStub bridge: expose Kits to LibStub consumers and adopt LibStub libraries read-only. |
-| [`mediaKit`](packages/mediaKit/) | A typed media registry with font scripts, sorted cached lists, per-consumer defaults and LibSharedMedia adoption and mirroring. |
-| [`bridgeKit`](packages/bridgeKit/) | Migration from Ace3: AceSerializer-3.0 text written and read byte for byte, AceConfig-3.0 tables converted to OptionsKit trees, AceDB-3.0 saved variables imported into SettingsKit, AceComm-3.0 spoken through CommKit. |
-| [`brokerKit`](packages/brokerKit/) | LibDataBroker-compatible data objects: typed attributes as plain fields, per-attribute change signals and a two-way LibDataBroker-1.1 bridge. |
-| [`logKit`](packages/logKit/) | Levelled, structured logging with lazy secret-safe formatting, a bounded journal and chat, callback and table sinks. |
-| [`compatKit`](packages/compatKit/) | Versioned shims with a host opt-out, provider registries with a fallback cascade, and the catalogue of taint-hostile subsystems as data. |
-| [`commKit`](packages/commKit/) | Addon messaging of any length: a chunk protocol with bounded reassembly, refusing priority queues, a session bandwidth budget and sync sets. |
-| [`widgetKit`](packages/widgetKit/) | Pooled, versioned widgets with explicit layouts, saveable anchors and an OptionsKit renderer. |
-| [`editModeKit`](packages/editModeKit/) | Addon frames in Blizzard's Edit Mode: a labelled overlay drags each frame while Edit Mode is open, its position saved per layout and put back on a layout switch. |
-| [`rangeKit`](packages/rangeKit/) | Unit range estimates: the distance to a unit bracketed in yards from the player's own spells and the client's interact distances, and whether it is within a given range. |
-| [`unitFrameKit`](packages/unitFrameKit/) | The unit frame shown on screen for a unit token, what LibGetFrame-1.0 gives WeakAuras: a sliced scan of the client's frames, matches ranked across Blizzard's and other addons' unit frames, change notifications and nameplates. |
-| [`glowKit`](packages/glowKit/) | Glows that draw the eye to a frame, pixel lines running round its edge or a pulsing border, keyed per frame, pooled and bounded. |
-| [`bindingKit`](packages/bindingKit/) | Override key bindings in named scopes (commands, button clicks, Lua functions) that never touch the player's own, applied after combat when set during it. |
-| [`toastKit`](packages/toastKit/) | Short notifications that stack at one anchor, hold under the cursor and fade out, with icons and click handlers, pooled and bounded. |
-| [`dialogKit`](packages/dialogKit/) | Confirmation and input dialogs without StaticPopupDialogs: one frame of their own, a bounded queue, Escape through UISpecialFrames, timeouts. |
-| [`barKit`](packages/barKit/) | Status and timer bars on the client's StatusBar, with secret values passed through and pausable countdowns, pooled and bounded. |
-| [`tooltipKit`](packages/tooltipKit/) | Multi-column tooltips, keyed and pooled, with headers, spans, colours, line handlers, scrolling, smart anchoring and auto-hide. |
-| [`launcherKit`](packages/launcherKit/) | Minimap buttons for BrokerKit objects, dragged round any minimap shape, state in LibDBIcon's saved fields, and Retail's addon compartment. |
-| [`menuKit`](packages/menuKit/) | Menus described as checked, bounded tables and shown by Blizzard's Menu API: context menus, dropdowns and removable extensions of Blizzard's own menus. |
-| [`panelKit`](packages/panelKit/) | An OptionsKit tree in Blizzard's settings panel, as a category or subcategory, drawn by WidgetKit only while its page is shown. |
 | [`addonKit`](packages/addonKit/) | The single entry point for addon authors: `MoltenCodes:For(...)` with every Kit by name, an addon object over ModuleKit, databases from plain defaults, and one-call options panels and minimap launchers, with errors that say the fix. |
 | [`apiKit`](packages/apiKit/) | The flavour-aware, typed wrapper over the World of Warcraft API (`wow.retail.api`, ...), generated from the client's own documentation tables. |
+| [`barKit`](packages/barKit/) | Status and timer bars on the client's StatusBar, with secret values passed through and pausable countdowns, pooled and bounded. |
+| [`bindingKit`](packages/bindingKit/) | Override key bindings in named scopes (commands, button clicks, Lua functions) that never touch the player's own, applied after combat when set during it. |
+| [`bridgeKit`](packages/bridgeKit/) | Migration from Ace3: AceSerializer-3.0 text written and read byte for byte, AceConfig-3.0 tables converted to OptionsKit trees, AceDB-3.0 saved variables imported into SettingsKit, AceComm-3.0 spoken through CommKit. |
+| [`brokerKit`](packages/brokerKit/) | LibDataBroker-compatible data objects: typed attributes as plain fields, per-attribute change signals and a two-way LibDataBroker-1.1 bridge. |
+| [`cacheKit`](packages/cacheKit/) | Bounded LRU and TTL caches, memoisation, negative entries, lazy namespaces, bounded queues and snapshots with diffs. |
+| [`clientKit`](packages/clientKit/) | Client flavour, build floor, probed capability flags, secret-value and frame-access probes, and shims with one shape per host call. |
+| [`codecKit`](packages/codecKit/) | Serialise, compress and channel-encode values behind a self-describing header; decoding never raises. |
+| [`commandKit`](packages/commandKit/) | Slash commands with hyperlink-aware parsing, generated usage, schema-checked arguments, sinks, completion and an OptionsKit command line. |
+| [`commKit`](packages/commKit/) | Addon messaging of any length: a chunk protocol with bounded reassembly, refusing priority queues, a session bandwidth budget and sync sets. |
+| [`compatKit`](packages/compatKit/) | Versioned shims with a host opt-out, provider registries with a fallback cascade, and the catalogue of taint-hostile subsystems as data. |
+| [`dialogKit`](packages/dialogKit/) | Confirmation and input dialogs without StaticPopupDialogs: one frame of their own, a bounded queue, Escape through UISpecialFrames, timeouts. |
+| [`editModeKit`](packages/editModeKit/) | Addon frames in Blizzard's Edit Mode: a labelled overlay drags each frame while Edit Mode is open, its position saved per layout and put back on a layout switch. |
+| [`eventKit`](packages/eventKit/) | Lazy game-event subscriptions on SignalKit, unit-event filtering and combat-log routing by sub-event. |
+| [`glowKit`](packages/glowKit/) | Glows that draw the eye to a frame, pixel lines running round its edge or a pulsing border, keyed per frame, pooled and bounded. |
+| [`hookKit`](packages/hookKit/) | Reversible, secure-first hooking of functions, methods and frame scripts in three named semantics. |
+| [`interopKit`](packages/interopKit/) | The LibStub bridge: expose Kits to LibStub consumers and adopt LibStub libraries read-only. |
+| [`launcherKit`](packages/launcherKit/) | Minimap buttons for BrokerKit objects, dragged round any minimap shape, state in LibDBIcon's saved fields, and Retail's addon compartment. |
+| [`lifecycleKit`](packages/lifecycleKit/) | Replay-aware per-addon loading, readiness and shutdown, a shared combat gate with a bounded out-of-combat queue, and a halted state. |
+| [`localeKit`](packages/localeKit/) | Per-addon translations, missing-key reporting and coverage, indexed format specifiers. |
+| [`logKit`](packages/logKit/) | Levelled, structured logging with lazy secret-safe formatting, a bounded journal and chat, callback and table sinks. |
+| [`mediaKit`](packages/mediaKit/) | A typed media registry with font scripts, sorted cached lists, per-consumer defaults and LibSharedMedia adoption and mirroring. |
+| [`menuKit`](packages/menuKit/) | Menus described as checked, bounded tables and shown by Blizzard's Menu API: context menus, dropdowns and removable extensions of Blizzard's own menus. |
+| [`moduleKit`](packages/moduleKit/) | Addon-scoped module lifecycle, dependency graphs, dependency injection with checked interfaces, and dependency policies. |
+| [`optionsKit`](packages/optionsKit/) | A typed, validated, introspectable options tree bound to getters or a SettingsKit database, with no renderer. |
+| [`panelKit`](packages/panelKit/) | An OptionsKit tree in Blizzard's settings panel, as a category or subcategory, drawn by WidgetKit only while its page is shown. |
+| [`poolKit`](packages/poolKit/) | Allocation-conscious bounded object pooling with deterministic ownership and cleanup. |
+| [`profileKit`](packages/profileKit/) | Zero-cost-when-off performance sections with count, total, spike and a sorted report. |
+| [`rangeKit`](packages/rangeKit/) | Unit range estimates: the distance to a unit bracketed in yards from the player's own spells and the client's interact distances, and whether it is within a given range. |
+| [`readinessKit`](packages/readinessKit/) | Named readiness gates for host data that arrives after load: polling, timeouts, negative caching and bounded waiters. |
+| [`schedulerKit`](packages/schedulerKit/) | Cooperative, frame-budgeted scheduling with priorities, cancellation scopes and TimerKit delays. |
+| [`schemaKit`](packages/schemaKit/) | Sealed value schemas with structured, secret-safe failures: one validation core for arguments, saved variables, options and messages. |
+| [`settingsKit`](packages/settingsKit/) | Saved variables with scopes, schema-validated writes, defaults never written back, profiles and versioned migrations. |
+| [`signalKit`](packages/signalKit/) | Deterministic, re-entrant callback dispatch with explicit connection lifetimes, subscriber-transition hooks, journals and named message buses. |
+| [`timerKit`](packages/timerKit/) | Cancelable one-shot and repeating timers with ownership scopes, and addon scopes closed at logout through LifecycleKit or EventKit when present. |
+| [`toastKit`](packages/toastKit/) | Short notifications that stack at one anchor, hold under the cursor and fade out, with icons and click handlers, pooled and bounded. |
+| [`tooltipKit`](packages/tooltipKit/) | Multi-column tooltips, keyed and pooled, with headers, spans, colours, line handlers, scrolling, smart anchoring and auto-hide. |
+| [`unitFrameKit`](packages/unitFrameKit/) | The unit frame shown on screen for a unit token, what LibGetFrame-1.0 gives WeakAuras: a sliced scan of the client's frames, matches ranked across Blizzard's and other addons' unit frames, change notifications and nameplates. |
+| [`widgetKit`](packages/widgetKit/) | Pooled, versioned widgets with explicit layouts, saveable anchors and an OptionsKit renderer. |
 | [`testKit`](packages/testKit/) | Development only, never bundled: in-client test suites in LifecycleKit phases and SchedulerKit jobs, with structured results. |
+<!-- /generated:package-table -->
 
 ## Using the framework in an addon
 
@@ -155,7 +157,7 @@ answers `--help`.
 ├── examples/                # a complete example addon, loaded by its own spec
 ├── lychee.toml              # Markdown link-check configuration
 ├── meta/                    # editor-only LuaCATS definitions, including the game API
-├── packages/                # the 42 Kits, one directory each (see packages/README.md)
+├── packages/                # the Kits, one directory each (see packages/README.md)
 ├── pyproject.toml           # the supported Python floor for the tooling
 ├── selene.toml              # Selene configuration for runtime Lua
 ├── selene-tests.toml        # Selene configuration for test Lua
