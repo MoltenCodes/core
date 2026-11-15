@@ -73,6 +73,7 @@ raidpet
 REGEN
 safecall
 securecall
+Skada
 Skurri
 Soulbound
 spellbook
