@@ -53,6 +53,38 @@ describe("TooltipKit tooltips", function()
     assert.are.equal("GameTooltipText", name:GetFontObject())
   end)
 
+  it(
+    "measures a cell's whole text, not the width the last layout gave it, when it grows or its line is reused",
+    function()
+      local restore = TestEnv.BoundStringWidths()
+      local ok, failure = pcall(function()
+        local tooltip = TooltipKit:Acquire("MyAddon", 1)
+        local line = tooltip:AddLine("ab")
+        tooltip:Show()
+        assert.are.equal(10 + 12 + 10, tooltip:GetFrame():GetWidth())
+        -- The client truncates "abcdefghij" to the 12 pixels the cell was
+        -- given; its unbounded width is 60.
+        tooltip:SetCell(line, 1, "abcdefghij")
+        assert.are.equal(10 + 60 + 10, tooltip:GetFrame():GetWidth())
+        TooltipKit:Release(tooltip)
+
+        -- A pooled line keeps the width its cell had in its last tooltip.
+        local narrow = TooltipKit:Acquire("Narrow", 1)
+        narrow:AddLine("a")
+        narrow:Show()
+        TooltipKit:Release(narrow)
+        local reused = TooltipKit:Acquire("Reused", 1)
+        reused:AddLine("abcdef")
+        reused:Show()
+        assert.are.equal(10 + 36 + 10, reused:GetFrame():GetWidth())
+      end)
+      restore()
+      if not ok then
+        error(failure, 0)
+      end
+    end
+  )
+
   it("widens the last spanned column when a span needs more room", function()
     local tooltip = TooltipKit:Acquire("MyAddon", 3)
     tooltip:AddLine("a", "b", "c")

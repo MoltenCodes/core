@@ -72,6 +72,33 @@ function TooltipKitTestEnv.SetMouseOver(frame, over)
   end
 end
 
+---Make every font string measure the way the client's do: `GetStringWidth`
+---never answers more than a width the font string was given (the client
+---truncates the text to it), and `GetUnboundedStringWidth` answers the full
+---width. warcraft.wiki.gg, `API FontString GetUnboundedStringWidth`:
+---"stringWidth <= width < unboundedWidth". The shared stub measures without
+---the bound; the returned function puts its methods back.
+---@return fun() restore
+function TooltipKitTestEnv.BoundStringWidths()
+  local probe = TooltipKitTestEnv.GetGlobal("CreateFrame")("Frame"):CreateFontString()
+  local methods = getmetatable(probe).__index
+  local naturalWidth = methods.GetStringWidth
+  local hadUnbounded = rawget(methods, "GetUnboundedStringWidth")
+  rawset(methods, "GetStringWidth", function(self)
+    local natural = naturalWidth(self)
+    local width = self._width
+    if type(width) == "number" and width > 0 and natural > width then
+      return width
+    end
+    return natural
+  end)
+  rawset(methods, "GetUnboundedStringWidth", naturalWidth)
+  return function()
+    rawset(methods, "GetStringWidth", naturalWidth)
+    rawset(methods, "GetUnboundedStringWidth", hadUnbounded)
+  end
+end
+
 ---Run one of `frame`'s scripts as the client would.
 ---@param frame table
 ---@param scriptName string

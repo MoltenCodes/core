@@ -2,7 +2,7 @@
 
 TooltipKit API generation **1** draws keyed, pooled tooltips laid out in columns, with headers, separators, spans, colours, line handlers, a height limit with wheel scrolling, smart anchoring and auto-hide.
 
-Implementation revision: **1**.
+Implementation revision: **2**.
 
 ## Loading
 
@@ -29,9 +29,12 @@ TooltipKit reads these host globals at call time, never at load:
 | Facility | Used by | Without it |
 |---|---|---|
 | `CreateFrame`, `UIParent` | `Acquire` (the first tooltip and line frames) | `Acquire` raises at the caller: `TooltipKit:Acquire needs the client's CreateFrame and UIParent, which this host does not have`. |
-| the font objects `GameTooltipText` and `GameTooltipHeaderText` | lines and headers | Every client defines both. |
+| the font objects `GameTooltipText` and `GameTooltipHeaderText` | lines and headers | Every promised client defines both (`Blizzard_Fonts_Shared/Shared/FontStyles.xml`, branches `live`, `classic` and `classic_era`, read 2026-11-15). |
+| `FontString:GetUnboundedStringWidth` | measuring a cell | The cell is measured with `GetStringWidth`. Every promised client has it (`SimpleFontStringAPIDocumentation.lua` on the same three branches). |
 | `issecretvalue` | every check, every measured size | Nothing is treated as secret. |
 | `geterrorhandler` | line handlers that raise | The failure is printed. |
+
+Every other client call is a method of the frames and font strings TooltipKit made, or of the frame passed to `SmartAnchorTo` (`GetCenter`, `GetEffectiveScale`, `IsMouseOver`).
 
 ## Public surface
 
@@ -43,7 +46,7 @@ TooltipKit reads these host globals at call time, never at load:
 | `SetLimits(limits)` / `GetLimits()` | Change or read `maxTooltips`, `maxLines` and `maxColumns`; `GetLimits` returns a fresh table. |
 | `MAX_TOOLTIPS`, `MAX_LINES`, `MAX_COLUMNS` | `16`, `256`, `16`: the defaults. |
 | `TOOLTIPS_CEILING`, `LINES_CEILING`, `COLUMNS_CEILING` | `64`, `1024`, `32`: the highest each limit accepts. |
-| `API`, `REVISION` | `1`, `1`. |
+| `API`, `REVISION` | `1`, `2`. |
 
 A tooltip:
 
@@ -68,13 +71,13 @@ A tooltip:
 
 `key` is a non-empty string, normally your addon's name and what the tooltip shows. `columns` is an integer from 1 to `maxColumns`. Each further argument justifies its column: `"LEFT"` (the default), `"CENTER"` or `"RIGHT"`.
 
-When a tooltip is acquired under `key`, it is returned as it is, with its lines; acquiring it with another column count raises `TooltipKit:Acquire MyAddon is acquired with 2 columns, not 3`. Otherwise a tooltip frame is taken from the pool (made on first use) at the `TOOLTIP` strata, clamped to the screen, and returned hidden and empty. At most `maxTooltips` tooltips are acquired at once: `TooltipKit:Acquire holds at most 16 tooltips at once; release one, or raise maxTooltips`.
+When a tooltip is acquired under `key`, it is returned as it is, with its lines; acquiring it with another column count raises `TooltipKit:Acquire MyAddon is acquired with 2 columns, not 3`. Otherwise a tooltip frame is taken from the pool (made on first use) at the `TOOLTIP` strata, parented to `UIParent`, clamped to the screen, and returned hidden, empty and without a position: anchor it with `SmartAnchorTo`, or through `GetFrame()`, before `Show`, or the client has nowhere to draw it. Justifications past `columns` are ignored, and a tooltip returned under an acquired key keeps the justifications it was acquired with. At most `maxTooltips` tooltips are acquired at once: `TooltipKit:Acquire holds at most 16 tooltips at once; release one, or raise maxTooltips`.
 
 ## Cells
 
 `AddLine` and `AddHeader` take at most one value per column: `TooltipKit.Tooltip:AddLine got 3 values for 2 columns` otherwise. A value is a string, a number (shown with `tostring`) or `nil`; a secret is refused (`... value 2 must not be a secret value; pass { allowSecret = true } to SetCell to draw one`). At most `maxLines` lines, separators included.
 
-`SetCell(line, column, text, options)` sets one cell of an existing line (a separator has none). `options`:
+`SetCell(line, column, text, options)` sets one cell of an existing line (a separator has none: `TooltipKit.Tooltip:SetCell line 2 is a separator and has no cells`). `line` is an index `AddLine`, `AddHeader` or `AddSeparator` returned, `column` an integer from 1 to the tooltip's columns. `options`:
 
 | Field | Meaning |
 |---|---|
@@ -83,15 +86,19 @@ When a tooltip is acquired under `key`, it is returned as it is, with its lines;
 | `font` | A font object or its global name; default the line's font. |
 | `allowSecret` | `true`: a secret `text` is drawn instead of refused. |
 
+A font name the client does not know is passed to `FontString:SetFontObject` as it is, and what the client does with it is not checked.
+
+`SetCellTextColor` colours a cell's text whether or not it holds one, and the colour stays through later `SetCell` calls until the line is released. `SetLineColor` on a separator replaces the separator's colour; without a colour it clears it.
+
 ## Layout
 
-Every column is as wide as its widest single-column cell. A spanning cell that needs more room than its columns and the gaps between them widens the last column it covers. A line is as tall as its tallest cell, 12 pixels when empty, or its separator's height. The tooltip adds 10 pixels of padding on every side and 10 between columns. A size the client measures as a secret counts as 0.
+Every column is as wide as its widest single-column cell. A cell is measured with `GetUnboundedStringWidth`, the width its whole text needs: the client's `GetStringWidth` never answers more than the width the layout last gave the font string (warcraft.wiki.gg, `API FontString GetUnboundedStringWidth`), so a text that grew, or a pooled line reused for longer text, would otherwise be measured truncated (fixed in revision 2). A spanning cell that needs more room than its columns and the gaps between them widens the last column it covers. A line is as tall as its tallest cell, 12 pixels when empty, or its separator's height. The tooltip adds 10 pixels of padding on every side and 10 between columns. A size the client measures as a secret counts as 0.
 
 With a height limit, a taller tooltip is that tall, takes the mouse wheel and scrolls 24 pixels a notch, never past either end; a shorter one ignores the wheel.
 
 ## `tooltip:SmartAnchorTo(frame)`
 
-Compares the frame's centre, in `UIParent`'s scale, with the middle of the screen: in the top half the tooltip hangs below the frame (`TOP` to `BOTTOM`), in the bottom half it sits above it; in the left half their left edges align, in the right half their right edges. The frame becomes the tooltip's anchor for auto-hide.
+`frame` is any region with `GetCenter` (a frame, a texture, a font string): `TooltipKit.Tooltip:SmartAnchorTo frame must be a frame` otherwise. The method compares the frame's centre, in `UIParent`'s scale, with the middle of the screen: in the top half the tooltip hangs below the frame (`TOP` to `BOTTOM`), in the bottom half it sits above it; in the left half their left edges align, in the right half their right edges. The frame becomes the tooltip's anchor for auto-hide. When the frame has no position yet (`GetCenter` answers nothing), when either coordinate or a scale is a secret (the client answers secrets for a frame anchored to a secret), or when `UIParent` cannot be measured, the tooltip sits above the frame, left edges aligned. Revision 1 compared a secret vertical coordinate, which raises on Retail.
 
 ## `tooltip:SetAutoHideDelay(seconds, alternateFrame)`
 
@@ -117,14 +124,43 @@ Every key, column count, justification, line and column index, option, colour co
 
 ## Error behaviour
 
-Argument errors raise at the caller's line. Facade methods called without the facade raise `TooltipKit:Acquire must be called on the TooltipKit facade; use TooltipKit:Acquire(...)`. What the client calls (line handlers, the wheel, auto-hide) never raises; a handler's failure is reported through `geterrorhandler`.
+Argument errors raise at the caller's line, before anything changes. Facade methods called without the facade raise `TooltipKit:Acquire must be called on the TooltipKit facade; use TooltipKit:Acquire(...)`; tooltip methods called on anything but an acquired tooltip raise `TooltipKit.Tooltip:AddLine must be called on an acquired TooltipKit tooltip; use tooltip:AddLine(...)`. The other messages, with `<method>` the method's full name (`TooltipKit.Tooltip:SetCell`):
+
+| Message | When |
+|---|---|
+| `TooltipKit:Acquire key must be a non-empty string`, `... key must not be a secret value` (also `TooltipKit:IsAcquired`) | the key |
+| `TooltipKit:Acquire columns must be an integer from 1 to 16` | `columns` outside `maxColumns` |
+| `TooltipKit:Acquire justify 2 must be "LEFT", "CENTER", "RIGHT" or nil` | a justification |
+| `TooltipKit:Acquire MyAddon is acquired with 2 columns, not 3` | another column count for an acquired key |
+| `TooltipKit:Acquire holds at most 16 tooltips at once; release one, or raise maxTooltips` | `maxTooltips` reached |
+| `TooltipKit:Acquire needs the client's CreateFrame and UIParent, which this host does not have` | no client frames |
+| `TooltipKit:Acquire could not get a tooltip frame: exhausted` | the tooltip pool made its 64 frames, all acquired |
+| `TooltipKit:Release tooltip must be an acquired TooltipKit tooltip` | `Release` of anything else, a released tooltip included |
+| `<method> got 3 values for 2 columns` | `AddLine`, `AddHeader` |
+| `<method> value 2 must be a string, a number or nil`, `... must not be a secret value; pass { allowSecret = true } to SetCell to draw one` | a cell value (`text` for `SetCell`) |
+| `<method> holds at most 256 lines; raise maxLines with TooltipKit:SetLimits` | `maxLines` reached |
+| `<method> could not get a line frame: exhausted` | the line pool reached its creation cap |
+| `<method> line must be the index of a line of this tooltip (1 to 3)`, `... line must not be a secret value` | a line index |
+| `<method> column must be an integer from 1 to 3`, `... column must not be a secret value` | a column |
+| `<method> r must be a number from 0 to 1`, `... must not be a secret value` (also `g`, `b`, `a`) | a colour component |
+| `TooltipKit.Tooltip:AddSeparator height must be a number above 0 and at most 100, or nil` | the separator height |
+| `TooltipKit.Tooltip:SetCell options must be a table or nil`, `... options holds an unknown field; it accepts span, justify, font and allowSecret` | the options table |
+| `TooltipKit.Tooltip:SetCell options.span must be an integer from 1 to 2` | a span past the last column |
+| `TooltipKit.Tooltip:SetCell options.justify must be "LEFT", "CENTER" or "RIGHT"`, `... options.font must be a font object or its name`, `... options.allowSecret must be a boolean` | the other options |
+| `TooltipKit.Tooltip:SetLineScript script must be "OnMouseUp", "OnEnter" or "OnLeave"`, `... handler must be a function or nil` | `SetLineScript` |
+| `TooltipKit.Tooltip:SetMaxHeight pixels must be a number of at least 20, or nil` | the height limit |
+| `TooltipKit.Tooltip:SmartAnchorTo frame must be a frame` | a value without `GetCenter` |
+| `TooltipKit.Tooltip:SetAutoHideDelay seconds must be a number of 0 or more, or nil`, `... alternateFrame must be a frame or nil` | `SetAutoHideDelay` |
+| `TooltipKit:SetLimits limits must be a table`, `... limits holds an unknown field; it accepts maxTooltips, maxLines and maxColumns`, `... limits.maxLines must be an integer from 1 to 1024`, `... limits.maxLines must not be a secret value` | `SetLimits` |
+
+Loading raises `MoltenCodes TooltipKit requires Registry API 2 to be loaded first`, `... requires a valid Registry API 2 facade`, `... requires PoolKit API 1 to be loaded first`, or `MoltenCodes TooltipKit package state is corrupted or incomplete`. What the client calls (line handlers, the wheel, auto-hide) never raises; a handler's failure is reported through `geterrorhandler`.
 
 ## Performance
 
 | Path | Cost |
 |---|---|
 | A hidden or idle tooltip | Nothing runs. |
-| A change while shown | One layout pass over the lines. |
+| A change while shown | One layout pass over the lines (two for `AddSeparator`). Adding many lines to a shown tooltip lays it out once per line; fill it hidden, then `Show`. |
 | An auto-hiding tooltip while shown | Up to three `IsMouseOver` calls per frame. |
 | `Acquire`, `Release` | One pool operation each, plus one per line on release. |
 

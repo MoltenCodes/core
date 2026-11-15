@@ -121,6 +121,28 @@ describe("TooltipKit secret values", function()
     end
   end)
 
+  it(
+    "anchors to the default side when the client answers either centre coordinate as secret",
+    function()
+      -- On Retail the client's secret numbers are numbers to `type`, so each
+      -- coordinate has to be asked about on its own. A frame at the top right
+      -- would otherwise get the tooltip below it, aligned right.
+      local probe = TestEnv.GetGlobal("issecretvalue")
+      local secretAnswer = 0
+      TestEnv.SetGlobal("issecretvalue", function(value)
+        return value == secretAnswer or probe(value)
+      end)
+      local owner = TestEnv.FrameAt(1700, 900)
+      local x, y = owner:GetCenter()
+      for _, secretCoordinate in ipairs({ x, y }) do
+        secretAnswer = secretCoordinate
+        tooltip:SmartAnchorTo(owner)
+        local point, relativeTo, relativePoint = tooltip:GetFrame():GetPoint(1)
+        assert.are.same({ "BOTTOMLEFT", owner, "TOPLEFT" }, { point, relativeTo, relativePoint })
+      end
+    end
+  )
+
   it("treats a secret mouse-over answer as off and a secret wheel delta as nothing", function()
     tooltip:SetAutoHideDelay(0.1)
     tooltip:Show()

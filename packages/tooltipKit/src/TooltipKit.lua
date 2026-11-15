@@ -39,7 +39,7 @@
 
 local PACKAGE_NAME = "tooltipKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 1
+local IMPLEMENTATION_REVISION = 2
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_POOLKIT_API = 1
 local STATE_SCHEMA = 1
@@ -644,6 +644,22 @@ end
 
 -- Layout ---------------------------------------------------------------------
 
+---The width `cell`'s whole text needs. The client's `GetStringWidth` never
+---answers more than the width the font string was given, and every cell was
+---given one by the last layout (or by the tooltip a pooled line last served),
+---so a text that grew would be measured truncated. `GetUnboundedStringWidth`
+---ignores that width; Retail, Mists of Pandaria Classic and Classic Era all
+---have it (`SimpleFontStringAPIDocumentation.lua`, branches `live`, `classic`
+---and `classic_era`). A font string without it is measured as it is.
+---@param cell table
+---@return number
+local function textWidth(cell)
+  if type(cell.GetUnboundedStringWidth) == "function" then
+    return plainSize(cell:GetUnboundedStringWidth())
+  end
+  return plainSize(cell:GetStringWidth())
+end
+
 ---Lay the tooltip out: column widths from the widest single-column cell,
 ---spans widening their last column when they need more, line heights from
 ---their tallest cell, then the frame's size and the scroll range.
@@ -660,8 +676,7 @@ local function layout(record)
     if not lineRecord.separator then
       for column, cellRecord in pairs(lineRecord.cells) do
         if cellRecord.span == 1 then
-          widths[column] =
-            mathMax(widths[column], plainSize(lineRecord.frame.cells[column]:GetStringWidth()))
+          widths[column] = mathMax(widths[column], textWidth(lineRecord.frame.cells[column]))
         end
       end
     end
@@ -675,7 +690,7 @@ local function layout(record)
         for spanned = column, column + span - 1 do
           covered = covered + widths[spanned]
         end
-        local needed = plainSize(lineRecord.frame.cells[column]:GetStringWidth())
+        local needed = textWidth(lineRecord.frame.cells[column])
         if needed > covered then
           local last = column + span - 1
           widths[last] = widths[last] + needed - covered
@@ -1129,10 +1144,15 @@ local function tooltipSmartAnchorTo(self, frame)
   local uiParent = readGlobal("UIParent")
   local x, y = frame:GetCenter()
   local vertical, horizontal = "BOTTOM", "LEFT"
+  -- `GetCenter` answers secrets for a frame anchored to a secret, and a
+  -- client secret number is a `number` to `type`: each coordinate is asked
+  -- about on its own, because comparing a secret raises.
   if
     not isSecret(x)
+    and not isSecret(y)
     and type(x) == "number"
     and type(y) == "number"
+    and type(frame.GetEffectiveScale) == "function"
     and type(uiParent) == "table"
     and type(uiParent.GetWidth) == "function"
     and type(uiParent.GetHeight) == "function"

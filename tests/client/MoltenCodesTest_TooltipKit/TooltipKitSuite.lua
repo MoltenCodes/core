@@ -9,6 +9,9 @@
 --   * a tooltip with a header, three columns and a spanning cell laid out
 --     with the client's own fonts: columns as wide as their widest cell, a
 --     span that fits, the frame as wide as its columns and padding;
+--   * a cell whose text grows on a shown tooltip widening its column: the
+--     client's `GetStringWidth` stops at the width a font string was given,
+--     so the layout must measure with `GetUnboundedStringWidth`;
 --   * a height limit with wheel scrolling on the client's scroll frame;
 --   * smart anchoring to a frame in the middle of the screen;
 --   * auto-hide releasing the tooltip on the client's frame updates;
@@ -18,7 +21,7 @@
 --
 -- Each tooltip is shown for at most a few frames in the middle of the screen.
 -- What a run leaves behind: TooltipKit's pooled frames (hidden, kept for
--- reuse as the client never frees a frame) and one hidden anchor frame of
+-- reuse as the client never frees a frame) and one empty anchor frame of
 -- this file. Nothing is written to a saved variable.
 --
 -- Run with `/mct run tooltipKit`; tests/client/MoltenCodesTest_TooltipKit/EXPECTED.md
@@ -166,6 +169,20 @@ layout:Test("three columns, a header and a span are laid out with the client's f
   ctx:Expect(height > 2 * PADDING):ToBe(true)
 end)
 
+layout:Test("a cell whose text grows on a shown tooltip widens its column", function(ctx)
+  local tooltip = TooltipKit:Acquire(KEY, 3)
+  local line = tooltip:AddLine("ab")
+  tooltip:Show()
+  local frame = tooltip:GetFrame()
+  local before = frame:GetWidth()
+  tooltip:SetCell(line, 1, "a much longer text than the one the cell was laid out for")
+  local after = frame:GetWidth()
+  ctx:Log(("tooltip width %.1f, then %.1f"):format(before, after))
+  -- The longer text is about thirty times as wide; twice is a safe floor
+  -- that a truncated measurement (the same width) cannot reach.
+  ctx:Expect(after > 2 * before):ToBe(true)
+end)
+
 layout:Test(
   "a height limit scrolls the lines with the wheel on the client's scroll frame",
   function(ctx)
@@ -253,8 +270,11 @@ else
   secrets:Test(SECRET_TEST, function(ctx)
     local secret = secretWrap("hidden")
     local tooltip = TooltipKit:Acquire(KEY, 3)
+    -- Not a tail call: a `return tooltip:AddLine(secret)` would drop this
+    -- function's frame from the stack, and the message its file and line.
     local succeeded, message = pcall(function()
-      return tooltip:AddLine(secret)
+      local index = tooltip:AddLine(secret)
+      return index
     end)
     ctx:Expect(succeeded):ToBe(false)
     ctx:Log("client message: " .. tostring(message))

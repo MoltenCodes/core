@@ -68,6 +68,38 @@ describe("TooltipKit bootstrap", function()
     end
   )
 
+  it(
+    "upgrades a revision-1 copy in place, and its tooltips lay out with the new measuring",
+    function()
+      local shippedRevision = TestEnv.NewPackage().REVISION
+      TestEnv.Reset()
+      TestEnv.InstallWowApi()
+      require("Registry")
+      require("PoolKit")
+      local uiParent = TestEnv.GetGlobal("CreateFrame")("Frame", "UIParent")
+      uiParent:SetSize(1920, 1080)
+      local previous = TestEnv.LoadRevision(1)
+      assert.are.equal(1, previous.REVISION)
+      local tooltip = previous:Acquire("MyAddon", 1)
+      local line = tooltip:AddLine("ab")
+      tooltip:Show()
+
+      local upgraded = TestEnv.LoadRevision(shippedRevision)
+      assert.are.equal(previous, upgraded)
+      assert.are.equal(shippedRevision, upgraded.REVISION)
+      assert.are.equal(tooltip, upgraded:Acquire("MyAddon", 1))
+      local restore = TestEnv.BoundStringWidths()
+      local ok, failure = pcall(function()
+        tooltip:SetCell(line, 1, "abcdefghij")
+        assert.are.equal(10 + 60 + 10, tooltip:GetFrame():GetWidth())
+      end)
+      restore()
+      if not ok then
+        error(failure, 0)
+      end
+    end
+  )
+
   it("refuses shared state whose limits hold an invalid value", function()
     local TooltipKit = TestEnv.NewPackage()
     rawset(TooltipKit._state.limits, "maxColumns", 33)
