@@ -67,7 +67,7 @@
 
 local PACKAGE_NAME = "eventKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 19
+local IMPLEMENTATION_REVISION = 20
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_SIGNAL_API = 1
 local STATE_SCHEMA = 9
@@ -2491,6 +2491,25 @@ local function readEventList(events, label, level)
   return list
 end
 
+---Name a caller's table key in a refusal without running its `__tostring`.
+---A string is shown as written and a number or boolean through `tostring`,
+---which runs no foreign code for those types; anything else is named by its
+---type, `<table>`, because a table's or userdata's `__tostring` is the
+---caller's code, which could raise or answer a secret and so lose the real
+---refusal.
+---@param key any a table key, which can never be `nil`
+---@return string
+local function describeKey(key)
+  local kind = type(key)
+  if kind == "string" then
+    return key
+  end
+  if kind == "number" or kind == "boolean" then
+    return tostring(key)
+  end
+  return "<" .. kind .. ">"
+end
+
 ---Reject an options value that is not a table or names an unknown field.
 ---@param options any
 ---@param allowed table<string, boolean>
@@ -2506,7 +2525,7 @@ local function validateOptionTable(options, allowed, label, level)
   local unknown = nil
   for key in pairs(options) do
     if allowed[key] ~= true then
-      local display = tostring(key)
+      local display = describeKey(key)
       if unknown == nil or display < unknown then
         unknown = display
       end
@@ -3191,7 +3210,7 @@ local function validateLimitUpdate(limits, level)
   local key = next(limits)
   while type(key) ~= "nil" do
     if type(key) ~= "string" or LIMIT_CEILINGS[key] == nil then
-      error("EventKit:SetLimits limits." .. tostring(key) .. " is not a recognised limit", level)
+      error("EventKit:SetLimits limits." .. describeKey(key) .. " is not a recognised limit", level)
     end
     local value = rawget(limits, key)
     refuseSecret(value, "EventKit:SetLimits limits." .. key, level + 1)

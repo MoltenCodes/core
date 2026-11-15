@@ -2,7 +2,7 @@
 
 EventKit API generation 1 provides lazy World of Warcraft event subscriptions with SignalKit API 1's dispatch semantics.
 
-Implementation revision: **19**.
+Implementation revision: **20**.
 
 EventKit is multi-tenant: one shared instance serves every addon in a WoW session.
 
@@ -23,6 +23,12 @@ local EventKit = MoltenCodes.Registry:Get("eventKit", 1)
 ```
 
 EventKit does not rely on `require()` at runtime.
+
+The facade carries two read-only constants: `EventKit.API`, the API generation
+(`1`), and `EventKit.REVISION`, the implementation revision of the copy that
+is active in the session (`19` for this one). A newer embedded copy replaces
+`REVISION` when it upgrades the facade in place. Loading errors are listed
+under [Error messages](#error-messages).
 
 ## `EventKit:Connect(eventName, callback)`
 
@@ -577,7 +583,9 @@ local limits = EventKit:GetLimits() -- a fresh table: { maxUnitFrames = 128 }
 `SetLimits(limits)` accepts any subset of the limits and returns nothing. It
 raises at the caller's line, before changing anything, on a non-table argument,
 an unrecognised name (`EventKit:SetLimits limits.<name> is not a recognised
-limit`), a value that is not an integer from 1 to the ceiling (`... must be an
+limit`; a string key is shown as written, a number or boolean as `tostring`
+gives it, and any other key by its type, `limits.<table>`, so a key's
+`__tostring`, the caller's code, never runs), a value that is not an integer from 1 to the ceiling (`... must be an
 integer from 1 to 512`), and `EventKit.UNBOUNDED` (`... cannot be
 EventKit.UNBOUNDED: the client never frees a Frame`). `GetLimits()` returns a
 fresh table on every call, so it allocates; read it at configuration time, not
@@ -709,9 +717,55 @@ fake client's 104-byte registration record). The remaining difference is the
 handle, and the ordering, scope and isolation bookkeeping the contract
 promises.
 
+## Error messages
+
+Every argument and receiver error below is raised at the caller's line, never
+inside EventKit. `<Method>` is the qualified public method, for example
+`EventKit:Connect` or `EventKit.Scope:ConnectUnit`; `<...>` marks a value
+filled in from the call. A secret argument is refused first, with the messages
+listed under [Secret values](#secret-values).
+
+| Raised by | Message |
+|---|---|
+| `Connect`, `Once`, `ConnectUnit`, `OnceUnit` and their scope forms | `<Method> eventName must be a non-empty string`; `<Method> eventName "<name>" is not an event this client knows` (see [Event names the client does not know](#event-names-the-client-does-not-know)) |
+| `ConnectCombatLog` and its scope form | `<Method> subEvent must be a non-empty string`; `<Method> the combat log is not available to addons on this client (no CombatLogGetCurrentEventInfo reader); check EventKit:IsCombatLogAvailable() first` |
+| every connecting method | `<Method> callback must be a function` |
+| `ConnectUnit`, `OnceUnit`, the `units` option | `<Method> requires at least one unit token`; `<Method> unit tokens must be non-empty strings`; `<Method> accepts at most 2 distinct unit tokens because Frame:RegisterUnitEvent has 2 filter slots; received <count>`; for the option, `<Method> units must be an array of one or two unit tokens` |
+| a registration the host refuses with `false` | `<Method> could not register event <name>` |
+| a scope method on something that is not a scope | `<Method> must be called on an EventKit scope` |
+| a connecting scope method, `Coalesce` or `Derive` on a closed scope | `<Method> cannot connect in a closed scope` |
+| `connection:Disconnect()`, `connection:IsConnected()` without a handle | `EventKit:Disconnect must be called on a connection handle; use connection:Disconnect()`; the same for `IsConnected` |
+| `Coalesce`, `Derive` | `<Method> events must be an event name or a non-empty array of them`; `<Method> events must contain only non-empty strings`; `<Method> accepts at most 32 distinct events`; `<Method> options must be a table`; `<Method> options contains unknown field "<field>"` (the first unknown field in sorted order; a key that is not a string, number or boolean is named by its type, `"<table>"`, and its `__tostring` never runs) |
+| `Coalesce` | `<Method> intervalSeconds must be a finite number greater than or equal to zero`; `<Method> byEvent must be a boolean`; `<Method> requires SchedulerKit API 1, which is not available (<reason>)`, with Registry's `Find` reason; `<Method>: <SchedulerKit's refusal>` for a `maxKeys` or `lane` option SchedulerKit refuses, its position removed |
+| `Derive` | `<Method> compute must be a function`; `<Method> delaySeconds must be a finite number greater than or equal to zero`; `<Method> equals must be a function` |
+| a `Coalesce` or `Derive` handle method on something else | `EventKit.CoalesceHandle:<Method> must be called on an EventKit coalesce handle`; `EventKit.DeriveHandle:<Method> must be called on an EventKit derived value` |
+| `OnChange` | `EventKit.DeriveHandle:OnChange callback must be a function`; `EventKit.DeriveHandle:OnChange cannot subscribe to a closed derived value` |
+| `ForAddon`, `CloseAddonScopes` | `EventKit:ForAddon addonName must be a non-empty string`; `EventKit:CloseAddonScopes addonName must be a non-empty string`; `EventKit:CloseAddonScopes must be called on the EventKit facade; use EventKit:CloseAddonScopes(addonName)` |
+| `SetLimits`, `GetLimits` | `EventKit:SetLimits limits must be a table`; `EventKit:SetLimits limits.<name> is not a recognised limit`; `EventKit:SetLimits limits.<name> must be an integer from 1 to <ceiling>`; `EventKit:SetLimits limits.<name> cannot be EventKit.UNBOUNDED: <reason>`; `EventKit:SetLimits must be called on the EventKit facade; use EventKit:SetLimits(limits)`; `EventKit:GetLimits must be called on the EventKit facade; use EventKit:GetLimits()` |
+
+Host-environment failures carry no position, because the caller's arguments
+did not cause them:
+
+| Message | Raised by |
+|---|---|
+| `EventKit: requires the World of Warcraft CreateFrame API`; `EventKit: CreateFrame returned no Frame`; `EventKit: requires Frame:<method> support` | the first registration that needs a Frame on a host without one, or a Frame without the method |
+| `EventKit: refusing to create more than <n> unit-filter Frames; ...` | a unit subscription past `maxUnitFrames` (see [Unit-group lifetime](#unit-group-lifetime)) |
+| the host's own error object, unchanged | a `RegisterUnitEvent` that raised (the group created for it is released first) |
+
+Loading `EventKit.lua` raises `MoltenCodes EventKit requires Registry API 2 to
+be loaded first`, `MoltenCodes EventKit requires a valid Registry API 2
+facade`, `MoltenCodes EventKit requires SignalKit API 1 to be loaded first`,
+`MoltenCodes EventKit requires a valid SignalKit API 1 facade`, or
+`MoltenCodes EventKit package state is corrupted or incomplete`.
+
 ## Embedded copies and upgrades
 
 Registry owns one stable EventKit table for `(eventKit, API 1)`. Compatible higher implementation revisions update that table in place. Existing connection handles resolve methods through a stable shared `Connection` method table; Frames created since revision 2 resolve their dispatcher through `_state`, and revision-1 Frames through the reserved facade fields described under *Reserved fields*. Scopes and `Coalesce`/`Derive` handles are validated by metatables kept in `_state`, and handle listeners resolve their behaviour through it, so handles created by an older copy run the newer code.
+
+Revision 20 keeps `_state` at schema 9 and changes messages only: an
+unrecognised `SetLimits` key or `Coalesce`/`Derive` option field that is not a
+string, number or boolean is named by its type instead of passed to
+`tostring`.
 
 Revision 19 keeps `_state` at schema 9 and changes behaviour only: a unit
 group whose first registration the host refuses by raising is released, and a

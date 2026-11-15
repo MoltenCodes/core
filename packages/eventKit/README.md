@@ -5,9 +5,9 @@ EventKit is MoltenCodes' World of Warcraft event bridge. It turns Frame `OnEvent
 ## Package contract
 
 - Package: `eventKit`
-- Version: `0.9.5`
+- Version: `0.9.8`
 - API generation: `1`
-- Implementation revision: `18`
+- Implementation revision: `20`
 - Runtime dependencies: Registry API 2, SignalKit API 1
 - Optional partners: SchedulerKit API 1, found at call time by `Coalesce` and `Derive`;
   LifecycleKit API 1, found by the first `ForAddon` to close addon scopes at logout
@@ -118,6 +118,22 @@ event, the taint consequences of a shared bus, and the measured cost of
 listener isolation and of a connection. See [`docs/INTERNALS.md`](docs/INTERNALS.md)
 for the listener storage, the channel pool and the upgrade from signal-backed
 channels.
+
+## Moving from AceEvent-3.0 and AceBucket-3.0
+
+| Ace3 | EventKit |
+|---|---|
+| `self:RegisterEvent("EVENT", callback)` | `EventKit:ForAddon(addonName):Connect("EVENT", callback)`; the callback receives the event name first, as Ace3's does, and there is no method-name form |
+| `self:UnregisterEvent("EVENT")` | `connection:Disconnect()` on the handle `Connect` returned |
+| `self:UnregisterAllEvents()` | `scope:DisconnectAll()`, or `scope:Close()` to end the scope; an addon scope closes at logout by itself |
+| a Frame of your own with `RegisterUnitEvent` (AceEvent has no unit form) | `scope:ConnectUnit("EVENT", callback, unit1[, unit2])` |
+| `COMBAT_LOG_EVENT_UNFILTERED` and `CombatLogGetCurrentEventInfo()` in every handler | `scope:ConnectCombatLog(subEvent, callback)`, one client read per event for every listener |
+| AceBucket `RegisterBucketEvent(events, interval, callback)` | `scope:Coalesce(events, interval, callback)`, with SchedulerKit embedded; the set's values are `true`, not counts |
+| AceBucket `UnregisterBucket(handle)` | `handle:Close()` |
+| AceEvent `RegisterMessage`, `SendMessage` | SignalKit buses: `SignalKit:ForAddon(addonName)` |
+
+See [`docs/MIGRATING_FROM_ACE3.md`](../../docs/MIGRATING_FROM_ACE3.md#aceevent-30)
+for worked examples.
 
 ## Embedding
 

@@ -127,6 +127,18 @@ second lookup table.
 
 ## Upgrades
 
+Revision 20 changes no state schema. `describeKey` names an unrecognised
+`SetLimits` key or option field without calling `tostring` on a table,
+function, userdata or thread key, whose `__tostring` would be the caller's
+code running inside EventKit's refusal.
+
+Revision 19 changes no state schema. A unit group it creates no longer
+records its unit list (`units`), which nothing read; a group an older copy
+built keeps the field, and nothing reads it there either. `createUnitChannel`
+calls the host's `RegisterUnitEvent` under `pcall`, so a group created only for
+a registration the host refused, by raising or by returning `false`, is
+released before the error reaches the caller.
+
 Revision 18 changes no state schema. `_state.coalesceSchedulerScope` is
 created on first use, and a `Coalesce` handle an older revision built keeps its
 own SchedulerKit scope in `_schedulerScope`, which `closeCompositeHandle` still

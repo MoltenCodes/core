@@ -2,7 +2,7 @@ local TestEnv = require("EventKitTestEnv")
 
 ---The implementation revision `src/EventKit.lua` carries; `Manifest_spec.lua`
 ---pins the same number against `package.manifest.json`.
-local CURRENT_REVISION = 19
+local CURRENT_REVISION = 20
 
 local function expectErrorContaining(expected, callback)
   local ok, message = pcall(callback)
@@ -678,6 +678,16 @@ describe("EventKit package bootstrap", function()
     assert.are.equal(legacy, EventKit)
     assert.are.equal(CURRENT_REVISION, revision)
     assert.are.equal(legacyState, EventKit._state)
+    assert.are.equal(100, EventKit:GetLimits().maxUnitFrames)
+    -- Revision 20 names a table limit key by its type, never by `__tostring`.
+    local key = setmetatable({}, {
+      __tostring = function()
+        error("foreign __tostring ran", 0)
+      end,
+    })
+    expectErrorContaining("EventKit:SetLimits limits.<table> is not a recognised limit", function()
+      EventKit:SetLimits({ [key] = 1 })
+    end)
     assert.are.equal(100, EventKit:GetLimits().maxUnitFrames)
 
     TestEnv.Emit("CUSTOM_EVENT")

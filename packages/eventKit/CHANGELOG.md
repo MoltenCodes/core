@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.9.8 — 2026-11-15
+
+- Fixed: an unrecognised `SetLimits` key, or an unknown `Coalesce` or `Derive` option field, that is a table (or any other value with a `__tostring` metamethod) was passed to `tostring` to build the refusal. That ran the caller's `__tostring` inside EventKit: foreign code that could raise, or answer a secret value on Retail, and so replace the real refusal with its own error. A new `describeKey` names such a key by its type instead: `EventKit:SetLimits limits.<table> is not a recognised limit` and `EventKit:Coalesce options contains unknown field "<table>"`. A string key is shown as written and a number or boolean as before (`limits.1`), so every documented message for those is unchanged. `docs/API.md` documents the form under *Limits* and in the argument-error table.
+- Implementation revision 20. No state changed: an upgrade over revision 19 replaces the functions and keeps every scope, connection, handle and limit; the previous-revision upgrade spec checks the new message on the upgraded facade. The revision-17 `Coalesce` upgrade spec expects revision 20.
+- Specs: 243 → 245. `Limits_spec.lua` and `Coalesce_spec.lua` give a table key whose `__tostring` raises and records that it ran, and check that the real refusal is raised at the caller's line and that `__tostring` never ran.
+
+## 0.9.7 — 2026-11-15
+
+- `README.md` named version 0.9.5 and implementation revision 18 in its package contract; it now names this version and revision 19.
+- `docs/API.md` gains an "Error messages" section. The argument and receiver messages were scattered over the method sections, and most were not written down at all: the event-name, sub-event, callback and unit-token checks, the closed-scope and wrong-receiver refusals, every `Coalesce` and `Derive` argument and option check, the handle receivers, `ForAddon` and `CloseAddonScopes`, and the `SetLimits`/`GetLimits` facade checks. The section also lists the host-environment failures, which carry no position, and the five load-time errors.
+- `docs/API.md` documents the facade constants `EventKit.API` and `EventKit.REVISION` under Loading.
+- `docs/INTERNALS.md` "Upgrades" starts at revision 19 (no schema change, the unit list a new group no longer records, the protected `RegisterUnitEvent`); it stopped at revision 18.
+- `README.md` gains a "Moving from AceEvent-3.0 and AceBucket-3.0" table; it had no migration section.
+- Documentation only: the implementation revision stays 19.
+
 ## 0.9.6 — 2026-11-15
 
 - Fixed a unit group leaking when the host's `RegisterUnitEvent` raised. A group created for that registration kept its Frame although no channel used it, so it was never released; after 64 such failures (the default `maxUnitFrames`) a valid `ConnectUnit` was refused. The registration is now protected: a host that raises releases the new group exactly like one that returns `false`, and its error then reaches the caller unchanged. `ConnectUnit`, `OnceUnit`, their scope forms and the `units` option of `Coalesce` and `Derive` share that path. Regression specs in `Errors_spec.lua` and `Coalesce_spec.lua`.

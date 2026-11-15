@@ -143,6 +143,21 @@ describe("EventKit limits", function()
     end)
   end)
 
+  it("names a table limit key by its type without running its __tostring", function()
+    local ran = false
+    local key = setmetatable({}, {
+      __tostring = function()
+        ran = true
+        error("foreign __tostring ran", 0)
+      end,
+    })
+    expectCallerError("EventKit:SetLimits limits.<table> is not a recognised limit", function()
+      EventKit:SetLimits({ [key] = 1 })
+    end)
+    assert.is_false(ran)
+    assert.are.equal(64, EventKit:GetLimits().maxUnitFrames)
+  end)
+
   it("changes nothing when any value is refused", function()
     EventKit:SetLimits({ maxUnitFrames = 80 })
     expectCallerError("is not a recognised limit", function()

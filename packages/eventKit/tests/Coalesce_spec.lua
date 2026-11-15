@@ -203,6 +203,22 @@ describe("EventKit Coalesce", function()
     expectErrorAtThisSpec('EventKit:Coalesce options contains unknown field "unit"', function()
       EventKit:Coalesce("UNIT_HEALTH", 1, function() end, { unit = "player" })
     end)
+    -- A table key is named by its type: its `__tostring` is foreign code
+    -- that could raise or answer a secret and lose the real refusal.
+    local ran = false
+    local hostileKey = setmetatable({}, {
+      __tostring = function()
+        ran = true
+        error("foreign __tostring ran", 0)
+      end,
+    })
+    expectErrorAtThisSpec('EventKit:Coalesce options contains unknown field "<table>"', function()
+      EventKit:Coalesce("UNIT_HEALTH", 1, function() end, { [hostileKey] = true })
+    end)
+    expectErrorAtThisSpec('EventKit:Derive options contains unknown field "<table>"', function()
+      EventKit:Derive("UNIT_HEALTH", function() end, { [hostileKey] = true })
+    end)
+    assert.is_false(ran)
     expectErrorAtThisSpec("EventKit:Coalesce accepts at most 2 distinct unit tokens", function()
       EventKit:Coalesce("UNIT_HEALTH", 1, function() end, { units = { "a", "b", "c" } })
     end)
@@ -429,7 +445,7 @@ describe("EventKit Coalesce across an upgrade", function()
     package.loaded["EventKit"] = nil
     local EventKit = require("EventKit")
     assert.are.equal(legacy, EventKit)
-    assert.are.equal(19, EventKit.REVISION)
+    assert.are.equal(20, EventKit.REVISION)
 
     Scheduled.Emit("UNIT_HEALTH", "player")
     fireLatest()
