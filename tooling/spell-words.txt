@@ -103,7 +103,9 @@ frexp
 getmetatable
 gsub
 ipairs
+lastlinedefined
 ldexp
+linedefined
 luac
 metamethod
 metatable
