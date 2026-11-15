@@ -889,6 +889,10 @@ savedVariables:Test(
     -- defaults through SettingsKit's metatable; nothing is written.
     db.profile.scale = nil
     local profileTable = rawProfile(characterKey)
+    if type(profileTable) ~= "table" then
+      ctx:Fail("the character's saved profile table is missing")
+      return
+    end
     ctx:Expect(rawget(profileTable, "scale")):ToBeNil()
     ctx:Expect(profileTable.scale):ToBe(1)
   end

@@ -494,8 +494,10 @@ describe("ExampleAddon", function()
     assert.are.equal(before, #chatLines)
 
     -- Compaction keeps what differs from the defaults and drops the rest.
-    assert.are.equal(1.5, profile.windowScale)
-    assert.is_nil(profile.greet)
+    -- `rawget`: while the database is open, SettingsKit gives the saved
+    -- tables a metatable that answers defaults, as AceDB's do.
+    assert.are.equal(1.5, rawget(profile, "windowScale"))
+    assert.is_nil(rawget(profile, "greet"))
     assertNoReportedErrors()
   end)
 end)
