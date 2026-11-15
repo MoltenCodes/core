@@ -53,24 +53,26 @@
 --   Listener isolation .... allocation-free protected dispatch
 --   Combat log routing .... the client's reader, one read per event,
 --                           fanned out by sub-event
---   Scope ownership ....... intrusive scope links and bulk teardown
---   Connections ........... connection lifecycle and handle methods
+--   Scope ownership ....... intrusive scope links (array slots on
+--                           connections, named fields on other members)
+--   Connections ........... array-part handles, their lifecycle and methods
 --   Dispatch .............. OnEvent to channel fan-out
---   Subscription .......... shared validation and connect path
+--   Subscription .......... shared validation and connect path, the
+--                           method-name form
 --   Logout coverage ....... who closes an addon scope at logout, decided at
 --                           the first ForAddon (LifecycleKit or EventKit)
 --   Coalescing ............ Coalesce and Derive over SchedulerKit, when present
 --   Public API ............ package-level subscriptions and scopes
 --   Limits ................ SetLimits and GetLimits over the shared limits
---   Scope methods ......... the handle a scope owner receives
+--   Scope methods ......... the handle a scope owner receives, Reopen
 --   Commit ................ prototype/facade assignment and self-check
 
 local PACKAGE_NAME = "eventKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 20
+local IMPLEMENTATION_REVISION = 21
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_SIGNAL_API = 1
-local STATE_SCHEMA = 9
+local STATE_SCHEMA = 10
 
 -- Coalesce and Derive find SchedulerKit through `Registry:Find` when they are
 -- called. EventKit never depends on SchedulerKit: SchedulerKit depends on
@@ -226,6 +228,7 @@ local function validatePublicSurface(implementation)
     and type(rawget(scope, "DisconnectAll")) == "function"
     and type(rawget(scope, "Close")) == "function"
     and type(rawget(scope, "IsClosed")) == "function"
+    and type(rawget(scope, "Reopen")) == "function"
     and type(rawget(scope, "GetAddonName")) == "function"
     and type(rawget(scope, "GetActiveCount")) == "function"
     and type(rawget(scope, "Coalesce")) == "function"
@@ -270,6 +273,7 @@ local function validateCurrentState(implementation)
     and type(rawget(currentState, "pendingScopeCount")) == "number"
     and type(rawget(currentState, "addonScopes")) == "table"
     and type(rawget(currentState, "scopeMetatable")) == "table"
+    and type(rawget(currentState, "connectionMetatable")) == "table"
     and type(rawget(currentState, "composites")) == "table"
     and type(rawget(currentState, "compositeMetatables")) == "table"
     and type(rawget(currentState, "compositePrototypes")) == "table"
@@ -319,31 +323,33 @@ end
 ---front; the sub-event is the second value.
 ---@alias EventKit.CombatLogListener fun(timestamp: number, subEvent: string, hideCaster: boolean, sourceGUID: string, sourceName: string?, sourceFlags: integer, sourceRaidFlags: integer, destGUID: string, destName: string?, destFlags: integer, destRaidFlags: integer, ...: any)
 
----A connection handle returned by an EventKit subscription.
+---A connection handle returned by an EventKit subscription. Its fields live
+---in the array part (see "Connections"): `[1]` the listener, `[2]` whether it
+---still delivers, `[3]` whether it is a one-shot, `[4]` its channel or route,
+---and on a scoped handle `[5]` its scope, `[6]` and `[7]` its scope links. A
+---handle from before revision 17, or a disconnected one of revisions 17 to 20
+---the upgrade could not reach, keeps named fields (`_connected`, `_inner`...).
 ---@class EventKit.Connection
 ---@field Disconnect fun(self: EventKit.Connection): boolean
 ---@field IsConnected fun(self: EventKit.Connection): boolean
----@field package _connected boolean Whether the connection still delivers; private to this file.
----@field package _callback function? The listener, `nil` once disconnected.
----@field package _once boolean? Whether it disconnects before its first call.
----@field package _channel EventKit.Channel|false|nil The channel it is on, `nil` once disconnected.
----@field package _route EventKit.CombatLogRoute|false|nil The combat-log route it is on instead.
----@field package _inner SignalKit.Connection? Only on a handle a revision before 17 made.
----@field package _scope EventKit.Scope|false|nil The owning scope; absent on an unscoped handle.
----@field package _scopePrevious EventKit.Connection|false|nil
----@field package _scopeNext EventKit.Connection|false|nil
 
 ---An ownership scope for connections, closed by its owner or, for an addon
 ---scope, through `EventKit:CloseAddonScopes`.
 ---@class EventKit.Scope
----@field Connect fun(self: EventKit.Scope, eventName: string, callback: EventKit.Listener): EventKit.Connection
----@field Once fun(self: EventKit.Scope, eventName: string, callback: EventKit.Listener): EventKit.Connection
----@field ConnectUnit fun(self: EventKit.Scope, eventName: string, callback: EventKit.Listener, unit1: string, unit2: string?): EventKit.Connection
----@field OnceUnit fun(self: EventKit.Scope, eventName: string, callback: EventKit.Listener, unit1: string, unit2: string?): EventKit.Connection
+---@field Connect fun(self: EventKit.Scope, eventName: string, callback: EventKit.Listener|table, methodName: string?): EventKit.Connection
+---@field Once fun(self: EventKit.Scope, eventName: string, callback: EventKit.Listener|table, methodName: string?): EventKit.Connection
+---@field ConnectUnit fun(self: EventKit.Scope, eventName: string, callback: EventKit.Listener|table, ...: string): EventKit.Connection
+---@field OnceUnit fun(self: EventKit.Scope, eventName: string, callback: EventKit.Listener|table, ...: string): EventKit.Connection
 ---@field ConnectCombatLog fun(self: EventKit.Scope, subEvent: string, callback: EventKit.CombatLogListener): EventKit.Connection
 ---@field DisconnectAll fun(self: EventKit.Scope): integer
 ---@field Close fun(self: EventKit.Scope): boolean
 ---@field IsClosed fun(self: EventKit.Scope): boolean
+---@field Reopen fun(self: EventKit.Scope): boolean
+---@field package _addonName string? The owning addon, `nil` for a manual scope.
+---@field package _head table|false The first member of the live list.
+---@field package _tail table|false The last member of the live list.
+---@field package _activeCount integer Live members.
+---@field package _closed boolean Whether the scope is closed.
 ---@field GetAddonName fun(self: EventKit.Scope): string?
 ---@field GetActiveCount fun(self: EventKit.Scope): integer
 ---@field Coalesce fun(self: EventKit.Scope, events: string|string[], intervalSeconds: number, callback: fun(set: table<any, any>), options: EventKit.CoalesceOptions?): EventKit.CoalesceHandle
@@ -387,6 +393,7 @@ end
 ---@field tombstones integer Disconnected connections still in `listeners`.
 ---@field signal SignalKit.Signal? Only on a channel a revision before 17 created: the fan-out of the connections it made, delivered before `listeners`.
 ---@field count integer Live EventKit connections sharing the registration.
+---@field onceCount integer? Live one-shot connections; created by the first one (see "Dispatch").
 ---@field channels table<string, EventKit.Channel>|false Owning channel map.
 ---@field group EventKit.UnitGroup|false|nil `false` (or `nil`, from a revision before 17) for a regular, unfiltered event.
 
@@ -403,6 +410,7 @@ end
 ---@field tombstones integer Disconnected connections still in `listeners`.
 ---@field signal SignalKit.Signal? Only on a route a revision before 17 created, as on a channel.
 ---@field count integer Live connections on this route; it leaves the router at zero.
+---@field onceCount integer? Never above zero: a route takes no one-shots.
 
 ---The combat-log router: the package's one share of the
 ---`COMBAT_LOG_EVENT_UNFILTERED` registration and the routes behind it.
@@ -427,10 +435,10 @@ end
 ---@field GetLimits fun(self: EventKit): EventKit.Limits
 ---@field Connection EventKit.Connection Shared method prototype for connection handles.
 ---@field Scope EventKit.Scope Shared method prototype for scopes.
----@field Connect fun(self: EventKit, eventName: string, callback: EventKit.Listener): EventKit.Connection
----@field Once fun(self: EventKit, eventName: string, callback: EventKit.Listener): EventKit.Connection
----@field ConnectUnit fun(self: EventKit, eventName: string, callback: EventKit.Listener, unit1: string, unit2: string?): EventKit.Connection
----@field OnceUnit fun(self: EventKit, eventName: string, callback: EventKit.Listener, unit1: string, unit2: string?): EventKit.Connection
+---@field Connect fun(self: EventKit, eventName: string, callback: EventKit.Listener|table, methodName: string?): EventKit.Connection
+---@field Once fun(self: EventKit, eventName: string, callback: EventKit.Listener|table, methodName: string?): EventKit.Connection
+---@field ConnectUnit fun(self: EventKit, eventName: string, callback: EventKit.Listener|table, ...: string): EventKit.Connection
+---@field OnceUnit fun(self: EventKit, eventName: string, callback: EventKit.Listener|table, ...: string): EventKit.Connection
 ---@field ConnectCombatLog fun(self: EventKit, subEvent: string, callback: EventKit.CombatLogListener): EventKit.Connection
 ---@field IsCombatLogAvailable fun(self: EventKit): boolean Whether this client gives addon code a combat-log reader, so `ConnectCombatLog` can connect.
 ---@field CreateScope fun(self: EventKit): EventKit.Scope
@@ -473,6 +481,10 @@ if type(previousRevision) == "nil" then
     dispatchCombatLog = nil,
     addonScopes = {},
     scopeMetatable = {},
+    -- The metatable every connection handle carries. Shared, so a newer
+    -- revision checks a receiver by metatable identity and keeps the
+    -- handles the older copy made.
+    connectionMetatable = {},
     -- How many dispatches are on the stack, and the scopes closed during
     -- them whose connections are swept once the outermost one returns.
     dispatchDepth = 0,
@@ -624,6 +636,135 @@ else
     if type(rawget(state, "channelPool")) ~= "table" then
       rawset(state, "channelPool", {})
     end
+    rawset(state, "schema", 9)
+    schema = 9
+  end
+
+  if schema == 9 then
+    -- Revisions 17 to 20 kept a connection's fields by name in its hash part
+    -- (224 bytes, 384 with scope links) and gave every copy a metatable of
+    -- its own. From revision 21 a connection keeps them in its array part
+    -- (see "Connections") under one metatable in shared state. Every
+    -- connection that can still be delivered sits in a channel's or a
+    -- route's listener array, so walking those arrays, and the scope list of
+    -- every scoped connection found there, reaches all of them. Each is
+    -- converted in place: the handle an addon holds is the same table and
+    -- keeps working. A disconnected handle the walk cannot reach keeps its
+    -- named fields; the connection methods recognise it (see
+    -- `disconnectNamedHandle`). Handles revisions before 17 made (`_inner`)
+    -- and Coalesce or Derive handles keep their named fields too.
+    -- A state carrying one already (an emulated older schema in the specs)
+    -- keeps it, so no handle loses its receiver identity.
+    local connectionMetatable = rawget(state, "connectionMetatable")
+    if type(connectionMetatable) ~= "table" then
+      connectionMetatable = {}
+    end
+
+    local function isNamedConnection(member)
+      return rawget(member, 2) == nil
+        and type(rawget(member, "_connected")) == "boolean"
+        and rawget(member, "_inner") == nil
+    end
+
+    local function convert(member)
+      local fanOut = rawget(member, "_channel")
+      if fanOut == nil or fanOut == false then
+        fanOut = rawget(member, "_route")
+      end
+      local fields = {
+        rawget(member, "_callback"),
+        rawget(member, "_connected"),
+        rawget(member, "_once") == true,
+        fanOut or nil,
+      }
+      local scoped = rawget(member, "_scope") ~= nil
+      if scoped then
+        fields[5] = rawget(member, "_scope") or false
+        fields[6] = rawget(member, "_scopePrevious") or false
+        fields[7] = rawget(member, "_scopeNext") or false
+      end
+      for _, name in ipairs({
+        "_connected",
+        "_callback",
+        "_once",
+        "_channel",
+        "_route",
+        "_scope",
+        "_scopePrevious",
+        "_scopeNext",
+      }) do
+        rawset(member, name, nil)
+      end
+      for index = 1, scoped and 7 or 4 do
+        rawset(member, index, fields[index])
+      end
+      setmetatable(member, connectionMetatable)
+    end
+
+    local visitedScopes = {}
+    local function convertScopeList(scope)
+      if type(scope) ~= "table" or visitedScopes[scope] then
+        return
+      end
+      visitedScopes[scope] = true
+      local member = rawget(scope, "_head")
+      while type(member) == "table" do
+        local following
+        if rawget(member, 2) ~= nil then
+          following = rawget(member, 7)
+        else
+          following = rawget(member, "_scopeNext")
+        end
+        if isNamedConnection(member) then
+          convert(member)
+        end
+        member = following
+      end
+    end
+
+    local function convertFanOut(fanOut)
+      if type(fanOut) ~= "table" or type(rawget(fanOut, "listeners")) ~= "table" then
+        return
+      end
+      local onceCount = 0
+      local listeners = rawget(fanOut, "listeners")
+      for index = 1, #listeners do
+        local connection = listeners[index]
+        if isNamedConnection(connection) then
+          convertScopeList(rawget(connection, "_scope"))
+          if isNamedConnection(connection) then
+            convert(connection)
+          end
+        end
+        if rawget(connection, 2) == true and rawget(connection, 3) == true then
+          onceCount = onceCount + 1
+        end
+      end
+      if onceCount > 0 then
+        rawset(fanOut, "onceCount", onceCount)
+      end
+    end
+
+    for _, channel in pairs(rawget(state, "regularChannels")) do
+      convertFanOut(channel)
+    end
+    for _, group in pairs(rawget(state, "unitGroups")) do
+      if type(group) == "table" and type(rawget(group, "channels")) == "table" then
+        for _, channel in pairs(rawget(group, "channels")) do
+          convertFanOut(channel)
+        end
+      end
+    end
+    local combatLog = rawget(state, "combatLog")
+    for _, route in pairs(rawget(combatLog, "routes")) do
+      convertFanOut(route)
+    end
+    convertFanOut(rawget(combatLog, "anyRoute"))
+    for _, scope in pairs(rawget(state, "addonScopes")) do
+      convertScopeList(scope)
+    end
+
+    rawset(state, "connectionMetatable", connectionMetatable)
     rawset(state, "schema", STATE_SCHEMA)
     schema = STATE_SCHEMA
   end
@@ -640,7 +781,10 @@ else
   end
 end
 
-local CONNECTION_METATABLE = { __index = Connection }
+-- Connection handles are validated by metatable identity, so their metatable
+-- lives in shared state like the scope metatable below.
+local CONNECTION_METATABLE = rawget(state, "connectionMetatable")
+rawset(CONNECTION_METATABLE, "__index", Connection)
 
 -- The sentinel and the shared limits outlive this copy: a newer revision reads
 -- the same tables, so a consumer's `SetLimits` and its `UNBOUNDED` comparisons
@@ -664,39 +808,13 @@ end
 local COALESCE_METATABLE = rawget(COMPOSITE_METATABLES, "coalesce")
 local DERIVE_METATABLE = rawget(COMPOSITE_METATABLES, "derive")
 
--- Unlike the connection metatable, the scope metatable lives in shared state:
--- scope receivers are validated by metatable identity, which therefore has to
--- survive an in-place upgrade.
+-- The scope metatable lives in shared state too: scope receivers are
+-- validated by metatable identity, which therefore has to survive an
+-- in-place upgrade.
 local SCOPE_METATABLE = rawget(state, "scopeMetatable")
 rawset(SCOPE_METATABLE, "__index", Scope)
 
 -- Validation ----------------------------------------------------------------
-
--- Connection methods are published on a shared prototype, so `connection.Disconnect()`
--- and `EventKit.Connection.Disconnect()` both reach them with no receiver. Without a
--- guard the first `rawget` inside raises "bad argument #1 to 'rawget'" from EventKit's
--- own line, which names neither the package nor the mistake. Each method therefore
--- tests its receiver first and raises at the caller.
-local CONNECTION_RECEIVER_HINT = " must be called on a connection handle; use connection:"
-
-local DISCONNECT_RECEIVER_MESSAGE = "EventKit:Disconnect"
-  .. CONNECTION_RECEIVER_HINT
-  .. "Disconnect()"
-local IS_CONNECTED_RECEIVER_MESSAGE = "EventKit:IsConnected"
-  .. CONNECTION_RECEIVER_HINT
-  .. "IsConnected()"
-
----Whether `self` looks like a connection handle owned by this package.
----
----The test is a field type test rather than a metatable comparison on purpose: a
----newer embedded revision builds its own connection metatable, so metatable
----identity would reject handles created by the revision it upgraded. `rawget`
----raises on a non-table, so the table test has to come first.
----@param self any
----@return boolean
-local function isConnectionHandle(self)
-  return type(self) == "table" and type(rawget(self, "_connected")) == "boolean"
-end
 
 -- Argument validation raises with an explicit stack level so the reported
 -- position is the line that called the public method, never a line inside
@@ -709,14 +827,46 @@ end
 -- did not create are tested for absence with `type(value) == "nil"`, the
 -- repository rule, and a secret is refused (payloads: not compared) first.
 
----Whether the client reports `value` as secret; always `false` elsewhere.
----@param value any
----@return boolean
-local function isSecret(value)
+local isSecret
+do
+  -- The client's secret probe is resolved once, when this copy loads: every
+  -- client flavour defines `issecretvalue` before any addon runs. Only when it
+  -- was absent at load is the global read again on each check, so a probe a
+  -- test environment or a compatibility shim installs later is still honoured.
   -- issecretvalue is a World of Warcraft client API reachable only through the global table.
   -- selene: allow(global_usage)
-  local isSecretValue = rawget(_G, "issecretvalue")
-  return type(isSecretValue) == "function" and isSecretValue(value) == true
+  local loadedIsSecretValue = rawget(_G, "issecretvalue")
+  if type(loadedIsSecretValue) ~= "function" then
+    loadedIsSecretValue = nil
+  end
+
+  ---The secret probe installed since this copy loaded, or `nil`. Only called
+  ---when there was none at load.
+  ---@return function|nil probe
+  local function readLateSecretProbe()
+    -- issecretvalue is a World of Warcraft client API reachable only through the global table.
+    -- selene: allow(global_usage)
+    local probe = rawget(_G, "issecretvalue")
+    if type(probe) ~= "function" then
+      return nil
+    end
+    return probe
+  end
+
+  ---Whether the client reports `value` as secret; always `false` elsewhere.
+  ---@param value any
+  ---@return boolean
+  local function checkSecret(value)
+    local probe = loadedIsSecretValue
+    if probe == nil then
+      probe = readLateSecretProbe()
+      if probe == nil then
+        return false
+      end
+    end
+    return probe(value) == true
+  end
+  isSecret = checkSecret
 end
 
 ---Raise at `level` when `value` is secret, naming `label`.
@@ -801,6 +951,51 @@ local function validateCallback(callback, label, level)
   end
 end
 
+---Turn a receiver table and a method name into a listener, the counterpart of
+---AceEvent's `RegisterEvent("X", "OnX")`.
+---
+---The method must exist when the connection is made, so a misspelt name
+---raises at the caller's line. It is then looked up on the receiver at every
+---delivery, as AceEvent does, so a method replaced later (by a hook, say)
+---is the one that runs. A method gone by then raises inside the listener's
+---isolation, which reports it to the host error handler; the connection
+---stays. The listener holds two upvalues, so it costs one closure per
+---connection and one extra Lua call per delivery.
+---@param receiver any the table the method is called on
+---@param methodName any the method's name; `defaultName` when `nil`
+---@param defaultName string|nil the name used when `methodName` is omitted
+---@param label string qualified public method name, used in the argument errors
+---@param level integer stack level the failures are reported at
+---@return EventKit.Listener listener
+local function bindMethod(receiver, methodName, defaultName, label, level)
+  if type(receiver) ~= "table" then
+    error(
+      label .. " callback must be a function, or a receiver table followed by a method name",
+      level
+    )
+  end
+  if type(methodName) == "nil" and type(defaultName) ~= "nil" then
+    methodName = defaultName
+  end
+  refuseSecret(methodName, label .. " methodName", level + 1)
+  if type(methodName) ~= "string" or methodName == "" then
+    error(label .. " methodName must be a non-empty string", level)
+  end
+  if type(receiver[methodName]) ~= "function" then
+    error(label .. ' receiver has no method "' .. methodName .. '"', level)
+  end
+  return function(...)
+    local method = receiver[methodName]
+    -- `== nil` answers `false` without raising for a secret value (measured
+    -- on Retail 12.1.0, docs/EMBEDDING.md), and a call on anything else
+    -- that is not a function raises in the isolation anyway.
+    if method == nil then
+      error('EventKit receiver has no method "' .. methodName .. '"', 0)
+    end
+    return method(receiver, ...)
+  end
+end
+
 ---@param value any
 ---@param label string argument description, used in the argument error
 ---@param level integer stack level the failure is reported at
@@ -815,7 +1010,9 @@ end
 ---@param label string qualified public method name, used in the argument error
 ---@param level integer stack level the failure is reported at
 local function validateScope(scope, label, level)
-  if type(scope) ~= "table" or getmetatable(scope) ~= SCOPE_METATABLE then
+  -- `getmetatable` answers the shared scope metatable for a scope only, so
+  -- no type test is needed first.
+  if getmetatable(scope) ~= SCOPE_METATABLE then
     error(label .. " must be called on an EventKit scope", level)
   end
 end
@@ -1157,6 +1354,11 @@ local function poolChannel(channel)
   channel.channels = false
   channel.group = false
   channel.tombstones = 0
+  -- Zero once every one-shot left; reset anyway, so a bookkeeping slip
+  -- cannot keep a reused record on the protected walk.
+  if channel.onceCount ~= nil then
+    channel.onceCount = 0
+  end
   pool[#pool + 1] = channel
 end
 
@@ -1239,7 +1441,7 @@ end
 ---@param tombstones integer the tombstones in the array
 ---@return integer tombstones the tombstones left
 local function settleInPlace(listeners, total, tombstones)
-  while total > 0 and listeners[total]._connected ~= true do
+  while total > 0 and listeners[total][2] ~= true do
     listeners[total] = nil
     total = total - 1
     tombstones = tombstones - 1
@@ -1251,7 +1453,7 @@ local function settleInPlace(listeners, total, tombstones)
   local live = 0
   for index = 1, total do
     local connection = listeners[index]
-    if connection._connected == true then
+    if connection[2] == true then
       live = live + 1
       listeners[live] = connection
     end
@@ -1277,7 +1479,7 @@ local function dropListener(fanOut, connection)
       local live = 0
       for index = 1, total do
         local entry = listeners[index]
-        if entry._connected == true then
+        if entry[2] == true then
           live = live + 1
           compacted[live] = entry
         end
@@ -1559,7 +1761,7 @@ local function detachCombatLogRouter(combatLog)
   -- The router's own connection releases its share of the channel. One a
   -- revision before 17 attached is a connection on the channel's signal,
   -- which holds no share, so the share is released here.
-  if rawget(inner, "_channel") == channel then
+  if rawget(inner, 4) == channel then
     disconnectEventConnection(inner)
   else
     inner:Disconnect()
@@ -1636,139 +1838,241 @@ end
 
 -- Scope ownership -----------------------------------------------------------
 --
--- A scope keeps its live connections on an intrusive doubly linked list: the
--- links are fields on the connection itself, so joining or leaving a scope
+-- A scope keeps its live members on an intrusive doubly linked list: the
+-- links are fields on the member itself, so joining or leaving a scope
 -- allocates nothing and a disconnected handle is unlinked in O(1) the moment
 -- it disconnects. `false` marks an empty link so the fields exist from the
--- connection's creation and never rehash it. Connections made by a revision
--- before scopes existed carry no `_scope` field at all, which reads the same.
+-- member's creation and never rehash it.
+--
+-- A connection keeps its links in array slots 5 to 7 (see "Connections"); a
+-- Coalesce or Derive handle, and a handle a revision before 17 made, keep
+-- them by name (`_scope`, `_scopePrevious`, `_scopeNext`). Slot 2 tells the
+-- two apart: it holds a connection's connected flag, a boolean, and nothing
+-- on the others. Connections made by a revision before scopes existed carry
+-- no link at all, which reads the same as `false`.
+--
+-- Neither the scope metatable nor the connection metatable has
+-- `__newindex`, and every field written here already exists on the record,
+-- so plain indexing is exact and costs a VM instruction where `rawget` and
+-- `rawset` cost a C call each.
 
----Append `connection` to `scope`'s live list, keeping creation order.
----@param scope EventKit.Scope
----@param connection EventKit.Connection
-local function linkToScope(scope, connection)
-  local tail = rawget(scope, "_tail")
-  rawset(connection, "_scope", scope)
-  rawset(connection, "_scopePrevious", tail)
-  rawset(connection, "_scopeNext", false)
-  if tail == false then
-    rawset(scope, "_head", connection)
-  else
-    rawset(tail, "_scopeNext", connection)
+local scopeOfMember, linkToScope, unlinkFromScope
+do
+  ---The scope `member` belongs to, or `false`/`nil` for none.
+  ---@param member table a connection or a Coalesce or Derive handle
+  ---@return EventKit.Scope|false|nil
+  local function findMemberScope(member)
+    if member[2] ~= nil then
+      return member[5]
+    end
+    return member._scope
   end
-  rawset(scope, "_tail", connection)
-  rawset(scope, "_activeCount", rawget(scope, "_activeCount") + 1)
-end
+  scopeOfMember = findMemberScope
 
----Remove `connection` from the scope that owns it, if any. Never raises.
----@param connection EventKit.Connection
-local function unlinkFromScope(connection)
-  local scope = rawget(connection, "_scope")
-  if type(scope) ~= "table" then
-    return
-  end
-
-  local previous = rawget(connection, "_scopePrevious")
-  local following = rawget(connection, "_scopeNext")
-  if previous == false then
-    rawset(scope, "_head", following)
-  else
-    rawset(previous, "_scopeNext", following)
-  end
-  if following == false then
-    rawset(scope, "_tail", previous)
-  else
-    rawset(following, "_scopePrevious", previous)
+  ---Point `member`'s link to the following member at `following`.
+  ---@param member table
+  ---@param following table|false
+  local function setNextMember(member, following)
+    if member[2] ~= nil then
+      member[7] = following
+    else
+      member._scopeNext = following
+    end
   end
 
-  rawset(connection, "_scope", false)
-  rawset(connection, "_scopePrevious", false)
-  rawset(connection, "_scopeNext", false)
-  rawset(scope, "_activeCount", rawget(scope, "_activeCount") - 1)
+  ---Point `member`'s link to the previous member at `previous`.
+  ---@param member table
+  ---@param previous table|false
+  local function setPreviousMember(member, previous)
+    if member[2] ~= nil then
+      member[6] = previous
+    else
+      member._scopePrevious = previous
+    end
+  end
+
+  ---Append `member` to `scope`'s live list, keeping creation order.
+  ---@param scope EventKit.Scope
+  ---@param member table a connection or a Coalesce or Derive handle
+  local function appendToScope(scope, member)
+    local tail = scope._tail
+    if member[2] ~= nil then
+      member[5] = scope
+      member[6] = tail
+      member[7] = false
+    else
+      member._scope = scope
+      member._scopePrevious = tail
+      member._scopeNext = false
+    end
+    if tail == false then
+      scope._head = member
+    else
+      setNextMember(tail, member)
+    end
+    scope._tail = member
+    scope._activeCount = scope._activeCount + 1
+  end
+  linkToScope = appendToScope
+
+  ---Remove `member` from the scope that owns it, if any. Never raises.
+  ---@param member table a connection or a Coalesce or Derive handle
+  local function removeFromScope(member)
+    local scope, previous, following
+    local arrayLayout = member[2] ~= nil
+    if arrayLayout then
+      scope, previous, following = member[5], member[6], member[7]
+    else
+      scope, previous, following = member._scope, member._scopePrevious, member._scopeNext
+    end
+    if scope == nil or scope == false then
+      return
+    end
+    local owner = scope --[[@as EventKit.Scope]]
+
+    if previous == false then
+      owner._head = following
+    else
+      setNextMember(previous --[[@as table]], following)
+    end
+    if following == false then
+      owner._tail = previous
+    else
+      setPreviousMember(following --[[@as table]], previous)
+    end
+
+    if arrayLayout then
+      member[5] = false
+      member[6] = false
+      member[7] = false
+    else
+      member._scope = false
+      member._scopePrevious = false
+      member._scopeNext = false
+    end
+    owner._activeCount = owner._activeCount - 1
+  end
+  unlinkFromScope = removeFromScope
 end
 
 -- Connections ---------------------------------------------------------------
 --
 -- A connection handle is also the record in its channel's or route's
 -- listener array, so connecting allocates the handle and nothing else: no
--- wrapper closure and no second record. An unscoped handle carries the four
--- fields every connection needs (`_connected`, `_channel` or `_route`,
--- `_callback`, `_once`), which fill a four-slot hash part; a scoped handle
--- adds the three scope links. Fields are only ever written when they exist,
--- because in Lua 5.1 assigning even `nil` to a missing key inserts it, which
--- can grow a full table.
+-- wrapper closure and no second record. Its fields live in the array part,
+-- sized exactly by the constructor:
+--
+--   [1] the listener, `nil` once disconnected
+--   [2] whether it still delivers (a boolean, never `nil`)
+--   [3] whether it disconnects before its first call
+--   [4] its fan-out: a channel, or a combat-log route (which carries
+--       `subEvent`), `nil` once disconnected
+--   [5] the owning scope or `false`, [6] the previous and [7] the next
+--       member of that scope's list; only on a scoped handle
+--
+-- An array part costs 16 bytes a slot where a hash part costs 40 a node, so
+-- an unscoped handle is 128 bytes instead of 224 and a scoped one 176
+-- instead of 384. Slots past the constructor's are never written: in Lua 5.1
+-- assigning even `nil` to a missing key inserts it, which can grow a table.
 --
 -- Handles revisions before 17 made hold `_inner`, their connection on the
--- channel's or route's signal, and are released the way those revisions
--- released them.
+-- channel's or route's signal, and keep their named fields; so does a handle
+-- revisions 17 to 20 made that the in-place conversion did not reach (see
+-- "Shared state"). Both are released by `disconnectNamedHandle`.
 
----Release a connection a revision before 17 made: it is delivered through
----`_inner`, its connection on the channel's or route's signal.
----@param connection EventKit.Connection
----@return boolean disconnected
-local function disconnectLegacyConnection(connection)
-  local inner = rawget(connection, "_inner")
-  local channel = rawget(connection, "_channel")
-  local route = rawget(connection, "_route")
+local disconnectNamedHandle
+do
+  ---Release a connection a revision before 17 made: it is delivered through
+  ---`_inner`, its connection on the channel's or route's signal.
+  ---@param connection EventKit.Connection
+  ---@return boolean disconnected
+  local function disconnectLegacyConnection(connection)
+    local inner = rawget(connection, "_inner")
+    local channel = rawget(connection, "_channel")
+    local route = rawget(connection, "_route")
 
-  rawset(connection, "_connected", false)
-  rawset(connection, "_inner", nil)
-  rawset(connection, "_channel", nil)
-  rawset(connection, "_route", nil)
+    rawset(connection, "_connected", false)
+    rawset(connection, "_inner", nil)
+    rawset(connection, "_channel", nil)
+    rawset(connection, "_route", nil)
 
-  -- Leave the scope before touching SignalKit or the host, both of which can
-  -- raise. Bulk teardown relies on every attempted connection leaving the
-  -- list, whatever happens after this line.
-  unlinkFromScope(connection)
+    -- Leave the scope before touching SignalKit or the host, both of which can
+    -- raise. Bulk teardown relies on every attempted connection leaving the
+    -- list, whatever happens after this line.
+    unlinkFromScope(connection)
 
-  inner:Disconnect()
-  -- A combat-log connection shares the host registration through its route
-  -- instead of holding a channel. Connections made before revision 12 carry
-  -- no `_route` field at all, which reads the same as `false`.
-  if route ~= nil and route ~= false then
-    releaseCombatLogRoute(route)
-  else
-    releaseChannel(channel)
+    inner:Disconnect()
+    -- A combat-log connection shares the host registration through its route
+    -- instead of holding a channel. Connections made before revision 12 carry
+    -- no `_route` field at all, which reads the same as `false`.
+    if route ~= nil and route ~= false then
+      releaseCombatLogRoute(route)
+    else
+      releaseChannel(channel)
+    end
+    return true
   end
-  return true
+
+  ---Release a handle with named fields: one a revision before 17 made, or one
+  ---of revisions 17 to 20 that the in-place conversion did not reach because
+  ---it was not in any listener array. Only a disconnected handle of the second
+  ---kind can be missed that way, so a live one is legacy.
+  ---@param connection table
+  ---@return boolean disconnected
+  local function releaseNamedHandle(connection)
+    if rawget(connection, "_connected") ~= true then
+      return false
+    end
+    if rawget(connection, "_inner") ~= nil then
+      return disconnectLegacyConnection(connection)
+    end
+    -- Defensive: a live named handle outside every listener array cannot
+    -- exist, but marking it is still the right answer.
+    rawset(connection, "_connected", false)
+    rawset(connection, "_callback", nil)
+    unlinkFromScope(connection)
+    return true
+  end
+  disconnectNamedHandle = releaseNamedHandle
 end
 
 ---@param connection EventKit.Connection
 ---@return boolean disconnected `true` only for the call that transitioned the state.
 function disconnectEventConnection(connection)
-  if connection._connected ~= true then
-    return false
-  end
-  -- Absent on this revision's handles, so the read falls through to the
-  -- prototype, which has no such field.
-  if connection._inner ~= nil then
-    return disconnectLegacyConnection(connection)
+  local connected = connection[2]
+  if connected ~= true then
+    if connected == false then
+      return false
+    end
+    -- Slot 2 is never `nil` on this layout: the handle has named fields.
+    return disconnectNamedHandle(connection)
   end
 
-  -- A connection holds a channel or, for a combat-log listener, a route;
-  -- the other field is absent and reads `nil` through the prototype.
-  local channel = connection._channel
-  local route = connection._route
-  connection._connected = false
-  connection._callback = nil
-  if channel ~= nil then
-    connection._channel = nil
-  else
-    connection._route = nil
+  local fanOut = connection[4]
+  connection[2] = false
+  connection[1] = nil
+  connection[4] = nil
+
+  -- A route carries `subEvent`; a channel has no such field.
+  local isRoute = fanOut.subEvent ~= nil
+  if connection[3] == true and not isRoute then
+    -- One live one-shot fewer; `onceCount` exists once the first came.
+    local onceCount = fanOut.onceCount
+    if onceCount ~= nil and onceCount > 0 then
+      fanOut.onceCount = onceCount - 1
+    end
   end
 
   -- Leave the scope before touching the host, which can raise. Bulk
   -- teardown relies on every attempted connection leaving the list,
-  -- whatever happens after this line. An unscoped handle has no `_scope`.
-  if connection._scope then
+  -- whatever happens after this line. An unscoped handle has no slot 5.
+  if connection[5] then
     unlinkFromScope(connection)
   end
 
-  if channel == nil then
-    -- Without a channel the handle held a route.
-    local owner = route --[[@as EventKit.CombatLogRoute]]
-    dropListener(owner, connection)
-    releaseCombatLogRoute(owner)
+  if isRoute then
+    dropListener(fanOut, connection)
+    releaseCombatLogRoute(fanOut)
     return true
   end
 
@@ -1776,6 +2080,7 @@ function disconnectEventConnection(connection)
   -- tail of an array without tombstones is one removal (see
   -- `dropListener`), and a channel other connections still share needs
   -- only its count.
+  local channel = fanOut
   local listeners = channel.listeners
   local total = #listeners
   if channel.tombstones == 0 and listeners[total] == connection and state.dispatchDepth <= 0 then
@@ -1792,42 +2097,37 @@ function disconnectEventConnection(connection)
   return true
 end
 
----Build a connection handle for `callback`, owned by `scope` when it is one.
----@param fanOutField "_channel"|"_route" which field holds `fanOut`
+---Build a connection handle for `callback` on `fanOut`, owned by `scope` when
+---it is one.
 ---@param fanOut EventKit.Channel|EventKit.CombatLogRoute
 ---@param callback function
 ---@param once boolean whether the connection disconnects before its first call
 ---@param scope EventKit.Scope|false owning scope, or `false` for none
 ---@return EventKit.Connection
-local function newConnection(fanOutField, fanOut, callback, once, scope)
-  -- Separate constructors, because a constructor sizes the hash part by the
-  -- fields it names: naming the scope links on every handle would double
-  -- the handles that have no scope.
-  local connection ---@type table<string, any>
+local function newConnection(fanOut, callback, once, scope)
+  -- Two constructors, because a constructor sizes the array part by the
+  -- values it lists: listing the scope links on every handle would add
+  -- three slots to the handles that have no scope.
+  local connection
   if scope == false then
-    connection = { _connected = true, _callback = callback, _once = once }
+    connection = { callback, true, once, fanOut }
   else
-    connection = {
-      _connected = true,
-      _callback = callback,
-      _once = once,
-      _scope = false,
-      _scopePrevious = false,
-      _scopeNext = false,
-    }
+    connection = { callback, true, once, fanOut, false, false, false }
   end
-  -- The fan-out field fills the fourth (or seventh) slot the constructor
-  -- sized for, so writing it grows nothing.
-  connection[fanOutField] = fanOut
   setmetatable(connection, CONNECTION_METATABLE)
 
   local listeners = fanOut.listeners
   listeners[#listeners + 1] = connection
   fanOut.count = fanOut.count + 1
+  if once then
+    -- Only channels take one-shots; the count tells `fireChannel` that a
+    -- delivery may release a registration (see "Dispatch").
+    fanOut.onceCount = (fanOut.onceCount or 0) + 1
+  end
   if scope ~= false then
     linkToScope(scope --[[@as EventKit.Scope]], connection)
   end
-  return connection
+  return connection --[[@as EventKit.Connection]]
 end
 
 ---Attach `callback` to `channel`.
@@ -1837,7 +2137,7 @@ end
 ---@param scope EventKit.Scope|false owning scope, or `false` for none
 ---@return EventKit.Connection
 function connectToChannel(channel, callback, once, scope)
-  return newConnection("_channel", channel, callback, once, scope)
+  return newConnection(channel, callback, once, scope)
 end
 
 ---Attach `callback` to a combat-log route as an ordinary connection handle.
@@ -1846,34 +2146,65 @@ end
 ---@param scope EventKit.Scope|false owning scope, or `false` for none
 ---@return EventKit.Connection
 local function connectToRoute(route, callback, scope)
-  local connection = newConnection("_route", route, callback, false, scope)
+  local connection = newConnection(route, callback, false, scope)
   local combatLog = rawget(state, "combatLog")
   rawset(combatLog, "listenerCount", rawget(combatLog, "listenerCount") + 1)
   return connection
 end
 
----Cancel this subscription and release its share of the host registration.
----@param self EventKit.Connection
----@return boolean disconnected `true` only for the call that transitioned the state.
-local function disconnect(self)
-  -- `isConnectionHandle`, inlined: this is half of every connect-disconnect
-  -- pair, and the call frame would cost more than the test.
-  if type(self) ~= "table" or type(rawget(self, "_connected")) ~= "boolean" then
-    error(DISCONNECT_RECEIVER_MESSAGE, 2)
+local disconnect, isConnected
+do
+  -- Connection methods are published on a shared prototype, so `connection.Disconnect()`
+  -- and `EventKit.Connection.Disconnect()` both reach them with no receiver. Without a
+  -- guard the first `rawget` inside raises "bad argument #1 to 'rawget'" from EventKit's
+  -- own line, which names neither the package nor the mistake. Each method therefore
+  -- tests its receiver first and raises at the caller.
+  local DISCONNECT_RECEIVER_MESSAGE =
+    "EventKit:Disconnect must be called on a connection handle; use connection:Disconnect()"
+  local IS_CONNECTED_RECEIVER_MESSAGE =
+    "EventKit:IsConnected must be called on a connection handle; use connection:IsConnected()"
+
+  ---Whether `self` is a connection handle with the named fields revisions 17
+  ---to 20 gave it, one the in-place conversion did not reach because it was
+  ---already disconnected (or, defensively, any other such handle).
+  ---`rawget` raises on a non-table, so the table test has to come first.
+  ---@param self any
+  ---@return boolean
+  local function isNamedConnectionHandle(self)
+    return type(self) == "table" and type(rawget(self, "_connected")) == "boolean"
   end
 
-  return disconnectEventConnection(self)
-end
+  ---Cancel this subscription and release its share of the host registration.
+  ---@param self EventKit.Connection
+  ---@return boolean disconnected `true` only for the call that transitioned the state.
+  local function disconnectHandle(self)
+    -- The receiver check by metatable identity: the shared metatable is on
+    -- every handle this revision made or converted, and on nothing else.
+    if getmetatable(self) ~= CONNECTION_METATABLE then
+      if not isNamedConnectionHandle(self) then
+        error(DISCONNECT_RECEIVER_MESSAGE, 2)
+      end
+      return disconnectNamedHandle(self)
+    end
 
----Whether this subscription is still delivering.
----@param self EventKit.Connection
----@return boolean connected
-local function isConnected(self)
-  if not isConnectionHandle(self) then
-    error(IS_CONNECTED_RECEIVER_MESSAGE, 2)
+    return disconnectEventConnection(self)
   end
+  disconnect = disconnectHandle
 
-  return rawget(self, "_connected") == true
+  ---Whether this subscription is still delivering.
+  ---@param self EventKit.Connection
+  ---@return boolean connected
+  local function isHandleConnected(self)
+    if getmetatable(self) ~= CONNECTION_METATABLE then
+      if not isNamedConnectionHandle(self) then
+        error(IS_CONNECTED_RECEIVER_MESSAGE, 2)
+      end
+      return rawget(self, "_connected") == true
+    end
+
+    return self[2] == true
+  end
+  isConnected = isHandleConnected
 end
 
 -- Dispatch ------------------------------------------------------------------
@@ -1912,9 +2243,10 @@ function deliverListeners(fanOut, ...)
   local isolateCall = state.isolate --[[@as function]]
   for index = 1, #listeners do
     local connection = listeners[index]
-    if connection._connected == true then
-      local callback = connection._callback
-      if connection._once == true then
+    -- Slots 2, 1 and 3: connected, listener, once (see "Connections").
+    if connection[2] == true then
+      local callback = connection[1]
+      if connection[3] == true then
         -- Disconnected before the call, so a nested dispatch the callback
         -- starts cannot deliver to it a second time.
         disconnectEventConnection(connection)
@@ -1931,11 +2263,20 @@ end
 ---@param ... any client payload
 local function fireChannel(channel, eventName, ...)
   state.dispatchDepth = state.dispatchDepth + 1
-  -- Listeners are isolated and never raise; the walk itself could only
-  -- raise on a bug or a host failure while a one-shot releases its
-  -- registration. `pcall` still guarantees the depth is restored, because a
-  -- stuck depth would defer every later scope close for the whole session.
-  local ok, failure = pcall(deliverListeners, channel, eventName, ...)
+  -- Listeners are isolated: `securecallfunction` and `xpcall` both report a
+  -- listener's error instead of propagating it (docs/EMBEDDING.md, "Secure
+  -- calls and secure variables"). The walk itself can raise only where it
+  -- reaches outside: a one-shot listener's release talks to the host, and
+  -- a signal a revision before 17 left on the channel runs its own
+  -- dispatch. Only then is the walk protected, so the depth is restored
+  -- whatever happens: a stuck depth would defer every later scope close
+  -- for the whole session. The common channel pays no second `pcall`.
+  local ok, failure = true, nil
+  if channel.signal ~= nil or (channel.onceCount or 0) > 0 then
+    ok, failure = pcall(deliverListeners, channel, eventName, ...)
+  else
+    deliverListeners(channel, eventName, ...)
+  end
   local depth = state.dispatchDepth - 1
   state.dispatchDepth = depth
   if depth <= 0 and state.pendingScopeCount > 0 then
@@ -1981,21 +2322,20 @@ end
 ---@param label string qualified public method name, used in the argument errors
 ---@param level integer stack level the failures are reported at
 ---@param eventName any
----@param callback any
+---@param callback any a function, or a receiver table for the method form
 ---@param once boolean
+---@param methodName any the method form's method name; `eventName` when omitted
 ---@return EventKit.Connection
-local function subscribeRegular(scope, label, level, eventName, callback, once)
+local function subscribeRegular(scope, label, level, eventName, callback, once, methodName)
   -- `Connect` is half of every connect-disconnect pair, so the common valid
   -- call is recognised inline and the validators, which raise at the
   -- caller's line, run in full only otherwise: for a secret or malformed
-  -- name, a non-function callback, or on a client that can judge the name
-  -- (`C_EventUtils.IsEventValid`). The secret test comes first, because
-  -- comparing a secret with `""` would raise here instead of at the caller.
-  -- issecretvalue is a World of Warcraft client API reachable only through the global table.
-  -- selene: allow(global_usage)
-  local isSecretValue = rawget(_G, "issecretvalue")
+  -- name, a callback that is not a function (the method form included), or
+  -- on a client that can judge the name (`C_EventUtils.IsEventValid`). The
+  -- secret test comes first, because comparing a secret with `""` would
+  -- raise here instead of at the caller.
   if
-    (type(isSecretValue) == "function" and isSecretValue(eventName) == true)
+    isSecret(eventName)
     or type(eventName) ~= "string"
     or eventName == ""
     or hostIsEventValid ~= false
@@ -2003,30 +2343,69 @@ local function subscribeRegular(scope, label, level, eventName, callback, once)
     validateEventName(eventName, label, level + 1)
   end
   if type(callback) ~= "function" then
-    validateCallback(callback, label, level + 1)
+    callback = bindMethod(callback, methodName, eventName, label, level + 1)
   end
   local channel = state.regularChannels[eventName]
     or createRegularChannel(eventName, label, level + 1)
-  local connection = newConnection("_channel", channel, callback, once, scope)
+  local connection = newConnection(channel, callback, once, scope)
   return connection
 end
 
----Validate and attach one unit-filtered subscription.
----@param scope EventKit.Scope|false owning scope, or `false` for none
----@param label string qualified public method name, used in the argument errors
----@param level integer stack level the failures are reported at
----@param eventName any
----@param callback any
----@param once boolean
----@param ... string one or two unit tokens
----@return EventKit.Connection
-local function subscribeUnit(scope, label, level, eventName, callback, once, ...)
-  validateEventName(eventName, label, level + 1)
-  validateCallback(callback, label, level + 1)
-  local units, key = normalizeUnits(label, level + 1, ...)
-  local channel = createUnitChannel(eventName, units, key, label, level + 1)
-  local connection = connectToChannel(channel, callback, once, scope)
-  return connection
+local subscribeUnit
+do
+  ---The method form of `subscribeUnit`; `eventName` is already validated.
+  ---@param scope EventKit.Scope|false owning scope, or `false` for none
+  ---@param label string qualified public method name, used in the argument errors
+  ---@param level integer stack level the failures are reported at
+  ---@param eventName string
+  ---@param receiver any
+  ---@param once boolean
+  ---@param methodName any
+  ---@param ... any one or two unit tokens
+  ---@return EventKit.Connection
+  local function subscribeUnitMethod(
+    scope,
+    label,
+    level,
+    eventName,
+    receiver,
+    once,
+    methodName,
+    ...
+  )
+    local listener = bindMethod(receiver, methodName, nil, label, level + 1)
+    local units, key = normalizeUnits(label, level + 1, ...)
+    local channel = createUnitChannel(eventName, units, key, label, level + 1)
+    local connection = connectToChannel(channel, listener, once, scope)
+    return connection
+  end
+
+  ---Validate and attach one unit-filtered subscription.
+  ---
+  ---In the method form (`callback` a receiver table) the method name is the
+  ---first value after it and is required, because a unit token in its place
+  ---would be ambiguous; the unit tokens follow it.
+  ---@param scope EventKit.Scope|false owning scope, or `false` for none
+  ---@param label string qualified public method name, used in the argument errors
+  ---@param level integer stack level the failures are reported at
+  ---@param eventName any
+  ---@param callback any a function, or a receiver table for the method form
+  ---@param once boolean
+  ---@param ... any one or two unit tokens, after the method name in the method form
+  ---@return EventKit.Connection
+  local function attachUnitSubscription(scope, label, level, eventName, callback, once, ...)
+    validateEventName(eventName, label, level + 1)
+    if type(callback) ~= "function" then
+      local connection =
+        subscribeUnitMethod(scope, label, level + 1, eventName, callback, once, ...)
+      return connection
+    end
+    local units, key = normalizeUnits(label, level + 1, ...)
+    local channel = createUnitChannel(eventName, units, key, label, level + 1)
+    local connection = connectToChannel(channel, callback, once, scope)
+    return connection
+  end
+  subscribeUnit = attachUnitSubscription
 end
 
 ---Validate and attach one combat-log subscription.
@@ -2080,7 +2459,7 @@ local function disconnectAllInScope(scope)
     -- `disconnectEventConnection` unlinks before anything that can raise.
     -- A handle that was somehow linked while already disconnected is
     -- unlinked here, so the sweep always terminates.
-    if rawget(connection, "_scope") == scope then
+    if scopeOfMember(connection) == scope then
       unlinkFromScope(connection)
     end
     connection = rawget(scope, "_head")
@@ -2301,8 +2680,16 @@ end
 ---@return boolean covered `false` when the host refused the registration
 local function ensureLogoutConnection()
   local existing = rawget(state, "logoutConnection")
-  if type(existing) == "table" and rawget(existing, "_connected") == true then
-    return true
+  if type(existing) == "table" then
+    -- Slot 2 on this layout, `_connected` on a handle a revision before 17
+    -- made (see "Connections").
+    local connected = rawget(existing, 2)
+    if connected == nil then
+      connected = rawget(existing, "_connected")
+    end
+    if connected == true then
+      return true
+    end
   end
 
   local ok, connection = pcall(function()
@@ -2895,7 +3282,8 @@ end
 ---@param label string qualified public method name, used in the argument error
 ---@param noun string what the receiver should have been
 local function validateCompositeReceiver(handle, metatable, label, noun)
-  if type(handle) ~= "table" or getmetatable(handle) ~= metatable then
+  -- `getmetatable` answers the shared metatable for a handle only.
+  if getmetatable(handle) ~= metatable then
     error(label .. " must be called on an EventKit " .. noun, 3)
   end
 end
@@ -3041,8 +3429,9 @@ end
 ---@param eventName string
 ---@param callback EventKit.Listener
 ---@return EventKit.Connection connection
-local function connectEvent(_, eventName, callback)
-  local connection = subscribeRegular(false, "EventKit:Connect", 3, eventName, callback, false)
+local function connectEvent(_, eventName, callback, methodName)
+  local connection =
+    subscribeRegular(false, "EventKit:Connect", 3, eventName, callback, false, methodName)
   return connection
 end
 
@@ -3051,8 +3440,9 @@ end
 ---@param eventName string
 ---@param callback EventKit.Listener
 ---@return EventKit.Connection connection
-local function onceEvent(_, eventName, callback)
-  local connection = subscribeRegular(false, "EventKit:Once", 3, eventName, callback, true)
+local function onceEvent(_, eventName, callback, methodName)
+  local connection =
+    subscribeRegular(false, "EventKit:Once", 3, eventName, callback, true, methodName)
   return connection
 end
 
@@ -3189,97 +3579,105 @@ end
 
 -- Limits --------------------------------------------------------------------
 
--- Every limit name maps to its ceiling. A ceiling guards a resource the client
--- never gives back, so the limit has no `UNBOUNDED` value.
-local LIMIT_CEILINGS = {
-  maxUnitFrames = MAX_UNIT_FRAMES_CEILING,
-}
-
--- Why a limit refuses `EventKit.UNBOUNDED`, quoted in the refusal.
-local UNBOUNDED_REFUSALS = {
-  maxUnitFrames = "the client never frees a Frame",
-}
-
----Reject a `SetLimits` table before anything in it is applied.
----@param limits any
----@param level integer stack level the failure is reported at
-local function validateLimitUpdate(limits, level)
-  if type(limits) ~= "table" then
-    error("EventKit:SetLimits limits must be a table", level)
-  end
-  local key = next(limits)
-  while type(key) ~= "nil" do
-    if type(key) ~= "string" or LIMIT_CEILINGS[key] == nil then
-      error("EventKit:SetLimits limits." .. describeKey(key) .. " is not a recognised limit", level)
-    end
-    local value = rawget(limits, key)
-    refuseSecret(value, "EventKit:SetLimits limits." .. key, level + 1)
-    if value == UNBOUNDED then
-      error(
-        "EventKit:SetLimits limits."
-          .. key
-          .. " cannot be EventKit.UNBOUNDED: "
-          .. UNBOUNDED_REFUSALS[key],
-        level
-      )
-    end
-    local ceiling = LIMIT_CEILINGS[key]
-    -- `nan` fails every comparison and `math.huge % 1` is `nan`, so the
-    -- range test below refuses both infinities and `nan`.
-    if
-      type(value) ~= "number"
-      or not (value % 1 == 0)
-      or not (value >= 1)
-      or not (value <= ceiling)
-    then
-      error(
-        "EventKit:SetLimits limits." .. key .. " must be an integer from 1 to " .. ceiling,
-        level
-      )
-    end
-    key = next(limits, key)
-  end
-end
-
----Change any subset of the shared limits. Affects every consumer in the session.
----
----The whole table is validated first, so nothing changes when one value is
----refused. Lowering a limit below current usage evicts nothing; further
----creation is refused until usage drops below it.
----@param self EventKit
----@param limits EventKit.Limits
-local function setLimits(self, limits)
-  if type(self) ~= "table" or self ~= EventKit then
-    error(
-      "EventKit:SetLimits must be called on the EventKit facade; "
-        .. "use EventKit:SetLimits(limits)",
-      2
-    )
-  end
-  validateLimitUpdate(limits, 3)
-  local key = next(LIMIT_CEILINGS)
-  while key ~= nil do
-    local value = rawget(limits, key)
-    if type(value) ~= "nil" then
-      rawset(sharedLimits, key, value)
-    end
-    key = next(LIMIT_CEILINGS, key)
-  end
-end
-
----Return a fresh copy of the shared limits. Allocates one table per call.
----@param self EventKit
----@return EventKit.Limits
-local function getLimits(self)
-  if type(self) ~= "table" or self ~= EventKit then
-    error(
-      "EventKit:GetLimits must be called on the EventKit facade; " .. "use EventKit:GetLimits()",
-      2
-    )
-  end
-  return {
-    maxUnitFrames = rawget(sharedLimits, "maxUnitFrames"),
+local setLimits, getLimits
+do
+  -- Every limit name maps to its ceiling. A ceiling guards a resource the client
+  -- never gives back, so the limit has no `UNBOUNDED` value.
+  local LIMIT_CEILINGS = {
+    maxUnitFrames = MAX_UNIT_FRAMES_CEILING,
   }
+
+  -- Why a limit refuses `EventKit.UNBOUNDED`, quoted in the refusal.
+  local UNBOUNDED_REFUSALS = {
+    maxUnitFrames = "the client never frees a Frame",
+  }
+
+  ---Reject a `SetLimits` table before anything in it is applied.
+  ---@param limits any
+  ---@param level integer stack level the failure is reported at
+  local function validateLimitUpdate(limits, level)
+    if type(limits) ~= "table" then
+      error("EventKit:SetLimits limits must be a table", level)
+    end
+    local key = next(limits)
+    while type(key) ~= "nil" do
+      if type(key) ~= "string" or LIMIT_CEILINGS[key] == nil then
+        error(
+          "EventKit:SetLimits limits." .. describeKey(key) .. " is not a recognised limit",
+          level
+        )
+      end
+      local value = rawget(limits, key)
+      refuseSecret(value, "EventKit:SetLimits limits." .. key, level + 1)
+      if value == UNBOUNDED then
+        error(
+          "EventKit:SetLimits limits."
+            .. key
+            .. " cannot be EventKit.UNBOUNDED: "
+            .. UNBOUNDED_REFUSALS[key],
+          level
+        )
+      end
+      local ceiling = LIMIT_CEILINGS[key]
+      -- `nan` fails every comparison and `math.huge % 1` is `nan`, so the
+      -- range test below refuses both infinities and `nan`.
+      if
+        type(value) ~= "number"
+        or not (value % 1 == 0)
+        or not (value >= 1)
+        or not (value <= ceiling)
+      then
+        error(
+          "EventKit:SetLimits limits." .. key .. " must be an integer from 1 to " .. ceiling,
+          level
+        )
+      end
+      key = next(limits, key)
+    end
+  end
+
+  ---Change any subset of the shared limits. Affects every consumer in the session.
+  ---
+  ---The whole table is validated first, so nothing changes when one value is
+  ---refused. Lowering a limit below current usage evicts nothing; further
+  ---creation is refused until usage drops below it.
+  ---@param self EventKit
+  ---@param limits EventKit.Limits
+  local function applyLimits(self, limits)
+    if type(self) ~= "table" or self ~= EventKit then
+      error(
+        "EventKit:SetLimits must be called on the EventKit facade; "
+          .. "use EventKit:SetLimits(limits)",
+        2
+      )
+    end
+    validateLimitUpdate(limits, 3)
+    local key = next(LIMIT_CEILINGS)
+    while key ~= nil do
+      local value = rawget(limits, key)
+      if type(value) ~= "nil" then
+        rawset(sharedLimits, key, value)
+      end
+      key = next(LIMIT_CEILINGS, key)
+    end
+  end
+  setLimits = applyLimits
+
+  ---Return a fresh copy of the shared limits. Allocates one table per call.
+  ---@param self EventKit
+  ---@return EventKit.Limits
+  local function copyLimits(self)
+    if type(self) ~= "table" or self ~= EventKit then
+      error(
+        "EventKit:GetLimits must be called on the EventKit facade; " .. "use EventKit:GetLimits()",
+        2
+      )
+    end
+    return {
+      maxUnitFrames = rawget(sharedLimits, "maxUnitFrames"),
+    }
+  end
+  getLimits = copyLimits
 end
 
 -- Scope methods -------------------------------------------------------------
@@ -3289,10 +3687,11 @@ end
 ---@param eventName string
 ---@param callback EventKit.Listener
 ---@return EventKit.Connection connection
-local function scopeConnect(self, eventName, callback)
+local function scopeConnect(self, eventName, callback, methodName)
   validateScope(self, "EventKit.Scope:Connect", 3)
   ensureScopeOpen(self, "EventKit.Scope:Connect", 3)
-  local connection = subscribeRegular(self, "EventKit.Scope:Connect", 3, eventName, callback, false)
+  local connection =
+    subscribeRegular(self, "EventKit.Scope:Connect", 3, eventName, callback, false, methodName)
   return connection
 end
 
@@ -3301,10 +3700,11 @@ end
 ---@param eventName string
 ---@param callback EventKit.Listener
 ---@return EventKit.Connection connection
-local function scopeOnce(self, eventName, callback)
+local function scopeOnce(self, eventName, callback, methodName)
   validateScope(self, "EventKit.Scope:Once", 3)
   ensureScopeOpen(self, "EventKit.Scope:Once", 3)
-  local connection = subscribeRegular(self, "EventKit.Scope:Once", 3, eventName, callback, true)
+  local connection =
+    subscribeRegular(self, "EventKit.Scope:Once", 3, eventName, callback, true, methodName)
   return connection
 end
 
@@ -3400,6 +3800,69 @@ local function scopeClose(self)
   return closeScope(self)
 end
 
+local scopeReopen
+do
+  ---Move the members a closed scope still holds, because it was closed inside
+  ---a dispatch and waits for the sweep, to a closed carrier scope that takes
+  ---its place in the pending sweep. The scope is left with an empty list.
+  ---@param scope EventKit.Scope
+  local function handOverPendingSweep(scope)
+    local carrier = setmetatable({
+      _addonName = nil,
+      _head = scope._head,
+      _tail = scope._tail,
+      _activeCount = scope._activeCount,
+      _closed = true,
+    }, SCOPE_METATABLE)
+    local member = carrier._head
+    while member ~= false do
+      if member[2] ~= nil then
+        member[5] = carrier
+        member = member[7]
+      else
+        member._scope = carrier
+        member = member._scopeNext
+      end
+    end
+    scope._head = false
+    scope._tail = false
+    scope._activeCount = 0
+
+    local pending = state.pendingScopes
+    for index = 1, state.pendingScopeCount do
+      if pending[index] == scope then
+        pending[index] = carrier
+      end
+    end
+  end
+
+  ---Open a closed manual scope again, empty, so its owner can reuse the same
+  ---object (ModuleKit keeps a module's scope across enable cycles this way).
+  ---
+  ---An addon scope stays closed: closing it is its addon's teardown. When the
+  ---scope is closed inside a dispatch, the connections it held are still swept
+  ---when the outermost dispatch returns, and the connections made after the
+  ---reopen are not: the held ones move to a closed carrier scope that takes the
+  ---scope's place in the pending sweep.
+  ---@param self EventKit.Scope
+  ---@return boolean reopened `false` when the scope was open.
+  local function reopenScope(self)
+    validateScope(self, "EventKit.Scope:Reopen", 3)
+    if rawget(self, "_addonName") ~= nil then
+      error("EventKit.Scope:Reopen cannot reopen an addon scope", 2)
+    end
+    if rawget(self, "_closed") ~= true then
+      return false
+    end
+    if rawget(self, "_head") ~= false then
+      handOverPendingSweep(self)
+    end
+    rawset(self, "_closed", false)
+    return true
+  end
+  scopeReopen = reopenScope
+end
+
 ---Return whether the scope is terminally closed.
 ---@param self EventKit.Scope
 ---@return boolean closed
@@ -3441,6 +3904,7 @@ rawset(Scope, "ConnectCombatLog", scopeConnectCombatLog)
 rawset(Scope, "DisconnectAll", scopeDisconnectAll)
 rawset(Scope, "Close", scopeClose)
 rawset(Scope, "IsClosed", scopeIsClosed)
+rawset(Scope, "Reopen", scopeReopen)
 rawset(Scope, "GetAddonName", scopeGetAddonName)
 rawset(Scope, "GetActiveCount", scopeGetActiveCount)
 rawset(Scope, "Coalesce", scopeCoalesce)

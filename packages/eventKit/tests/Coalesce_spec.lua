@@ -445,7 +445,7 @@ describe("EventKit Coalesce across an upgrade", function()
     package.loaded["EventKit"] = nil
     local EventKit = require("EventKit")
     assert.are.equal(legacy, EventKit)
-    assert.are.equal(20, EventKit.REVISION)
+    assert.are.equal(21, EventKit.REVISION)
 
     Scheduled.Emit("UNIT_HEALTH", "player")
     fireLatest()

@@ -2,7 +2,7 @@ local TestEnv = require("EventKitTestEnv")
 
 ---The implementation revision `src/EventKit.lua` carries; `Manifest_spec.lua`
 ---pins the same number against `package.manifest.json`.
-local CURRENT_REVISION = 20
+local CURRENT_REVISION = 21
 
 local function expectErrorContaining(expected, callback)
   local ok, message = pcall(callback)
@@ -25,6 +25,7 @@ local function installFutureEventsFacade(Registry)
     DisconnectAll = stub,
     Close = stub,
     IsClosed = stub,
+    Reopen = stub,
     GetAddonName = stub,
     GetActiveCount = stub,
     Coalesce = stub,
@@ -119,12 +120,108 @@ local function emulateLegacyFanOut(SignalKit, legacyState, fanOut, fanOutField, 
   rawset(fanOut, "tombstones", nil)
 end
 
+---Give one connection handle the named fields revisions 17 to 20 used, and a
+---metatable of the copy's own, as those revisions did.
+---@param connection table
+---@param metatable table
+local function nameConnectionFields(connection, metatable)
+  if rawget(connection, 2) == nil then
+    return
+  end
+  local fanOut = rawget(connection, 4)
+  local named = {
+    _connected = rawget(connection, 2),
+    _callback = rawget(connection, 1),
+    _once = rawget(connection, 3),
+  }
+  if fanOut ~= nil then
+    if rawget(fanOut, "subEvent") ~= nil then
+      named._route = fanOut
+    else
+      named._channel = fanOut
+    end
+  end
+  local scoped = rawget(connection, 5) ~= nil
+  if scoped then
+    named._scope = rawget(connection, 5)
+    named._scopePrevious = rawget(connection, 6)
+    named._scopeNext = rawget(connection, 7)
+  end
+  for index = 1, 7 do
+    rawset(connection, index, nil)
+  end
+  for name, value in pairs(named) do
+    rawset(connection, name, value)
+  end
+  setmetatable(connection, metatable)
+end
+
+---Reduce a copy loaded from the current source to the schema-9 state
+---revisions 17 to 20 left behind: every connection with named fields under a
+---per-copy metatable, and no shared connection metatable in state.
+---@param legacy table
+---@return table metatable the per-copy connection metatable
+local function emulateSchemaNineCopy(legacy)
+  local legacyState = rawget(legacy, "_state")
+  local metatable = { __index = rawget(legacy, "Connection") }
+  local seen = {}
+  local scopes = {}
+  local function visitFanOut(fanOut)
+    if type(fanOut) ~= "table" or type(rawget(fanOut, "listeners")) ~= "table" then
+      return
+    end
+    for _, connection in ipairs(rawget(fanOut, "listeners")) do
+      local scope = rawget(connection, 5)
+      if type(scope) == "table" then
+        scopes[scope] = true
+      end
+      seen[connection] = true
+    end
+    rawset(fanOut, "onceCount", nil)
+  end
+  for _, channel in pairs(rawget(legacyState, "regularChannels")) do
+    visitFanOut(channel)
+  end
+  for _, group in pairs(rawget(legacyState, "unitGroups")) do
+    for _, channel in pairs(rawget(group, "channels")) do
+      visitFanOut(channel)
+    end
+  end
+  local combatLog = rawget(legacyState, "combatLog")
+  for _, route in pairs(rawget(combatLog, "routes")) do
+    visitFanOut(route)
+  end
+  visitFanOut(rawget(combatLog, "anyRoute"))
+  for _, scope in pairs(rawget(legacyState, "addonScopes")) do
+    scopes[scope] = true
+  end
+  -- Scope lists are walked before any handle changes layout.
+  for scope in pairs(scopes) do
+    local member = rawget(scope, "_head")
+    while member ~= false do
+      seen[member] = true
+      if rawget(member, 2) ~= nil then
+        member = rawget(member, 7)
+      else
+        member = rawget(member, "_scopeNext")
+      end
+    end
+  end
+  for connection in pairs(seen) do
+    nameConnectionFields(connection, metatable)
+  end
+  rawset(legacyState, "connectionMetatable", nil)
+  rawset(legacyState, "schema", 9)
+  return metatable
+end
+
 ---Reduce a copy loaded from the current source to the schema-8 state
 ---revision 16 left behind: channels and routes fanned out through signals,
 ---regular channels without a `group`, and no channel pool.
 ---@param legacy table
 ---@param SignalKit table
 local function emulateSchemaEightCopy(legacy, SignalKit)
+  emulateSchemaNineCopy(legacy)
   local legacyState = rawget(legacy, "_state")
   local combatLog = rawget(legacyState, "combatLog")
   local router = rawget(combatLog, "inner")
@@ -251,7 +348,7 @@ describe("EventKit package bootstrap", function()
     assert.are.equal(legacy, EventKit)
     assert.are.equal(CURRENT_REVISION, EventKit.REVISION)
     assert.are.equal(legacyConnectionMethods, EventKit.Connection)
-    assert.are.equal(9, state.schema)
+    assert.are.equal(10, state.schema)
     assert.are.equal(legacyGroup, state.unitGroups["6:player"])
     assert.are.equal("6:player", legacyGroup.key)
     assert.are.equal(1, state.unitFrameCount)
@@ -298,7 +395,7 @@ describe("EventKit package bootstrap", function()
     assert.are.equal(legacy, EventKit)
     assert.are.equal(CURRENT_REVISION, EventKit.REVISION)
     assert.are.equal(legacyConnectionMethods, EventKit.Connection)
-    assert.are.equal(9, state.schema)
+    assert.are.equal(10, state.schema)
     assert.are.equal("table", type(state.addonScopes))
     assert.are.equal("table", type(EventKit.Scope))
 
@@ -349,7 +446,7 @@ describe("EventKit package bootstrap", function()
 
     assert.are.equal(CURRENT_REVISION, EventKit.REVISION)
     assert.are.equal(legacyScopePrototype, EventKit.Scope)
-    assert.are.equal(9, state.schema)
+    assert.are.equal(10, state.schema)
     assert.are.equal(0, state.dispatchDepth)
     assert.are.equal(0, state.pendingScopeCount)
 
@@ -410,7 +507,7 @@ describe("EventKit package bootstrap", function()
     local EventKit = require("EventKit")
     local state = EventKit._state
     assert.are.equal(CURRENT_REVISION, EventKit.REVISION)
-    assert.are.equal(9, state.schema)
+    assert.are.equal(10, state.schema)
     assert.is_function(state.composites.onEvent)
     assert.is_table(state.compositeMetatables.coalesce)
     assert.is_table(state.compositeMetatables.derive)
@@ -447,7 +544,7 @@ describe("EventKit package bootstrap", function()
     local _, revision = Registry:Get("eventKit", 1)
     assert.are.equal(legacy, EventKit)
     assert.are.equal(CURRENT_REVISION, revision)
-    assert.are.equal(9, EventKit._state.schema)
+    assert.are.equal(10, EventKit._state.schema)
 
     -- Closing a handle revision 8 created now disconnects its listeners.
     EventKit:CloseAddonScopes("MyAddon")
@@ -471,7 +568,7 @@ describe("EventKit package bootstrap", function()
     local state = EventKit._state
     assert.are.equal(legacy, EventKit)
     assert.are.equal(CURRENT_REVISION, revision)
-    assert.are.equal(9, state.schema)
+    assert.are.equal(10, state.schema)
     assert.are.equal("table", type(EventKit.UNBOUNDED))
     assert.are.equal(state.unbounded, EventKit.UNBOUNDED)
     assert.are.same({ maxUnitFrames = 64 }, EventKit:GetLimits())
@@ -503,7 +600,7 @@ describe("EventKit package bootstrap", function()
     local state = EventKit._state
     assert.are.equal(legacy, EventKit)
     assert.are.equal(CURRENT_REVISION, revision)
-    assert.are.equal(9, state.schema)
+    assert.are.equal(10, state.schema)
     assert.is_table(state.combatLog)
     assert.is_function(state.dispatchCombatLog)
     assert.is_function(EventKit.ConnectCombatLog)
@@ -557,7 +654,7 @@ describe("EventKit package bootstrap", function()
     local _, revision = Registry:Get("eventKit", 1)
     assert.are.equal(legacy, EventKit)
     assert.are.equal(CURRENT_REVISION, revision)
-    assert.are.equal(9, EventKit._state.schema)
+    assert.are.equal(10, EventKit._state.schema)
 
     TestEnv.EmitCombatLogEvent(1, "SPELL_DAMAGE")
     assert.are.equal(1, calls)
@@ -600,7 +697,7 @@ describe("EventKit package bootstrap", function()
       local _, revision = Registry:Get("eventKit", 1)
       assert.are.equal(legacy, EventKit)
       assert.are.equal(CURRENT_REVISION, revision)
-      assert.are.equal(9, legacyState.schema)
+      assert.are.equal(10, legacyState.schema)
       assert.are.same({}, legacyState.channelPool)
       assert.are.same({}, channel.listeners)
 
@@ -719,7 +816,7 @@ describe("EventKit package bootstrap", function()
       local _, revision = Registry:Get("eventKit", 1)
       assert.are.equal(legacy, EventKit)
       assert.are.equal(CURRENT_REVISION, revision)
-      assert.are.equal(9, EventKit._state.schema)
+      assert.are.equal(10, EventKit._state.schema)
       assert.is_true(EventKit:IsCombatLogAvailable())
 
       -- The listener the older copy connected keeps delivering, although
@@ -830,17 +927,16 @@ describe("EventKit package bootstrap", function()
     end)
   end)
 
-  it("disconnects a handle shaped by a revision before scopes existed", function()
+  it("disconnects an unscoped handle, which has no scope slots", function()
     local EventKit = TestEnv.NewPackage()
     local calls = 0
     local connection = EventKit:Connect("PLAYER_LOGIN", function()
       calls = calls + 1
     end)
 
-    -- A revision-4 handle carries no scope link fields at all.
-    rawset(connection, "_scope", nil)
-    rawset(connection, "_scopePrevious", nil)
-    rawset(connection, "_scopeNext", nil)
+    -- Like a handle revisions before scopes made, it carries no scope link.
+    assert.is_nil(rawget(connection, 5))
+    assert.is_nil(rawget(connection, "_scope"))
 
     assert.is_true(connection:Disconnect())
     TestEnv.Emit("PLAYER_LOGIN")
@@ -864,6 +960,106 @@ describe("EventKit package bootstrap", function()
     revisionOneFrameHandler(nil, "CUSTOM_EVENT")
 
     assert.are.equal(1, calls)
+  end)
+
+  it("converts the connections of revision 20 to the array layout in place", function()
+    TestEnv.Reset()
+    TestEnv.InstallWowApi()
+    require("Registry")
+    require("SignalKit")
+
+    local legacy = TestEnv.LoadSourceAtRevision(20)
+    local order = {}
+    local function record(name)
+      return function()
+        order[#order + 1] = name
+      end
+    end
+    local plain = legacy:Connect("BAG_UPDATE", record("plain"))
+    local scope = legacy:CreateScope()
+    local scoped = scope:Connect("BAG_UPDATE", record("scoped"))
+    local scopedOnce = scope:Once("BAG_UPDATE", record("scoped once"))
+    local unit = legacy:ConnectUnit("UNIT_HEALTH", record("unit"), "player")
+    local routed = legacy:ConnectCombatLog("SPELL_DAMAGE", record("routed"))
+    local addonScope = legacy:ForAddon("MyAddon")
+    local addonConnection = addonScope:Connect("PLAYER_LOGIN", record("addon"))
+    local stale = legacy:Connect("BAG_UPDATE", record("stale"))
+    assert.is_true(stale:Disconnect())
+    local oldMetatable = emulateSchemaNineCopy(legacy)
+    -- Revision 20 had made the disconnected handle with named fields too.
+    nameConnectionFields(stale, oldMetatable)
+    assert.are.equal(true, rawget(plain, "_connected"))
+    assert.is_nil(rawget(plain, 2))
+
+    local EventKit = require("EventKit")
+    local state = rawget(EventKit, "_state")
+
+    assert.are.equal(legacy, EventKit)
+    assert.are.equal(CURRENT_REVISION, EventKit.REVISION)
+    assert.are.equal(10, state.schema)
+    local shared = state.connectionMetatable
+    for _, connection in ipairs({ plain, scoped, scopedOnce, unit, routed, addonConnection }) do
+      assert.are.equal(shared, getmetatable(connection))
+      assert.are.equal(true, rawget(connection, 2))
+      assert.is_nil(rawget(connection, "_connected"))
+      assert.is_nil(rawget(connection, "_callback"))
+    end
+    assert.are.equal(scope, rawget(scoped, 5))
+    assert.are.equal(scopedOnce, rawget(scoped, 7))
+    assert.are.equal(scoped, rawget(scopedOnce, 6))
+    assert.is_nil(rawget(plain, 5))
+    assert.are.equal(1, state.regularChannels.BAG_UPDATE.onceCount)
+
+    -- The disconnected handle no listener array held keeps its named
+    -- fields and still answers its methods.
+    assert.are.equal(oldMetatable, getmetatable(stale))
+    assert.is_false(stale:IsConnected())
+    assert.is_false(stale:Disconnect())
+
+    -- Delivery order and one-shots survive the conversion.
+    TestEnv.Emit("BAG_UPDATE")
+    TestEnv.Emit("BAG_UPDATE")
+    TestEnv.Emit("UNIT_HEALTH", "player")
+    TestEnv.EmitCombatLogEvent(1, "SPELL_DAMAGE")
+    assert.are.same(
+      { "plain", "scoped", "scoped once", "plain", "scoped", "unit", "routed" },
+      order
+    )
+
+    -- Converted handles disconnect through their scopes and on their own.
+    assert.are.equal(1, scope:GetActiveCount())
+    assert.are.equal(1, scope:DisconnectAll())
+    assert.is_false(scoped:IsConnected())
+    assert.is_true(EventKit:CloseAddonScopes("MyAddon"))
+    assert.is_false(addonConnection:IsConnected())
+    assert.is_true(plain:Disconnect())
+    assert.is_true(unit:Disconnect())
+    assert.is_true(routed:Disconnect())
+    assert.is_false(state.combatLog.channel)
+  end)
+
+  it("refuses connection receivers that are not handles, at the caller's line", function()
+    local EventKit = TestEnv.NewPackage()
+    local connection = EventKit:Connect("BAG_UPDATE", function() end)
+    local foreign = setmetatable({}, { __index = EventKit.Connection })
+    for _, receiver in ipairs({ "text", 42, foreign, {} }) do
+      local ok, message = pcall(function()
+        connection.Disconnect(receiver)
+      end)
+      assert.is_false(ok)
+      assert.is_not_nil(
+        string.find(tostring(message), "EventKit:Disconnect must be called", 1, true)
+      )
+      assert.is_not_nil(string.find(tostring(message), "Bootstrap_spec.lua:", 1, true))
+      ok, message = pcall(function()
+        connection.IsConnected(receiver)
+      end)
+      assert.is_false(ok)
+      assert.is_not_nil(
+        string.find(tostring(message), "EventKit:IsConnected must be called", 1, true)
+      )
+    end
+    assert.is_true(connection:IsConnected())
   end)
 
   it("does not downgrade a newer compatible embedded revision", function()

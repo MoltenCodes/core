@@ -5,9 +5,9 @@ EventKit is MoltenCodes' World of Warcraft event bridge. It turns Frame `OnEvent
 ## Package contract
 
 - Package: `eventKit`
-- Version: `0.9.8`
+- Version: `0.10.0`
 - API generation: `1`
-- Implementation revision: `20`
+- Implementation revision: `21`
 - Runtime dependencies: Registry API 2, SignalKit API 1
 - Optional partners: SchedulerKit API 1, found at call time by `Coalesce` and `Derive`;
   LifecycleKit API 1, found by the first `ForAddon` to close addon scopes at logout
@@ -123,9 +123,11 @@ channels.
 
 | Ace3 | EventKit |
 |---|---|
-| `self:RegisterEvent("EVENT", callback)` | `EventKit:ForAddon(addonName):Connect("EVENT", callback)`; the callback receives the event name first, as Ace3's does, and there is no method-name form |
+| `self:RegisterEvent("EVENT", callback)` | `EventKit:ForAddon(addonName):Connect("EVENT", callback)`; the callback receives the event name first, as Ace3's does |
+| `self:RegisterEvent("EVENT", "OnEvent")` | `scope:Connect("EVENT", self, "OnEvent")`: the method must exist when you connect (otherwise the call raises at your line) and is looked up on `self` at every event, as in AceEvent; it is called as `self:OnEvent("EVENT", ...)` |
+| `self:RegisterEvent("EVENT")` (method named after the event) | `scope:Connect("EVENT", self)`, which calls `self:EVENT("EVENT", ...)`; on `ConnectUnit` the method name is required: `scope:ConnectUnit("EVENT", self, "OnEvent", "player")` |
 | `self:UnregisterEvent("EVENT")` | `connection:Disconnect()` on the handle `Connect` returned |
-| `self:UnregisterAllEvents()` | `scope:DisconnectAll()`, or `scope:Close()` to end the scope; an addon scope closes at logout by itself |
+| `self:UnregisterAllEvents()` | `scope:DisconnectAll()`, or `scope:Close()` to end the scope (a manual scope can be opened again with `scope:Reopen()`); an addon scope closes at logout by itself |
 | a Frame of your own with `RegisterUnitEvent` (AceEvent has no unit form) | `scope:ConnectUnit("EVENT", callback, unit1[, unit2])` |
 | `COMBAT_LOG_EVENT_UNFILTERED` and `CombatLogGetCurrentEventInfo()` in every handler | `scope:ConnectCombatLog(subEvent, callback)`, one client read per event for every listener |
 | AceBucket `RegisterBucketEvent(events, interval, callback)` | `scope:Coalesce(events, interval, callback)`, with SchedulerKit embedded; the set's values are `true`, not counts |

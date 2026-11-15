@@ -6,9 +6,6 @@
     "packages/commandKit/src/CommandKit.lua": {
       "mainLocals": 198
     },
-    "packages/eventKit/src/EventKit.lua": {
-      "mainLocals": 191
-    },
     "packages/moduleKit/src/ModuleKit.lua": {
       "mainLocals": 195
     },

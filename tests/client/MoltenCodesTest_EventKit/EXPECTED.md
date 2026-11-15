@@ -45,7 +45,7 @@ MoltenCodes Test: PASS eventKit.errors: ConnectUnit with three distinct unit tok
 MoltenCodes Test: PASS eventKit.errors: Connect to an event name the client does not know is refused on every attempt, at the calling line where the client can tell, and caches nothing
 MoltenCodes Test: PASS eventKit.combatLog: ConnectCombatLog does what docs/API.md documents for the combat-log reader this client has (every fact is logged)
 MoltenCodes Test: SKIP eventKit.allocation: dispatch allocates nothing per event (allocation guard) -- not measurable here without side effects: EventKit has no public dispatch entry point, and no harmless event can be raised thousands of times without the client's own handlers allocating; packages/eventKit/tests guards it
-MoltenCodes Test: eventKit: 18 passed, 0 failed, 1 skipped, 0 timed out (19 tests)
+MoltenCodes Test: eventKit: 19 passed, 0 failed, 1 skipped, 0 timed out (20 tests)
 MoltenCodes Test: results saved in MoltenCodesTestResults; /reload or log out to write them to disk.
 ```
 
@@ -96,6 +96,7 @@ reuse, because the client never frees a Frame.
 | `Registry:Get('eventKit', 1) is the EventKit facade ...` | The facade the client loaded is API 1 and carries `Connect`, `Once`, `ConnectUnit`, `OnceUnit`, `ConnectCombatLog`, `IsCombatLogAvailable`, `CreateScope`, `ForAddon`, `CloseAddonScopes`, `Coalesce`, `Derive`, `SetLimits`, `GetLimits` and the `UNBOUNDED` sentinel. |
 | `the installed EventKit carries the revision ...` | Registry's selected revision and the facade's `REVISION` are both the committed manifest's, not an older or newer embedded copy. |
 | `a C_CVar.SetCVar change reaches two Connect listeners ...` | A CVAR_UPDATE the client raises reaches both listeners in connection order, with the event name first, then the CVar name and the value that was written. The log says whether it arrived before `SetCVar` returned. |
+| `a method-name Connect calls the receiver's method ...` | A real CVar change reaches `receiver:OnProbe("CVAR_UPDATE", ...)` connected with `Connect(event, receiver, "OnProbe")`; after the method is replaced on the receiver, the next change runs the replacement, so the method is looked up at every delivery. |
 | `a Once listener runs for the first CVAR_UPDATE only ...` | Over two real CVar changes, a `Once` listener runs once and `IsConnected()` is already `false` inside its callback. |
 | `TIME_PLAYED_MSG, the server's reply ...` | An event the server sends reaches a `Once` listener with two numbers, total time not below the time at this level, within five seconds. |
 | `a raising listener is reported once ...` | Through the client's real `securecallfunction`, the listener after the failing one still runs, and the failure reaches the client's error handler exactly once, naming this file at the failing line; no error window opens. |
@@ -172,9 +173,9 @@ chat line is the same `PASS`.
 
 | Client | Totals line | SKIP lines |
 |---|---|---|
-| Retail (`_retail_`) | `MoltenCodes Test: eventKit: 18 passed, 0 failed, 1 skipped, 0 timed out (19 tests)` | the allocation line above |
-| Classic Era (`_classic_era_`) | `MoltenCodes Test: eventKit: 18 passed, 0 failed, 1 skipped, 0 timed out (19 tests)` | same as Retail |
-| Mists of Pandaria Classic (`_classic_`) | `MoltenCodes Test: eventKit: 18 passed, 0 failed, 1 skipped, 0 timed out (19 tests)` | same as Retail |
+| Retail (`_retail_`) | `MoltenCodes Test: eventKit: 19 passed, 0 failed, 1 skipped, 0 timed out (20 tests)` | the allocation line above |
+| Classic Era (`_classic_era_`) | `MoltenCodes Test: eventKit: 19 passed, 0 failed, 1 skipped, 0 timed out (20 tests)` | same as Retail |
+| Mists of Pandaria Classic (`_classic_`) | `MoltenCodes Test: eventKit: 19 passed, 0 failed, 1 skipped, 0 timed out (20 tests)` | same as Retail |
 
 No EventKit test needs combat, a group, a second character or another addon,
 so the package has no combat suites. The combat-log reader on the Classic
@@ -184,7 +185,7 @@ that would need combat nearby.
 ## What counts as unexpected
 
 - Any `FAIL` or `TIMEOUT` line, any `SKIP` other than the allocation one, or a
-  totals line other than `18 passed, 0 failed, 1 skipped, 0 timed out (19 tests)`,
+  totals line other than `19 passed, 0 failed, 1 skipped, 0 timed out (20 tests)`,
   on any of the three clients.
 - No login line, or `Expected.lua is missing`: the harness or the installer did
   not run as intended.

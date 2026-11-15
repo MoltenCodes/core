@@ -63,7 +63,28 @@ It also covers:
   dispatch, unit channels pooled with their Frame freed); and allocation
   guards for connect and disconnect beside other listeners and of the only
   listener (the handle only) and for a one-by-one teardown (nothing);
-- in-place upgrade from implementation revisions 1, 4, 5, 6, 8, 9, 10, 11, 12,
+- the method-name form: the receiver and payload a method receives, the
+  default method name on `Connect` and `Once`, the required name before the
+  unit tokens, the lookup at every delivery (a replaced method runs, a removed
+  one is reported and the connection stays), every refusal at the caller's
+  line with nothing registered, a secret method name, and scope ownership;
+- `Scope:Reopen`: an empty, usable scope after a close, `false` when open, an
+  addon scope and a foreign receiver refused at the caller, and a scope closed
+  and reopened inside a dispatch (only its earlier connections and handles
+  swept);
+- the protected walk: no `pcall` for a channel of ordinary listeners, the
+  one-shot count through connect, disconnect and delivery, the depth restored
+  when a one-shot's host release raises, isolation on the unprotected walk,
+  and the count reset when a record is pooled;
+- the secret probe resolved at load (a later global not read) and a probe
+  installed after load honoured when there was none;
+- the connection receiver test by metatable identity (strings, numbers, a
+  foreign table with the prototype as `__index`);
+- in-place upgrade from implementation revision 20 (every reachable
+  connection converted to the array layout in place: regular, scoped, scoped
+  one-shot, unit, combat-log, addon scope; scope links and one-shot counts
+  rebuilt; order kept; an unreachable disconnected handle still answering),
+  from implementation revisions 1, 4, 5, 6, 8, 9, 10, 11, 12,
   14, 15 and 16 (signal-backed channels, routes and router emulated: their
   connections delivered first and released on their own path) and the previous
   revision, set limits and the sentinel carried to a newer revision, and the
@@ -73,14 +94,14 @@ It also covers:
 
 | File | Covers |
 |---|---|
-| `Bootstrap_spec.lua` | Load order, duplicate embedding, corrupted state (including a mismatched sentinel and out-of-range limits), every in-place upgrade (the previous revision's checked against the table-key refusal), limits carried to a newer revision, no downgrade. |
+| `Bootstrap_spec.lua` | Load order, duplicate embedding, corrupted state (including a mismatched sentinel and out-of-range limits), every in-place upgrade (the revision-20 connection conversion; older layouts emulated from the current source, the schema-9 named fields included), limits carried to a newer revision, no downgrade, connection receiver checks. |
 | `Manifest_spec.lua` | Manifest and runtime metadata agree. |
 | `Registration_spec.lua` | Lazy registration and final-listener unregistration. |
 | `Connection_spec.lua` | Connection handles: connected state and exactly-once disconnect. |
 | `Dispatch_spec.lua` | Payload forwarding, ordering, mutation and nesting during dispatch, per-event allocation. |
 | `Once_spec.lua` | One-shot subscriptions. |
 | `UnitEvents_spec.lua` | Unit filters, the two-token limit, unit-group release and the Frame cap. |
-| `SecretValues_spec.lua` | Secret names, unit tokens, options and limits refused at the caller before a comparison; secret `Coalesce` payloads keyed by event name; secret `Derive` values counted as a change. |
+| `SecretValues_spec.lua` | Secret names, unit tokens, options and limits refused at the caller before a comparison; the probe resolved at load; secret `Coalesce` payloads keyed by event name; secret `Derive` values counted as a change. |
 | `Errors_spec.lua` | Argument, receiver and host-environment errors and their levels; refused registrations; listener isolation. |
 | `CombatLog_spec.lua` | `ConnectCombatLog`: routing, forwarding, the single client read, the wildcard, allocation, host registration beside a plain `Connect`, the refusal without a reader, isolation, scopes, errors; `IsCombatLogAvailable`. |
 | `EventValidity_spec.lua` | Unknown event names refused through `C_EventUtils.IsEventValid`, with the function present and absent. |
@@ -89,7 +110,10 @@ It also covers:
 | `Coalesce_spec.lua` | `Coalesce`, with and without SchedulerKit, and with SchedulerKit loaded after a refused call; the shared SchedulerKit scope, one lookup, the handle cost, the revision-17 upgrade, and a table option key named by its type without running its `__tostring`. |
 | `Derive_spec.lua` | `Derive`, with and without SchedulerKit. |
 | `Limits_spec.lua` | `SetLimits`, `GetLimits`, `EventKit.UNBOUNDED`, the `maxUnitFrames` limit, and a table limit key named by its type without running its `__tostring`. |
-| `ListenerStorage_spec.lua` | Listener arrays in and out of a dispatch, the channel pool, handle-only allocation guards. |
+| `ListenerStorage_spec.lua` | Listener arrays in and out of a dispatch, the channel pool, handle-only allocation guards (unscoped and scoped handle bounds). |
+| `MethodForm_spec.lua` | The method-name form of the four connecting methods and their scope forms. |
+| `Reopen_spec.lua` | `Scope:Reopen`, including a close and reopen inside a dispatch. |
+| `ProtectedWalk_spec.lua` | When the listener walk is protected, the one-shot count, the depth after a raising release. |
 
 `EventKitTestEnv.LoadSourceAtRevision(revision)` runs the EventKit source again
 with only its revision changed, standing in for another embedded copy whose

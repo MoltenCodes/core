@@ -26,7 +26,7 @@ EventKit does not rely on `require()` at runtime.
 
 The facade carries two read-only constants: `EventKit.API`, the API generation
 (`1`), and `EventKit.REVISION`, the implementation revision of the copy that
-is active in the session (`19` for this one). A newer embedded copy replaces
+is active in the session (`21` for this one). A newer embedded copy replaces
 `REVISION` when it upgrades the facade in place. Loading errors are listed
 under [Error messages](#error-messages).
 
@@ -39,6 +39,41 @@ is refused at the caller's line before anything is registered:
 `EventKit:Connect eventName "X" is not an event this client knows`. Every
 method that registers an event name does the same; see
 [Event names the client does not know](#event-names-the-client-does-not-know).
+
+### Method-name callbacks
+
+`Connect`, `Once`, `ConnectUnit` and `OnceUnit` (and their scope forms) also
+take a receiver table and a method name in place of the callback, the
+counterpart of AceEvent's `self:RegisterEvent("EVENT", "OnEvent")`:
+
+```lua
+local events = EventKit:ForAddon("MyAddon")
+events:Connect("BAG_UPDATE", MyAddon, "OnBagUpdate") -- MyAddon:OnBagUpdate("BAG_UPDATE", bagID)
+events:Connect("PLAYER_LOGIN", MyAddon)              -- MyAddon:PLAYER_LOGIN("PLAYER_LOGIN")
+events:ConnectUnit("UNIT_HEALTH", MyAddon, "OnHealth", "player")
+```
+
+- The method `receiver[methodName]` runs as `method(receiver, eventName, ...)`: the
+  receiver, then exactly what a callback would receive.
+- On `Connect` and `Once` the method name may be left out; it is then the
+  event name, as in AceEvent. On `ConnectUnit` and `OnceUnit` it is required
+  and comes before the unit tokens, because a unit token in its place would be
+  ambiguous.
+- The method must exist when the connection is made: `receiver` must be a
+  table, the name a non-empty, non-secret string and `receiver[methodName]` a
+  function, or the call raises at the caller's line (see
+  [Error messages](#error-messages)). Nothing is registered then.
+- **The method is looked up on the receiver at every delivery**, as AceEvent
+  does. A method replaced afterwards, by the addon itself or by another
+  addon's `HookKit` hook on it, is the one that runs for connections made
+  before. A method that is gone by then (`nil`) raises inside the listener's
+  isolation, which reports `EventKit receiver has no method "<name>"` to the
+  host error handler; the connection stays, and delivers again once the
+  method is back.
+- Cost: one closure of two upvalues per connection, about 136 bytes on a
+  64-bit Lua 5.1, and per delivery one extra Lua call and one table read
+  (about 16 ns on the reference host). The function form is unchanged.
+- `ConnectCombatLog`, `Coalesce` and `Derive` take functions only.
 
 ## `EventKit:Once(eventName, callback)`
 
@@ -242,6 +277,7 @@ scope:Close()         -- terminal; later connections are refused
 | `IsClosed()` | Whether the scope is closed. |
 | `GetAddonName()` | The owning addon name, or `nil` for a manual scope. |
 | `GetActiveCount()` | The number of live connections the scope owns; a `Coalesce` or `Derive` handle counts as one. |
+| `Reopen()` | Open a closed manual scope again, empty; `true` when it did, `false` when the scope was open. Revision 21. |
 | `Coalesce(events, intervalSeconds, callback[, options])` | `EventKit:Coalesce`, owned by this scope. See [Coalescing events](#coalescing-events). |
 | `Derive(events, compute[, options])` | `EventKit:Derive`, owned by this scope. |
 
@@ -264,6 +300,22 @@ the caller's line:
 ```text
 MyAddon/Main.lua:42: EventKit.Scope:Connect cannot connect in a closed scope
 ```
+
+### Reopening a manual scope
+
+`scope:Reopen()` opens a closed scope again, empty, so its owner can keep using
+the same object. ModuleKit uses it to keep a module's `scope.Events` across
+enable cycles. Connections the scope held when it closed stay disconnected; a
+`Coalesce` or `Derive` handle stays closed. It answers `false` for an open scope.
+
+An addon scope (`ForAddon`) cannot be reopened: closing it is its addon's
+teardown. `Reopen` on one raises `EventKit.Scope:Reopen cannot reopen an addon
+scope` at the caller's line.
+
+When the scope was closed during a dispatch and reopened before that dispatch
+returned, the connections it held are still swept when the outermost dispatch
+returns (they move to a closed carrier that takes the scope's place in the
+deferred sweep), and the connections made after the reopen are not.
 
 ### Closing during a dispatch
 
@@ -524,9 +576,11 @@ Returns whether the connection is still active.
 methods are reachable without a receiver. Called that way — `EventKit.Connection.Disconnect()`
 or `connection.Disconnect()` with a dot instead of a colon — they raise
 `EventKit:Disconnect must be called on a connection handle; use connection:Disconnect()`
-at the calling line. The receiver test is a field type test rather than a metatable
-comparison, so a handle created by an older embedded revision is still accepted after
-an in-place upgrade.
+at the calling line. Since revision 21 the receiver test is metatable identity:
+the connection metatable lives in `_state`, so every handle an older copy made
+carries it after the upgrade converts it. A disconnected handle of revisions 17
+to 20 that the conversion could not reach (no listener array held it) keeps its
+named fields and is still recognised by them.
 
 ## Registration architecture
 
@@ -651,6 +705,12 @@ This reverses revision 1, where an error propagated out through `OnEvent` and
 every listener behind the failing one lost the event — including listeners
 belonging to completely unrelated addons.
 
+The walk over a channel's listeners runs inside a second, protected call only
+while the channel holds a one-shot listener, whose release talks to the host,
+or a signal a revision before 17 left on it (revision 21). Listener calls are
+isolated either way, so a raising listener never reaches the walk, and the
+dispatch depth is restored on every path that can raise.
+
 Isolation is per listener: EventKit's dispatch calls every listener through
 the isolation function below. (Before revision 17 each subscription carried a
 wrapper closure that isolated it, handed to a SignalKit signal, since
@@ -694,8 +754,10 @@ one would.
 ### Cost of a connection
 
 A connection is one table, the handle, which is also the channel's record of
-the listener: 224 bytes on a 64-bit Lua 5.1 for an unscoped connection (four
-fields) and 384 for a scoped one (seven). The handle is inherent to the
+the listener. Its fields live in the table's array part: 128 bytes on a 64-bit
+Lua 5.1 for an unscoped connection (four slots) and 176 for a scoped one
+(seven), plus one 16-byte slot in the channel's listener array. Before revision
+21 the fields were named: 224 and 384 bytes. The handle is inherent to the
 contract: it stays valid after `Disconnect` and keeps answering
 `IsConnected` with `false`, so EventKit cannot take it back and reuse it.
 
@@ -729,7 +791,9 @@ listed under [Secret values](#secret-values).
 |---|---|
 | `Connect`, `Once`, `ConnectUnit`, `OnceUnit` and their scope forms | `<Method> eventName must be a non-empty string`; `<Method> eventName "<name>" is not an event this client knows` (see [Event names the client does not know](#event-names-the-client-does-not-know)) |
 | `ConnectCombatLog` and its scope form | `<Method> subEvent must be a non-empty string`; `<Method> the combat log is not available to addons on this client (no CombatLogGetCurrentEventInfo reader); check EventKit:IsCombatLogAvailable() first` |
-| every connecting method | `<Method> callback must be a function` |
+| `Connect`, `Once`, `ConnectUnit`, `OnceUnit` and their scope forms | `<Method> callback must be a function, or a receiver table followed by a method name`; `<Method> methodName must be a non-empty string`; `<Method> receiver has no method "<name>"` (also when the field is not a function); a secret method name: `<Method> methodName must not be a secret value` |
+| `ConnectCombatLog`, `Coalesce` | `<Method> callback must be a function` |
+| `Scope:Reopen` on an addon scope | `EventKit.Scope:Reopen cannot reopen an addon scope` |
 | `ConnectUnit`, `OnceUnit`, the `units` option | `<Method> requires at least one unit token`; `<Method> unit tokens must be non-empty strings`; `<Method> accepts at most 2 distinct unit tokens because Frame:RegisterUnitEvent has 2 filter slots; received <count>`; for the option, `<Method> units must be an array of one or two unit tokens` |
 | a registration the host refuses with `false` | `<Method> could not register event <name>` |
 | a scope method on something that is not a scope | `<Method> must be called on an EventKit scope` |
@@ -761,6 +825,17 @@ facade`, `MoltenCodes EventKit requires SignalKit API 1 to be loaded first`,
 ## Embedded copies and upgrades
 
 Registry owns one stable EventKit table for `(eventKit, API 1)`. Compatible higher implementation revisions update that table in place. Existing connection handles resolve methods through a stable shared `Connection` method table; Frames created since revision 2 resolve their dispatcher through `_state`, and revision-1 Frames through the reserved facade fields described under *Reserved fields*. Scopes and `Coalesce`/`Derive` handles are validated by metatables kept in `_state`, and handle listeners resolve their behaviour through it, so handles created by an older copy run the newer code.
+
+Revision 21 moves `_state` to schema 10. Connection handles keep their fields
+in the array part under one metatable in `_state` (`connectionMetatable`).
+The copy that loads over revision 20 walks every channel's and route's
+listener array, and the scope list of every scoped connection it finds there
+and of every addon scope, and converts each connection in place: the same
+table, so a handle an addon holds keeps working, in the same order. It also
+counts each channel's live one-shot listeners into `onceCount`. Coalesce and
+Derive handles, and handles from before revision 17, keep their named fields
+and their own release paths. The secret probe is resolved once at load, with
+a per-call read of the global only when it was absent then.
 
 Revision 20 keeps `_state` at schema 9 and changes messages only: an
 unrecognised `SetLimits` key or `Coalesce`/`Derive` option field that is not a
@@ -1004,6 +1079,7 @@ deals with a secret before it would compare one (revision 14 and later):
   EventKit:ForAddon addonName must not be a secret value
   EventKit:CloseAddonScopes addonName must not be a secret value
   EventKit:SetLimits limits.<name> must not be a secret value
+  <Method> methodName must not be a secret value
   ```
 
 - A facade method called with a dot and a secret first argument is refused as
@@ -1015,6 +1091,12 @@ deals with a secret before it would compare one (revision 14 and later):
   boolean: it counts as a change (revision 16 and later).
 - A combat-log event whose sub-event is secret is not looked up by it: it
   reaches the wildcard listeners only (revision 16 and later).
+- `methodName` in the method form is refused when secret, like the other
+  arguments (revision 21).
+- The client's `issecretvalue` is resolved once, when the copy loads; every
+  client flavour defines it before any addon runs. Only when it was absent at
+  load is the global read again on each check, so a probe installed later (a
+  test environment, a compatibility shim) is still honoured (revision 21).
 
 ### Reserved fields
 

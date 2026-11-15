@@ -20,10 +20,11 @@ local function allocatedKilobytes(workload)
   return after - before
 end
 
--- One unscoped connection handle: a table with a four-slot hash part (64 +
--- 4 * 40 bytes on a 64-bit Lua 5.1). Tolerance above it covers interpreter
--- bookkeeping; a closure or a second record per connection would exceed it.
-local HANDLE_BYTES_BOUND = 240
+-- One unscoped connection handle: a table with a four-slot array part (56 +
+-- 4 * 16 bytes on a 64-bit Lua 5.1, 128 in all). Tolerance above it covers
+-- interpreter bookkeeping; the named-field layout (224 bytes), a closure or a
+-- second record per connection would exceed it.
+local HANDLE_BYTES_BOUND = 160
 
 ---@param EventKit table
 ---@param eventName string
@@ -45,7 +46,7 @@ describe("EventKit listener storage with no dispatch running", function()
     local channel = channelOf(EventKit, "CUSTOM_EVENT")
 
     assert.are.equal(connection, channel.listeners[1])
-    assert.are.equal(listener, rawget(connection, "_callback"))
+    assert.are.equal(listener, rawget(connection, 1))
     assert.is_nil(rawget(connection, "_inner"))
     assert.is_nil(rawget(channel, "signal"))
   end)
@@ -344,6 +345,24 @@ describe("EventKit listener storage allocation #allocation", function()
     end) * 1024 / 2000
 
     assert.is_true(bytes < HANDLE_BYTES_BOUND, bytes)
+  end)
+
+  it("allocates a scoped handle of seven array slots and nothing else", function()
+    local function listener() end
+    local scope = EventKit:CreateScope()
+    for _ = 1, 10 do
+      EventKit:Connect("CUSTOM_EVENT", listener)
+    end
+    scope:Connect("CUSTOM_EVENT", listener):Disconnect()
+
+    local bytes = allocatedKilobytes(function()
+      for _ = 1, 2000 do
+        scope:Connect("CUSTOM_EVENT", listener):Disconnect()
+      end
+    end) * 1024 / 2000
+
+    -- 56 + 7 * 16 = 168 bytes; the named-field layout cost 384.
+    assert.is_true(bytes < 200, bytes)
   end)
 
   it("allocates only the handle to connect and disconnect the only listener", function()

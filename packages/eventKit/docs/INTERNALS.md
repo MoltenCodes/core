@@ -26,7 +26,7 @@ same meanings. Both are delivered by one walk, `deliverListeners`.
 The rules are SignalKit's for a signal (its `docs/API.md`, "Mutation
 semantics"): a dispatch walks `listeners` up to the length it read when it
 started, so a connection made during it waits for the next event; a
-disconnect marks the handle (`_connected = false`), so the walk skips it at
+disconnect marks the handle (slot 2 `false`), so the walk skips it at
 once; a `Once` handle is disconnected before its callback runs.
 
 `state.dispatchDepth` counts EventKit dispatches on the stack. It decides how a
@@ -39,10 +39,9 @@ disconnect (`dropListener`) changes the array:
 
 The depth is package-wide rather than per channel: a disconnect inside any
 dispatch takes the copying path, which is always safe, and the counter already
-existed for the deferred scope sweep. `fireChannel` raises it around a
-protected walk (`pcall`), so it is restored even if the walk raises; the walk
-itself only raises on a bug or a host failure while a `Once` releases its
-registration, because every listener call is isolated.
+existed for the deferred scope sweep. `fireChannel` raises it around the walk
+and protects the walk with `pcall` only when it can raise (see *One-shot count
+and the protected walk*), so the depth is restored on every such path.
 
 `disconnectEventConnection` special-cases the churn pattern inline: with no
 dispatch running, a handle that is the tail of an array without tombstones is
@@ -52,23 +51,41 @@ has its count decremented.
 ## Connection handles
 
 A handle is the listener's record in the array, so connecting allocates it and
-nothing else:
+nothing else. Its fields live in the table's array part (revision 21):
 
-| Field | Meaning |
+| Slot | Meaning |
 |---|---|
-| `_connected` | `true` while it delivers; the receiver test is that this is a boolean. |
-| `_channel` or `_route` | The fan-out it is on; the other field is absent. `nil` once disconnected. |
-| `_callback` | The listener; `nil` once disconnected. |
-| `_once` | Whether it disconnects before its first call. |
-| `_scope`, `_scopePrevious`, `_scopeNext` | Only on a scoped handle: the intrusive scope list (see `docs/API.md`, "Owner scopes"). |
-| `_inner` | Only on a handle from before revision 17 (see *Upgrades*). |
+| `[1]` | The listener; `nil` once disconnected. For the method form, a closure over the receiver and the method name that looks the method up per call. |
+| `[2]` | `true` while it delivers, `false` after; never `nil`, which is how scope code tells a connection from a Coalesce or Derive handle. |
+| `[3]` | Whether it disconnects before its first call. |
+| `[4]` | Its fan-out, a channel or a combat-log route (a route carries `subEvent`); `nil` once disconnected. |
+| `[5]`, `[6]`, `[7]` | Only on a scoped handle: the owning scope or `false`, the previous and the next member of the scope's intrusive list. |
 
-`newConnection` uses two table constructors, with and without the scope links,
-because Lua 5.1 sizes a constructor's hash part by the fields it names: three
-named fields and the fan-out field fill a four-slot hash part (224 bytes on a
-64-bit build), six and the fan-out field an eight-slot one (384 bytes). A field
-is only ever written when it exists, because assigning even `nil` to a missing
-key inserts the key, which can grow a full table.
+Every handle carries `state.connectionMetatable`, which is also the receiver
+test of `Disconnect` and `IsConnected`. `newConnection` uses two table
+constructors, with four and seven values, because Lua 5.1 sizes a
+constructor's array part by the values it lists: 56 + 4 × 16 = 128 bytes on a
+64-bit build, and 56 + 7 × 16 = 176 bytes for a scoped handle, where the named
+layout of revisions 17 to 20 filled a four- or eight-node hash part (224 and
+384 bytes). A slot past the constructor's is never written, because assigning
+even `nil` to a missing key inserts the key, which can grow the table.
+
+Coalesce and Derive handles keep their scope links by name (`_scope`,
+`_scopePrevious`, `_scopeNext`), and so do handles from before revision 17
+(`_inner`, see *Upgrades*). `linkToScope`, `unlinkFromScope` and
+`scopeOfMember` test slot 2 to pick the layout of each member and of its
+neighbours. Neither metatable has `__newindex`, so the links are written with
+plain indexing.
+
+## One-shot count and the protected walk
+
+`fireChannel` runs `deliverListeners` under `pcall` only while
+`channel.signal` exists or `channel.onceCount` is above zero. `onceCount` is
+created by the first `Once` on a channel, raised by every one-shot connect,
+lowered by every one-shot disconnect (its own delivery included) and reset to
+zero when the record is pooled. The other ways the walk could raise are a bug
+or a raising isolation function, and neither `securecallfunction` nor `xpcall`
+propagates a listener's error.
 
 ## The channel pool
 
@@ -126,6 +143,23 @@ names kept so far, which the 32-event bound keeps short, instead of building a
 second lookup table.
 
 ## Upgrades
+
+Revision 21 moves the state to schema 10 and adds `connectionMetatable`. The
+schema-9 branch of the bootstrap converts every connection of revisions 17 to
+20 it can reach: the listener arrays of every regular channel, unit-group
+channel, combat-log route and the wildcard route, the scope list of every
+scoped connection found there (walked before any member changes layout,
+reading each member's next link in its own layout), and the list of every
+addon scope. A converted handle loses its named fields, gains slots 1 to 4
+(and 5 to 7 when it had scope links) and the shared metatable; it is the same
+table. Each fan-out with live one-shots gets `onceCount`. A disconnected
+handle no array held keeps its named fields and its old metatable;
+`disconnect` and `isConnected` recognise it by `_connected` and answer
+`false`. A live handle with named fields can only be one from before revision
+17, which `disconnectNamedHandle` releases through `_inner`. A state that
+already holds a `connectionMetatable` keeps it. Scope `Reopen` hands a scope
+still waiting for the deferred sweep over to a closed carrier scope that
+takes its place in `pendingScopes`, re-pointing each member's scope link.
 
 Revision 20 changes no state schema. `describeKey` names an unrecognised
 `SetLimits` key or option field without calling `tostring` on a table,

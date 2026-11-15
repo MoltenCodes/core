@@ -612,6 +612,51 @@ dispatch:Test(
 )
 
 dispatch:Test(
+  "a method-name Connect calls the receiver's method with the event, and a method replaced afterwards is the one that runs",
+  function(ctx)
+    local firstCalls, replacedCalls = 0, 0
+    local receiverSeen, eventSeen = nil, nil
+    local receiver = {}
+    function receiver:OnProbe(eventName, cvarName)
+      if namesProbeCVar(cvarName) then
+        receiverSeen, eventSeen = self, eventName
+        firstCalls = firstCalls + 1
+      end
+    end
+    local controlCalls = 0
+    local controlListener = probeListener(function()
+      controlCalls = controlCalls + 1
+    end)
+    track(EventKit:Connect(CVAR_EVENT, receiver, "OnProbe"))
+    track(EventKit:Connect(CVAR_EVENT, controlListener))
+
+    flipProbeCVar(ctx)
+    ctx
+      :Expect(waitUntil(ctx, function()
+        return controlCalls >= 1
+      end, LOCAL_EVENT_TIMEOUT_SECONDS))
+      :ToBe(true)
+    ctx:Expect(firstCalls):ToBe(1)
+    ctx:Expect(receiverSeen == receiver):ToBe(true)
+    ctx:Expect(eventSeen):ToBe(CVAR_EVENT)
+
+    function receiver:OnProbe(_, cvarName)
+      if namesProbeCVar(cvarName) then
+        replacedCalls = replacedCalls + 1
+      end
+    end
+    flipProbeCVar(ctx)
+    ctx
+      :Expect(waitUntil(ctx, function()
+        return controlCalls >= 2
+      end, LOCAL_EVENT_TIMEOUT_SECONDS))
+      :ToBe(true)
+    ctx:Expect(firstCalls):ToBe(1)
+    ctx:Expect(replacedCalls):ToBe(1)
+  end
+)
+
+dispatch:Test(
   "a Once listener runs for the first CVAR_UPDATE only and is already disconnected inside its callback",
   function(ctx)
     local onceCalls = 0
