@@ -1209,7 +1209,7 @@ local deprecations = newSuite("deprecations")
 local deprecationProbes = 0
 
 ---Declare a fresh probe deprecation and return its reporter.
----@return ClientKit.DeprecationReporter
+---@return any reporter a ClientKit deprecation reporter (ClientKit is untyped in this workspace)
 local function newProbeReporter()
   deprecationProbes = deprecationProbes + 1
   return ClientKit:Deprecate({
@@ -1222,14 +1222,14 @@ end
 ---A stand-in for a Kit's deprecated method: it warns with the default level,
 ---so the report names whoever called it. Callers call it as a statement,
 ---never as a tail call, so their frame stays on the stack.
----@param reporter ClientKit.DeprecationReporter
+---@param reporter any a ClientKit deprecation reporter
 local function callDeprecated(reporter)
   reporter:Warn()
 end
 
 ---Run `body` with the session's deprecation mode set to `mode`, and put the
 ---previous mode back afterwards, also when `body` raises.
----@param mode ClientKit.DeprecationMode
+---@param mode string "report", "silent" or "raise"
 ---@param body fun()
 local function withDeprecationMode(mode, body)
   local previous = ClientKit:GetDeprecationMode()
