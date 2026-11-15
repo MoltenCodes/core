@@ -20,7 +20,7 @@ What each piece promises:
 
 - **Blizzard's events, nothing patched.** EditModeKit listens to `EventRegistry`'s `EditMode.Enter` and `EditMode.Exit` and to `EDIT_MODE_LAYOUTS_UPDATED`, and reads the active layout's name from `EditModeManagerFrame`. It never hooks or changes Blizzard's Edit Mode frames.
 - **Positions per layout.** A position is the frame's centre offset from `UIParent`'s centre, in `UIParent`'s scale, so it survives a change of the frame's own scale. A layout without a saved position leaves the frame where it is.
-- **Combat-safe.** The client refuses to move a protected frame from addon code in combat; such a move, and a drag that would start one, waits for `PLAYER_REGEN_ENABLED`.
+- **Combat-safe.** The client refuses to move a protected frame from addon code in combat; such a move waits for `PLAYER_REGEN_ENABLED`, and a drag of such a frame does not start.
 - **Nothing per frame.** Work happens when Edit Mode opens or closes, a layout changes or a drag ends.
 - **Bounded.** At most 64 frames, up to 256 with `EditModeKit:SetLimits({ maxRegistrations = n })`; each holds an overlay frame the session keeps, so there is no unbounded setting.
 

@@ -2,7 +2,7 @@
 
 EditModeKit API generation **1** puts addon frames in Blizzard's Edit Mode: a labelled overlay that drags each frame while Edit Mode is open, and positions saved per Edit Mode layout and restored on a layout switch.
 
-Implementation revision: **1**.
+Implementation revision: **2**.
 
 ## Loading
 
@@ -42,13 +42,13 @@ Edit Mode, the `EventRegistry` events `EditMode.Enter` and `EditMode.Exit`, `Edi
 | `GetLayoutName()` | The active Edit Mode layout's name, or `"default"`. |
 | `SetLimits(limits)` / `GetLimits()` | Change or read `maxRegistrations`; `GetLimits` returns a fresh table. |
 | `MAX_REGISTRATIONS`, `REGISTRATIONS_CEILING` | `64`, `256`. |
-| `API`, `REVISION` | `1`, `1`. |
+| `API`, `REVISION` | `1`, `2`. |
 
 A registration:
 
 | Method | Purpose |
 |---|---|
-| `Unregister()` | Take the frame out of Edit Mode: `true`, or `false` when it already was. The frame stays where it is. |
+| `Unregister()` | Take the frame out of Edit Mode: `true`, or `false` when it already was. The frame stays where it is; a drag under way ends there and is not saved. |
 | `Refresh()` | Put the frame where the active layout's saved position says, for instance after a profile change. |
 | `GetFrame()` | The registered frame. |
 
@@ -64,7 +64,7 @@ A position `{ x, y }` is the frame's centre minus `UIParent`'s centre, in `UIPar
 
 A position is put back when the frame registers, on `Refresh`, after each drag, and for every frame on `EDIT_MODE_LAYOUTS_UPDATED`. A layout without a position, or a position that is not two numbers, leaves the frame where it is.
 
-A drag starts on the overlay (`OnDragStart`, left button) and moves the frame with `StartMoving`; when it ends, the position is saved under the active layout and the frame anchored by it.
+A drag starts on the overlay (`OnDragStart`, left button) and moves the frame with `StartMoving`; when it ends (`OnDragStop`), the position is saved under the active layout and the frame anchored by it. A drag still under way when Edit Mode closes ends there the same way, saved. One still under way when the frame is unregistered ends where the frame is, unsaved. `StartMoving` acts on the frame itself, so neither case leaves the frame following the cursor (revision 2). `StartMoving` also flags the frame as user-placed, which would let the client restore a named frame from its layout cache at the next login, over the saved position; EditModeKit clears the flag with `SetUserPlaced(false)` right after it (revision 2).
 
 ## Combat
 
@@ -89,6 +89,29 @@ Lowering `maxRegistrations` keeps every registration and refuses the next. The l
 ## Error behaviour
 
 Argument errors raise at the caller's line: `EditModeKit:Register options.label must be a non-empty string`; methods called on anything but a registration raise `EditModeKit.Registration:Refresh must be called on an EditModeKit registration; use registration:Refresh(...)`. What the client calls (Edit Mode callbacks, events, drags) never raises.
+
+Every message, raised at the caller's line. `<method>` is the public name called, such as `EditModeKit:Register` or `EditModeKit.Registration:Refresh`.
+
+| Message | Raised by |
+|---|---|
+| `<method> must be called on the EditModeKit facade; use <method>(...)` | a facade method called on anything but `EditModeKit` |
+| `<method> must be called on an EditModeKit registration; use registration:<name>(...)` | a registration method called on anything but a registration handle |
+| `EditModeKit:Register frame must be a frame` | anything but a table with `GetCenter` and `StartMoving` |
+| `EditModeKit:Register storage must be a table or a function returning one` | |
+| `EditModeKit:Register options must be a table or nil` | |
+| `EditModeKit:Register options holds an unknown field; it accepts label` | |
+| `EditModeKit:Register options.label must be a non-empty string` | also a secret label |
+| `EditModeKit:Register frame is already registered; unregister it first` | |
+| `EditModeKit:Register holds at most <n> frames; raise maxRegistrations with EditModeKit:SetLimits` | |
+| `EditModeKit:Register needs the client's CreateFrame, UIParent and EventRegistry, which this host does not have` | |
+| `EditModeKit:SetLimits limits must be a table` | |
+| `EditModeKit:SetLimits limits holds an unknown field; it accepts maxRegistrations` | |
+| `EditModeKit:SetLimits limits.maxRegistrations must not be a secret value` | |
+| `EditModeKit:SetLimits limits.maxRegistrations must be an integer from 1 to 256` | |
+
+Storage failures are reported, not raised; see "Storage failures".
+
+Loading raises `MoltenCodes EditModeKit requires Registry API 2 to be loaded first`, `MoltenCodes EditModeKit requires a valid Registry API 2 facade` or `MoltenCodes EditModeKit package state is corrupted or incomplete`.
 
 ## Performance
 

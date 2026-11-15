@@ -38,7 +38,7 @@
 
 local PACKAGE_NAME = "editModeKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 1
+local IMPLEMENTATION_REVISION = 2
 local REQUIRED_REGISTRY_API = 2
 local STATE_SCHEMA = 1
 
@@ -560,10 +560,32 @@ function dispatch.enter()
   end
 end
 
----Edit Mode closed: hide every overlay.
+---End a drag that is under way: stop moving the frame and, when `keep` is
+---set, save where it ended and anchor the frame by it.
+---
+---A drag ends normally at `OnDragStop`, but a frame that leaves Edit Mode
+---while the cursor still holds it would never get there: `Unregister` forgets
+---its overlay, and closing Edit Mode hides it. `StartMoving` acts on the frame
+---itself, so without this the frame would keep following the cursor.
+---@param record table
+---@param keep boolean whether to save the position the drag reached
+local function endDrag(record, keep)
+  if not record.dragging then
+    return
+  end
+  record.dragging = false
+  record.frame:StopMovingOrSizing()
+  if keep then
+    save(record)
+    apply(record)
+  end
+end
+
+---Edit Mode closed: end a drag under way, then hide every overlay.
 function dispatch.exit()
   rawset(state, "editing", false)
-  for overlay in pairs(overlays) do
+  for overlay, record in pairs(overlays) do
+    endDrag(record, true)
     overlay:Hide()
   end
 end
@@ -595,8 +617,16 @@ function dispatch.dragStart(overlay)
   if record == nil or mustWait(record.frame) then
     return
   end
-  record.frame:SetMovable(true)
-  record.frame:StartMoving()
+  local frame = record.frame
+  frame:SetMovable(true)
+  frame:StartMoving()
+  -- `StartMoving` flags the frame as user-placed, and the client restores a
+  -- named user-placed frame from its layout cache at the next login, over the
+  -- position EditModeKit keeps per Edit Mode layout (warcraft.wiki.gg, API
+  -- Frame:StartMoving). The position is EditModeKit's, so the flag is cleared.
+  if type(frame.SetUserPlaced) == "function" then
+    frame:SetUserPlaced(false)
+  end
   record.dragging = true
 end
 
@@ -604,19 +634,16 @@ end
 ---@param overlay table
 function dispatch.dragStop(overlay)
   local record = overlays[overlay]
-  if record == nil or not record.dragging then
+  if record == nil then
     return
   end
-  record.dragging = false
-  record.frame:StopMovingOrSizing()
-  save(record)
-  apply(record)
+  endDrag(record, true)
 end
 
 -- Registration methods -------------------------------------------------------
 
 ---Take the frame out of Edit Mode: `true`, or `false` when it already was.
----The frame stays where it is.
+---The frame stays where it is; a drag under way ends there, unsaved.
 ---@param self EditModeKit.Registration
 ---@return boolean
 local function registrationUnregister(self)
@@ -624,6 +651,7 @@ local function registrationUnregister(self)
   if not record.registered then
     return false
   end
+  endDrag(record, false)
   record.registered = false
   records[self] = nil
   byFrame[record.frame] = nil

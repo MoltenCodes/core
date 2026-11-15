@@ -61,6 +61,33 @@ describe("EditModeKit bootstrap", function()
     end
   )
 
+  it(
+    "upgrades revision 1 in place: a drag under way ends when its frame is unregistered",
+    function()
+      -- Install the host stand-ins, then start over with a copy carrying
+      -- revision 1, the way an older addon's embedded copy loads first.
+      TestEnv.NewPackage()
+      TestEnv.SetGlobal("MoltenCodes", nil)
+      package.loaded.Registry = nil
+      package.loaded.EditModeKit = nil
+      require("Registry")
+      local old = TestEnv.LoadRevision(1)
+      local storage = {}
+      local frame = TestEnv.FrameAt(300, 300)
+      local registration = old:Register(frame, storage)
+      TestEnv.EnterEditMode()
+      TestEnv.Run(rawget(registration, "_record").overlay, "OnDragStart")
+
+      local upgraded = TestEnv.ReloadPackage()
+      assert.are.equal(old, upgraded)
+      assert.is_true(upgraded.REVISION > 1)
+      assert.is_true(frame.moving)
+      assert.is_true(registration:Unregister())
+      assert.is_nil(frame.moving)
+      assert.are.same({}, storage)
+    end
+  )
+
   it("reads whether Edit Mode is already open when it first listens", function()
     local EditModeKit = TestEnv.NewPackage()
     TestEnv.GetGlobal("EditModeManagerFrame").IsEditModeActive = function()

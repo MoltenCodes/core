@@ -179,6 +179,55 @@ describe("EditModeKit in Edit Mode", function()
     assert.are.equal(1, TestEnv.GetGlobal("EventRegistry"):CallbackCount("EditMode.Enter"))
   end)
 
+  it("keeps a dragged frame out of the client's layout cache", function()
+    -- StartMoving flags the frame as user-placed, and the client then restores
+    -- a named frame from its layout cache at the next login, over the
+    -- position saved for the active Edit Mode layout (warcraft.wiki.gg,
+    -- API Frame:StartMoving).
+    local frame = TestEnv.FrameAt(300, 300)
+    local userPlaced = nil
+    frame.StartMoving = function(self)
+      self.moving = true
+      userPlaced = true
+    end
+    frame.SetUserPlaced = function(_, placed)
+      userPlaced = placed
+    end
+    local registration = EditModeKit:Register(frame, {})
+    TestEnv.EnterEditMode()
+    TestEnv.Run(rawget(registration, "_record").overlay, "OnDragStart")
+    assert.is_false(userPlaced)
+  end)
+
+  it("ends a drag that is still under way when the frame is unregistered", function()
+    local storage = {}
+    local frame = TestEnv.FrameAt(300, 300)
+    local registration = EditModeKit:Register(frame, storage)
+    TestEnv.EnterEditMode()
+    local overlay = overlayOf(registration)
+    TestEnv.Run(overlay, "OnDragStart")
+    assert.is_true(frame.moving)
+    registration:Unregister()
+    -- The frame must not keep following the cursor once it left Edit Mode,
+    -- and a late drag stop on the reused overlay must not save anything.
+    assert.is_nil(frame.moving)
+    TestEnv.Run(overlay, "OnDragStop")
+    assert.are.same({}, storage)
+  end)
+
+  it("ends a drag that is still under way when Edit Mode closes, saving where it ended", function()
+    local storage = {}
+    local frame = TestEnv.FrameAt(300, 300)
+    local registration = EditModeKit:Register(frame, storage)
+    TestEnv.EnterEditMode()
+    TestEnv.Run(overlayOf(registration), "OnDragStart")
+    frame:ClearAllPoints()
+    frame:SetPoint("CENTER", TestEnv.GetGlobal("UIParent"), "BOTTOMLEFT", 1060, 640)
+    TestEnv.ExitEditMode()
+    assert.is_nil(frame.moving)
+    assert.are.same({ Modern = { x = 100, y = 100 } }, storage)
+  end)
+
   it("names the layout default without the client's Edit Mode manager", function()
     TestEnv.SetGlobal("EditModeManagerFrame", nil)
     local storage = {}
