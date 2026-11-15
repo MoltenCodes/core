@@ -158,7 +158,7 @@ function BridgeKitTestEnv.InstallCommKitStandIn(revision)
   -- selene: allow(global_usage)
   local Registry = rawget(_G, "MoltenCodes").Registries[2]
   local CommKit = assert(Registry:Register("commKit", 1, revision or 8))
-  local stand = { sent = {}, registrations = {} }
+  local stand = { sent = {}, registrations = {}, handles = {} }
   local Scope = {}
   rawset(CommKit, "API", 1)
   rawset(CommKit, "REVISION", revision or 8)
@@ -189,8 +189,13 @@ function BridgeKitTestEnv.InstallCommKitStandIn(revision)
     if scope.closed then
       return nil, "closed"
     end
-    local handle = { request = request }
+    local handle = { request = request, cancelled = false }
+    function handle.Cancel(self)
+      self.cancelled = true
+      return true
+    end
     stand.sent[#stand.sent + 1] = request
+    stand.handles[#stand.handles + 1] = handle
     return handle
   end
 
@@ -203,13 +208,22 @@ function BridgeKitTestEnv.InstallCommKitStandIn(revision)
     return scope
   end
 
-  ---Deliver one addon message to every live raw registration on its prefix.
+  ---Deliver one addon message to every live raw registration on its prefix,
+  ---in registration order. As in SignalKit, a registration made during the
+  ---delivery is not called for it, and one disconnected during it is skipped.
   function stand.Deliver(prefix, text, distribution, sender)
-    for _, connection in ipairs(stand.registrations) do
+    local count = #stand.registrations
+    for index = 1, count do
+      local connection = stand.registrations[index]
       if connection.prefix == prefix and connection:IsConnected() then
         connection.callback(prefix, text, distribution, sender)
       end
     end
+  end
+
+  ---Finish a send: call its `onComplete` with `sendState`, as CommKit does.
+  function stand.Complete(handle, sendState)
+    handle.request.onComplete(handle, sendState, sendState)
   end
 
   ---Every part sent, flattened, in order.

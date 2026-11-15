@@ -10,8 +10,10 @@ generation 1, implementation revision 4.
   writes the messages AceComm-3.0 writes (one message, the escape byte, or
   254-byte parts), and the callback receives whole messages reassembled with
   AceComm's rules, `Ambiguate`d by default. Several channels on one prefix
-  share one reassembly and each receives every message; the priority is
-  fixed per prefix; the channel closes with its scope.
+  share one reassembly and each receives every message once, also when a
+  callback closes or opens channels; the priority is fixed per prefix and
+  `Close` cancels the channel's queued sends; the channel closes with its
+  scope, and the prefix's streams are released with its last channel.
 - Bounds Ace lacks: `maxAceStreams`, `maxAceStreamsPerSender`,
   `maxAceStreamBytes`, `maxAceSpoolBytes`, `aceStreamTimeout` (streams
   expire at the next message received, design decision 20) and
@@ -19,8 +21,10 @@ generation 1, implementation revision 4.
   most once per sender per minute.
 - `BridgeKit:GetStatistics()`: the AceComm counters, open streams and spool
   bytes. CommKit joins the optional dependencies.
-- Implementation revision 4: the AceComm state lives in `_state`; an
-  in-place upgrade adds it and the new limits' defaults.
+- Implementation revision 4: the AceComm state lives in `_state`, and the
+  raw handlers call through it, so channels opened before an in-place
+  upgrade run the newer receive code; an upgrade adds the state and the new
+  limits' defaults.
 
 ### Fixed (from step N3's read-only review)
 

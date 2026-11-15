@@ -416,4 +416,100 @@ describe("BridgeKit AceComm channel", function()
       assert.are_not.equal(statistics, BridgeKit:GetStatistics())
     end)
   end)
+
+  describe("callbacks that change the channels, and upgrades", function()
+    it("delivers to every channel once when a callback closes its own", function()
+      local calls = {}
+      local first
+      first = assert(BridgeKit:OpenAceComm(commKit.NewScope(), PREFIX, function()
+        calls[#calls + 1] = "first"
+        first:Close()
+      end))
+      for _, name in ipairs({ "second", "third" }) do
+        assert(BridgeKit:OpenAceComm(commKit.NewScope(), PREFIX, function()
+          calls[#calls + 1] = name
+        end))
+      end
+      commKit.Deliver(PREFIX, "hi", "PARTY", SENDER)
+      assert.are.same({ "first", "second", "third" }, calls)
+      commKit.Deliver(PREFIX, "again", "PARTY", SENDER)
+      assert.are.same({ "first", "second", "third", "second", "third" }, calls)
+      assert.are.equal(0, #Env.ReportedErrors())
+    end)
+
+    it("reads a raw message once when the reader's scope closes during it", function()
+      local scope = commKit.NewScope()
+      assert(BridgeKit:OpenAceComm(scope, PREFIX, function()
+        scope:Close()
+      end))
+      local _, received = openRecording()
+      commKit.Deliver(PREFIX, "\1" .. string.rep("a", 254), "PARTY", SENDER)
+      commKit.Deliver(PREFIX, "\3b", "PARTY", SENDER)
+      commKit.Deliver(PREFIX, "\2c", "PARTY", SENDER)
+      assert.are.equal(1, #received)
+      local statistics = BridgeKit:GetStatistics()
+      assert.are.same({ 1, 1 }, { statistics.aceMessagesReceived, statistics.aceOrphanParts })
+    end)
+
+    it("does not hand the message in flight to a channel a callback opens", function()
+      local late
+      assert(BridgeKit:OpenAceComm(commKit.NewScope(), PREFIX, function()
+        if late == nil then
+          late = { openRecording() }
+        end
+      end))
+      commKit.Deliver(PREFIX, "one", "PARTY", SENDER)
+      assert.are.equal(0, #late[2])
+      commKit.Deliver(PREFIX, "two", "PARTY", SENDER)
+      assert.are.same({ "two" }, { late[2][1].message })
+    end)
+
+    it("releases a prefix's streams once the last channel's scope closes", function()
+      local scope = commKit.NewScope()
+      local channel = openRecording(scope)
+      commKit.Deliver(PREFIX, "\1" .. string.rep("a", 254), "PARTY", SENDER)
+      assert.are.equal(1, BridgeKit:GetStatistics().openStreams)
+      scope:Close()
+      local statistics = BridgeKit:GetStatistics()
+      assert.are.same({ 0, 0 }, { statistics.openStreams, statistics.spoolBytes })
+      assert.is_false(channel:Close())
+    end)
+
+    it("cancels its queued sends when it closes", function()
+      local channel = openRecording()
+      local completed = {}
+      local done = assert(channel:Send({
+        text = "done",
+        distribution = "PARTY",
+        onComplete = function(_, sendState)
+          completed[#completed + 1] = sendState
+        end,
+      }))
+      local queued = assert(channel:Send({ text = "queued", distribution = "PARTY" }))
+      commKit.Complete(done, "sent")
+      assert.are.same({ "sent" }, completed)
+      assert.is_true(channel:Close())
+      assert.is_false(done.cancelled)
+      assert.is_true(queued.cancelled)
+    end)
+
+    it("refuses a text past 4096 parts before cutting it", function()
+      local channel = openRecording()
+      assert.are.same(
+        { nil, "tooLarge" },
+        { channel:Send({ text = string.rep("a", 4096 * 254 + 1), distribution = "PARTY" }) }
+      )
+      assert.are.equal(4096, #partsOf(channel, string.rep("a", 4096 * 254)))
+    end)
+
+    it("runs the newest revision's receive code for a channel an older one opened", function()
+      local _, received = openRecording()
+      Env.LoadRevision(5, {
+        ['countAce("aceMessagesReceived")'] = 'countAce("aceMessagesReceived", 10)',
+      })
+      commKit.Deliver(PREFIX, "hi", "PARTY", SENDER)
+      assert.are.equal(1, #received)
+      assert.are.equal(10, BridgeKit:GetStatistics().aceMessagesReceived)
+    end)
+  end)
 end)

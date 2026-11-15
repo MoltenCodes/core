@@ -4593,6 +4593,9 @@ do
     end
   end
 
+  -- Defined with the channel methods below; delivery needs them first.
+  local firstLiveChannel, releasePrefix, releaseDeadPrefixes
+
   ---Hand one whole message to every live channel on its prefix, in the order
   ---they were opened.
   ---@param prefix string
@@ -4608,13 +4611,22 @@ do
     countAce("aceBytesReceived", #message)
     local ambiguate = clientFunction("Ambiguate")
     local shortSender = ambiguate and ambiguate(sender, "none") or sender
+    -- The channels open when the message arrived receive it: one a callback
+    -- opens is appended past `count`, one it closes is skipped, and nothing
+    -- is pruned until the walk ends.
     local channels = record.channels
-    for index = 1, #channels do
+    local count = #channels
+    record.delivering = record.delivering + 1
+    for index = 1, count do
       local channel = channels[index]
       if not channel:IsClosed() then
         local shown = rawget(channel, "_ambiguate") and shortSender or sender
         callIsolated(rawget(channel, "_callback"), prefix, message, distribution, shown)
       end
+    end
+    record.delivering = record.delivering - 1
+    if record.delivering == 0 and firstLiveChannel(record) == nil then
+      releasePrefix(prefix)
     end
   end
 
@@ -4697,6 +4709,7 @@ do
   local function receiveAce(prefix, text, distribution, sender)
     local current = now()
     expireAceStreams(current)
+    releaseDeadPrefixes()
     local control = string.byte(text, 1)
     local key = prefix .. "\t" .. distribution .. "\t" .. sender
     if control == ACE_CONTROL.first then
@@ -4754,17 +4767,23 @@ do
     return parts
   end
 
-  ---The first live channel on a prefix, closed channels pruned.
+  ---The first live channel on a prefix. Closed channels are pruned, except
+  ---while a message is being delivered on the prefix: the delivery walks the
+  ---same array, so it must not shift under it.
   ---@param record table
   ---@return table|nil
-  local function firstLiveChannel(record)
+  function firstLiveChannel(record)
     local channels = record.channels
     local index = 1
     while index <= #channels do
-      if channels[index]:IsClosed() then
-        table.remove(channels, index)
+      local channel = channels[index]
+      if not channel:IsClosed() then
+        return channel
+      end
+      if record.delivering > 0 then
+        index = index + 1
       else
-        return channels[index]
+        table.remove(channels, index)
       end
     end
     return nil
@@ -4772,7 +4791,7 @@ do
 
   ---Forget a prefix's record and its streams once no channel is left on it.
   ---@param prefix string
-  local function releasePrefix(prefix)
+  function releasePrefix(prefix)
     local record = aceComm.prefixes[prefix]
     if record == nil or firstLiveChannel(record) ~= nil then
       return
@@ -4781,6 +4800,17 @@ do
     for key, stream in next, aceComm.streams do
       if stream.prefix == prefix then
         closeAceStream(key)
+      end
+    end
+  end
+
+  ---Release every prefix no live channel is left on: a channel closed with
+  ---its CommKit scope never calls `Close`, so its prefix is found here, on the
+  ---next receive, open or statistics read.
+  function releaseDeadPrefixes()
+    for prefix, record in next, aceComm.prefixes do
+      if record.delivering == 0 and firstLiveChannel(record) == nil then
+        releasePrefix(prefix)
       end
     end
   end
@@ -4818,11 +4848,15 @@ do
     if stringFind(text, "%z") ~= nil then
       return nil, "nulByte"
     end
-    local parts = aceParts(text)
-    if #parts > MAX_RAW_PARTS then
+    -- A text past this many bytes needs more parts than one raw send takes;
+    -- it is refused before any part is cut.
+    if #text > MAX_RAW_PARTS * ACE_PART_BYTES then
       return nil, "tooLarge"
     end
+    local parts = aceParts(text)
     local CommKit = rawget(self, "_commKit")
+    local pending = rawget(self, "_pending")
+    local onComplete = rawget(request, "onComplete")
     local ok, handle, reason = pcall(rawget(self, "_scope").SendRaw, rawget(self, "_scope"), {
       prefix = rawget(self, "_prefix"),
       parts = parts,
@@ -4830,7 +4864,12 @@ do
       target = rawget(request, "target"),
       priority = rawget(CommKit, "Priority")[rawget(self, "_priority")],
       onProgress = rawget(request, "onProgress"),
-      onComplete = rawget(request, "onComplete"),
+      onComplete = function(completedHandle, sendState, completionReason)
+        pending[completedHandle] = nil
+        if onComplete ~= nil then
+          onComplete(completedHandle, sendState, completionReason)
+        end
+      end,
     })
     if not ok then
       local message = type(handle) == "string" and string.gsub(handle, "^[^\n]-:%d+: ", "")
@@ -4838,30 +4877,39 @@ do
       error(label .. " " .. message, 2)
     end
     if handle ~= nil then
+      -- No callback runs before `SendRaw` returns, so the handle is held
+      -- before its completion can release it.
+      pending[handle] = true
       countAce("aceMessagesSent")
       countAce("acePartsSent", #parts)
     end
     return handle, reason
   end
 
-  ---Close the channel: its raw registration ends, and the prefix's streams go
-  ---with its last channel. Returns `false` when it was already closed.
+  ---Close the channel: its raw registration ends, its queued sends are
+  ---cancelled, and the prefix's streams go with its last channel. Returns
+  ---`false` when it was already closed, by `Close` or with its scope.
   ---@param self table
   ---@return boolean
   function ChannelMethods.Close(self)
     if getmetatable(self) ~= CHANNEL_METATABLE then
       error("BridgeKit channel:Close must be called on a BridgeKit channel; use channel:Close()", 2)
     end
-    if rawget(self, "_closed") then
-      return false
-    end
+    local wasClosed = self:IsClosed()
     rawset(self, "_closed", true)
     local connection = rawget(self, "_connection")
     if connection:IsConnected() then
       connection:Disconnect()
     end
+    -- Sends still queued are cancelled, so a channel opened later on the
+    -- prefix with another priority cannot interleave its parts with them.
+    local pending = rawget(self, "_pending")
+    for handle in next, pending do
+      pending[handle] = nil
+      handle:Cancel()
+    end
     releasePrefix(rawget(self, "_prefix"))
-    return true
+    return not wasClosed
   end
 
   ---Whether the channel is closed, by `Close` or with its CommKit scope.
@@ -4956,6 +5004,44 @@ do
     return read
   end
 
+  ---Read one raw message a channel's registration received. Every channel on
+  ---a prefix holds its own registration, so CommKit calls each of them with the
+  ---same message: the first live channel reads it, and marks every other live
+  ---channel to skip that one call. A channel the reader's callbacks close or
+  ---open changes nothing for the message already in flight (SignalKit does not
+  ---call a listener connected during a `Fire`), so no message is read twice.
+  ---@param channel table
+  ---@param prefix string
+  ---@param text string
+  ---@param distribution string
+  ---@param sender string
+  local function onRaw(channel, prefix, text, distribution, sender)
+    local record = aceComm.prefixes[prefix]
+    if record == nil then
+      return
+    end
+    local skip = record.skip
+    if skip[channel] then
+      skip[channel] = nil
+      return
+    end
+    if firstLiveChannel(record) ~= channel then
+      return
+    end
+    for marked in next, skip do
+      skip[marked] = nil
+    end
+    local channels = record.channels
+    for index = 1, #channels do
+      local other = channels[index]
+      if other ~= channel and not other:IsClosed() then
+        skip[other] = true
+      end
+    end
+    receiveAce(prefix, text, distribution, sender)
+  end
+  aceComm.onRaw = onRaw
+
   ---Open an AceComm-3.0 channel on `prefix` through a CommKit scope (design
   ---section 5.7). Returns the channel, or `nil` and CommKit's registration
   ---refusal.
@@ -4987,11 +5073,8 @@ do
       error(label .. " callback must be a function", 2)
     end
     local read = readChannelOptions(label, options)
+    releaseDeadPrefixes()
     local record = aceComm.prefixes[prefix]
-    if record ~= nil and firstLiveChannel(record) == nil then
-      releasePrefix(prefix)
-      record = nil
-    end
     if record ~= nil and record.priority ~= read.priority then
       error(
         label
@@ -5014,14 +5097,14 @@ do
       _scope = scope,
       _commKit = CommKit,
       _closed = false,
+      _pending = {},
     }, CHANNEL_METATABLE)
+    -- The handler calls through the shared state, so a channel opened under an
+    -- older revision runs the newest revision's receive code.
     local connection, reason = scope:RegisterRaw(
       prefix,
       function(rawPrefix, text, distribution, sender)
-        local current = aceComm.prefixes[rawPrefix]
-        if current ~= nil and firstLiveChannel(current) == channel then
-          receiveAce(rawPrefix, text, distribution, sender)
-        end
+        aceComm.onRaw(channel, rawPrefix, text, distribution, sender)
       end
     )
     if connection == nil then
@@ -5029,7 +5112,7 @@ do
     end
     rawset(channel, "_connection", connection)
     if record == nil then
-      record = { priority = read.priority, channels = {} }
+      record = { priority = read.priority, channels = {}, skip = {}, delivering = 0 }
       aceComm.prefixes[prefix] = record
     end
     record.channels[#record.channels + 1] = channel
@@ -5041,6 +5124,7 @@ do
   ---@return table
   function getStatistics(self)
     validateFacade(self, "BridgeKit:GetStatistics", 3)
+    releaseDeadPrefixes()
     local copy = {}
     for _, name in ipairs(ACE_STATISTICS) do
       copy[name] = aceComm.statistics[name]

@@ -513,7 +513,7 @@ own CommKit messages.
 
 | Option | Default | Meaning |
 |---|---|---|
-| `priority` | `"NORMAL"` | `"ALERT"`, `"NORMAL"` or `"BULK"`, mapped to `CommKit.Priority`. Fixed per prefix while a channel is open on it: a later channel stating another raises, so the parts of different texts on one prefix never interleave. |
+| `priority` | `"NORMAL"` | `"ALERT"`, `"NORMAL"` or `"BULK"`, mapped to `CommKit.Priority`. Fixed per prefix while a channel is open on it: a later channel stating another raises, and `Close` cancels a channel's queued sends, so the parts of different texts on one prefix never interleave. |
 | `wire` | `1` | The wire version; any other raises. |
 | `ambiguate` | `true` | Pass `sender` through `Ambiguate(sender, "none")` before the callback, as AceComm does. Streams are always keyed by the unmodified sender. |
 
@@ -522,7 +522,7 @@ own CommKit messages.
 | Method | Returns | Purpose |
 |---|---|---|
 | `Send(request)` | CommKit's send handle, or `nil, reason` | Send `request.text` (`distribution`, `target`, `onProgress`, `onComplete` as CommKit's `SendRaw` takes them). |
-| `Close()` | `true`, or `false` when already closed | End the raw registration; the prefix's held streams go with its last channel. |
+| `Close()` | `true`, or `false` when already closed (by `Close` or with its scope) | End the raw registration and cancel the channel's queued sends; the prefix's held streams go with its last channel. |
 | `IsClosed()` | boolean | Closed by `Close` or with its scope. |
 | `GetPrefix()`, `GetPriority()`, `GetWireVersion()` | string, string, integer | What the channel was opened with. |
 
@@ -545,7 +545,13 @@ replacing one already held; `02` adds to it; `03` adds and delivers it; a
 `05`-`09` are reserved and ignored, anything else is a whole message.
 Several channels on one prefix share one reassembly: only the first channel
 still open reads the raw messages, and each whole message goes to every open
-channel on the prefix in the order they were opened.
+channel on the prefix in the order they were opened. A callback may close or
+open channels: the message in flight goes to the channels open when it
+arrived (one closed meanwhile is skipped, one opened meanwhile receives the
+next message), and it is read once however the reading channel closes. When
+the last channel on a prefix closes, with `Close` or with its scope, the
+prefix's held streams are released (for a scope, at the next message,
+`OpenAceComm` or `GetStatistics`).
 
 **Bounds Ace lacks.** At most `maxAceStreams` streams are held, at most
 `maxAceStreamsPerSender` per sender, at most `maxAceStreamBytes` bytes in one
@@ -658,7 +664,8 @@ The package state (`_state`) holds the limits, the `UNBOUNDED` sentinel, the
 read-only baseline and the AceComm state (open prefixes, held streams,
 counters, the channel prototype), so every embedded copy and every revision
 publishes the same tables, and a channel opened before an upgrade uses the
-new revision's methods. A newer compatible revision loaded over an older one keeps
+new revision's methods and, through a trampoline in the state, its receive
+code. A newer compatible revision loaded over an older one keeps
 that state and replaces the methods; an older copy loaded later steps aside.
 A limit a later revision adds starts at its default over an inherited state.
 
