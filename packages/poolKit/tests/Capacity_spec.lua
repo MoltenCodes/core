@@ -64,6 +64,33 @@ describe("PoolKit capacity", function()
     end)
   end)
 
+  it("keeps the objects a Prewarm built before its factory raised", function()
+    local PoolKit = Env.NewPackage()
+    local calls = 0
+    local built = {}
+    local pool = PoolKit:New({
+      create = function()
+        calls = calls + 1
+        if calls == 3 then
+          error("factory failed", 0)
+        end
+        local object = { id = calls }
+        built[#built + 1] = object
+        return object
+      end,
+      maxCreated = 4,
+    })
+    assert.has_error(function()
+      pool:Prewarm(4)
+    end, "factory failed")
+    assert.are.equal(2, pool:GetAvailableCount())
+    assert.are.equal(2, pool:GetCreatedCount())
+    -- The two objects built before the failure are handed out, not rebuilt.
+    local first, second = pool:Acquire(), pool:Acquire()
+    assert.are.equal(built[2], first)
+    assert.are.equal(built[1], second)
+  end)
+
   it("trims immediately when maxRetained is lowered", function()
     local PoolKit = Env.NewPackage()
     local pool = PoolKit:New({

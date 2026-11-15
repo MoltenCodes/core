@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.7 — 2026-11-15
+
+- Fixed `Prewarm` stranding the objects it had built when the factory raised partway. The available count was written only after the loop, so the objects already built sat on the free list uncounted: `Acquire` never handed them out, and they still counted against `maxCreated`. The count is now written with each object. Regression spec in `Capacity_spec.lua`.
+- Removed the unused `Registry.Get` lookup from the load-time facade check; PoolKit never called it.
+- Implementation revision 10. No state or pool shape changed: an in-place upgrade from revision 9 keeps its pools and objects, which `Bootstrap_spec.lua` covers. API generation 1 is unchanged.
+
 ## 0.4.6 — 2026-09-25
 
 Performance round 2: cheaper `Acquire` and `Release`. Implementation revision 9; API generation 1 is unchanged.

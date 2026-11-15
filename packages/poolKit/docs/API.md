@@ -120,7 +120,8 @@ Errors: `PoolKit.Pool:Prewarm count must be a non-negative integer`,
 `PoolKit.Pool:Prewarm target cannot exceed maxRetained`,
 `PoolKit.Pool:Prewarm target cannot exceed maxCreated`, the two factory-result
 errors with `PoolKit.Pool:Prewarm` in place of `PoolKit.Pool:Acquire`, and a
-raising `create`, unchanged.
+raising `create`, unchanged. When `create` raises partway, the objects already
+built stay available (since revision 10).
 
 ### `pool:Trim(retainCount?)`, `pool:Clear()` — mutating
 

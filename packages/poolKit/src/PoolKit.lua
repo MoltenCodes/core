@@ -36,7 +36,7 @@
 
 local PACKAGE_NAME = "poolKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 9
+local IMPLEMENTATION_REVISION = 10
 local REQUIRED_REGISTRY_API = 2
 local STATE_SCHEMA = 2
 local DEFAULT_MAX_RETAINED = 128
@@ -197,8 +197,7 @@ if type(Registry) ~= "table" or rawget(Registry, "API") ~= REQUIRED_REGISTRY_API
 end
 
 local bootstrapPackage = rawget(Registry, "Bootstrap")
-local getPackage = rawget(Registry, "Get")
-if type(bootstrapPackage) ~= "function" or type(getPackage) ~= "function" then
+if type(bootstrapPackage) ~= "function" then
   error("MoltenCodes PoolKit requires a valid Registry API 2 facade", 2)
 end
 
@@ -878,15 +877,19 @@ local function prewarmInternal(pool, targetCount, level)
 
   local created = 0
 
+  -- The count is written with each object, not after the loop: a factory that
+  -- raises partway leaves the objects already built on the free list, where
+  -- the next `Acquire` finds them, instead of stranding them counted against
+  -- `maxCreated`.
   while count < targetCount do
     local object = createObject(pool, "PoolKit.Pool:Prewarm", nestedLevel(level))
     count = count + 1
     created = created + 1
     rawset(available, count, object)
     rawset(retained, object, true)
+    rawset(pool, "_availableCount", count)
   end
 
-  rawset(pool, "_availableCount", count)
   return created
 end
 
