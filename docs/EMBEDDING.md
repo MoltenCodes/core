@@ -13,6 +13,7 @@ below explains why that example looks the way it does.
 - [The Registry-first rule](#the-registry-first-rule)
 - [Directory layout inside your addon](#directory-layout-inside-your-addon)
 - [Load order](#load-order)
+- [Minimum footprint per Kit](#minimum-footprint-per-kit)
 - [A complete example addon](#a-complete-example-addon)
 - [TOC fields and packaging](#toc-fields-and-packaging)
 - [Embed or depend](#embed-or-depend)
@@ -29,7 +30,8 @@ below explains why that example looks the way it does.
 ## What a Kit is
 
 A **Kit** is one independently publishable runtime package: a single Lua file
-that publishes one table of functions and nothing else. `SignalKit` is callback
+that publishes one table of functions and nothing else (`apiKit` alone adds
+one generated file per client flavour). `SignalKit` is callback
 dispatch, `EventKit` is World of Warcraft events, `TimerKit` is timers, and so
 on. The complete list is in the [root README](../README.md).
 
@@ -946,14 +948,18 @@ above, and the report that was meant to explain a failure causes another. The
 rule the Kits will meet is: a value the Kit did not create is formatted into an
 error message only after `issecretvalue` says it is not secret; a secret is
 described by a fixed placeholder such as `<secret value>`; argument errors name
-the parameter and the expected type. **Where the Kits stand:** every Kit written in phase 4 (ClientKit, CacheKit,
+the parameter and the expected type. **Where the Kits stand:** every Kit
+written from phase 4 on was written to this rule and probes `issecretvalue`
+before comparing or formatting a foreign value: ClientKit, CacheKit,
 ProfileKit, ReadinessKit, SchemaKit, LocaleKit, HookKit, SettingsKit,
 OptionsKit, CommandKit, CodecKit, InteropKit, MediaKit, CommKit, WidgetKit,
-TestKit) and SignalKit's bus probe `issecretvalue` before comparing or
-formatting a foreign value. The eight original Kits (Registry, SignalKit's raw
-signals, EventKit, LifecycleKit, ModuleKit, TimerKit, SchedulerKit, PoolKit)
-still format some argument values through `tostring` in error messages; the
-risk is low because each such value was already compared or used as a key, so
+TestKit, ApiKit, BrokerKit, LogKit, CompatKit, BridgeKit, and the user-interface
+and unit Kits (PanelKit, MenuKit, LauncherKit, TooltipKit, BarKit, DialogKit,
+ToastKit, BindingKit, GlowKit, EditModeKit, RangeKit, UnitFrameKit), as does
+SignalKit's bus. The eight original Kits (Registry, SignalKit's raw signals,
+EventKit, LifecycleKit, ModuleKit, TimerKit, SchedulerKit, PoolKit) refuse a
+secret argument at the caller as well, but still format some argument values
+through `tostring` in error messages; the risk is low because each such value was already compared or used as a key, so
 a secret would have failed earlier, and the roadmap's standing obligations
 carry the remaining work. `ClientKit:IsSecret(value)` is the probe to use in
 your own code, and your error messages should follow the rule from the start.
@@ -998,14 +1004,14 @@ metadata together.
 
 | Subsystem | Why it taints | Sanctioned replacement | Replacement in the apiKit metadata |
 |---|---|---|---|
-| `UIDropDownMenu (UIDropDownMenu_*, EasyMenu)` | One shared set of dropdown frames and globals (`UIDROPDOWNMENU_OPEN_MENU`, `UIDROPDOWNMENU_MENU_LEVEL`) serves every menu; a write from insecure code taints them and blocks the next secure menu (unit frame and raid frame menus). | `Menu` and `MenuUtil` (`Blizzard_Menu`, FrameXML): own menu descriptions, no shared globals. | FrameXML, not a documented API; none. |
-| `StaticPopup_Show dialogs` | The four `StaticPopup<n>` frames are shared; a dialog shown from insecure code taints the frame Blizzard reuses for its next protected confirmation. | Own dialog frames (WidgetKit; dialogKit when it ships). | Own frames; none. |
-| `ActionButton_ShowOverlayGlow / ActionButton_HideOverlayGlow` | Writes overlay fields on secure action buttons, tainting the action bar and blocking its secure updates in combat. | Own glow frame parented to the button, state kept in a table of your own keyed by the button. | Own frames; none. |
+| `UIDropDownMenu (UIDropDownMenu_*, EasyMenu)` | One shared set of dropdown frames and globals (`UIDROPDOWNMENU_OPEN_MENU`, `UIDROPDOWNMENU_MENU_LEVEL`) serves every menu; a write from insecure code taints them and blocks the next secure menu (unit frame and raid frame menus). | `Menu` and `MenuUtil` (`Blizzard_Menu`, FrameXML): own menu descriptions, no shared globals; MenuKit builds them from plain tables. | FrameXML, not a documented API; none. |
+| `StaticPopup_Show dialogs` | The four `StaticPopup<n>` frames are shared; a dialog shown from insecure code taints the frame Blizzard reuses for its next protected confirmation. | Own dialog frames: DialogKit shows confirmation and input dialogs on a frame of its own and adds nothing to `StaticPopupDialogs`. | Own frames; none. |
+| `ActionButton_ShowOverlayGlow / ActionButton_HideOverlayGlow` | Writes overlay fields on secure action buttons, tainting the action bar and blocking its secure updates in combat. | Own glow frame parented to the button, state kept in a table of your own keyed by the button; GlowKit draws its pooled overlays this way and never calls `ActionButton_ShowOverlayGlow`. | Own frames; none. |
 | `Hidden tooltip scanning (GameTooltip:SetOwner/SetUnit, GameTooltipTextLeft<n>)` | `GameTooltip` is shared with the secure UI; setting it from insecure code taints it, and in combat the text it shows is a secret value. | `C_TooltipInfo.GetUnit` and its siblings return the tooltip data as a table; post-hook with `TooltipDataProcessor.AddTooltipPostCall`. | `C_TooltipInfo.GetUnit`: `beta`, `ptr`, `retail` (the Classic flavours document the namespace without `GetUnit`). |
 | `GetAddOnMetadata (legacy global)` | Removed from Retail in 10.1; an addon that writes the global back to shim it taints a name secure code reads. | `C_AddOns.GetAddOnMetadata` (`ClientKit:GetAddOnMetadata` chooses per client). | `C_AddOns.GetAddOnMetadata`: `beta`, `classic-era`, `classic-mop`, `ptr`, `retail`. |
 | `ShowUIPanel / HideUIPanel on Blizzard panels` | `UIParent`'s panel management (`UIPanelWindows`, `UIParent_ManageFramePositions`) is secure; a call from insecure code taints its layout state and blocks secure panels in combat. | Own frames outside the UIPanel system; `UISpecialFrames` for Escape to close. | Own frames; none. |
-| `InterfaceOptionsFrame_OpenToCategory` | Removed with `InterfaceOptionsFrame` in 10.0; compatibility wrappers that recreate it write into the Settings frames. | `Settings.OpenToCategory(categoryID)` (`Blizzard_Settings`, FrameXML) opens your category; `C_SettingsUtil.OpenSettingsPanel` opens the panel. | `C_SettingsUtil.OpenSettingsPanel`: `beta`, `classic-era`, `classic-mop`, `ptr`, `retail`; `Settings.OpenToCategory` is FrameXML. |
-| `SetOverrideBindingClick in combat` | Protected while in combat lockdown; a call from insecure code then raises `ADDON_ACTION_BLOCKED` and the binding is lost. | Record the intent at once and apply it out of combat (LifecycleKit `instance:WhenOutOfCombat`). | Not an API change; none. |
+| `InterfaceOptionsFrame_OpenToCategory` | Removed with `InterfaceOptionsFrame` in 10.0; compatibility wrappers that recreate it write into the Settings frames. | `Settings.OpenToCategory(categoryID)` (`Blizzard_Settings`, FrameXML) opens your category; `C_SettingsUtil.OpenSettingsPanel` opens the panel; PanelKit registers the category and its `panel:Open()` calls `Settings.OpenToCategory`. | `C_SettingsUtil.OpenSettingsPanel`: `beta`, `classic-era`, `classic-mop`, `ptr`, `retail`; `Settings.OpenToCategory` is FrameXML. |
+| `SetOverrideBindingClick in combat` | Protected while in combat lockdown; a call from insecure code then raises `ADDON_ACTION_BLOCKED` and the binding is lost. | Record the intent at once and apply it out of combat (LifecycleKit `instance:WhenOutOfCombat`); BindingKit keeps override bindings in scopes and applies a change made in combat when combat ends. | Not an API change; none. |
 | `CompactUnitFrame hooks that write frame fields` | The compact raid frames are secure; replacing `CompactUnitFrame_*` functions or writing fields on the frames taints them for the session. | `hooksecurefunc` post-hooks (HookKit `SecureHook`) that write nothing on the frame; read auras through `C_UnitAuras.GetAuraDataByIndex`. | `C_UnitAuras.GetAuraDataByIndex`: `beta`, `classic-era`, `classic-mop`, `ptr`, `retail`. |
 
 The flavour lists were read from the committed metadata on 2026-09-24; a
@@ -1188,12 +1194,29 @@ its own laid over yours, never Blizzard's spell-activation overlay, which
 belongs to Blizzard's action buttons. See
 [`glowKit/docs/API.md`](../packages/glowKit/docs/API.md).
 
+Long lists are WidgetKit's `ScrollList`: a list on Blizzard's own ScrollBox
+framework that makes frames only for the rows on display, however many
+elements it holds, and reuses them as it scrolls. See *Base widgets* in
+[`widgetKit/docs/API.md`](../packages/widgetKit/docs/API.md).
+
 Edit Mode is `EditModeKit` (package `editModeKit`): while the player has
 Blizzard's Edit Mode open, each frame you register shows a labelled overlay
 that drags it, and its position is saved per Edit Mode layout in your
 storage and put back when the player switches layout. Blizzard's Edit Mode
 frames are only listened to, never hooked. See
 [`editModeKit/docs/API.md`](../packages/editModeKit/docs/API.md).
+
+Two Kits read frames rather than draw them. `RangeKit` (package `rangeKit`)
+brackets the distance to a unit from yes-or-no checks the client already
+answers, the player's own spells and `CheckInteractDistance`, and skips the
+interact checks in combat for units the player cannot attack, because the
+client refuses them there; nothing runs per frame. `UnitFrameKit` (package
+`unitFrameKit`) finds the unit frame shown for a unit token, Blizzard's or
+another addon's, by walking the client's frames in bounded steps after
+roster, zone and combat changes; it skips forbidden frames and only reads
+the ones it keeps, so a scan is safe in combat. See
+[`rangeKit/docs/API.md`](../packages/rangeKit/docs/API.md) and
+[`unitFrameKit/docs/API.md`](../packages/unitFrameKit/docs/API.md).
 
 ## Performance guidance
 

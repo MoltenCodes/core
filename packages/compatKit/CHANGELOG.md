@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.1.7 — 2026-11-15
+
+- Fixed: `SetLimits` built its unknown-limit message with `tostring(key)`. For a table or userdata key that runs the caller's `__tostring`, foreign code inside CompatKit: one that raises replaced the refusal with its own error (reported inside CompatKit, not at the caller's line), and on Retail one could answer a secret. A key that is not a string, number or boolean is now named by its type, `CompatKit:SetLimits limits.<table> is not a recognised limit`, and its `__tostring` never runs; a string, number or boolean key is shown as before (`limits.1`). A secret key is still refused first, as before. `docs/API.md` documents the form under *Limits* and *Errors*.
+- Catalogue: the `replacement` of five rows named no Kit of the framework or one still to come, and now names the Kit that is the replacement, each checked against that Kit's `docs/API.md` and README: `UIDropDownMenu` adds MenuKit (Blizzard's Menu API from plain tables); `StaticPopup_Show dialogs` said "Own dialog frames (WidgetKit; dialogKit when it ships)" and now names DialogKit (a frame of its own, nothing added to `StaticPopupDialogs`); the overlay glow adds GlowKit (pooled overlays parented to the target, `ActionButton_ShowOverlayGlow` never called); `InterfaceOptionsFrame_OpenToCategory` adds PanelKit (`panel:Open()` calls `Settings.OpenToCategory`); `SetOverrideBindingClick in combat` adds BindingKit (a change made in combat applied when combat ends). Tooltip scanning, `GetAddOnMetadata`, `ShowUIPanel` and the compact unit frames are unchanged: TooltipKit draws tooltips and does not read them, and no Kit replaces the other three. The table in `docs/EMBEDDING.md` changed in the same step. `replacementApi` and `flavours` are unchanged.
+- Implementation revision 4. No state changed: an upgrade over revision 3 replaces the methods and publishes the new catalogue rows (the catalogue is not state), and keeps every shim, skip, provider registry, limit and the sentinel.
+- Specs: `ErrorLevels_spec.lua` names a table `SetLimits` key by its type at the caller's line without running its `__tostring`; `Catalogue_spec.lua` refuses a replacement promised "when it ships", and its mirror spec now compares each row's reason and replacement text with `docs/EMBEDDING.md`, not only the subsystem; the previous-revision upgrade spec checks the new message and catalogue on the facade revision 3 published. `Bootstrap_spec.lua` and `Manifest_spec.lua` expect revision 4 and 0.1.7. 127 → 129 specs.
+
+## 0.1.6 — 2026-11-15
+
+- Documentation: `tests/README.md` did not mention the check 0.1.5 added to `Providers_spec.lua`, that a new provider registry carries no `_kind` field; the providers item now lists it.
+- Specs: `Manifest_spec.lua` pins the manifest version and now expects 0.1.6 (a test-only change).
+- Documentation only: the implementation revision is unchanged (3). The catalogue's replacement texts, which still say "dialogKit when it ships", are runtime data mirrored in `docs/EMBEDDING.md` and are left for a change that updates both together.
+
 ## 0.1.5 — 2026-11-15
 
 - Removed dead code: a provider registry no longer stores its kind in `_kind`. Nothing read the field, because the shared `providers` table already maps each kind to its registry. `docs/INTERNALS.md` drops its row from the registry field table.

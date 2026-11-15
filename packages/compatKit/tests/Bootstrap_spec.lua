@@ -16,7 +16,7 @@ describe("CompatKit bootstrap", function()
     local registered, revision = Registry:Get("compatKit", 1)
     assert.are.equal(CompatKit, registered)
     assert.are.equal(1, CompatKit.API)
-    assert.are.equal(3, CompatKit.REVISION)
+    assert.are.equal(4, CompatKit.REVISION)
     assert.are.equal(CompatKit.REVISION, revision)
   end)
 
@@ -130,6 +130,16 @@ describe("CompatKit bootstrap", function()
     answer = {}
     Env.InstallSecretProbe(answer)
     assert.are.same({ "print-sink", "print" }, { registry:Resolve() })
+
+    -- Revision 4: the facade the older copy published names a table
+    -- `SetLimits` key by its type, and the catalogue is the working file's.
+    Env.expectErrorContaining(
+      "CompatKit:SetLimits limits.<table> is not a recognised limit",
+      function()
+        CompatKit:SetLimits({ [{}] = 1 })
+      end
+    )
+    assert.is_truthy(CompatKit.CATALOGUE[2].replacement:find("DialogKit", 1, true))
   end)
 
   it("keeps the newest copy when an older one loads after an upgrade", function()

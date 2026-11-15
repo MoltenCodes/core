@@ -44,7 +44,8 @@ The suite covers:
   recorded after the run, `false` without ApiKit and for a shim without covers,
   not verified for skipped or filtered shims, and a flavour file loaded between
   two `Apply` calls seen by the second;
-- providers: one registry per kind with the hidden prototype; `Register`
+- providers: one registry per kind with the hidden prototype and no `_kind`
+  field (revision 3 dropped it); `Register`
   once, `"exists"`, any non-nil implementation, `Unregister`; `Resolve` with
   nothing alive, cascade by priority whatever the registration order, ties
   broken by name, a live preferred provider whatever its priority, a dead or
@@ -58,8 +59,9 @@ The suite covers:
 - the catalogue: at least the nine required rows with every field, flavours
   only for rows naming a documented replacement API, drawn from
   `tooling/api/flavours.json` and sorted, distinct subsystems, read-only down
-  to the flavour lists, and a row-for-row mirror of
-  the table in `docs/EMBEDDING.md` (the metadata check is
+  to the flavour lists, no replacement promised "when it ships", and a
+  row-for-row mirror of the table in `docs/EMBEDDING.md`, subsystem, reason
+  and replacement text included (the metadata check is
   `tooling/tests/test_compat_catalogue.py`);
 - allocation guards (`collectgarbage("count")` with the collector stopped) on a
   memoised `Resolve`, `Resolve` with a live, dead or unknown preferred provider,
@@ -78,12 +80,14 @@ The suite covers:
   `UNBOUNDED` for all three, lowering without removing, invalid, unknown,
   secret and non-facade calls refused without changing anything;
 - `error` levels: every argument (including each malformed API name shape),
-  receiver and read-only-view failure reports the caller's own line, re-entry
+  receiver and read-only-view failure reports the caller's own line, a table
+  `SetLimits` key is named `<table>` without running its `__tostring`, re-entry
   the line inside the shim, and a context helper failure the shim's line;
 - duplicate embedded loading, Registry publication, yielding to a newer
   revision, an in-place upgrade that keeps shims, skips, providers, limits and
   the `UNBOUNDED` sentinel and rewrites the registry methods, an in-place
-  upgrade from the previous revision (`REVISION - 1`), an older copy
+  upgrade from the previous revision (`REVISION - 1`) whose facade then names
+  a table limit key by its type and publishes the working catalogue, an older copy
   after an upgrade, Registry found through the `MoltenCodes.Registry` alias
   alone, missing Registry, an incomplete facade, a shared table missing a
   method or the catalogue, and corrupted state (limits missing or invalid, an

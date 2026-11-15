@@ -118,7 +118,15 @@ describe("CompatKit catalogue", function()
     assert.is_false(getmetatable(CompatKit.CATALOGUE))
   end)
 
-  it("mirrors the table in docs/EMBEDDING.md row for row", function()
+  it("names no replacement as still to come", function()
+    -- Every Kit a replacement names exists; a row that promised one "when it
+    -- ships" went stale once the Kit shipped.
+    for _, row in ipairs(rows()) do
+      assert.is_nil(row.replacement:find("when it ships", 1, true), row.subsystem)
+    end
+  end)
+
+  it("mirrors the table in docs/EMBEDDING.md row for row, text included", function()
     local text = Env.ReadFile(EMBEDDING_PATH)
     local start = text:find(CATALOGUE_HEADING, 1, true)
     assert.is_truthy(start, "EMBEDDING.md has no catalogue section")
@@ -128,18 +136,34 @@ describe("CompatKit catalogue", function()
       section = section:sub(1, nextHeading)
     end
 
+    -- A cell is compared as plain text: the document marks names up with
+    -- backticks and ends each sentence with a full stop, the Lua rows do
+    -- neither. No cell contains a "|".
+    local function plain(cell)
+      return (cell:gsub("`", ""):gsub("^%s+", ""):gsub("%.?%s*$", ""))
+    end
     local documented = {}
     for line in section:gmatch("[^\n]+") do
-      local first = line:match("^|%s*`?([^|`]-)`?%s*|")
-      if first ~= nil and first ~= "Subsystem" and not first:match("^%-+$") then
-        documented[#documented + 1] = first
+      local first, reason, replacement = line:match("^|([^|]*)|([^|]*)|([^|]*)|")
+      if first ~= nil then
+        first = plain(first)
+        if first ~= "Subsystem" and not first:match("^%-+$") then
+          documented[#documented + 1] =
+            { subsystem = first, reason = plain(reason), replacement = plain(replacement) }
+        end
       end
     end
 
     local all = rows()
     assert.are.equal(#all, #documented, "row counts differ")
     for index, row in ipairs(all) do
-      assert.are.equal(row.subsystem, documented[index], "row " .. index)
+      assert.are.equal(row.subsystem, documented[index].subsystem, "row " .. index)
+      assert.are.equal(row.reason, documented[index].reason, "reason of row " .. index)
+      assert.are.equal(
+        row.replacement,
+        documented[index].replacement,
+        "replacement of row " .. index
+      )
       if row.replacementApi ~= false then
         assert.is_truthy(
           section:find(row.replacementApi, 1, true),

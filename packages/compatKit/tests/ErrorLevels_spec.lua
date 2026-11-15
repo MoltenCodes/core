@@ -240,6 +240,23 @@ describe("CompatKit error levels", function()
     )
   end)
 
+  it("names a table SetLimits key by its type without running its __tostring", function()
+    -- `tostring` on the key would run the caller's `__tostring`: foreign code
+    -- that may raise (losing the refusal) or, on Retail, answer a secret.
+    local ran = false
+    local key = setmetatable({}, {
+      __tostring = function()
+        ran = true
+        error("__tostring ran inside CompatKit", 0)
+      end,
+    })
+    assertRaisesAtCaller("CompatKit:SetLimits limits.<table> is not a recognised limit", function()
+      CompatKit:SetLimits({ [key] = 1 })
+    end)
+    assert.is_false(ran)
+    assert.are.equal(64, CompatKit:GetLimits().maxShims)
+  end)
+
   it("points a write into a read-only view at the writer", function()
     assertRaisesAtCaller(
       'CompatKit.CATALOGUE is read-only; field "extra" cannot be written',

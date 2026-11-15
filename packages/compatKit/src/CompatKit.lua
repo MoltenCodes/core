@@ -41,7 +41,7 @@
 
 local PACKAGE_NAME = "compatKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 3
+local IMPLEMENTATION_REVISION = 4
 local REQUIRED_REGISTRY_API = 2
 local STATE_SCHEMA = 1
 
@@ -131,7 +131,7 @@ local CATALOGUE_ROWS = {
       .. "UIDROPDOWNMENU_MENU_LEVEL) serves every menu; a write from insecure code taints "
       .. "them and blocks the next secure menu (unit frame and raid frame menus)",
     replacement = "Menu and MenuUtil (Blizzard_Menu, FrameXML): own menu descriptions, "
-      .. "no shared globals",
+      .. "no shared globals; MenuKit builds them from plain tables",
     replacementApi = false,
     flavours = {},
   },
@@ -139,7 +139,8 @@ local CATALOGUE_ROWS = {
     subsystem = "StaticPopup_Show dialogs",
     reason = "The four StaticPopup<n> frames are shared; a dialog shown from insecure code "
       .. "taints the frame Blizzard reuses for its next protected confirmation",
-    replacement = "Own dialog frames (WidgetKit; dialogKit when it ships)",
+    replacement = "Own dialog frames: DialogKit shows confirmation and input dialogs on a "
+      .. "frame of its own and adds nothing to StaticPopupDialogs",
     replacementApi = false,
     flavours = {},
   },
@@ -148,7 +149,8 @@ local CATALOGUE_ROWS = {
     reason = "Writes overlay fields on secure action buttons, tainting the action bar and "
       .. "blocking its secure updates in combat",
     replacement = "Own glow frame parented to the button, state kept in a table of your own "
-      .. "keyed by the button",
+      .. "keyed by the button; GlowKit draws its pooled overlays this way and never calls "
+      .. "ActionButton_ShowOverlayGlow",
     replacementApi = false,
     flavours = {},
   },
@@ -184,7 +186,8 @@ local CATALOGUE_ROWS = {
     reason = "Removed with InterfaceOptionsFrame in 10.0; compatibility wrappers that recreate "
       .. "it write into the Settings frames",
     replacement = "Settings.OpenToCategory(categoryID) (Blizzard_Settings, FrameXML) opens "
-      .. "your category; C_SettingsUtil.OpenSettingsPanel opens the panel",
+      .. "your category; C_SettingsUtil.OpenSettingsPanel opens the panel; PanelKit "
+      .. "registers the category and its panel:Open() calls Settings.OpenToCategory",
     replacementApi = "C_SettingsUtil.OpenSettingsPanel",
     flavours = { "beta", "classic-era", "classic-mop", "ptr", "retail" },
   },
@@ -193,7 +196,8 @@ local CATALOGUE_ROWS = {
     reason = "Protected while in combat lockdown; a call from insecure code then raises "
       .. "ADDON_ACTION_BLOCKED and the binding is lost",
     replacement = "Record the intent at once and apply it out of combat "
-      .. "(LifecycleKit instance:WhenOutOfCombat)",
+      .. "(LifecycleKit instance:WhenOutOfCombat); BindingKit keeps override bindings in "
+      .. "scopes and applies a change made in combat when combat ends",
     replacementApi = false,
     flavours = {},
   },
@@ -1460,6 +1464,25 @@ local function validateLimitValue(name, value, level)
   end
 end
 
+---Name a caller's table key in a refusal without running its `__tostring`:
+---a string as written, a number or boolean through `tostring` (no foreign
+---code runs for those), anything else by its type (`<table>`). Converting a
+---table or userdata key would run the caller's `__tostring`, foreign code
+---that may raise and lose the refusal or, on Retail, answer a secret. The
+---caller has refused a secret key already.
+---@param key any
+---@return string
+local function describeKey(key)
+  local keyType = type(key)
+  if keyType == "string" then
+    return key
+  end
+  if keyType == "number" or keyType == "boolean" then
+    return tostring(key)
+  end
+  return "<" .. keyType .. ">"
+end
+
 ---Refuse a `SetLimits` argument before any limit changes, so a call with one
 ---bad entry leaves every limit as it was.
 ---@param limits any
@@ -1473,7 +1496,10 @@ local function validateLimitUpdate(limits, level)
       error("CompatKit:SetLimits limits must not have a secret key", level)
     end
     if type(key) ~= "string" or LIMIT_NAME_SET[key] ~= true then
-      error("CompatKit:SetLimits limits." .. tostring(key) .. " is not a recognised limit", level)
+      error(
+        "CompatKit:SetLimits limits." .. describeKey(key) .. " is not a recognised limit",
+        level
+      )
     end
     validateLimitValue(key, value, level + 1)
   end

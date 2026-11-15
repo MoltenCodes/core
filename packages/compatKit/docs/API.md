@@ -5,7 +5,7 @@ session with a host opt-out, provider registries with liveness probes and a
 deterministic fallback cascade, and the read-only catalogue of taint-hostile
 Blizzard subsystems.
 
-Implementation revision: **3**.
+Implementation revision: **4**.
 
 ## Loading
 
@@ -49,7 +49,7 @@ globals at call time; it works without any of them.
 | `GetLimits()` | A fresh table of the three limits; allocates. |
 | `CATALOGUE`, `CATALOGUE_COUNT` | The read-only catalogue and how many rows it has. |
 | `UNBOUNDED` | Sentinel that lifts any limit; the same table for every revision. |
-| `API`, `REVISION` | `1`, `3`. |
+| `API`, `REVISION` | `1`, `4`. |
 
 Every method checks its receiver: `CompatKit.Shim(...)` raises
 `CompatKit:Shim must be called on the CompatKit facade; use CompatKit:Shim(...)`.
@@ -266,7 +266,12 @@ Lua 5.1 `#`, `ipairs` and `pairs` do not see through a view, so index it from
 `tooling/tests/test_compat_catalogue.py` loads the package under Lua 5.1 and
 checks that every `replacementApi` is documented by at least one flavour, that
 each row's `flavours` is exactly the set of flavours documenting it, and that
-the rows mirror the document. A write into the catalogue raises
+the rows mirror the document; `Catalogue_spec.lua` also compares each row's
+subsystem, reason and replacement text with the document's. Where a Kit of
+the framework is the replacement, the row names it: MenuKit for
+`UIDropDownMenu`, DialogKit for `StaticPopup_Show`, GlowKit for the overlay
+glow, PanelKit for `InterfaceOptionsFrame_OpenToCategory` and BindingKit for
+`SetOverrideBindingClick` in combat. A write into the catalogue raises
 `CompatKit.CATALOGUE[<n>] is read-only; field "<name>" cannot be written` at
 the writer's line.
 
@@ -317,7 +322,9 @@ local limits = CompatKit:GetLimits() -- a fresh table; allocates
 `SetLimits` accepts any subset of the limits and returns nothing. It raises at
 the caller's line, **before changing anything**, when `limits` is not a table,
 names an unknown limit (`CompatKit:SetLimits limits.<name> is not a recognised
-limit`), or gives a secret or invalid value (`CompatKit:SetLimits
+limit`; a number or boolean key is shown as written and any other key that is
+not a string by its type, `limits.<table>`, so no `__tostring` of the caller's
+runs), or gives a secret or invalid value (`CompatKit:SetLimits
 limits.<name> must be a positive integer or CompatKit.UNBOUNDED`). `GetLimits`
 returns a new table on every call, with `CompatKit.UNBOUNDED` itself for a
 lifted limit.
@@ -358,7 +365,7 @@ inside CompatKit, and name the method and the argument:
 | `CompatKit.ShimContext.hasApi name must be a non-empty string` | Also `hasGlobal name`; reported at the shim's line. |
 | `CompatKit:<Method> <argument> must not be a secret value` | See [Secret values](#secret-values); also `options must not be a secret value`, `options must not have a secret key`, `options.<field> must not be a secret value`, `options.flavours must not contain a secret value`, `limits must not have a secret key`. Every secret check runs before the value is compared, and absence is tested with `type`. |
 | `CompatKit:SetLimits limits must be a table` | |
-| `CompatKit:SetLimits limits.<name> is not a recognised limit` | |
+| `CompatKit:SetLimits limits.<name> is not a recognised limit` | A key that is not a string, number or boolean is named by its type (`limits.<table>`); its `__tostring` never runs. |
 | `CompatKit:SetLimits limits.<name> must be a positive integer or CompatKit.UNBOUNDED` | |
 | `CompatKit.CATALOGUE is read-only; field "<name>" cannot be written` | Also `CompatKit.CATALOGUE[<n>]`, `CompatKit.CATALOGUE[<n>].flavours` and `CompatKit shim context`. |
 
