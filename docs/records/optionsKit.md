@@ -659,3 +659,307 @@ Moved from `docs/ROADMAP.md` (Package O — memory, performance and ease of use 
    `OnStructureChanged` and `GetTrees` live in the core, so a renderer only
    connects `OnStructureChanged`, which a static tree never fires.
 
+**optionsKit minimal core: AceConfig presentation, handlers and SettingsKit binds become parts; profile links join the Profiles part; the shared secret probe** — a change to facade `OptionsKit`
+
+Measured 2026-11-16 on host Lua 5.1.5 (64-bit) with the shared fake client,
+debug information kept as the client keeps it, the string table pre-grown;
+each file loaded after its dependencies in one process, resident bytes after
+a full collection. KB is 1000 bytes. Ace3 is the pinned bench copy
+(`5e2e0d3b`), loaded after LibStub and CallbackHandler.
+
+1. Package `optionsKit`, facade `OptionsKit`, API generation 1, version
+   0.9.0 (from 0.8.0), implementation revision 16 (from 15), tree layout 3
+   (unchanged), record layout unchanged. Three new parts (ADR 0001), each
+   `PART_REVISION = 1`: `Presentation`
+   (`src/parts/OptionsKit-Presentation.lua`), `Handlers`
+   (`src/parts/OptionsKit-Handlers.lua`) and `Bind`
+   (`src/parts/OptionsKit-Bind.lua`). `Profiles` goes to part revision 2;
+   `Dynamic` stays at 1.
+
+2. Purpose: a core that holds what every tree needs, with the conveniences
+   only some addons use in parts. The previous record kept AceConfig's
+   fields, method names, plugins and per-interface flags in the core; its
+   point 9 measured the cost at about 60 KB against 29 KB estimated. This
+   record re-weighs that.
+
+   **What the core holds today** (155,796 B resident; 97,560 B of live
+   prototypes in 126 top-level functions, 39,596 B of it debug information;
+   25,760 B of data tables; constant strings 15,039 B, of which 6,137 B
+   error and description prose; error-raising instruction runs 7,664 B):
+
+   | Section | Prototypes | Share |
+   |---|---:|---:|
+   | Definition checks | 25,632 B | 26% |
+   | Building | 14,800 B | 15% |
+   | Describe (with the revision 14 resolution) | 13,808 B | 14% |
+   | Package public API | 11,200 B | 11% |
+   | Tree methods | 10,616 B | 11% |
+   | Bound values | 6,760 B | 7% |
+   | Schemas | 6,152 B | 6% |
+   | Argument checks, profile groups, record fields, info tables, dependencies | 8,592 B | 9% |
+
+   Biggest functions: `buildValueFields` 5,288 B, `buildOption` 3,752,
+   `describeRecord` 3,720, `buildChildren` 2,824, `buildSchema` 2,680,
+   `define` 2,320, `checkKnownFields` 2,064, `readDefineOptions` 1,720,
+   `getFields` 1,616, `parseBind` 1,496. Biggest data: `Fields` 11,139 B
+   (the accepted-field tables, the forms string, the method and interface
+   lists), `Hints` 3,328 B (the field checks and roles), `SharedSchemas`
+   1,088 B, `BIND_SCOPES` 704 B.
+
+   **Classified by who needs it** (prototype bytes summed per function,
+   priced resident = prototypes × 1.333, this core's measured ratio of
+   resident-minus-data to prototypes, plus the data tables each takes):
+
+   | Group | Prototypes | Who needs it | Decision |
+   |---|---:|---|---|
+   | Define of a static tree, the revision 13 field set, schemas, `Get`/`Set`/`Validate`/`Reset`/`Execute`, `IsDisabled`/`IsHidden`, `Walk`, `Describe`/`DescribeOption`, `OnChange`, `OnStructureChanged`, `GetTrees`, `IsPartLoaded`, the `Define` limits | about 62,000 B (67,096 B of whole functions less the inline code that moves) | every tree | core |
+   | Presentation fields and their checks (`width`, `relWidth`, `descStyle`, `icon`, `iconCoords`, `image*`, `tooltipHyperlink`, `dialogControl`, `control`, `itemControl`, `style`) | 7,264 B | renderer hints, some addons | `Presentation` |
+   | Describe-time resolution (function `name`, `order`, `fontSize`, hint functions, the re-sort, `sorting` functions, `compareDynamicRecords`) | 6,856 B | trees with function presentation fields | `Presentation` |
+   | Per-interface flags (`guiHidden`, `dialogHidden`, `cmdHidden`, `guiInline`, `dialogInline`, `cmdInline`: `hiddenFlagOf`, `Resolve.inline`) | 1,168 B | 0 to 2 of 16 corpus addons | `Presentation` |
+   | Handler and method names (ADR 0003 form), accessors inherited from groups, `plugins` | 4,408 B + about 1,900 B inline | Ace3 ports | `Handlers` |
+   | `bind` into a SettingsKit database, `ns:` namespace binds, bound reads, writes and checks | 7,264 B + about 1,500 B inline | addons with SettingsKit | `Bind` |
+   | Profile links (`collectProfileLink`, `attachProfileLink`, `detachProfileLink`, `disconnectAll`, `attachLinks`) | 3,504 B | trees holding `ProfileOptions` | `Profiles` |
+   | `confirm`, `confirmText`, `GetConfirmation` | 2,224 B | renderers ask every tree; `confirm` is accepted since revision 1 | core |
+   | `GetFields` | 1,616 B | BridgeKit, once per conversion | core, reporting what is loaded |
+   | `checkInterface` (the interface argument of `IsHidden`, `Describe`, `DescribeOption`) | 464 B | every renderer that passes one | core |
+   | `findSettingsKit`, `isDatabaseReadOnly`, `handlerInForce` | 1,272 B | helpers the Profiles and Dynamic parts call | core |
+
+   Cold code that stays resident: none named as upgrade code; the
+   revision-15 `legacyMembers` handling runs in the main chunk and is freed.
+   Validation by name is 17,200 B of prototypes (17.6%), error builders
+   5,520 B, the secret probe 392 B. Limits are `Define` options only
+   (`readCapacityOption`, `readMaxDepthOption`, 1,544 B); OptionsKit has no
+   `SetLimits`.
+
+   **Ace3 counterpart, measured the same way:** AceConfigRegistry-3.0
+   27,243 B resident (8,080 B of prototypes, the rest its validation type
+   tables), AceDBOptions-3.0 17,007 B; together 44,250 B. The smallest
+   OptionsKit set (Registry 32,306 + SignalKit 90,379 + SchemaKit 82,746 +
+   core 155,796 = 361,227 B) stands against LibStub + CallbackHandler +
+   AceConfigRegistry (40,288 B), 9.0×. Revision 13, the core before the
+   AceConfig fields, measured 129,788 B with the profile code (25.3 KB of
+   prototypes) still inside it: about 97 KB without.
+
+   **The changes.**
+
+   a. **`Presentation` part.** Moves the presentation field checks
+      (`Hints.fieldChecks` entries, `isTexture`, `checkTexture`,
+      `isCoordinates`, `checkCoordinates`, `checkControlName`,
+      `checkBoolean`, `checkPositive`, `checkString`), the "Describe-time
+      resolution (revision 14)" section (`Resolve.*`, `RESOLVERS`), the
+      function forms of `name`, `order` and `fontSize`, `sorting` functions,
+      `compareDynamicRecords`, the per-interface flags and their fields in
+      `Fields` (`control`, `interfaces`, `widths`, `descStyles`,
+      `selectStyles`, the part's share of `notDescribed` and of the forms
+      string). The core keeps one generic hint loop in `describeRecord`
+      (plain hints copied as today) and calls the part's resolver only for a
+      function or table hint, which only the part can have accepted.
+   b. **`Handlers` part.** Moves `handler`, method names in every field of
+      `Fields.method`, accessors (`get`, `set`, `validate`, `func`) declared
+      on groups and inherited, and `plugins`: `methodCaller`,
+      `Hints.callback`, `Hints.accessor`, `Hints.resolve`,
+      `checkMethodPredicate`'s method form, `checkAccessor`, the plugin loop
+      of `buildChildren`, `Fields.method` and `Fields.accessor`.
+      `Hints.handlerInForce` stays in the core (392 B): `infoOf` reports
+      `info.handler` and the Dynamic part's revision 1 calls it through the
+      helpers.
+   c. **`Bind` part.** Moves `bind` and `ns:` binds: `parseBind`,
+      `readMember`, `findNamespace`, `bindTextOf`, `bindDatabaseOf`,
+      `assignField`, `withoutPosition`, `walkBound`, `validateBound`,
+      `writeBound`, the bound branches of `buildValueFields`, `readValue`,
+      `writeValue`, `snapshotValue` and `describeRecord`, `BIND_SCOPES`,
+      `NAMESPACE_PREFIX`. `options.db` stays a `Define` option of the core
+      (Profiles needs it too). `findSettingsKit` and `isDatabaseReadOnly`
+      stay as core helpers. **This one needs the owner's yes:** the README's
+      first example binds every option, so the native SettingsKit path gains
+      one embedded file; an addon with `get`/`set` (every Ace3 port) saves
+      about 13 KB.
+   d. **Profile links into `Profiles`.** The "Profile groups" section and
+      `collectProfileLink` move to the Profiles part, which already makes the
+      groups. The core calls a build hook only when the Profiles part is
+      loaded; `profileGroups` stays in state.
+   e. **Hooks, not copies.** The core publishes extension points in its
+      state, rewritten by every core revision and re-filled by each loaded
+      part's `bind(helpers)` (today's pattern): field roles and checks
+      (`Hints.roles`), a per-kind field set the parts add to, a build hook
+      (accessors, plugins, bind, profile links), a describe hook (resolved
+      hints, function names and orders, interface flags), and
+      `helpers.compareRecords` (the plain comparator, or the part's
+      comparator once Presentation is loaded). Hot paths gain nothing: a
+      method caller is still stored where a function would be, so `Get`,
+      `Set` and the predicates keep today's function path, and an option
+      without part fields never reaches a hook.
+   f. **Shared secret probe.** The hand-written `isSecret` (line 560)
+      becomes the `isSecret` shared block. The answers are the same: a probe
+      present at load is kept, a probe absent at load is read again per
+      call, which covers "a probe that appears after load is used at once".
+
+   Considered and kept in the core, with the numbers: `confirm` and
+   `GetConfirmation` (renderers call it on every tree, and `confirm` has been
+   a core field since revision 1); `GetFields` (BridgeKit asks it what to
+   carry; in a part, a converter without the part would carry nothing);
+   `Describe` (every tree that is shown is described); the interface
+   argument (464 B, so a renderer may always pass it). Rejected: dropping
+   SchemaKit (it is the documented validated `Set`, and SettingsKit needs it
+   anyway); replacing SignalKit with a listener list (EventKit, LifecycleKit
+   and SettingsKit load it in every typical set, so it saves nothing there);
+   shortening error prose (6.1 KB in the core, part of it moves with the
+   parts; messages are matched by the specs and documented); the
+   `loadstring` trick (memory diagnosis: rejected for every Kit).
+   Non-goals: per-option memory (the records do not change), the lazy
+   records of the memory diagnosis (fix 7).
+
+3. Dependencies: core Registry API 2, SchemaKit API 1, SignalKit API 1 as
+   today; `settingsKit` stays an optional dependency of the core (for
+   `options.db` and the Profiles helpers). Manifest parts:
+
+   ```json
+   "Presentation": {
+     "description": "AceConfig's presentation fields: widths, icons, images, controls, styles, function names and orders, sorting functions and the per-interface hidden and inline flags.",
+     "revision": 1,
+     "dependencies": {},
+     "optionalDependencies": {}
+   },
+   "Handlers": {
+     "description": "AceConfig's ways of wiring a tree: a handler and method names, accessors declared on groups and inherited, and plugins.",
+     "revision": 1,
+     "dependencies": {},
+     "optionalDependencies": {}
+   },
+   "Bind": {
+     "description": "bind = \"profile.path\" and ns: binds: options read and written through a SettingsKit database passed as options.db.",
+     "revision": 1,
+     "dependencies": {},
+     "optionalDependencies": { "settingsKit": { "api": 1 } }
+   }
+   ```
+
+   `Profiles` revision 2 keeps its dependencies. None of the new parts needs
+   another part; an Ace3 port embeds Presentation and Handlers together.
+
+4. Surface: no new method and no removed one. `OptionsKit:IsPartLoaded`
+   accepts the three new names. `OptionsKit:GetFields(kind)` reports the
+   fields the loaded parts accept: without Presentation it no longer lists
+   `width` and the rest, and without Handlers no form lists `"method"`.
+   What changes for users:
+   - A tree that uses a field of an absent part is refused at `Define`, at
+     the caller's line, with the file to add, in the form the Dynamic part
+     already uses: `OptionsKit:Define tree.args.general.args.scale.width
+     needs OptionsKit's Presentation part: add
+     optionsKit\parts\OptionsKit-Presentation.lua to embeds.xml (or rebuild
+     it with python3 -m tooling.package.embeds)`. The same for a method
+     name, `handler`, a group's accessor or `plugins` (Handlers) and `bind`
+     (Bind). The core keeps one string of the part fields' names, read only
+     on the failure path, to name the part.
+   - A function `name`, `order` or `fontSize` and a `sorting` function are
+     Presentation fields; a string name, a number order and a sorting array
+     stay in the core.
+   - `IsHidden(path, interface)`, `Describe(interface)` and
+     `DescribeOption(path, interface)` accept `"dialog"` and `"cmd"` with or
+     without Presentation; without it no tree can carry interface flags, so
+     the answer is the plain `hidden` and `inline`, which is correct.
+   - Embedding: README minimum footprint unchanged (4 files); an Ace3 port
+     adds two lines, a SettingsKit tree one (if c is accepted).
+   - Messages, levels and every other behaviour unchanged.
+
+5. Ownership and in-place upgrade from revision 15. Trees keep their records
+   and layout. Revision 15 was the last core with these features inside, so
+   an addon embedding revision 15 alone may share a session with one that
+   embeds revision 16 without the parts; the revision-16 core keeps that
+   addon working, as revision 15 kept `ProfileOptions` of older single-file
+   revisions (`legacyMembers`):
+   - Before its commit, the revision-16 core copies revision 15's `Define`
+     and every method of the shared `Tree` prototype into
+     `state.legacyMembers` (main chunk, only when `previousRevision == 15`).
+   - Routing happens only on the branch that needs an absent part, never on
+     the common path. A bound record (`_bindScope`) already takes its own
+     branch in `Get`, `Set`, `Validate`, `Reset` and `Describe`; with Bind
+     absent that branch calls revision 15's captured method for the whole
+     call. A function or table hint, or an interface flag, reaches the
+     describe hook only through its own branch; with Presentation absent,
+     `Describe`, `DescribeOption` and `IsHidden` call revision 15's
+     functions for that tree. Method callers, inherited accessors and
+     plugins are resolved into the records at `Define`, so trees using them
+     need no routing at all. Unbound options without part fields pay
+     nothing, and `Get`/`Set` stay allocation-free.
+   - A `Define` the core would refuse only because a part is absent is
+     handed to the captured revision-15 `Define`; with nothing captured it
+     raises as in point 4.
+   - Once every part is loaded, the revision-15 entries of
+     `state.legacyMembers` are dropped, so a
+     session that later gains the parts runs revision 16 throughout and the
+     revision-15 closures are collected.
+   The parts keep their state in `_state.parts.<Part>` with their revision;
+   the highest part revision wins and upgrades in place. A part loaded with
+   a core older than revision 16 raises `MoltenCodes OptionsKit part
+   Presentation requires OptionsKit revision 16 or later to be loaded first`
+   (a core's own load order puts it first, so only a hand-edited file list
+   meets this).
+
+6. Performance and memory. Priced from the measured prototypes and data
+   tables (point 2); measured again in phase 2.
+
+   | Change | Core today | Expected effect on the core | Part file (resident) |
+   |---|---:|---:|---:|
+   | a. Presentation | 155,796 B | −29.5 KB | about 31 KB |
+   | b. Handlers | | −9.4 KB | about 11 KB |
+   | c. Bind | | −13.0 KB | about 14.5 KB |
+   | d. profile links to Profiles | | −4.7 KB | Profiles 36.1 → about 41 KB |
+   | e. hooks, part field names, upgrade routing | | +3.5 KB | |
+   | f. shared `isSecret` | | +0.1 KB | |
+   | **core** | **155.8 KB** | **about 103 KB (−34%)**; about 116 KB without c | |
+
+   | Embedded | Today | Expected | Ace3 it replaces | Ratio |
+   |---|---:|---:|---|---:|
+   | core alone | 155.8 KB | about 103 KB | AceConfigRegistry 27.2 KB | 3.8× (today 5.7×) |
+   | smallest set (Registry, SignalKit, SchemaKit, core) | 361.2 KB | about 308 KB | LibStub, CallbackHandler, AceConfigRegistry 40.3 KB | 7.7× (today 9.0×) |
+   | Ace3 port: core + Presentation + Handlers | 155.8 KB | about 145 KB | AceConfigRegistry 27.2 KB | 5.3× |
+   | everything: core + all five parts | 209.1 KB (core and two parts) | about 218 KB | AceConfigRegistry + AceDBOptions 44.3 KB | 4.9× (today 4.7×) |
+
+   What stays above AceConfigRegistry is the validated, path-indexed
+   snapshot (`Define` checks every field at the caller's line and builds a
+   record and a SchemaKit schema per option; AceConfigRegistry keeps the
+   author's table and validates lazily), `Describe`, the change signals and
+   the limits: documented guarantees, about 60 KB of prototypes. Transient
+   allocation while loading the core falls with its size (405,093 B today).
+   Hot paths: `Get`, `Set`, `IsHidden(path)` and `IsHidden(path, interface)`
+   keep allocating nothing; bench cases (`options` workload) expected
+   unchanged within noise, measured against Ace3 in one run in phase 2.
+   Per option: unchanged (477 B a toggle, 843 B a bound range).
+
+7. Tests: the core alone refuses every Presentation, Handlers and Bind
+   field at the caller with the file to add (one case per field family);
+   each part's fields accepted with the part, existing field specs moved to
+   load the part they need; `GetFields` with and without each part;
+   `IsHidden`/`Describe` with an interface and no Presentation part; the
+   profile links through Profiles revision 2, and a Profiles revision 1
+   part with the revision-16 core (helpers kept); Dynamic revision 1 with
+   the new core (its helpers `compareRecords`, `handlerInForce`,
+   `attachLinks`, `detachProfileLink` still published); a part loaded with a
+   revision-15 core raising; in-place upgrade from revision 15 (a byte copy
+   of today's file as fixture) with a tree using `width`, a function `name`,
+   a method name, `plugins` and `bind` defined before the upgrade: every
+   method answers as before with no part loaded, and again after the parts
+   load; a `Define` with part fields after the upgrade handed to revision 15;
+   the shared `isSecret` block (`tooling.shared.sync --check`); allocation
+   specs unchanged; opt into `KitConformance` (manifest, receivers,
+   arguments, upgrade; `limits` pending: OptionsKit has no `SetLimits`).
+   Client suite: a tree with presentation fields and binds defines and
+   describes with the parts embedded.
+
+8. Docs: README (the parts table with measured sizes, the migration table
+   rows that now name a part, the footprint line), `docs/API.md` (*Loading*:
+   five parts and which fields each brings; the field tables gain a "Part"
+   column; *Deviations*; *Embedded copies and upgrades*: the revision-15
+   routing; the section skeleton of `docs/CONTRIBUTING.md`),
+   `docs/INTERNALS.md` (hooks, the part field index, legacy routing),
+   CHANGELOG 0.9.0, `tests/README.md`, `src/.luarc.json` covering the new
+   parts, the client suite's `EXPECTED.md`. Shared files (text with the
+   code): the embedding guide's parts table (generated), the
+   `MIGRATING_FROM_ACE3.md` rows for `width`, function `name`, method names,
+   `handler`, inherited accessors, `plugins` and per-interface flags (each
+   names its part), and BridgeKit's owner told that converting an Ace3
+   table needs Presentation and Handlers loaded or the fields are not
+   carried (its manifest may name the parts in its `optionsKit` contract).
+
+9. Status: recorded 2026-11-16; code follows.

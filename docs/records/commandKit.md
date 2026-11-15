@@ -335,3 +335,242 @@ Moved from `docs/ROADMAP.md` (Package O — memory, performance and ease of use 
    ModuleKit keeps a module's `scope.Commands` across enables. The main chunk
    is down to 169 locals.
 
+**commandKit minimal core: schema-checked arguments become a part, so the core no longer needs SchemaKit; the shared helper blocks** — a change to facade `CommandKit`
+
+Measured 2026-11-16 on host Lua 5.1.5 (64-bit) with the shared fake client,
+debug information kept as the client keeps it, the string table pre-grown;
+each file loaded after its dependencies in one process, resident bytes after
+a full collection. KB is 1000 bytes. Ace3 is the pinned bench copy
+(`5e2e0d3b`), loaded after LibStub and CallbackHandler.
+
+1. Package `commandKit`, facade `CommandKit`, API generation 1, version
+   0.4.0 (from 0.3.0), implementation revision 12 (from 11), record layout
+   unchanged. New part `Arguments` (`src/parts/CommandKit-Arguments.lua`,
+   `PART_REVISION = 1`). `Options` goes to part revision 2; `Completion`
+   stays at 1.
+
+2. Purpose: a core that holds what every slash command needs (register a
+   name, run a handler with the typed words, print, close), with SchemaKit
+   argument checking in a part, so an addon whose commands take plain words
+   embeds neither the part nor SchemaKit.
+
+   **What the core holds today** (116,896 B resident; 75,872 B of live
+   prototypes in 110 top-level functions, 29,596 B of it debug information;
+   15,040 B of data tables; constant strings 12,823 B, of which 3,285 B
+   prose; error-raising instruction runs 2,520 B; transient while loading
+   314,282 B):
+
+   | Section | Prototypes | Share | Who needs it |
+   |---|---:|---:|---|
+   | "Logout close" header: `LogoutClose.*` 5,336 B and the revision 11 scope extras 7,192 B (no header of their own) | 12,528 B | 17% | addon scopes; extras: `Print`/`Printf`/prefix every user, `GetCommands`, `Dispatch`, `Reopen`, part stubs some |
+   | Slash registration (5,568 B of it the taken check) | 10,792 B | 14% | every user (the taken check is kept by the owner's decision) |
+   | Package public API (limits 2,512 B, scope options 2,792 B) | 9,728 B | 13% | every user |
+   | Argument schemas | 7,264 B | 10% | commands that declare `arguments` |
+   | Dispatch (`checkArguments` 1,608 B of it) | 7,112 B | 9% | every user; `checkArguments` only with `arguments` |
+   | Command records (sub-commands, usage lines) | 6,776 B | 9% | every user with sub-commands or usage |
+   | Parser (hyperlink-aware tokenizer) | 5,104 B | 7% | every user |
+   | Context methods | 4,392 B | 6% | every user |
+   | Scope methods | 3,960 B | 5% | every user |
+   | Argument checks | 3,624 B | 5% | every user |
+   | Output (`CaptureSink` 1,472 B of it) | 2,456 B | 3% | every user; `CaptureSink` tests |
+   | Host access (`isSecret` with the ClientKit lookup 792 B) | 2,136 B | 3% | every user |
+
+   Biggest functions: `compileSpec` 2,832 B, `registerCommand` 2,464,
+   `compileArguments` 2,280, `compileSubcommands` 2,096, `runCommand`
+   1,648, `usageWord` 1,616, `checkArguments` 1,608, `newCaptureSink`
+   1,472, `Taken.anyAliasNames` 1,400, `validateLimitUpdate` 1,376. SchemaKit
+   is used only by "Argument schemas", `checkArguments` and the Options part
+   (through `helpers.SchemaKit`). Cold code that stays resident:
+   `LogoutClose.arrangeInherited` (696 B), called once from the main chunk
+   after an upgrade but kept alive as a field of `LogoutClose`. Validation by
+   name 13,208 B (17.4%), error builders 2,440 B, secret checks 1,104 B,
+   limits 1,136 B.
+
+   **Ace3 counterpart, measured the same way:** AceConsole-3.0 10,759 B
+   resident (6,640 B of prototypes). With AceConfigCmd (32,983 B) and AceTab
+   (20,844 B) 64,586 B. The smallest CommandKit set today (Registry 32,306 +
+   SchemaKit 82,746 + core 116,896 = 231,948 B) stands against LibStub +
+   AceConsole (13,382 B), 17.3×.
+
+   **The changes.**
+
+   a. **`Arguments` part.** Moves "Argument schemas" (`isSchema`,
+      `sealSchema`, `allOfType`, `coercionOf`, `coerce`, `joinValues`,
+      `usageWord`, `compileArguments`, `describeFailure`,
+      `SCHEMA_METATABLE_NAMES`, `NO_ARGUMENTS`, `BOOLEAN_WORDS`) and
+      `checkArguments`, and the SchemaKit lookup. The core's `compileSpec`
+      hands a spec's `arguments` to the part (`_state.parts.Arguments`, read
+      at call time) and keeps `_mode = "none"` without it; `runCommand`
+      already returns early for `"none"`, so dispatch gains no test. The
+      part publishes `BOOLEAN_WORDS`, `joinValues` and `SchemaKit` into the
+      helpers for the Options part. The scope option `maxPositions` stays a
+      core option (read and stored at `CreateScope`/`ForAddon`, used by the
+      part).
+   b. **The core loads without SchemaKit.** `REQUIRED_SCHEMAKIT_API` and the
+      load-time refusal leave the core; the part raises at load
+      `MoltenCodes CommandKit part Arguments requires SchemaKit API 1 to be
+      loaded first`.
+   c. **Options part revision 2** declares the Arguments part (its verbs are
+      registered with argument schemas) and reads `SchemaKit` from the
+      helpers the Arguments part fills. A revision-1 Options part keeps
+      working with the revision-12 core when the Arguments part is loaded,
+      since it reads the same helper names.
+   d. **Cold upgrade code out of the resident set.**
+      `LogoutClose.arrangeInherited` becomes a main-chunk-only function, so
+      it is freed after load.
+   e. **Shared helper blocks** for every copy `tooling.shared.sync --list`
+      names: `reportError` (line 689), `validateFacade` (781), `describeKey`
+      (2889), `limits` (3075: `validateLimitUpdate`, `setLimits`'s loop and
+      `getLimits`'s table become `validateLimitUpdate`, `applyLimitUpdate`
+      and `copyLimits` over a `LIMIT_RULES` table), and `isSecret` (718),
+      which `describeKey` and `limits` require earlier in the file. The
+      `pins.json` opt-out for CommandKit's `isSecret` is removed: the
+      ClientKit route answers what the shared probe answers (ClientKit's
+      `IsSecret` asks the client's `issecretvalue`, `ClientKit.lua` lines
+      740-749 and 886-891), so `state.clientKitLookup` and the optional
+      `clientKit` dependency go. Measured cost of each block against the
+      copy it replaces (prototype bytes, debug kept): `isSecret` 464 B
+      against 792 (−328), `reportError` 496 against 424 (+72, and a raising
+      error handler now falls back to `print` instead of propagating),
+      `validateFacade` 448 against 392 (+56, same message), `describeKey`
+      504 against 424 (+80), `limits` 3,296 B against 2,512 (+784). Net
+      about +0.7 KB resident: the blocks buy one source per helper, not
+      memory.
+      Limit messages that change: `limits.maxCaptured` gets a ceiling of
+      2147483647 (the shared rule needs one; every value accepted today
+      stays accepted), so its refusal reads `CommandKit:SetLimits
+      limits.maxCaptured must be an integer from 1 to 2147483647`; an
+      unknown key's refusal gains `; it accepts maxCaptured, maxCompletions,
+      maxEmotes, maxCompletionProviders`; a limits table with a metatable is
+      no longer refused (the block reads it with `next` and `rawget`).
+      Specs `Bootstrap_spec` (lines 186, 279), `Limits_spec` (148, 290, 298,
+      305, 335) and `docs/API.md` line 549 follow.
+   f. **A header for the scope extras** ("Scope extras", between "Logout
+      close" and "Scope methods"), so the file's sections say what they
+      hold.
+
+   Considered and kept in the core, with the numbers: sub-commands and usage
+   generation (about 4,800 B; most multi-verb commands use them, and a part
+   costs about 1.5 KB of its own); `CaptureSink` (1,728 B with its facade
+   method, about 2.5 KB resident; a part would save about 1 KB net);
+   `Print`, `Printf` and the prefix (AceConsole's most used calls); the
+   taken check (owner's decision, 5,568 B); logout close (5,336 B; every
+   addon scope relies on it; it belongs to the cross-Kit "logout close"
+   family a future shared block could serve). Rejected: shorter error prose
+   (3.3 KB in the core, matched by specs).
+
+3. Dependencies: core Registry API 2 only; optional `localeKit`,
+   `eventKit`, `lifecycleKit` (`clientKit` removed, point 2e). Manifest:
+
+   ```json
+   "dependencies": { "registry": { "api": 2 } },
+   "parts": {
+     "Arguments": {
+       "description": "Schema-checked command arguments: SchemaKit schemas per position or one array, coercion of the typed words, generated usage and refusals.",
+       "revision": 1,
+       "dependencies": { "schemaKit": { "api": 1 } }
+     },
+     "Options": {
+       "description": "Drive an OptionsKit tree from a slash command: the get, set, reset, list and exec verbs and AceConfigCmd's path syntax.",
+       "revision": 2,
+       "dependencies": { "optionsKit": { "api": 1 } },
+       "parts": ["Arguments"]
+     },
+     "Completion": { "description": "(unchanged)", "revision": 1 }
+   }
+   ```
+
+4. Surface: unchanged. What changes for users:
+   - A spec (or sub-command spec) with `arguments` registered without the
+     part raises at the caller's line: `CommandKit.Scope:Register
+     spec.arguments needs CommandKit's Arguments part, which is not loaded:
+     add commandKit\parts\CommandKit-Arguments.lua to your embeds.xml` (the
+     path in the label as today, e.g. `spec.subcommands.a.arguments`).
+   - Embedding: the minimum footprint becomes 2 files
+     (`registry/Registry.lua`, `commandKit/CommandKit.lua`); an addon with
+     argument schemas adds SchemaKit and the part (the embeds generator does
+     it); `BindOptions` brings the Arguments part through the Options part's
+     dependency.
+   - The limit messages of point 2e. Everything else unchanged.
+
+5. Ownership and in-place upgrade from revision 11. Records, scopes, frames
+   and the slash dispatchers are kept; the state loses `clientKitLookup`.
+   Revision 11 was the last core with arguments inside, so a revision-11
+   addon may share a session with a revision-12 core and no Arguments part:
+   - Before its commit the revision-12 core keeps revision 11's
+     `helpers.registerCommand` and `dispatch.slash` in
+     `state.legacyArguments` (main chunk, only when `previousRevision ==
+     11`).
+   - A record compiled by revision 11 with `_mode` other than `"none"` keeps
+     its schemas; while the Arguments part is not loaded, `slashDispatch`
+     hands such a record's line to revision 11's `dispatch.slash`, on the
+     branch that already tests `_mode` (no cost for `"none"` records).
+   - A `Register` the core would refuse only because the part is absent is
+     handed to the kept `registerCommand`; with nothing kept it raises as in
+     point 4. This also keeps a revision-1 Options part working.
+   - When the Arguments part loads, it adopts revision-11 records as they
+     are (same fields) and `state.legacyArguments` is dropped.
+   The part keeps its state in `_state.parts.Arguments` with its revision;
+   the highest part revision wins and upgrades in place. A part loaded
+   without its core raises the ADR 0001 message.
+
+6. Performance and memory. Priced from the measured prototypes (resident =
+   prototypes × 1.342, this core's measured ratio of resident-minus-data to
+   prototypes, plus the data tables each takes); measured again in phase 2.
+
+   | Change | Expected effect on the core | Part file (resident) |
+   |---|---:|---:|
+   | a, b. Arguments part, no SchemaKit in the core | −12.8 KB (8,872 B of prototypes, 912 B of tables), +0.4 KB for the hand-over and the stub | about 14.5 KB |
+   | d. `arrangeInherited` freed after load | −0.9 KB | |
+   | e. shared helper blocks, `clientKitLookup` gone | +0.7 KB | |
+   | **core** | **116.9 KB → about 104 KB (−11%)** | |
+
+   | Embedded | Today | Expected | Ace3 it replaces | Ratio |
+   |---|---:|---:|---|---:|
+   | core alone | 116.9 KB | about 104 KB | AceConsole 10.8 KB | 9.7× (today 10.9×) |
+   | smallest set (Registry + core) | 231.9 KB (with SchemaKit) | about 137 KB | LibStub + AceConsole 13.4 KB | 10.2× (today 17.3×) |
+   | Registry + SchemaKit + core + Arguments | 231.9 KB | about 234 KB | LibStub + AceConsole 13.4 KB | 17.4× |
+   | core + all three parts | 176.3 KB (+ SchemaKit, OptionsKit) | about 178 KB | AceConsole + AceConfigCmd + AceTab 64.6 KB | 2.8× (today 2.7×) |
+
+   The gain for most addons is SchemaKit: 82.7 KB not loaded when nothing
+   else in the addon needs it (SettingsKit and OptionsKit do). What stays
+   above AceConsole is the documented behaviour: the hyperlink-aware
+   tokenizer, the taken check, sub-commands and usage, nested dispatch
+   frames, logout close for addon scopes, scope limits, refusals at the
+   caller's line and secret refusals. Hot paths: dispatch unchanged (the
+   `"none"` branch exists today); bench cases `slashCommands` and `options`
+   expected unchanged within noise, measured against Ace3 in one run in
+   phase 2. Per object: unchanged.
+
+7. Tests: core alone loads with Registry only (no SchemaKit) and serves
+   `Register`, dispatch, sub-commands, usage, `Print`; `arguments` without
+   the part raises at the caller with the file to add (top level and in a
+   sub-command); every existing argument spec loads the part; the part
+   without SchemaKit raises at load; the part loaded before and after
+   another core revision; Options revision 2 with and without its Arguments
+   dependency, Options revision 1 with the revision-12 core; in-place
+   upgrade from revision 11 (a byte copy of today's file as fixture) with a
+   command with arguments registered before: it dispatches with and
+   without the part, and a `Register` with arguments after the upgrade is
+   handed to revision 11 when the part is absent; `arrangeInherited` not
+   resident after load; the shared blocks (`tooling.shared.sync --check`,
+   `pins.json` entry removed) and the changed limit messages; allocation
+   specs unchanged; opt into `KitConformance` (manifest, limits with
+   `maxCaptured` default 256 ceiling 2147483647 unbounded allowed,
+   `maxCompletions` 32/256, `maxEmotes` 1024/16384,
+   `maxCompletionProviders` 32/256, receivers, arguments, upgrade). Client
+   suite: a command with argument schemas with the part embedded.
+
+8. Docs: README (minimum footprint, the parts table with measured sizes,
+   the migration table row for argument schemas), `docs/API.md` (*Loading*:
+   three parts; *Arguments* names the part; *Limits*: `maxCaptured`'s
+   ceiling; *Error behaviour*: the changed messages; *Embedded copies and
+   upgrades*: the revision-11 hand-over; the section skeleton of
+   `docs/CONTRIBUTING.md`), `docs/INTERNALS.md` (the hand-over, the helpers
+   the Arguments part fills), CHANGELOG 0.4.0, `tests/README.md`,
+   `src/.luarc.json` covering the part, the client suite's `EXPECTED.md`.
+   Shared files (text with the code): the embedding guide's parts table and
+   dependency rows (generated; `commandKit` no longer needs `schemaKit`),
+   `tooling/shared/pins.json` (the CommandKit `isSecret` opt-out removed).
+
+9. Status: recorded 2026-11-16; code follows.

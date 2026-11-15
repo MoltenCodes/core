@@ -39,6 +39,7 @@ cancelaura
 Cata
 CLEU
 COMMANDKIT
+SCHEMAKIT
 Cooldowns
 CURSEFORGE
 dataobj
@@ -109,6 +110,7 @@ ipairs
 lastlinedefined
 ldexp
 linedefined
+loadstring
 luac
 metamethod
 metatable

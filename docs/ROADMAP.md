@@ -874,6 +874,8 @@ Records are written before their code.
 | Record | Package | Status |
 |---|---|---|
 | [Shared helper blocks in 27 Kits](records/shared-helpers.md#shared-helper-blocks-in-27-kits) | 27 packages | recorded 2026-11-16; code follows |
+| [optionsKit minimal core: AceConfig presentation, handlers and SettingsKit binds become parts; profile links join the Profiles part; the shared secret probe](records/optionsKit.md#optionskit-minimal-core-aceconfig-presentation-handlers-and-settingskit-binds-become-parts-profile-links-join-the-profiles-part-the-shared-secret-probe) | `optionsKit` | recorded 2026-11-16; code follows |
+| [commandKit minimal core: schema-checked arguments become a part, so the core no longer needs SchemaKit; the shared helper blocks](records/commandKit.md#commandkit-minimal-core-schema-checked-arguments-become-a-part-so-the-core-no-longer-needs-schemakit-the-shared-helper-blocks) | `commandKit` | recorded 2026-11-16; code follows |
 
 ### Standing obligations
 
