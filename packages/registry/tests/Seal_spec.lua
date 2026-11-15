@@ -26,6 +26,44 @@ local function loadCopy(Registry, revision, sealFacade)
   return implementation
 end
 
+---Load the Registry source again, as an embedded copy carrying `revision`.
+---@param revision integer
+---@return Registry
+local function loadRegistryAtRevision(revision)
+  local path = "packages/registry/src/Registry.lua"
+  local file = assert(io.open(path, "r"))
+  local source = file:read("*a")
+  file:close()
+  local patched, count = string.gsub(
+    source,
+    "local IMPLEMENTATION_REVISION = %d+",
+    "local IMPLEMENTATION_REVISION = " .. revision
+  )
+  assert.are.equal(1, count)
+  return assert(loadstring(patched, "@" .. path))()
+end
+
+---A table key whose `__tostring` records that it ran, then answers `answer`
+---or, when `answer` is `nil`, raises.
+---@param answer string|nil
+---@return table key
+---@return fun(): boolean ran
+local function recordingKey(answer)
+  local ran = false
+  local key = setmetatable({}, {
+    __tostring = function()
+      ran = true
+      if answer == nil then
+        error("a caller's __tostring ran inside Registry", 0)
+      end
+      return answer
+    end,
+  })
+  return key, function()
+    return ran
+  end
+end
+
 describe("Registry sealed facades", function()
   after_each(TestEnv.Reset)
 
@@ -49,6 +87,68 @@ describe("Registry sealed facades", function()
       message
     )
     assert.is_nil(rawget(DemoKit, "Extra"))
+  end)
+
+  it("names a table field by its type without running its __tostring", function()
+    local Registry = TestEnv.NewRegistry()
+    local DemoKit = loadCopy(Registry, 1, true)
+    local key, ran = recordingKey(nil)
+
+    local source = debug.getinfo(1, "S").short_src
+    local line
+    local ok, message = pcall(function()
+      line = debug.getinfo(1, "l").currentline + 1
+      DemoKit[key] = true
+    end)
+
+    assert.is_false(ok)
+    assert.are.equal(
+      source
+        .. ":"
+        .. line
+        .. ': MoltenCodes DemoKit facade is sealed; field "<table>" cannot be added from outside the package',
+      message
+    )
+    assert.is_false(ran())
+  end)
+
+  it("names a secret field by a placeholder without formatting it", function()
+    local Registry = TestEnv.NewRegistry()
+    local DemoKit = loadCopy(Registry, 1, true)
+    local key, ran = recordingKey(nil)
+    -- selene: allow(global_usage)
+    rawset(_G, "issecretvalue", function(value)
+      return rawequal(value, key)
+    end)
+
+    TestEnv.expectErrorContaining('facade is sealed; field "<secret>" cannot be added', function()
+      DemoKit[key] = true
+    end)
+    assert.is_false(ran())
+  end)
+
+  it("seals with the new message once the previous Registry revision is upgraded", function()
+    local workingRevision = TestEnv.NewRegistry().REVISION
+    TestEnv.Reset()
+    local previous = loadRegistryAtRevision(workingRevision - 1)
+    assert.are.equal(workingRevision - 1, previous.REVISION)
+    local DemoKit = loadCopy(previous, 1, true)
+    local entries = TestEnv.GetState().entries
+
+    local Registry = TestEnv.Reload()
+    assert.are.equal(previous, Registry)
+    assert.are.equal(workingRevision, Registry.REVISION)
+    assert.are.equal(entries, TestEnv.GetState().entries)
+    assert.are.equal(DemoKit, Registry:Get("demoKit", 1))
+
+    -- The seal is the closure of the Registry that installed it, so the
+    -- Kit's next copy reseals through the upgraded Registry.
+    assert.are.equal(DemoKit, loadCopy(Registry, 2, true))
+    local key, ran = recordingKey("converted")
+    TestEnv.expectErrorContaining('facade is sealed; field "<table>" cannot be added', function()
+      DemoKit[key] = true
+    end)
+    assert.is_false(ran())
   end)
 
   it("still lets an upgrading revision mutate the facade through rawset", function()

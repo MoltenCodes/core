@@ -61,6 +61,21 @@ Registry has no runtime package dependencies.
 
 `Get()` and `Find()` perform table lookups only and allocate nothing. `GetInfo()` intentionally allocates a metadata snapshot so callers cannot mutate Registry-owned metadata, and `Packages()` allocates a sorted listing for diagnostics. Retirement, migration and sealing run at load time only.
 
+## Moving from LibStub
+
+| LibStub | Registry |
+|---|---|
+| `LibStub:NewLibrary(major, minor)`: the library table and the previous minor, or `nil` when an equal or newer minor is loaded | `Registry:Register(packageName, api, revision)`: the same contract, keyed by a package name and an API generation instead of a major string; `Registry:Bootstrap(request)` adds state validation, retirement and migrations |
+| `LibStub("Name")`, `LibStub:GetLibrary("Name")`: raises when the library is missing | `Registry:Get(packageName, api)`: `nil` when nothing is registered, never raises for a missing package |
+| `LibStub:GetLibrary("Name", true)`: the silent lookup | `Registry:Find(packageName, api)`: `nil` and a reason (`absent`, `generation_mismatch`, `retired`) |
+| `LibStub.minors[major]` | the second return of `Get` or `Find`, or `Registry:GetInfo(packageName, api).revision` |
+| `LibStub:IterateLibraries()` | `Registry:Packages()`, a sorted diagnostic listing |
+| a new major string (`"MyLib-2.0"`) for a breaking change | a new API generation: `Registry:Register("myKit", 2, revision)` |
+
+Code that must still reach a Kit through LibStub, or adopt a LibStub library,
+uses InteropKit (`ExposeToLibStub`, `AdoptFromLibStub`); see
+[`docs/MIGRATING_FROM_ACE3.md`](../../docs/MIGRATING_FROM_ACE3.md#libstub).
+
 ## Documentation
 
 - [`docs/API.md`](docs/API.md) — complete public contract and upgrade semantics.

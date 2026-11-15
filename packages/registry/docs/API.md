@@ -1,7 +1,7 @@
 # Registry API
 
 Registry API generation: **2**  
-Implementation revision: **14**
+Implementation revision: **15**
 
 Registry is a zero-dependency runtime resolver for independently embedded framework packages.
 
@@ -435,6 +435,13 @@ Registry does not migrate saved variables, and there is no downgrade path.
 ```text
 MyAddon.lua:12: MoltenCodes DemoKit facade is sealed; field "Extra" cannot be added from outside the package
 ```
+
+The field is named as written when it is a string, number or boolean, by
+`<secret>` when `issecretvalue` reports it secret, and by its type otherwise
+(`field "<table>"`), so a key's `__tostring`, foreign code, never runs
+(revision 15 and later). The seal is the closure of the Registry revision that
+installed it: after a Registry upgrade a facade keeps its older seal until its
+Kit's next copy bootstraps with `sealFacade`.
 
 The package itself writes through `rawset` during bootstrap and upgrade, which a
 metatable does not see, so upgrades keep mutating the facade. Reads, `rawget`

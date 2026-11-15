@@ -44,7 +44,7 @@ local PUBLIC_ALIAS_KEY = "Registry"
 
 local STATE_SCHEMA = 1
 local API_GENERATION = 2
-local IMPLEMENTATION_REVISION = 14
+local IMPLEMENTATION_REVISION = 15
 
 -- Lua 5.1 doubles represent consecutive integers exactly only up to 2^53; past it
 -- distinct values compare equal, and a revision such as `1e300` would become one
@@ -688,7 +688,7 @@ end
 ---Lua 5.1 has no metamethod for assignments to fields that already exist, so a
 ---seal refuses *new* fields only; see `docs/API.md`. A newer revision that does
 ---not ask for the seal removes the one Registry installed, because the newer
----revision owns the facade's policy.
+---revision owns the facade's policy. Each seal carries its sealer's label.
 ---@param entry table
 ---@param implementation table
 ---@param wanted boolean
@@ -707,12 +707,13 @@ local function applySeal(entry, implementation, wanted, label)
     return false
   end
 
-  -- A fresh metatable per sealing revision, so the refusal carries the label
-  -- of the revision that currently owns the facade.
   local refusal = '" cannot be added from outside the package'
   seal = {
     __newindex = function(_, key)
-      error(label .. ' facade is sealed; field "' .. tostring(key) .. refusal, 2)
+      -- Named by type, never `tostring`: a table's `__tostring` is foreign code.
+      local kind = isSecret(key) and "secret" or type(key)
+      local shown = (kind == "string" or kind == "number" or kind == "boolean") and tostring(key)
+      error(label .. ' facade is sealed; field "' .. (shown or ("<" .. kind .. ">")) .. refusal, 2)
     end,
   }
   rawset(entry, "seal", seal)

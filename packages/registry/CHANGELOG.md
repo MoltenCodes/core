@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.6.10 — 2026-11-15
+
+- Fixed: a sealed facade built its refusal with `tostring(key)`. For a table or userdata key that runs the key's `__tostring`, foreign code that can raise or answer a secret, so the writer saw that code's error (or a message it chose) instead of the refusal. A string, number or boolean field is still shown as written (`field "Extra"` is unchanged); a key `issecretvalue` reports secret is named `<secret>`, asked first, and any other key by its type, `MoltenCodes DemoKit facade is sealed; field "<table>" cannot be added from outside the package`. Whether the client hands `__newindex` a secret key at all is not documented, so that check is defensive. Documented under *Sealed facades* in `docs/API.md`.
+- `Registry.lua` stays inside its 1000-line budget (1000 lines): the description is written inline in the seal's `__newindex`, and the comment on the fresh seal per revision moved into `applySeal`'s doc comment.
+- Implementation revision 15. No state changed: an in-place upgrade from any earlier revision replaces the methods only. A seal is the closure of the Registry that installed it, so a facade sealed before the upgrade keeps the older message until its Kit's next copy bootstraps with `sealFacade`.
+- Specs: 138 → 141 (`Seal_spec.lua`: a table key whose `__tostring` records that it ran and raises, a secret key, and resealing through a Registry upgraded in place from the previous revision). `Registry_spec.lua` expects revision 15.
+
+## 0.6.9 — 2026-11-15
+
+- `README.md` gains the migration table the other Kit READMEs carry: "Moving from LibStub" maps `NewLibrary`, `LibStub(...)`/`GetLibrary`, the silent lookup, `LibStub.minors`, `IterateLibraries` and a new major string to `Register`/`Bootstrap`, `Get`, `Find`, `GetInfo`, `Packages` and a new API generation, and points at InteropKit for LibStub interop. The README had no migration section.
+- Documentation only: the implementation revision stays 14.
+
 ## 0.6.8 — 2026-09-25
 
 - Lookup fast path. `Register`, `Get` and `Find` look the `(packageName, api)` pair up before running the full argument checks. Every Registry revision validated a name and an API generation before either became a key, so a hit on a well-formed entry skips the `^[a-z][A-Za-z0-9]*$` match and the chain of helper calls; the `issecretvalue` probe still runs on the name and the API before either is used as a key, and on the stored revision before it is compared, so a hit asks the probe as often as revision 13 did. A miss, a secret, a malformed argument or a malformed entry takes the full path, and the probe answers the fast path already had are not asked again: every message, error level, corruption error and `Find` reason is unchanged. `GetInfo`, `OnRetire` and `Bootstrap` keep the full path.
