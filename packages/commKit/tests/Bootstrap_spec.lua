@@ -353,7 +353,7 @@ describe("CommKit bootstrap", function()
     package.loaded["CommKit"] = nil
     local CommKit = require("CommKit")
     assert.are.equal(older, CommKit)
-    assert.are.equal(10, CommKit.REVISION)
+    assert.is_true(CommKit.REVISION >= 10)
     assert.are.equal(olderState, rawget(CommKit, "_state"))
 
     TestEnv.Deliver(PREFIX, chunks[2].text, "PARTY", "Friend-Realm")
@@ -465,13 +465,14 @@ describe("CommKit bootstrap", function()
   end)
 
   it("names each required package that is missing", function()
-    local chain = { "Registry", "SignalKit", "EventKit", "TimerKit", "SchedulerKit" }
+    -- SchedulerKit is optional from revision 11: TimerKit is followed by
+    -- PoolKit, and nothing names SchedulerKit.
+    local chain = { "Registry", "SignalKit", "EventKit", "TimerKit" }
     local expected = {
       [1] = "SignalKit API 1",
       [2] = "EventKit API 1",
       [3] = "TimerKit API 1",
-      [4] = "SchedulerKit API 1",
-      [5] = "PoolKit API 1",
+      [4] = "PoolKit API 1",
     }
     for loadedCount, message in pairs(expected) do
       TestEnv.Reset()

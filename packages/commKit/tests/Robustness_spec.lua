@@ -25,11 +25,7 @@ describe("CommKit send driver", function()
   ---Driver jobs alive in CommKit's scheduler scope.
   ---@return integer
   local function driverJobs()
-    local schedulerScope = CommKit._state.kitScopes.scheduler
-    if schedulerScope == false then
-      return 0
-    end
-    return schedulerScope:GetActiveCount()
+    return TestEnv.DriverRuns(CommKit)
   end
 
   it("keeps one driver job while completion callbacks chain sends", function()
@@ -116,7 +112,7 @@ describe("CommKit send driver", function()
     -- Each left inside its own `Send`; the completions wait for the next
     -- frame, whose run makes them and then sends what they queued.
     assert.are.equal(40, #TestEnv.TakeOutbox())
-    TestEnv.Tick()
+    TestEnv.Frame()
     assert.are.equal(32, #TestEnv.TakeOutbox())
     assert.is_true(driverJobs() <= 1)
     scope:CancelAll()

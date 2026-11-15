@@ -51,6 +51,10 @@ local ALL_MODULES = {
 --- `Reset` unloads it separately.
 local LIFECYCLE_MODULE = "LifecycleKit"
 
+--- CommKit's parts (revision 11), loaded after the chain unless a spec leaves
+--- one out. Kept out of `ALL_MODULES` for the same reason as LifecycleKit.
+local PART_MODULES = { "CommKit-SyncSet", "CommKit-ChatThrottle" }
+
 --- What LifecycleKit 0.6.0 publishes as `CLOSES_ADDON_SCOPES`: the package ids
 --- whose addon scopes (or bus) it closes at shutdown.
 local CLOSES_ADDON_SCOPES = {
@@ -65,6 +69,11 @@ local CLOSES_ADDON_SCOPES = {
 
 local CommKitTestEnv = FrameworkTestEnv.New({ modules = ALL_MODULES })
 
+--- While `true`, `Load` leaves SchedulerKit out unless a spec asks for it, so
+--- a whole spec file runs with the send driver on TimerKit
+--- (`WithoutSchedulerKit_spec.lua`). `Reset` leaves it alone.
+CommKitTestEnv.withoutSchedulerKit = false
+
 --- The host globals this environment installs and removes.
 local CHAT_GLOBALS = {
   "C_ChatInfo",
@@ -76,6 +85,7 @@ local CHAT_GLOBALS = {
   "SendAddonMessage",
   "SendChatMessage",
   "RegisterAddonMessagePrefix",
+  "C_BattleNet",
 }
 
 --- The player name deliveries are addressed to.
@@ -134,6 +144,9 @@ local function resetChat()
     chatOutbox = {},
     framerate = 60,
     members = {},
+    battleNetResults = {},
+    battleNetOutbox = {},
+    battleNetAttempts = {},
   }
 end
 resetChat()
@@ -190,6 +203,20 @@ local function installChatApi()
         language = language,
         target = target,
       }
+    end,
+  })
+  setGlobal("C_BattleNet", {
+    SendGameData = function(gameAccountID, prefix, data)
+      local result = table.remove(chat.battleNetResults, 1)
+      if result == nil then
+        result = CommKitTestEnv.SEND_RESULT.Success
+      end
+      local entry = { gameAccountID = gameAccountID, prefix = prefix, text = data, result = result }
+      chat.battleNetAttempts[#chat.battleNetAttempts + 1] = entry
+      if result == CommKitTestEnv.SEND_RESULT.Success then
+        chat.battleNetOutbox[#chat.battleNetOutbox + 1] = entry
+      end
+      return result
     end,
   })
   setGlobal("Enum", {
@@ -260,6 +287,9 @@ local baseReset = CommKitTestEnv.Reset
 ---Clear every module, global and stub this environment owns.
 function CommKitTestEnv.Reset()
   package.loaded[LIFECYCLE_MODULE] = nil
+  for index = 1, #PART_MODULES do
+    package.loaded[PART_MODULES[index]] = nil
+  end
   baseReset()
   for index = 1, #CHAT_GLOBALS do
     setGlobal(CHAT_GLOBALS[index], nil)
@@ -273,6 +303,9 @@ end
 ---@field hookKit boolean? Load HookKit and a `hooksecurefunc` stub; defaults to `false`.
 ---@field schemaKit boolean? Load SchemaKit; defaults to `false`.
 ---@field secureCall boolean? Install the fixture's `securecallfunction`; defaults to `false`.
+---@field syncSet boolean? Load the SyncSet part after CommKit; defaults to `true`.
+---@field chatThrottle boolean? Load the ChatThrottle part after CommKit; defaults to `true`.
+---@field schedulerKit boolean? Load SchedulerKit; defaults to `true`, or to `false` while `CommKitTestEnv.withoutSchedulerKit` is set. Without it the send driver runs on TimerKit (revision 11).
 ---@field commKitRevision integer? Load CommKit as a copy carrying this revision (see `LoadRevision`), the way an older embedded copy loads first; defaults to the shipped revision.
 ---@field lifecycleKit (boolean|table)? Load LifecycleKit after CommKit; `true` makes it announce `CLOSES_ADDON_SCOPES`, `false` models an older revision without it. Defaults to `nil`: not loaded.
 
@@ -293,7 +326,10 @@ function CommKitTestEnv.Load(options)
     setGlobal("hooksecurefunc", hookSecureFunction)
   end
 
+  local withoutScheduler = options.schedulerKit == false
+    or (options.schedulerKit == nil and CommKitTestEnv.withoutSchedulerKit == true)
   local skip = {
+    SchedulerKit = withoutScheduler,
     CodecKit = options.codecKit == false,
     HookKit = not options.hookKit,
     SchemaKit = not options.schemaKit,
@@ -302,12 +338,23 @@ function CommKitTestEnv.Load(options)
   for index = 1, #ALL_MODULES do
     local name = ALL_MODULES[index]
     if not skip[name] then
-      if name == "CommKit" and options.commKitRevision ~= nil then
+      if name == "CommKit" and options.commKitRevision == 10 then
+        loaded[name] = CommKitTestEnv.LoadWholeRevision10()
+      elseif name == "CommKit" and options.commKitRevision ~= nil then
         loaded[name] = CommKitTestEnv.LoadRevision(options.commKitRevision)
       else
         loaded[name] = require(name)
       end
     end
+  end
+  -- A whole revision 10 copy has no parts; a part needs a core of revision
+  -- 11 or later.
+  local parts = options.commKitRevision == nil or options.commKitRevision >= 11
+  if parts and options.syncSet ~= false then
+    loaded.SyncSetPart = require("CommKit-SyncSet")
+  end
+  if parts and options.chatThrottle ~= false then
+    loaded.ChatThrottlePart = require("CommKit-ChatThrottle")
   end
   if options.lifecycleKit ~= nil then
     loaded.LifecycleKit = CommKitTestEnv.LoadLifecycleKit(options.lifecycleKit)
@@ -445,6 +492,39 @@ function CommKitTestEnv.Deliver(prefix, text, channel, sender)
   )
 end
 
+---Script the results of the next Battle.net sends, in order.
+---@param ... integer
+function CommKitTestEnv.QueueBattleNetResults(...)
+  for index = 1, select("#", ...) do
+    chat.battleNetResults[#chat.battleNetResults + 1] = select(index, ...)
+  end
+end
+
+---Return and clear every Battle.net message the stub accepted.
+---@return table[]
+function CommKitTestEnv.TakeBattleNetOutbox()
+  local taken = chat.battleNetOutbox
+  chat.battleNetOutbox = {}
+  return taken
+end
+
+---Return and clear every chat line the stub accepted.
+---@return table[]
+function CommKitTestEnv.TakeChatOutbox()
+  local taken = chat.chatOutbox
+  chat.chatOutbox = {}
+  return taken
+end
+
+---Deliver a Battle.net game-data message as the client does
+---(`BN_CHAT_MSG_ADDON(prefix, text, channel, senderID)`).
+---@param prefix string
+---@param text string
+---@param senderID integer
+function CommKitTestEnv.DeliverBattleNet(prefix, text, senderID)
+  CommKitTestEnv.Emit("BN_CHAT_MSG_ADDON", prefix, text, "WHISPER", senderID)
+end
+
 ---Deliver on the logged channel.
 ---@param prefix string
 ---@param text string
@@ -547,6 +627,48 @@ function CommKitTestEnv.Advance(seconds)
   CommKitTestEnv.Pump()
 end
 
+---How many driver runs are armed: SchedulerKit jobs in CommKit's scheduler
+---scope while the driver runs on SchedulerKit, otherwise the driver's pending
+---TimerKit timer (revision 11). "Never more than one" holds either way.
+---@param CommKit table
+---@return integer
+function CommKitTestEnv.DriverRuns(CommKit)
+  local state = rawget(CommKit, "_state")
+  local schedulerScope = state.kitScopes.scheduler
+  if schedulerScope ~= false then
+    return schedulerScope:GetActiveCount()
+  end
+  local job = state.driver.job
+  if job ~= false and job:IsPending() then
+    return 1
+  end
+  return 0
+end
+
+---Run one frame: SchedulerKit's frame driver once while SchedulerKit is
+---loaded (what `Tick` does), otherwise every native timer already due, once,
+---in order. A zero-delay timer armed during the frame waits for the next one,
+---as the client's next-frame timers do.
+function CommKitTestEnv.Frame()
+  if package.loaded["SchedulerKit"] ~= nil then
+    CommKitTestEnv.Tick()
+    return
+  end
+  local nowMs = getGlobal("GetTimePreciseSec")() * 1000
+  local natives = CommKitTestEnv.NativeTimers()
+  local due = {}
+  for index = 1, #natives do
+    local native = natives[index]
+    local live = not native.cancelled and (native.repeating or not native.fired)
+    if live and native.dueMs ~= nil and native.dueMs <= nowMs + 1e-6 then
+      due[#due + 1] = index
+    end
+  end
+  for index = 1, #due do
+    CommKitTestEnv.FireNative(due[index])
+  end
+end
+
 ---Measure the allocation a workload causes, in kilobytes, with the collector
 ---stopped so that a collection cycle cannot hide or invent growth.
 ---@param workload fun()
@@ -571,6 +693,22 @@ function CommKitTestEnv.Text(length)
     parts[index] = string.char(65 + (index - 1) % 26)
   end
   return table.concat(parts)
+end
+
+---Load revision 10, the last whole-file CommKit (SyncSet included, no parts),
+---from `tests/support/CommKitRevision10.lua`, a verbatim copy of that
+---revision's `src/CommKit.lua`: the copy an older addon embeds.
+---@return table CommKit
+function CommKitTestEnv.LoadWholeRevision10()
+  for template in package.path:gmatch("[^;]+") do
+    local candidate = template:gsub("%?", "CommKitRevision10")
+    local file = io.open(candidate, "r")
+    if file ~= nil then
+      file:close()
+      return assert(loadfile(candidate))()
+    end
+  end
+  error("CommKitTestEnv.LoadWholeRevision10 could not find CommKitRevision10.lua", 2)
 end
 
 ---Load the CommKit source again as a copy carrying `revision`, the way a

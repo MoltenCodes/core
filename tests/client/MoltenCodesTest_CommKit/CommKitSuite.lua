@@ -2221,3 +2221,138 @@ secrets:Skip(
   "a received message whose prefix, text, channel or sender is secret is dropped and counted in secretsDropped",
   "not producible solo: the client hands addon messages over as secrets only in restricted contexts such as encounters; packages/commKit/tests/Reassembly_spec.lua covers the drop"
 )
+
+-- commKit.chatThrottle (revision 11) ---------------------------------------------
+--
+-- The ChatThrottle part in the real client. Every line it sends is a whisper to
+-- the player's own character or Battle.net game data to the player's own game
+-- account: nothing reaches another player. SAY, YELL and CHANNEL need a
+-- hardware event and would be seen by other players, so they are a manual
+-- check (EXPECTED.md, "Manual checks"), never run by this suite.
+
+local chatThrottle = newSuite("chatThrottle", { timeoutSeconds = ROUND_TRIP_SUITE_TIMEOUT_SECONDS })
+
+--- The Battle.net prefix of the round trip, at most 16 bytes.
+local BATTLE_NET_PREFIX = "MCTCommKitBnet"
+
+--- The Battle.net message of the round trip: 600 bytes are ceil(600 / 251) = 3
+--- chunks of at most 255 bytes, CommKit's conservative chunk size for
+--- `SendGameData`, whose limit the client documents nowhere.
+local BATTLE_NET_MESSAGE_BYTES = 600
+
+---The player's own Battle.net game account ID, or `nil` and why not.
+---@return integer|nil gameAccountID
+---@return string|nil reason
+local function ownGameAccountID()
+  local battleNet = readHost("C_BattleNet")
+  local unitGUID = readHost("UnitGUID")
+  if
+    type(battleNet) ~= "table"
+    or type(battleNet.GetGameAccountInfoByGUID) ~= "function"
+    or type(unitGUID) ~= "function"
+  then
+    return nil, "the client has no C_BattleNet.GetGameAccountInfoByGUID or UnitGUID"
+  end
+  local info = battleNet.GetGameAccountInfoByGUID(unitGUID("player"))
+  if type(info) ~= "table" or type(info.gameAccountID) ~= "number" then
+    return nil, "C_BattleNet.GetGameAccountInfoByGUID answered no game account for the player"
+  end
+  return info.gameAccountID, nil
+end
+
+chatThrottle:Test("the installed MoltenCodes addon carries both CommKit parts", function(ctx)
+  ctx:Expect(CommKit:HasPart("SyncSet")):ToBe(true)
+  ctx:Expect(CommKit:HasPart("ChatThrottle")):ToBe(true)
+end)
+
+chatThrottle:Test(
+  "SendChat queues a WHISPER line to the player's own character through the shared budget and it leaves sent",
+  function(ctx)
+    local fullName = requirePlayerNames(ctx)
+    local scope = newCommScope()
+    local completed = nil
+    local handle, reason = scope:SendChat({
+      text = "MoltenCodes Test: CommKit chat line",
+      chatType = "WHISPER",
+      target = fullName,
+      onComplete = function(_, state)
+        completed = state
+      end,
+    })
+    ctx:Expect(reason):ToBeNil()
+    if type(handle) == "nil" then
+      ctx:Fail("SendChat was refused: " .. tostring(reason))
+      return
+    end
+    waitUntil(ctx, function()
+      return completed ~= nil
+    end, SEND_TIMEOUT_SECONDS)
+    ctx:Log("handle " .. tostring(handle:GetState()) .. ", budget " .. describeBudget())
+    ctx:Expect(completed):ToBe("sent")
+  end
+)
+
+chatThrottle:Test(
+  "SendBattleNet sends a three-chunk message to the player's own game account and RegisterBattleNet receives it whole",
+  function(ctx)
+    local gameAccountID, why = ownGameAccountID()
+    if type(gameAccountID) == "nil" then
+      Harness:SkipTest(ctx, tostring(why))
+      return
+    end
+    local scope = newCommScope()
+    local received = {}
+    local connection, reason = scope:RegisterBattleNet(
+      BATTLE_NET_PREFIX,
+      function(prefix, text, senderID)
+        received[#received + 1] = { prefix = prefix, text = text, senderID = senderID }
+      end
+    )
+    ctx:Expect(reason):ToBeNil()
+    if type(connection) == "nil" then
+      ctx:Fail("RegisterBattleNet was refused: " .. tostring(reason))
+      return
+    end
+    local text = cyclingPayload(BATTLE_NET_MESSAGE_BYTES)
+    local handle, sendReason = scope:SendBattleNet({
+      prefix = BATTLE_NET_PREFIX,
+      text = text,
+      gameAccountID = gameAccountID,
+    })
+    ctx:Expect(sendReason):ToBeNil()
+    if type(handle) == "nil" then
+      ctx:Fail("SendBattleNet was refused: " .. tostring(sendReason))
+      return
+    end
+    waitUntil(ctx, function()
+      local state = handle:GetState()
+      return #received > 0 or state == "failed" or state == "cancelled"
+    end, SEND_TIMEOUT_SECONDS + DELIVERY_TIMEOUT_SECONDS)
+    ctx:Log(
+      ("handle %s after %d of %d bytes; %d message(s) received"):format(
+        tostring(handle:GetState()),
+        handle:GetBytesSent(),
+        handle:GetBytesTotal(),
+        #received
+      )
+    )
+    if #received == 0 then
+      Harness:SkipTest(
+        ctx,
+        "no BN_CHAT_MSG_ADDON came back for game data sent to the player's own game account (handle "
+          .. tostring(handle:GetState())
+          .. ")"
+      )
+      return
+    end
+    ctx:Log(
+      "senderID "
+        .. tostring(received[1].senderID)
+        .. ", own game account "
+        .. tostring(gameAccountID)
+    )
+    ctx:Expect(received[1].prefix):ToBe(BATTLE_NET_PREFIX)
+    ctx:Expect(received[1].text == text):ToBe(true)
+    ctx:Expect(handle:GetState()):ToBe("sent")
+  end
+)

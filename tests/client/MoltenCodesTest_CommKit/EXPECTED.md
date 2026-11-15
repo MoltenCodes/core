@@ -18,7 +18,10 @@ as `Name-Realm`; the server hands it straight back to you as
 say, yell or a chat channel, and no other player can receive anything. Addon
 messages are invisible: nothing appears in the chat frame. A run sends at most
 25 addon messages in all, spread over a few seconds, far below any server
-limit.
+limit. The `commKit.chatThrottle` suite (CommKit revision 11) adds one chat
+whisper to your own character (`MoltenCodes Test: CommKit chat line`, visible
+to you only) and three Battle.net game-data messages to your own game account,
+which are invisible.
 
 Run it standing idle, out of combat, solo (not in a group), outside any
 instance (a capital city is ideal). No test needs combat, a group, an
@@ -41,7 +44,7 @@ Exactly these lines, in this order (`PASS` is green and `SKIP` yellow in the
 client):
 
 ```text
-MoltenCodes Test: running commKit: 8 suites. Results follow when every test has finished.
+MoltenCodes Test: running commKit: 9 suites. Results follow when every test has finished.
 MoltenCodes Test: PASS commKit.facade: Registry:Get('commKit', 1) is the CommKit facade with API 1, every documented method, MAX_MESSAGE_BYTES 255, MAX_REGISTRATIONS 32, the three priorities and UNBOUNDED
 MoltenCodes Test: PASS commKit.facade: the installed CommKit carries the revision of the committed manifest
 MoltenCodes Test: PASS commKit.facade: C_ChatInfo has every function CommKit calls, and the client's SendAddonMessageResult and RegisterAddonMessagePrefixResult give the values CommKit falls back to (both enums logged)
@@ -74,7 +77,10 @@ MoltenCodes Test: PASS commKit.secrets: Register refuses a secret prefix and Set
 MoltenCodes Test: PASS commKit.secrets: a secret facade receiver, a secret ForAddon name and a secret maxRegistrations are refused at the calling line
 MoltenCodes Test: PASS commKit.secrets: SyncSet:Set refuses a secret value and a table holding one at the calling line
 MoltenCodes Test: SKIP commKit.secrets: a received message whose prefix, text, channel or sender is secret is dropped and counted in secretsDropped -- not producible solo: the client hands addon messages over as secrets only in restricted contexts such as encounters; packages/commKit/tests/Reassembly_spec.lua covers the drop
-MoltenCodes Test: commKit: 27 passed, 0 failed, 4 skipped, 0 timed out (31 tests)
+MoltenCodes Test: PASS commKit.chatThrottle: the installed MoltenCodes addon carries both CommKit parts
+MoltenCodes Test: PASS commKit.chatThrottle: SendChat queues a WHISPER line to the player's own character through the shared budget and it leaves sent
+MoltenCodes Test: PASS commKit.chatThrottle: SendBattleNet sends a three-chunk message to the player's own game account and RegisterBattleNet receives it whole
+MoltenCodes Test: commKit: 30 passed, 0 failed, 4 skipped, 0 timed out (34 tests)
 MoltenCodes Test: results saved in MoltenCodesTestResults; /reload or log out to write them to disk.
 ```
 
@@ -142,7 +148,7 @@ MoltenCodes Test: SKIP commKit.syncSet: a SyncSet that whispers a request to the
 
 The name after `answered` is the key of `Enum.SendAddonMessageResult` the
 client returned. Eight tests are then skipped for that reason and the totals
-line reads `19 passed, 0 failed, 12 skipped, 0 timed out (31 tests)`. That is
+line reads `22 passed, 0 failed, 12 skipped, 0 timed out (34 tests)`. That is
 an answer, not a fault of the run: send it back. Two other run-time skips are
 possible: `the client did not accept the whisper to self within 8 s` (every
 attempt was throttled), and, for the raw-send test only,
@@ -154,7 +160,7 @@ Four `commKit.secrets` tests need the client's `issecretvalue` and
 `secretwrap`, which Retail 12.1 has. `secretwrap` only converts the value
 handed to it into a secret and changes no game state. A client without them
 prints these four lines instead, and the totals line reads
-`23 passed, 0 failed, 8 skipped, 0 timed out (31 tests)`:
+`26 passed, 0 failed, 8 skipped, 0 timed out (34 tests)`:
 
 ```text
 MoltenCodes Test: SKIP commKit.secrets: Send refuses a secret prefix, text, distribution, target and priority at the calling line, before comparing them, and queues nothing -- the client has no issecretvalue and secretwrap; the secret path was not exercised
@@ -182,12 +188,12 @@ the suite reads at load is missing on a Classic client.
 ### Retail (12.1)
 
 The lines above:
-`MoltenCodes Test: commKit: 27 passed, 0 failed, 4 skipped, 0 timed out (31 tests)`,
+`MoltenCodes Test: commKit: 30 passed, 0 failed, 4 skipped, 0 timed out (34 tests)`,
 with the four `SKIP` lines listed under them.
 
 ### Classic Era (1.15) and Mists of Pandaria Classic (5.5)
 
-The `running` line (8 suites) and every test line are the same as Retail's,
+The `running` line (9 suites) and every test line are the same as Retail's,
 in the same order, with the same four `SKIP` lines. Two answers only the
 running client gives decide the totals:
 
@@ -195,16 +201,16 @@ running client gives decide the totals:
   `issecretvalue` and `secretwrap`; the suite reads them at load. With both,
   and secrets made with them, the four `commKit.secrets` tests run and the
   totals line is Retail's:
-  `MoltenCodes Test: commKit: 27 passed, 0 failed, 4 skipped, 0 timed out (31 tests)`.
+  `MoltenCodes Test: commKit: 30 passed, 0 failed, 4 skipped, 0 timed out (34 tests)`.
   Without them, the four lines under
   [On a client without secret values](#on-a-client-without-secret-values)
   are `SKIP` and the totals line is
-  `MoltenCodes Test: commKit: 23 passed, 0 failed, 8 skipped, 0 timed out (31 tests)`.
+  `MoltenCodes Test: commKit: 26 passed, 0 failed, 8 skipped, 0 timed out (34 tests)`.
   A client that has both but makes no secret with them (`issecretvalue`
   does not report what `secretwrap` returns as secret;
   `Harness:CanMakeSecrets` measures this once at load) skips the same four
   tests with the reason below, and the totals line is again
-  `MoltenCodes Test: commKit: 23 passed, 0 failed, 8 skipped, 0 timed out (31 tests)`.
+  `MoltenCodes Test: commKit: 26 passed, 0 failed, 8 skipped, 0 timed out (34 tests)`.
 
   ```text
   MoltenCodes Test: SKIP commKit.secrets: Send refuses a secret prefix, text, distribution, target and priority at the calling line, before comparing them, and queues nothing -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
@@ -217,8 +223,8 @@ running client gives decide the totals:
   yet. If it refuses or never returns the whisper, the eight tests named under
   [When the whisper to your own character does not come back](#when-the-whisper-to-your-own-character-does-not-come-back)
   end as `SKIP` with the client's answer, and the totals line reads
-  `19 passed, 0 failed, 12 skipped, 0 timed out (31 tests)` (with secret
-  values; without them `15 passed, 0 failed, 16 skipped`). Send that answer
+  `22 passed, 0 failed, 12 skipped, 0 timed out (34 tests)` (with secret
+  values; without them `18 passed, 0 failed, 16 skipped`). Send that answer
   back.
 
 ## Waiting in the queue
@@ -238,10 +244,12 @@ nothing for it once the prefix test's registration is gone.
 
 ## Visible side effects
 
-None. No window opens, nothing is printed besides the harness lines, no
-setting is changed, and addon messages never appear in the chat frame. The
-whispers go to your own character and are invisible to everyone, you
-included.
+One chat whisper to your own character, `MoltenCodes Test: CommKit chat
+line`, from the `commKit.chatThrottle` suite: you see it in your chat frame
+(the client shows a whisper to yourself as it shows any whisper), nobody else
+does. Nothing else: no window opens, nothing is printed besides the harness
+lines, no setting is changed, and addon messages and Battle.net game data
+never appear in the chat frame.
 
 ## What a run leaves behind
 
@@ -301,21 +309,55 @@ results.
 | `Register refuses a secret prefix and SetLimits a secret limit ...` | Both refusals name this file at the calling line; nothing is registered and the limits are unchanged. |
 | `a secret facade receiver, a secret ForAddon name and a secret maxRegistrations ...` | `CommKit.GetQueueDepth(secret)` gets the receiver message, `ForAddon(secret)` the ordinary `addonName must be a non-empty string`, and `CreateScope({ maxRegistrations = secret })` `must not be a secret value`, each at the calling line. |
 | `SyncSet:Set refuses a secret value and a table holding one ...` | `Set` refuses a secret with `must not be a secret value` and a table holding one with `must not contain a secret value`, at the calling line; neither field is set. |
+| `the installed MoltenCodes addon carries both CommKit parts` | Revision 11: the standalone addon embeds `CommKit-SyncSet.lua` and `CommKit-ChatThrottle.lua`, and `CommKit:HasPart` answers `true` for both. |
+| `SendChat queues a WHISPER line ...` | The ChatThrottle part's queued chat path in the real client: the line goes through the queue and the bucket and completes `sent` (the client's `SendChatMessage` returns nothing, so `sent` means the call returned without raising). The log gives the budget afterwards. |
+| `SendBattleNet sends a three-chunk message ...` | Unverified until this runs: whether `C_BattleNet.SendGameData` to your own game account (`C_BattleNet.GetGameAccountInfoByGUID(UnitGUID("player")).gameAccountID`) comes back as `BN_CHAT_MSG_ADDON`, whether 255-byte data (CommKit's chunk size; the client documents no limit) is accepted, and whether the event needs the prefix registered (CommKit registers it). The message arrives whole and byte-identical at `RegisterBattleNet` with the prefix; the log gives the `senderID` the event reported next to your own game account ID. |
+
+## Manual checks (not run by the suite)
+
+`SendChat` of SAY, YELL and CHANNEL needs a hardware event and is seen by
+other players, so the suite never sends it. To check the rule CommKit
+documents (packages/commKit/docs/API.md, "Chat and Battle.net"), alone in a
+quiet place, bind this to a key with a macro and press the key:
+
+```text
+/run local s=MoltenCodes.Registries[2]:Get("commKit",1):CreateScope(); print(s:SendChat({ text = "MoltenCodes say test", chatType = "SAY" }))
+```
+
+Expected: one `/say` line `MoltenCodes say test` and the handle printed (a table);
+CommKit sent it inside the call, from the key press. Then type the same line
+into a `/run` after `C_Timer.After(1, ...)` (no hardware event):
+
+```text
+/run C_Timer.After(1, function() local s=MoltenCodes.Registries[2]:Get("commKit",1):CreateScope(); print(s:SendChat({ text = "MoltenCodes timer test", chatType = "SAY" })) end)
+```
+
+Expected: CommKit hands the line to the client (the budget pays), and the
+client refuses it outdoors because no hardware event is on the stack: no
+`/say` line, possibly an error naming a protected action. Report exactly what
+the chat frame shows for both, and whether you were indoors or outdoors.
 
 ## What counts as unexpected
 
 - Any `FAIL` or `TIMEOUT` line, a `SKIP` other than the four above on Retail
   12.1 (or the whisper-to-self skips described above), or a totals line other
-  than `27 passed, 0 failed, 4 skipped, 0 timed out (31 tests)` (on a Classic
+  than `30 passed, 0 failed, 4 skipped, 0 timed out (34 tests)` (on a Classic
   client, other than the totals lines under [Per flavour](#per-flavour)).
 - No login line, or `Expected.lua is missing`: the harness or the installer
   did not run as intended.
 - A Lua error window or a BugSack entry naming `MoltenCodes`,
   `MoltenCodesTest` or `MoltenCodesTest_CommKit`. No test raises an error on
   purpose outside a `pcall`.
-- A chat line, a whisper window or a "player not found" system message: the
-  test addresses only your own character, so any of these means something
-  left that should not have. Send a screenshot.
+- A chat line other than the one whisper to yourself, a whisper window or a
+  "player not found" system message: the test addresses only your own
+  character, so any of these means something left that should not have. Send
+  a screenshot. (If the client refuses a whisper to yourself with a system
+  message, the chat-line test still passes, because `SendChatMessage` returns
+  nothing CommKit could read; say so when you send the results back.)
+- `commKit.chatThrottle`'s Battle.net test reported as `SKIP` with
+  `GetGameAccountInfoByGUID answered no game account` or `no BN_CHAT_MSG_ADDON
+  came back`: an answer about Battle.net game data to yourself, not a fault.
+  Send it back; the totals line then reads `29 passed, 0 failed, 5 skipped`.
 - `C_ChatInfo has every function ...` failing: the client's enums moved, and
   CommKit's documented fallbacks are wrong for this client.
 - `a 252-byte single chunk ...` failing: the server changed a byte; the log

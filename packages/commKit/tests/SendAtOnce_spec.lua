@@ -40,11 +40,7 @@ describe("CommKit sends at once", function()
   ---Driver jobs alive in CommKit's scheduler scope.
   ---@return integer
   local function driverJobs()
-    local schedulerScope = state.kitScopes.scheduler
-    if schedulerScope == false then
-      return 0
-    end
-    return schedulerScope:GetActiveCount()
+    return TestEnv.DriverRuns(CommKit)
   end
 
   it("sends a message the bucket pays for before Send returns, building no job", function()
@@ -104,7 +100,7 @@ describe("CommKit sends at once", function()
     returned = true
     assert.are.equal("sent", handle:GetState())
     assert.are.same({}, calls)
-    TestEnv.Tick()
+    TestEnv.Frame()
     assert.are.same({ "progress", "progress", "progress", "sent" }, calls)
     assert.are.equal(0, driverJobs())
     assert.are.equal(0, state.deferred.count)
@@ -115,7 +111,7 @@ describe("CommKit sends at once", function()
     scope:Send(tracked("b", "two"))
     assert.are.equal(2, #TestEnv.TakeOutbox())
     assert.are.equal(1, driverJobs())
-    TestEnv.Tick()
+    TestEnv.Frame()
     assert.are.same({ "a progress 3", "a sent nil", "b progress 3", "b sent nil" }, calls)
     assert.are.equal(0, driverJobs())
   end)
@@ -132,7 +128,7 @@ describe("CommKit sends at once", function()
       end,
     })
     assert.are.equal(1, #TestEnv.TakeOutbox())
-    TestEnv.Tick()
+    TestEnv.Frame()
     assert.are.equal("sent", inner:GetState())
     assert.are.equal("\001inner", TestEnv.TakeOutbox()[1].text)
     assert.are.equal(0, driverJobs())
@@ -211,7 +207,7 @@ describe("CommKit sends at once", function()
         error("escaped", 0)
       end,
     })
-    TestEnv.Tick()
+    TestEnv.Frame()
     assert.are.same({ { value = "escaped" } }, TestEnv.TakeReportedErrors())
     assert.are.equal(0, state.deferred.flushing)
     local handle = scope:Send({ prefix = PREFIX, text = "b", distribution = "PARTY" })
@@ -223,7 +219,7 @@ describe("CommKit sends at once", function()
     local handle = scope:Send(tracked("a", "hello"))
     assert.are.equal("failed", handle:GetState())
     assert.are.same({}, calls)
-    TestEnv.Tick()
+    TestEnv.Frame()
     assert.are.same({ "a failed NotInGroup" }, calls)
   end)
 
@@ -375,7 +371,7 @@ describe("CommKit sends one chunk at once without a record", function()
     assert.are.equal("sent", handle:GetState())
     assert.are.equal(1, #state.spares.records)
     assert.is_false(completed)
-    TestEnv.Tick()
+    TestEnv.Frame()
     assert.is_true(completed)
   end)
 

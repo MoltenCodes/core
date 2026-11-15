@@ -10,7 +10,7 @@
       "../../eventKit/src",
       "../../poolKit/src",
       "../../timerKit/src",
-      "../../schedulerKit/src"
+      "../../codecKit/src"
     ],
     "checkThirdParty": false
   },

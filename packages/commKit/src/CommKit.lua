@@ -16,20 +16,23 @@
 --   budget         one token bucket shared by every scope and every embedded
 --                  copy, degraded at low frame rates and after zoning, charged
 --                  for traffic other code sends when HookKit is present.
---   SyncSet        named fields versioned by a content hash; a request carries
---                  the hashes the requester holds and the answer carries only
---                  the fields that differ.
+--   parts          `CommKit-SyncSet.lua` (named fields versioned by a content
+--                  hash) and `CommKit-ChatThrottle.lua` (chat lines and
+--                  Battle.net game data through the same budget) are optional
+--                  part files; see "Parts" below.
 --
 -- A send made while the driver is idle runs it once inside `Send`, so a
 -- message the budget pays for leaves before `Send` returns; its callbacks are
 -- held for the next driver run. That run, and every later one, is a
--- SchedulerKit job that exists only while something is queued or callbacks
--- are held, so an idle CommKit costs no per-frame handler.
+-- SchedulerKit job while SchedulerKit is loaded and a TimerKit timer
+-- otherwise, and exists only while something is queued or callbacks are held,
+-- so an idle CommKit costs no per-frame handler.
 --
 -- CommKit needs Registry API 2, SignalKit API 1, EventKit API 1, TimerKit
--- API 1, SchedulerKit API 1 and PoolKit API 1. CodecKit API 1 (SyncSet
--- payloads and hashes), HookKit API 1 (the outside-traffic hook) and SchemaKit
--- API 1 (SyncSet validation) are optional and found at call time.
+-- API 1 and PoolKit API 1. SchedulerKit API 1 (the driver's frame budget),
+-- CodecKit API 1 (SyncSet payloads and hashes), HookKit API 1 (the
+-- outside-traffic hook) and SchemaKit API 1 (SyncSet validation) are optional
+-- and found at call time.
 --
 -- CommKit does not observe addon shutdown and does not depend on LifecycleKit
 -- (design constitution, principle 4b), yet an addon scope is closed at logout
@@ -49,7 +52,8 @@
 --   Host access ........... errors, secrets, isolated calls, the chat API
 --   Argument checks ....... receivers, strings, callbacks, option tables
 --   Found packages ........ CodecKit, HookKit, SchemaKit
---   Kit-owned scopes ...... the EventKit, TimerKit and SchedulerKit scopes
+--   Kit-owned scopes ...... the EventKit, TimerKit and SchedulerKit scopes,
+--                           and where the driver's next run is armed
 --   Budget ................ the shared token bucket and its degraded modes
 --   Queues and pipes ...... priorities, destinations, bounds
 --   Send completion ....... terminal states and their callbacks
@@ -57,13 +61,13 @@
 --   Outside traffic ....... the HookKit secure hooks on the client's senders
 --   Reassembly ............ receiving, streams, expiry, peer eviction
 --   Registrations ......... prefixes, connections, delivery
---   Content hashes ........ FNV-1a over a canonical encoding
---   SyncSet ............... fields, request, ack, deliver
+--   SyncSets .............. closing one; the rest is the SyncSet part
 --   Send path ............. request validation, queueing, cancellation, close
 --   Logout close .......... who closes an addon scope at logout
---   Public methods ........ method tables for connections, send handles,
---                           SyncSets and scopes
+--   Public methods ........ method tables for connections, send handles
+--                           and scopes
 --   Package public API .... the facade published through Registry
+--   Parts ................. the part interface, stubs and HasPart
 --   Commit ................ prototype/facade assignment and self-check
 --
 -- Layout and invariants are described in `docs/INTERNALS.md`.
@@ -72,11 +76,11 @@
 
 local PACKAGE_NAME = "commKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 10
+local IMPLEMENTATION_REVISION = 11
 
 -- The API generation of every package CommKit uses: required (Registry,
--- SignalKit, EventKit, TimerKit, SchedulerKit, PoolKit) and optional
--- (CodecKit, HookKit, SchemaKit, LifecycleKit).
+-- SignalKit, EventKit, TimerKit, PoolKit) and optional (SchedulerKit,
+-- CodecKit, HookKit, SchemaKit, LifecycleKit).
 local DEPENDENCY_API = {
   registry = 2,
   signalKit = 1,
@@ -285,6 +289,8 @@ local POLICY = {
   -- Until HookKit is found, a wake from idle looks it up at most once per
   -- this many seconds (revision 7): `Registry:Find` is not free.
   hookLookupSeconds = 1,
+  -- The same rule for SchedulerKit while none is found (revision 11).
+  schedulerLookupSeconds = 1,
   modeNormal = "normal",
   modeLowFrameRate = "lowFrameRate",
   modeZoning = "zoning",
@@ -298,37 +304,6 @@ local POLICY = {
   dropReportSeconds = 60,
   otherSenders = "(other senders)",
   dropReportOrder = { "expired", "departed", "malformed", "restarted", "quota" },
-}
-
--- SyncSet verbs (the first element of every SyncSet message) and bounds.
-local SYNC = {
-  request = 1,
-  ack = 2,
-  deliver = 3,
-  -- Hard ceilings: a SyncSet's field list is a static declaration every
-  -- peer running the addon shares, and a request carries one hash per
-  -- field, so the list stays short enough for a request and a full delivery
-  -- to fit the shared reply allowance.
-  maxFields = 32,
-  maxFieldNameBytes = 64,
-  -- `OnChanged` listeners per SyncSet unless `maxListeners` says otherwise.
-  defaultMaxListeners = 16,
-  replyIntervalSeconds = 1,
-  -- CodecKit options for SyncSet frames.
-  codecOptions = { channel = "addon" },
-}
-
--- FNV-1a, 32 bits. The prime 16777619 is 2^24 + 403, which is what lets the
--- multiplication modulo 2^32 stay exact in double arithmetic.
-local FNV = {
-  offsetBasis = 2166136261,
-  primeLow = 403,
-  twoPow24 = 16777216,
-  twoPow32 = 4294967296,
-  -- The canonical encoding brackets a table with two bytes CodecKit's
-  -- serialiser never uses as type bytes.
-  canonicalOpen = string.char(0x0C),
-  canonicalClose = string.char(0x0D),
 }
 
 -- Limits: the defaults, and the range SetLimits accepts for each. The largest
@@ -540,7 +515,6 @@ local OPTION_KEYS = {
     onComplete = true,
   },
   constraints = { logged = true, battleNet = true },
-  syncSet = { fields = true, schema = true, maxListeners = true },
   scope = { maxRegistrations = true },
 }
 
@@ -697,7 +671,10 @@ local SURFACE = {
 ---@field RegisterRaw fun(self: CommKit.Scope, prefix: string, callback: CommKit.ReceiveCallback): CommKit.Connection|nil, string?
 ---@field Send fun(self: CommKit.Scope, request: CommKit.SendRequest): CommKit.SendHandle|nil, string?
 ---@field SendRaw fun(self: CommKit.Scope, request: CommKit.SendRawRequest): CommKit.SendHandle|nil, string?
----@field SyncSet fun(self: CommKit.Scope, prefix: string, options: CommKit.SyncSetOptions): CommKit.SyncSet|nil, string?
+---@field SyncSet fun(self: CommKit.Scope, prefix: string, options: CommKit.SyncSetOptions): CommKit.SyncSet|nil, string? SyncSet part
+---@field SendChat fun(self: CommKit.Scope, request: CommKit.SendChatRequest): CommKit.SendHandle|nil, string? ChatThrottle part
+---@field SendBattleNet fun(self: CommKit.Scope, request: CommKit.SendBattleNetRequest): CommKit.SendHandle|nil, string? ChatThrottle part
+---@field RegisterBattleNet fun(self: CommKit.Scope, prefix: string, callback: fun(prefix: string, text: string, senderID: integer)): CommKit.Connection|nil, string? ChatThrottle part
 ---@field UnregisterAll fun(self: CommKit.Scope): integer
 ---@field CancelAll fun(self: CommKit.Scope): integer
 ---@field Close fun(self: CommKit.Scope): boolean
@@ -706,6 +683,24 @@ local SURFACE = {
 ---@field GetRegistrationCount fun(self: CommKit.Scope): integer
 ---@field GetPendingCount fun(self: CommKit.Scope): integer
 ---@field GetMaxRegistrations fun(self: CommKit.Scope): integer|table
+
+---The table `scope:SendChat` accepts (the ChatThrottle part).
+---@class CommKit.SendChatRequest
+---@field text string At most 255 bytes, no NUL.
+---@field chatType string `SAY`, `YELL`, `CHANNEL` (sent inside the call or refused with `"hardwareEvent"`), or any other chat type (queued).
+---@field languageID number?
+---@field target (string|number)? A player name for `WHISPER`, a channel number for `CHANNEL`.
+---@field priority CommKit.PriorityName?
+---@field onComplete CommKit.CompleteCallback?
+
+---The table `scope:SendBattleNet` accepts (the ChatThrottle part).
+---@class CommKit.SendBattleNetRequest
+---@field prefix string 1 to 16 bytes.
+---@field text string Any length up to the queue's byte limit, no NUL, CR, LF or `|`.
+---@field gameAccountID integer The receiving Battle.net game account.
+---@field priority CommKit.PriorityName?
+---@field onProgress CommKit.ProgressCallback?
+---@field onComplete CommKit.CompleteCallback?
 
 ---The priority constants.
 ---@class CommKit.Priorities
@@ -733,6 +728,7 @@ local SURFACE = {
 ---@field SetLimits fun(self: CommKit, limits: CommKit.Limits)
 ---@field GetLimits fun(self: CommKit): CommKit.Limits
 ---@field GetStatistics fun(self: CommKit): table<string, integer>
+---@field HasPart fun(self: CommKit, partName: string): boolean Whether the named part (`"SyncSet"`, `"ChatThrottle"`) is installed.
 
 -- Dependencies ---------------------------------------------------------------
 
@@ -794,20 +790,8 @@ then
   error("MoltenCodes CommKit requires TimerKit API 1 to be loaded first", 2)
 end
 
--- SchedulerKit runs the send driver.
-local SchedulerKit = getPackage(Registry, "schedulerKit", DEPENDENCY_API.schedulerKit)
-local SchedulerScope = type(SchedulerKit) == "table" and rawget(SchedulerKit, "Scope") or nil
-if
-  type(SchedulerKit) ~= "table"
-  or rawget(SchedulerKit, "API") ~= DEPENDENCY_API.schedulerKit
-  or type(rawget(SchedulerKit, "CreateScope")) ~= "function"
-  or type(SchedulerScope) ~= "table"
-  or type(rawget(SchedulerScope, "Schedule")) ~= "function"
-  or type(rawget(SchedulerScope, "NextFrame")) ~= "function"
-  or type(rawget(SchedulerScope, "After")) ~= "function"
-then
-  error("MoltenCodes CommKit requires SchedulerKit API 1 to be loaded first", 2)
-end
+-- SchedulerKit is optional from revision 11: the send driver runs as its job
+-- when it is loaded, and on a TimerKit timer otherwise (see "Driver").
 
 -- PoolKit leases the stream records of multi-chunk messages being reassembled.
 local PoolKit = getPackage(Registry, "poolKit", DEPENDENCY_API.poolKit)
@@ -846,7 +830,7 @@ local function readHostTable(name)
 end
 
 -- The monotonic wall clock every deadline and the bucket are measured on.
--- SchedulerKit requires it too, so a client that runs SchedulerKit has it.
+-- TimerKit and SchedulerKit read it too.
 local nativeClock = readHostFunction("GetTimePreciseSec")
 if nativeClock == nil then
   error("MoltenCodes CommKit requires GetTimePreciseSec", 2)
@@ -1100,6 +1084,11 @@ local function newState()
       -- `closeStream` still returns those lists to.
     },
     trampolines = {},
+    -- The part interface (revision 11, see "Parts").
+    parts = {},
+    helpers = {},
+    partInterface = 0,
+    transports = {},
     -- `CommKit.UNBOUNDED` lives here so every revision publishes the same
     -- table and an option written against one copy keeps its meaning
     -- after an upgrade.
@@ -1234,6 +1223,15 @@ if rawget(state, "prefixFraming") == nil then
     end
   end
   rawset(state, "prefixFraming", prefixFraming)
+end
+-- Revision 11 adds the part interface. An older state was built by a single
+-- file that had the SyncSet code itself; see `checkInheritedSyncSets`.
+local inheritedWholeFile = rawget(state, "parts") == nil
+if inheritedWholeFile then
+  rawset(state, "parts", {})
+  rawset(state, "helpers", {})
+  rawset(state, "partInterface", 0)
+  rawset(state, "transports", {})
 end
 local deferred = rawget(state, "deferred")
 for _, addonScope in next, addonScopes do
@@ -1524,8 +1522,9 @@ end
 
 -- Kit-owned scopes -----------------------------------------------------------
 --
--- CommKit owns one scope in each of EventKit, TimerKit and SchedulerKit. They
--- are created on first use and replaced if something outside closed them.
+-- CommKit owns one scope in each of EventKit, TimerKit and, while the driver
+-- runs on it, SchedulerKit. They are created on first use and replaced if
+-- something outside closed them.
 
 ---@return table EventKit scope for the chat and roster events
 local function getEventScope()
@@ -1547,14 +1546,77 @@ local function getTimerScope()
   return scope
 end
 
----@return table SchedulerKit scope for the send driver
-local function getSchedulerScope()
-  local scope = rawget(kitScopes, "scheduler")
-  if scope == false or scope:IsClosed() then
-    scope = SchedulerKit:CreateScope()
-    rawset(kitScopes, "scheduler", scope)
+-- Where the send driver's next run is armed (revision 11): a SchedulerKit job
+-- while SchedulerKit is loaded, so a run waits for SchedulerKit's shared frame
+-- budget as before, and a TimerKit timer otherwise. SchedulerKit is found
+-- through `Registry:Find`; a facade once found is kept, because Registry
+-- hands every compatible revision the same table. Until one is found, the
+-- lookup runs at most once per `POLICY.schedulerLookupSeconds`, as the HookKit
+-- lookup does, since `Registry:Find` is not free and a busy driver arms often.
+-- `kind` is `"ready"` (SchedulerKit's `Schedule`: its next pass), `"frame"`
+-- (the next frame) or `"after"` (`delay` seconds). TimerKit has no pass of its
+-- own: `"ready"` and `"frame"` are both a zero-delay timer, the next frame.
+-- Both handles answer `Cancel()`, the one method the driver calls on them.
+local armDriverRun
+do
+  ---@type table|false
+  local foundScheduler = false
+  ---@type number|false
+  local lookedUpAt = false
+
+  ---The SchedulerKit facade to run the driver on, or `nil`.
+  ---@return table|nil
+  local function findScheduler()
+    if foundScheduler ~= false then
+      return foundScheduler
+    end
+    local currentTime = now()
+    if lookedUpAt ~= false and currentTime - lookedUpAt < POLICY.schedulerLookupSeconds then
+      return nil
+    end
+    lookedUpAt = currentTime
+    local found = findOptional("schedulerKit", DEPENDENCY_API.schedulerKit)
+    if found == nil then
+      return nil
+    end
+    local prototype = rawget(found, "Scope")
+    if
+      type(prototype) ~= "table"
+      or type(rawget(found, "CreateScope")) ~= "function"
+      or type(rawget(prototype, "Schedule")) ~= "function"
+      or type(rawget(prototype, "NextFrame")) ~= "function"
+      or type(rawget(prototype, "After")) ~= "function"
+    then
+      return nil
+    end
+    foundScheduler = found
+    return found
   end
-  return scope
+
+  ---Arm the driver's next run and return its handle.
+  ---@param kind "ready"|"frame"|"after"
+  ---@param delay number seconds, for `"after"`
+  ---@return table handle a SchedulerKit job or a TimerKit timer
+  function armDriverRun(kind, delay)
+    local SchedulerKit = findScheduler()
+    if SchedulerKit ~= nil then
+      local scope = rawget(kitScopes, "scheduler")
+      if scope == false or scope:IsClosed() then
+        scope = SchedulerKit:CreateScope()
+        rawset(kitScopes, "scheduler", scope)
+      end
+      if kind == "ready" then
+        return scope:Schedule(trampolines.driver, DRIVER_JOB_OPTIONS)
+      elseif kind == "frame" then
+        return scope:NextFrame(trampolines.driver, DRIVER_JOB_OPTIONS)
+      end
+      return scope:After(delay, trampolines.driver, DRIVER_JOB_OPTIONS)
+    end
+    if kind ~= "after" then
+      delay = 0
+    end
+    return getTimerScope():After(delay, trampolines.driver)
+  end
 end
 
 ---Start watching PLAYER_ENTERING_WORLD for the zoning mode, once per session.
@@ -1947,6 +2009,7 @@ local function queueAbort(record)
   abort.target = record.target
   abort.priority = record.priority
   abort.logged = record.logged
+  abort.transport = record.transport
   abort.pipeKey = record.pipeKey
   abort.totalChunks = record.totalChunks
   abort.streamId = record.streamId
@@ -2086,7 +2149,8 @@ end
 
 -- Driver ---------------------------------------------------------------------
 --
--- One SchedulerKit job at a time, and only while something is queued or
+-- One run armed at a time (a SchedulerKit job, or a TimerKit timer without
+-- SchedulerKit; see `armDriverRun`), and only while something is queued or
 -- callbacks are held; a send made while the driver is idle runs it once
 -- inside `Send` instead (`runInline`). A run refills the bucket, reinstates
 -- pipes whose backoff has passed, and sends chunks in rotation until the
@@ -2107,14 +2171,11 @@ local function scheduleDriver(delay, why)
   if existing ~= false then
     existing:Cancel()
   end
-  local scope = getSchedulerScope()
-  local job
   if delay <= 0 then
-    job = scope:NextFrame(trampolines.driver, DRIVER_JOB_OPTIONS)
+    driver.job = armDriverRun("frame", 0)
   else
-    job = scope:After(delay, trampolines.driver, DRIVER_JOB_OPTIONS)
+    driver.job = armDriverRun("after", delay)
   end
-  driver.job = job
   driver.delayed = why
 end
 
@@ -2206,7 +2267,14 @@ local function transmit(record, chunk, send, probe)
     return SEND_STATE.failed, REASON.unavailable
   end
   state.sendingOwnTraffic = true
-  local ok, result = pcall(send, record.prefix, chunk, record.distribution, record.target)
+  local ok, result
+  if record.transport then
+    -- A part's sender (revision 11) takes the record and the chunk and makes
+    -- the client call itself.
+    ok, result = pcall(send, record, chunk)
+  else
+    ok, result = pcall(send, record.prefix, chunk, record.distribution, record.target)
+  end
   state.sendingOwnTraffic = false
   if not ok then
     reportError(result)
@@ -2559,9 +2627,13 @@ local function driveChunks()
 
     advanceCursors(queue, ringIndex, slot)
     -- The send function of the record's channel, or `nil` when the client
-    -- lacks it (`transmit` then fails the message as unavailable).
+    -- lacks it (`transmit` then fails the message as unavailable). A pipe a
+    -- part fills (revision 11) names its sender in `transport`.
     local send = nil
-    if record.logged then
+    local transport = record.transport
+    if transport then
+      send = state.transports[transport]
+    elseif record.logged then
       if sendLogged ~= nil then
         send = sendLogged
       end
@@ -2582,7 +2654,7 @@ local function driveChunks()
   finishRun(currentTime, true)
 end
 
----One driver run. Called by the SchedulerKit job through the dispatch table.
+---One driver run. Called by the armed job or timer through the dispatch table.
 ---It first makes the callbacks a run inside `Send` held back, then sends. An
 ---internal error is reported and the driver retried a second later, or
 ---disarmed when nothing is queued, rather than left marked as running for the
@@ -2697,6 +2769,11 @@ do
     hookSender(hookScope, "SendAddonMessage", rawget(trampolines, "outsideAddon"))
     hookSender(hookScope, "SendAddonMessageLogged", rawget(trampolines, "outsideAddon"))
     hookSender(hookScope, "SendChatMessage", rawget(trampolines, "outsideChat"))
+    -- A part with a sender of its own hooks it here too (revision 11).
+    local installPartHooks = rawget(dispatch, "installPartHooks")
+    if type(installPartHooks) == "function" then
+      pcall(installPartHooks, hookScope)
+    end
   end
 end
 
@@ -2715,8 +2792,7 @@ local function wakeDriver()
     end
     job:Cancel()
   end
-  local scope = getSchedulerScope()
-  driver.job = scope:Schedule(trampolines.driver, DRIVER_JOB_OPTIONS)
+  driver.job = armDriverRun("ready", 0)
   driver.delayed = false
   -- Waking from idle samples once; the ticker, once a run left work behind,
   -- samples from then on (`startSampler`).
@@ -2773,7 +2849,7 @@ local function runInline()
       if successor ~= false then
         successor:Cancel()
       end
-      driver.job = getSchedulerScope():Schedule(trampolines.driver, DRIVER_JOB_OPTIONS)
+      driver.job = armDriverRun("ready", 0)
       -- "callbacks" only while the queue is empty, so a later `Send` may
       -- still send at once; otherwise an ordinary wake.
       driver.delayed = state.queuedMessages == 0 and "callbacks" or false
@@ -3461,9 +3537,10 @@ end
 ---@param prefix string
 ---@param callback function
 ---@param framing "framed"|"raw"
+---@param clientPrefix string? the prefix registered with the client, when it is not `prefix`
 ---@return CommKit.Connection|nil connection
 ---@return string|nil reason
-local function registerInScope(scope, prefix, callback, framing)
+local function registerInScope(scope, prefix, callback, framing, clientPrefix)
   if rawget(scope, "_closed") then
     return nil, REASON.closed
   end
@@ -3475,7 +3552,9 @@ local function registerInScope(scope, prefix, callback, framing)
   if held ~= nil and held ~= framing then
     return nil, REASON.framingConflict
   end
-  local registered, reason = registerClientPrefix(prefix)
+  -- The ChatThrottle part keys its Battle.net registrations apart from realm
+  -- ones and registers the prefix the client sees (`clientPrefix`).
+  local registered, reason = registerClientPrefix(clientPrefix or prefix)
   if not registered then
     return nil, reason
   end
@@ -3538,450 +3617,15 @@ local function disconnectConnection(connection)
   return true
 end
 
--- Content hashes -------------------------------------------------------------
+-- SyncSets (revision 11: the SyncSet part) -----------------------------------
 --
--- A SyncSet field's version is the 32-bit FNV-1a hash of a canonical encoding
--- of its value: a scalar is CodecKit's serialisation of it (the writer is
--- canonical for scalars), and a table is the byte 0x0C, then every key and
--- value in sorted key order, each encoded the same way, then 0x0D. Keys sort
--- by type (booleans, then numbers, then strings), then by value, strings
--- byte by byte. Tables as keys are refused. `docs/API.md` has test vectors.
---
--- Lua 5.1 has no bit operations, so the hash is arithmetic on doubles: the
--- exclusive or touches only the low byte, and the multiplication by
--- 16777619 = 2^24 + 403 is split so every intermediate stays below 2^53.
+-- The SyncSet machinery is the part `CommKit-SyncSet.lua`. The core keeps what
+-- every scope needs whether or not the part is loaded: closing a SyncSet,
+-- because a scope's `UnregisterAll`, `Close` and logout close its SyncSets, and
+-- the forward declaration of the send path the part queues its replies on.
 
--- Only `hashValue` is used outside this block.
-local hashValue
-
-do
-  ---The exclusive or of two bytes.
-  ---@param left integer
-  ---@param right integer
-  ---@return integer
-  local function xorByte(left, right)
-    local result = 0
-    local bitValue = 1
-    for _ = 1, 8 do
-      local leftBit = left % 2
-      local rightBit = right % 2
-      if leftBit ~= rightBit then
-        result = result + bitValue
-      end
-      left = (left - leftBit) / 2
-      right = (right - rightBit) / 2
-      bitValue = bitValue * 2
-    end
-    return result
-  end
-
-  ---Feed `bytes` into an FNV-1a hash.
-  ---@param hash integer
-  ---@param bytes string
-  ---@return integer
-  local function fnvUpdate(hash, bytes)
-    for index = 1, #bytes do
-      local low = hash % 256
-      hash = hash - low + xorByte(low, string.byte(bytes, index))
-      hash = ((hash % 256) * FNV.twoPow24 + hash * FNV.primeLow) % FNV.twoPow32
-    end
-    return hash
-  end
-
-  -- Sort rank of each key type in the canonical encoding.
-  local KEY_TYPE_RANK = { boolean = 1, number = 2, string = 3 }
-
-  ---Whether string `left` sorts before `right`, byte by byte. `<` on strings
-  ---follows the C library's collation, which is not the same on every client.
-  ---@param left string
-  ---@param right string
-  ---@return boolean
-  local function stringBefore(left, right)
-    local leftLength, rightLength = #left, #right
-    for index = 1, math.min(leftLength, rightLength) do
-      local leftByte, rightByte = string.byte(left, index), string.byte(right, index)
-      if leftByte ~= rightByte then
-        return leftByte < rightByte
-      end
-    end
-    return leftLength < rightLength
-  end
-
-  ---The canonical order of two table keys.
-  ---@param left any
-  ---@param right any
-  ---@return boolean
-  local function keyBefore(left, right)
-    local leftRank, rightRank = KEY_TYPE_RANK[type(left)], KEY_TYPE_RANK[type(right)]
-    if leftRank ~= rightRank then
-      return leftRank < rightRank
-    end
-    if leftRank == 1 then
-      return left == false and right == true
-    end
-    if leftRank == 2 then
-      return left < right
-    end
-    return stringBefore(left, right)
-  end
-
-  ---Hash the canonical encoding of `value` into `hash`.
-  ---@param codec table CodecKit
-  ---@param value any a value CodecKit already serialised successfully
-  ---@param hash integer
-  ---@return integer|nil hash
-  ---@return string|nil reason
-  local function hashCanonical(codec, value, hash)
-    if type(value) ~= "table" then
-      local _, bytes = codec:Serialize(value)
-      return fnvUpdate(hash, bytes), nil
-    end
-
-    local keys = {}
-    for key in pairs(value) do
-      if KEY_TYPE_RANK[type(key)] == nil then
-        return nil, "tableKey"
-      end
-      keys[#keys + 1] = key
-    end
-    table.sort(keys, keyBefore)
-
-    hash = fnvUpdate(hash, FNV.canonicalOpen)
-    for index = 1, #keys do
-      local key = keys[index]
-      local keyHash, keyReason = hashCanonical(codec, key, hash)
-      if keyHash == nil then
-        return nil, keyReason
-      end
-      local valueHash, valueReason = hashCanonical(codec, value[key], keyHash)
-      if valueHash == nil then
-        return nil, valueReason
-      end
-      hash = valueHash
-    end
-    return fnvUpdate(hash, FNV.canonicalClose), nil
-  end
-
-  ---The content hash of `value`, or `nil` and CodecKit's reason when it cannot
-  ---be serialised (a cycle, a function, a limit), or `"tableKey"`.
-  ---@param codec table CodecKit
-  ---@param value any
-  ---@return integer|nil hash
-  ---@return string|nil reason
-  function hashValue(codec, value)
-    local ok, bytesOrReason = codec:Serialize(value)
-    if not ok then
-      return nil, bytesOrReason
-    end
-    local hash, reason = hashCanonical(codec, value, FNV.offsetBasis)
-    return hash, reason
-  end
-end
-
--- SyncSet --------------------------------------------------------------------
---
--- A SyncSet holds this client's values for a fixed list of fields and a
--- bounded cache of the values peers delivered. The three verbs travel as
--- CodecKit frames for the addon channel, sent and received through the
--- SyncSet's own registration:
---
---   request   { 1, hashes }             the requester's hashes of our fields
---   ack       { 2 }                     every hash matched
---   deliver   { 3, values, removed }    only the fields whose hash differs
-
--- Forward declaration: the SyncSet sends through the same queue as scope:Send.
+-- Forward declaration: `scope:Send` and the SyncSet part's replies share it.
 local enqueueSend
-
--- Only `encodeSyncMessage` and `receiveSync` are used outside this block.
-local encodeSyncMessage, receiveSync
-
-do
-  ---Whether a reply to `peer` is still in the queue.
-  ---@param peer table
-  ---@return boolean
-  local function replyPending(peer)
-    local reply = rawget(peer, "reply")
-    if reply == false then
-      return false
-    end
-    local replyState = rawget(reply, "_state")
-    return replyState == SEND_STATE.queued or replyState == SEND_STATE.sending
-  end
-
-  ---Return the peer record for `sender`, creating it when `create` is true.
-  ---When the cache is full, the least recently seen peer that was not
-  ---answered within the reply interval and has no reply in the queue is
-  ---evicted; when every peer was, `nil` is returned, so an eviction can never
-  ---lift a peer's reply interval or let it queue a second reply.
-  ---@param syncSet CommKit.SyncSet
-  ---@param sender string
-  ---@param create boolean
-  ---@return table|nil
-  local function obtainPeer(syncSet, sender, create)
-    local peers = rawget(syncSet, "_peers")
-    local touch = rawget(syncSet, "_touch") + 1
-    rawset(syncSet, "_touch", touch)
-    local peer = rawget(peers, sender)
-    if peer ~= nil then
-      rawset(peer, "touched", touch)
-      return peer
-    end
-    if not create then
-      return nil
-    end
-
-    -- A loop rather than one eviction, so a cache above a bound `SetLimits`
-    -- lowered shrinks back to it.
-    while rawget(syncSet, "_peerCount") >= rawget(limits, "maxSyncPeers") do
-      local currentTime = now()
-      local oldestName, oldestTouch = nil, nil
-      for name, candidate in pairs(peers) do
-        local touched = rawget(candidate, "touched")
-        local repliedAt = rawget(candidate, "repliedAt")
-        local throttled = repliedAt ~= false and currentTime - repliedAt < SYNC.replyIntervalSeconds
-        if
-          not throttled
-          and not replyPending(candidate)
-          and (oldestTouch == nil or touched < oldestTouch)
-        then
-          oldestName, oldestTouch = name, touched
-        end
-      end
-      if oldestName == nil then
-        return nil
-      end
-      rawset(peers, oldestName, nil)
-      rawset(syncSet, "_peerCount", rawget(syncSet, "_peerCount") - 1)
-    end
-    peer = { values = {}, hashes = {}, touched = touch, repliedAt = false, reply = false }
-    rawset(peers, sender, peer)
-    rawset(syncSet, "_peerCount", rawget(syncSet, "_peerCount") + 1)
-    return peer
-  end
-
-  ---Encode a SyncSet message, or `nil` when CodecKit is gone or refuses it.
-  ---@param message table
-  ---@return string|nil
-  function encodeSyncMessage(message)
-    local codec = findOptional("codecKit", DEPENDENCY_API.codecKit)
-    if codec == nil then
-      return nil
-    end
-    local ok, text = codec:Encode(message, SYNC.codecOptions)
-    if not ok then
-      return nil
-    end
-    return text
-  end
-
-  ---Queue a reply to `sender`, counting its bytes against the shared reply
-  ---allowance until it is terminal.
-  ---@param syncSet CommKit.SyncSet
-  ---@param peer table
-  ---@param sender string
-  ---@param text string
-  local function queueReply(syncSet, peer, sender, text)
-    local length = #text
-    if rawget(state, "syncReplyBytes") + length > rawget(limits, "maxSyncReplyBytes") then
-      count("syncReplyDropped")
-      return
-    end
-    local handle
-    handle = enqueueSend(
-      rawget(syncSet, "_scope"),
-      rawget(syncSet, "_prefix"),
-      text,
-      "WHISPER",
-      sender,
-      PRIORITY.NORMAL,
-      false,
-      false,
-      function()
-        rawset(state, "syncReplyBytes", rawget(state, "syncReplyBytes") - length)
-        if rawget(peer, "reply") == handle then
-          rawset(peer, "reply", false)
-        end
-      end
-    )
-    if handle == nil then
-      count("syncReplyDropped")
-      return
-    end
-    rawset(state, "syncReplyBytes", rawget(state, "syncReplyBytes") + length)
-    rawset(peer, "reply", handle)
-  end
-
-  ---Answer a request with an ack or a delta. Requests are answered only when
-  ---whispered, at most once a second per peer, with at most one reply per
-  ---peer in the queue and at most 8 KB of replies queued in all.
-  ---@param syncSet CommKit.SyncSet
-  ---@param claimed any the requester's hashes
-  ---@param sender string
-  ---@param distribution string
-  local function answerRequest(syncSet, claimed, sender, distribution)
-    if type(claimed) ~= "table" or distribution ~= "WHISPER" then
-      count("syncRejected")
-      return
-    end
-    count("syncRequests")
-    local peer = obtainPeer(syncSet, sender, true)
-    if peer == nil then
-      count("syncReplyDropped")
-      return
-    end
-    local currentTime = now()
-    local repliedAt = rawget(peer, "repliedAt")
-    if repliedAt ~= false and currentTime - repliedAt < SYNC.replyIntervalSeconds then
-      count("syncRejected")
-      return
-    end
-    if replyPending(peer) then
-      count("syncReplyDropped")
-      return
-    end
-    rawset(peer, "repliedAt", currentTime)
-
-    local ownValues = rawget(syncSet, "_values")
-    local ownHashes = rawget(syncSet, "_hashes")
-    local fieldList = rawget(syncSet, "_fieldList")
-    local values, removed = {}, {}
-    local differs = false
-    for index = 1, #fieldList do
-      local field = fieldList[index]
-      local mine = rawget(ownHashes, field)
-      local theirs = rawget(claimed, field)
-      if mine ~= nil and mine ~= theirs then
-        values[field] = rawget(ownValues, field)
-        differs = true
-      elseif mine == nil and type(theirs) ~= "nil" then
-        removed[#removed + 1] = field
-        differs = true
-      end
-    end
-
-    local text
-    if differs then
-      text = encodeSyncMessage({ SYNC.deliver, values, removed })
-    else
-      text = encodeSyncMessage({ SYNC.ack })
-    end
-    if text ~= nil then
-      queueReply(syncSet, peer, sender, text)
-    end
-  end
-
-  ---Store a delivered value when it passes the field's schema and differs.
-  ---@param syncSet CommKit.SyncSet
-  ---@param codec table CodecKit
-  ---@param peer table
-  ---@param sender string
-  ---@param field string
-  ---@param value any
-  local function acceptDelivered(syncSet, codec, peer, sender, field, value)
-    local schemas = rawget(syncSet, "_schemas")
-    local schema = schemas ~= false and rawget(schemas, field) or nil
-    if schema ~= nil then
-      -- The verdict is SchemaKit's return: a secret one is asked about
-      -- before the comparison with `true`, and is not an acceptance.
-      local verdict = schema:Check(value)
-      if isSecret(verdict) or verdict ~= true then
-        count("syncRejected")
-        return
-      end
-    end
-    local hash = hashValue(codec, value)
-    if hash == nil then
-      count("syncRejected")
-      return
-    end
-    local peerHashes = rawget(peer, "hashes")
-    if rawget(peerHashes, field) == hash then
-      return
-    end
-    rawset(rawget(peer, "values"), field, value)
-    rawset(peerHashes, field, hash)
-    rawget(syncSet, "_signal"):Fire(sender, field, value)
-  end
-
-  ---Apply a delivery: removed fields, then changed values. A field named in
-  ---both is removed, once.
-  ---@param syncSet CommKit.SyncSet
-  ---@param codec table CodecKit
-  ---@param values any
-  ---@param removed any
-  ---@param sender string
-  local function applyDelivery(syncSet, codec, values, removed, sender)
-    if type(values) ~= "table" or type(removed) ~= "table" then
-      count("syncRejected")
-      return
-    end
-    local peer = obtainPeer(syncSet, sender, true)
-    if peer == nil then
-      count("syncRejected")
-      return
-    end
-    count("syncDeliveries")
-    local fields = rawget(syncSet, "_fields")
-    local fieldList = rawget(syncSet, "_fieldList")
-    local peerValues = rawget(peer, "values")
-    local peerHashes = rawget(peer, "hashes")
-    local removedSet = {}
-    for index = 1, #fieldList do
-      local field = rawget(removed, index)
-      if type(field) == "nil" then
-        break
-      end
-      if type(field) == "string" and rawget(fields, field) then
-        removedSet[field] = true
-        if rawget(peerHashes, field) ~= nil then
-          rawset(peerValues, field, nil)
-          rawset(peerHashes, field, nil)
-          rawget(syncSet, "_signal"):Fire(sender, field, nil)
-        end
-      end
-    end
-
-    for index = 1, #fieldList do
-      local field = fieldList[index]
-      local value = rawget(values, field)
-      if type(value) ~= "nil" and not removedSet[field] then
-        acceptDelivered(syncSet, codec, peer, sender, field, value)
-      end
-    end
-  end
-
-  ---A SyncSet frame arrived on the SyncSet's prefix. Received data is
-  ---untrusted: every shape is checked before use and a bad frame is counted.
-  ---@param syncSet CommKit.SyncSet
-  ---@param text string
-  ---@param sender string
-  ---@param distribution string
-  function receiveSync(syncSet, text, sender, distribution)
-    if rawget(syncSet, "_closed") then
-      return
-    end
-    local codec = findOptional("codecKit", DEPENDENCY_API.codecKit)
-    if codec == nil then
-      return
-    end
-    local ok, message = codec:Decode(text, SYNC.codecOptions)
-    if not ok or type(message) ~= "table" then
-      count("syncRejected")
-      return
-    end
-    local verb = rawget(message, 1)
-    if verb == SYNC.request then
-      answerRequest(syncSet, rawget(message, 2), sender, distribution)
-    elseif verb == SYNC.ack then
-      count("syncAcknowledgements")
-      obtainPeer(syncSet, sender, false)
-    elseif verb == SYNC.deliver then
-      applyDelivery(syncSet, codec, rawget(message, 2), rawget(message, 3), sender)
-    else
-      count("syncRejected")
-    end
-  end
-end
 
 ---Close a SyncSet: its registration and listeners go, its caches are
 ---dropped.
@@ -4216,6 +3860,7 @@ enqueueSend = function(
   record.target = target
   record.priority = priority
   record.logged = logged
+  record.transport = false
   record.pipeKey = pipeKey(distribution, target, logged)
   record.totalChunks = totalChunks
   record.nextIndex = 1
@@ -4514,6 +4159,7 @@ function SendPath.enqueueRaw(
   record.target = target
   record.priority = priority
   record.logged = false
+  record.transport = false
   record.pipeKey = pipeKey(distribution, target, false)
   record.totalChunks = #parts
   record.nextIndex = 1
@@ -4751,7 +4397,6 @@ end
 
 local ConnectionMethods = {}
 local HandleMethods = {}
-local SyncSetMethods = {}
 local ScopeMethods = {}
 local FacadeMethods = {}
 
@@ -4784,7 +4429,9 @@ end
 ---@return string
 function ConnectionMethods.GetPrefix(self)
   validateConnection(self, "CommKit.Connection:GetPrefix", 3)
-  return rawget(self, "_prefix")
+  -- A Battle.net registration (the ChatThrottle part) is keyed apart from
+  -- realm ones and keeps the prefix its caller gave in `_publicPrefix`.
+  return rawget(self, "_publicPrefix") or rawget(self, "_prefix")
 end
 
 -- Send handle methods --------------------------------------------------------
@@ -4830,194 +4477,6 @@ end
 function HandleMethods.GetBytesTotal(self)
   validateHandle(self, "CommKit.SendHandle:GetBytesTotal", 3)
   return rawget(self, "_bytesTotal")
-end
-
--- SyncSet methods ------------------------------------------------------------
-
----@param receiver any
----@param label string
----@param level integer
-local function validateSyncSet(receiver, label, level)
-  validateReceiver(receiver, SYNC_SET_METATABLE, label, "CommKit SyncSet", level + 1)
-end
-
----Refuse a field the SyncSet was not declared with.
----@param syncSet CommKit.SyncSet
----@param field any
----@param label string
----@param level integer
-local function validateField(syncSet, field, label, level)
-  validateBoundedString(field, label .. " field", SYNC.maxFieldNameBytes, level + 1)
-  if not rawget(rawget(syncSet, "_fields"), field) then
-    error(label .. " field is not declared in this SyncSet", level)
-  end
-end
-
----Set this client's value of a field. `nil` clears it. The value is kept as
----given: change a table and call `Set` again to publish the change.
----@param self CommKit.SyncSet
----@param field string
----@param value any
----@return boolean|nil ok
----@return boolean|string|nil changedOrReason `true` when the hash changed, or the refusal
-function SyncSetMethods.Set(self, field, value)
-  validateSyncSet(self, "CommKit.SyncSet:Set", 3)
-  validateField(self, field, "CommKit.SyncSet:Set", 3)
-  if rawget(self, "_closed") then
-    return nil, REASON.closed
-  end
-  if isSecret(value) then
-    error("CommKit.SyncSet:Set value must not be a secret value", 2)
-  end
-  local values = rawget(self, "_values")
-  local hashes = rawget(self, "_hashes")
-  if type(value) == "nil" then
-    local changed = rawget(hashes, field) ~= nil
-    rawset(values, field, nil)
-    rawset(hashes, field, nil)
-    return true, changed
-  end
-
-  local schemas = rawget(self, "_schemas")
-  local schema = schemas ~= false and rawget(schemas, field) or nil
-  if schema ~= nil then
-    -- As on receipt: a secret verdict is not an acceptance.
-    local verdict = schema:Check(value)
-    if isSecret(verdict) or verdict ~= true then
-      return nil, REASON.schema
-    end
-  end
-  local codec =
-    requireFound("codecKit", "CodecKit", DEPENDENCY_API.codecKit, "CommKit.SyncSet:Set", 3)
-  local hashed, hash, reason = pcall(hashValue, codec, value)
-  if not hashed then
-    error("CommKit.SyncSet:Set value must not contain a secret value", 2)
-  end
-  if hash == nil then
-    return nil, reason
-  end
-  if rawget(hashes, field) == hash then
-    return true, false
-  end
-  rawset(values, field, value)
-  rawset(hashes, field, hash)
-  return true, true
-end
-
----This client's value of a field, or `nil`.
----@param self CommKit.SyncSet
----@param field string
----@return any
-function SyncSetMethods.Get(self, field)
-  validateSyncSet(self, "CommKit.SyncSet:Get", 3)
-  validateField(self, field, "CommKit.SyncSet:Get", 3)
-  return rawget(rawget(self, "_values"), field)
-end
-
----The content hash of this client's value of a field, or `nil` when unset.
----@param self CommKit.SyncSet
----@param field string
----@return integer|nil
-function SyncSetMethods.GetHash(self, field)
-  validateSyncSet(self, "CommKit.SyncSet:GetHash", 3)
-  validateField(self, field, "CommKit.SyncSet:GetHash", 3)
-  return rawget(rawget(self, "_hashes"), field)
-end
-
----The last value `sender` delivered for a field, or `nil`.
----@param self CommKit.SyncSet
----@param sender string
----@param field string
----@return any
-function SyncSetMethods.GetRemote(self, sender, field)
-  validateSyncSet(self, "CommKit.SyncSet:GetRemote", 3)
-  validateBoundedString(sender, "CommKit.SyncSet:GetRemote sender", 255, 3)
-  validateField(self, field, "CommKit.SyncSet:GetRemote", 3)
-  local peer = rawget(rawget(self, "_peers"), sender)
-  if peer == nil then
-    return nil
-  end
-  return rawget(rawget(peer, "values"), field)
-end
-
----Ask `target` for the fields whose hash differs from the ones this client
----holds for it. The answer arrives as `OnChanged` calls, or as an ack.
----@param self CommKit.SyncSet
----@param target string
----@return CommKit.SendHandle|nil handle
----@return string|nil reason
-function SyncSetMethods.Request(self, target)
-  validateSyncSet(self, "CommKit.SyncSet:Request", 3)
-  validateBoundedString(target, "CommKit.SyncSet:Request target", 255, 3)
-  if rawget(self, "_closed") then
-    return nil, REASON.closed
-  end
-  local peer = rawget(rawget(self, "_peers"), target)
-  local hashes = peer ~= nil and rawget(peer, "hashes") or {}
-  local text = encodeSyncMessage({ SYNC.request, hashes })
-  if text == nil then
-    return nil, REASON.unavailable
-  end
-  local handle, reason = enqueueSend(
-    rawget(self, "_scope"),
-    rawget(self, "_prefix"),
-    text,
-    "WHISPER",
-    target,
-    PRIORITY.NORMAL,
-    false,
-    false,
-    false
-  )
-  return handle, reason
-end
-
----Call `callback(sender, field, value)` when a peer's field changes; `value`
----is `nil` when the peer cleared it. Returns `nil, "full"` past the
----SyncSet's `maxListeners` (16 unless the options said otherwise).
----@param self CommKit.SyncSet
----@param callback CommKit.ChangedCallback
----@return CommKit.Connection|nil connection
----@return string|nil reason
-function SyncSetMethods.OnChanged(self, callback)
-  validateSyncSet(self, "CommKit.SyncSet:OnChanged", 3)
-  validateCallback(callback, "CommKit.SyncSet:OnChanged callback", 3)
-  if rawget(self, "_closed") then
-    return nil, REASON.closed
-  end
-  local listeners = rawget(self, "_listeners")
-  if reachedLimit(#listeners, rawget(self, "_maxListeners")) then
-    return nil, REASON.full
-  end
-  local signalConnection = rawget(self, "_signal"):Connect(function(...)
-    rawget(dispatch, "isolatedCall")(callback, ...)
-  end)
-  local connection = setmetatable({
-    _schema = LAYOUT.connection,
-    _kind = "changed",
-    _owner = self,
-    _prefix = rawget(self, "_prefix"),
-    _signalConnection = signalConnection,
-    _connected = true,
-  }, CONNECTION_METATABLE)
-  listeners[#listeners + 1] = connection
-  return connection, nil
-end
-
----Close the SyncSet: its registration and listeners are disconnected and the
----peer cache is dropped. Terminal.
----@param self CommKit.SyncSet
----@return boolean closed `false` when it was already closed
-function SyncSetMethods.Close(self)
-  validateSyncSet(self, "CommKit.SyncSet:Close", 3)
-  return closeSyncSet(self)
-end
-
----@param self CommKit.SyncSet
----@return boolean
-function SyncSetMethods.IsClosed(self)
-  validateSyncSet(self, "CommKit.SyncSet:IsClosed", 3)
-  return rawget(self, "_closed") == true
 end
 
 -- Scope methods --------------------------------------------------------------
@@ -5103,118 +4562,6 @@ function ScopeMethods.SendRaw(self, request)
     onComplete
   )
   return handle, reason
-end
-
----Validate the `fields` option: 1 to 32 distinct names of 1 to 64 bytes.
----@param fields any
----@param level integer
----@return table<string, true> fieldSet
----@return string[] fieldList
-local function readSyncFields(fields, level)
-  local label = "CommKit.Scope:SyncSet options.fields"
-  if type(fields) ~= "table" or #fields == 0 or #fields > SYNC.maxFields then
-    error(label .. " must be an array of 1 to " .. SYNC.maxFields .. " field names", level)
-  end
-  local fieldSet, fieldList = {}, {}
-  for index = 1, #fields do
-    local field = fields[index]
-    validateBoundedString(field, label .. " entry", SYNC.maxFieldNameBytes, level + 1)
-    if fieldSet[field] then
-      error(label .. " must not name a field twice", level)
-    end
-    fieldSet[field] = true
-    fieldList[index] = field
-  end
-  return fieldSet, fieldList
-end
-
----Validate the `schema` option: a sealed SchemaKit schema per declared field.
----@param schema any
----@param fieldSet table<string, true>
----@param level integer
----@return table|false
-local function readSyncSchemas(schema, fieldSet, level)
-  if type(schema) == "nil" then
-    return false
-  end
-  local label = "CommKit.Scope:SyncSet options.schema"
-  if type(schema) ~= "table" then
-    error(label .. " must be a table of sealed SchemaKit schemas or nil", level)
-  end
-  local SchemaKit = requireFound(
-    "schemaKit",
-    "SchemaKit",
-    DEPENDENCY_API.schemaKit,
-    "CommKit.Scope:SyncSet options.schema",
-    level + 1
-  )
-  local describe = rawget(rawget(SchemaKit, "Schema") or {}, "Describe")
-  local schemas = {}
-  for field, fieldSchema in pairs(schema) do
-    if type(field) ~= "string" or not fieldSet[field] then
-      error(label .. " names a field that is not declared", level)
-    end
-    if type(describe) ~= "function" or not pcall(describe, fieldSchema) then
-      error(label .. "." .. field .. " must be a sealed SchemaKit schema", level)
-    end
-    schemas[field] = fieldSchema
-  end
-  return schemas
-end
-
----Create a SyncSet on `prefix`. Requires CodecKit; `options.schema` requires
----SchemaKit. Returns `nil` and a reason when the prefix cannot be registered.
----@param self CommKit.Scope
----@param prefix string
----@param options CommKit.SyncSetOptions
----@return CommKit.SyncSet|nil syncSet
----@return string|nil reason
-function ScopeMethods.SyncSet(self, prefix, options)
-  validateScope(self, "CommKit.Scope:SyncSet", 3)
-  validateBoundedString(prefix, "CommKit.Scope:SyncSet prefix", WIRE.maxPrefixBytes, 3)
-  if type(options) ~= "table" then
-    error("CommKit.Scope:SyncSet options must be a table", 2)
-  end
-  validateKeys(options, OPTION_KEYS.syncSet, "CommKit.Scope:SyncSet options", 3)
-  local fieldSet, fieldList = readSyncFields(rawget(options, "fields"), 3)
-  local schemas = readSyncSchemas(rawget(options, "schema"), fieldSet, 3)
-  local maxListeners = rawget(options, "maxListeners")
-  if type(maxListeners) == "nil" then
-    maxListeners = SYNC.defaultMaxListeners
-  else
-    validateObjectLimit(maxListeners, "CommKit.Scope:SyncSet options.maxListeners", 3)
-  end
-  requireFound("codecKit", "CodecKit", DEPENDENCY_API.codecKit, "CommKit.Scope:SyncSet", 3)
-
-  local syncSet = setmetatable({
-    _schema = LAYOUT.syncSet,
-    _scope = self,
-    _prefix = prefix,
-    _fields = fieldSet,
-    _fieldList = fieldList,
-    _schemas = schemas,
-    _values = {},
-    _hashes = {},
-    _peers = {},
-    _peerCount = 0,
-    _touch = 0,
-    _signal = SignalKit:New(),
-    _listeners = {},
-    _maxListeners = maxListeners,
-    _registration = false,
-    _closed = false,
-  }, SYNC_SET_METATABLE)
-
-  local registration, reason = registerInScope(self, prefix, function(_, text, distribution, sender)
-    rawget(dispatch, "receiveSync")(syncSet, text, sender, distribution)
-  end, "framed")
-  if registration == nil then
-    return nil, reason
-  end
-  rawset(syncSet, "_registration", registration)
-  local syncSets = rawget(self, "_syncSets")
-  syncSets[#syncSets + 1] = syncSet
-  return syncSet, nil
 end
 
 ---Disconnect every registration and close every SyncSet; the scope stays
@@ -5556,6 +4903,100 @@ function FacadeMethods.GetStatistics(self)
   return copy
 end
 
+-- Parts ----------------------------------------------------------------------
+--
+-- Revision 11 splits CommKit into this core and two optional part files
+-- (docs/decisions/0001-kit-core-and-parts.md): `CommKit-SyncSet.lua` and
+-- `CommKit-ChatThrottle.lua`. The core publishes in its state what a part
+-- needs and nothing else:
+--
+--   parts           part name to `{ revision = n }`, written by each part;
+--   helpers         the core functions a part calls, read through this table
+--                   at call time, so a newer core loaded after a part serves
+--                   it; entries are only ever added;
+--   partInterface   the generation of `helpers`, raised only when an entry
+--                   has to change meaning (a part checks it at load);
+--   transports      the senders of pipes that are not addon messages, filled
+--                   by the ChatThrottle part (see `transmit`).
+--
+-- Each member a part provides stays on the facade and the prototypes when the
+-- part is not loaded, as a stub that raises at the caller's line with the file
+-- to embed, so the public-surface check of every other copy still accepts the
+-- facade. A part's members are never replaced by stubs once it is installed.
+
+-- The part machinery shares one table: the main chunk has few locals to
+-- spare (INTERNALS.md, "The local-variable budget").
+local Parts = {}
+
+Parts.INTERFACE = 1
+
+-- Each part's members, by the prototype that carries them.
+Parts.MEMBERS = {
+  SyncSet = {
+    file = "CommKit-SyncSet",
+    scope = { "SyncSet" },
+    syncSet = SURFACE.syncSet,
+  },
+  ChatThrottle = {
+    file = "CommKit-ChatThrottle",
+    scope = { "SendChat", "SendBattleNet", "RegisterBattleNet" },
+  },
+}
+
+---The error a member of a part that is not loaded raises.
+---@param label string the qualified member, as a caller wrote it
+---@param partName string
+---@return string
+function Parts.missingMessage(label, partName)
+  local file = Parts.MEMBERS[partName].file
+  return label
+    .. " is in CommKit's "
+    .. partName
+    .. " part, which is not loaded: add commKit\\parts\\"
+    .. file
+    .. ".lua to embeds.xml after commKit\\CommKit.lua"
+end
+
+---Install the stubs of every part that is not installed. A scope member
+---answers a closed scope with `nil, "closed"` first, as the real one does.
+function Parts.installStubs()
+  local installed = rawget(state, "parts")
+  for partName, members in pairs(Parts.MEMBERS) do
+    if rawget(installed, partName) == nil then
+      for index = 1, #members.scope do
+        local name = members.scope[index]
+        local label = "CommKit.Scope:" .. name
+        rawset(Scope, name, function(self)
+          validateScope(self, label, 3)
+          if rawget(self, "_closed") then
+            return nil, REASON.closed
+          end
+          error(Parts.missingMessage(label, partName), 2)
+        end)
+      end
+      local syncSetMembers = members.syncSet or {}
+      for index = 1, #syncSetMembers do
+        local label = "CommKit.SyncSet:" .. syncSetMembers[index]
+        rawset(SyncSetPrototype, syncSetMembers[index], function()
+          error(Parts.missingMessage(label, partName), 2)
+        end)
+      end
+    end
+  end
+end
+
+---Whether the named part is installed.
+---@param self CommKit
+---@param partName string
+---@return boolean
+function FacadeMethods.HasPart(self, partName)
+  validateFacade(self, "CommKit:HasPart", 3)
+  if type(partName) ~= "string" or isSecret(partName) then
+    error("CommKit:HasPart partName must be a string", 2)
+  end
+  return rawget(rawget(state, "parts"), partName) ~= nil
+end
+
 -- Commit ---------------------------------------------------------------------
 
 ---Copy every function of `methods` onto `prototype`.
@@ -5569,7 +5010,6 @@ end
 
 commitMethods(Connection, ConnectionMethods)
 commitMethods(SendHandle, HandleMethods)
-commitMethods(SyncSetPrototype, SyncSetMethods)
 commitMethods(Scope, ScopeMethods)
 commitMethods(CommKit, FacadeMethods)
 
@@ -5596,7 +5036,6 @@ rawset(dispatch, "onRosterUpdate", onRosterUpdate)
 rawset(dispatch, "onEnteringWorld", onEnteringWorld)
 rawset(dispatch, "chargeOutsideAddon", chargeOutsideAddon)
 rawset(dispatch, "chargeOutsideChat", chargeOutsideChat)
-rawset(dispatch, "receiveSync", receiveSync)
 rawset(dispatch, "closeAddonScopesAtLogout", LogoutClose.closeAtLogout)
 
 -- The trampolines are created once per session and handed to EventKit,
@@ -5644,6 +5083,69 @@ for name, trampoline in pairs({
   end
 end
 
+-- What a part calls, by name (see "Parts"). Every core function a part uses is
+-- here; a part keeps no copy of any of them.
+for name, helper in pairs({
+  now = now,
+  count = count,
+  isSecret = isSecret,
+  reportError = reportError,
+  findOptional = findOptional,
+  requireFound = requireFound,
+  validateFacade = validateFacade,
+  validateReceiver = validateReceiver,
+  validateScope = validateScope,
+  validateBoundedString = validateBoundedString,
+  validateCallback = validateCallback,
+  validateOptionalCallback = validateOptionalCallback,
+  validateKeys = validateKeys,
+  validateObjectLimit = validateObjectLimit,
+  reachedLimit = reachedLimit,
+  enqueueSend = enqueueSend,
+  registerInScope = registerInScope,
+  closeSyncSet = closeSyncSet,
+  -- The client functions the ChatThrottle part sends with, or `nil` where the
+  -- client lacks them; each guarded here, where the flavour gate sees it.
+  chatSender = function()
+    local send = readChatFunction("SendChatMessage")
+    if type(send) ~= "function" then
+      return nil
+    end
+    return send
+  end,
+  battleNetApi = function()
+    local battleNet = readHostTable("C_BattleNet")
+    if type(battleNet) ~= "table" or type(battleNet.SendGameData) ~= "function" then
+      return nil
+    end
+    return battleNet
+  end,
+  targetFits = SendPath.targetFits,
+  -- The queue and budget primitives the ChatThrottle part builds its two
+  -- send paths from.
+  acquireRecord = acquireRecord,
+  enqueueRecord = enqueueRecord,
+  declaredBytes = declaredBytes,
+  runInline = runInline,
+  wakeDriver = wakeDriver,
+  sampleFrameRate = sampleFrameRate,
+  installOutsideHooks = installOutsideHooks,
+  refill = refill,
+  currentMode = currentMode,
+  deferCallback = deferCallback,
+  armDriverRun = armDriverRun,
+  chargeOutsideAddon = chargeOutsideAddon,
+  getEventScope = getEventScope,
+  refuse = SendPath.refuse,
+  newSignal = function()
+    return SignalKit:New()
+  end,
+}) do
+  rawset(rawget(state, "helpers"), name, helper)
+end
+rawset(state, "partInterface", Parts.INTERFACE)
+Parts.installStubs()
+
 rawset(state, "runtimeRevision", IMPLEMENTATION_REVISION)
 
 if not validatePublicSurface(CommKit) or not validateCurrentState(CommKit) then
@@ -5652,6 +5154,51 @@ end
 
 if previousRevision ~= nil then
   LogoutClose.arrangeInherited()
+end
+
+-- A state a whole-file revision (10 or older) built may hold SyncSets. The part
+-- that serves them, when an addon embeds it, loads right after this file, so
+-- the decision waits for the next frame: by then every file of every addon
+-- loaded so far has run.
+-- Built only on such a takeover, so a session that never meets an older copy
+-- holds none of it.
+if inheritedWholeFile and type(rawget(dispatch, "receiveSync")) == "function" then
+  ---The next frame after taking over from a whole-file revision: when the
+  ---SyncSet part is still not installed, its code is not loaded anywhere in the
+  ---session. The SyncSets of addon scopes are closed; a SyncSet of a manual
+  ---scope, which the core cannot enumerate, stops receiving and answering, its
+  ---methods raise with the file to embed, and its scope still closes it. The
+  ---first time one of those receives anything, that is reported once.
+  rawset(dispatch, "checkInheritedSyncSets", function()
+    if rawget(rawget(state, "parts"), "SyncSet") ~= nil then
+      return
+    end
+    local closed = 0
+    for _, addonScope in next, addonScopes do
+      local syncSets = rawget(addonScope, "_syncSets")
+      while #syncSets > 0 do
+        closeSyncSet(syncSets[#syncSets])
+        closed = closed + 1
+      end
+    end
+    local message = Parts.missingMessage("CommKit.Scope:SyncSet", "SyncSet")
+    local reported = false
+    local function reportOnce()
+      if not reported then
+        reported = true
+        reportError(
+          "MoltenCodes CommKit: a SyncSet made by an older copy cannot run here. " .. message
+        )
+      end
+    end
+    rawset(dispatch, "receiveSync", reportOnce)
+    if closed > 0 then
+      reportOnce()
+    end
+  end)
+  getTimerScope():After(0, function()
+    rawget(dispatch, "checkInheritedSyncSets")()
+  end)
 end
 
 return CommKit
