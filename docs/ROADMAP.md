@@ -1971,7 +1971,7 @@ code and treated as agreed as under decision 15.
 - [ ] **settingsKit** spec profiles, with OptionsKit's `ProfileOptions` choice.
 - [ ] **widgetKit** virtualised lists (`ScrollList`).
 - [x] **rangeKit** — unit range estimates (2026-11-15; client suite not run).
-- [ ] **unitFrameKit** — the unit frame shown for a unit.
+- [x] **unitFrameKit** — the unit frame shown for a unit (2026-11-15; client suite not run).
 - [ ] **codecKit** native DEFLATE through `C_EncodingUtil`.
 
 **clientKit deprecation warnings (W13)** — an addition to facade `ClientKit`
@@ -2504,7 +2504,21 @@ copy; spells absent from a flavour or from the player's spellbook drop out:
 8. Docs: README (with the migration from LibGetFrame-1.0), API.md (the
    ranking, the kinds and their cited patterns, the measured scan cost),
    CHANGELOG, tests/README; EMBEDDING rows; ARCHITECTURE's package list.
-9. Status: recorded 2026-11-15 under core decision 16; code follows.
+9. Status: implemented 2026-11-15 under core decision 16, 0.1.0, revision
+   1, 65 specs; the client suite (`tests/client/MoltenCodesTest_UnitFrameKit`)
+   is written and has not been run in a client. Third-party patterns shipped
+   only where checked in the addon's own source: ElvUI, Cell, Grid2 and
+   Shadowed Unit Frames (commits cited in `docs/API.md`); the rest of
+   LibGetFrame's list is left out, and those frames are found without a
+   kind. Deviations: a query allocates one string for a frame with a
+   `unitsuffix` attribute; a scan reads up to three attributes per button
+   (`unit`, `unitsuffix`, `type`, to skip secure aura buttons); a frame
+   matching a caller's `priorities` answers whatever its kind, and `ignore`
+   wins over `priorities`; a scan that raises is dropped and reported once;
+   `IsScanning` is also true while a scan waits to start; the client suite
+   accepts whichever Blizzard party style is shown rather than switching it.
+   The full-scan cost is to be measured in the benchmark harness before the
+   first release.
 
 **codecKit native DEFLATE** — a change inside facade `CodecKit`
 

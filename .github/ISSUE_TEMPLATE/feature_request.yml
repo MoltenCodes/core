@@ -62,6 +62,7 @@ body:
         - timerKit
         - toastKit
         - tooltipKit
+        - unitFrameKit
         - widgetKit
         - Not sure
     validations:

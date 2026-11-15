@@ -68,6 +68,7 @@ Current package entry points:
 - [`WidgetKit`](../packages/widgetKit/README.md) — pooled, versioned widgets, explicit layouts, anchors and an options renderer.
 - [`EditModeKit`](../packages/editModeKit/README.md) — Edit Mode for addon frames: a labelled overlay that drags each frame, positions saved per Edit Mode layout.
 - [`RangeKit`](../packages/rangeKit/README.md) — unit range estimates: the distance to a unit bracketed in yards from the player's spells and interact distances.
+- [`UnitFrameKit`](../packages/unitFrameKit/README.md) — the unit frame shown for a unit token, Blizzard's or another addon's: a bounded scan, ranked matches, change notifications, nameplates.
 - [`GlowKit`](../packages/glowKit/README.md) — pixel and pulse glows on pooled overlays, keyed per frame.
 - [`BindingKit`](../packages/bindingKit/README.md) — override key bindings in named scopes, applied after combat when set during it.
 - [`ToastKit`](../packages/toastKit/README.md) — short notifications that stack, hold under the cursor and fade out.

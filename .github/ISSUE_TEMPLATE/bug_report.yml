@@ -86,6 +86,7 @@ body:
         - timerKit
         - toastKit
         - tooltipKit
+        - unitFrameKit
         - widgetKit
         - Not sure
         - None (tooling or documentation)

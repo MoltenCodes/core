@@ -162,6 +162,10 @@
   - changed-files:
       - any-glob-to-any-file: "packages/tooltipKit/**"
 
+"kit: unitFrameKit":
+  - changed-files:
+      - any-glob-to-any-file: "packages/unitFrameKit/**"
+
 "kit: widgetKit":
   - changed-files:
       - any-glob-to-any-file: "packages/widgetKit/**"
