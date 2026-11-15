@@ -202,10 +202,18 @@ A failure message never prints a secret and never quotes a long string:
 |---|---|
 | a secret (`issecretvalue`) | `<secret value>` |
 | `nil`, a boolean, a number | `nil`, `boolean true`, `number 42` |
-| a string | `string "..."`, at most 64 bytes, then `... (N bytes)`; control characters escaped |
+| a string | `string "..."`, at most 64 bytes, then `... (N bytes)`; quoted with `%q`, so `"`, `\`, a carriage return (`\r`) and NUL (`\000`) are escaped, and a newline is written `\n`; other control bytes, a tab among them, are shown raw |
 | a table, function, userdata, thread | its type alone; `tostring` is never called, so no `__tostring` runs |
 
-A comparison that a secret makes impossible — `ToBe` or `ToEqual` with a secret anywhere, `ToBeTruthy` on a secret boolean, `ToRaise` with a pattern when the function raised a secret — **fails even under `Not`**, with `expected <secret value>: a secret value cannot be compared`: negation must not turn "could not look" into a pass. A secret of another type is truthy and not `nil`, because its type is not secret.
+A comparison that a secret makes impossible **fails even under `Not`**: negation must not turn "could not look" into a pass. The messages:
+
+| Case | Message |
+|---|---|
+| `ToBe` or `ToEqual`, a secret anywhere | `expected <actual>: a secret value cannot be compared`, where `<actual>` describes the value under test (`<secret value>` when it is the secret, `number 1` when only `expected` is); `ToEqual` appends ` at <path>` for a secret inside a table |
+| `ToBeTruthy` on a secret boolean | `expected <secret value>: a secret boolean cannot be tested` |
+| `ToRaise` with a pattern, the function raised a secret | `expected function: it raised a secret value, which cannot be matched` |
+
+A secret of another type is truthy and not `nil`, because its type is not secret.
 
 `ToEqual` stops at `maxEqualDepth` levels, 16 by default (`tables nested deeper than 16 levels`), which also ends a cyclic structure. `ToRaise` calls the function with no arguments under `pcall`; without a pattern any error passes, including `nil` and `false`. `ToRaise` on something that is not a function fails even under `Not`.
 

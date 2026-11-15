@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.8 — 2026-11-15
+
+- Documentation: `docs/API.md` "Safe descriptions" says exactly what a quoted string escapes. It is quoted with `%q` and its newlines rewritten as `\n`, so `"`, `\`, a carriage return and NUL are escaped while a tab and the other control bytes are shown raw on Lua 5.1.5 (it said "control characters escaped"). The same section lists every message of a comparison a secret makes impossible: `ToBe` and `ToEqual` describe the value under test, so a secret only in `expected` reads `expected number 1: a secret value cannot be compared`, `ToEqual` appends the path of a nested secret, `ToBeTruthy` says `a secret boolean cannot be tested`, and `ToRaise` says `it raised a secret value, which cannot be matched` (it gave one message for all of them). Documentation only: the implementation revision is unchanged.
+
 ## 0.1.7 — 2026-09-24
 
 - Fixed: `ctx:WaitUntil` tested its predicate's answer as a boolean, and on the Retail client a boolean test on a secret raises inside TestKit (measured on 12.1.0 b69933, 2026-09-24: "attempt to perform boolean test on ... a secret boolean value"). The answer is now read by its type first. A secret boolean answer fails the test at the line that called `WaitUntil` with `TestKit.Context:WaitUntil predicate returned a secret boolean, which cannot be tested`, and the timeout timer is cancelled; a secret of any other type is truthy, as `ToBeTruthy` already treats it. `docs/API.md` documents it under `ctx:WaitUntil`.
