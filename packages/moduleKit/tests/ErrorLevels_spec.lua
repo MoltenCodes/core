@@ -155,6 +155,30 @@ describe("ModuleKit error levels", function()
     assert.are.equal(16, ModuleKit:GetLimits().maxRequiredAddons)
   end)
 
+  it("names a table key by its type at the caller without running its __tostring", function()
+    local ran = false
+    local key = setmetatable({}, {
+      __tostring = function()
+        ran = true
+        error("foreign __tostring ran", 0)
+      end,
+    })
+    expectCallerError('ModuleKit module definition contains unknown field "<table>"', function()
+      addon:CreateModule("UI", { [key] = true })
+    end)
+    expectCallerError(
+      'ModuleKit.Addon:ProvideValue options contains unknown field "<table>"',
+      function()
+        addon:ProvideValue("Config", {}, { [key] = true })
+      end
+    )
+    expectCallerError("ModuleKit:SetLimits limits.<table> is not a recognised limit", function()
+      ModuleKit:SetLimits({ [key] = 4 })
+    end)
+    assert.is_false(ran)
+    assert.are.equal(16, ModuleKit:GetLimits().maxRequiredAddons)
+  end)
+
   it("names the first unknown option in sorted order", function()
     expectCallerError(
       'ModuleKit.Addon:ProvideValue options contains unknown field "alpha"',

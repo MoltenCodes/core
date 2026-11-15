@@ -35,7 +35,7 @@
 
 local PACKAGE_NAME = "moduleKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 20
+local IMPLEMENTATION_REVISION = 21
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_LIFECYCLE_API = 1
 local STATE_SCHEMA = 1
@@ -352,6 +352,25 @@ local function isSecretValue(value)
     return false
   end
   return nativeIsSecretValue(value) and true or false
+end
+
+---Name a caller's table key in a refusal without running its `__tostring`.
+---A string is shown as written and a number or boolean through `tostring`,
+---which runs no foreign code for those types; anything else is named by its
+---type, `<table>`, because a table's or userdata's `__tostring` is the
+---caller's code, which could raise or answer a secret and so lose the real
+---refusal. Callers refuse a secret key before naming it.
+---@param key any a table key, which can never be `nil`
+---@return string
+local function describeKey(key)
+  local kind = type(key)
+  if kind == "string" then
+    return key
+  end
+  if kind == "number" or kind == "boolean" then
+    return tostring(key)
+  end
+  return "<" .. kind .. ">"
 end
 
 ---Whether `value` is an exact integer of one or more. `nan` and both
@@ -1513,7 +1532,7 @@ local function readProvideOptions(options, methodName, level)
     end
     if key ~= "implements" then
       unknown = unknown or {}
-      unknown[#unknown + 1] = tostring(key)
+      unknown[#unknown + 1] = describeKey(key)
     end
   end
   if unknown ~= nil then
@@ -3298,7 +3317,7 @@ local function applyDefinition(module, definition)
       error("ModuleKit module definition field names must not be secret values", 3)
     end
     if type(key) ~= "string" or DEFINITION_FIELDS[key] ~= true then
-      unknown[#unknown + 1] = tostring(key)
+      unknown[#unknown + 1] = describeKey(key)
     end
   end
   if #unknown > 0 then
@@ -4029,7 +4048,10 @@ local function validateLimitUpdate(limits, level)
       error("ModuleKit:SetLimits limit names must not be secret values", level)
     end
     if type(key) ~= "string" or KNOWN_LIMITS[key] ~= true then
-      error("ModuleKit:SetLimits limits." .. tostring(key) .. " is not a recognised limit", level)
+      error(
+        "ModuleKit:SetLimits limits." .. describeKey(key) .. " is not a recognised limit",
+        level
+      )
     end
     local value = rawget(limits, key)
     if isSecretValue(value) then

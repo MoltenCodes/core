@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.8.8 — 2026-11-15
+
+- Fixed: an unknown `CreateModule` definition field, an unknown `Provide*` option field, or an unrecognised `SetLimits` key, that is a table (or any other value with a `__tostring` metamethod) was passed to `tostring` to build the refusal. That ran the caller's `__tostring` inside ModuleKit, after the secret-key check: foreign code that could raise, or answer a secret value on Retail, and so replace the real refusal with its own error. A new `describeKey` names such a key by its type instead: `ModuleKit module definition contains unknown field "<table>"`, `ModuleKit.Addon:ProvideValue options contains unknown field "<table>"`, `ModuleKit:SetLimits limits.<table> is not a recognised limit`. A string key is shown as written and a number or boolean as before (`limits.1`), so every documented message for those is unchanged. `docs/API.md` *Error messages* states the form.
+- Implementation revision 21. No state changed: an upgrade over revision 20 replaces the functions and keeps every container, module, provider, policy and limit; the previous-revision upgrade spec checks the new message on the upgraded facade.
+- Specs: 244 → 245. `ErrorLevels_spec.lua` gives `CreateModule`, `ProvideValue` and `SetLimits` a table key whose `__tostring` raises and records that it ran, and checks that each real refusal is raised at the caller's line and that `__tostring` never ran.
+
+## 0.8.7 — 2026-11-15
+
+- `docs/API.md` "Implements" described the refusals of the list form in prose only; it now gives their messages (`must be a dense array of method names or a SchemaKit schema`, `must name at least one method`, `entries must be non-empty strings`, `names "<name>" twice`, `must be a SchemaKit node or sealed schema`) and the label each one starts with.
+- `docs/API.md` "Argument and state errors" adds the five load-time errors and the four errors raised for damaged private state, none of which it named.
+- `docs/API.md` documents the facade constants `ModuleKit.API` and `ModuleKit.REVISION` in the public surface summary.
+- `README.md` gains a "Moving from AceAddon-3.0" table (`NewAddon`, `NewModule`, the three hooks, mixins, `GetModule`, `IterateModules`, `EnableModule`, `SetDefaultModuleState`, ordering); it had no migration section.
+- Documentation only: the implementation revision stays 20.
+
 ## 0.8.6 — 2026-11-15
 
 - Fixed: a refused `Inject(map)` stored the aliases sorted before the refused target, and a refused first `Inject` left the module an empty injection specification of its own. `docs/API.md` promises a refusal "before anything changes": every target of a map is now checked before the first alias is stored, and the specification is created only when an alias is stored.

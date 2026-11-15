@@ -61,6 +61,11 @@ Each module exposes:
 The package facade also exposes `ModuleKit.UNBOUNDED`, `ModuleKit:SetLimits(limits)`
 and `ModuleKit:GetLimits()`; see [Limits](#limits).
 
+The facade also carries two read-only constants: `ModuleKit.API`, the API
+generation (`1`), and `ModuleKit.REVISION`, the implementation revision of the
+copy that is active in the session (`21` for this one). A newer embedded copy
+replaces `REVISION` when it upgrades the facade in place.
+
 Each module also carries one field:
 
 | Field | Purpose |
@@ -489,6 +494,20 @@ looked up as `value[name]`, so a method inherited through a metatable counts,
 and must be a function. An empty list, a name listed twice, an entry that is
 not a non-empty string, a sparse array, a keyed table or a non-table value is
 refused at the `Provide*` line, as is an options table with any other field.
+The messages name the argument, `<label>` being
+`ModuleKit.Addon:<Method> options.implements` for a provider and
+`ModuleKit module definition implements` for a module definition:
+
+```text
+<label> must be a dense array of method names or a SchemaKit schema
+<label> must name at least one method
+<label> entries must be non-empty strings
+<label> names "<name>" twice
+<label> must be a SchemaKit node or sealed schema
+```
+
+The last is raised for a table that presents SchemaKit's metatable name but
+cannot be sealed.
 
 **When the check runs.** Exactly once per value ModuleKit hands out, and before
 that value is cached:
@@ -620,7 +639,7 @@ at the `CreateModule` line. Messages name the public method in full.
 | `CreateModule`, `GetModule`, `HasModule` | `ModuleKit.Addon:<Method> name must be a non-empty string` |
 | `CreateModule` | `ModuleKit.Addon:CreateModule name "<name>" is already in use` (a module or a provider) |
 | `CreateModule` | `ModuleKit.Addon:CreateModule definition must be a table when provided` |
-| `CreateModule` | `ModuleKit module definition contains unknown field "<field>"` (the first unknown field in sorted order) |
+| `CreateModule` | `ModuleKit module definition contains unknown field "<field>"` (the first unknown field in sorted order; a field that is not a string, number or boolean is named by its type, `"<table>"`, and its `__tostring` never runs) |
 | `CreateModule` | `ModuleKit module definition <field> must be a dense array` |
 | `CreateModule` | `ModuleKit module definition <hook> must be a function` |
 | `CreateModule` | `ModuleKit module definition requiresAddons entries must be non-empty strings`, `... must name other addons, not "<addon>" itself`, `... must list at most <n> addons (ModuleKit:SetLimits maxRequiredAddons)` |
@@ -629,7 +648,7 @@ at the `CreateModule` line. Messages name the public method in full.
 | `DependsOn`, `OptionalDependency`, `Before`, `After` (and the matching definition lists) | `ModuleKit.Module:<Method> moduleName must be a non-empty string`; `ModuleKit module "<name>" cannot depend/order against itself` |
 | `DependsOn`, `OptionalDependency`, `Before`, `After`, `Inject` | `ModuleKit.Module:<Method> cannot change module "<name>" after initialization` |
 | `Inject` (and the definition's `inject`) | `ModuleKit.Module:Inject map aliases must be non-empty strings`, `ModuleKit.Module:Inject alias must be a non-empty string`, `ModuleKit.Module:Inject target must be a non-empty string` |
-| `Provide*` | `ModuleKit.Addon:<Method> providerName must be a non-empty string`, `... name "<name>" is already in use`, `... factory must be a function`, `... options must be a table when provided`, `... options contains unknown field "<field>"` (first in sorted order); the `implements` refusals are listed under [Implements](#implements) |
+| `Provide*` | `ModuleKit.Addon:<Method> providerName must be a non-empty string`, `... name "<name>" is already in use`, `... factory must be a function`, `... options must be a table when provided`, `... options contains unknown field "<field>"` (first in sorted order; a table or other non-string, non-number, non-boolean field is named by its type, `"<table>"`); the `implements` refusals are listed under [Implements](#implements) |
 | `ProvideValue` | `ModuleKit.Addon:ProvideValue value must not be nil` |
 | `Resolve` | `ModuleKit.Addon:Resolve providerName must be a non-empty string` (`ModuleKit.Module:Resolve ...` for the module form), `ModuleKit.Addon:Resolve requestingModule must be a module owned by this addon`, `ModuleKit injectable "<name>" does not exist`, `ModuleKit module-scoped provider "<name>" requires a requesting module`, `ModuleKit provider "<name>" factory returned nil`, `ModuleKit provider resolution cycle: A -> B -> A` |
 | `Initialize`, `Enable`, `Activate` | `ModuleKit strict policy: module "<name>" requires initialized dependency "<dependency>"` (`enabled` for `Enable`); `ModuleKit dependency cycle detected while initializing "<name>"` (`enabling`); `ModuleKit module "<name>" cannot be enabled from state "<state>"`; the halted refusals under [Halted addons](#halted-addons) |
@@ -637,7 +656,7 @@ at the `CreateModule` line. Messages name the public method in full.
 | graph operations | `ModuleKit module "<name>" requires missing dependency "<dependency>"`, `ModuleKit dependency cycle detected: A -> B -> A` |
 | after shutdown | `<Method> cannot run after addon shutdown`, for example `ModuleKit.Addon:ProvideValue cannot run after addon shutdown` or `ModuleKit.Module:Enable cannot run after addon shutdown` |
 | reading `module.scope.<Field>` outside the enable window | `ModuleKit module "<name>" scope.<Field> is available only while the module is enabling or enabled` |
-| `SetLimits` | `ModuleKit:SetLimits limits must be a table`; `ModuleKit:SetLimits limits.<name> is not a recognised limit` (a name that is not a string is shown with `tostring`, for example `limits.1`); `ModuleKit:SetLimits limits.<name> must be a positive integer or ModuleKit.UNBOUNDED`; the LifecycleKit ceiling refusals under [Limits](#limits). Nothing changes on a refusal. |
+| `SetLimits` | `ModuleKit:SetLimits limits must be a table`; `ModuleKit:SetLimits limits.<name> is not a recognised limit` (a number or boolean name is shown as `tostring` gives it, for example `limits.1`; any other name that is not a string is named by its type, `limits.<table>`, so its `__tostring` never runs); `ModuleKit:SetLimits limits.<name> must be a positive integer or ModuleKit.UNBOUNDED`; the LifecycleKit ceiling refusals under [Limits](#limits). Nothing changes on a refusal. |
 | `SetLimits`, `GetLimits` | `ModuleKit:SetLimits must be called on the ModuleKit facade; use ModuleKit:SetLimits(...)`, `ModuleKit:GetLimits must be called on the ModuleKit facade; use ModuleKit:GetLimits()` |
 
 A secret value (Retail 12.0.0 and later) cannot be compared, and a secret key
@@ -666,6 +685,17 @@ as a method list, since it cannot be a SchemaKit schema.
 A provided value, an injected value and a factory's result are never compared,
 so a secret one is accepted: absence is recognised by type, never by comparing
 with `nil`. On a host without `issecretvalue` nothing is secret.
+
+Loading `ModuleKit.lua` raises `MoltenCodes ModuleKit requires Registry API 2
+to be loaded first`, `MoltenCodes ModuleKit requires a valid Registry API 2
+facade`, `MoltenCodes ModuleKit requires LifecycleKit API 1 to be loaded
+first`, `MoltenCodes ModuleKit requires a valid LifecycleKit API 1 facade`, or
+`MoltenCodes ModuleKit package state is corrupted or incomplete`. Private state
+found damaged later raises
+`MoltenCodes ModuleKit addon state is corrupted`, `MoltenCodes ModuleKit addon
+lifecycle state is corrupted`, `MoltenCodes ModuleKit lifecycle subscription
+state is corrupted` or `MoltenCodes ModuleKit runtime dispatch is corrupted or
+incomplete`.
 
 A hook field that is set but is not a function is not refused when it is
 assigned; the phase that would call it records `ModuleKit module "<name>"

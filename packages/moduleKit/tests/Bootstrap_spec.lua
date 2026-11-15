@@ -581,5 +581,18 @@ describe("ModuleKit upgrade from the previous revision", function()
     assert.are.equal(CURRENT_REVISION, upgraded.REVISION)
     assert.are.equal("strict", addon:GetDependencyPolicy())
     assert.are.equal(6, upgraded:GetLimits().maxRequiredAddons)
+    -- Revision 21 names a table limit key by its type, never by `__tostring`.
+    local key = setmetatable({}, {
+      __tostring = function()
+        error("foreign __tostring ran", 0)
+      end,
+    })
+    TestEnv.expectCallerError(
+      "ModuleKit:SetLimits limits.<table> is not a recognised limit",
+      function()
+        upgraded:SetLimits({ [key] = 1 })
+      end
+    )
+    assert.are.equal(6, upgraded:GetLimits().maxRequiredAddons)
   end)
 end)
