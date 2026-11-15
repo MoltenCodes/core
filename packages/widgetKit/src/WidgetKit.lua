@@ -56,7 +56,7 @@
 
 local PACKAGE_NAME = "widgetKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 9
+local IMPLEMENTATION_REVISION = 10
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_POOLKIT_API = 1
 local REQUIRED_SIGNALKIT_API = 1
@@ -173,11 +173,11 @@ local BASE_TYPE_VERSIONS = {
   ScrollFrame = 1,
   Label = 3,
   Button = 3,
-  CheckBox = 3,
-  Slider = 3,
-  EditBox = 3,
-  Dropdown = 3,
-  ColorPicker = 3,
+  CheckBox = 4,
+  Slider = 4,
+  EditBox = 4,
+  Dropdown = 4,
+  ColorPicker = 4,
   Heading = 3,
   Spacer = 1,
 }
@@ -1149,9 +1149,6 @@ end
 ---@param child WidgetKit.Widget
 local function detachFromParent(record, child)
   local parent = record.parent
-  if parent == nil then
-    return
-  end
   record.parent = nil
   local parentRecord = records[parent]
   if parentRecord == nil then
@@ -1389,7 +1386,13 @@ end
 ---@param index integer?
 function WidgetBase:GetPoint(index)
   activeRecord(self, "WidgetKit.Widget:GetPoint", 3)
-  return self.frame:GetPoint(index or 1)
+  -- Tested with `type`, not `index or 1`: a truth test of a secret raises
+  -- here, inside WidgetKit, instead of at the caller.
+  if type(index) == "nil" then
+    index = 1
+  end
+  refuseSecret(index, "WidgetKit.Widget:GetPoint index", 3)
+  return self.frame:GetPoint(index)
 end
 
 ---@return integer
@@ -2524,6 +2527,12 @@ end
 ---@return true
 local function setFocus(self, widget)
   validateFacade(self, "WidgetKit:SetFocus", 3)
+  -- The widget is an argument here, not the receiver: worded as `Release`
+  -- words it.
+  local record = type(widget) == "table" and records[widget] or nil
+  if record == nil then
+    error("WidgetKit:SetFocus widget must be a WidgetKit widget", 2)
+  end
   activeRecord(widget, "WidgetKit:SetFocus", 3)
   local current = rawget(state, "focus")
   if current == widget then
@@ -3318,7 +3327,7 @@ function BindingPrototype:OnMoved(callback)
   return self._signal:Connect(callback)
 end
 
----Save what is pending, stop listening and forget the frame.
+---Save what is pending and stop listening.
 ---@return boolean released `false` when it was already released
 function BindingPrototype:Release()
   validateBinding(self, "WidgetKit.Binding:Release", 3)
@@ -3565,23 +3574,34 @@ local function newTopLabel(frame)
   return label
 end
 
----A `SetLabel` shared by the widgets whose label is `widget.labelText`.
----@param text any
----@param options WidgetKit.TextOptions?
-local function setWidgetLabel(self, text, options)
-  local value, secret = checkText(self, text, options, "WidgetKit.Widget:SetLabel", 3)
-  showText(self, "labelText", value, secret)
-end
+---Build the `SetLabel` and `GetLabel` of a widget type whose label is
+---`widget.labelText`. Built once per type, so their errors name the type as
+---every other type method does (`WidgetKit CheckBox:SetLabel`).
+---@param typeName string
+---@return fun(self: table, text: any, options: WidgetKit.TextOptions?) setLabel
+---@return fun(self: table): any getLabel
+local function newLabelMethods(typeName)
+  local setLabelName = "WidgetKit " .. typeName .. ":SetLabel"
+  local getLabelName = "WidgetKit " .. typeName .. ":GetLabel"
 
----A `GetLabel` shared by the same widgets.
----@return any
-local function getWidgetLabel(self)
-  activeRecord(self, "WidgetKit.Widget:GetLabel", 3)
-  local text = self.labelText:GetText()
-  if type(text) == "nil" then
-    return ""
+  ---@param text any
+  ---@param options WidgetKit.TextOptions?
+  local function setLabel(self, text, options)
+    local value, secret = checkText(self, text, options, setLabelName, 3)
+    showText(self, "labelText", value, secret)
   end
-  return text
+
+  ---@return any
+  local function getLabel(self)
+    activeRecord(self, getLabelName, 3)
+    local text = self.labelText:GetText()
+    if type(text) == "nil" then
+      return ""
+    end
+    return text
+  end
+
+  return setLabel, getLabel
 end
 
 -- The base widget constructors, each defined in its own `do` block below so
@@ -4367,6 +4387,8 @@ end
 -- Widget: CheckBox -----------------------------------------------------------
 
 do
+  local checkBoxSetLabel, checkBoxGetLabel = newLabelMethods("CheckBox")
+
   ---Show `value` on the check button: checked, unchecked, or the third state.
   ---@param widget table
   local function checkBoxShowValue(widget)
@@ -4466,8 +4488,8 @@ do
       SetValue = checkBoxSetValue,
       GetValue = checkBoxGetValue,
       SetTriState = checkBoxSetTriState,
-      SetLabel = setWidgetLabel,
-      GetLabel = getWidgetLabel,
+      SetLabel = checkBoxSetLabel,
+      GetLabel = checkBoxGetLabel,
       SetDisabled = checkBoxSetDisabled,
     }
 
@@ -4495,6 +4517,8 @@ end
 -- Widget: Slider -------------------------------------------------------------
 
 do
+  local sliderSetLabel, sliderGetLabel = newLabelMethods("Slider")
+
   ---Snap `value` to the widget's step and clamp it to its range.
   ---@param widget table
   ---@param value number
@@ -4546,7 +4570,11 @@ do
     if minimum > maximum then
       error("WidgetKit Slider:SetSliderValues minimum must not be greater than maximum", 2)
     end
-    step = step or 0
+    -- Tested with `type`, not `step or 0`: a truth test of a secret raises
+    -- here, inside WidgetKit, before `validateNumber` can refuse it.
+    if type(step) == "nil" then
+      step = 0
+    end
     validateNumber(step, "WidgetKit Slider:SetSliderValues step", 3)
     if step < 0 then
       error("WidgetKit Slider:SetSliderValues step must not be negative", 2)
@@ -4689,8 +4717,8 @@ do
       SetValue = sliderSetValue,
       GetValue = sliderGetValue,
       SetIsPercent = sliderSetIsPercent,
-      SetLabel = setWidgetLabel,
-      GetLabel = getWidgetLabel,
+      SetLabel = sliderSetLabel,
+      GetLabel = sliderGetLabel,
       SetDisabled = sliderSetDisabled,
     }
 
@@ -4733,6 +4761,8 @@ end
 -- Widget: EditBox ------------------------------------------------------------
 
 do
+  local editBoxSetLabel, editBoxGetLabel = newLabelMethods("EditBox")
+
   local EDIT_LINE_HEIGHT = 14
 
   ---The edit box currently in use: the multi-line one or the single-line one.
@@ -4943,8 +4973,8 @@ do
       SetMultiLine = editBoxSetMultiLine,
       IsMultiLine = editBoxIsMultiLine,
       SetMaxLetters = editBoxSetMaxLetters,
-      SetLabel = setWidgetLabel,
-      GetLabel = getWidgetLabel,
+      SetLabel = editBoxSetLabel,
+      GetLabel = editBoxGetLabel,
       SetDisabled = editBoxSetDisabled,
       SetFocus = editBoxSetFocus,
     }
@@ -5054,6 +5084,8 @@ end
 -- Widget: Dropdown -----------------------------------------------------------
 
 do --
+  local dropdownSetLabel, dropdownGetLabel = newLabelMethods("Dropdown")
+
   -- A button showing the selected entry, and a list frame of row buttons below
   -- it. Nothing takes the keyboard. The list keeps a fixed number of rows,
   -- created on first open and reused for the widget's whole life; entries past
@@ -5409,8 +5441,8 @@ do --
       Close = dropdownClose,
       IsOpen = dropdownIsOpen,
       PickIndex = dropdownPickIndex,
-      SetLabel = setWidgetLabel,
-      GetLabel = getWidgetLabel,
+      SetLabel = dropdownSetLabel,
+      GetLabel = dropdownGetLabel,
       SetDisabled = dropdownSetDisabled,
     }
 
@@ -5453,6 +5485,8 @@ end
 -- Widget: ColorPicker --------------------------------------------------------
 
 do --
+  local colorPickerSetLabel, colorPickerGetLabel = newLabelMethods("ColorPicker")
+
   -- A swatch. A click opens the client's `ColorPickerFrame` through its
   -- `SetupColorPickerAndShow` method when the client has one and the frame may
   -- be touched; WidgetKit writes no field onto that frame. Without it, a click
@@ -5607,8 +5641,8 @@ do --
       GetColor = colorGetColor,
       SetHasAlpha = colorSetHasAlpha,
       OpenPicker = colorOpenPicker,
-      SetLabel = setWidgetLabel,
-      GetLabel = getWidgetLabel,
+      SetLabel = colorPickerSetLabel,
+      GetLabel = colorPickerGetLabel,
       SetDisabled = colorSetDisabled,
     }
 

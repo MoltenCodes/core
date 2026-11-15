@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.2.2 — 2026-11-15
+
+- Fixed: `Slider:SetSliderValues` read an absent `step` as `step or 0`, a truth test that raises inside WidgetKit on a secret value (Retail 12.x) before `validateNumber` could refuse it. The absent value is now tested with `type(step) == "nil"`, so a secret `step` is refused at the caller (`WidgetKit Slider:SetSliderValues step must not be a secret value`), and `false` is refused as not a number instead of counting as no step.
+- Fixed: `Widget:GetPoint(index)` read `index or 1` the same way. An absent index is tested with `type`, and a secret one is refused at the caller (`WidgetKit.Widget:GetPoint index must not be a secret value`); any other index still goes to the frame's `GetPoint` as before.
+- Fixed: `WidgetKit:SetFocus` with something that is not a widget said `WidgetKit:SetFocus must be called on a WidgetKit widget`, although the widget is its argument; it now says `WidgetKit:SetFocus widget must be a WidgetKit widget`, as `Release` does. The labelled widgets' `SetLabel` and `GetLabel` reported as `WidgetKit.Widget:SetLabel`; they now name their type as every other type method does (`WidgetKit CheckBox:SetLabel`), built once per type by `newLabelMethods`.
+- Removed (internal): an unreachable `nil` test in `detachFromParent` (both callers test `record.parent` first). Corrected the comment of `Binding:Release`, which said it forgets the frame (it keeps it), and `docs/API.md`'s *Layouts*, which said a layout pass calls `container:LayoutFinished`: since revision 9 it makes the same report through an internal function.
+- Base widget versions: `CheckBox`, `Slider`, `EditBox`, `Dropdown` and `ColorPicker` go to version 4, as the versioning rule asks, because methods their constructors store changed; `Frame` stays at 4, `Group`, `Label`, `Button` and `Heading` at 3, `ScrollFrame` and `Spacer` at 1.
+- Implementation revision 10. No state changed: an in-place upgrade from revision 9 (or earlier) keeps the prototypes, types, pools, live widgets, bindings, renderings and limits; the five raised types retire their pooled widgets at once and their borrowed ones on release. The revision 8 upgrade spec now models revision 9's registrations and expects the raised slider to be retired; the specs that register or expect base versions follow the new ones.
+- 244 specs (243 before): a `false` and a secret `step` refused at the caller, a secret `GetPoint` index refused at the caller, the label errors of the five types, the `SetFocus` wording.
+
 ## 0.2.1 — 2026-09-25
 
 Performance round 2: WidgetKit's own cost per acquire, release, text and layout pass, with no documented behaviour changed.

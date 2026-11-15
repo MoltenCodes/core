@@ -55,7 +55,7 @@ describe("WidgetKit error levels", function()
       mark()
       WidgetKit:RegisterLayout("X", nil)
     end)
-    assertReportedAtCaller("WidgetKit:SetFocus must be called on a WidgetKit widget", function(mark)
+    assertReportedAtCaller("WidgetKit:SetFocus widget must be a WidgetKit widget", function(mark)
       mark()
       WidgetKit:SetFocus({})
     end)
@@ -173,6 +173,20 @@ describe("WidgetKit error levels", function()
     )
   end)
 
+  it("refuses a secret GetPoint index at the caller", function()
+    local label = WidgetKit:Create("Label")
+    label:SetPoint("CENTER")
+    assert.are.equal("CENTER", (label:GetPoint()))
+    assertReportedAtCaller(
+      "WidgetKit.Widget:GetPoint index must not be a secret value",
+      function(mark)
+        local secret = TestEnv.NewSecret()
+        mark()
+        label:GetPoint(secret)
+      end
+    )
+  end)
+
   it("points base widget method errors at the caller", function()
     local label = WidgetKit:Create("Label")
     assertReportedAtCaller(
@@ -195,6 +209,42 @@ describe("WidgetKit error levels", function()
       mark()
       slider:SetSliderValues(0, 1, "fine")
     end)
+    -- The absent step is tested with `type`, so `false` is refused like any
+    -- other non-number and a secret is refused before anything tests it.
+    assertReportedAtCaller("WidgetKit Slider:SetSliderValues step must be a number", function(mark)
+      mark()
+      slider:SetSliderValues(0, 1, false)
+    end)
+    assertReportedAtCaller(
+      "WidgetKit Slider:SetSliderValues step must not be a secret value",
+      function(mark)
+        local secret = TestEnv.NewSecret()
+        mark()
+        slider:SetSliderValues(0, 1, secret)
+      end
+    )
+    -- The shared label methods name the widget's own type.
+    for _, typeName in ipairs({ "CheckBox", "Slider", "EditBox", "Dropdown", "ColorPicker" }) do
+      local labelled = WidgetKit:Create(typeName)
+      assertReportedAtCaller(
+        "WidgetKit "
+          .. typeName
+          .. ":SetLabel text must not be a secret value unless options.allowSecret is true",
+        function(mark)
+          local secret = TestEnv.NewSecret()
+          mark()
+          labelled:SetLabel(secret)
+        end
+      )
+      WidgetKit:Release(labelled)
+      assertReportedAtCaller(
+        "WidgetKit " .. typeName .. ":GetLabel cannot be called on a released widget",
+        function(mark)
+          mark()
+          labelled:GetLabel()
+        end
+      )
+    end
     local dropdown = WidgetKit:Create("Dropdown")
     assertReportedAtCaller("WidgetKit Dropdown:SetList labels must be strings", function(mark)
       mark()

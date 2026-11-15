@@ -27,7 +27,7 @@ client may stutter for a moment; the List test waits for one rendered frame:
 
 ```text
 MoltenCodes Test: running widgetKit: 10 suites. Results follow when every test has finished.
-MoltenCodes Test: PASS widgetKit.facade: Registry:Get('widgetKit', 1) is the WidgetKit facade with API 1, its sixteen methods, the four Anchor functions, the defaults 256/256/16 and UNBOUNDED, and the twelve base types at their documented versions (Frame 4, nine at 3, ScrollFrame and Spacer 1)
+MoltenCodes Test: PASS widgetKit.facade: Registry:Get('widgetKit', 1) is the WidgetKit facade with API 1, its sixteen methods, the four Anchor functions, the defaults 256/256/16 and UNBOUNDED, and the twelve base types at their documented versions (Frame 4, five at 4, four at 3, ScrollFrame and Spacer 1)
 MoltenCodes Test: PASS widgetKit.facade: the installed WidgetKit carries the revision of the committed manifest
 MoltenCodes Test: PASS widgetKit.facade: the client has CreateFrame and UIParent, and OptionsKit, MediaKit and SchedulerKit are registered; ColorPickerFrame, the secret functions, ACCEPT, NOT_BOUND and UIParent's rect and scale are logged
 MoltenCodes Test: PASS widgetKit.types: text getters answer "" once cleared, as docs/API.md says, on the client's font strings, buttons and edit boxes: Label, Heading, Button, EditBox and Dropdown texts, Frame and Group titles and a CheckBox label, after a fresh Create and after SetText(nil)
@@ -227,7 +227,7 @@ with the client's own measure of that text.
 
 | Test | Proves in the real client |
 |---|---|
-| `Registry:Get('widgetKit', 1) is the WidgetKit facade ...` | The facade the client loaded is API 1 with its sixteen methods, the four `Anchor` functions and nine points, the defaults and `UNBOUNDED`, the three built-in layouts and the twelve base types at the versions docs/API.md gives (`Frame` 4, nine at 3; `ScrollFrame` and `Spacer` 1). The log gives the session's limits and pool statistics before the run. |
+| `Registry:Get('widgetKit', 1) is the WidgetKit facade ...` | The facade the client loaded is API 1 with its sixteen methods, the four `Anchor` functions and nine points, the defaults and `UNBOUNDED`, the three built-in layouts and the twelve base types at the versions docs/API.md gives (`Frame`, `CheckBox`, `Slider`, `EditBox`, `Dropdown` and `ColorPicker` 4, the other four at 3; `ScrollFrame` and `Spacer` 1). The log gives the session's limits and pool statistics before the run. |
 | `the installed WidgetKit carries the revision ...` | Registry's selected revision and the facade's `REVISION` are both the committed manifest's. The log gives `REVISION`. |
 | `the client has CreateFrame and UIParent, ...` | What WidgetKit builds on exists, and its optional Kits are registered. The log records `ColorPickerFrame` and its methods, the secret functions, the `ACCEPT` and `NOT_BOUND` strings, and `UIParent`'s rect and effective scale. |
 | `text getters answer "" once cleared ...` | docs/API.md's "Text getters return what the widget shows (`""` once cleared)" against the client's font strings, buttons and edit boxes. Every answer is logged before any is checked; the other type tests read a `nil` answer as `""`, so only this test fails if a getter answers `nil`. The run of 2026-09-25 (revision 5) failed here: the client's font strings and buttons answer `nil` for an empty text, and revision 6 turns that into `""`. |

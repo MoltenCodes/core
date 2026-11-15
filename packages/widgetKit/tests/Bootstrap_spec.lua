@@ -1,5 +1,20 @@
 local TestEnv = require("WidgetKitTestEnv")
 
+-- The base widget versions in the current file (revision 10), which the
+-- upgrade specs patch down to model an older revision's registrations.
+local CURRENT_VERSIONS = {
+  Frame = 4,
+  Group = 3,
+  Label = 3,
+  Button = 3,
+  CheckBox = 4,
+  Slider = 4,
+  EditBox = 4,
+  Dropdown = 4,
+  ColorPicker = 4,
+  Heading = 3,
+}
+
 describe("WidgetKit bootstrap", function()
   after_each(TestEnv.Reset)
 
@@ -190,7 +205,7 @@ describe("WidgetKit bootstrap", function()
     assert.are.equal(slider, group:GetChildren()[1])
     assert.is_true(slider:GetUserData("kept"))
     assert.are.equal(old.UNBOUNDED, upgraded:GetLimits().maxDropdownEntries)
-    assert.are.equal(3, upgraded:GetTypeVersion("Slider"))
+    assert.are.equal(CURRENT_VERSIONS.Slider, upgraded:GetTypeVersion("Slider"))
     -- The widgets revision 3 built run the current methods at once: a
     -- secret flag is refused instead of being tested as a boolean.
     TestEnv.InstallSecretProbe()
@@ -271,8 +286,7 @@ describe("WidgetKit bootstrap", function()
       "ColorPicker",
       "Heading",
     }) do
-      -- `Frame` is at version 4 in the current file (revision 8), the rest at 3.
-      local current = typeName == "Frame" and 4 or 3
+      local current = CURRENT_VERSIONS[typeName]
       versionOne["  " .. typeName .. " = " .. current .. ","] = "  " .. typeName .. " = 1,"
     end
     local old = TestEnv.LoadRevision(5, versionOne)
@@ -291,7 +305,7 @@ describe("WidgetKit bootstrap", function()
     local upgraded = require("WidgetKit")
     assert.are.equal(old, upgraded)
     assert.are.equal(state, upgraded._state)
-    assert.are.equal(9, upgraded.REVISION)
+    assert.are.equal(10, upgraded.REVISION)
     assert.are.equal(3, upgraded:GetTypeVersion("Label"))
     assert.are.equal(4, upgraded:GetTypeVersion("Frame"))
     assert.are.equal(1, upgraded:GetTypeVersion("ScrollFrame"))
@@ -338,8 +352,7 @@ describe("WidgetKit bootstrap", function()
       "ColorPicker",
       "Heading",
     }) do
-      -- `Frame` is at version 4 in the current file (revision 8), the rest at 3.
-      local current = typeName == "Frame" and 4 or 3
+      local current = CURRENT_VERSIONS[typeName]
       versionTwo["  " .. typeName .. " = " .. current .. ","] = "  " .. typeName .. " = 2,"
     end
     local old = TestEnv.LoadRevision(6, versionTwo)
@@ -359,7 +372,7 @@ describe("WidgetKit bootstrap", function()
     local upgraded = require("WidgetKit")
     assert.are.equal(old, upgraded)
     assert.are.equal(state, upgraded._state)
-    assert.are.equal(9, upgraded.REVISION)
+    assert.are.equal(10, upgraded.REVISION)
     assert.are.equal(3, upgraded:GetTypeVersion("Label"))
     assert.are.equal(3, upgraded:GetTypeVersion("Button"))
     assert.are.equal(1, upgraded:GetTypeVersion("Spacer"))
@@ -405,7 +418,7 @@ describe("WidgetKit bootstrap", function()
     local upgraded = require("WidgetKit")
     assert.are.equal(old, upgraded)
     assert.are.equal(state, upgraded._state)
-    assert.are.equal(9, upgraded.REVISION)
+    assert.are.equal(10, upgraded.REVISION)
     assert.are.equal(4, upgraded:GetTypeVersion("Frame"))
     assert.are.equal(3, upgraded:GetTypeVersion("Label"))
 
@@ -429,7 +442,7 @@ describe("WidgetKit bootstrap", function()
     assert.are_not.equal(borrowed, upgraded:Create("Frame"))
   end)
 
-  it("upgrades a revision 8 copy in place, keeping every pooled and borrowed widget", function()
+  it("upgrades a revision 9 copy in place, retiring the five raised types only", function()
     TestEnv.Reset()
     TestEnv.InstallWowApi()
     TestEnv.InstallClientRules()
@@ -437,13 +450,20 @@ describe("WidgetKit bootstrap", function()
     for _, name in ipairs({ "Registry", "SignalKit", "PoolKit", "SchemaKit", "OptionsKit" }) do
       require(name)
     end
-    -- Revision 9 changed no state and no base widget version: its speed-ups
-    -- are in the shared routines and in methods whose behaviour is the same.
-    local old = TestEnv.LoadRevision(8)
+    -- Revisions 8 and 9 registered the five labelled types at version 3.
+    -- Revision 10 raises them (their `SetLabel`, `GetLabel` and the slider's
+    -- `SetSliderValues` changed) and changes no state.
+    local versionThree = {}
+    for _, typeName in ipairs({ "CheckBox", "Slider", "EditBox", "Dropdown", "ColorPicker" }) do
+      versionThree["  " .. typeName .. " = 4,"] = "  " .. typeName .. " = 3,"
+    end
+    local old = TestEnv.LoadRevision(9, versionThree)
     local state = old._state
+    assert.are.equal(3, old:GetTypeVersion("Slider"))
     local pooled = old:Create("Slider") ---@cast pooled -nil
     pooled:SetSliderValues(0, 10, 1)
     old:Release(pooled)
+    local borrowed = old:Create("CheckBox") ---@cast borrowed -nil
     local group = old:Create("Group") ---@cast group -nil
     group:PauseLayout()
     local released = {}
@@ -463,18 +483,29 @@ describe("WidgetKit bootstrap", function()
     local upgraded = require("WidgetKit")
     assert.are.equal(old, upgraded)
     assert.are.equal(state, upgraded._state)
-    assert.are.equal(9, upgraded.REVISION)
+    assert.are.equal(10, upgraded.REVISION)
     assert.are.equal(4, upgraded:GetTypeVersion("Frame"))
-    assert.are.equal(3, upgraded:GetTypeVersion("Slider"))
+    assert.are.equal(4, upgraded:GetTypeVersion("Slider"))
     assert.are.equal(3, upgraded:GetTypeVersion("Label"))
 
-    -- No version was raised, so the pooled slider is handed out again, reset.
-    local reused = upgraded:Create("Slider") ---@cast reused -nil
-    assert.are.equal(pooled, reused)
+    -- The pooled slider was built by the version 3 constructor and is
+    -- retired; the fresh one names its type in its label errors.
+    local fresh = upgraded:Create("Slider") ---@cast fresh -nil
+    assert.are_not.equal(pooled, fresh)
     assert.are.equal(serial + 1, state.serial)
-    assert.are.equal(0, reused:GetValue())
-    reused:SetValue(40)
-    assert.are.equal(40, reused:GetValue())
+    fresh:SetValue(40)
+    assert.are.equal(40, fresh:GetValue())
+    TestEnv.expectErrorContaining(
+      "WidgetKit Slider:SetLabel must be called on a WidgetKit widget",
+      function()
+        fresh.SetLabel({}, "x")
+      end
+    )
+    -- The borrowed checkbox keeps working until its release retires it.
+    borrowed:SetLabel("Enabled")
+    assert.are.equal("Enabled", borrowed:GetLabel())
+    upgraded:Release(borrowed)
+    assert.are_not.equal(borrowed, upgraded:Create("CheckBox"))
 
     -- The borrowed group lays out and releases through this revision's
     -- routines: children last first, callbacks and user data cleared.

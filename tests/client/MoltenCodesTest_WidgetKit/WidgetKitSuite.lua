@@ -118,17 +118,19 @@ local BASE_TYPES = {
 --- raised every type whose constructor it changed to 2, revision 7 raised the
 --- same ten to 3 (secret texts on a font string of their own), and revision 8
 --- raised `Frame` to 4 (its `BindPosition` takes a storage function).
+--- Revision 10 raised `CheckBox`, `Slider`, `EditBox`, `Dropdown` and
+--- `ColorPicker` to 4 (their label methods and `SetSliderValues` changed).
 local BASE_TYPE_VERSIONS = {
   Frame = 4,
   Group = 3,
   ScrollFrame = 1,
   Label = 3,
   Button = 3,
-  CheckBox = 3,
-  Slider = 3,
-  EditBox = 3,
-  Dropdown = 3,
-  ColorPicker = 3,
+  CheckBox = 4,
+  Slider = 4,
+  EditBox = 4,
+  Dropdown = 4,
+  ColorPicker = 4,
   Heading = 3,
   Spacer = 1,
 }
@@ -788,7 +790,7 @@ end
 local facade = newSuite("facade")
 
 facade:Test(
-  "Registry:Get('widgetKit', 1) is the WidgetKit facade with API 1, its sixteen methods, the four Anchor functions, the defaults 256/256/16 and UNBOUNDED, and the twelve base types at their documented versions (Frame 4, nine at 3, ScrollFrame and Spacer 1)",
+  "Registry:Get('widgetKit', 1) is the WidgetKit facade with API 1, its sixteen methods, the four Anchor functions, the defaults 256/256/16 and UNBOUNDED, and the twelve base types at their documented versions (Frame 4, five at 4, four at 3, ScrollFrame and Spacer 1)",
   function(ctx)
     ctx:Expect(rawget(WidgetKit, "API")):ToBe(WIDGET_KIT_API)
     for _, methodName in ipairs({
