@@ -1283,7 +1283,8 @@ local FRAME_METATABLES = {
 }
 
 --- The frame type names, in the order an error message lists them.
-local FRAME_TYPE_NAMES = '"Frame", "Button", "CheckButton", "Slider", "EditBox", "ScrollFrame" or "StatusBar"'
+local FRAME_TYPE_NAMES =
+  '"Frame", "Button", "CheckButton", "Slider", "EditBox", "ScrollFrame" or "StatusBar"'
 
 ---Build one Frame and record it in creation order.
 ---@param state table shared stub state

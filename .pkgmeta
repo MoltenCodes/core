@@ -159,3 +159,5 @@ move-folders:
   MoltenCodes/packages/launcherKit/docs: MoltenCodes/launcherKit/docs
   MoltenCodes/packages/tooltipKit/src: MoltenCodes/tooltipKit
   MoltenCodes/packages/tooltipKit/docs: MoltenCodes/tooltipKit/docs
+  MoltenCodes/packages/barKit/src: MoltenCodes/barKit
+  MoltenCodes/packages/barKit/docs: MoltenCodes/barKit/docs

@@ -49,6 +49,7 @@ body:
       options:
         - registry
         - apiKit
+        - barKit
         - bridgeKit
         - brokerKit
         - cacheKit

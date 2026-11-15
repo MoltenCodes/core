@@ -155,6 +155,7 @@ registry
 ├──→ poolKit
 │       ├──→ codecKit
 │       ├──→ tooltipKit
+│       ├──→ barKit
 │       └──→ widgetKit   (also needs signalKit)
 │               └──→ panelKit   (also needs optionsKit)
 ├──→ timerKit
@@ -185,12 +186,13 @@ apiKit/flavours/ClassicEra.lua
 apiKit/flavours/ClassicMop.lua
 apiKit/flavours/Ptr.lua
 apiKit/flavours/Retail.lua
+poolKit/PoolKit.lua
+barKit/BarKit.lua
 bridgeKit/BridgeKit.lua
 signalKit/SignalKit.lua
 brokerKit/BrokerKit.lua
 cacheKit/CacheKit.lua
 clientKit/ClientKit.lua
-poolKit/PoolKit.lua
 codecKit/CodecKit.lua
 eventKit/EventKit.lua
 timerKit/TimerKit.lua
@@ -254,7 +256,7 @@ optional and found at call time, so embedding one Kit costs this many files:
 |---|---|---|
 | 2 | `clientKit`, `cacheKit`, `compatKit`, `profileKit`, `schemaKit`, `localeKit`, `hookKit`, `interopKit`, `bridgeKit`, `menuKit`, `poolKit`, `signalKit`, `timerKit` | nothing |
 | 3 | `apiKit` | nothing; the third file is the flavour file of the client you support (one more per further flavour) |
-| 3 | `codecKit`, `tooltipKit` | `poolKit` |
+| 3 | `codecKit`, `tooltipKit`, `barKit` | `poolKit` |
 | 3 | `commandKit` | `schemaKit` |
 | 3 | `brokerKit`, `eventKit`, `logKit`, `mediaKit` | `signalKit` |
 | 3 | `readinessKit`, `schedulerKit` | `timerKit` |
@@ -660,6 +662,7 @@ actually touch, which is deliberately small:
 | `testKit` (development only) | LifecycleKit's and SchedulerKit's surfaces | `issecretvalue` (nothing treated as secret), `issecurevariable` (`ToBeSecure` fails), `GetTimePreciseSec` (`durationMs` 0), `geterrorhandler` (`print`), EventKit and TimerKit API 1 through `Registry:Find` |
 | `commKit` | SignalKit's, EventKit's, TimerKit's, SchedulerKit's and PoolKit's surfaces; `GetTimePreciseSec`; `C_ChatInfo.SendAddonMessage` (legacy global fallback; else `Send` refuses `"unavailable"`) | `C_ChatInfo.RegisterAddonMessagePrefix` and `IsAddonMessagePrefixRegistered` (legacy globals, then nothing registered), `C_ChatInfo.SendAddonMessageLogged` (logged sends refused), the events `CHAT_MSG_ADDON`, `CHAT_MSG_ADDON_LOGGED`, `GROUP_ROSTER_UPDATE`, `PLAYER_ENTERING_WORLD`, `GetFramerate` (no low-frame-rate mode), `UnitInParty` and `UnitInRaid` (no roster eviction; streams still expire), `Enum` (12.x values assumed), `securecallfunction` (`pcall`), `issecretvalue`, `geterrorhandler` (`print`), CodecKit API 1 (`SyncSet` raises), HookKit API 1 (outside traffic uncharged), SchemaKit API 1 (`schema` raises); LifecycleKit API 1 through `Registry:Find` (otherwise CommKit's own `PLAYER_LOGOUT` watcher closes its addon scopes) |
 | `widgetKit` | PoolKit's and SignalKit's surfaces; `CreateFrame` | `UIParent` (released frames rest on a hidden holder), `issecretvalue` (nothing secret), `geterrorhandler` (`print`), `ColorPickerFrame:SetupColorPickerAndShow` (a click fires the current colour), `IsAltKeyDown`, `IsControlKeyDown`, `IsShiftKeyDown` (no modifiers), OptionsKit API 1 through `Registry:Find` (`RenderOptions` raises at the caller), SchedulerKit API 1 (saves are immediate), MediaKit API 1 (`CreateMediaPicker` raises; the renderer uses the option's `values`) |
+| `barKit` | PoolKit's surface; `CreateFrame` and `UIParent` (`Acquire` raises at the caller); `GetTime` for timers | `issecretvalue` (nothing secret), `geterrorhandler` (`print`) |
 | `tooltipKit` | PoolKit's surface; `CreateFrame` and `UIParent` (`Acquire` raises at the caller); the font objects `GameTooltipText` and `GameTooltipHeaderText` | `issecretvalue` (nothing secret), `geterrorhandler` (`print`) |
 | `launcherKit` | BrokerKit's surface; `Minimap` and `CreateFrame` (`Register` raises at the caller); `GetCursorPosition` while a button is dragged | `GameTooltip` (no tooltip; `OnEnter` instead), `GetMinimapShape` (the minimap counts as round), `AddonCompartmentFrame` (`AddToCompartment` answers `nil, "unavailable"`; Retail only), `issecretvalue` (nothing secret), `geterrorhandler` (`print`) |
 | `menuKit` | `MenuUtil.CreateContextMenu`, `Menu.ModifyMenu` and `Menu.GetManager` (`Blizzard_Menu`; every method but `SetLimits` and `GetLimits` raises at the caller without them) | `issecretvalue` (nothing secret), `geterrorhandler` (`print`) |
@@ -1129,6 +1132,12 @@ of its own, keyed so one owner never stacks two, pooled because the client
 never frees them, laid out only when they change. `GameTooltip` stays the
 client's; TooltipKit never touches it. See
 [`tooltipKit/docs/API.md`](../packages/tooltipKit/docs/API.md).
+
+Bars are `BarKit` (package `barKit`): the client's own `StatusBar`, pooled, so
+a Retail secret value such as a unit's health goes to `bar:SetValue` as it is
+and the client draws it; an addon never reads it. Timer bars count down on
+one `OnUpdate` while running. See
+[`barKit/docs/API.md`](../packages/barKit/docs/API.md).
 
 ## Performance guidance
 

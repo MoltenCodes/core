@@ -23,6 +23,7 @@ body:
       options:
         - registry
         - apiKit
+        - barKit
         - bridgeKit
         - brokerKit
         - cacheKit
@@ -31,6 +32,7 @@ body:
         - commandKit
         - commKit
         - compatKit
+        - Documentation
         - eventKit
         - hookKit
         - interopKit
@@ -46,6 +48,7 @@ body:
         - poolKit
         - profileKit
         - readinessKit
+        - Repository tooling
         - schedulerKit
         - schemaKit
         - settingsKit
@@ -54,8 +57,6 @@ body:
         - timerKit
         - tooltipKit
         - widgetKit
-        - Repository tooling
-        - Documentation
         - Not sure
     validations:
       required: true

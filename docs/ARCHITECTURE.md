@@ -37,6 +37,7 @@ packages/
 ├── menuKit/
 ├── launcherKit/
 ├── tooltipKit/
+├── barKit/
 ├── <future-package>/
 └── ...
 ```
@@ -45,7 +46,7 @@ Every visible directory directly under `packages/` is considered a publishable p
 
 ## Package naming
 
-Public framework capability packages use an Apple-style `Kit` suffix. The canonical machine-readable package ID is lowerCamelCase (`signalKit`, `eventKit`, `lifecycleKit`, `moduleKit`, `timerKit`, `schedulerKit`, `poolKit`, `clientKit`, `cacheKit`, `profileKit`, `readinessKit`, `schemaKit`, `localeKit`, `hookKit`, `settingsKit`, `optionsKit`, `commandKit`, `codecKit`, `interopKit`, `mediaKit`, `testKit`, `commKit`, `widgetKit`, `apiKit`, `brokerKit`, `logKit`, `compatKit`, `bridgeKit`, `panelKit`, `menuKit`, `launcherKit`, `tooltipKit`), while the Lua facade/module name is PascalCase (`SignalKit`, `EventKit`, `LifecycleKit`, `ModuleKit`, `TimerKit`, `SchedulerKit`, `PoolKit`, `ClientKit`, `CacheKit`, `ProfileKit`, `ReadinessKit`, `SchemaKit`, `LocaleKit`, `HookKit`, `SettingsKit`, `OptionsKit`, `CommandKit`, `CodecKit`, `InteropKit`, `MediaKit`, `TestKit`, `CommKit`, `WidgetKit`, `ApiKit`, `BrokerKit`, `LogKit`, `CompatKit`, `BridgeKit`, `PanelKit`, `MenuKit`, `LauncherKit`, `TooltipKit`).
+Public framework capability packages use an Apple-style `Kit` suffix. The canonical machine-readable package ID is lowerCamelCase (`signalKit`, `eventKit`, `lifecycleKit`, `moduleKit`, `timerKit`, `schedulerKit`, `poolKit`, `clientKit`, `cacheKit`, `profileKit`, `readinessKit`, `schemaKit`, `localeKit`, `hookKit`, `settingsKit`, `optionsKit`, `commandKit`, `codecKit`, `interopKit`, `mediaKit`, `testKit`, `commKit`, `widgetKit`, `apiKit`, `brokerKit`, `logKit`, `compatKit`, `bridgeKit`, `panelKit`, `menuKit`, `launcherKit`, `tooltipKit`, `barKit`), while the Lua facade/module name is PascalCase (`SignalKit`, `EventKit`, `LifecycleKit`, `ModuleKit`, `TimerKit`, `SchedulerKit`, `PoolKit`, `ClientKit`, `CacheKit`, `ProfileKit`, `ReadinessKit`, `SchemaKit`, `LocaleKit`, `HookKit`, `SettingsKit`, `OptionsKit`, `CommandKit`, `CodecKit`, `InteropKit`, `MediaKit`, `TestKit`, `CommKit`, `WidgetKit`, `ApiKit`, `BrokerKit`, `LogKit`, `CompatKit`, `BridgeKit`, `PanelKit`, `MenuKit`, `LauncherKit`, `TooltipKit`, `BarKit`).
 
 `registry` / `Registry` is an infrastructure exception because it provides package identity and revision reconciliation rather than a framework capability surface.
 
@@ -287,3 +288,5 @@ The dependency layer directly above Registry holds the Kits that need nothing el
 `launcherKit` depends on Registry API 2 and BrokerKit API 1. It puts a BrokerKit object on the minimap as a button the session keeps (the client never frees a frame), placed on the minimap's edge from an angle and the shared `GetMinimapShape` convention, with its position, hidden and locked state in a table the addon owns, in LibDBIcon-1.0's field names. Clicks, tooltips and icon changes come from the object through BrokerKit's change signal; nothing runs per frame except while a button is dragged. Retail's `AddonCompartmentFrame` is used when present. Button scripts, the BrokerKit listener and compartment callbacks call through a dispatch table in the shared state, so an upgrade reaches buttons an older copy made.
 
 `tooltipKit` depends on Registry API 2 and PoolKit API 1. It draws keyed multi-column tooltips on frames of its own: a tooltip frame with a scroll frame and its content, and one frame per line with a font string per column, both from PoolKit pools that keep every released frame, because the client never frees one. Layout runs when a shown tooltip changes or at `Show`, never per frame; an auto-hiding tooltip asks `IsMouseOver` of itself, its anchor and an alternate frame while shown. Pool factories, resets and frame scripts call through a dispatch table in the shared state, so an upgrade reaches frames an older copy made.
+
+`barKit` depends on Registry API 2 and PoolKit API 1. A bar is the client's own `StatusBar`, taken from a PoolKit pool that keeps every released frame, so a Retail 12.x secret value (health, power) reaches the fill untouched. A timer bar runs one `OnUpdate` while it counts down and writes its time text only when it changes; a status, paused or stopped bar runs nothing. The pool's factory and reset and the bars' `OnUpdate` call through a dispatch table in the shared state.

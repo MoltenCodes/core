@@ -10,6 +10,10 @@
   - changed-files:
       - any-glob-to-any-file: "packages/apiKit/**"
 
+"kit: barKit":
+  - changed-files:
+      - any-glob-to-any-file: "packages/barKit/**"
+
 "kit: bridgeKit":
   - changed-files:
       - any-glob-to-any-file: "packages/bridgeKit/**"

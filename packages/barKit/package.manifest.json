@@ -1,0 +1,17 @@
+{
+  "name": "barKit",
+  "displayName": "BarKit",
+  "description": "Status and timer bars for World of Warcraft addons on the client's StatusBar: labels, icons, colours, secret values passed through, pausable countdowns, pooled and bounded.",
+  "version": "0.1.0",
+  "license": "MIT",
+  "api": 1,
+  "revision": 1,
+  "dependencies": {
+    "registry": {
+      "api": 2
+    },
+    "poolKit": {
+      "api": 1
+    }
+  }
+}
