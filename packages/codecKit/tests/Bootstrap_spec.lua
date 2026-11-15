@@ -195,6 +195,50 @@ describe("CodecKit bootstrap", function()
     assert.are.equal(0, pool:GetActiveCount())
   end)
 
+  it("upgrades a revision 5 copy in place and compresses as it did", function()
+    TestEnv.Reset()
+    require("Registry")
+    require("PoolKit")
+    local older = TestEnv.LoadRevision(5)
+    assert.are.equal(5, older.REVISION)
+    local state = older._state
+    local pool = state.pool
+    -- Incompressible bytes give stored blocks, whose 16-bit lengths are the
+    -- widest fields the bit reader and writer handle; the text gives Huffman
+    -- blocks.
+    local bytes = {}
+    local seed = 7
+    for index = 1, 300 do
+      seed = (seed * 1103515245 + 12345) % 2147483648
+      bytes[index] = string.char(seed % 256)
+    end
+    local values = { table.concat(bytes), string.rep("upgrade in place ", 40) }
+    local options = { compress = "deflate", channel = "print" }
+    local before = {}
+    for index = 1, #values do
+      local ok, text = older:Encode(values[index], options)
+      assert.is_true(ok)
+      before[index] = text
+    end
+
+    package.loaded["CodecKit"] = nil
+    local CodecKit = require("CodecKit")
+    assert.are.equal(older, CodecKit)
+    assert.is_true(CodecKit.REVISION > 5)
+    assert.are.equal(state, CodecKit._state)
+    assert.are.equal(CodecKit.REVISION, CodecKit._state.runtimeRevision)
+    assert.are.equal(pool, CodecKit._state.pool)
+
+    for index = 1, #values do
+      local ok, decoded = CodecKit:Decode(before[index], { channel = "print" })
+      assert.is_true(ok)
+      assert.are.equal(values[index], decoded)
+      local _, after = CodecKit:Encode(values[index], options)
+      assert.are.equal(before[index], after)
+    end
+    assert.are.equal(0, pool:GetActiveCount())
+  end)
+
   it("requires Registry", function()
     TestEnv.Reset()
     local ok, value = pcall(require, "CodecKit")

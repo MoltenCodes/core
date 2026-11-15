@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.1.6 — 2026-11-15
+
+Clean-up from an audit. The wire format is unchanged, byte for byte, and so is every reason a call returns.
+
+- Removed dead code: a sink's `total`, written on every fragment and never read (the `maxOutputBytes` checks measure the finished output), and the powers of two above 2^16 in the DEFLATE table; the widest field read or written is a stored block's 16-bit length. `docs/INTERNALS.md` drops the `total` row.
+- `docs/API.md`: `EncodeAsync` states that the value must not change while the job runs, and what a change can do; the array part is defined as exactly what the writer takes, the leading run of non-`nil` values up to `#t`; the addon channel names the four bytes it cannot carry and escapes `0xFF` only because it is the escape byte. The implementation revision line says 6.
+- Comments: the header says the same about the addon channel and that only the compression and print stages lease from the pool; a call leases at most three pooled tables, not five.
+- `tests/README.md` lists `FastPath_spec.lua` and the revision 4 upgrade spec.
+- Implementation revision 6. The state layout is unchanged: `Bootstrap_spec.lua` loads a revision 5 copy, upgrades it in place, keeps the state table and the pool, and compresses stored and Huffman blocks to the frames the older copy wrote.
+
 ## 0.1.5 — 2026-09-25
 
 - Performance. Encoding and decoding cost less time and memory, measured with the host benchmark against AceSerializer-3.0 minor 5 with compression off (`python3 -m tooling.bench.run --workload timers --workload codec --rounds 3`, before and after this change, median ns per operation with AceSerializer measured in the same run; other benchmarks ran on the machine at the same time, load average about 6 before and 2.5 after, so compare the ratios and the allocation, which is deterministic):

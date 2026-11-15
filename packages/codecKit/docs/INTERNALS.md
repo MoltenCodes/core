@@ -42,7 +42,6 @@ A **sink** collects the output of the compression and print stages:
 | `[1..count]` | String fragments. |
 | `batch`, `batchCount` | Pending bytes as numbers; at 1024 they become one fragment through `string.char(unpack(...))`. |
 | `chunks`, `chunkCount` | Leased on demand: at 1024 fragments the fragments are concatenated into one chunk, so no leased array grows past 1024 entries. |
-| `total` | Bytes in fragments, for the `maxOutputBytes` checks. |
 
 A sink is leased from the shared PoolKit pool (`maxRetained` 16) with its batch and possibly its chunk array, as is the bit writer for a short compression input; `finishSink` and `closeSink` return a sink's tables and `compressTiny` its writer, on every return path. The pool's shallow reset clears them on release, so nothing a call wrote survives into the next. Because nothing is shared between calls but the idle record and the pool, and a nested call never shares the record, calls are re-entrant.
 

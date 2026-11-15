@@ -9,16 +9,18 @@
 --   compress         raw DEFLATE (RFC 1951) written in pure Lua: LZ77 over hash
 --                    chains, then per block the cheapest of stored, fixed
 --                    Huffman and dynamic Huffman.
---   channel-encode   `addon` escapes the five bytes the addon channel cannot
---                    carry; `print` maps everything onto 85 printable ASCII
---                    characters for chat and export strings.
+--   channel-encode   `addon` escapes the four bytes the addon channel cannot
+--                    carry and the escape byte itself; `print` maps
+--                    everything onto 85 printable ASCII characters for chat
+--                    and export strings.
 --
 -- Decoding never raises on malformed input: every failure is `false, reason`
 -- with a reason from a fixed vocabulary. Depth, value count, string length and
 -- every stage's output size are bounded by limits shared by every consumer.
 --
--- CodecKit needs Registry API 2 and PoolKit API 1 (fragment buffers are leased
--- from a table pool and returned on every path, so calls are re-entrant). The
+-- CodecKit needs Registry API 2 and PoolKit API 1 (the compression and print
+-- stages lease their sinks from a table pool and return them on every path,
+-- so calls are re-entrant). The
 -- asynchronous variants find SchedulerKit API 1 through `Registry:Find` when
 -- they are called; without it they raise at the caller.
 --
@@ -49,7 +51,7 @@
 
 local PACKAGE_NAME = "codecKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 5
+local IMPLEMENTATION_REVISION = 6
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_POOLKIT_API = 1
 local OPTIONAL_SCHEDULERKIT_API = 1
@@ -166,8 +168,9 @@ local DECODE_OPTION_KEYS = { channel = true }
 local DEFAULT_LEVEL = 6
 
 -- How many tables the package keeps for reuse between calls. A call leases at
--- most five at a time, so sixteen covers nested and interleaved calls without
--- keeping memory nobody uses.
+-- most three at a time (a sink, its batch, and its chunk array or the bit
+-- writer of a short compression input), so sixteen covers nested and
+-- interleaved calls without keeping memory nobody uses.
 local POOL_MAX_RETAINED = 16
 
 -- Byte sinks hold pending bytes as numbers and fragments as strings. Both
@@ -592,7 +595,6 @@ local function openSink(pooled)
   sink.count = 0
   sink.chunks = false
   sink.chunkCount = 0
-  sink.total = 0
   return sink
 end
 
@@ -614,7 +616,6 @@ end
 local function appendFragment(sink, fragment)
   local count = sink.count + 1
   sink[count] = fragment
-  sink.total = sink.total + #fragment
   if count < SINK_FRAGMENT_SIZE then
     sink.count = count
     return
@@ -1505,9 +1506,10 @@ do
 
   local sort = table.sort
 
-  -- Powers of two, looked up rather than computed in the bit loops.
+  -- Powers of two, looked up rather than computed in the bit loops. The
+  -- largest exponent read is 16, the widest field (a stored block's length).
   local POW2 = {}
-  for exponent = 0, 48 do
+  for exponent = 0, 16 do
     POW2[exponent] = 2 ^ exponent
   end
 

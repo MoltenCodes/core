@@ -2,7 +2,7 @@
 
 CodecKit API generation **1** turns Lua values into transport-safe strings and back in three composable stages — serialise, compress, channel-encode — behind a two-byte, self-describing header. Decoding never raises on malformed input.
 
-Implementation revision: **5**. Wire format version: **1** (`CodecKit.FORMAT_VERSION`).
+Implementation revision: **6**. Wire format version: **1** (`CodecKit.FORMAT_VERSION`).
 
 ## Loading
 
@@ -162,7 +162,7 @@ Every value is one type byte followed by its payload:
 
 **Strings** are raw bytes: every byte value, including the escape byte and `|`, is carried as is, because escaping belongs to the channel stage.
 
-**Tables.** The array part is `1..n` where `n` is the first index below `#t` whose successor is `nil` (so holes end it, whatever `#` reports); every other key is in the map part. The layout byte says which parts are present; the empty table is `08 00`. `{ 1, x = 2 }` is `0A 01 04 01 01 07 01 78 04 02`. Map pairs follow `next` order, so two equal tables may serialise to different bytes; they always decode to equal tables. Raw contents are read (`rawget`, `next`): metatables are neither consulted nor preserved.
+**Tables.** The array part is `1..n` where `n` is the length of the leading run of non-`nil` values `t[1]`, `t[2]`, ... taken up to `#t`: the first `nil` index ends it whatever border `#` reports, and it never reaches past `#t` (so `n` is `0` when `t[1]` is `nil`, and `#t` when nothing below it is `nil`); every other key is in the map part. The layout byte says which parts are present; the empty table is `08 00`. `{ 1, x = 2 }` is `0A 01 04 01 01 07 01 78 04 02`. Map pairs follow `next` order, so two equal tables may serialise to different bytes; they always decode to equal tables. Raw contents are read (`rawget`, `next`): metatables are neither consulted nor preserved.
 
 ### Well-formed input
 
@@ -198,7 +198,7 @@ Raw DEFLATE (RFC 1951): no zlib or gzip wrapper, no checksum. The encoder writes
 
 ### Addon channel
 
-The addon channel cannot carry these five bytes; each becomes the escape byte `0xFF` followed by an ASCII digit. Every other byte passes unchanged.
+The addon channel cannot carry NUL, line feed, carriage return or the pipe that introduces the client's escape sequences. Each of those, and the escape byte `0xFF` itself so that it stays unambiguous, becomes `0xFF` followed by an ASCII digit. Every other byte passes unchanged.
 
 | Byte | Written as |
 |---|---|
@@ -269,6 +269,8 @@ end)
 ```
 
 `EncodeAsync` and `DecodeAsync` validate every argument at the call and then schedule one job on `scope`, which must be an open SchedulerKit scope. The job runs the same stages as `Encode`/`Decode` and asks `context:ShouldYield()` every 256 values, every 2048 input positions of the compressor, every 4096 inflated symbols and every 2048 print groups, yielding when the frame budget is spent. It calls `callback(ok, result)` once, from the job, with exactly what the synchronous method would have returned. The escape pass of the addon channel is one `string.gsub` and does not yield.
+
+Do not change `value`, or any table it holds, until the callback runs or the job is cancelled: the job reads it across frames, so a change made meanwhile can give a frame that matches neither the old contents nor the new, refuse with `"secret"` when it adds a secret, or fail the job with a Lua error from a table traversal it disturbed. Encode a copy when the value may change.
 
 The callback is never called when the job is cancelled, by `job:Cancel()`, `scope:CancelAll()` or `scope:Close()`. A callback error fails the job the way SchedulerKit reports any job error. Asynchronous calls do not lease from the pool: a cancelled job is never resumed, and a leased table it held would stay leased for the session.
 
