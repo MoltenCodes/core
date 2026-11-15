@@ -9,13 +9,14 @@ This document describes implementation invariants for maintainers. It is not an 
 | Field | Meaning |
 |---|---|
 | `schema` | The state layout version, `1`. |
-| `dispatch` | `isolatedCall`, `replacementCall` and `closeAddonScopesAtLogout`; every closure HookKit installs, and the logout watcher's trampoline, call through it. |
+| `dispatch` | `reportFailure`, `isolatedCall`, `replacementCall` and `closeAddonScopesAtLogout`. Post-hooks and pre-hooks of revision 8 report failures through `reportFailure`; those of revision 7 and older call `isolatedCall`; replacements call `replacementCall`; the logout watcher's trampoline calls `closeAddonScopesAtLogout`. |
 | `runtimeRevision` | The revision that last committed its functions. |
 | `scopeMetatable` | The metatable every scope shares; its `__index` is `HookKit.Scope`. |
 | `addonScopes` | Addon name to that addon's canonical scope. At most one per addon name. |
 | `secureStatus` | Weak-keyed: hooked object to `{ [method] = boolean }`, whether the target was secure the first time HookKit checked it. For a method that is not a raw field, `findHolder` walks at most `MAX_INDEX_DEPTH` (8) `__index` tables to the table holding it, and that table is what `issecurevariable` is asked about. |
 | `secureScripts` | Weak-keyed: frame to `{ [script] = count }` of active `SecureHookScript` records across every scope. A script pre-hook or replacement is refused while the count is positive; release decrements it and deletes empty tables. |
 | `logoutWatch` | `{ scope, connection, trampoline }`: HookKit's own EventKit scope, its one `PLAYER_LOGOUT` `Once` connection and the trampoline handed to it, each `false` until the first `ForAddon` in case (c) of "At logout" creates it. Added by revision 2; an upgrade over revision 1 adds it. |
+| `recordBounds` | Weak-keyed: bounded scope to an upper bound of its live records (revision 8). Raised by `storeRecord`, lowered by `removeRecord`, reset to the real count by `hasRoom` when it reaches the scope's `_maxHooks` or is missing. Kept here rather than on the scope because a ninth scope field would double the scope's hash part. |
 | `unbounded` | The `HookKit.UNBOUNDED` sentinel, created once so every revision publishes the same table and a scope's `_maxHooks` keeps meaning "unbounded" after an upgrade. The current-state predicate requires the facade field to be this table. |
 
 The scope prototype is published as `HookKit.Scope`, like EventKit's and TimerKit's.
@@ -35,7 +36,7 @@ A scope is one table with a fixed set of private fields, all created by `newScop
 | `_logoutCloser` | Who closes the scope at logout: `false` for a manual scope, else `"lifecycleKit"`, `"onShutdown"`, `"playerLogout"` or `"none"` (the cases of "At logout" in `API.md`). Only `"none"` and `"playerLogout"` are decided again. |
 | `_shutdownSubscription` | The LifecycleKit `OnShutdown` subscription of case (b), or `false`. `Close` disconnects it. |
 
-There is no stored hook count. `countRecords` walks `_records`, which holds at most `_maxHooks` entries, so a record that disappears with its garbage-collected object stops counting at once instead of holding a slot for ever. `hasRoom` returns `true` without counting when `_maxHooks` is the `unbounded` sentinel, so an unbounded scope never pays a walk per install.
+There is no exact stored hook count. `GetActiveCount` walks `_records` with `countRecords`, so a record that disappears with its garbage-collected object stops counting at once. The capacity check reads `recordBounds[scope]` instead, an upper bound of the live records: below `_maxHooks` it admits without a walk, and at the limit (or with no bound, for a scope an older copy built) `hasRoom` counts, stores the count as the new bound and decides on the count. The bound is correct as long as every removal goes through `removeRecord`, the one function that removes a record. `hasRoom` returns `true` without reading anything when `_maxHooks` is the `unbounded` sentinel, so an unbounded scope never has a bound.
 
 Reads never create anything: `findRecord` returns `nil` after at most two reads. Only `storeRecord` creates the per-object method table. Since revision 6 `removeRecord` leaves it in place, empty, when its last record goes, so hooking the same object again allocates only the record and closure; the outer table is weak-keyed, so the empty table goes when the object does, and `countRecords` and `collectRecords` simply find nothing in it. Revision 5 and older deleted it, and a table they deleted is created again at the next hook. Not creating anything on a read is the fix for the auto-vivifying registry pattern older hook libraries use.
 
@@ -49,7 +50,7 @@ One record per hook, created by `newRecord` with every field present:
 |---|---|
 | `_schema` | The record layout version, `1`. |
 | `_kind` | `"secure"`, `"secureScript"`, `"hook"`, `"rawHook"`, `"hookScript"` or `"rawHookScript"`. |
-| `_handler` | The consumer's handler. |
+| `_handler` | The consumer's handler: its function, or for a method-name handler the closure `newMethodHandler` made, which reads `receiver[handlerName]` at every call. |
 | `_original` | The wrapped or replaced function; `false` for a secure hook and for a script that had no handler. |
 | `_hadRaw` | Whether the field was a raw field of the object before the hook; decides between writing the original back and deleting the field. |
 | `_installed` | The closure HookKit installed. |
@@ -63,21 +64,24 @@ A record never references its object, so the weak key can be collected. It does 
 Three shapes, each created once per hook:
 
 ```text
-post-hook:     if record._active then dispatch.isolatedCall(record, ...) end
-pre-hook:      if record._active then dispatch.isolatedCall(record, ...) end
+post-hook:     if record._active then
+                 local ok, failure = pcall(record._handler, ...)
+                 if not ok then dispatch.reportFailure(failure) end
+               end
+pre-hook:      the same, then
                return record._original(...)            (when there is one)
 replacement:   if record._active then return dispatch.replacementCall(record, ...) end
                return record._original(...)            (when there is one)
 ```
 
-`isolatedCall` is `pcall(record._handler, ...)` plus a report on failure; `replacementCall` is `record._handler(original, ...)` with `false` mapped to `nil`. Neither builds a table, so a hooked call allocates nothing. The closures and both dispatch functions use plain field reads because a record has no metatable (revision 5 and older read the record with `rawget` in the dispatch functions).
+Revision 8 writes the protected call into the post-hook and pre-hook closures instead of calling `dispatch.isolatedCall`: the extra Lua frame was about a third of a hooked call. A failure still goes through `dispatch`, so a newer copy decides how it is reported. `isolatedCall` (`pcall(record._handler, ...)` plus a report on failure) stays published for the closures of revision 7 and older; `replacementCall` is `record._handler(original, ...)` with `false` mapped to `nil`. Neither builds a table, so a hooked call allocates nothing. The closures and both dispatch functions use plain field reads because a record has no metatable (revision 5 and older read the record with `rawget` in the dispatch functions).
 
 The original is passed first to a replacement handler because Lua 5.1 cannot append a value after `...` without packing the arguments into a table.
 
 ## Order of work in an install
 
-1. Validate the receiver, that the scope is open, the object or frame, the name, the handler, and that the target is not already hooked in this scope; for field hooks, that the target is a function; for script hooks, that the frame may be touched and has the frame methods the semantic calls.
-2. Read the option table.
+1. Validate the receiver, that the scope is open, the object or frame, the name, the handler (a function or a receiver table), and that the target is not already hooked in this scope; for field hooks, that the target is a function; for script hooks, that the frame may be touched and has the frame methods the semantic calls.
+2. Resolve a receiver's handler (`resolveHandler`: the name, or the hooked name by default, must name a function on the receiver now), then read the option table.
 3. Refuse: the secure target (`wasSecure`, which fills the memo on first use) or the protected-frame rules.
 4. Check the capacity against the scope's `_maxHooks` (`nil, "full"`).
 5. Build the record and closure, perform the host write (`hooksecurefunc`, `rawset`, `HookScript` or `SetScript`), and only then store the record. A host call that raises leaves nothing recorded.
@@ -94,4 +98,4 @@ Every public method calls its installer and returns the results through locals r
 
 The bootstrap follows the Registry pattern. A copy that inherits state validates the shared fields and reuses `scopeMetatable`, `addonScopes`, `secureStatus` and `dispatch`, then rewrites the prototype methods and the dispatch functions. Closures installed by an older copy capture the shared `dispatch` table, not a function, so they run the newest behaviour. A revision that changes the record or scope layout must migrate by `_schema`, lazily or by walking `addonScopes`; manual scopes are reachable only through their owners, so a lazy migration on first use is the one that covers them.
 
-Revision 2 does this for scope layout 2: it walks `addonScopes` and gives every layout-1 scope `_logoutCloser = "none"` and `_shutdownSubscription = false`, and adds `logoutWatch` to the state. A manual layout-1 scope is left as built: the logout code reads both fields with `rawget` and treats a missing one as "nothing to do". After committing, an upgrading copy arranges the logout close of every open addon scope, in addon-name order. Revision 3 changed no state field or scope layout; it keeps scope layout 2 and every migration above. Revision 6 changes no state field, scope layout or record layout; the per-object method tables older copies deleted are simply created again on demand.
+Revision 2 does this for scope layout 2: it walks `addonScopes` and gives every layout-1 scope `_logoutCloser = "none"` and `_shutdownSubscription = false`, and adds `logoutWatch` to the state. A manual layout-1 scope is left as built: the logout code reads both fields with `rawget` and treats a missing one as "nothing to do". After committing, an upgrading copy arranges the logout close of every open addon scope, in addon-name order. Revision 3 changed no state field or scope layout; it keeps scope layout 2 and every migration above. Revision 6 changes no state field, scope layout or record layout; the per-object method tables older copies deleted are simply created again on demand. Revision 8 adds the `recordBounds` state table when it is missing and changes no layout; `Reopen` clears `_closed` on a manual scope, whose records the close already released.

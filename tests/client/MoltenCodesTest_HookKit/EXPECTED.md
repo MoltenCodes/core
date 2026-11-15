@@ -69,6 +69,7 @@ MoltenCodes Test: PASS hookKit.secureMethod: a raising secure post-hook handler 
 MoltenCodes Test: PASS hookKit.scripts: SecureHookScript runs OnShow and OnHide handlers with the frame when a hidden 1x1 test frame is shown and hidden, and Unhook silences them
 MoltenCodes Test: PASS hookKit.scripts: the client's own Frame:HookScript answers true for OnShow on a test-owned frame (HookKit discards this answer; it is logged)
 MoltenCodes Test: PASS hookKit.scripts: SecureHookScript of a script a plain Frame lacks records no hook when the client declines it (the client's own HookScript answer is logged)
+MoltenCodes Test: PASS hookKit.scripts: HookScript and SecureHookScript with a receiver run its OnShow and named methods on a hidden 1x1 test frame, looked up at every show, and Reopen brings a closed scope back
 MoltenCodes Test: PASS hookKit.scripts: HookScript runs its handler before the frame's own OnShow with the frame, and Unhook puts that same script back
 MoltenCodes Test: PASS hookKit.scripts: RawHookScript of OnHide on a frame without one receives nil as the previous script, and Unhook leaves OnHide empty again
 MoltenCodes Test: PASS hookKit.scripts: a script pre-hook is refused at the calling line while a SecureHookScript post-hook holds that script; the safe order (pre-hook first) runs both, and unhooking the pre-hook then leaves it inert
@@ -97,7 +98,7 @@ MoltenCodes Test: PASS hookKit.secrets: a secret global name is refused by Secur
 MoltenCodes Test: PASS hookKit.secrets: a secret script name is refused by SecureHookScript and HookScript at the calling line
 MoltenCodes Test: PASS hookKit.secrets: a secret addon name is refused by ForAddon and a secret maxHooks by CreateScope at the calling line
 MoltenCodes Test: PASS hookKit.secrets: a secret argument reaches a pre-hook handler, the original and a secure post-hook handler still secret, and the original's secret result reaches the caller
-MoltenCodes Test: hookKit: 36 passed, 0 failed, 2 skipped, 0 timed out (38 tests)
+MoltenCodes Test: hookKit: 37 passed, 0 failed, 2 skipped, 0 timed out (39 tests)
 MoltenCodes Test: results saved in MoltenCodesTestResults; /reload or log out to write them to disk.
 ```
 
@@ -150,7 +151,7 @@ metadata (`packages/apiKit/metadata/<flavour>/namespaces.json`):
 ### Retail (12.1)
 
 The lines above:
-`MoltenCodes Test: hookKit: 36 passed, 0 failed, 2 skipped, 0 timed out (38 tests)`,
+`MoltenCodes Test: hookKit: 37 passed, 0 failed, 2 skipped, 0 timed out (39 tests)`,
 with the two `SKIP` lines above.
 
 ### Classic Era (1.15) and Mists of Pandaria Classic (5.5)
@@ -165,11 +166,11 @@ MoltenCodes Test: PASS hookKit.scripts: the client's own Frame:HookScript answer
 ```
 
 - When the client makes secrets, the totals line is Retail's:
-  `MoltenCodes Test: hookKit: 36 passed, 0 failed, 2 skipped, 0 timed out (38 tests)`,
+  `MoltenCodes Test: hookKit: 37 passed, 0 failed, 2 skipped, 0 timed out (39 tests)`,
   with the same two `SKIP` lines.
 - When it makes none, the five `hookKit.secrets` tests are skipped as well,
   and the totals line is
-  `MoltenCodes Test: hookKit: 31 passed, 0 failed, 7 skipped, 0 timed out (38 tests)`:
+  `MoltenCodes Test: hookKit: 32 passed, 0 failed, 7 skipped, 0 timed out (39 tests)`:
 
 ```text
 MoltenCodes Test: SKIP hookKit.secrets: a secret method name is refused by SecureHook and Hook at the calling line before HookKit compares it -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
@@ -277,6 +278,7 @@ results) or a CVar.
 | `SecureHookScript runs OnShow and OnHide handlers ...` | The client's `Frame:HookScript` post-hooks run when a real frame is shown and hidden, with the frame as argument, and are silent after `Unhook`. |
 | `the client's own Frame:HookScript answers true ...` | What the Retail `HookScript` returns (documented as a `success` boolean) for a script the frame has: one value, `true`. On Classic (`... answers no value ...`) the documentation lists no return value, and the test expects none. HookKit discards the answer either way; the log records it. |
 | `SecureHookScript of a script a plain Frame lacks ...` | What the client does with `HookScript` of `OnValueChanged` on a plain Frame (raise, or answer `false`; logged), and that HookKit then records no hook. See "What counts as unexpected" for the `false` case. |
+| `HookScript and SecureHookScript with a receiver ...` | A receiver in the handler's place runs its method of the script's name (`OnShow`) before the frame's script, and the named method (`AfterShow`) after `OnHide` through the client's `HookScript`; replacing `receiver.OnShow` changes what the next show runs, because the method is looked up at every call; after `Close`, `Reopen` answers `true`, then `false`, and the scope hooks again. |
 | `HookScript runs its handler before the frame's own OnShow ...` | A script pre-hook installed with the client's `SetScript` runs first with the frame, the frame's own script still runs, `Original` returns that script, and `Unhook` puts that same function back (`GetScript` returns it). |
 | `RawHookScript of OnHide on a frame without one ...` | A replacement receives `nil` as the previous script and the frame, and `Unhook` leaves `OnHide` empty. |
 | `a script pre-hook is refused at the calling line while ...` | The install-order refusal names this file at the calling line across scopes; pre-hook then post-hook run in that order; unhooking the pre-hook leaves its closure in place, inert, and the post-hook keeps running. The log says whether `GetScript` changes when the client adds a `HookScript` post-hook. |

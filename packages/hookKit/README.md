@@ -46,8 +46,9 @@ See [`docs/API.md`](docs/API.md) for the complete contract, which leads with the
 | `self:Hook(object, "Method", handler, hookSecure)` | `hooks:Hook(object, "Method", handler, { forceSecure = true })`; without the option a secure target is refused at your line |
 | `self:RawHook(object, "Method", handler)`, the original read from `self.hooks[object].Method` | `hooks:RawHook(object, "Method", function(original, ...) end)`: the original is the handler's first argument, and `hooks:Original(object, "Method")` |
 | `self:HookScript(frame, "OnUpdate", handler)`, `self:RawHookScript(...)` | `hooks:HookScript(frame, "OnUpdate", handler)`, `hooks:RawHookScript(...)` |
-| A handler given as a method name (`"OnTooltipSetUnit"`) | A function: `function(tooltip, unit) MyAddon:OnTooltipSetUnit(tooltip, unit) end` |
-| `self:Unhook(object, "Method")`, `self:UnhookAll()` | `hooks:Unhook(object, "Method")`, `hooks:UnhookAll()` |
+| A handler given as a method name: `self:SecureHook(GameTooltip, "SetUnit", "OnTooltipSetUnit")` | The receiver, then the name: `hooks:SecureHook(GameTooltip, "SetUnit", MyAddon, "OnTooltipSetUnit")`. The method must exist when you hook, and is looked up at every call, as in AceHook |
+| The default handler: `self:Hook(object, "Method")` calls `self:Method(...)` | `hooks:Hook(object, "Method", MyAddon)`: the receiver's method of the hooked name |
+| `self:Unhook(object, "Method")`, `self:UnhookAll()` | `hooks:Unhook(object, "Method")`, `hooks:UnhookAll()`; a closed manual scope comes back with `hooks:Reopen()` |
 | `self:IsHooked(object, "Method")`, answering `true` and the handler | `hooks:IsHooked(object, "Method")`, answering `true` and the kind (`"secure"`, `"hook"`, ...) |
 | Hooks undone when the addon is disabled (`OnEmbedDisable` calls `UnhookAll`) | `hooks:UnhookAll()` in your own disable code; the scope stays usable. The addon scope is closed at logout for you (see "At logout" in the API). |
 

@@ -76,7 +76,7 @@ Scope methods:
 
 | Method | Purpose |
 |---|---|
-| `SecureHook(object, method, handler)` / `SecureHook(globalName, handler)` | Secure post-hook of a method or global. |
+| `SecureHook(object, method, handler)` / `SecureHook(globalName, handler)` | Secure post-hook of a method or global. Every hook method also takes a receiver table in the handler's place; see [Method-name handlers](#method-name-handlers). |
 | `SecureHookScript(frame, script, handler)` | Secure post-hook of a frame script. |
 | `Hook(object, method, handler[, options])` / `Hook(globalName, handler[, options])` | Safe pre-hook. |
 | `RawHook(object, method, handler[, options])` / `RawHook(globalName, handler[, options])` | Raw replacement. |
@@ -89,6 +89,7 @@ Scope methods:
 | `Hooks()` | Array of `{ object, method, kind }` rows in creation order, for diagnostics. |
 | `Close()` | Undo every hook and refuse new ones. Terminal; `false` if already closed. |
 | `IsClosed()` | Whether the scope is closed. |
+| `Reopen()` | Reopen a closed manual scope, empty, with its limit; `false` when it was open. An addon scope raises. Revision 8. |
 | `GetActiveCount()` | The number of hooks the scope holds. |
 | `GetAddonName()` | The owning addon name, or `nil` for a manual scope. |
 | `GetMaxHooks()` | The scope's limit: a positive integer, or `HookKit.UNBOUNDED`. |
@@ -141,6 +142,49 @@ The handler runs **instead of** the original and its results are what the caller
 
 **Deviation from the package plan.** The plan allowed the original as the handler's last argument. Appending a value after `...` in Lua 5.1 needs a table per call, which the hooked path must not allocate, so the first-argument form is the only one.
 
+## Method-name handlers
+
+```lua
+local MyAddon = {}
+function MyAddon:Refresh(object, reason) end
+function MyAddon:OnTooltipSetUnit(tooltip) end
+
+hooks:Hook(OtherAddon, "Refresh", MyAddon)                 -- MyAddon:Refresh
+hooks:SecureHook(GameTooltip, "SetUnit", MyAddon, "OnTooltipSetUnit")
+hooks:HookScript(frame, "OnShow", MyAddon, { forceSecure = true })
+```
+
+Every hook method accepts, in the handler's place, a **receiver** table followed
+by an optional **handler name**, AceHook's `self:Hook(object, "Method"[,
+"Handler"])` form (`AceHook-3.0.lua:119` at the benchmark's pinned commit, read
+for behaviour only):
+
+- `Hook(object, method, receiver[, handlerName][, options])` and
+  `Hook(globalName, receiver[, handlerName][, options])`; the same for
+  `RawHook`, and for `SecureHook` without the options;
+  `HookScript(frame, script, receiver[, handlerName][, options])`, the same for
+  `RawHookScript`, and `SecureHookScript(frame, script, receiver[, handlerName])`.
+- After the receiver, a string is the handler name and anything else is the
+  option table. Without a name the handler is the receiver's method named after
+  what is hooked: the method, the global or the script (`"OnShow"`).
+- The method runs as `receiver:handlerName(...)` with what a function handler
+  receives: the call's arguments, and for `RawHook` and `RawHookScript` the
+  original (or previous script) first, `receiver:handlerName(original, ...)`.
+  AceHook passes `self` and keeps the originals in `self.hooks`; HookKit's
+  original is the first argument and `Original(object, method)`.
+- **Checked at the hook, looked up at every call.** The hook is refused at the
+  caller's line unless `receiver[handlerName]` is a function then:
+  `<method> receiver has no method "<name>"`, `<method> handlerName must be a
+  non-empty string`, `<method> handlerName must not be a secret value`. Each
+  call then reads `receiver[handlerName]` again, as AceHook does, so replacing
+  the method later (another addon hooking it, say) changes what the hook runs.
+  A method that is gone by the time of a call raises that same message from
+  inside the hook: a post-hook or pre-hook reports it to the host error handler
+  and the original still runs; a replacement lets it propagate, like any error
+  of a replacement handler. The hook stays installed either way.
+- The per-call cost over a function handler is one closure frame and one table
+  read; see [Cost](#cost).
+
 ## Refusals
 
 Every refusal raises at the caller's line and installs nothing.
@@ -165,7 +209,7 @@ Every refusal raises at the caller's line and installs nothing.
 
 **Double hooks** are refused rather than silently replaced: an implicit unhook-then-hook would reorder the chain behind the caller's back. Two *different* scopes may hook the same target; their closures chain.
 
-Argument errors name the parameter: `HookKit.Scope:Hook method must be a non-empty string`, `... handler must be a function`, `... object must be a table` (and `frame` for the script methods), `... options must be a table`, `... options contains unknown field "<name>"`, `... options.forceSecure must be a boolean`, `HookKit.Scope:HookScript frame must have a GetScript method`. A scope method called on something that is not a scope raises `HookKit.Scope:Hook must be called on a HookKit scope`, and a facade method called with a dot `HookKit:ForAddon must be called on the HookKit facade; use HookKit:ForAddon(...)`. A method, script, global or addon name that is a secret value is refused with `... must not be a secret value`, before HookKit compares it or uses it as a key. A secret `options.forceSecure` (Retail 12.x; a secret boolean passes the type check) is refused the same way, with `... options.forceSecure must not be a secret value`, before HookKit compares or tests it; testing a secret boolean raises in tainted code (measured on Retail 12.1.0 b69933).
+Argument errors name the parameter: `HookKit.Scope:Hook method must be a non-empty string`, `... handler must be a function, or a receiver table followed by an optional handler name` (revision 8; the receiver form's own messages are under [Method-name handlers](#method-name-handlers)), `... object must be a table` (and `frame` for the script methods), `... options must be a table`, `... options contains unknown field "<name>"`, `... options.forceSecure must be a boolean`, `HookKit.Scope:HookScript frame must have a GetScript method`. A scope method called on something that is not a scope raises `HookKit.Scope:Hook must be called on a HookKit scope`, and a facade method called with a dot `HookKit:ForAddon must be called on the HookKit facade; use HookKit:ForAddon(...)`. A method, script, global or addon name that is a secret value is refused with `... must not be a secret value`, before HookKit compares it or uses it as a key. A secret `options.forceSecure` (Retail 12.x; a secret boolean passes the type check) is refused the same way, with `... options.forceSecure must not be a secret value`, before HookKit compares or tests it; testing a secret boolean raises in tainted code (measured on Retail 12.1.0 b69933).
 
 ## Unhook: restore or go inert
 
@@ -198,7 +242,9 @@ The scope model is the one TimerKit and EventKit share. `ForAddon(addonName)` is
 
 `ForAddon` makes sure somebody takes the second step whenever the framework can observe logout; see [At logout](#at-logout).
 
-Closing is terminal. The closed scope stays the addon's canonical scope, so a later `ForAddon("MyAddon")` returns it and refuses new hooks. Calling `CloseAddonScopes` for an addon that never asked for a scope records nothing and returns `false`, so the addon-scope map grows only with `ForAddon` calls. Manual scopes are never closed by `CloseAddonScopes`.
+A closed **manual** scope can be reopened with `Reopen()` (revision 8): it answers `true` and the scope is open, empty and keeps its `maxHooks`; `false` when it was open. Closures the close could only leave inert stay inert, and a new hook installs a new closure. ModuleKit uses it to keep a module's `scope.Hooks` across enable cycles. `Reopen` on an addon scope raises `HookKit.Scope:Reopen cannot reopen an addon scope` at the caller's line.
+
+Closing an addon scope is terminal. The closed scope stays the addon's canonical scope, so a later `ForAddon("MyAddon")` returns it and refuses new hooks. Calling `CloseAddonScopes` for an addon that never asked for a scope records nothing and returns `false`, so the addon-scope map grows only with `ForAddon` calls. Manual scopes are never closed by `CloseAddonScopes`.
 
 A scope does not keep a hooked table alive: its records are keyed by object in a weak-keyed table and never reference the object. In Lua 5.1 that only helps when your handler does not itself capture the object, because a weak-keyed table cannot collect a key its value references.
 
@@ -219,12 +265,14 @@ In case (b) HookKit's `OnShutdown` subscription is made at the first `ForAddon`,
 
 ## Cost
 
-- **A hooked call** reads one flag and one dispatch field, then calls: `pcall(handler, ...)` for a post-hook or pre-hook, a direct call for a replacement. It allocates nothing, whether active or inert.
+- **A hooked call** reads one flag, then calls: `pcall(handler, ...)` written into the closure for a post-hook or pre-hook (revision 8; a failure is reported through one dispatch field), a dispatch function for a replacement. It allocates nothing, whether active or inert.
 - **The secret check on a validated name or option** calls the host's `issecretvalue` and nothing else: no `Registry:Find` (revision 7), and on a host without the probe one raw read of the global.
+- **A method-name handler** adds one closure of two upvalues, made when the hook is installed (about 136 bytes), and per call one Lua frame and one table read on the receiver (about 13 ns and 3 ns on the host benchmark's Lua 5.1).
 - **One closure and one record per hook**, created when the hook is installed (about 464 bytes on a 64-bit Lua 5.1: a 376-byte record and a closure with one upvalue). The first hook of an object also creates that object's method table in the scope, which stays, empty, after its last hook goes, so hooking the same object again allocates only the record and closure; the table goes with the object. A secure hook's closure lives for the session.
 - **`IsHooked`, `Original` and `GetActiveCount`** allocate nothing. A lookup of an object the scope never hooked creates nothing.
 - **`Hooks()`, `UnhookAll()` and `Close()`** allocate one array per call (plus one row per hook for `Hooks()`); they are for diagnostics and teardown.
-- **`GetActiveCount()` and the `maxHooks` check count the records** rather than reading a stored counter, so the records of a garbage-collected object stop counting at once. The count walks every record, so it grows with the limit a scope was opened to; a scope opened with `HookKit.UNBOUNDED` skips the check entirely. `Hooks()`, `UnhookAll()` and `Close()` sort by insertion, which is quadratic in the hooks held; that is negligible at 256 and worth knowing at thousands.
+- **The `maxHooks` check reads a stored upper bound** of the scope's live records, raised by every install and lowered by every `Unhook` (revision 8). Below the limit that proves there is room, so installing n hooks costs n constant checks: on the host benchmark an install with 200 hooks already in the scope fell from about 11.3 µs to about 1.3 µs, the same as into an empty scope. Records of a garbage-collected object do not lower the bound, so it can only be high: when it reaches the limit, the records are counted, which is the answer that may refuse, and the count also forgets the collected ones. A scope opened with `HookKit.UNBOUNDED` skips the check entirely.
+- **`GetActiveCount()` counts the records** rather than reading the bound, so the records of a garbage-collected object stop counting at once. The count walks every record. `Hooks()`, `UnhookAll()` and `Close()` sort by insertion, which is quadratic in the hooks held; that is negligible at 256 and worth knowing at thousands.
 
 ## Limits
 
@@ -268,5 +316,7 @@ Revision 2 upgrades the addon scopes revision 1 built (scope layout 1) in place 
 Revision 5 changes no state and no layout. It asks whether a script's current handler is secret before comparing it at release (see [Unhook](#unhook-restore-or-go-inert)); scopes an older copy opened gain that rule in place, because release runs in the scope methods the upgrade replaces.
 
 Revision 6 changes no state and no layout. It makes installing, removing and calling a hook cheaper (see [Cost](#cost)); hooks an older copy installed call the new `dispatch` functions, and an object whose method table an older copy deleted gets a new one at its next hook.
+
+Revision 8 adds `recordBounds` to the state (created on load when missing) and changes no scope or record layout. A scope an older copy built has no bound and is counted at its first install. Post-hooks and pre-hooks it installs call their handler under `pcall` themselves and report a failure through `dispatch.reportFailure`, which a newer copy replaces; closures of revision 7 and older keep calling `dispatch.isolatedCall`, which stays published. A scope an older copy closed can be reopened.
 
 Revision 7 changes no state and no layout. It asks only the host's `issecretvalue` whether a value is secret and no longer looks ClientKit up (see [Optional facilities](#optional-facilities)); scopes an older copy opened use the new check at once, because the argument checks run in the scope methods the upgrade replaces.

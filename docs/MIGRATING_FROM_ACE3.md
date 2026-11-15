@@ -197,6 +197,9 @@ connection:Disconnect()
 - Unregistering goes through the connection handle, not through a
   `(target, eventName)` pair, so one consumer may connect several times.
 - `onFirst`/`onLast` are `OnUsed`/`OnUnused` per signal.
+- `MyLib.changed:Connect(MyAddon, "OnChanged")` replaces
+  `RegisterCallback(MyAddon, "Changed", "OnChanged")`; the method name is
+  required and must exist when you connect.
 - **Errors.** A raw signal is owned by whoever fires it, so a listener's
   error reaches the caller of `Fire`. CallbackHandler isolates each callback.
   When other addons register the callbacks, publish on a **bus** instead: a
@@ -288,8 +291,12 @@ bagUpdates:Disconnect()
 events:DisconnectAll()
 ```
 
-- The callback receives the event name first, as Ace3's does; there is no
-  method-name form, a closure calls your method.
+- The callback receives the event name first, as Ace3's does. Ace3's
+  method-name form works too: `events:Connect("BAG_UPDATE", MyAddon,
+  "OnBagUpdate")`, or `events:Connect("PLAYER_ENTERING_WORLD", MyAddon)` to
+  call `MyAddon:PLAYER_ENTERING_WORLD`. The method must exist when you
+  connect (otherwise the call raises at your line) and is looked up on every
+  event, as in AceEvent.
 - Several listeners per event per addon are allowed; each `Connect` returns
   its own connection.
 - On clients with `C_EventUtils.IsEventValid`, an unknown event name raises at
@@ -329,6 +336,10 @@ local subscription = SignalKit:Bus("MyAddon"):Subscribe("ProfileChanged", functi
   the bus was created with `SignalKit:Bus(name, { openTopics = true })`, so a
   misspelt topic fails loudly. Subscribing needs no declaration.
 - Subscribers receive the published arguments without the topic name.
+- `bus:Subscribe("ProfileChanged", MyAddon, "OnProfileChanged")` and
+  `bus:Subscribe("ProfileChanged", MyAddon)` (method named after the topic)
+  call the method as `MyAddon:OnProfileChanged(...)`; it must exist when you
+  subscribe.
 - In a module, `self.scope.Messages:Subscribe("ProfileChanged", callback)`
   subscribes on the addon's bus and is released on disable.
 
@@ -361,6 +372,9 @@ timers:CancelAll()
 
 - The callback receives the timer handle, not your arguments: capture them
   in the closure, or attach one value with `timer:SetUserData(value)`.
+- `self:ScheduleTimer("Refresh", 5)` becomes `timers:After(5, MyAddon,
+  "Refresh")`; the method receives the timer handle after `self` and must
+  exist when the timer starts.
 - A handle is an object: `Cancel`, `Restart`, `IsPending`, `GetRemaining`.
   `TimerKit:New({ delay, callback, repeating })` makes one that starts later.
 - An error in a repeating callback is reported and the ticker keeps ticking.
@@ -442,6 +456,10 @@ hooks:UnhookAll()
 - A raw hook's handler receives the **original as its first argument**
   instead of reading `self.hooks[object][method]`; `hooks:Original(object,
   method)` returns it too.
+- Method names work as in AceHook: `hooks:SecureHook(GameTooltip, "SetUnit",
+  MyAddon, "OnTooltipSetUnit")`, or `hooks:Hook(OtherAddon, "Refresh",
+  MyAddon)` to call `MyAddon:Refresh`; a raw hook's method receives the
+  original after `self`.
 - A pre-hook or raw hook of a **secure** target is refused unless you pass
   `{ forceSecure = true }` (Ace3's `hookSecure` argument), because it taints
   every caller. Prefer `SecureHook` whenever you only need to react.

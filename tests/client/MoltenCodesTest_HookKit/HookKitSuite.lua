@@ -163,6 +163,7 @@ local SCOPE_METHODS = {
   "Hooks",
   "Close",
   "IsClosed",
+  "Reopen",
   "GetActiveCount",
   "GetAddonName",
   "GetMaxHooks",
@@ -802,6 +803,42 @@ scripts:Test(
   end
 )
 
+scripts:Test(
+  "HookScript and SecureHookScript with a receiver run its OnShow and named methods on a hidden 1x1 test frame, looked up at every show, and Reopen brings a closed scope back",
+  function(ctx)
+    local frame = plainFrame("methodScripts")
+    local scope = newScope()
+    local seen = {}
+    local receiver = {}
+    function receiver:OnShow(received)
+      seen[#seen + 1] = received == frame and "pre" or "pre with another frame"
+    end
+    function receiver:AfterShow()
+      seen[#seen + 1] = "post"
+    end
+    ctx:Expect(scope:HookScript(frame, "OnShow", receiver)):ToBe(true)
+    ctx:Expect(scope:SecureHookScript(frame, "OnHide", receiver, "AfterShow")):ToBe(true)
+
+    frame:Show()
+    frame:Hide()
+    function receiver:OnShow()
+      seen[#seen + 1] = "replaced"
+    end
+    frame:Show()
+    frame:Hide()
+    ctx:Expect(seen):ToEqual({ "pre", "post", "replaced", "post" })
+
+    ctx:Expect(scope:Close()):ToBe(true)
+    ctx:Expect(scope:Reopen()):ToBe(true)
+    ctx:Expect(scope:Reopen()):ToBe(false)
+    ctx:Expect(scope:HookScript(frame, "OnShow", receiver)):ToBe(true)
+    frame:Show()
+    frame:Hide()
+    -- The closed period's OnHide post-hook stays in the client's chain, inert.
+    ctx:Expect(seen):ToEqual({ "pre", "post", "replaced", "post", "replaced" })
+  end
+)
+
 --- What the client documents `Frame:HookScript` to return, per apiKit flavour
 --- (SimpleScriptRegionAPIDocumentation in
 --- packages/apiKit/metadata/<flavour>/namespaces.json): Retail a `success`
@@ -1425,7 +1462,7 @@ errors:Test(
         startLine = currentLine()
         scope:SecureHook(probe, "Combine", notAFunction)
       end,
-      "HookKit.Scope:SecureHook handler must be a function",
+      "HookKit.Scope:SecureHook handler must be a function, or a receiver table followed by an optional handler name",
       function()
         return startLine
       end

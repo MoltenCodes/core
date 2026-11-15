@@ -86,10 +86,14 @@ describe("HookKit error levels", function()
         mark()
         scope[method](scope, target, "", noop)
       end)
-      assertReportedAtCaller(prefix .. " handler must be a function", function(mark)
-        mark()
-        scope[method](scope, target, "Method", "not a function")
-      end)
+      assertReportedAtCaller(
+        prefix
+          .. " handler must be a function, or a receiver table followed by an optional handler name",
+        function(mark)
+          mark()
+          scope[method](scope, target, "Method", "not a function")
+        end
+      )
       assertReportedAtCaller(prefix .. ' target "Missing" is not a function', function(mark)
         mark()
         scope[method](scope, target, "Missing", noop)
@@ -140,10 +144,14 @@ describe("HookKit error levels", function()
         mark()
         scope[method](scope, frame, 1, noop)
       end)
-      assertReportedAtCaller(prefix .. " handler must be a function", function(mark)
-        mark()
-        scope[method](scope, frame, "OnShow", nil)
-      end)
+      assertReportedAtCaller(
+        prefix
+          .. " handler must be a function, or a receiver table followed by an optional handler name",
+        function(mark)
+          mark()
+          scope[method](scope, frame, "OnShow", nil)
+        end
+      )
     end
     assertReportedAtCaller(
       "HookKit.Scope:SecureHookScript frame must have a HookScript method",

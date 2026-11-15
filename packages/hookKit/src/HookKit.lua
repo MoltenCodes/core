@@ -55,7 +55,7 @@
 
 local PACKAGE_NAME = "hookKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 7
+local IMPLEMENTATION_REVISION = 8
 local REQUIRED_REGISTRY_API = 2
 local STATE_SCHEMA = 1
 
@@ -195,12 +195,12 @@ local WEAK_KEYS = { __mode = "k" }
 
 ---The owner of a set of hooks, released together by `UnhookAll` or `Close`.
 ---@class HookKit.Scope
----@field SecureHook fun(self: HookKit.Scope, objectOrGlobalName: table|string, methodOrHandler: string|function, handler: function?): true|nil, "full"?
----@field SecureHookScript fun(self: HookKit.Scope, frame: table, script: string, handler: function): true|nil, "full"?
----@field Hook fun(self: HookKit.Scope, objectOrGlobalName: table|string, methodOrHandler: string|function, handlerOrOptions: function|HookKit.HookOptions|nil, options: HookKit.HookOptions?): true|nil, "full"?
----@field RawHook fun(self: HookKit.Scope, objectOrGlobalName: table|string, methodOrHandler: string|function, handlerOrOptions: function|HookKit.HookOptions|nil, options: HookKit.HookOptions?): true|nil, "full"?
----@field HookScript fun(self: HookKit.Scope, frame: table, script: string, handler: function, options: HookKit.HookOptions?): true|nil, "full"?
----@field RawHookScript fun(self: HookKit.Scope, frame: table, script: string, handler: function, options: HookKit.HookOptions?): true|nil, "full"?
+---@field SecureHook fun(self: HookKit.Scope, objectOrGlobalName: table|string, methodOrHandler: string|function|table, handlerOrName: function|table|string|nil, handlerName: string?): true|nil, "full"?
+---@field SecureHookScript fun(self: HookKit.Scope, frame: table, script: string, handler: function|table, handlerName: string?): true|nil, "full"?
+---@field Hook fun(self: HookKit.Scope, objectOrGlobalName: table|string, methodOrHandler: string|function|table, handlerOrOptions: function|table|string|HookKit.HookOptions|nil, optionsOrName: HookKit.HookOptions|string|nil, options: HookKit.HookOptions?): true|nil, "full"?
+---@field RawHook fun(self: HookKit.Scope, objectOrGlobalName: table|string, methodOrHandler: string|function|table, handlerOrOptions: function|table|string|HookKit.HookOptions|nil, optionsOrName: HookKit.HookOptions|string|nil, options: HookKit.HookOptions?): true|nil, "full"?
+---@field HookScript fun(self: HookKit.Scope, frame: table, script: string, handler: function|table, optionsOrName: HookKit.HookOptions|string|nil, options: HookKit.HookOptions?): true|nil, "full"?
+---@field RawHookScript fun(self: HookKit.Scope, frame: table, script: string, handler: function|table, optionsOrName: HookKit.HookOptions|string|nil, options: HookKit.HookOptions?): true|nil, "full"?
 ---@field Unhook fun(self: HookKit.Scope, objectOrGlobalName: table|string, method: string?): boolean
 ---@field UnhookAll fun(self: HookKit.Scope): integer
 ---@field IsHooked fun(self: HookKit.Scope, objectOrGlobalName: table|string, method: string?): boolean, HookKit.Kind?
@@ -208,6 +208,7 @@ local WEAK_KEYS = { __mode = "k" }
 ---@field Hooks fun(self: HookKit.Scope): HookKit.HookInfo[]
 ---@field Close fun(self: HookKit.Scope): boolean
 ---@field IsClosed fun(self: HookKit.Scope): boolean
+---@field Reopen fun(self: HookKit.Scope): boolean
 ---@field GetActiveCount fun(self: HookKit.Scope): integer
 ---@field GetAddonName fun(self: HookKit.Scope): string?
 ---@field GetMaxHooks fun(self: HookKit.Scope): integer|table
@@ -432,6 +433,15 @@ local secureScripts = rawget(state, "secureScripts")
 local UNBOUNDED = rawget(state, "unbounded")
 rawset(SCOPE_METATABLE, "__index", Scope)
 
+-- Revision 8 keeps an upper bound of each bounded scope's live records here,
+-- outside the scope, so the scope table keeps its eight fields (a ninth would
+-- double its hash part). A scope an older copy built has no entry and is
+-- counted on its first install; see `hasRoom`.
+if type(rawget(state, "recordBounds")) ~= "table" then
+  rawset(state, "recordBounds", setmetatable({}, WEAK_KEYS))
+end
+local recordBounds = rawget(state, "recordBounds")
+
 -- Error reporting ------------------------------------------------------------
 
 ---Hand a handler failure to the host error handler.
@@ -509,7 +519,9 @@ end
 ---@param methodName string qualified public method name, used in the argument error
 ---@param level integer stack level the failure is reported at
 local function validateScope(scope, methodName, level)
-  if type(scope) ~= "table" or getmetatable(scope) ~= SCOPE_METATABLE then
+  -- `getmetatable` never raises and answers the private metatable only for a
+  -- scope, so a `type` test first would prove nothing more.
+  if getmetatable(scope) ~= SCOPE_METATABLE then
     error(methodName .. " must be called on a HookKit scope", level)
   end
 end
@@ -555,12 +567,17 @@ local function validateTable(value, methodName, argumentName, level)
   end
 end
 
+-- A handler is a function, or a receiver table whose method is named next.
+local HANDLER_MESSAGE =
+  " handler must be a function, or a receiver table followed by an optional handler name"
+
 ---@param value any
 ---@param methodName string qualified public method name, used in the argument error
 ---@param level integer stack level the failure is reported at
 local function validateHandler(value, methodName, level)
-  if type(value) ~= "function" then
-    error(methodName .. " handler must be a function", level)
+  local kind = type(value)
+  if kind ~= "function" and kind ~= "table" then
+    error(methodName .. HANDLER_MESSAGE, level)
   end
 end
 
@@ -807,6 +824,11 @@ local function storeRecord(scope, object, method, record)
     records[object] = methods
   end
   methods[method] = record
+  -- Only a bounded scope that `hasRoom` already counted has a bound to keep.
+  local bound = recordBounds[scope]
+  if bound ~= nil then
+    recordBounds[scope] = bound + 1
+  end
 end
 
 ---Remove one record. The object's method table stays, empty, when its last
@@ -817,6 +839,10 @@ end
 ---@param method string
 local function removeRecord(scope, object, method)
   scope._records[object][method] = nil
+  local bound = recordBounds[scope]
+  if bound ~= nil and bound > 0 then
+    recordBounds[scope] = bound - 1
+  end
 end
 
 ---Count a scope's live records.
@@ -824,8 +850,9 @@ end
 ---Counted rather than stored: the record table is weak-keyed, so the records of
 ---a hooked table that was garbage-collected disappear without HookKit being
 ---told, and a stored count would keep charging them against the scope's
----`maxHooks`. Neither caller is a hot path, and an unbounded scope's capacity
----check never counts (see `hasRoom`).
+---`maxHooks`. `GetActiveCount` counts, and the capacity check counts only when
+---the stored upper bound reaches the limit (see `hasRoom`); an unbounded
+---scope's capacity check never counts.
 ---@param scope HookKit.ScopeRecord
 ---@return integer
 local function countRecords(scope)
@@ -868,8 +895,11 @@ end
 -- Installed closures ---------------------------------------------------------
 --
 -- One closure per hook, created when the hook is installed. Each reads the
--- record's `_active` flag, then calls through `dispatch`, so an upgrade changes
--- what an already-installed closure does. After `Unhook` a closure that could
+-- record's `_active` flag. A replacement calls through `dispatch`, and a
+-- post-hook or pre-hook calls its handler under `pcall` itself and reports a
+-- failure through `dispatch` (revision 8; closures of revision 7 and older call
+-- `dispatch.isolatedCall`, which stays published), so an upgrade still changes
+-- what an already-installed closure reports. After `Unhook` a closure that could
 -- not be removed stays in the host's chain with `_active == false`: it then
 -- forwards to the original (pre-hook, replacement) or does nothing (post-hook).
 
@@ -904,7 +934,13 @@ end
 local function newPostHookClosure(record)
   return function(...)
     if record._active then
-      dispatch.isolatedCall(record, ...)
+      -- `isolatedCall` written out: the protected call is the whole cost of
+      -- a hook, and a Lua frame around it would add a third to it. Failures
+      -- still go through `dispatch`, so a newer copy reports them.
+      local ok, failure = pcall(record._handler, ...)
+      if not ok then
+        dispatch.reportFailure(failure)
+      end
     end
   end
 end
@@ -915,7 +951,11 @@ end
 local function newPreHookClosure(record)
   return function(...)
     if record._active then
-      dispatch.isolatedCall(record, ...)
+      -- `isolatedCall` written out, as in `newPostHookClosure`.
+      local ok, failure = pcall(record._handler, ...)
+      if not ok then
+        dispatch.reportFailure(failure)
+      end
     end
     local original = record._original
     if original then
@@ -946,12 +986,71 @@ end
 ---@param second any
 ---@param third any
 ---@param fourth any
----@return any object, any method, any third, any fourth
-local function splitTarget(target, second, third, fourth)
+---@param fifth any
+---@return any object
+---@return any method
+---@return any handler
+---@return any afterHandler
+---@return any rest
+local function splitTarget(target, second, third, fourth, fifth)
   if type(target) == "string" then
-    return GLOBALS, target, second, third
+    return GLOBALS, target, second, third, fourth
   end
-  return target, second, third, fourth
+  return target, second, third, fourth, fifth
+end
+
+---Wrap a receiver's method as a handler that looks the method up on every
+---call, as AceHook does, so a later replacement of the method (another hook on
+---it, say) is what runs. The registration already proved the method exists; if
+---it is gone by the time of a call, that call raises, which a post-hook and a
+---pre-hook report to the host error handler (the original still runs) and a
+---replacement propagates, like any handler error.
+---@param receiver table
+---@param handlerName string
+---@param methodName string qualified public method name, used in the error
+---@return function handler
+local function newMethodHandler(receiver, handlerName, methodName)
+  return function(...)
+    local method = receiver[handlerName]
+    -- `== nil` answers without raising even for a secret value
+    -- (docs/EMBEDDING.md, "Secret values"), and costs no call.
+    if method == nil then
+      error(methodName .. ' receiver has no method "' .. handlerName .. '"', 2)
+    end
+    return method(receiver, ...)
+  end
+end
+
+---Resolve a hook's handler arguments. A function handler is followed by the
+---options. A receiver table is followed by an optional handler name (a string;
+---`defaultName`, the hooked method's or script's name, when it is absent, as
+---in AceHook), then the options. The method must exist when the hook is made.
+---@param handler function|table validated as one or the other
+---@param nameOrOptions any the argument after the handler
+---@param rest any the argument after that
+---@param defaultName string the hooked method's, global's or script's name
+---@param methodName string qualified public method name, used in the argument errors
+---@param level integer stack level the failures are reported at
+---@return function handler
+---@return any options
+local function resolveHandler(handler, nameOrOptions, rest, defaultName, methodName, level)
+  if type(handler) == "function" then
+    return handler, nameOrOptions
+  end
+  local handlerName, options
+  local kind = type(nameOrOptions)
+  if kind == "string" then
+    handlerName, options = nameOrOptions, rest
+  elseif kind == "nil" then
+    handlerName, options = defaultName, rest
+  else
+    handlerName, options = defaultName, nameOrOptions
+  end
+  validateName(handlerName, methodName, "handlerName", level + 1)
+  if type(handler[handlerName]) ~= "function" then
+    error(methodName .. ' receiver has no method "' .. handlerName .. '"', level)
+  end
+  return newMethodHandler(handler, handlerName, methodName), options
 end
 
 ---Check what every hook of a table field needs, before anything is installed.
@@ -964,7 +1063,7 @@ end
 local function validateMethodTarget(scope, object, method, handler, methodName, level)
   -- `validateScope`, `ensureOpen`, `validateTable` and `validateHandler`,
   -- inline: every field hook takes this path.
-  if type(scope) ~= "table" or getmetatable(scope) ~= SCOPE_METATABLE then
+  if getmetatable(scope) ~= SCOPE_METATABLE then
     error(methodName .. " must be called on a HookKit scope", level)
   end
   if scope._closed == true then
@@ -974,8 +1073,9 @@ local function validateMethodTarget(scope, object, method, handler, methodName, 
     error(methodName .. " object must be a table", level)
   end
   validateName(method, methodName, "method", level + 1)
-  if type(handler) ~= "function" then
-    error(methodName .. " handler must be a function", level)
+  local handlerKind = type(handler)
+  if handlerKind ~= "function" and handlerKind ~= "table" then
+    error(methodName .. HANDLER_MESSAGE, level)
   end
   if type(object[method]) ~= "function" then
     error(methodName .. ' target "' .. method .. '" is not a function', level)
@@ -1086,7 +1186,19 @@ local function hasRoom(scope)
   if maxHooks == UNBOUNDED then
     return true
   end
-  return countRecords(scope) < maxHooks
+  -- The bound is raised by every stored record and lowered by every removed
+  -- one, but not by the records of a hooked table the collector took, so it
+  -- is an upper bound of the live records. Below the limit it proves room
+  -- without a walk, which keeps installing n hooks linear. At the limit, and
+  -- for a scope never counted (an older copy's), the records are counted:
+  -- the real count is what may refuse, and it forgets collected tables.
+  local bound = recordBounds[scope]
+  if bound ~= nil and bound < maxHooks then
+    return true
+  end
+  local live = countRecords(scope)
+  recordBounds[scope] = live
+  return live < maxHooks
 end
 
 ---Install a secure post-hook of a table field or global.
@@ -1094,15 +1206,17 @@ end
 ---@param target any
 ---@param second any
 ---@param third any
+---@param fourth any
 ---@return true|nil installed
 ---@return "full"|nil reason
-local function installSecureHook(scope, target, second, third)
+local function installSecureHook(scope, target, second, third, fourth)
   local methodName = "HookKit.Scope:SecureHook"
-  local object, method, handler = splitTarget(target, second, third, nil)
+  local object, method, handler, handlerName = splitTarget(target, second, third, fourth, nil)
   validateMethodTarget(scope, object, method, handler, methodName, 4)
   if nativeHookSecureFunc == nil then
     error(methodName .. " requires the host's hooksecurefunc", 3)
   end
+  handler = resolveHandler(handler, handlerName, nil, method, methodName, 4)
   if not hasRoom(scope) then
     return nil, "full"
   end
@@ -1127,11 +1241,14 @@ end
 ---@param second any
 ---@param third any
 ---@param fourth any
+---@param fifth any
 ---@return true|nil installed
 ---@return "full"|nil reason
-local function installFieldHook(scope, kind, methodName, target, second, third, fourth)
-  local object, method, handler, options = splitTarget(target, second, third, fourth)
+local function installFieldHook(scope, kind, methodName, target, second, third, fourth, fifth)
+  local object, method, handler, after, rest = splitTarget(target, second, third, fourth, fifth)
   validateMethodTarget(scope, object, method, handler, methodName, 4)
+  local options
+  handler, options = resolveHandler(handler, after, rest, method, methodName, 4)
   local forceSecure = readHookOptions(options, methodName, 4)
   refuseSecureTarget(object, method, forceSecure, methodName, 4)
   if not hasRoom(scope) then
@@ -1160,9 +1277,10 @@ end
 ---@param handler any
 ---@return true|nil installed
 ---@return "full"|nil reason
-local function installSecureScriptHook(scope, frame, script, handler)
+local function installSecureScriptHook(scope, frame, script, handler, handlerName)
   local methodName = "HookKit.Scope:SecureHookScript"
   validateScriptTarget(scope, frame, script, handler, SECURE_SCRIPT_HOST_METHODS, methodName, 4)
+  handler = resolveHandler(handler, handlerName, nil, script, methodName, 4)
   if not hasRoom(scope) then
     return nil, "full"
   end
@@ -1188,11 +1306,23 @@ end
 ---@param frame any
 ---@param script any
 ---@param handler any
----@param options any
+---@param after any the options, or the handler name after a receiver
+---@param rest any the options after a receiver and its handler name
 ---@return true|nil installed
 ---@return "full"|nil reason
-local function installScriptReplacement(scope, kind, methodName, frame, script, handler, options)
+local function installScriptReplacement(
+  scope,
+  kind,
+  methodName,
+  frame,
+  script,
+  handler,
+  after,
+  rest
+)
   validateScriptTarget(scope, frame, script, handler, REPLACE_SCRIPT_HOST_METHODS, methodName, 4)
+  local options
+  handler, options = resolveHandler(handler, after, rest, script, methodName, 4)
   local forceSecure = readHookOptions(options, methodName, 4)
   refuseProtectedScript(frame, script, forceSecure, methodName, 4)
   local counts = rawget(secureScripts, frame)
@@ -1574,13 +1704,14 @@ end
 ---for an `UNBOUNDED` scope).
 ---@param self HookKit.ScopeRecord
 ---@param target table|string
----@param second string|function
----@param third function?
+---@param second string|function|table method name, or the handler of a global
+---@param third function|table|string|nil handler, or a handler name after a receiver
+---@param fourth string? handler name after a receiver, in the object form
 ---@return true|nil installed
 ---@return "full"|nil reason
-local function scopeSecureHook(self, target, second, third)
+local function scopeSecureHook(self, target, second, third, fourth)
   -- Not a tail call: a tail call would hide this frame from `error` levels.
-  local installed, reason = installSecureHook(self, target, second, third)
+  local installed, reason = installSecureHook(self, target, second, third, fourth)
   return installed, reason
 end
 
@@ -1588,28 +1719,33 @@ end
 ---@param self HookKit.ScopeRecord
 ---@param frame table
 ---@param script string
----@param handler function
+---@param handler function|table a function, or a receiver whose method handles the script
+---@param handlerName string? the receiver's method; the script's name when absent
 ---@return true|nil installed
 ---@return "full"|nil reason
-local function scopeSecureHookScript(self, frame, script, handler)
-  local installed, reason = installSecureScriptHook(self, frame, script, handler)
+local function scopeSecureHookScript(self, frame, script, handler, handlerName)
+  local installed, reason = installSecureScriptHook(self, frame, script, handler, handlerName)
   return installed, reason
 end
 
 ---Pre-hook a method: `Hook(object, method, handler[, options])` or
 ---`Hook(globalName, handler[, options])`. The handler runs first and its errors
 ---are reported, the original always runs and its results are returned
----untouched. Taints the target.
+---untouched. Taints the target. Every hook method also takes a receiver table
+---in the handler's place, then an optional handler name (default: the hooked
+---name): `Hook(object, method, receiver[, handlerName][, options])`; see
+---`resolveHandler`.
 ---@param self HookKit.ScopeRecord
 ---@param target table|string
----@param second string|function
----@param third function|HookKit.HookOptions|nil
----@param fourth HookKit.HookOptions?
+---@param second string|function|table method name, or the handler of a global
+---@param third function|table|string|HookKit.HookOptions|nil handler, or what follows the handler
+---@param fourth string|HookKit.HookOptions|nil options, or a handler name after a receiver
+---@param fifth HookKit.HookOptions? options after a receiver and its handler name
 ---@return true|nil installed
 ---@return "full"|nil reason
-local function scopeHook(self, target, second, third, fourth)
+local function scopeHook(self, target, second, third, fourth, fifth)
   local installed, reason =
-    installFieldHook(self, KIND_HOOK, "HookKit.Scope:Hook", target, second, third, fourth)
+    installFieldHook(self, KIND_HOOK, "HookKit.Scope:Hook", target, second, third, fourth, fifth)
   return installed, reason
 end
 
@@ -1618,14 +1754,23 @@ end
 ---`handler(original, ...)` and its results are returned. Taints the target.
 ---@param self HookKit.ScopeRecord
 ---@param target table|string
----@param second string|function
----@param third function|HookKit.HookOptions|nil
----@param fourth HookKit.HookOptions?
+---@param second string|function|table method name, or the handler of a global
+---@param third function|table|string|HookKit.HookOptions|nil handler, or what follows the handler
+---@param fourth string|HookKit.HookOptions|nil options, or a handler name after a receiver
+---@param fifth HookKit.HookOptions? options after a receiver and its handler name
 ---@return true|nil installed
 ---@return "full"|nil reason
-local function scopeRawHook(self, target, second, third, fourth)
-  local installed, reason =
-    installFieldHook(self, KIND_RAW_HOOK, "HookKit.Scope:RawHook", target, second, third, fourth)
+local function scopeRawHook(self, target, second, third, fourth, fifth)
+  local installed, reason = installFieldHook(
+    self,
+    KIND_RAW_HOOK,
+    "HookKit.Scope:RawHook",
+    target,
+    second,
+    third,
+    fourth,
+    fifth
+  )
   return installed, reason
 end
 
@@ -1634,11 +1779,12 @@ end
 ---@param self HookKit.ScopeRecord
 ---@param frame table
 ---@param script string
----@param handler function
----@param options HookKit.HookOptions?
+---@param handler function|table a function, or a receiver whose method handles the script
+---@param options string|HookKit.HookOptions|nil options, or a handler name after a receiver
+---@param rest HookKit.HookOptions? options after a receiver and its handler name
 ---@return true|nil installed
 ---@return "full"|nil reason
-local function scopeHookScript(self, frame, script, handler, options)
+local function scopeHookScript(self, frame, script, handler, options, rest)
   local installed, reason = installScriptReplacement(
     self,
     KIND_HOOK_SCRIPT,
@@ -1646,7 +1792,8 @@ local function scopeHookScript(self, frame, script, handler, options)
     frame,
     script,
     handler,
-    options
+    options,
+    rest
   )
   return installed, reason
 end
@@ -1656,11 +1803,12 @@ end
 ---@param self HookKit.ScopeRecord
 ---@param frame table
 ---@param script string
----@param handler function
----@param options HookKit.HookOptions?
+---@param handler function|table a function, or a receiver whose method handles the script
+---@param options string|HookKit.HookOptions|nil options, or a handler name after a receiver
+---@param rest HookKit.HookOptions? options after a receiver and its handler name
 ---@return true|nil installed
 ---@return "full"|nil reason
-local function scopeRawHookScript(self, frame, script, handler, options)
+local function scopeRawHookScript(self, frame, script, handler, options, rest)
   local installed, reason = installScriptReplacement(
     self,
     KIND_RAW_HOOK_SCRIPT,
@@ -1668,7 +1816,8 @@ local function scopeRawHookScript(self, frame, script, handler, options)
     frame,
     script,
     handler,
-    options
+    options,
+    rest
   )
   return installed, reason
 end
@@ -1763,6 +1912,25 @@ local function scopeClose(self)
   rawset(self, "_closed", true)
   LogoutClose.releaseSubscription(self)
   releaseAll(self)
+  return true
+end
+
+---Reopen a closed manual scope, empty and usable like a new one, with its
+---limit kept. Closing undid every hook; closures it could only leave inert
+---stay inert, and a new hook installs a new closure. ModuleKit uses this to
+---keep a module's `scope.Hooks` across enable cycles. An addon scope belongs
+---to its addon's teardown, so closing it stays terminal.
+---@param self HookKit.ScopeRecord
+---@return boolean reopened `false` when the scope was open.
+local function scopeReopen(self)
+  validateScope(self, "HookKit.Scope:Reopen", 3)
+  if rawget(self, "_addonName") ~= false then
+    error("HookKit.Scope:Reopen cannot reopen an addon scope", 2)
+  end
+  if rawget(self, "_closed") ~= true then
+    return false
+  end
+  rawset(self, "_closed", false)
   return true
 end
 
@@ -1913,6 +2081,7 @@ rawset(Scope, "Original", scopeOriginal)
 rawset(Scope, "Hooks", scopeHooks)
 rawset(Scope, "Close", scopeClose)
 rawset(Scope, "IsClosed", scopeIsClosed)
+rawset(Scope, "Reopen", scopeReopen)
 rawset(Scope, "GetActiveCount", scopeGetActiveCount)
 rawset(Scope, "GetAddonName", scopeGetAddonName)
 rawset(Scope, "GetMaxHooks", scopeGetMaxHooks)
@@ -1926,6 +2095,7 @@ rawset(HookKit, "ForAddon", forAddon)
 rawset(HookKit, "CloseAddonScopes", closeAddonScopes)
 
 rawset(dispatch, "isolatedCall", isolatedCall)
+rawset(dispatch, "reportFailure", reportError)
 rawset(dispatch, "replacementCall", replacementCall)
 rawset(dispatch, "closeAddonScopesAtLogout", LogoutClose.closeAtLogout)
 rawset(state, "runtimeRevision", IMPLEMENTATION_REVISION)

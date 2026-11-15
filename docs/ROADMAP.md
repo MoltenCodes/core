@@ -3842,7 +3842,13 @@ Client facts used, read 2026-11-15 from Gethe/wow-ui-source
    hand-over to the validators, record layout), CHANGELOG, README (migration
    table row for `ScheduleTimer("Method", delay)`), tests/README. For the shared documents:
    the `MIGRATING_FROM_ACE3.md` timer row and the closures-only paragraph.
-9. Status: recorded 2026-11-15 under core decisions 18 and 19; code follows.
+9. Status: implemented 2026-11-15 under core decisions 18 and 19, 0.9.0,
+   revision 14, 145 specs. Deviations: the method is checked at registration
+   and looked up on the receiver at every fire (late binding, as AceTimer),
+   not resolved once; every timer, one-shot and repeating, uses one array-part
+   record of nine slots, older named-field timers converted in place (active
+   ones at load, the rest on first use); the start is two Lua frames, the
+   public method and a shared launcher.
 
 **eventKit (package O): fixed-cost trims, smaller connections, scope reopening and method-name callbacks** — a change to facade `EventKit`
 
@@ -3958,7 +3964,12 @@ Client facts used, read 2026-11-15 from Gethe/wow-ui-source
    errors), INTERNALS.md (handle layout and its conversion, `onceCount`,
    when the walk is protected), CHANGELOG, README (migration rows for
    `RegisterEvent("X", "OnX")` and `RegisterEvent("X")`), tests/README.
-9. Status: recorded 2026-11-15 under core decisions 18 and 19; code follows.
+9. Status: implemented 2026-11-15 under core decisions 18 and 19, 0.10.0,
+   revision 21, 271 specs. Deviations: late binding (the method is checked at
+   registration and looked up at every delivery; one missing then is reported
+   through listener isolation as `EventKit receiver has no method "<name>"`
+   and the connection stays); Coalesce and Derive handles keep named scope
+   links; the main chunk is down to 187 locals.
 
 **signalKit (package O): publish and subscribe trims, smaller connections, bus scope reopening and method-name callbacks** — a change to facade `SignalKit`
 
@@ -4046,7 +4057,11 @@ Client facts used, read 2026-11-15 from Gethe/wow-ui-source
    INTERNALS.md (layout, `_layout` marker), CHANGELOG, README (migration
    rows for `RegisterMessage` and `RegisterCallback` with a method name),
    tests/README.
-9. Status: recorded 2026-11-15 under core decisions 18 and 19; code follows.
+9. Status: implemented 2026-11-15 under core decisions 18 and 19, 0.8.0,
+   revision 11, 266 specs. Deviations: late binding as above; `Fire` never
+   converts: an older signal is converted in place when a connect finds it
+   idle, and idle bus topic signals at load, so no signal mixes layouts; no
+   secret check on the receiver, which nothing compares.
 
 **hookKit (package O): counted hook bound, inline isolation, scope reopening and method-name handlers** — a change to facade `HookKit`
 
@@ -4131,7 +4146,11 @@ Client facts used, read 2026-11-15 from Gethe/wow-ui-source
    cost), INTERNALS.md (`_recordBound`, inline isolation), CHANGELOG, README
    (migration rows for `Hook(obj, "Method", "Handler")` and the default
    handler), tests/README.
-9. Status: recorded 2026-11-15 under core decisions 18 and 19; code follows.
+9. Status: implemented 2026-11-15 under core decisions 18 and 19, 0.4.0,
+   revision 8, 151 specs. Deviations: the handler is looked up on the receiver
+   at every call (late binding); the counted bound lives in the weak-keyed
+   state table `recordBounds`, not a `_recordBound` scope field, so the scope
+   stays at eight fields.
 
 **schedulerKit (package O): the probe rule, one-pass key validation, receiver checks and scope reopening** — a change to facade `SchedulerKit`
 
@@ -4195,7 +4214,9 @@ Client facts used, read 2026-11-15 from Gethe/wow-ui-source
    stay; with the maintainer's yes they go and the client suite gains that test.
 8. Docs: API.md (`Reopen`, the probe rule), INTERNALS.md (the one-pass key
    check), CHANGELOG, tests/README; the README's scope table.
-9. Status: recorded 2026-11-15 under core decisions 18 and 19; code follows.
+9. Status: implemented 2026-11-15 under core decisions 18 and 19, 0.9.0,
+   revision 21, 289 specs. The option-name key checks stay (decision 19b
+   covers read-side checks only).
 
 **lifecycleKit (package O): the probe rule and the halted field as a record field** — a change to facade `LifecycleKit`
 
@@ -4235,7 +4256,8 @@ Client facts used, read 2026-11-15 from Gethe/wow-ui-source
    inside the first halt listener and before `OnHalted` subscribers run;
    in-place upgrade from revision 17 keeps instances, phases and halts.
 8. Docs: API.md (the field, under "Halted state"), CHANGELOG, tests/README.
-9. Status: recorded 2026-11-15 under core decisions 18 and 19; code follows.
+9. Status: implemented 2026-11-15 under core decisions 18 and 19, 0.6.9,
+   revision 18, 202 specs.
 
 **moduleKit (package O): kept module scopes, cheaper enables, the probe rule and an opt-in missing-Kit error** — a change to facade `ModuleKit`
 
@@ -4345,7 +4367,10 @@ Client facts used, read 2026-11-15 from Gethe/wow-ui-source
    `_mayHaveBlocked`, the halt read), CHANGELOG, README, tests/README. For
    the shared documents: `MIGRATING_FROM_ACE3.md`'s module-scope paragraph if it says
    scopes are new per enable.
-9. Status: recorded 2026-11-15 under core decisions 18 and 19; code follows.
+9. Status: implemented 2026-11-15 under core decisions 18 and 19, 0.9.0,
+   revision 22, 264 specs. The policy methods are `SetMissingScopePolicy` and
+   `GetMissingScopePolicy` as recorded; the error names the file as
+   `<packageId>\<Facade>.lua` from MoltenCodes.
 
 **commKit send fast path and cheaper checks** — an internal change to facade `CommKit`
 

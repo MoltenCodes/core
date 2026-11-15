@@ -32,6 +32,8 @@ EventKit and LifecycleKit are declared under `optionalDependencies`, so the runn
 | `Allocation_spec.lua` | allocation guards |
 | `FastPaths_spec.lua` | revision 6 and 7 fast paths: the secret check asking `issecretvalue` alone and never ClientKit (the probe read at load, nothing secret without one, a probe installed later honoured, scopes a revision 6 copy opened using the new check after an upgrade), re-hooking after the last hook of an object went, the replacement call, the re-hook allocation |
 | `ErrorLevels_spec.lua` | errors reported at the caller's line |
+| `MethodHandlers_spec.lua` | a receiver and handler name in the handler's place on all six hook methods: the default name, an explicit name and options, the raw form's original first, the lookup at every call, a method gone by call time (reported for a pre-hook, propagated for a replacement), refusals at the caller's line, a secret handler name |
+| `Revision8_spec.lua` | the stored record bound through installs, releases, a collected target at the limit, a scope without a bound and an unbounded scope; inline handler isolation reporting through `dispatch.reportFailure`, `isolatedCall` still published; `Scope:Reopen` on manual, open and addon scopes, wrong receivers, and a scope closed before an upgrade |
 | `LogoutClose_spec.lua` | who closes an addon scope at logout, in each of the four cases, and across upgrades |
 | `Bootstrap_spec.lua` | publication, duplicate loads, upgrades |
 | `Manifest_spec.lua` | manifest and runtime metadata |
