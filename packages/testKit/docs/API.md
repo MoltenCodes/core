@@ -55,6 +55,7 @@ Package facade:
 | `Reset()` | Abandon a run in progress and clear every result; returns `true`. |
 | `SetLimits(limits)` / `GetLimits()` | Change or read the package-wide limits. See [Limits](#limits). |
 | `UNBOUNDED` | Sentinel a limit takes to be lifted. |
+| `API`, `REVISION` | `1`, `5`. |
 
 Suites:
 
@@ -73,7 +74,7 @@ Test context, passed to every test body and hook:
 | `Replace(table, key, value)` | Replace `table[key]` until the test ends; returns the previous value, or `nil, "full"` past `maxReplacements` (256) in one test. |
 | `Yield()` | Suspend the test until the runner job's next resume. |
 | `WaitFor(eventName, timeoutSeconds)` | `true, ...payload` when the event fires, or `false, "timeout"`. |
-| `WaitUntil(predicate, timeoutSeconds)` | `true` once `predicate()` is truthy (polled once per frame), or `false, "timeout"`. |
+| `WaitUntil(predicate, timeoutSeconds)` | `true` once `predicate()` is truthy (polled once per frame), or `false, "timeout"`; a secret boolean answer fails the test. |
 | `Expect(actual)` | A matcher about `actual`. |
 | `Fail(message?)` | Fail the test now. |
 | `Log(message)` | Keep one line with the test's result; `false` once `maxLogLines` (64) lines are kept. |

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.9 — 2026-11-15
+
+- Documentation: the facade table in `docs/API.md` ("Public surface") did not list `API` and `REVISION`; it now gives them as `1`, `5`. The context table's `WaitUntil` row now says that a secret boolean answer fails the test, as the method's own section does.
+- Documentation: `tests/README.md` listed the upgrades of revision 1, 2 and 3 copies but not the revision 4 one `Bootstrap_spec.lua` has since 0.1.7, and did not mention the `WaitUntil` secret-answer specs; both are listed now.
+- Documentation only: the implementation revision is unchanged (5).
+
 ## 0.1.8 — 2026-11-15
 
 - Documentation: `docs/API.md` "Safe descriptions" says exactly what a quoted string escapes. It is quoted with `%q` and its newlines rewritten as `\n`, so `"`, `\`, a carriage return and NUL are escaped while a tab and the other control bytes are shown raw on Lua 5.1.5 (it said "control characters escaped"). The same section lists every message of a comparison a secret makes impossible: `ToBe` and `ToEqual` describe the value under test, so a secret only in `expected` reads `expected number 1: a secret value cannot be compared`, `ToEqual` appends the path of a nested secret, `ToBeTruthy` says `a secret boolean cannot be tested`, and `ToRaise` says `it raised a secret value, which cannot be matched` (it gave one message for all of them). Documentation only: the implementation revision is unchanged.
