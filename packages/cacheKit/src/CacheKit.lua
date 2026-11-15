@@ -40,7 +40,7 @@
 
 local PACKAGE_NAME = "cacheKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 6
+local IMPLEMENTATION_REVISION = 7
 local REQUIRED_REGISTRY_API = 2
 local OPTIONAL_EVENTKIT_API = 1
 
@@ -653,6 +653,25 @@ local function validateCapacity(value, methodName, level)
   end
 end
 
+---Name a caller's table key in a refusal without running its `__tostring`.
+---`tostring` on a table or userdata runs the caller's `__tostring`, foreign
+---code that may raise or answer a secret and so lose the real refusal. A
+---string is shown as written, a number or boolean through `tostring` (no
+---foreign code runs for those), and anything else by its type, as `<table>`.
+---A key read from a Lua table cannot be a secret: storing one raises.
+---@param key any
+---@return string
+local function describeKey(key)
+  local keyType = type(key)
+  if keyType == "string" then
+    return key
+  end
+  if keyType == "number" or keyType == "boolean" then
+    return tostring(key)
+  end
+  return "<" .. keyType .. ">"
+end
+
 ---Validate one `SetLimits` entry: a recognised name, an integer within the
 ---limit's ceiling, never `UNBOUNDED` (each limit names its reason).
 ---@param key any
@@ -661,7 +680,7 @@ end
 local function validateLimitEntry(key, value, level)
   local ceiling = LIMIT_CEILINGS[key]
   if ceiling == nil then
-    error("CacheKit:SetLimits limits." .. tostring(key) .. " is not a recognised limit", level)
+    error("CacheKit:SetLimits limits." .. describeKey(key) .. " is not a recognised limit", level)
   end
   local secret = isSecretValue(value)
   if not secret and value == UNBOUNDED then
@@ -741,7 +760,7 @@ local function validateOptionKeys(options, allowedKeys, methodName, level)
   local firstUnknown = nil
   for key in next, options do
     if allowedKeys[key] ~= true then
-      local text = tostring(key)
+      local text = describeKey(key)
       if firstUnknown == nil or text < firstUnknown then
         firstUnknown = text
       end
@@ -1580,7 +1599,10 @@ local function snapshotFill(snapshot, key, value)
   local seen = rawget(snapshot, "_seen")
   local stamp = rawget(snapshot, "_stamp")
   if seen[key] == stamp then
-    error('CacheKit.Snapshot fill received key "' .. tostring(key) .. '" twice in one refresh', 3)
+    error(
+      'CacheKit.Snapshot fill received key "' .. describeKey(key) .. '" twice in one refresh',
+      3
+    )
   end
 
   local filledCount = rawget(snapshot, "_filledCount") + 1

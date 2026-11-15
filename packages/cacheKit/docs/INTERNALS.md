@@ -17,7 +17,7 @@ A cache is one table with a fixed set of private fields, all created by `newCach
 | `_statsView` | The table `GetStats` returns, `false` until the first call. |
 | `_eventScope`, `_clearOnEvents`, `_clearCallback` | Clear-on-event state, `false` until the first `ClearOn`. |
 | `_closed` | Whether `Close` ran. |
-| `_schema` | The cache layout version, `1`. Revisions 2, 3 and 4 changed nothing in the cache layout. |
+| `_schema` | The cache layout version, `1`. Revisions 2 to 7 changed nothing in the cache layout. |
 
 ## The recency list
 
@@ -123,7 +123,7 @@ Caches, snapshots, lazy trees and queues use the metatables stored in `state.cac
 
 ### State schema 2
 
-Revision 3 writes the same schema 2 as revision 2 and changes no object layout: it only corrects the order of expansion and eviction in `expandNode`, so an upgrade over revision 2 replaces the prototype methods and keeps the state and every object as they are. Revision 4 likewise changes no state or object layout: it asks `issecretvalue` before a limit value meets `UNBOUNDED`, and compares a stored value with the negative marker by raw identity instead of `==`. Revision 5 changes no state or object layout either: it asks `issecretvalue` about a `cacheable` answer before testing it for truth.
+Revision 3 writes the same schema 2 as revision 2 and changes no object layout: it only corrects the order of expansion and eviction in `expandNode`, so an upgrade over revision 2 replaces the prototype methods and keeps the state and every object as they are. Revision 4 likewise changes no state or object layout: it asks `issecretvalue` before a limit value meets `UNBOUNDED`, and compares a stored value with the negative marker by raw identity instead of `==`. Revision 5 changes no state or object layout either: it asks `issecretvalue` about a `cacheable` answer before testing it for truth. Revision 6 changes none either: it asks `issecretvalue` about a `ttlSeconds` and a queue `overflow` before comparing the one or using the other as a key. Revision 7 changes none either: a refusal names a table key by its type instead of passing it to `tostring`.
 
 Revision 1 wrote state schema 1: `dispatch`, `runtimeRevision`, `cacheMetatable`, `snapshotMetatable`, `unbounded`. Revision 2 writes schema 2, which adds `lazyMetatable`, `queueMetatable`, `negative` and `limits` (`{ maxQueueCapacity = 1024 }`, the table `SetLimits` writes and `validateCapacity` reads). Bootstrap holds an inherited state to `validateStateShared` (the schema 1 fields), then, when its schema is `1`, adds the four tables and sets the schema to `2`, and only then requires `validateStateBase` (the full schema 2 shape, including every limit within its ceiling). The `LazyTree` and `Queue` prototypes are created when the inherited facade has none (`inheritPrototype`). Nothing in a cache or snapshot changed, so no object is upgraded lazily.
 

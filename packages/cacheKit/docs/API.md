@@ -2,7 +2,7 @@
 
 CacheKit API generation **1** provides bounded caches: least-recently-used caches bounded by count, the same caches with an age limit and negative entries, memoisation of a one-key function, snapshots that report what changed between two reads, a namespace tree expanded on demand, a ring queue with an explicit overflow policy, and clearing a cache when a host event fires.
 
-Implementation revision: **6**.
+Implementation revision: **7**.
 
 ## Loading
 
@@ -20,6 +20,8 @@ local CacheKit = MoltenCodes.Registries[2]:Get("cacheKit", 1)
 ```
 
 CacheKit does not rely on `require()` at runtime.
+
+Loaded without Registry, `CacheKit.lua` raises `MoltenCodes CacheKit requires Registry API 2 to be loaded first`; loaded over a Registry whose facade has no `Bootstrap`, it raises `MoltenCodes CacheKit requires a valid Registry API 2 facade`.
 
 ### Optional host facilities
 
@@ -114,7 +116,7 @@ Every cache, snapshot, lazy tree and queue is bounded by default. Per-object bou
 | `maxQueueCapacity` — largest `capacity` `NewQueue` accepts | `1024` | `CacheKit:SetLimits({ maxQueueCapacity = n })`, `n` from 1 to 65536 | no: same reason | 65536: keeps one `NewQueue` call from allocating without bound |
 | free list of an unbounded cache or lazy tree | `1024` blank tables | not configurable | no | keeps an unbounded cache or tree from retaining its peak size after a `Clear` |
 
-`maxEntries` must be an integer of at least `1` or `CacheKit.UNBOUNDED`; anything else is refused at the caller's line with `maxEntries must be a positive integer or CacheKit.UNBOUNDED`. `capacity` must be an integer from 1 to `maxQueueCapacity` and is refused with `CacheKit:NewQueue capacity must be an integer from 1 to 1024 (CacheKit:SetLimits maxQueueCapacity)`; `CacheKit.UNBOUNDED` is refused with its reason, `capacity cannot be CacheKit.UNBOUNDED: the ring is allocated when the queue is created`. A secret `maxEntries` or `capacity` (Retail 12.x) is refused with the same messages as any other invalid value, before it is compared with anything. Option tables refuse unknown fields.
+`maxEntries` must be an integer of at least `1` or `CacheKit.UNBOUNDED`; anything else is refused at the caller's line with `maxEntries must be a positive integer or CacheKit.UNBOUNDED`. `capacity` must be an integer from 1 to `maxQueueCapacity` and is refused with `CacheKit:NewQueue capacity must be an integer from 1 to 1024 (CacheKit:SetLimits maxQueueCapacity)`; `CacheKit.UNBOUNDED` is refused with its reason, `capacity cannot be CacheKit.UNBOUNDED: the ring is allocated when the queue is created`. A secret `maxEntries` or `capacity` (Retail 12.x) is refused with the same messages as any other invalid value, before it is compared with anything. An option table that is not a table raises `CacheKit:NewLru options must be a table` (with the constructor's name), and one with a field the constructor does not take raises `CacheKit:NewLru options contains unknown field "<name>"`, naming the alphabetically first unknown field. A key that is not a string, number or boolean is named by its type (`<table>`, `<function>`, `<userdata>`), so a key's `__tostring` never runs.
 
 ```lua
 local byGuid = CacheKit:NewLru({ maxEntries = CacheKit.UNBOUNDED })
@@ -130,7 +132,7 @@ An unbounded cache never evicts, so it grows with every distinct key you store a
 
 ### `CacheKit:SetLimits(limits)`
 
-Changes any subset of the package-wide limits; today that is `maxQueueCapacity`. The whole table is validated first, so one invalid entry changes nothing: an unrecognised name raises `CacheKit:SetLimits limits.<name> is not a recognised limit`, a value outside 1 to the ceiling raises `limits.maxQueueCapacity must be an integer from 1 to 65536`, and `CacheKit.UNBOUNDED` raises `limits.maxQueueCapacity cannot be CacheKit.UNBOUNDED: the ring is allocated when the queue is created`; a non-table raises `limits must be a table`. A secret value is refused with the out-of-range message before it is compared with anything. All at the caller's line. An empty table is accepted and changes nothing.
+Changes any subset of the package-wide limits; today that is `maxQueueCapacity`. The whole table is validated first, so one invalid entry changes nothing: an unrecognised name raises `CacheKit:SetLimits limits.<name> is not a recognised limit` (a table key reads `limits.<table>`, by its type, without running its `__tostring`), a value outside 1 to the ceiling raises `limits.maxQueueCapacity must be an integer from 1 to 65536`, and `CacheKit.UNBOUNDED` raises `limits.maxQueueCapacity cannot be CacheKit.UNBOUNDED: the ring is allocated when the queue is created`; a non-table raises `limits must be a table`. A secret value is refused with the out-of-range message before it is compared with anything. All at the caller's line. An empty table is accepted and changes nothing.
 
 **The limits are shared by every consumer in the session**: every embedded copy publishes one facade and one state, so a limit one addon raises is raised for all of them, and a newer revision loaded later inherits the value set rather than resetting it. Lowering `maxQueueCapacity` never shrinks an existing queue; further `NewQueue` calls asking for more than the new value are refused until it allows them again.
 
@@ -155,7 +157,7 @@ cache:Set("d", 4)   -- evicts "b"
 
 ## `CacheKit:NewTtl({ maxEntries, ttlSeconds })`
 
-Creates the same cache with an age limit. An entry expires `ttlSeconds` after it was last **set**: reading it does not extend its life, setting it again restarts it. `ttlSeconds` must be a finite number greater than zero. An entry whose age equals `ttlSeconds` is expired.
+Creates the same cache with an age limit. An entry expires `ttlSeconds` after it was last **set**: reading it does not extend its life, setting it again restarts it. `ttlSeconds` must be a finite number greater than zero (`CacheKit:NewTtl ttlSeconds must be a finite number greater than zero`); leaving it out raises `CacheKit:NewTtl ttlSeconds is required`, and `PutNegative` does the same under its own name. An entry whose age equals `ttlSeconds` is expired.
 
 The cache stays bounded by `maxEntries` and evicts by recency, not by age. Expired entries are removed lazily:
 
@@ -225,7 +227,7 @@ Returns a table with three counters:
 
 Clears the cache whenever the host event `eventName` fires, through a private EventKit scope the cache owns. Returns `true` when it connected, `false` when the cache already clears on that event. The subscriptions are bounded by the number of distinct event names.
 
-`eventName` must be a non-empty string. When the host refuses the registration, the failure is raised at the caller's line with the host reason kept: `CacheKit.Cache:ClearOn could not connect SPELLS_CHANGED: EventKit.Scope:Connect could not register event SPELLS_CHANGED`, and a later `ClearOn` for the same event may try again. A closed cache refuses: `CacheKit.Cache:ClearOn cannot subscribe a closed cache`. When EventKit is not loaded, or its entry is retired, the error names the `Registry:Find` reason (`absent`, `generation_mismatch` or `retired`). An embedded Registry older than API 2 revision 7 has no `Find`, and `ClearOn` then raises `CacheKit.Cache:ClearOn requires Registry:Find (Registry API 2 revision 7 or newer)`.
+`eventName` must be a non-empty string. When the host refuses the registration, the failure is raised at the caller's line with the host reason kept: `CacheKit.Cache:ClearOn could not connect SPELLS_CHANGED: EventKit.Scope:Connect could not register event SPELLS_CHANGED`, and a later `ClearOn` for the same event may try again. A closed cache refuses: `CacheKit.Cache:ClearOn cannot subscribe a closed cache`. When EventKit is not loaded, or its entry is retired, the error names the `Registry:Find` reason (`absent`, `generation_mismatch` or `retired`). An EventKit entry whose facade has no `CreateScope` raises `CacheKit.Cache:ClearOn requires a valid EventKit API 1 facade`. An embedded Registry older than API 2 revision 7 has no `Find`, and `ClearOn` then raises `CacheKit.Cache:ClearOn requires Registry:Find (Registry API 2 revision 7 or newer)`.
 
 A cache closed from inside a listener of the same event is not cleared again by a delivery EventKit still owes it; see EventKit's *Closing during a dispatch*.
 
@@ -326,9 +328,9 @@ The three arrays belong to the snapshot and are **overwritten by the next refres
 
 - a `nil` or NaN key, or a `nil` value;
 - a secret key or value (see *Secret values*);
-- the same key twice in one refresh;
+- the same key twice in one refresh (`CacheKit.Snapshot fill received key "<key>" twice in one refresh`, where a key that is not a string, number or boolean is named by its type, such as `"<table>"`, without running its `__tostring`);
 - more than `maxEntries` keys in one refresh (`fill exceeded maxEntries (40)`);
-- being called when its snapshot is not refreshing.
+- being called when its snapshot is not refreshing (`CacheKit.Snapshot fill can only be called while its Refresh is running`).
 
 When `read` raises (including through one of those refusals):
 
@@ -339,7 +341,7 @@ When `read` raises (including through one of those refusals):
 
 The snapshot is then exactly what the last successful refresh recorded, and the next successful refresh reports every addition and change the failed one made.
 
-`Refresh` and `Close` refuse to run from inside the snapshot's own `read`. After `Close`, `Refresh` raises, `Get` returns `nil`, `GetCount` returns `0` and `Pairs` iterates nothing. Do not refresh a snapshot while iterating `Pairs()`.
+`Refresh` and `Close` refuse to run from inside the snapshot's own `read` (`CacheKit.Snapshot:Refresh cannot run inside its own read`, `CacheKit.Snapshot:Close cannot close a snapshot inside its own read`). After `Close`, `Refresh` raises `CacheKit.Snapshot:Refresh cannot refresh a closed snapshot`, `Get` returns `nil`, `GetCount` returns `0` and `Pairs` iterates nothing. Do not refresh a snapshot while iterating `Pairs()`.
 
 ## `CacheKit:Lazy(resolve, options?)`
 
@@ -447,6 +449,20 @@ end
 
 Argument failures report the line that called the public method, never a line inside CacheKit. Messages name the method (`CacheKit:NewLru`, `CacheKit.Cache:Set`, `CacheKit.Snapshot:Refresh`, `CacheKit.LazyTree:Get`, `CacheKit.Queue:Push`, `CacheKit memoized function`, `CacheKit.Snapshot fill`). Calling a method without a receiver raises `CacheKit.Cache:Get must be called on a CacheKit cache`, `... on a CacheKit snapshot`, `... on a CacheKit lazy tree` or `... on a CacheKit queue`.
 
+Messages not given in the sections above:
+
+| Raised by | Messages |
+|---|---|
+| A key (`Get`, `Set`, `PutNegative`, `Peek`, `Delete`) | `CacheKit.Cache:Get key must not be nil`; `CacheKit.Cache:Get key must not be NaN` |
+| A memoised function | `CacheKit memoized function key must be a string or a number`; `CacheKit memoized function key must not be NaN`; `CacheKit memoized function cannot run after its cache was closed` |
+| A lazy tree path | `CacheKit.LazyTree:Get needs at least one path part`; `CacheKit.LazyTree:Get path part 2 must be a string or a number`; `CacheKit.LazyTree:Get path part 2 must not be NaN` |
+| Constructors | `CacheKit:Memoize fn must be a function`; `CacheKit:NewSnapshot read must be a function`; `CacheKit:Lazy resolve must be a function` |
+| A closed object | `CacheKit.Cache:Set cannot write to a closed cache` (and `PutNegative`); `CacheKit.LazyTree:Get cannot expand a closed tree` |
+| `fill` | `CacheKit.Snapshot fill value must not be nil`; `CacheKit.Snapshot fill key must not be a secret value` (and `value`); `CacheKit.Snapshot fill exceeded maxEntries (40)` |
+| `SetLimits` | `CacheKit:SetLimits limits must be a table` |
+
+A shared package state that fails validation at load raises `MoltenCodes CacheKit package state is corrupted or incomplete` instead of being overwritten.
+
 ## Performance
 
 | Operation | Cost |
@@ -468,6 +484,6 @@ The layout behind these numbers is in [`INTERNALS.md`](INTERNALS.md).
 
 ## Embedded copies and upgrades
 
-Several addons may embed CacheKit; Registry selects the newest compatible revision and every copy shares one facade. An upgrade happens in place: caches, snapshots, lazy trees and queues created by an older copy keep their contents, statistics and subscriptions, and memoised functions, fill functions and clear-on-event callbacks an older copy created run the newer implementation. Revision 2 upgrades revision 1 state by adding the lazy tree and queue metatables, the negative-entry marker and the default package-wide limits; revision 1 caches gain `PutNegative` without being touched. Revision 3 keeps the revision 2 state as it is and replaces the methods only. Revisions 4, 5 and 6 do the same; memoised functions an older copy created use revision 5's secret-aware `cacheable` check at once, because they reach the implementation through the shared dispatch table, and caches an older copy created refuse a secret `PutNegative` `ttlSeconds` as revision 6 does.
+Several addons may embed CacheKit; Registry selects the newest compatible revision and every copy shares one facade. An upgrade happens in place: caches, snapshots, lazy trees and queues created by an older copy keep their contents, statistics and subscriptions, and memoised functions, fill functions and clear-on-event callbacks an older copy created run the newer implementation. Revision 2 upgrades revision 1 state by adding the lazy tree and queue metatables, the negative-entry marker and the default package-wide limits; revision 1 caches gain `PutNegative` without being touched. Revision 3 keeps the revision 2 state as it is and replaces the methods only. Revisions 4, 5, 6 and 7 do the same; memoised functions an older copy created use revision 5's secret-aware `cacheable` check at once, because they reach the implementation through the shared dispatch table, and caches an older copy created refuse a secret `PutNegative` `ttlSeconds` as revision 6 does.
 
 Nothing survives `/reload`: CacheKit caches live in memory only.

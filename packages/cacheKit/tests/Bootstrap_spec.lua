@@ -344,6 +344,44 @@ describe("CacheKit bootstrap", function()
     end
   )
 
+  it(
+    "upgrades a revision 6 package in place to a working file that names table keys by type",
+    function()
+      local previousRevision = 6
+      local workingRevision = TestEnv.NewPackage().REVISION
+      TestEnv.Reset()
+      TestEnv.InstallWowApi()
+      require("Registry")
+      require("SignalKit")
+      require("EventKit")
+      local previous = TestEnv.LoadRevision(previousRevision)
+      assert.are.equal(previousRevision, previous.REVISION)
+      local state = rawget(previous, "_state")
+      local lru = previous:NewLru({ maxEntries = 2 })
+      lru:Set("kept", 1)
+
+      local upgraded = TestEnv.ReloadPackage()
+      assert.are.equal(previous, upgraded)
+      assert.are.equal(workingRevision, upgraded.REVISION)
+      assert.are.equal(state, rawget(upgraded, "_state"))
+      assert.are.equal(1, lru:Get("kept"))
+      local ran = false
+      local key = setmetatable({}, {
+        __tostring = function()
+          ran = true
+          return "custom"
+        end,
+      })
+      TestEnv.expectErrorContaining(
+        "CacheKit:SetLimits limits.<table> is not a recognised limit",
+        function()
+          upgraded:SetLimits({ [key] = 1 })
+        end
+      )
+      assert.is_false(ran)
+    end
+  )
+
   it("rejects a same-revision state whose limits are invalid", function()
     local CacheKit = TestEnv.NewPackage()
     rawset(rawget(rawget(CacheKit, "_state"), "limits"), "maxQueueCapacity", 0)

@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.2.9 — 2026-11-15
+
+- Fixed: three refusals passed a caller's table key to `tostring` to name it: `SetLimits` with an unrecognised limit name, a constructor option table with an unknown field (`NewLru`, `NewTtl`, `Memoize`, `NewSnapshot`, `Lazy`), and a snapshot `fill` given the same key twice in one refresh. `tostring` on a table or userdata runs its `__tostring`, foreign code that could raise (or answer a secret on Retail) inside CacheKit, so the caller saw that error instead of the real refusal. A string key is still shown as written and a number or boolean through `tostring`, which runs no foreign code, so `limits.1` and `unknown field "aaa"` are unchanged; any other key is named by its type: `CacheKit:SetLimits limits.<table> is not a recognised limit`, `CacheKit:NewLru options contains unknown field "<table>"`, `CacheKit.Snapshot fill received key "<table>" twice in one refresh`. Documented in `docs/API.md`.
+- Implementation revision 7. No state or object layout changed: an upgrade over revision 6 replaces the methods and keeps every cache, snapshot, lazy tree and queue; snapshot `fill` closures an older copy created use the new message at once through the shared dispatch table.
+- Specs: a table key whose `__tostring` raises is named by its type at the caller's line on all three paths and its `__tostring` never runs, and an in-place upgrade from revision 6. 179 → 181 specs.
+
+## 0.2.8 — 2026-11-15
+
+- `docs/API.md` now gives the message of every refusal it described only in words: an option table that is not a table (`options must be a table`) or names a field the constructor does not take (`options contains unknown field "<name>"`, where it said only that unknown fields are refused); a missing `ttlSeconds` (`ttlSeconds is required`); an EventKit entry without `CreateScope` (`ClearOn requires a valid EventKit API 1 facade`, not documented); the snapshot's duplicate key, `fill` outside a refresh, `Refresh` and `Close` inside the snapshot's own `read`, and `Refresh` after `Close`; and the two load-time errors when Registry is missing or has no `Bootstrap`. *Error behaviour* gains a table of the messages no section gave: keys, memoised-function keys and a closed memo, lazy tree paths, the constructors' function arguments, writes to a closed cache or tree, `fill`'s value and secret refusals, `SetLimits` with a non-table, and a corrupted package state.
+- `docs/INTERNALS.md` said revisions 2, 3 and 4 left the cache layout unchanged and listed the state-schema-2 revisions only up to 5; it now says revisions 2 to 6 and states what revision 6 changed (the `ttlSeconds` and `overflow` secret checks, no layout change).
+- `tests/README.md` named the upgrade specs only up to revision 3; it now also names the upgrades from revisions 4 and 5 and the refusal of a same-revision state with invalid limits, which `Bootstrap_spec.lua` runs.
+- Documentation only: implementation revision 6 is unchanged.
+
 ## 0.2.7 — 2026-11-15
 
 - `docs/API.md` states implementation revision 6; it still said 5. Documentation only: implementation revision 6 is unchanged.

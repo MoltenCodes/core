@@ -508,4 +508,55 @@ describe("CacheKit error levels", function()
     end)
     assertReportedAt(keyLine, "CacheKit.Snapshot fill key must not be nil", keyOk, keyValue)
   end)
+
+  it("names a table key by its type and never runs its __tostring", function()
+    local ran = 0
+    local key = setmetatable({}, {
+      __tostring = function()
+        ran = ran + 1
+        error("foreign __tostring ran", 0)
+      end,
+    })
+
+    local limitLine
+    local limitOk, limitValue = pcall(function()
+      limitLine = currentLine() + 1
+      CacheKit:SetLimits({ [key] = 1 })
+    end)
+    assertReportedAt(
+      limitLine,
+      "CacheKit:SetLimits limits.<table> is not a recognised limit",
+      limitOk,
+      limitValue
+    )
+
+    local optionLine
+    local optionOk, optionValue = pcall(function()
+      optionLine = currentLine() + 1
+      CacheKit:NewLru({ maxEntries = 1, [key] = true })
+    end)
+    assertReportedAt(
+      optionLine,
+      'CacheKit:NewLru options contains unknown field "<table>"',
+      optionOk,
+      optionValue
+    )
+
+    local fillLine
+    local snapshot = CacheKit:NewSnapshot(function(fill)
+      fill(key, 1)
+      fillLine = currentLine() + 1
+      fill(key, 2)
+    end)
+    local fillOk, fillValue = pcall(function()
+      snapshot:Refresh()
+    end)
+    assertReportedAt(
+      fillLine,
+      'CacheKit.Snapshot fill received key "<table>" twice in one refresh',
+      fillOk,
+      fillValue
+    )
+    assert.are.equal(0, ran)
+  end)
 end)
