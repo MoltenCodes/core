@@ -322,7 +322,11 @@ describe("ExampleAddon", function()
     local names = embeddedScriptNames()
     for index = 2, #names do
       local packageId = string.match(packageSourcePath(names[index]), "^packages/([^/]+)/")
-      assert.is_not_nil(registry:Get(packageId, 1), packageId)
+      -- Registry's own parts (Registry-Diagnostics) extend the API 2 facade
+      -- checked above; every other file belongs to a Kit at API 1.
+      if packageId ~= "registry" then
+        assert.is_not_nil(registry:Get(packageId, 1), packageId)
+      end
     end
   end)
 

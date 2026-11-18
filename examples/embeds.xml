@@ -35,6 +35,7 @@
     <Script file="Libs\MoltenCodes\commKit\CommKit.lua" /> <!-- optional here -->
     <Script file="Libs\MoltenCodes\commandKit\CommandKit.lua" />
     <Script file="Libs\MoltenCodes\schemaKit\SchemaKit.lua" />
+    <Script file="Libs\MoltenCodes\schemaKit\parts\SchemaKit-Apply.lua" /> <!-- CommandKit's Arguments part fills argument defaults with it -->
     <Script file="Libs\MoltenCodes\commandKit\parts\CommandKit-Arguments.lua" /> <!-- argument schemas; the Options part needs it -->
     <Script file="Libs\MoltenCodes\schemaKit\parts\SchemaKit-Rules.lua" /> <!-- OptionsKit needs it -->
     <Script file="Libs\MoltenCodes\optionsKit\OptionsKit.lua" />
@@ -43,9 +44,11 @@
     <Script file="Libs\MoltenCodes\eventKit\parts\EventKit-Units.lua" /> <!-- unit events: the units option of Core.lua's Coalesce, SettingsKit's spec profiles -->
     <Script file="Libs\MoltenCodes\eventKit\parts\EventKit-Coalescing.lua" /> <!-- Coalesce, which Core.lua uses; TimerKit times it -->
     <Script file="Libs\MoltenCodes\hookKit\HookKit.lua" /> <!-- module scope hooks -->
+    <Script file="Libs\MoltenCodes\registry\parts\Registry-Diagnostics.lua" /> <!-- optional here: InteropKit needs it -->
     <Script file="Libs\MoltenCodes\interopKit\InteropKit.lua" /> <!-- optional here -->
     <Script file="Libs\MoltenCodes\lifecycleKit\LifecycleKit.lua" />
     <Script file="Libs\MoltenCodes\localeKit\LocaleKit.lua" />
+    <Script file="Libs\MoltenCodes\signalKit\parts\SignalKit-Journal.lua" /> <!-- optional here: LogKit needs it -->
     <Script file="Libs\MoltenCodes\logKit\LogKit.lua" /> <!-- optional here -->
     <Script file="Libs\MoltenCodes\mediaKit\MediaKit.lua" /> <!-- optional here -->
     <Script file="Libs\MoltenCodes\moduleKit\ModuleKit.lua" />
@@ -55,7 +58,6 @@
     <Script file="Libs\MoltenCodes\profileKit\ProfileKit.lua" /> <!-- optional here -->
     <Script file="Libs\MoltenCodes\readinessKit\ReadinessKit.lua" />
     <Script file="Libs\MoltenCodes\schedulerKit\SchedulerKit.lua" /> <!-- optional here: CommKit uses it when present -->
-    <Script file="Libs\MoltenCodes\schemaKit\parts\SchemaKit-Apply.lua" /> <!-- CommandKit's Arguments part fills argument defaults with it -->
     <Script file="Libs\MoltenCodes\settingsKit\SettingsKit.lua" />
     <Script file="Libs\MoltenCodes\widgetKit\WidgetKit.lua" />
     <Script file="Libs\MoltenCodes\widgetKit\parts\WidgetKit-Containers.lua" /> <!-- the Frame window Window.lua creates -->
