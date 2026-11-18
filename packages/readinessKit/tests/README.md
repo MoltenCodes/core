@@ -16,6 +16,8 @@ The ReadinessKit suite covers:
 - duplicate embedded loading, Registry publication, yielding to a newer revision, missing Registry or TimerKit, an in-place upgrade from revision 1 that keeps gates, waiters, the poll timer, a re-probe subscription and a `WhenAll` group, and one from the previous revision that keeps the facade, the state, a gate and its waiter and then names a table option field by its type;
 - `error` levels: every argument failure reports the caller's own line;
 - secret values on the `mainline` host: secret names, event names and option values refused at the caller's line before any comparison, ordinary arguments still accepted; a probe answering a secret on every path that runs a probe (definition, poll, `Probe`, re-probe event) counted and reported once per round as a probe failure while the gate stays pending, and a gate made by the previous revision that answers a secret after an in-place upgrade;
+- the shared helper blocks: a probe failure printed when the host error handler itself raises, a probe installed after load asked, the probe kept from load, only a plain `true` counted as secret, and the in-place upgrade over the committed revision 5 file (`fixtures/ReadinessKit-revision5.lua`);
+- the repository conformance suite (`tests/support/KitConformance.lua`): manifest, receivers, the secret `Gate` and `Get` names, and upgrade; its limits group is pending, with the reason in the spec;
 - manifest/runtime API and revision consistency.
 
 The required closure is Registry and TimerKit; EventKit is listed under `optionalDependencies`, so the runner puts it and SignalKit on `LUA_PATH` as well. The module chain in `support/ReadinessKitTestEnv.lua` loads Registry, SignalKit, EventKit, TimerKit and ReadinessKit, as an addon that uses `ReprobeOn` would; `NewPackageWithoutEventKit` loads the three-file minimum footprint (Registry, TimerKit, ReadinessKit), so the absent case is a real absence and `Registry:Find` reports `absent`.
@@ -38,4 +40,6 @@ The allocation guard calls the native ticker's callback directly rather than thr
 | `Bootstrap_spec.lua` | publication, duplicate loads, load order, upgrades |
 | `Limits_spec.lua` | `maxWaiters = ReadinessKit.UNBOUNDED`, the sentinel across a reload, numeric limits still refused |
 | `SecretValues_spec.lua` | secret arguments and options refused at the caller's line; secret probe answers treated as probe failures |
+| `SharedHelpers_spec.lua` | the shared `isSecret`, `reportError` and `describeKey` blocks, the upgrade from revision 5 |
+| `Conformance_spec.lua` | the conformance suite on a mainline-profile environment |
 | `Manifest_spec.lua` | manifest and runtime `API` / `REVISION` agreement |
