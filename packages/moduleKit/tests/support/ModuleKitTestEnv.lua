@@ -11,6 +11,12 @@
 --- the test runner puts them on `LUA_PATH`, and the module chain loads them as
 --- an addon that embeds them would. `NewPackageWithoutOptionalKits` loads the
 --- chain without them.
+---
+--- ModuleKit's parts (Injection, Implements, RequiredAddons) load on top of
+--- the chain: `NewPackage` loads them all, as most specs exercise them, and
+--- `NewCore` loads the chain without them, as an addon that embeds the core
+--- alone does. When LifecycleKit ships its Halt part as a file of its own, both
+--- load it after LifecycleKit, since the RequiredAddons part needs it.
 local FrameworkTestEnv = require("FrameworkTestEnv")
 local assert = require("luassert")
 
@@ -130,6 +136,67 @@ function ModuleKitTestEnv.LoadCommKit()
   return loaded
 end
 
+-- ModuleKit's parts ----------------------------------------------------------
+
+--- ModuleKit's part modules, in the order `LoadParts` loads them.
+local PART_MODULES = { "ModuleKit-Injection", "ModuleKit-Implements", "ModuleKit-RequiredAddons" }
+
+--- LifecycleKit's Halt part, which the RequiredAddons part needs. A
+--- LifecycleKit whose Halt part is still built into its core has no such file.
+local LIFECYCLE_HALT_PART = "LifecycleKit-Halt"
+
+---Clear the part modules from `package.loaded`, so the next load runs each
+---part file again.
+local function unloadParts()
+  for index = 1, #PART_MODULES do
+    package.loaded[PART_MODULES[index]] = nil
+  end
+  package.loaded[LIFECYCLE_HALT_PART] = nil
+end
+
+---Load LifecycleKit's Halt part when this tree has it as a file of its own.
+local function loadLifecycleHaltPart()
+  if FrameworkTestEnv.findModuleFile(LIFECYCLE_HALT_PART) ~= nil then
+    require(LIFECYCLE_HALT_PART)
+  end
+end
+
+---Load ModuleKit's parts, or the named ones, on top of a loaded core.
+---@param names string[]? part names (`"Injection"`); every part when omitted
+---@return table ModuleKit
+function ModuleKitTestEnv.LoadParts(names)
+  loadLifecycleHaltPart()
+  local loaded
+  if names == nil then
+    for index = 1, #PART_MODULES do
+      loaded = require(PART_MODULES[index])
+    end
+  else
+    for index = 1, #names do
+      loaded = require("ModuleKit-" .. names[index])
+    end
+  end
+  return loaded
+end
+
+local loadChain = ModuleKitTestEnv.NewPackage
+
+---Load the module chain and ModuleKit's core alone, without its parts.
+---@return ... loaded modules, ModuleKit first, as `NewPackage` returns them
+function ModuleKitTestEnv.NewCore()
+  local results = { loadChain() }
+  loadLifecycleHaltPart()
+  return unpack(results, 1, table.maxn(results))
+end
+
+---Load the module chain, then every ModuleKit part.
+---@return ... loaded modules, ModuleKit first
+function ModuleKitTestEnv.NewPackage()
+  local results = { loadChain() }
+  ModuleKitTestEnv.LoadParts()
+  return unpack(results, 1, table.maxn(results))
+end
+
 ---Install the shared fixture's WoW API plus an empty `SlashCmdList`.
 function ModuleKitTestEnv.InstallWowApi()
   installFixtureWowApi()
@@ -139,6 +206,7 @@ end
 ---Reset the shared fixture and remove the slash-command globals.
 function ModuleKitTestEnv.Reset()
   resetFixture()
+  unloadParts()
   unloadCommKit()
   removeSlashApi()
 end
@@ -153,11 +221,13 @@ function ModuleKitTestEnv.NewPackageWithoutOptionalKits()
   require("SignalKit")
   require("EventKit")
   require("LifecycleKit")
-  return require("ModuleKit")
+  require("ModuleKit")
+  return ModuleKitTestEnv.LoadParts()
 end
 
 ---Load every module of the chain except ModuleKit, as `NewPackage` does, so a
----spec can then load a ModuleKit copy of its choosing.
+---spec can then load a ModuleKit copy of its choosing (and `LoadParts` after
+---it).
 function ModuleKitTestEnv.LoadDependencies()
   ModuleKitTestEnv.Reset()
   ModuleKitTestEnv.InstallWowApi()
@@ -165,6 +235,7 @@ function ModuleKitTestEnv.LoadDependencies()
   require("SignalKit")
   require("EventKit")
   local LifecycleKit = require("LifecycleKit")
+  loadLifecycleHaltPart()
   require("HookKit")
   require("SchemaKit")
   require("CommandKit")
@@ -209,6 +280,22 @@ function ModuleKitTestEnv.LoadRevision(revision)
       "ModuleKitTestEnv.LoadRevision could not compile " .. path .. ": " .. tostring(failure),
       2
     )
+  end
+  return chunk()
+end
+
+-- The verbatim file of revision 23, the last revision before the parts and
+-- the oldest one this revision takes over in place (the upgrade floor).
+local SUPPORT_DIRECTORY = debug.getinfo(1, "S").source:match("^@(.*[/\\])") or "./"
+local REVISION_23_FIXTURE = SUPPORT_DIRECTORY .. "../fixtures/ModuleKit-revision23.lua"
+
+---Run the verbatim revision 23 file, as an addon of that time embedded it.
+---Like `LoadRevision`, it bypasses `require`; `LoadDependencies` first.
+---@return table ModuleKit the facade revision 23 returned
+function ModuleKitTestEnv.LoadRevision23()
+  local chunk, failure = loadfile(REVISION_23_FIXTURE)
+  if chunk == nil then
+    error("ModuleKitTestEnv.LoadRevision23 could not compile the fixture: " .. tostring(failure), 2)
   end
   return chunk()
 end

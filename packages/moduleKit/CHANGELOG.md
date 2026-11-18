@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.11.0 — 2026-11-18
+
+The core slimming of roadmap package P ("moduleKit (core slimming): injection, implements contracts and required addons as parts, the upgrade floor").
+
+- Added: three parts (ADR 0001), each revision 1: **Injection** (`src/parts/ModuleKit-Injection.lua`: the four `Provide*` methods, `Resolve` on the container and the module, `Inject` and the `inject` definition field), **Implements** (`src/parts/ModuleKit-Implements.lua`: `implements` on module definitions and provider options, SchemaKit optional) and **RequiredAddons** (`src/parts/ModuleKit-RequiredAddons.lua`: the `requiresAddons` definition field and the reaction to another addon's halt). Without a part its members stay on the prototypes and raise at the caller's line naming the file to embed (`ModuleKit.Addon:ProvideSingleton is in ModuleKit's Injection part, which is not loaded: add moduleKit\parts\ModuleKit-Injection.lua to embeds.xml after moduleKit\ModuleKit.lua`); `CreateModule` refuses the part's definition field and a `Provide*` call the `implements` option the same way. Hooks receive an empty injection table without the Injection part. The reaction to the addon's own halt stays in the core.
+- Added: `ModuleKit:HasPart(name)`.
+- Changed: the upgrade floor. An in-place upgrade is taken over from revision 23 only; an older copy's state is refused at load (`cannot take over the state of revision <n> in place; revision 23 is the oldest it upgrades`). The per-container and per-module fills for revisions before 23, the re-subscription of carried-over containers and its upgrade probe are gone. Containers revision 23 made are kept as they are; with a part absent, state it would serve is left in place and reported once through the host error handler.
+- Changed: a container creates its provider table, resolution stack and catch-up queue on first use.
+- Changed: the shared helper blocks `isSecret`, `describeKey`, `reportError`, `validateFacade` and `limits` replace the hand-written copies. Visible changes: `maxRequiredAddons` has a ceiling of 1024 (`must be an integer from 1 to 1024` replaces `must be a positive integer or ModuleKit.UNBOUNDED`); an unknown limit name reads `... is not a recognised limit; it accepts maxRequiredAddons`, a secret one `limits.<secret> is not a recognised limit`; `ForAddon`, `FindAddon`, `GetAddons` and `HasPart` refuse a receiver other than the facade, at the caller's line; `GetLimits`' receiver message ends `use ModuleKit:GetLimits(...)`.
+- Changed: plain indexing instead of literal-key `rawget` / `rawset` on the state, containers and modules.
+- Memory (host Lua 5.1.5, debug information kept, load-and-execute footprint): the core 150,707 → 123,497 B resident, 432,153 → 359,472 B allocated while loading; the parts 16,141 B (Injection), 7,601 B (Implements), 5,077 B (RequiredAddons), each only when embedded. A container 4,136 → 3,880 B beside its LifecycleKit instance; a module unchanged at 933 B. Main chunk 193 → 168 active locals.
+- Implementation revision 24. Specs: 288 → 315 (`Parts_spec.lua`, `Conformance_spec.lua`, the lazy container tables, the upgrade from the verbatim revision 23 file in `tests/fixtures/ModuleKit-revision23.lua`; the cases that seeded revisions before 23 are removed with their code).
+
 ## 0.10.0 — 2026-11-15
 
 The AceAddon-3.0 conveniences (roadmap package O, "moduleKit: the AceAddon conveniences", ADR 0003).

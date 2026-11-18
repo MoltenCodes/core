@@ -34,7 +34,7 @@ Current packages:
 - [`logKit`](logKit/) — Levelled, structured logging with lazy secret-safe formatting, a bounded journal and chat, callback and table sinks.
 - [`mediaKit`](mediaKit/) — A typed media registry with font scripts, sorted cached lists, per-consumer defaults and LibSharedMedia adoption and mirroring.
 - [`menuKit`](menuKit/) — Menus described as checked, bounded tables and shown by Blizzard's Menu API: context menus, dropdowns and removable extensions of Blizzard's own menus.
-- [`moduleKit`](moduleKit/) — Addon-scoped module lifecycle, dependency graphs, dependency injection with checked interfaces, and dependency policies.
+- [`moduleKit`](moduleKit/) — Addon-scoped module lifecycle, dependency graphs and dependency policies; injection, implements contracts and required addons as optional parts.
 - [`optionsKit`](optionsKit/) — A typed, validated, introspectable options tree bound to getters or a SettingsKit database, with no renderer.
 - [`panelKit`](panelKit/) — An OptionsKit tree in Blizzard's settings panel, as a category or subcategory, drawn by WidgetKit only while its page is shown.
 - [`poolKit`](poolKit/) — Allocation-conscious bounded object pooling with deterministic ownership and cleanup.

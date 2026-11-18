@@ -1,7 +1,7 @@
 local TestEnv = require("ModuleKitTestEnv")
 
----Load the module chain on the `mainline` host, whose `issecretvalue` reports
----the values `NewSecretValue` returns.
+---Load the module chain and ModuleKit's parts on the `mainline` host, whose
+---`issecretvalue` reports the values `NewSecretValue` returns.
 ---@return table ModuleKit
 local function loadOnSecretHost()
   TestEnv.Reset()
@@ -15,7 +15,8 @@ local function loadOnSecretHost()
   require("HookKit")
   require("SchemaKit")
   require("CommandKit")
-  return require("ModuleKit")
+  require("ModuleKit")
+  return TestEnv.LoadParts()
 end
 
 describe("ModuleKit and secret values", function()
@@ -107,7 +108,7 @@ describe("ModuleKit and secret values", function()
 
   it("refuses a secret limit name before using it as a key", function()
     TestEnv.expectCallerError(
-      "ModuleKit:SetLimits limit names must not be secret values",
+      "ModuleKit:SetLimits limits.<secret> is not a recognised limit",
       function()
         ModuleKit:SetLimits({ [secret] = 4 })
       end
@@ -115,7 +116,7 @@ describe("ModuleKit and secret values", function()
     -- The whole table is validated first, so the valid entry beside the
     -- secret name is not applied either.
     TestEnv.expectCallerError(
-      "ModuleKit:SetLimits limit names must not be secret values",
+      "ModuleKit:SetLimits limits.<secret> is not a recognised limit",
       function()
         ModuleKit:SetLimits({ maxRequiredAddons = 4, [secret] = 4 })
       end

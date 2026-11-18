@@ -1,8 +1,56 @@
 # ModuleKit API
 
-ModuleKit API generation **1** provides addon-scoped module lifecycle management, dependency graphs, and dependency injection.
+ModuleKit API generation **1** provides addon-scoped module lifecycle management and dependency graphs. Dependency injection, `implements` contracts and required addons are optional parts.
 
-## Container
+## Loading
+
+ModuleKit needs Registry API 2 and LifecycleKit API 1 loaded first. Its core is
+one file, `moduleKit\ModuleKit.lua`; three optional parts follow it, each one
+file an addon embeds only when it uses what the part carries
+([ADR 0001](../../../docs/decisions/0001-kit-core-and-parts.md)):
+
+| Part | File | Carries | Needs |
+|---|---|---|---|
+| `Injection` | `moduleKit\parts\ModuleKit-Injection.lua` | `ProvideValue`, `ProvideSingleton`, `ProvideModule`, `ProvideTransient`, `Resolve` (container and module), `Inject` and the `inject` definition field; see [Dependency injection](#dependency-injection) | the core |
+| `Implements` | `moduleKit\parts\ModuleKit-Implements.lua` | the `implements` definition field and provider option; see [Implements](#implements) | the core; SchemaKit API 1 for the schema form, found at call time |
+| `RequiredAddons` | `moduleKit\parts\ModuleKit-RequiredAddons.lua` | the `requiresAddons` definition field and the reaction to a required addon's halt; see [Halted addons](#halted-addons) | the core and LifecycleKit's Halt part, which owns `DependsOn` and `OnDependencyHalted` |
+
+```xml
+<Script file="Libs\MoltenCodes\moduleKit\ModuleKit.lua" />
+<Script file="Libs\MoltenCodes\moduleKit\parts\ModuleKit-Injection.lua" />
+```
+
+`python3 -m tooling.package.embeds` writes these lines for any selection of
+Kits and parts. A part loaded before its core raises `MoltenCodes ModuleKit
+part <Part> requires ModuleKit API 1 to be loaded first`; the RequiredAddons
+part also raises `MoltenCodes ModuleKit part RequiredAddons requires
+LifecycleKit's Halt part to be loaded first: ...` when the loaded LifecycleKit
+answers `HasPart("Halt")` with `false`.
+
+Without a part, its members stay on the prototypes and raise at the caller's
+line, naming the file to embed:
+
+```text
+ModuleKit.Addon:ProvideSingleton is in ModuleKit's Injection part, which is not loaded: add moduleKit\parts\ModuleKit-Injection.lua to embeds.xml after moduleKit\ModuleKit.lua
+```
+
+`CreateModule` refuses a definition field of a missing part the same way, at
+its line and before the module exists (`ModuleKit.Addon:CreateModule
+definition field "inject" is in ModuleKit's Injection part, ...`), and a
+`Provide*` call refuses its `implements` option without the Implements part
+(`ModuleKit.Addon:ProvideValue options field "implements" is in ModuleKit's
+Implements part, ...`). Everything else works without any part: containers,
+modules, hooks (which receive an empty injection table of their own), the
+graph and its policies, module scopes, intent versus fact, the AceAddon
+conveniences, the reaction to the addon's own halt, and the limits.
+
+`ModuleKit:HasPart(name)` answers whether a part is installed in the session;
+a Kit that uses a part optionally asks it, never `type(member) ==
+"function"`, which a stub satisfies. Each part carries its own revision and
+upgrades in place like a Kit: the highest revision any addon embeds serves
+every addon, and a part keeps serving across an upgrade of the core.
+
+## Public surface
 
 ```lua
 local addon = ModuleKit:ForAddon("MyAddon")
@@ -33,11 +81,11 @@ The addon container exposes:
 | `InitializeAll()` | Initialize the complete graph. |
 | `EnableAll()` | Initialize as needed and enable the complete graph, including modules that were explicitly disabled. |
 | `DisableAll()` | Disable enabled modules in reverse graph order without terminating the addon container. |
-| `ProvideValue(name, value[, options])` | Register an addon-scoped constant. |
-| `ProvideSingleton(name, factory[, options])` | Register a lazily cached addon-scoped factory. |
-| `ProvideModule(name, factory[, options])` | Register a lazily cached per-requesting-module factory. |
-| `ProvideTransient(name, factory[, options])` | Register a non-cached factory. |
-| `Resolve(name[, requestingModule])` | Resolve an injectable value, optionally with module scope context. |
+| `ProvideValue(name, value[, options])` | Register an addon-scoped constant. Injection part. |
+| `ProvideSingleton(name, factory[, options])` | Register a lazily cached addon-scoped factory. Injection part. |
+| `ProvideModule(name, factory[, options])` | Register a lazily cached per-requesting-module factory. Injection part. |
+| `ProvideTransient(name, factory[, options])` | Register a non-cached factory. Injection part. |
+| `Resolve(name[, requestingModule])` | Resolve an injectable value, optionally with module scope context. Injection part. |
 
 Each module exposes:
 
@@ -56,22 +104,26 @@ Each module exposes:
 | `DependsOn(name)` | Add a required activation dependency. |
 | `OptionalDependency(name)` | Add an ordering edge only when the target exists. |
 | `Before(name)` / `After(name)` | Add ordering-only constraints. |
-| `Inject(alias, target)` / `Inject(map)` | Declare injection aliases. Targets are provider/module **names**. |
+| `Inject(alias, target)` / `Inject(map)` | Declare injection aliases. Targets are provider/module **names**. Injection part. |
 | `Initialize()` | Targeted initialization under the selected dependency policy. |
 | `Enable()` | Targeted enable under the selected dependency policy. |
 | `Disable()` | Targeted disable under the selected dependency policy. |
 | `Activate()` | Catch this module up to already-reached LifecycleKit phases. |
-| `Resolve(name)` | Resolve an injectable with this module as scope context. |
+| `Resolve(name)` | Resolve an injectable with this module as scope context. Injection part. |
 | `SetEnabledState(enabled)` | Set what the module is meant to be without running a hook; returns the previous intent. See [Intent versus fact](#intent-versus-fact). Revision 23. |
 
 The package facade also exposes `ModuleKit.UNBOUNDED`, `ModuleKit:SetLimits(limits)`
 and `ModuleKit:GetLimits()` (see [Limits](#limits)), and, from revision 23,
 `ModuleKit:FindAddon(name)` and `ModuleKit:GetAddons()` (see
-[Finding addons](#finding-addons)).
+[Finding addons](#finding-addons)), and, from revision 24,
+`ModuleKit:HasPart(name)` (see [Loading](#loading)). Every facade method must
+be called on the facade (`ModuleKit:Method(...)`); another receiver raises
+`ModuleKit:<Method> must be called on the ModuleKit facade; use
+ModuleKit:<Method>(...)` at the caller's line.
 
 The facade also carries two read-only constants: `ModuleKit.API`, the API
 generation (`1`), and `ModuleKit.REVISION`, the implementation revision of the
-copy that is active in the session (`23` for this one). A newer embedded copy
+copy that is active in the session (`24` for this one). A newer embedded copy
 replaces `REVISION` when it upgrades the facade in place.
 
 Each module also carries one field:
@@ -92,7 +144,7 @@ local policy = addon:GetDependencyPolicy()
 
 The default is `automatic`. Any other value is refused at the caller's line
 and the policy is kept; a secret value is refused before it is compared (see
-[Argument and state errors](#argument-and-state-errors)).
+[Error behaviour](#error-behaviour)).
 
 `automatic` affects targeted hard-dependency operations:
 
@@ -164,9 +216,9 @@ Definition tables accept only these fields:
 - `optionalDependencies`
 - `before`
 - `after`
-- `requiresAddons`
-- `implements`
-- `inject`
+- `requiresAddons` (RequiredAddons part)
+- `implements` (Implements part)
+- `inject` (Injection part)
 - `onInitialize`
 - `onEnable`
 - `onDisable`
@@ -473,8 +525,9 @@ it keeps intent: every wanted module reports `blockedBy = "halted"`. The
 container stays open to inspection and still accepts new modules, which are blocked
 the same way when they are created.
 
-**A required addon halts.** A module names the addons it cannot work without
-in its definition:
+**A required addon halts.** This is the RequiredAddons part's; without it the
+`requiresAddons` field is refused (see [Loading](#loading)). A module names
+the addons it cannot work without in its definition:
 
 ```lua
 addon:CreateModule("Bridge", {
@@ -533,9 +586,7 @@ instance and `GetHaltReason()` on `LifecycleKit:ForAddon(requiredAddon)`, which
 creates that addon's lifecycle instance if nothing has yet. A LifecycleKit
 revision older than the halted state never reports a halt.
 
-An in-place upgrade preserves both fields. A module created by a revision older
-than 6 has its intent derived from its state: a `disabled` module is not
-wanted, every other module is.
+An in-place upgrade preserves both fields.
 
 ## Dependency graph
 
@@ -566,6 +617,9 @@ Targeted `Initialize()` / `Enable()` operations intentionally inspect only the m
 Activation order is deterministic and uses module creation order as the tie-breaker. Normal bulk disable order is the reverse topological order.
 
 ## Dependency injection
+
+This section is the Injection part's (see [Loading](#loading)); a provider's
+`implements` option is the Implements part's.
 
 Providers are addon-local. Different addon containers never share provider registration or caches.
 
@@ -609,7 +663,7 @@ The factory runs on every resolution.
 
 ### Implements
 
-Every `Provide*` method takes an optional third argument, an options table with
+`implements` is the Implements part's (see [Loading](#loading)). Every `Provide*` method takes an optional third argument, an options table with
 one field, `implements`, that states what the provided value must carry:
 
 ```lua
@@ -755,44 +809,7 @@ For non-terminal `addon:DisableAll()`, if a dependent's `OnDisable` fails and re
 
 Lifecycle shutdown is different: it is terminal best-effort cleanup. ModuleKit attempts every enabled module even after earlier failures. If an inactive late definition makes the full graph invalid, enabled modules are still cleaned up using their hard-dependency subgraph, and the original graph error is re-raised after cleanup.
 
-## Argument and state errors
-
-Every refusal below is raised at the line that called the public method,
-including a refusal found while a definition table is applied, which is raised
-at the `CreateModule` line. Messages name the public method in full.
-
-| Raised by | Message |
-|---|---|
-| `ForAddon` | `ModuleKit:ForAddon addonName must be a non-empty string` |
-| `SetDependencyPolicy` | `ModuleKit.Addon:SetDependencyPolicy policy must be "automatic" or "strict"` |
-| `SetMissingScopePolicy` | `ModuleKit.Addon:SetMissingScopePolicy policy must be "nil" or "raise"` |
-| `SetEnabledState`, `SetDefaultModuleState`, definition `enabledState` | `ModuleKit.Module:SetEnabledState enabled must be a boolean`; `ModuleKit.Addon:SetDefaultModuleState enabled must be a boolean`; `ModuleKit module definition enabledState must be a boolean` |
-| `SetDefaultModulePrototype`, definition `prototype` | `<label> must be a table`; `<label> key "<name>" shadows ModuleKit's Module:<name>`; `<label> key "<name>" is reserved for ModuleKit`, where `<label>` is `ModuleKit.Addon:SetDefaultModulePrototype prototype` or `ModuleKit module definition prototype` |
-| `OnModuleCreated` | `ModuleKit.Addon:OnModuleCreated callback must be a function, or a receiver table followed by a method name`; `... methodName must be a non-empty string`; `... receiver has no method "<name>"`; `... needs SignalKit API 1, which is not loaded` |
-| `FindAddon` | `ModuleKit:FindAddon addonName must be a non-empty string` |
-| reading `module.scope.<Field>` under the `"raise"` policy when its Kit is not loaded | `ModuleKit module "<name>" scope.<Field> needs <Facade> API 1, which is not loaded; add <packageId>\<Facade>.lua from MoltenCodes to your embeds.xml` |
-| `CreateModule`, `GetModule`, `HasModule` | `ModuleKit.Addon:<Method> name must be a non-empty string` |
-| `CreateModule` | `ModuleKit.Addon:CreateModule name "<name>" is already in use` (a module or a provider) |
-| `CreateModule` | `ModuleKit.Addon:CreateModule definition must be a table when provided` |
-| `CreateModule` | `ModuleKit module definition contains unknown field "<field>"` (the first unknown field in sorted order; a field that is not a string, number or boolean is named by its type, `"<table>"`, and its `__tostring` never runs) |
-| `CreateModule` | `ModuleKit module definition <field> must be a dense array` |
-| `CreateModule` | `ModuleKit module definition <hook> must be a function` |
-| `CreateModule` | `ModuleKit module definition requiresAddons entries must be non-empty strings`, `... must name other addons, not "<addon>" itself`, `... must list at most <n> addons (ModuleKit:SetLimits maxRequiredAddons)` |
-| `CreateModule` | `ModuleKit.Addon:CreateModule module "<name>" requires addon "<addon>", but addon "<own>" already declares the most addon dependencies LifecycleKit accepts` |
-| `CreateModule`, `Before` | `ModuleKit cannot create late module "<name>" because it would need to run before already-initialized module "<other>"`; `ModuleKit module "<name>" cannot be ordered before already-initialized module "<other>"` |
-| `DependsOn`, `OptionalDependency`, `Before`, `After` (and the matching definition lists) | `ModuleKit.Module:<Method> moduleName must be a non-empty string`; `ModuleKit module "<name>" cannot depend/order against itself` |
-| `DependsOn`, `OptionalDependency`, `Before`, `After`, `Inject` | `ModuleKit.Module:<Method> cannot change module "<name>" after initialization` |
-| `Inject` (and the definition's `inject`) | `ModuleKit.Module:Inject map aliases must be non-empty strings`, `ModuleKit.Module:Inject alias must be a non-empty string`, `ModuleKit.Module:Inject target must be a non-empty string` |
-| `Provide*` | `ModuleKit.Addon:<Method> providerName must be a non-empty string`, `... name "<name>" is already in use`, `... factory must be a function`, `... options must be a table when provided`, `... options contains unknown field "<field>"` (first in sorted order; a table or other non-string, non-number, non-boolean field is named by its type, `"<table>"`); the `implements` refusals are listed under [Implements](#implements) |
-| `ProvideValue` | `ModuleKit.Addon:ProvideValue value must not be nil` |
-| `Resolve` | `ModuleKit.Addon:Resolve providerName must be a non-empty string` (`ModuleKit.Module:Resolve ...` for the module form), `ModuleKit.Addon:Resolve requestingModule must be a module owned by this addon`, `ModuleKit injectable "<name>" does not exist`, `ModuleKit module-scoped provider "<name>" requires a requesting module`, `ModuleKit provider "<name>" factory returned nil`, `ModuleKit provider resolution cycle: A -> B -> A` |
-| `Initialize`, `Enable`, `Activate` | `ModuleKit strict policy: module "<name>" requires initialized dependency "<dependency>"` (`enabled` for `Enable`); `ModuleKit dependency cycle detected while initializing "<name>"` (`enabling`); `ModuleKit module "<name>" cannot be enabled from state "<state>"`; the halted refusals under [Halted addons](#halted-addons) |
-| `Disable` | `ModuleKit strict policy: cannot disable module "<name>" while dependent "<dependent>" is enabled` |
-| graph operations | `ModuleKit module "<name>" requires missing dependency "<dependency>"`, `ModuleKit dependency cycle detected: A -> B -> A` |
-| after shutdown | `<Method> cannot run after addon shutdown`, for example `ModuleKit.Addon:ProvideValue cannot run after addon shutdown` or `ModuleKit.Module:Enable cannot run after addon shutdown` |
-| reading `module.scope.<Field>` outside the enable window | `ModuleKit module "<name>" scope.<Field> is available only while the module is enabling or enabled` |
-| `SetLimits` | `ModuleKit:SetLimits limits must be a table`; `ModuleKit:SetLimits limits.<name> is not a recognised limit` (a number or boolean name is shown as `tostring` gives it, for example `limits.1`; any other name that is not a string is named by its type, `limits.<table>`, so its `__tostring` never runs); `ModuleKit:SetLimits limits.<name> must be a positive integer or ModuleKit.UNBOUNDED`; the LifecycleKit ceiling refusals under [Limits](#limits). Nothing changes on a refusal. |
-| `SetLimits`, `GetLimits` | `ModuleKit:SetLimits must be called on the ModuleKit facade; use ModuleKit:SetLimits(...)`, `ModuleKit:GetLimits must be called on the ModuleKit facade; use ModuleKit:GetLimits()` |
+## Secret values
 
 A secret value (Retail 12.0.0 and later) cannot be compared, and a secret key
 cannot be used to index a table, so every name, list entry, policy, limit and
@@ -807,7 +824,8 @@ refused at the caller's line, before anything changes:
 | `SetDependencyPolicy` | `ModuleKit.Addon:SetDependencyPolicy policy must not be a secret value` (the policy is kept) |
 | `SetEnabledState`, `SetDefaultModuleState`, `SetDefaultModulePrototype`, `OnModuleCreated`, definition `enabledState` and `prototype` | `<label> must not be a secret value`; a prototype's key: `<label> keys must not be secret values` |
 | `SetMissingScopePolicy` | `ModuleKit.Addon:SetMissingScopePolicy policy must not be a secret value` (the policy is kept) |
-| `SetLimits` | `ModuleKit:SetLimits limits.<name> must not be a secret value` (a value); `ModuleKit:SetLimits limit names must not be secret values` (a key) |
+| `SetLimits` | `ModuleKit:SetLimits limits.<name> must not be a secret value` (a value); `ModuleKit:SetLimits limits.<secret> is not a recognised limit; it accepts maxRequiredAddons` (a key) |
+| `HasPart` | `ModuleKit:HasPart name must not be a secret value` |
 | `CreateModule` | `ModuleKit module definition field names must not be secret values` (a key of the definition table) |
 | `CreateModule` | `ModuleKit module definition <field> must be a dense array` (a secret key of a definition list, which cannot be an index) |
 | `Provide*` | `ModuleKit.Addon:<Method> options field names must not be secret values` (a key of the options table); `<label>.implements must be a dense array of method names or a SchemaKit schema` (a secret key of an `implements` list) |
@@ -826,77 +844,6 @@ A provided value, an injected value and a factory's result are never compared,
 so a secret one is accepted: absence is recognised by type, never by comparing
 with `nil`. On a host without `issecretvalue` nothing is secret.
 
-Loading `ModuleKit.lua` raises `MoltenCodes ModuleKit requires Registry API 2
-to be loaded first`, `MoltenCodes ModuleKit requires a valid Registry API 2
-facade`, `MoltenCodes ModuleKit requires LifecycleKit API 1 to be loaded
-first`, `MoltenCodes ModuleKit requires a valid LifecycleKit API 1 facade`, or
-`MoltenCodes ModuleKit package state is corrupted or incomplete`. Private state
-found damaged later raises
-`MoltenCodes ModuleKit addon state is corrupted`, `MoltenCodes ModuleKit addon
-lifecycle state is corrupted`, `MoltenCodes ModuleKit lifecycle subscription
-state is corrupted` or `MoltenCodes ModuleKit runtime dispatch is corrupted or
-incomplete`.
-
-A hook field that is set but is not a function is not refused when it is
-assigned; the phase that would call it records `ModuleKit module "<name>"
-<Hook> must be a function` as the module's failure and re-raises it.
-
-## Cost
-
-Name lookups (`GetModule`, `HasModule`, the `Get*` / `Is*` inspection methods)
-are table reads and allocate nothing. `GetModules`, `GetInjections`,
-`GetEnableState` and `GetLimits` return a fresh table on every call. Resolving
-a value, or a singleton or module-scoped provider already cached for the
-requester, allocates nothing; a factory run allocates one resolution-stack
-entry, and the `implements` list form adds one `value[name]` lookup per
-declared name.
-
-Graph operations (`ValidateGraph`, `GetActivationOrder`, the whole-container
-passes, and a targeted `Enable` or `Activate` while some module is blocked by a
-dependency) validate and order the graph once and reuse that order until the
-graph can change: a module is created, or a module declares `DependsOn`,
-`OptionalDependency`, `Before` or `After`, which it can only do before it
-initializes. Building the order allocates in proportion to modules and edges;
-an invalid graph is never kept, so its diagnostic is raised on every call.
-Once the order is built, `ValidateGraph`, `EnableAll`, `DisableAll` and a
-targeted `Enable` or `Disable` of an initialized module allocate nothing of
-their own when every hook succeeds; initializing a module allocates its
-injection table, and `GetActivationOrder` returns a new array of names.
-A targeted `Enable` or `Initialize` under the `automatic` policy allocates one
-recursion guard when the module has hard dependencies, and a failure allocates
-what it records. What a module creates through `module.scope` is the Kit's own
-cost: a scope field is created on its first read, closed when the module
-disables, and reopened rather than created again in the next enabled period
-when its Kit has `Reopen`. A targeted `Enable` skips its scan for blocked
-modules while the container knows that none can be blocked, and reads the
-addon's halt from the LifecycleKit instance's documented `_halted` field
-instead of calling `IsHalted` twice.
-
-A module that declares nothing beyond its hooks keeps only the fields it uses;
-constraint sets, injection aliases, `requiresAddons` and failure records are
-stored once declared or recorded. A container subscribes to
-`OnDependencyHalted` only once one of its modules declares `requiresAddons`.
-
-All of these are lifecycle-scale operations; none is meant to run per frame.
-
-## LifecycleKit integration
-
-For each addon container:
-
-- LifecycleKit `loaded` → `InitializeAll()`
-- LifecycleKit `ready` → the whole-container enable, which states no intent: a module the addon explicitly disabled stays disabled (see [`EnableAll()` re-enables explicitly disabled modules](#enableall-re-enables-explicitly-disabled-modules))
-- LifecycleKit `shutdown` → terminal reverse-order cleanup
-- LifecycleKit `OnHalted` → the addon's own halt; see [Halted addons](#halted-addons)
-- LifecycleKit `OnDependencyHalted` → a required addon's halt
-
-After shutdown, the container is terminal: new modules, graph/injection definition changes, provider registration, dependency-policy changes, and enable/initialize operations are rejected. Read-only inspection, resolution of already-registered providers, and idempotent disable operations remain available.
-
-Lifecycle subscriptions dispatch through revision-independent shared runtime state. Compatible embedded ModuleKit upgrades therefore preserve existing addon/container identity while moving already-created containers onto the newest accepted implementation, and same-revision bootstrap can repair incomplete shared dispatch after an interrupted bootstrap.
-
-Each container records which lifecycle phases have already been dispatched into it. An upgrade re-subscribes only to phases that have not been dispatched yet, so it never replays `loaded` or `ready` into a container that already received them. Without that, an upgrade would run module hooks out of package bootstrap and the replayed `ready` phase would re-enable modules the addon had deliberately disabled. Phases that have not been reached are still subscribed to, so an upgraded container keeps its shutdown cleanup.
-
-Errors raised out of a phase dispatch leave ModuleKit with the original Lua error object. What happens to them beyond that is EventKit's contract: EventKit isolates listeners at the event-bus boundary and reports the error through the host error handler, so one addon's failing module cannot stop delivery to another addon.
-
 ## Limits
 
 ModuleKit bounds what a module may declare, and the bound holds unless the
@@ -904,7 +851,7 @@ addon opens it on purpose.
 
 | Limit | Default | How to open | UNBOUNDED allowed? |
 |---|---|---|---|
-| `maxRequiredAddons` | 16 | `ModuleKit:SetLimits({ maxRequiredAddons = n })` | Yes, unless LifecycleKit reports an integer `maxDependencies` |
+| `maxRequiredAddons` | 16 | `ModuleKit:SetLimits({ maxRequiredAddons = n })`, 1 to 1024, and never above LifecycleKit's `maxDependencies` when it reports one | Yes, unless LifecycleKit reports an integer `maxDependencies` |
 
 ```lua
 ModuleKit:SetLimits({ maxRequiredAddons = 24 })
@@ -919,10 +866,11 @@ maxRequiredAddons)`) and the module is not created.
 
 `SetLimits` accepts any subset of the limits and raises at the caller's line
 on an unknown name (`ModuleKit:SetLimits limits.<name> is not a recognised
-limit`), a secret name or value, or an invalid value, before changing
-anything: a value must be a positive integer or `ModuleKit.UNBOUNDED`, the
-package's sentinel for "no limit". [Argument and state
-errors](#argument-and-state-errors) lists every message. `GetLimits` returns a new table on every call, so it allocates;
+limit; it accepts maxRequiredAddons`), a secret name or value, or an invalid
+value, before changing anything: a value must be an integer from 1 to 1024
+(`must be an integer from 1 to 1024`) or `ModuleKit.UNBOUNDED`, the package's
+sentinel for "no limit". [Error behaviour](#error-behaviour) lists every
+message. `GetLimits` returns a new table on every call, so it allocates;
 read it at setup, not per frame. **The limits are shared by every consumer in
 the session**: every embedded copy and every addon uses one set, so a library
 should rely on the default, and an addon that raises a limit raises it for
@@ -948,9 +896,154 @@ The sentinel and the limits live in the package state, so an in-place upgrade
 keeps both: a newer compatible revision inherits the limits a consumer set, and
 `ModuleKit.UNBOUNDED` keeps its identity across every revision.
 
-ModuleKit keeps no hard ceiling of its own: the other collections it retains
-(containers, modules, edges, providers) are the consumer's own declarations and
-grow only with them.
+The limit and its LifecycleKit ceiling live in the core, so they work without
+the RequiredAddons part. The other collections ModuleKit retains (containers,
+modules, edges, providers) are the consumer's own declarations and grow only
+with them.
+
+## Error behaviour
+
+Every refusal below is raised at the line that called the public method,
+including a refusal found while a definition table is applied, which is raised
+at the `CreateModule` line. Messages name the public method in full.
+
+| Raised by | Message |
+|---|---|
+| `ForAddon` | `ModuleKit:ForAddon addonName must be a non-empty string` |
+| `SetDependencyPolicy` | `ModuleKit.Addon:SetDependencyPolicy policy must be "automatic" or "strict"` |
+| `SetMissingScopePolicy` | `ModuleKit.Addon:SetMissingScopePolicy policy must be "nil" or "raise"` |
+| `SetEnabledState`, `SetDefaultModuleState`, definition `enabledState` | `ModuleKit.Module:SetEnabledState enabled must be a boolean`; `ModuleKit.Addon:SetDefaultModuleState enabled must be a boolean`; `ModuleKit module definition enabledState must be a boolean` |
+| `SetDefaultModulePrototype`, definition `prototype` | `<label> must be a table`; `<label> key "<name>" shadows ModuleKit's Module:<name>`; `<label> key "<name>" is reserved for ModuleKit`, where `<label>` is `ModuleKit.Addon:SetDefaultModulePrototype prototype` or `ModuleKit module definition prototype` |
+| `OnModuleCreated` | `ModuleKit.Addon:OnModuleCreated callback must be a function, or a receiver table followed by a method name`; `... methodName must be a non-empty string`; `... receiver has no method "<name>"`; `... needs SignalKit API 1, which is not loaded` |
+| `FindAddon` | `ModuleKit:FindAddon addonName must be a non-empty string` |
+| `HasPart` | `ModuleKit:HasPart name must be a part name string` |
+| a member of a part that is not loaded | `<member> is in ModuleKit's <Part> part, which is not loaded: add moduleKit\parts\ModuleKit-<Part>.lua to embeds.xml after moduleKit\ModuleKit.lua`; for a definition field `ModuleKit.Addon:CreateModule definition field "<field>" is in ModuleKit's <Part> part, ...`; for a provider's option `ModuleKit.Addon:<Method> options field "implements" is in ModuleKit's Implements part, ...` |
+| reading `module.scope.<Field>` under the `"raise"` policy when its Kit is not loaded | `ModuleKit module "<name>" scope.<Field> needs <Facade> API 1, which is not loaded; add <packageId>\<Facade>.lua from MoltenCodes to your embeds.xml` |
+| `CreateModule`, `GetModule`, `HasModule` | `ModuleKit.Addon:<Method> name must be a non-empty string` |
+| `CreateModule` | `ModuleKit.Addon:CreateModule name "<name>" is already in use` (a module or a provider) |
+| `CreateModule` | `ModuleKit.Addon:CreateModule definition must be a table when provided` |
+| `CreateModule` | `ModuleKit module definition contains unknown field "<field>"` (the first unknown field in sorted order; a field that is not a string, number or boolean is named by its type, `"<table>"`, and its `__tostring` never runs) |
+| `CreateModule` | `ModuleKit module definition <field> must be a dense array` |
+| `CreateModule` | `ModuleKit module definition <hook> must be a function` |
+| `CreateModule` | `ModuleKit module definition requiresAddons entries must be non-empty strings`, `... must name other addons, not "<addon>" itself`, `... must list at most <n> addons (ModuleKit:SetLimits maxRequiredAddons)` |
+| `CreateModule` | `ModuleKit.Addon:CreateModule module "<name>" requires addon "<addon>", but addon "<own>" already declares the most addon dependencies LifecycleKit accepts` |
+| `CreateModule`, `Before` | `ModuleKit cannot create late module "<name>" because it would need to run before already-initialized module "<other>"`; `ModuleKit module "<name>" cannot be ordered before already-initialized module "<other>"` |
+| `DependsOn`, `OptionalDependency`, `Before`, `After` (and the matching definition lists) | `ModuleKit.Module:<Method> moduleName must be a non-empty string`; `ModuleKit module "<name>" cannot depend/order against itself` |
+| `DependsOn`, `OptionalDependency`, `Before`, `After`, `Inject` | `ModuleKit.Module:<Method> cannot change module "<name>" after initialization` |
+| `Inject` (and the definition's `inject`) | `ModuleKit.Module:Inject map aliases must be non-empty strings`, `ModuleKit.Module:Inject alias must be a non-empty string`, `ModuleKit.Module:Inject target must be a non-empty string` |
+| `Provide*` | `ModuleKit.Addon:<Method> providerName must be a non-empty string`, `... name "<name>" is already in use`, `... factory must be a function`, `... options must be a table when provided`, `... options contains unknown field "<field>"` (first in sorted order; a table or other non-string, non-number, non-boolean field is named by its type, `"<table>"`); the `implements` refusals are listed under [Implements](#implements) |
+| `ProvideValue` | `ModuleKit.Addon:ProvideValue value must not be nil` |
+| `Resolve` | `ModuleKit.Addon:Resolve providerName must be a non-empty string` (`ModuleKit.Module:Resolve ...` for the module form), `ModuleKit.Addon:Resolve requestingModule must be a module owned by this addon`, `ModuleKit injectable "<name>" does not exist`, `ModuleKit module-scoped provider "<name>" requires a requesting module`, `ModuleKit provider "<name>" factory returned nil`, `ModuleKit provider resolution cycle: A -> B -> A` |
+| `Initialize`, `Enable`, `Activate` | `ModuleKit strict policy: module "<name>" requires initialized dependency "<dependency>"` (`enabled` for `Enable`); `ModuleKit dependency cycle detected while initializing "<name>"` (`enabling`); `ModuleKit module "<name>" cannot be enabled from state "<state>"`; the halted refusals under [Halted addons](#halted-addons) |
+| `Disable` | `ModuleKit strict policy: cannot disable module "<name>" while dependent "<dependent>" is enabled` |
+| graph operations | `ModuleKit module "<name>" requires missing dependency "<dependency>"`, `ModuleKit dependency cycle detected: A -> B -> A` |
+| after shutdown | `<Method> cannot run after addon shutdown`, for example `ModuleKit.Addon:ProvideValue cannot run after addon shutdown` or `ModuleKit.Module:Enable cannot run after addon shutdown` |
+| reading `module.scope.<Field>` outside the enable window | `ModuleKit module "<name>" scope.<Field> is available only while the module is enabling or enabled` |
+| `SetLimits` | `ModuleKit:SetLimits limits must be a table`; `ModuleKit:SetLimits limits.<name> is not a recognised limit; it accepts maxRequiredAddons` (a number or boolean name is shown as `tostring` gives it, for example `limits.1`; any other name that is not a string is named by its type, `limits.<table>`, so its `__tostring` never runs); `ModuleKit:SetLimits limits.maxRequiredAddons must be an integer from 1 to 1024`; the LifecycleKit ceiling refusals under [Limits](#limits). Nothing changes on a refusal. |
+| `ForAddon`, `FindAddon`, `GetAddons`, `HasPart`, `SetLimits`, `GetLimits` | `ModuleKit:<Method> must be called on the ModuleKit facade; use ModuleKit:<Method>(...)` |
+
+Loading `ModuleKit.lua` raises `MoltenCodes ModuleKit requires Registry API 2
+to be loaded first`, `MoltenCodes ModuleKit requires a valid Registry API 2
+facade`, `MoltenCodes ModuleKit requires LifecycleKit API 1 to be loaded
+first`, `MoltenCodes ModuleKit requires a valid LifecycleKit API 1 facade`,
+`MoltenCodes ModuleKit cannot take over the state of revision <n> in place;
+revision 23 is the oldest it upgrades` (see [Embedded copies and
+upgrades](#embedded-copies-and-upgrades)), or `MoltenCodes ModuleKit package
+state is corrupted or incomplete`. Private state
+found damaged later raises
+`MoltenCodes ModuleKit runtime dispatch is corrupted or incomplete`.
+
+A hook field that is set but is not a function is not refused when it is
+assigned; the phase that would call it records `ModuleKit module "<name>"
+<Hook> must be a function` as the module's failure and re-raises it.
+
+## Performance
+
+Name lookups (`GetModule`, `HasModule`, the `Get*` / `Is*` inspection methods)
+are table reads and allocate nothing. `GetModules`, `GetInjections`,
+`GetEnableState` and `GetLimits` return a fresh table on every call. Resolving
+a value, or a singleton or module-scoped provider already cached for the
+requester, allocates nothing; a factory run allocates one resolution-stack
+entry (and the container's stack on its first run), and the `implements` list
+form adds one `value[name]` lookup per declared name.
+
+Graph operations (`ValidateGraph`, `GetActivationOrder`, the whole-container
+passes, and a targeted `Enable` or `Activate` while some module is blocked by a
+dependency) validate and order the graph once and reuse that order until the
+graph can change: a module is created, or a module declares `DependsOn`,
+`OptionalDependency`, `Before` or `After`, which it can only do before it
+initializes. Building the order allocates in proportion to modules and edges;
+an invalid graph is never kept, so its diagnostic is raised on every call.
+Once the order is built, `ValidateGraph`, `EnableAll`, `DisableAll` and a
+targeted `Enable` or `Disable` of an initialized module allocate nothing of
+their own when every hook succeeds; initializing a module allocates its
+injection table, and `GetActivationOrder` returns a new array of names.
+A targeted `Enable` or `Initialize` under the `automatic` policy allocates one
+recursion guard when the module has hard dependencies, and a failure allocates
+what it records. What a module creates through `module.scope` is the Kit's own
+cost: a scope field is created on its first read, closed when the module
+disables, and reopened rather than created again in the next enabled period
+when its Kit has `Reopen`. A targeted `Enable` skips its scan for blocked
+modules while the container knows that none can be blocked, and reads the
+addon's halt from the LifecycleKit instance's documented `_halted` field
+instead of calling `IsHalted` twice.
+
+A module that declares nothing beyond its hooks keeps only the fields it uses;
+constraint sets, injection aliases, `requiresAddons` and failure records are
+stored once declared or recorded. A container likewise keeps no provider
+table, resolution stack or catch-up queue until it first registers a
+provider, runs a factory or defers a catch-up, and subscribes to
+`OnDependencyHalted` only once one of its modules declares `requiresAddons`.
+
+Measured resident on host Lua 5.1.5 with debug information kept (the method
+of `docs/BENCHMARKS.md`, on 2026-11-18): the core 123.5 KB (150.7 KB before
+the parts), the Injection part 16.1 KB, the Implements part 7.6 KB and the
+RequiredAddons part 5.1 KB, each only when embedded. A container costs about
+3.9 KB beside its LifecycleKit instance, a module about 0.9 KB.
+
+All of these are lifecycle-scale operations; none is meant to run per frame.
+
+## Embedded copies and upgrades
+
+Registry keeps one ModuleKit per session, whatever copies addons embed; the
+highest revision takes over the shared facade, prototypes and state in place,
+and an equal or older copy that loads later changes nothing. The same holds
+for each part, by its own revision.
+
+**The upgrade floor.** No revision of ModuleKit was ever published, so an
+in-place upgrade is taken over from revision 23, the revision before the
+parts, and from later ones only. A copy older than 23 that meets this one is
+refused at load (`MoltenCodes ModuleKit cannot take over the state of
+revision <n> in place; revision 23 is the oldest it upgrades`) rather than
+converted.
+
+Containers and modules revision 23 made are already complete, so they are
+kept as they are: their LifecycleKit subscriptions reach the shared runtime
+dispatch, which this revision fills, and the providers, contracts and
+required-addon lists they carry are served by the parts once the parts load.
+While a part is absent, its members raise the stub message and the state it
+would serve is left in place; the first time that state would have been
+served (a module's injections at initialization, a contract at resolution, a
+required addon when a module enables), ModuleKit reports it once through the
+host error handler, naming the file to embed.
+
+## LifecycleKit integration
+
+For each addon container:
+
+- LifecycleKit `loaded` → `InitializeAll()`
+- LifecycleKit `ready` → the whole-container enable, which states no intent: a module the addon explicitly disabled stays disabled (see [`EnableAll()` re-enables explicitly disabled modules](#enableall-re-enables-explicitly-disabled-modules))
+- LifecycleKit `shutdown` → terminal reverse-order cleanup
+- LifecycleKit `OnHalted` → the addon's own halt; see [Halted addons](#halted-addons)
+- LifecycleKit `OnDependencyHalted` → a required addon's halt (RequiredAddons part)
+
+After shutdown, the container is terminal: new modules, graph/injection definition changes, provider registration, dependency-policy changes, and enable/initialize operations are rejected. Read-only inspection, resolution of already-registered providers, and idempotent disable operations remain available.
+
+Lifecycle subscriptions dispatch through revision-independent shared runtime state. Compatible embedded ModuleKit upgrades therefore preserve existing addon/container identity while moving already-created containers onto the newest accepted implementation, and same-revision bootstrap can repair incomplete shared dispatch after an interrupted bootstrap.
+
+Each container records which lifecycle phases have already been dispatched into it. An upgrade keeps the container's subscriptions rather than subscribing again, so it never replays `loaded` or `ready` into a container that already received them, which would run module hooks out of package bootstrap and re-enable modules the addon had deliberately disabled.
+
+Errors raised out of a phase dispatch leave ModuleKit with the original Lua error object. What happens to them beyond that is EventKit's contract: EventKit isolates listeners at the event-bus boundary and reports the error through the host error handler, so one addon's failing module cannot stop delivery to another addon.
 
 ## Dependencies
 
@@ -959,6 +1052,9 @@ ModuleKit API 1 requires:
 - Registry API 2
 - LifecycleKit API 1
 
+Its parts need nothing more, except the RequiredAddons part, which needs
+LifecycleKit's Halt part; see [Loading](#loading).
+
 ModuleKit does not depend directly on EventKit or SignalKit; those are implementation dependencies of LifecycleKit and remain outside ModuleKit's direct contract.
 
 Module scopes use TimerKit API 1, EventKit API 1, SchedulerKit API 1, HookKit
@@ -966,7 +1062,7 @@ API 1, CommandKit API 1, CommKit API 1 and SignalKit API 1 when they are
 loaded, found through `Registry:Find`
 (Registry revision 7; an older Registry's `Get` is used as the equivalent
 fallback). None of them is a required dependency: without them the matching scope field
-reads as `nil`. The schema form of `implements` uses SchemaKit API 1 the same
+reads as `nil`. The schema form of `implements` (Implements part) uses SchemaKit API 1 the same
 way, at registration, and refuses a schema when SchemaKit is not loaded; the
 list form needs nothing. TimerKit, SchedulerKit, HookKit, CommandKit, CommKit
 and SchemaKit are declared under `optionalDependencies` in the manifest;

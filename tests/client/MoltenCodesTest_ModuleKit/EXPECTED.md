@@ -33,6 +33,7 @@ client):
 MoltenCodes Test: running moduleKit: 8 suites. Results follow when every test has finished.
 MoltenCodes Test: PASS moduleKit.facade: Registry:Get('moduleKit', 1) is the ModuleKit facade with API 1, ForAddon, SetLimits, GetLimits and UNBOUNDED
 MoltenCodes Test: PASS moduleKit.facade: the installed ModuleKit carries the revision of the committed manifest
+MoltenCodes Test: PASS moduleKit.facade: the installed ModuleKit has the Injection, Implements and RequiredAddons parts, and HasPart answers for each
 MoltenCodes Test: PASS moduleKit.lifecycle: ForAddon with this test addon's name, asked after its loaded and ready phases, returns one container that names the addon and carries every documented method
 MoltenCodes Test: PASS moduleKit.lifecycle: a definition-table module created after ready catches up inside CreateModule: OnInitialize, then OnEnable with the injection table, and it returns enabled and wanted
 MoltenCodes Test: PASS moduleKit.lifecycle: a mutable module created after ready stays created until Activate, which runs OnInitialize then OnEnable at once
@@ -72,7 +73,7 @@ MoltenCodes Test: PASS moduleKit.secrets: ProvideValue accepts a secret value, w
 MoltenCodes Test: PASS moduleKit.secrets: SetLimits with a secret maxRequiredAddons is refused at the calling line and changes nothing
 MoltenCodes Test: PASS moduleKit.secrets: SetDependencyPolicy with a secret policy is refused at the calling line and keeps the policy
 MoltenCodes Test: PASS moduleKit.allocation: GetModule, HasModule, GetState, IsEnabled and the Resolve of a cached singleton and module-scoped value allocate nothing over 10000 rounds (allocation guard)
-MoltenCodes Test: moduleKit: 38 passed, 0 failed, 3 skipped, 0 timed out (41 tests)
+MoltenCodes Test: moduleKit: 39 passed, 0 failed, 3 skipped, 0 timed out (42 tests)
 ```
 
 The three `SKIP` lines are expected on every run:
@@ -103,7 +104,7 @@ The seven `moduleKit.secrets` tests need the client's `issecretvalue` and
 prints each of the seven with `SKIP` and
 ` -- the client has no issecretvalue and secretwrap; the secret path was not
 exercised`, and the totals line reads
-`31 passed, 0 failed, 10 skipped, 0 timed out (41 tests)`. A client that has
+`32 passed, 0 failed, 10 skipped, 0 timed out (42 tests)`. A client that has
 both but whose `secretwrap` makes no secret (secrets are not active there)
 prints these seven lines in their place, with the same totals line:
 
@@ -124,7 +125,7 @@ core client function the apiKit metadata does not document for any flavour;
 the suite asks for it once, when it loads. Retail 12.1 has it. A client
 without it prints
 `MoltenCodes Test: SKIP moduleKit.scopes: scope.Events delivers the CVAR_UPDATE of a chatBubbles change while enabled; after Disable its frame is gone from GetFramesRegisteredForEvent and a second change reaches nothing -- the client has no GetFramesRegisteredForEvent; the host registration was not read back`
-and one more skipped test in the totals line (`37 passed, 0 failed, 4
+and one more skipped test in the totals line (`38 passed, 0 failed, 4
 skipped` on Retail's numbers).
 
 ## Per flavour
@@ -145,7 +146,7 @@ the suite reads at load is missing on a Classic client.
 ### Retail (12.1)
 
 The lines above:
-`MoltenCodes Test: moduleKit: 38 passed, 0 failed, 3 skipped, 0 timed out (41 tests)`,
+`MoltenCodes Test: moduleKit: 39 passed, 0 failed, 3 skipped, 0 timed out (42 tests)`,
 with the three `SKIP` lines listed under them.
 
 ### Classic Era (1.15) and Mists of Pandaria Classic (5.5)
@@ -158,10 +159,10 @@ gives, read when the suite loads: whether `secretwrap` makes a value
 functions).
 
 - Secrets made: the totals line is Retail's,
-  `MoltenCodes Test: moduleKit: 38 passed, 0 failed, 3 skipped, 0 timed out (41 tests)`.
+  `MoltenCodes Test: moduleKit: 39 passed, 0 failed, 3 skipped, 0 timed out (42 tests)`.
 - No secrets made: the seven `SKIP` lines above replace the seven `PASS`
   lines of `moduleKit.secrets`, and the totals line is
-  `MoltenCodes Test: moduleKit: 31 passed, 0 failed, 10 skipped, 0 timed out (41 tests)`.
+  `MoltenCodes Test: moduleKit: 32 passed, 0 failed, 10 skipped, 0 timed out (42 tests)`.
 
 ## Visible side effects
 
@@ -204,6 +205,7 @@ variable.
 |---|---|
 | `Registry:Get('moduleKit', 1) is the ModuleKit facade ...` | The facade the client loaded is API 1 and carries `ForAddon`, `SetLimits`, `GetLimits` and the `UNBOUNDED` sentinel. |
 | `the installed ModuleKit carries the revision ...` | Registry's selected revision and the facade's `REVISION` are both the committed manifest's, not an older or newer embedded copy. |
+| `the installed ModuleKit has the ... parts ...` | The bundle loaded every ModuleKit part file after the core, so the injection, contract and required-addon tests below run against the parts. |
 | `ForAddon with this test addon's name, asked after ...` | LifecycleKit reports this addon `loaded` and `ready`, not shut down; `ForAddon` returns one container for the session, named after the addon, with the `automatic` policy and every documented container and module method. The log says whether this run created the container. |
 | `a definition-table module created after ready catches up ...` | The container replays the real `loaded` and `ready` phases: `OnInitialize` and then `OnEnable` (with an empty injection table) run before `CreateModule` returns, and the module is `enabled`, wanted and without error. |
 | `a mutable module created after ready stays created ...` | A module created without a definition stays `created` and runs no hook until `Activate`, which runs both at once; `Disable` makes it `disabled` and unwanted. |
@@ -231,7 +233,7 @@ variable.
 ## What counts as unexpected
 
 - Any `FAIL` or `TIMEOUT` line, any `SKIP` other than the three listed, or a
-  totals line other than `38 passed, 0 failed, 3 skipped, 0 timed out (41 tests)`
+  totals line other than `39 passed, 0 failed, 3 skipped, 0 timed out (42 tests)`
   (on a Classic client, other than the two totals lines under
   [Per flavour](#per-flavour)).
 - No login line, or `Expected.lua is missing`: the harness or the installer did

@@ -74,7 +74,7 @@ Current package entry points:
 - [`LogKit`](../packages/logKit/README.md) — Levelled, structured logging with lazy secret-safe formatting, a bounded journal and chat, callback and table sinks.
 - [`MediaKit`](../packages/mediaKit/README.md) — A typed media registry with font scripts, sorted cached lists, per-consumer defaults and LibSharedMedia adoption and mirroring.
 - [`MenuKit`](../packages/menuKit/README.md) — Menus described as checked, bounded tables and shown by Blizzard's Menu API: context menus, dropdowns and removable extensions of Blizzard's own menus.
-- [`ModuleKit`](../packages/moduleKit/README.md) — Addon-scoped module lifecycle, dependency graphs, dependency injection with checked interfaces, and dependency policies.
+- [`ModuleKit`](../packages/moduleKit/README.md) — Addon-scoped module lifecycle, dependency graphs and dependency policies; injection, implements contracts and required addons as optional parts.
 - [`OptionsKit`](../packages/optionsKit/README.md) — A typed, validated, introspectable options tree bound to getters or a SettingsKit database, with no renderer.
 - [`PanelKit`](../packages/panelKit/README.md) — An OptionsKit tree in Blizzard's settings panel, as a category or subcategory, drawn by WidgetKit only while its page is shown.
 - [`PoolKit`](../packages/poolKit/README.md) — Allocation-conscious bounded object pooling with deterministic ownership and cleanup.

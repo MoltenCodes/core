@@ -722,6 +722,17 @@ facade:Test("the installed ModuleKit carries the revision of the committed manif
   ctx:Fail("Expected.lua does not list moduleKit")
 end)
 
+facade:Test(
+  "the installed ModuleKit has the Injection, Implements and RequiredAddons parts, and HasPart answers for each",
+  function(ctx)
+    ctx:Expect(type(ModuleKit.HasPart)):ToBe("function")
+    for _, partName in ipairs({ "Injection", "Implements", "RequiredAddons" }) do
+      ctx:Expect(ModuleKit:HasPart(partName)):ToBe(true)
+    end
+    ctx:Expect(ModuleKit:HasPart("NoSuchPart")):ToBe(false)
+  end
+)
+
 -- moduleKit.lifecycle -----------------------------------------------------------------------
 
 local lifecycle = newSuite("lifecycle")

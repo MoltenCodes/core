@@ -147,7 +147,7 @@ describe("ModuleKit error levels", function()
       ModuleKit:SetLimits({ maxModules = 4 })
     end)
     expectCallerError(
-      "ModuleKit:SetLimits limits.maxRequiredAddons must be a positive integer or ModuleKit.UNBOUNDED",
+      "ModuleKit:SetLimits limits.maxRequiredAddons must be an integer from 1 to 1024",
       function()
         ModuleKit:SetLimits({ maxRequiredAddons = 0 })
       end

@@ -1,41 +1,56 @@
 -- MoltenCodes ModuleKit
 --
--- Addon-scoped module lifecycle, dependency graphs, and dependency injection.
--- ModuleKit is intentionally independent from WoW Frame APIs; lifecycle timing
--- is supplied by LifecycleKit and package identity by Registry.
+-- Addon-scoped module lifecycle and dependency graphs. ModuleKit is
+-- intentionally independent from WoW Frame APIs; lifecycle timing is supplied
+-- by LifecycleKit and package identity by Registry.
+--
+-- This file is ModuleKit's core. Three optional parts carry what only some
+-- addons use (docs/decisions/0001-kit-core-and-parts.md): `Injection`
+-- (providers, `Resolve`, `Inject` and the `inject` definition field),
+-- `Implements` (`implements` contracts) and `RequiredAddons` (the
+-- `requiresAddons` definition field and the reaction to another addon's
+-- halt). Their members stay on the prototypes as stubs that name the file to
+-- embed; the core reaches a loaded part only through `state.dispatch`.
 --
 -- Contents
 --
 --   Dependencies ......... Registry and LifecycleKit handshake.
---   Bootstrap ............ Embedded revision reconciliation and shared state.
+--   Bootstrap ............ Embedded revision reconciliation and shared state;
+--                          an in-place upgrade from revision 23 only.
+--   Shared helpers ....... isSecret, describeKey, validateFacade, reportError
+--                          and the limits loop, copied by tooling/shared.
 --   Validation helpers ... Argument checks and definition-mutability rules.
 --   Graph ................ Edge construction, cycle reporting, topological order.
 --   Optional packages .... Silent `Registry:Find` lookup shared by the sections
 --                          that use a Kit the addon may not embed.
---   Dependency injection . Provider registration, `implements` contracts,
---                          scoped resolution, cycles.
 --   Module scopes ........ Per-module addon-message, command, event, hook,
 --                          job, message and timer scopes released on disable,
 --                          resolved through `Registry:Find`.
 --   Lifecycle operations . Single-module transitions, dependency policies,
 --                          intent versus fact, recovery of blocked dependents,
---                          halted addons, whole-container passes and deferred
---                          catch-up.
+--                          the container's own halt, whole-container passes and
+--                          deferred catch-up.
 --   Module public API ..... Methods installed on the shared Module prototype.
 --   Addon public API ...... Methods installed on the shared Addon prototype.
 --   Addon creation ........ Container identity and LifecycleKit subscriptions,
---                           including the halted notices.
+--                           including the halted notice.
 --   Package-wide limits ... `SetLimits` / `GetLimits` and the coupling to
 --                           LifecycleKit's dependency limit.
+--   Parts ................. Stubs, `HasPart`, the dispatch defaults and the
+--                           helpers the parts call.
 --   Commit ................ Publishing the public surface and runtime dispatch.
 --
 -- `docs/INTERNALS.md` explains the graph algorithm, the failure model, the
 -- lifecycle replay hazard that the dispatched-phase set guards against, module
--- scopes, the intent-versus-fact enable state, and halted addons.
+-- scopes, the intent-versus-fact enable state, halted addons and the parts.
 
 local PACKAGE_NAME = "moduleKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 23
+local IMPLEMENTATION_REVISION = 24
+-- The core interface the parts read: `state.helpers`, the `state.dispatch`
+-- entries they fill, `state.parts`. A part refuses a core that publishes a
+-- lower number.
+local PART_INTERFACE = 1
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_LIFECYCLE_API = 1
 local STATE_SCHEMA = 1
@@ -46,10 +61,11 @@ local STATE_SCHEMA = 1
 -- whatever this limit says. `ModuleKit:SetLimits` opens it.
 local DEFAULT_MAX_REQUIRED_ADDONS = 16
 
--- The package-wide limits `SetLimits` accepts, in the order `GetLimits`
--- reports them.
-local LIMIT_NAMES = { "maxRequiredAddons" }
-local KNOWN_LIMITS = { maxRequiredAddons = true }
+-- The largest `maxRequiredAddons` a positive integer may name. A module that
+-- needs more than this many other addons is a generated or mistaken
+-- definition; LifecycleKit's own `maxDependencies`, when it reports one,
+-- lowers it further (see `LIMIT_RULES`).
+local MAXIMUM_REQUIRED_ADDONS = 1024
 
 -- The `blockedBy` value of every wanted module once its own addon has halted.
 local OWN_ADDON_HALTED = "halted"
@@ -187,13 +203,13 @@ local OWN_ADDON_HALTED = "halted"
 ---@field package _dependencyPolicy ModuleKit.DependencyPolicy
 ---@field package _modules table<string, ModuleKit.Module>
 ---@field package _moduleOrder ModuleKit.Module[] every module, in creation order
----@field package _providers table<string, table>
----@field package _resolutionStack table[]
+---@field package _providers table<string, table>|nil created by the Injection part on the first provider
+---@field package _resolutionStack table[]|nil created by the Injection part on the first factory run
 ---@field package _shutdown boolean
 ---@field package _subscriptions table<string, table> LifecycleKit handles by phase or notice
 ---@field package _dispatched table<string, boolean> phases and notices already delivered
 ---@field package _passDepth integer whole-container passes currently running
----@field package _pendingCatchUp ModuleKit.Module[] catch-up deferred until the outermost pass ends
+---@field package _pendingCatchUp ModuleKit.Module[]|nil catch-up deferred until the outermost pass ends; created on the first deferral
 ---@field package _flushingCatchUp boolean|nil
 ---@field package _graphOrder ModuleKit.Module[]|nil the cached, validated activation order; see `buildGraph`
 ---@field package _graphDependents table<ModuleKit.Module, ModuleKit.Module[]>|nil cached hard dependents, newest first
@@ -357,44 +373,48 @@ local function validateStateBase(currentState)
     and type(rawget(currentState, "addons")) == "table"
 end
 
+-- Shared helpers ------------------------------------------------------------
+--
 -- Secret values (Retail 12.0.0 and later) raise when compared, so every
 -- argument a comparison would touch is checked with the host probe first. A
 -- host without `issecretvalue` has no secret values.
--- issecretvalue is a World of Warcraft client API reachable only through the global table.
--- selene: allow(global_usage)
--- The probe is resolved once, when this file loads: the client defines it
--- before any addon runs, so every check then costs one upvalue read. Only
--- when it was absent at load does a check read the global again, so a probe a
--- test environment or a compatibility shim installs later is still honoured.
-local nativeIsSecretValue = rawget(_G, "issecretvalue")
-if type(nativeIsSecretValue) ~= "function" then
-  nativeIsSecretValue = nil
-end
 
+-- shared:begin isSecret 1
+-- Copied from tooling/shared/lua/isSecret.lua by python3 -m tooling.shared.sync; edit that file, not this copy.
 ---Whether `value` is a secret value the host forbids comparing.
----@param value any
----@return boolean
-local function isSecretValue(value)
-  local probe = nativeIsSecretValue
-  if probe == nil then
-    -- selene: allow(global_usage)
-    probe = rawget(_G, "issecretvalue")
-    if type(probe) ~= "function" then
-      return false
-    end
+---@type fun(value: any): boolean
+local isSecret
+do
+  -- issecretvalue is a client API reachable only through the global table.
+  -- selene: allow(global_usage)
+  local loadedProbe = rawget(_G, "issecretvalue")
+  if type(loadedProbe) ~= "function" then
+    loadedProbe = nil
   end
-  return probe(value) and true or false
-end
 
----Name a caller's table key in a refusal without running its `__tostring`.
----A string is shown as written and a number or boolean through `tostring`,
----which runs no foreign code for those types; anything else is named by its
----type, `<table>`, because a table's or userdata's `__tostring` is the
----caller's code, which could raise or answer a secret and so lose the real
----refusal. Callers refuse a secret key before naming it.
----@param key any a table key, which can never be `nil`
+  isSecret = function(value)
+    local probe = loadedProbe
+    if probe == nil then
+      -- selene: allow(global_usage)
+      probe = rawget(_G, "issecretvalue")
+      if type(probe) ~= "function" then
+        return false
+      end
+    end
+    return probe(value) == true
+  end
+end
+-- shared:end isSecret
+
+-- shared:begin describeKey 1
+-- Copied from tooling/shared/lua/describeKey.lua by python3 -m tooling.shared.sync; edit that file, not this copy.
+---Name `key` for an error message without running any of the caller's code.
+---@param key any
 ---@return string
 local function describeKey(key)
+  if isSecret(key) then
+    return "<secret>"
+  end
   local kind = type(key)
   if kind == "string" then
     return key
@@ -404,6 +424,25 @@ local function describeKey(key)
   end
   return "<" .. kind .. ">"
 end
+-- shared:end describeKey
+
+-- shared:begin reportError 1
+-- Copied from tooling/shared/lua/reportError.lua by python3 -m tooling.shared.sync; edit that file, not this copy.
+---Report `failure` through the host error handler, or print it.
+---@param failure any
+local function reportError(failure)
+  -- geterrorhandler is a client API reachable only through the global table.
+  -- selene: allow(global_usage)
+  local getErrorHandler = rawget(_G, "geterrorhandler")
+  if type(getErrorHandler) == "function" then
+    local handler = getErrorHandler()
+    if type(handler) == "function" and pcall(handler, failure) then
+      return
+    end
+  end
+  print(failure)
+end
+-- shared:end reportError
 
 ---Whether `value` is an exact integer of one or more. `nan` and both
 ---infinities are rejected before the integer test can accept them. A caller
@@ -427,13 +466,8 @@ local function validateLimitsState(limits, unbounded)
   if type(limits) ~= "table" then
     return false
   end
-  for index = 1, #LIMIT_NAMES do
-    local value = rawget(limits, LIMIT_NAMES[index])
-    if value ~= unbounded and not isPositiveInteger(value) then
-      return false
-    end
-  end
-  return true
+  local value = rawget(limits, "maxRequiredAddons")
+  return value == unbounded or isPositiveInteger(value)
 end
 
 ---Whether `implementation` carries runtime state this revision has committed.
@@ -454,6 +488,10 @@ local function validateCurrentState(implementation)
     and type(rawget(dispatch, "shutdown")) == "function"
     and type(rawget(dispatch, "halted")) == "function"
     and type(rawget(dispatch, "dependencyHalted")) == "function"
+    and type(rawget(dispatch, "resolveForHook")) == "function"
+    and rawget(currentState, "partInterface") == PART_INTERFACE
+    and type(rawget(currentState, "parts")) == "table"
+    and type(rawget(currentState, "helpers")) == "table"
 end
 
 ---Resume a copy that already registered this revision.
@@ -535,60 +573,212 @@ if type(previousRevision) == "nil" then
   rawset(ModuleKit, "Module", Module)
   rawset(ModuleKit, "_state", state)
 else
-  if type(Addon) ~= "table" or type(Module) ~= "table" or not validateStateBase(state) then
+  -- The upgrade floor (docs/INTERNALS.md, "Upgrades"): no revision was ever
+  -- published, so only the state revision 23 left is taken over in place.
+  -- An older embedded copy is refused rather than half-converted.
+  if type(previousRevision) ~= "number" or previousRevision < 23 then
+    error(
+      "MoltenCodes ModuleKit cannot take over the state of revision "
+        .. tostring(previousRevision)
+        .. " in place; revision 23 is the oldest it upgrades",
+      2
+    )
+  end
+  if
+    type(Addon) ~= "table"
+    or type(Module) ~= "table"
+    or not validateStateBase(state)
+    or type(state.dispatch) ~= "table"
+    or type(state.runtimeRevision) ~= "number"
+    or type(state.scopeMetatable) ~= "table"
+    or type(state.unbounded) ~= "table"
+    or not validateLimitsState(state.limits, state.unbounded)
+    or type(state.prototypeLayers) ~= "table"
+  then
     error("MoltenCodes ModuleKit package state is corrupted or incomplete", 2)
-  end
-
-  if type(rawget(state, "dispatch")) ~= "table" then
-    rawset(state, "dispatch", {})
-  end
-  if type(rawget(state, "runtimeRevision")) ~= "number" then
-    rawset(state, "runtimeRevision", previousRevision)
-  end
-  if type(rawget(state, "scopeMetatable")) ~= "table" then
-    rawset(state, "scopeMetatable", {})
-  end
-  -- Revisions 1 to 13 kept no sentinel and no limits: the fields are
-  -- additive, so the schema stays 1 and they are created here with the
-  -- defaults those revisions enforced as constants.
-  if type(rawget(state, "unbounded")) ~= "table" then
-    rawset(state, "unbounded", {})
-  end
-  if type(rawget(state, "limits")) ~= "table" then
-    rawset(state, "limits", { maxRequiredAddons = DEFAULT_MAX_REQUIRED_ADDONS })
-  end
-  if not validateLimitsState(rawget(state, "limits"), rawget(state, "unbounded")) then
-    error("MoltenCodes ModuleKit package state is corrupted or incomplete", 2)
-  end
-  -- Revisions before 23 had no module prototypes.
-  if type(rawget(state, "prototypeLayers")) ~= "table" then
-    rawset(state, "prototypeLayers", {})
   end
 end
 
+-- What the parts share with the core (revision 24): the installed parts by
+-- name, the core functions they call, and the unserved-state reports already
+-- made. Created here for a new state and for one revision 23 left.
+if state.parts == nil then
+  state.parts = {}
+  state.helpers = {}
+  state.unservedReported = {}
+end
+state.partInterface = PART_INTERFACE
+
 -- The sentinel and the limits table are shared by every revision; this copy
 -- reads and writes them in place.
-local UNBOUNDED = rawget(state, "unbounded")
-local sharedLimits = rawget(state, "limits")
+local UNBOUNDED = state.unbounded
+local sharedLimits = state.limits
+
+-- The runtime dispatch table: the whole-container passes LifecycleKit's
+-- subscriptions reach, and the entries the parts fill. Stable for the
+-- session, so every revision and part reads the current entry at call time.
+local dispatch = state.dispatch
+
+-- shared:begin validateFacade 1 __FACADE__=ModuleKit
+-- Copied from tooling/shared/lua/validateFacade.lua by python3 -m tooling.shared.sync; edit that file, not this copy.
+---Raise at `level` unless `receiver` is the ModuleKit facade.
+---@param receiver any the table the method was called on
+---@param label string qualified method name, used in the argument error
+---@param level integer stack level the failure is reported at
+local function validateFacade(receiver, label, level)
+  if type(receiver) ~= "table" or receiver ~= ModuleKit then
+    local hint = "; use " .. label .. "(...)"
+    error(label .. " must be called on the ModuleKit facade" .. hint, level)
+  end
+end
+-- shared:end validateFacade
+
+---LifecycleKit's per-addon dependency limit, when the loaded LifecycleKit
+---reports one through `GetLimits`, or `nil` when it reports none or reports
+---its own `UNBOUNDED`.
+---
+---Read at call time rather than at load: LifecycleKit may be upgraded in
+---place, and its limit may be changed, after ModuleKit loaded. `GetLimits` is
+---optional because LifecycleKit revisions without it are supported.
+---@return integer|nil ceiling
+local function lifecycleDependencyCeiling()
+  local getLimits = rawget(LifecycleKit, "GetLimits")
+  if type(getLimits) ~= "function" then
+    return nil
+  end
+  local limits = getLimits(LifecycleKit)
+  if type(limits) ~= "table" then
+    return nil
+  end
+  local value = rawget(limits, "maxDependencies")
+  if isPositiveInteger(value) then
+    return value
+  end
+  return nil
+end
+
+-- The package-wide limits `SetLimits` accepts, in the order `GetLimits`
+-- reports them. `maxRequiredAddons` is also bounded by LifecycleKit's
+-- `maxDependencies` when LifecycleKit reports one, since every required addon
+-- becomes a `DependsOn` of the module's addon; `setLimits` refuses
+-- `UNBOUNDED` against that ceiling too.
+local LIMIT_RULES = {
+  {
+    name = "maxRequiredAddons",
+    ceiling = MAXIMUM_REQUIRED_ADDONS,
+    unbounded = true,
+    check = function(value, level)
+      local ceiling = lifecycleDependencyCeiling()
+      if ceiling ~= nil and value > ceiling then
+        error(
+          "ModuleKit:SetLimits limits.maxRequiredAddons must be an integer from 1 to "
+            .. ceiling
+            .. ", LifecycleKit's maxDependencies",
+          level
+        )
+      end
+    end,
+  },
+}
+
+-- shared:begin limits 1 __FACADE__=ModuleKit
+-- Copied from tooling/shared/lua/limits.lua by python3 -m tooling.shared.sync; edit that file, not this copy.
+---Check a whole `SetLimits` update; raises at `level`.
+---@type fun(limits: any, level: integer)
+local validateLimitUpdate
+---Write the names an update gives into `target`.
+---@type fun(target: table, limits: table)
+local applyLimitUpdate
+---A fresh table of every limit in `source`.
+---@type fun(source: table): table
+local copyLimits
+do
+  local rulesByName = {}
+  local names = {}
+  for index = 1, #LIMIT_RULES do
+    local rule = LIMIT_RULES[index]
+    rulesByName[rule.name] = rule
+    names[index] = rule.name
+  end
+  local accepted = table.concat(names, ", ")
+
+  local function validateValue(rule, value, level)
+    local where = "ModuleKit:SetLimits limits." .. rule.name
+    if isSecret(value) then
+      error(where .. " must not be a secret value", level)
+    end
+    if value == UNBOUNDED and UNBOUNDED ~= nil then
+      if rule.unbounded then
+        return
+      end
+      local reason = rule.unboundedReason and (": " .. rule.unboundedReason) or ""
+      error(where .. " cannot be ModuleKit.UNBOUNDED" .. reason, level)
+    end
+    local minimum = rule.minimum or 1
+    local integer = rule.integer ~= false
+    if
+      type(value) ~= "number"
+      or value ~= value
+      or value < minimum
+      or value > rule.ceiling
+      or (integer and value % 1 ~= 0)
+    then
+      local kind = integer and "an integer" or "a number"
+      local range = " from " .. minimum .. " to " .. rule.ceiling
+      error(where .. " must be " .. kind .. range, level)
+    end
+    if rule.check then
+      rule.check(value, level + 1)
+    end
+  end
+
+  validateLimitUpdate = function(limits, level)
+    if isSecret(limits) or type(limits) ~= "table" then
+      error("ModuleKit:SetLimits limits must be a table", level)
+    end
+    local key = next(limits)
+    while type(key) ~= "nil" do
+      local rule = type(key) == "string" and rulesByName[key] or nil
+      if rule == nil then
+        local named = "ModuleKit:SetLimits limits." .. describeKey(key)
+        error(named .. " is not a recognised limit; it accepts " .. accepted, level)
+      end
+      validateValue(rule, rawget(limits, key), level + 1)
+      key = next(limits, key)
+    end
+  end
+
+  applyLimitUpdate = function(target, limits)
+    for index = 1, #LIMIT_RULES do
+      local name = LIMIT_RULES[index].name
+      local value = rawget(limits, name)
+      if type(value) ~= "nil" then
+        rawset(target, name, value)
+      end
+    end
+  end
+
+  copyLimits = function(source)
+    local copy = {}
+    for index = 1, #LIMIT_RULES do
+      local name = LIMIT_RULES[index].name
+      copy[name] = rawget(source, name)
+    end
+    return copy
+  end
+end
+-- shared:end limits
 
 -- Every module scope shares this metatable. It lives in shared state, and each
 -- revision installs its own `__index` on it, so scopes created by an older copy
 -- observe the newer lookup after an upgrade.
-local SCOPE_METATABLE = rawget(state, "scopeMetatable")
+local SCOPE_METATABLE = state.scopeMetatable
 
 local ADDON_METATABLE = { __index = Addon }
 local MODULE_METATABLE = { __index = Module }
 
--- The `requiresAddons` list of every module that declares none. It is never
--- written: declaring a first required addon gives the module its own array.
--- A module this revision creates carries no `_requiredAddons` field until
--- then; a module an older revision created may carry this shared array or an
--- empty one of its own.
-local NO_REQUIRED_ADDONS = {}
-
 -- The name set a module reads for a constraint kind it never declared
--- (`_hardDependencies`, `_optionalDependencies`, `_before`, `_after`) and the
--- injection specification of a module that never called `Inject`. It is never
+-- (`_hardDependencies`, `_optionalDependencies`, `_before`, `_after`). It is never
 -- written: the first declaration gives the module its own table. Leaving the
 -- fields absent keeps a module that declares nothing at a quarter of the table
 -- slots it would otherwise need; see `docs/INTERNALS.md` (Allocation policy).
@@ -601,7 +791,7 @@ local NO_MODULES = {}
 
 ---Return one of `module`'s constraint name sets, or the shared empty set.
 ---@param module ModuleKit.Module
----@param field "_hardDependencies"|"_optionalDependencies"|"_before"|"_after"|"_injectSpec"
+---@param field "_hardDependencies"|"_optionalDependencies"|"_before"|"_after"
 ---@return table<string, any>
 local function moduleNameSet(module, field)
   local set = module[field]
@@ -611,18 +801,21 @@ local function moduleNameSet(module, field)
   return set
 end
 
----Return `module`'s required addons, in declaration order.
----@param module ModuleKit.Module
----@return string[]
-local function moduleRequiredAddons(module)
-  local required = module._requiredAddons
-  if required == nil then
-    return NO_REQUIRED_ADDONS
-  end
-  return required
-end
-
 -- Validation helpers --------------------------------------------------------
+
+---The refusal of a member or field whose part is not loaded, naming the file
+---to embed after the core.
+---@param label string what was asked for, `ModuleKit.Addon:Resolve`
+---@param partName string
+---@return string
+local function partMissingMessage(label, partName)
+  return label
+    .. " is in ModuleKit's "
+    .. partName
+    .. " part, which is not loaded: add moduleKit\\parts\\ModuleKit-"
+    .. partName
+    .. ".lua to embeds.xml after moduleKit\\ModuleKit.lua"
+end
 
 -- Error levels. Every helper that raises takes the level it raises at,
 -- counted from its own frame (`2` is its caller), and names the public method
@@ -634,7 +827,7 @@ end
 ---@param label string argument description, used in the argument error
 ---@param level integer stack level the failure is reported at, counted from this function
 local function validateNonEmptyString(value, label, level)
-  if isSecretValue(value) then
+  if isSecret(value) then
     error(label .. " must not be a secret value", level)
   end
   if type(value) ~= "string" or value == "" then
@@ -658,12 +851,12 @@ end
 ---@param methodName string public `Module` method name, used in the argument error
 ---@param level integer stack level the failure is reported at, counted from this function
 local function ensureDefinitionMutable(module, methodName, level)
-  if rawget(module, "_state") ~= "created" then
+  if module._state ~= "created" then
     error(
       "ModuleKit.Module:"
         .. methodName
         .. ' cannot change module "'
-        .. rawget(module, "_name")
+        .. module._name
         .. '" after initialization',
       level
     )
@@ -706,20 +899,20 @@ end
 ---@return ModuleKit.Module module
 local function addNameConstraint(module, field, targetName, methodName, level)
   ensureDefinitionMutable(module, methodName, level + 1)
-  ensureNotShutdown(rawget(module, "_addon"), "ModuleKit.Module:" .. methodName, level + 1)
+  ensureNotShutdown(module._addon, "ModuleKit.Module:" .. methodName, level + 1)
   validateNonEmptyString(targetName, "ModuleKit.Module:" .. methodName .. " moduleName", level + 1)
 
-  if targetName == rawget(module, "_name") then
+  if targetName == module._name then
     error('ModuleKit module "' .. targetName .. '" cannot depend/order against itself', level)
   end
 
   if field == "_before" then
-    local addon = rawget(module, "_addon")
-    local target = rawget(rawget(addon, "_modules"), targetName)
-    if target ~= nil and rawget(target, "_state") ~= "created" then
+    local addon = module._addon
+    local target = rawget(addon._modules, targetName)
+    if target ~= nil and target._state ~= "created" then
       error(
         'ModuleKit module "'
-          .. rawget(module, "_name")
+          .. module._name
           .. '" cannot be ordered before already-initialized module "'
           .. targetName
           .. '"',
@@ -737,7 +930,7 @@ local function addNameConstraint(module, field, targetName, methodName, level)
 
   -- The container's validated order, and this module's resolved dependency
   -- list, were computed without this edge.
-  invalidateGraph(rawget(module, "_addon"))
+  invalidateGraph(module._addon)
   if field == "_hardDependencies" and module._hardDependencyList ~= nil then
     module._hardDependencyList = nil
   end
@@ -785,7 +978,7 @@ end
 ---@param module ModuleKit.Module
 ---@return integer
 local function moduleSortKey(module)
-  return rawget(module, "_order")
+  return module._order
 end
 
 -- The sort comparators are shared functions rather than closures written at
@@ -869,7 +1062,7 @@ local function addOrderingEdges(addon, adjacency, indegree, module, names, modul
     return
   end
 
-  local modules = rawget(addon, "_modules")
+  local modules = addon._modules
   local targets = {}
   for name in pairs(names) do
     local target = rawget(modules, name)
@@ -931,7 +1124,7 @@ local function findCycle(order, adjacency)
       for index = startIndex, #stack do
         names[#names + 1] = rawget(stack[index], "_name")
       end
-      names[#names + 1] = rawget(module, "_name")
+      names[#names + 1] = module._name
       return names
     end
 
@@ -1102,13 +1295,13 @@ end
 ---@param level integer|nil error level; `3` when omitted
 ---@return ModuleKit.Module[] order activation order for the whole container; read-only
 local function buildGraph(addon, level)
-  local cached = rawget(addon, "_graphOrder")
+  local cached = addon._graphOrder
   if cached ~= nil then
     return cached
   end
 
   level = level or 3
-  local order = rawget(addon, "_moduleOrder")
+  local order = addon._moduleOrder
   local adjacency = {}
   local indegree = {}
   local dependents = {}
@@ -1162,8 +1355,8 @@ local function buildGraph(addon, level)
     table.sort(list, createdLater)
   end
 
-  rawset(addon, "_graphOrder", result)
-  rawset(addon, "_graphDependents", dependents)
+  addon._graphOrder = result
+  addon._graphDependents = dependents
   return result
 end
 
@@ -1236,7 +1429,7 @@ local function enabledHardDependents(module)
   local result
   for index = 1, #dependents do
     local dependent = dependents[index]
-    if rawget(dependent, "_state") == "enabled" then
+    if dependent._state == "enabled" then
       result = result or {}
       result[#result + 1] = dependent
     end
@@ -1248,14 +1441,14 @@ end
 ---@param addon ModuleKit.Addon
 ---@return ModuleKit.Module[] order
 local function buildEnabledHardOrder(addon)
-  local allModules = rawget(addon, "_moduleOrder")
-  local modulesByName = rawget(addon, "_modules")
+  local allModules = addon._moduleOrder
+  local modulesByName = addon._modules
   local order = {}
   local enabled = {}
 
   for index = 1, #allModules do
     local module = allModules[index]
-    if rawget(module, "_state") == "enabled" then
+    if module._state == "enabled" then
       order[#order + 1] = module
       enabled[module] = true
     end
@@ -1311,425 +1504,6 @@ local function findOptionalPackage(packageName, api)
     return nil
   end
   return implementation
-end
-
--- Dependency injection ------------------------------------------------------
-
----Whether a resolution-stack entry names the resolution being attempted.
----@param record any
----@param name string
----@param kind "value"|"singleton"|"module"|"transient"
----@param requestingModule ModuleKit.Module|nil
----@return boolean
-local function resolutionRecordMatches(record, name, kind, requestingModule)
-  if type(record) ~= "table" or rawget(record, "name") ~= name then
-    return false
-  end
-  if kind == "module" then
-    return rawget(record, "requestingModule") == requestingModule
-  end
-  return true
-end
-
----Render one resolution for the cycle diagnostic.
----@param name string
----@param requestingModule ModuleKit.Module|nil
----@return string
-local function resolutionLabel(name, requestingModule)
-  if requestingModule ~= nil then
-    return name .. "[" .. tostring(rawget(requestingModule, "_name")) .. "]"
-  end
-  return name
-end
-
--- Implements contracts ------------------------------------------------------
---
--- A provider or a module definition may state what its value must carry, and
--- ModuleKit checks it exactly once per value: at registration for a value
--- provider and a module, and when the factory's result arrives for a lazy
--- provider, before that result is cached. The contract is compiled at
--- registration into a record kept on the provider, so a resolution pays one
--- lookup per declared name and allocates nothing when the value conforms.
--- Messages never format the checked value: they name the provider or module,
--- the member, and a type name.
-
----The package ID and API generation of SchemaKit, the one optional package the
----schema form of `implements` needs. It is found at registration, never at
----load, because nothing guarantees it has loaded before this file.
-local SCHEMA_KIT_PACKAGE = "schemaKit"
-local SCHEMA_KIT_API = 1
-
----The names `getmetatable` returns for SchemaKit nodes and sealed schemas,
----which set `__metatable` to them. They tell a schema from a method list even
----when SchemaKit is not loaded, which is what the refusal for that case needs.
-local SCHEMA_METATABLE_NAMES = { ["SchemaKit.Schema"] = true, ["SchemaKit.Node"] = true }
-
----Whether `value` presents itself as a SchemaKit node or sealed schema.
----@param value any
----@return boolean
-local function isSchemaLike(value)
-  if type(value) ~= "table" then
-    return false
-  end
-  -- `__metatable` is the caller's to set, so what `getmetatable` returns is
-  -- checked before it is used as a key.
-  local metatableName = getmetatable(value)
-  if isSecretValue(metatableName) then
-    return false
-  end
-  return SCHEMA_METATABLE_NAMES[metatableName] == true
-end
-
----Compile the list form of `implements`: a dense array of distinct non-empty
----strings, copied so a later edit of the caller's table changes nothing.
----@param list table
----@param label string argument description, used in the argument errors
----@param level integer stack level the failure is reported at
----@return string[] names
-local function compileImplementsNames(list, label, level)
-  local count = 0
-  for key in next, list do
-    -- A secret key cannot be a dense-array index, and comparing it would
-    -- raise here, so it is refused as a density failure first.
-    if isSecretValue(key) or type(key) ~= "number" or key < 1 or key % 1 ~= 0 then
-      error(label .. " must be a dense array of method names or a SchemaKit schema", level)
-    end
-    count = count + 1
-  end
-  if count == 0 then
-    error(label .. " must name at least one method", level)
-  end
-
-  -- `count` positive-integer keys form a dense array only when every index
-  -- from 1 to `count` is present; a hole anywhere is a density failure, not a
-  -- bad entry.
-  local names = {}
-  local seen = {}
-  for index = 1, count do
-    local name = rawget(list, index)
-    if type(name) == "nil" then
-      error(label .. " must be a dense array of method names or a SchemaKit schema", level)
-    end
-    if isSecretValue(name) then
-      error(label .. " entries must not be secret values", level)
-    end
-    if type(name) ~= "string" or name == "" then
-      error(label .. " entries must be non-empty strings", level)
-    end
-    if seen[name] == true then
-      error(label .. ' names "' .. name .. '" twice', level)
-    end
-    seen[name] = true
-    names[index] = name
-  end
-  return names
-end
-
----Compile the schema form of `implements`: seal the node or schema through the
----loaded SchemaKit, so the contract owns its failure record and cannot race
----the consumer's own checks on the same schema.
----@param candidate table a value `isSchemaLike` accepted
----@param label string argument description, used in the argument errors
----@param level integer stack level the failure is reported at
----@return table schema a sealed SchemaKit schema
-local function compileImplementsSchema(candidate, label, level)
-  local SchemaKit = findOptionalPackage(SCHEMA_KIT_PACKAGE, SCHEMA_KIT_API)
-  if type(SchemaKit) == "nil" then
-    error(
-      label .. " is a SchemaKit schema, but SchemaKit API " .. SCHEMA_KIT_API .. " is not loaded",
-      level
-    )
-  end
-  local seal = rawget(SchemaKit, "Seal")
-  if type(seal) ~= "function" then
-    error(label .. " must be a SchemaKit node or sealed schema", level)
-  end
-  local ok, schema = pcall(seal, SchemaKit, candidate)
-  if not ok or type(schema) ~= "table" then
-    error(label .. " must be a SchemaKit node or sealed schema", level)
-  end
-  return schema
-end
-
----Compile an `implements` declaration into a contract record, or `nil` when
----none was declared.
----@param candidate any the caller's `implements` value
----@param label string argument description, used in the argument errors
----@param level integer stack level the failure is reported at
----@return table|nil contract `{ names = string[] }` or `{ schema = table }`
-local function compileImplements(candidate, label, level)
-  if type(candidate) == "nil" then
-    return nil
-  end
-  if type(candidate) ~= "table" then
-    error(label .. " must be a dense array of method names or a SchemaKit schema", level)
-  end
-  if isSchemaLike(candidate) then
-    return { schema = compileImplementsSchema(candidate, label, level + 1) }
-  end
-  return { names = compileImplementsNames(candidate, label, level + 1) }
-end
-
----Render a SchemaKit failure record for a message. SchemaKit never puts the
----checked value in the record, so the rendering is secret-safe.
----@param failure table `{ path, rule, expected, found }`
----@return string
-local function describeSchemaFailure(failure)
-  local path = rawget(failure, "path")
-  local where = ""
-  if type(path) == "string" and path ~= "" then
-    where = "at " .. path .. ", "
-  end
-  return where
-    .. "expected "
-    .. tostring(rawget(failure, "expected"))
-    .. ", found "
-    .. tostring(rawget(failure, "found"))
-end
-
----Check `value` against a compiled contract, raising at `level` on the first
----member or schema rule it fails. Allocates nothing when the value conforms.
----@param contract table|nil the record `compileImplements` returned
----@param value any the provided value or the module table
----@param subject string what is checked, for the message: `provider "Database"` or `module "Inventory"`
----@param level integer stack level the failure is reported at
-local function checkImplements(contract, value, subject, level)
-  if contract == nil then
-    return
-  end
-
-  local schema = rawget(contract, "schema")
-  if schema ~= nil then
-    local ok, failure = schema:Check(value)
-    if not ok then
-      error(
-        "ModuleKit "
-          .. subject
-          .. " does not match its implements schema: "
-          .. describeSchemaFailure(failure),
-        level
-      )
-    end
-    return
-  end
-
-  local names = rawget(contract, "names")
-  if type(value) ~= "table" then
-    error(
-      "ModuleKit "
-        .. subject
-        .. ' must implement "'
-        .. names[1]
-        .. '": the value is a '
-        .. type(value)
-        .. ", not a table",
-      level
-    )
-  end
-  for index = 1, #names do
-    local name = names[index]
-    local member = value[name]
-    if type(member) == "nil" then
-      error("ModuleKit " .. subject .. ' must implement "' .. name .. '": no such member', level)
-    end
-    if type(member) ~= "function" then
-      error(
-        "ModuleKit "
-          .. subject
-          .. ' must implement "'
-          .. name
-          .. '": member "'
-          .. name
-          .. '" is a '
-          .. type(member)
-          .. ", not a function",
-        level
-      )
-    end
-  end
-end
-
----Read the options table of a `Provide*` method and compile its `implements`.
----@param options any the caller's options, `nil` when omitted
----@param methodName string public method name, used in the argument errors
----@param level integer stack level the failure is reported at
----@return table|nil contract
-local function readProvideOptions(options, methodName, level)
-  if type(options) == "nil" then
-    return nil
-  end
-  local label = "ModuleKit.Addon:" .. methodName .. " options"
-  if type(options) ~= "table" then
-    error(label .. " must be a table when provided", level)
-  end
-  -- Every unknown field is collected and the first in sorted order named, so
-  -- the message does not depend on `next` order when there are several.
-  local unknown
-  for key in next, options do
-    if isSecretValue(key) then
-      error(label .. " field names must not be secret values", level)
-    end
-    if key ~= "implements" then
-      unknown = unknown or {}
-      unknown[#unknown + 1] = describeKey(key)
-    end
-  end
-  if unknown ~= nil then
-    table.sort(unknown)
-    error(label .. ' contains unknown field "' .. unknown[1] .. '"', level)
-  end
-  return compileImplements(rawget(options, "implements"), label .. ".implements", level + 1)
-end
-
--- Providers -----------------------------------------------------------------
-
----Whether `name` is already taken by a module or another provider.
----@param addon ModuleKit.Addon
----@param name string
----@return boolean
-local function providerConflict(addon, name)
-  return rawget(rawget(addon, "_modules"), name) ~= nil
-    or rawget(rawget(addon, "_providers"), name) ~= nil
-end
-
----Publish one provider record under `name`.
----@param addon ModuleKit.Addon
----@param name string
----@param provider table provider record; its `kind` selects the resolution rule
----@param methodName string public method name, used in the argument errors
----@return ModuleKit.Addon addon
-local function registerProvider(addon, name, provider, methodName)
-  validateNonEmptyString(name, "ModuleKit.Addon:" .. methodName .. " providerName", 4)
-  if providerConflict(addon, name) then
-    error("ModuleKit.Addon:" .. methodName .. ' name "' .. name .. '" is already in use', 3)
-  end
-  rawset(rawget(addon, "_providers"), name, provider)
-  return addon
-end
-
----Resolve one injectable, falling back to a module of the same name.
----
----Resolution is re-entrant: the container keeps a stack so a provider factory
----that resolves its way back to itself is reported as a cycle rather than
----recursing until the stack overflows.
----@param addon ModuleKit.Addon
----@param name string
----@param requestingModule ModuleKit.Module|nil scope context for module providers
----@return any value
-local function resolveProvider(addon, name, requestingModule)
-  validateNonEmptyString(name, "ModuleKit.Addon:Resolve providerName", 4)
-
-  local providers = rawget(addon, "_providers")
-  local provider = rawget(providers, name)
-  if provider == nil then
-    local module = rawget(rawget(addon, "_modules"), name)
-    if module ~= nil then
-      return module
-    end
-    error('ModuleKit injectable "' .. name .. '" does not exist', 3)
-  end
-
-  local kind = rawget(provider, "kind")
-  if kind == "value" then
-    return rawget(provider, "value")
-  end
-
-  if kind == "module" and requestingModule == nil then
-    error('ModuleKit module-scoped provider "' .. name .. '" requires a requesting module', 3)
-  end
-
-  if kind == "singleton" and rawget(provider, "resolved") == true then
-    return rawget(provider, "value")
-  end
-
-  if kind == "module" then
-    local cache = rawget(provider, "cache")
-    local record = rawget(cache, requestingModule)
-    if record ~= nil then
-      return rawget(record, "value")
-    end
-  end
-
-  local stack = rawget(addon, "_resolutionStack")
-  for index = 1, #stack do
-    if resolutionRecordMatches(stack[index], name, kind, requestingModule) then
-      local cycle = {}
-      for cycleIndex = index, #stack do
-        local record = stack[cycleIndex]
-        cycle[#cycle + 1] =
-          resolutionLabel(rawget(record, "name"), rawget(record, "requestingModule"))
-      end
-      cycle[#cycle + 1] = resolutionLabel(name, kind == "module" and requestingModule or nil)
-      error("ModuleKit provider resolution cycle: " .. table.concat(cycle, " -> "), 3)
-    end
-  end
-
-  stack[#stack + 1] = {
-    name = name,
-    requestingModule = kind == "module" and requestingModule or nil,
-  }
-  local factory = rawget(provider, "factory")
-  local ok, value
-  if kind == "singleton" then
-    ok, value = pcall(factory, addon)
-  else
-    ok, value = pcall(factory, addon, requestingModule)
-  end
-  stack[#stack] = nil
-
-  if not ok then
-    error(value, 0)
-  end
-  if type(value) == "nil" then
-    error('ModuleKit provider "' .. name .. '" factory returned nil', 3)
-  end
-  -- Checked before caching, so a refused value is produced again on the next
-  -- resolution rather than served from the cache. Level 4 counts this frame.
-  checkImplements(
-    rawget(provider, "implements"),
-    value,
-    'provider "' .. resolutionLabel(name, kind == "module" and requestingModule or nil) .. '"',
-    4
-  )
-
-  if kind == "singleton" then
-    rawset(provider, "value", value)
-    rawset(provider, "resolved", true)
-  elseif kind == "module" then
-    rawset(rawget(provider, "cache"), requestingModule, { value = value })
-  end
-
-  return value
-end
-
----Resolve every declared injection alias of `module`, in alias order.
----@param module ModuleKit.Module
----@return table<string, any> injections
-local function resolveInjections(module)
-  local addon = module._addon
-  local specification = moduleNameSet(module, "_injectSpec")
-  -- Every module gets a table of its own, even with nothing to inject: its
-  -- hooks receive it and may write into it.
-  local resolved = {}
-  if next(specification) == nil then
-    module._injections = resolved
-    return resolved
-  end
-
-  local aliases = {}
-
-  for alias in pairs(specification) do
-    aliases[#aliases + 1] = alias
-  end
-  table.sort(aliases)
-
-  for index = 1, #aliases do
-    local alias = aliases[index]
-    resolved[alias] = resolveProvider(addon, rawget(specification, alias), module)
-  end
-
-  module._injections = resolved
-  return resolved
 end
 
 -- Module scopes -------------------------------------------------------------
@@ -1795,7 +1569,7 @@ do
       return nil
     end
 
-    local addonName = rawget(rawget(module, "_addon"), "_name")
+    local addonName = rawget(module._addon, "_name")
     local bus = forAddon(kit, addonName)
     if type(bus) ~= "table" then
       return nil
@@ -1827,13 +1601,13 @@ do
   ---@param module ModuleKit.Module
   ---@param key string a scope field name
   local function missingScopeKit(module, key)
-    if rawget(rawget(module, "_addon"), "_missingScopePolicy") ~= "raise" then
+    if rawget(module._addon, "_missingScopePolicy") ~= "raise" then
       return
     end
     local facade = SCOPE_FACADES[key]
     error(
       'ModuleKit module "'
-        .. tostring(rawget(module, "_name"))
+        .. tostring(module._name)
         .. '" scope.'
         .. key
         .. " needs "
@@ -1885,10 +1659,10 @@ do
     end
 
     local module = rawget(scope, "_module")
-    if rawget(module, "_scopeOpen") ~= true then
+    if module._scopeOpen ~= true then
       error(
         'ModuleKit module "'
-          .. tostring(rawget(module, "_name"))
+          .. tostring(module._name)
           .. '" scope.'
           .. key
           .. " is available only while the module is enabling or enabled",
@@ -1896,7 +1670,7 @@ do
       )
     end
 
-    local keptScopes = rawget(module, "_keptScopes")
+    local keptScopes = module._keptScopes
     if keptScopes ~= nil then
       local kept = keptScopes[key]
       if kept ~= nil then
@@ -2069,7 +1843,7 @@ local function invokeHook(module, name)
   local callback = rawget(module, name)
   -- A module created with a prototype may inherit its hooks from it; the
   -- lookup goes through the module's layer, so framework methods still win.
-  if callback == nil and rawget(module, "_prototype") ~= nil then
+  if callback == nil and module._prototype ~= nil then
     callback = module[name]
   end
   local kind = type(callback)
@@ -2091,7 +1865,9 @@ local function initializeOne(module)
     return module
   end
 
-  local ok, injectionsOrError = pcall(resolveInjections, module)
+  -- The Injection part resolves the declared aliases; without it every
+  -- module receives an empty table of its own (`defaultResolveForHook`).
+  local ok, injectionsOrError = pcall(dispatch.resolveForHook, module)
   if not ok then
     recordFailure(module, injectionsOrError, nil, true)
     error(injectionsOrError, 0)
@@ -2115,7 +1891,10 @@ end
 -- session (`Halt`), and tells the addons that declared it with `DependsOn`.
 -- ModuleKit maps both onto the enable state: the module keeps its intent, is
 -- taken down, and records what blocks it. Halted is terminal, so nothing ever
--- recovers such a module; every enable path refuses it instead.
+-- recovers such a module; every enable path refuses it instead. The core
+-- answers the container's own halt; another addon's halt is the
+-- RequiredAddons part's, reached through `dispatch.requiredAddonBlocker` and
+-- `dispatch.dependencyHalted`.
 
 ---Record what keeps the wanted `module` off, and tell its container that a
 ---blocked module may exist.
@@ -2143,29 +1922,6 @@ local function isContainerHalted(addon)
   return type(isHalted) == "function" and isHalted(lifecycle) == true
 end
 
----Whether the addon named `addonName` has halted.
----@param addonName string
----@return boolean
-local function isOtherAddonHalted(addonName)
-  local instance = LifecycleKit:ForAddon(addonName)
-  local getHaltReason = instance.GetHaltReason
-  return type(getHaltReason) == "function" and type(getHaltReason(instance)) ~= "nil"
-end
-
----Whether `module` names `addonName` in `requiresAddons`.
----@param module ModuleKit.Module
----@param addonName string
----@return boolean
-local function requiresAddon(module, addonName)
-  local required = moduleRequiredAddons(module)
-  for index = 1, #required do
-    if required[index] == addonName then
-      return true
-    end
-  end
-  return false
-end
-
 ---Return what a halt blocks `module` on, if anything.
 ---@param module ModuleKit.Module
 ---@return string|nil blocker `"halted"` when its own addon halted, the first halted addon of `requiresAddons`, or `nil`
@@ -2180,17 +1936,12 @@ local function haltBlocker(module)
     return OWN_ADDON_HALTED
   end
 
-  local required = module._requiredAddons
-  if required == nil then
+  -- Only the RequiredAddons part gives a module `_requiredAddons`, and it
+  -- answers which of them halted.
+  if module._requiredAddons == nil then
     return nil
   end
-  for index = 1, #required do
-    local addonName = required[index]
-    if isOtherAddonHalted(addonName) then
-      return addonName
-    end
-  end
-  return nil
+  return dispatch.requiredAddonBlocker(module)
 end
 
 ---Record that an enable of `module` was refused because of a halt.
@@ -2325,15 +2076,15 @@ end
 ---@return ModuleKit.Module module
 local function initializeWithPolicy(module, visiting, depth)
   depth = depth or 0
-  local addon = rawget(module, "_addon")
+  local addon = module._addon
   ensureNotShutdown(addon, "ModuleKit.Module:Initialize", 4 + depth)
 
-  if rawget(module, "_state") ~= "created" then
+  if module._state ~= "created" then
     return module
   end
 
   local dependencies = hardDependencies(module, 4 + depth)
-  local policy = rawget(addon, "_dependencyPolicy")
+  local policy = addon._dependencyPolicy
 
   if policy == "automatic" then
     -- A module that requires nothing cannot close a cycle, so it needs no
@@ -2342,9 +2093,7 @@ local function initializeWithPolicy(module, visiting, depth)
       visiting = visiting or {}
       if visiting[module] then
         error(
-          'ModuleKit dependency cycle detected while initializing "'
-            .. rawget(module, "_name")
-            .. '"',
+          'ModuleKit dependency cycle detected while initializing "' .. module._name .. '"',
           3 + depth
         )
       end
@@ -2357,12 +2106,12 @@ local function initializeWithPolicy(module, visiting, depth)
   else
     for index = 1, #dependencies do
       local dependency = dependencies[index]
-      if rawget(dependency, "_state") == "created" then
-        local name = rawget(dependency, "_name")
+      if dependency._state == "created" then
+        local name = dependency._name
         recordFailure(module, nil, name, false)
         error(
           'ModuleKit strict policy: module "'
-            .. rawget(module, "_name")
+            .. module._name
             .. '" requires initialized dependency "'
             .. name
             .. '"',
@@ -2617,7 +2366,12 @@ end
 ---@param module ModuleKit.Module
 local function scheduleCatchUp(addon, module)
   if addon._passDepth > 0 then
+    -- The queue exists only once something waited on a pass.
     local pending = addon._pendingCatchUp
+    if pending == nil then
+      pending = {}
+      addon._pendingCatchUp = pending
+    end
     pending[#pending + 1] = module
     return
   end
@@ -2633,7 +2387,7 @@ end
 ---@param firstError ModuleKit.ErrorRecord|nil error record captured so far
 ---@return ModuleKit.ErrorRecord|nil firstError
 local function flushPendingCatchUp(addon, firstError)
-  if addon._flushingCatchUp == true then
+  if addon._flushingCatchUp == true or addon._pendingCatchUp == nil then
     return firstError
   end
   addon._flushingCatchUp = true
@@ -2924,7 +2678,7 @@ end
 ---@param addon ModuleKit.Addon
 ---@return ModuleKit.Addon addon
 local function haltAllInternal(addon)
-  if rawget(addon, "_shutdown") == true then
+  if addon._shutdown == true then
     return addon
   end
 
@@ -2940,62 +2694,15 @@ local function haltAllInternal(addon)
     order = buildEnabledHardOrder(addon)
   end
 
-  local modules = rawget(addon, "_moduleOrder")
+  local modules = addon._moduleOrder
   for index = 1, #modules do
     local module = modules[index]
-    if rawget(module, "_wantedEnabled") == true then
+    if module._wantedEnabled == true then
       markBlocked(module, OWN_ADDON_HALTED)
     end
   end
 
   return runContainerPass(addon, runDisableAllPass, order, true, seedError)
-end
-
----Disable `module` because `blockedBy` halted, taking its enabled hard
----dependents down first.
----
----The cascade ignores the dependency policy, as shutdown does: a halted addon
----cannot be waited for. Dependents keep their intent and are blocked by
----`module`, which is itself blocked for good.
----@param module ModuleKit.Module
----@param blockedBy string
-local function blockForHaltedAddon(module, blockedBy)
-  local dependents = enabledHardDependents(module)
-  for index = 1, #dependents do
-    blockForHaltedAddon(dependents[index], rawget(module, "_name"))
-  end
-
-  if rawget(module, "_wantedEnabled") == true then
-    markBlocked(module, blockedBy)
-  end
-  disableOne(module)
-end
-
----Take down the modules that name a halted addon in `requiresAddons`.
----
----Modules are visited newest first; each one is independent, so a failing
----`OnDisable` leaves that module enabled and the rest are still visited. The
----first failure is re-raised afterwards.
----@param addon ModuleKit.Addon
----@param haltedAddonName string
----@return ModuleKit.Addon addon
-local function dependencyHaltedInternal(addon, haltedAddonName)
-  if rawget(addon, "_shutdown") == true then
-    return addon
-  end
-
-  local modules = rawget(addon, "_moduleOrder")
-  local firstError
-  for index = #modules, 1, -1 do
-    local module = modules[index]
-    if requiresAddon(module, haltedAddonName) then
-      local ok, value = pcall(blockForHaltedAddon, module, haltedAddonName)
-      firstError = captureFirstError(firstError, ok, value)
-    end
-  end
-
-  raiseCaptured(firstError)
-  return addon
 end
 
 ---Call one whole-container pass through shared runtime dispatch.
@@ -3007,49 +2714,11 @@ end
 ---@param argument any passed on after `addon`: the halted addon's name for `dependencyHalted`
 ---@return ModuleKit.Addon addon
 local function invokeDispatch(name, addon, argument)
-  local dispatch = rawget(state, "dispatch")
-  local callback = type(dispatch) == "table" and rawget(dispatch, name) or nil
+  local callback = dispatch[name]
   if type(callback) ~= "function" then
     error("MoltenCodes ModuleKit runtime dispatch is corrupted or incomplete", 2)
   end
   return callback(addon, argument)
-end
-
----Subscribe the container to the halts of the addons its modules require,
----unless it already is.
----
----Only a container with a module that declares `requiresAddons` subscribes:
----`dependencyHaltedInternal` acts on such modules alone, so a container
----without one would receive every notice for nothing, and each subscription
----costs a LifecycleKit handle and a SignalKit listener for the session.
----`declareRequiredAddons` subscribes before the module's first `DependsOn`,
----which is when LifecycleKit could first announce a halt that matters, and an
----upgrade subscribes a carried-over container that already has such a module.
----
----The subscription replays every declared dependency that has already halted.
----The replay is ignored: a module that requires a halted addon is blocked
----when it is created (see `addonCreateModule`), and an upgrade must not
----disable modules from package bootstrap. A LifecycleKit revision older than
----the halted state offers no notice, and its addons never halt.
----@param addon ModuleKit.Addon
-local function subscribeToDependencyHalts(addon)
-  if rawget(addon, "_subscriptions").dependencyHalted ~= nil then
-    return
-  end
-  local lifecycle = rawget(addon, "_lifecycle")
-  local onDependencyHalted = lifecycle.OnDependencyHalted
-  if type(onDependencyHalted) ~= "function" then
-    return
-  end
-
-  local replaying = true
-  local handle = onDependencyHalted(lifecycle, function(_, haltedAddonName)
-    if not replaying then
-      invokeDispatch("dependencyHalted", addon, haltedAddonName)
-    end
-  end)
-  replaying = false
-  rawget(addon, "_subscriptions").dependencyHalted = handle
 end
 
 -- Module public API ---------------------------------------------------------
@@ -3170,79 +2839,6 @@ local function moduleAfter(self, moduleName)
   return addNameConstraint(self, "_after", moduleName, "After", 3)
 end
 
----Record injection aliases on `module`.
----Return the module's own injection specification, creating it on the first
----alias; until then the module reads the shared empty set.
----@param module ModuleKit.Module
----@return table<string, string> specification
-local function ownInjectSpecification(module)
-  local specification = rawget(module, "_injectSpec")
-  if specification == nil then
-    specification = {}
-    rawset(module, "_injectSpec", specification)
-  end
-  return specification
-end
-
----@param module ModuleKit.Module
----@param aliasOrMap any one alias, or an alias-to-name map
----@param target any target name, when a single alias was given
----@param level integer stack level the failures are reported at, counted from this function: `3` from `Inject`, `4` from a `CreateModule` definition
-local function addInjections(module, aliasOrMap, target, level)
-  ensureDefinitionMutable(module, "Inject", level + 1)
-  ensureNotShutdown(rawget(module, "_addon"), "ModuleKit.Module:Inject", level + 1)
-
-  if type(aliasOrMap) == "table" and type(target) == "nil" then
-    local aliases = {}
-    for alias in next, aliasOrMap do
-      if isSecretValue(alias) then
-        error("ModuleKit.Module:Inject map aliases must not be secret values", level)
-      end
-      if type(alias) ~= "string" or alias == "" then
-        error("ModuleKit.Module:Inject map aliases must be non-empty strings", level)
-      end
-      aliases[#aliases + 1] = alias
-    end
-    table.sort(aliases)
-
-    -- Every target is checked before the first alias is stored, so a refused
-    -- map leaves the specification as it was (`docs/API.md`: refused "before
-    -- anything changes").
-    for index = 1, #aliases do
-      validateNonEmptyString(
-        rawget(aliasOrMap, aliases[index]),
-        "ModuleKit.Module:Inject target",
-        level + 1
-      )
-    end
-    local specification = ownInjectSpecification(module)
-    for index = 1, #aliases do
-      local alias = aliases[index]
-      rawset(specification, alias, rawget(aliasOrMap, alias))
-    end
-    return
-  end
-
-  validateNonEmptyString(aliasOrMap, "ModuleKit.Module:Inject alias", level + 1)
-  validateNonEmptyString(target, "ModuleKit.Module:Inject target", level + 1)
-  rawset(ownInjectSpecification(module), aliasOrMap, target)
-end
-
----Declare injection aliases.
----
----Targets are provider or module **names**, never the objects themselves: the
----container resolves a name at initialization time, so a module can inject
----something that does not exist yet when the declaration is written.
----@param self ModuleKit.Module
----@param aliasOrMap string|table<string, string> one alias, or an alias-to-name map
----@param target string|nil target name, when a single alias was given
----@return ModuleKit.Module self
----@overload fun(self: ModuleKit.Module, map: table<string, string>): ModuleKit.Module
-local function moduleInject(self, aliasOrMap, target)
-  addInjections(self, aliasOrMap, target, 3)
-  return self
-end
-
 ---Initialize this module under the container's dependency policy.
 ---@param self ModuleKit.Module
 ---@return ModuleKit.Module self
@@ -3283,7 +2879,7 @@ end
 ---@return ModuleKit.Module self
 local function moduleActivate(self)
   local addon = rawget(self, "_addon")
-  local lifecycle = rawget(addon, "_lifecycle")
+  local lifecycle = addon._lifecycle
 
   if lifecycle:IsLoaded() then
     initializeWithPolicy(self)
@@ -3293,15 +2889,6 @@ local function moduleActivate(self)
     raiseCaptured(recoverBlockedDependents(addon))
   end
   return self
-end
-
----Resolve an injectable with this module as the scope context.
----@param self ModuleKit.Module
----@param providerName string
----@return any
-local function moduleResolve(self, providerName)
-  validateNonEmptyString(providerName, "ModuleKit.Module:Resolve providerName", 3)
-  return resolveProvider(rawget(self, "_addon"), providerName, self)
 end
 
 -- Addon public API ----------------------------------------------------------
@@ -3342,7 +2929,7 @@ end
 ---@return ModuleKit.DependencyPolicy previous
 function addonConveniences.SetDependencyPolicy(self, policy)
   ensureNotShutdown(self, "ModuleKit.Addon:SetDependencyPolicy", 3)
-  if isSecretValue(policy) then
+  if isSecret(policy) then
     error("ModuleKit.Addon:SetDependencyPolicy policy must not be a secret value", 2)
   end
   if policy ~= "automatic" and policy ~= "strict" then
@@ -3372,7 +2959,7 @@ end
 ---@return ModuleKit.MissingScopePolicy previous
 function addonConveniences.SetMissingScopePolicy(self, policy)
   ensureNotShutdown(self, "ModuleKit.Addon:SetMissingScopePolicy", 3)
-  if isSecretValue(policy) then
+  if isSecret(policy) then
     error("ModuleKit.Addon:SetMissingScopePolicy policy must not be a secret value", 2)
   end
   if policy ~= "nil" and policy ~= "raise" then
@@ -3394,7 +2981,7 @@ end
 ---@param label string the argument in full, `ModuleKit.Module:SetEnabledState enabled`
 ---@param level integer stack level the failure is reported at, counted from this function
 function addonConveniences.checkBoolean(value, label, level)
-  if isSecretValue(value) then
+  if isSecret(value) then
     error(label .. " must not be a secret value", level)
   end
   if type(value) ~= "boolean" then
@@ -3455,14 +3042,14 @@ end
 ---@param label string the argument in full, `ModuleKit.Addon:SetDefaultModulePrototype prototype`
 ---@param level integer stack level the failure is reported at, counted from this function
 function addonConveniences.checkPrototype(prototype, label, level)
-  if isSecretValue(prototype) then
+  if isSecret(prototype) then
     error(label .. " must not be a secret value", level)
   end
   if type(prototype) ~= "table" then
     error(label .. " must be a table", level)
   end
   for key in next, prototype do
-    if isSecretValue(key) then
+    if isSecret(key) then
       error(label .. " keys must not be secret values", level)
     end
     if type(key) == "string" then
@@ -3491,7 +3078,7 @@ end
 
 ---Refill every prototype layer from the current `Module` methods.
 function addonConveniences.refreshLayers()
-  for _, metatable in next, rawget(state, "prototypeLayers") do
+  for _, metatable in next, state.prototypeLayers do
     addonConveniences.fillLayer(rawget(metatable, "__index"))
   end
 end
@@ -3505,7 +3092,7 @@ end
 ---@param prototype table
 ---@return table metatable
 function addonConveniences.prototypeMetatable(prototype)
-  local layers = rawget(state, "prototypeLayers")
+  local layers = state.prototypeLayers
   local metatable = rawget(layers, prototype)
   if metatable == nil then
     local layer = setmetatable({}, { __index = prototype })
@@ -3523,7 +3110,7 @@ end
 ---@return table|nil previous
 function addonConveniences.SetDefaultModulePrototype(self, prototype)
   ensureNotShutdown(self, "ModuleKit.Addon:SetDefaultModulePrototype", 3)
-  if isSecretValue(prototype) or prototype ~= nil then
+  if isSecret(prototype) or prototype ~= nil then
     addonConveniences.checkPrototype(
       prototype,
       "ModuleKit.Addon:SetDefaultModulePrototype prototype",
@@ -3554,14 +3141,14 @@ end
 function addonConveniences.OnModuleCreated(self, callback, methodName)
   local label = "ModuleKit.Addon:OnModuleCreated"
   ensureNotShutdown(self, label, 3)
-  if isSecretValue(callback) then
+  if isSecret(callback) then
     error(label .. " callback must not be a secret value", 2)
   end
   if type(callback) == "table" then
     if methodName == nil then
       methodName = addonConveniences.MODULE_CREATED_METHOD
     end
-    if isSecretValue(methodName) then
+    if isSecret(methodName) then
       error(label .. " methodName must not be a secret value", 2)
     end
     if type(methodName) ~= "string" or methodName == "" then
@@ -3607,28 +3194,30 @@ end
 ---@param addon ModuleKit.Addon
 ---@param module ModuleKit.Module
 function addonConveniences.publishCreated(addon, module)
-  local bus = rawget(addon, "_moduleCreatedBus")
+  local bus = addon._moduleCreatedBus
   if bus ~= nil then
     bus:Publish(addonConveniences.MODULE_CREATED_TOPIC, module)
   end
 end
 
 ---Return the container for `addonName`, or `nil`, never creating one.
----@param _ ModuleKit
+---@param self ModuleKit
 ---@param addonName string
 ---@return ModuleKit.Addon|nil
-function addonConveniences.FindAddon(_, addonName)
+function addonConveniences.FindAddon(self, addonName)
+  validateFacade(self, "ModuleKit:FindAddon", 3)
   validateNonEmptyString(addonName, "ModuleKit:FindAddon addonName", 3)
-  return rawget(rawget(state, "addons"), addonName)
+  return rawget(state.addons, addonName)
 end
 
 ---Return a new sorted array of every container's addon name. Diagnostics: it
 ---allocates.
----@param _ ModuleKit
+---@param self ModuleKit
 ---@return string[]
-function addonConveniences.GetAddons(_)
+function addonConveniences.GetAddons(self)
+  validateFacade(self, "ModuleKit:GetAddons", 3)
   local names = {}
-  for name in next, rawget(state, "addons") do
+  for name in next, state.addons do
     names[#names + 1] = name
   end
   table.sort(names)
@@ -3650,54 +3239,27 @@ local DEFINITION_FIELDS = {
   onDisable = true,
 }
 
----Record one `requiresAddons` entry on `module`.
----
----Raised errors use level 5, the caller of `CreateModule`: this function is
----called by `applyDefinitionList`, which `applyDefinition` calls from
----`CreateModule`.
----@param module ModuleKit.Module
----@param addonName any
----@return ModuleKit.Module module
-local function addRequiredAddon(module, addonName)
-  if isSecretValue(addonName) then
-    error("ModuleKit module definition requiresAddons entries must not be secret values", 5)
-  end
-  if type(addonName) ~= "string" or addonName == "" then
-    error("ModuleKit module definition requiresAddons entries must be non-empty strings", 5)
-  end
-  if addonName == rawget(rawget(module, "_addon"), "_name") then
+---Refuse a definition field whose part is not loaded, naming the file to
+---embed.
+---@param field "inject"|"implements"|"requiresAddons"
+---@param partName "Injection"|"Implements"|"RequiredAddons"
+---@param level integer stack level the failure is reported at, counted from this function
+local function refuseFieldWithoutPart(field, partName, level)
+  if type(state.parts[partName]) ~= "table" then
     error(
-      'ModuleKit module definition requiresAddons must name other addons, not "'
-        .. addonName
-        .. '" itself',
-      5
+      partMissingMessage(
+        'ModuleKit.Addon:CreateModule definition field "' .. field .. '"',
+        partName
+      ),
+      level
     )
   end
-  if requiresAddon(module, addonName) then
-    return module
-  end
-
-  local required = moduleRequiredAddons(module)
-  local maxRequiredAddons = rawget(sharedLimits, "maxRequiredAddons")
-  if maxRequiredAddons ~= UNBOUNDED and #required >= maxRequiredAddons then
-    error(
-      "ModuleKit module definition requiresAddons must list at most "
-        .. tostring(maxRequiredAddons)
-        .. " addons (ModuleKit:SetLimits maxRequiredAddons)",
-      5
-    )
-  end
-  if required == NO_REQUIRED_ADDONS then
-    required = {}
-    rawset(module, "_requiredAddons", required)
-  end
-  required[#required + 1] = addonName
-  return module
 end
 
 ---Apply one dense-array definition field entry by entry: through the
 ---constraint `field` a `Module` method records, or, for `requiresAddons`
----(`field` is `nil`), through `addRequiredAddon`. Every refusal is raised at
+---(`field` is `nil`), through the RequiredAddons part's `addRequiredAddon`
+---(`dispatch.addRequiredAddon`). Every refusal is raised at
 ---the caller of `CreateModule`, and an entry reports the same message the
 ---`Module` method it stands for would.
 ---@param module ModuleKit.Module
@@ -3719,7 +3281,7 @@ local function applyDefinitionList(module, definition, key, field, methodName)
   for index in next, values do
     -- A secret key cannot be a dense-array index, and comparing it would
     -- raise here, so it is refused as a density failure first.
-    if isSecretValue(index) or type(index) ~= "number" or index < 1 or index % 1 ~= 0 then
+    if isSecret(index) or type(index) ~= "number" or index < 1 or index % 1 ~= 0 then
       error("ModuleKit module definition " .. key .. " must be a dense array", 4)
     end
     count = count + 1
@@ -3734,7 +3296,9 @@ local function applyDefinitionList(module, definition, key, field, methodName)
   for index = 1, count do
     local value = rawget(values, index)
     if field == nil then
-      addRequiredAddon(module, value)
+      -- Level 5 inside the part counts this frame, `applyDefinition` and
+      -- `CreateModule`, as below.
+      dispatch.addRequiredAddon(module, value)
     else
       -- A constraint field always comes with the method it stands for.
       ---@cast methodName string
@@ -3776,7 +3340,7 @@ local function applyDefinition(module, definition)
 
   local unknown = {}
   for key in next, definition do
-    if isSecretValue(key) then
+    if isSecret(key) then
       error("ModuleKit module definition field names must not be secret values", 3)
     end
     if type(key) ~= "string" or DEFINITION_FIELDS[key] ~= true then
@@ -3791,12 +3355,12 @@ local function applyDefinition(module, definition)
   -- Apply in a fixed order so malformed definitions fail deterministically
   -- on every Lua implementation and every load order.
   local enabledState = rawget(definition, "enabledState")
-  if isSecretValue(enabledState) or enabledState ~= nil then
+  if isSecret(enabledState) or enabledState ~= nil then
     addonConveniences.checkBoolean(enabledState, "ModuleKit module definition enabledState", 4)
-    rawset(module, "_wantedEnabled", enabledState)
+    module._wantedEnabled = enabledState
   end
   local prototype = rawget(definition, "prototype")
-  if isSecretValue(prototype) or (prototype ~= nil and prototype ~= false) then
+  if isSecret(prototype) or (prototype ~= nil and prototype ~= false) then
     addonConveniences.checkPrototype(prototype, "ModuleKit module definition prototype", 4)
   end
   applyDefinitionList(module, definition, "dependsOn", "_hardDependencies", "DependsOn")
@@ -3809,62 +3373,20 @@ local function applyDefinition(module, definition)
   )
   applyDefinitionList(module, definition, "before", "_before", "Before")
   applyDefinitionList(module, definition, "after", "_after", "After")
-  applyDefinitionList(module, definition, "requiresAddons", nil, nil)
+  if rawget(definition, "requiresAddons") ~= nil then
+    refuseFieldWithoutPart("requiresAddons", "RequiredAddons", 4)
+    applyDefinitionList(module, definition, "requiresAddons", nil, nil)
+  end
 
   local inject = rawget(definition, "inject")
   if type(inject) ~= "nil" then
-    addInjections(module, inject, nil, 4)
+    refuseFieldWithoutPart("inject", "Injection", 4)
+    dispatch.addInjections(module, inject, nil, 4)
   end
 
   applyDefinitionCallback(module, definition, "onInitialize", "OnInitialize")
   applyDefinitionCallback(module, definition, "onEnable", "OnEnable")
   applyDefinitionCallback(module, definition, "onDisable", "OnDisable")
-end
-
----Declare every addon `module` requires as a LifecycleKit dependency of its
----container's addon, so the addon hears when one of them halts.
----
----Runs before the module is published, so a refusal leaves the container
----without it. LifecycleKit keeps an addon's declarations for the session:
----entries declared before a refusal stay declared, which only means their
----halts are also announced. A LifecycleKit revision without `DependsOn`
----announces nothing; enabling still checks each required addon directly.
----@param addon ModuleKit.Addon
----@param module ModuleKit.Module
-local function declareRequiredAddons(addon, module)
-  local required = moduleRequiredAddons(module)
-  if #required == 0 then
-    return
-  end
-
-  local lifecycle = rawget(addon, "_lifecycle")
-  local dependsOn = lifecycle.DependsOn
-  if type(dependsOn) ~= "function" then
-    return
-  end
-
-  -- Before the first `DependsOn`: declaring an addon that already halted
-  -- announces it at once.
-  subscribeToDependencyHalts(addon)
-
-  for index = 1, #required do
-    local recorded, reason = dependsOn(lifecycle, required[index])
-    -- `"halted"` needs nothing here: the container's own halt already
-    -- blocks every module. `"shutdown"` cannot occur, because a shut-down
-    -- container refuses `CreateModule` before this point.
-    if type(recorded) == "nil" and reason == "full" then
-      error(
-        'ModuleKit.Addon:CreateModule module "'
-          .. rawget(module, "_name")
-          .. '" requires addon "'
-          .. required[index]
-          .. '", but addon "'
-          .. rawget(addon, "_name")
-          .. '" already declares the most addon dependencies LifecycleKit accepts',
-        3
-      )
-    end
-  end
 end
 
 ---Create a uniquely named module in this container.
@@ -3877,7 +3399,9 @@ local function addonCreateModule(self, name, definition)
   validateNonEmptyString(name, "ModuleKit.Addon:CreateModule name", 3)
 
   local modules = self._modules
-  if rawget(modules, name) ~= nil or rawget(self._providers, name) ~= nil then
+  -- `_providers` exists once the Injection part registered a provider.
+  local providers = self._providers
+  if rawget(modules, name) ~= nil or (providers ~= nil and rawget(providers, name) ~= nil) then
     error('ModuleKit.Addon:CreateModule name "' .. name .. '" is already in use', 2)
   end
 
@@ -3885,7 +3409,7 @@ local function addonCreateModule(self, name, definition)
   -- Only what every module needs is stored. The constraint sets, the
   -- injection specification, `requiresAddons` and the failure record are
   -- absent until something writes them, and read as empty or `false` (see
-  -- `moduleNameSet`, `moduleRequiredAddons`, `clearFailure`).
+  -- `moduleNameSet`, `haltBlocker`, `clearFailure`).
   --
   -- The entries written as `nil` reserve room: Lua 5.1 sizes a table's hash
   -- part from the number of fields in its constructor, and these are the
@@ -3922,23 +3446,25 @@ local function addonCreateModule(self, name, definition)
     prototype = rawget(definition, "prototype")
   end
   if prototype then
-    rawset(module, "_prototype", prototype)
+    module._prototype = prototype
     setmetatable(module, addonConveniences.prototypeMetatable(prototype))
   end
   -- The definition is atomic, so what the module carries when this returns
   -- is what it will carry: ModuleKit's own methods and the hooks the
   -- definition set. Checked before the module is published, so a refusal
   -- leaves the container without it.
-  if type(definition) ~= "nil" then
-    local contract = compileImplements(
-      rawget(definition, "implements"),
-      "ModuleKit module definition implements",
-      3
-    )
-    checkImplements(contract, module, 'module "' .. name .. '"', 3)
+  local implements = type(definition) == "table" and rawget(definition, "implements") or nil
+  if implements ~= nil then
+    refuseFieldWithoutPart("implements", "Implements", 3)
+    local contract =
+      dispatch.compileImplements(implements, "ModuleKit module definition implements", 3)
+    dispatch.checkImplements(contract, module, 'module "' .. name .. '"', 3)
   end
   validateLateModuleOrdering(self, module)
-  declareRequiredAddons(self, module)
+  -- Only the RequiredAddons part gives a module required addons to declare.
+  if module._requiredAddons ~= nil then
+    dispatch.declareRequiredAddons(self, module)
+  end
 
   rawset(modules, name, module)
   order[#order + 1] = module
@@ -4047,123 +3573,6 @@ local function addonDisableAll(self)
   return addon
 end
 
----Register an addon-scoped constant. `nil` is rejected. The value exists
----already, so `options.implements` is checked here, at the caller's line.
----@param self ModuleKit.Addon
----@param name string
----@param value any
----@param options ModuleKit.ProvideOptions|nil
----@return ModuleKit.Addon self
-local function addonProvideValue(self, name, value, options)
-  ensureNotShutdown(self, "ModuleKit.Addon:ProvideValue", 3)
-  if type(value) == "nil" then
-    error("ModuleKit.Addon:ProvideValue value must not be nil", 2)
-  end
-  validateNonEmptyString(name, "ModuleKit.Addon:ProvideValue providerName", 3)
-  local contract = readProvideOptions(options, "ProvideValue", 3)
-  checkImplements(contract, value, 'provider "' .. name .. '"', 3)
-  return registerProvider(
-    self,
-    name,
-    { kind = "value", value = value, implements = contract },
-    "ProvideValue"
-  )
-end
-
----@param factory any
----@param methodName string public method name, used in the argument error
-local function validateFactory(factory, methodName)
-  if type(factory) ~= "function" then
-    error("ModuleKit.Addon:" .. methodName .. " factory must be a function", 3)
-  end
-end
-
----Register a factory resolved once per container. `options.implements` is
----checked against the factory's result when it first arrives.
----@param self ModuleKit.Addon
----@param name string
----@param factory fun(addon: ModuleKit.Addon): any
----@param options ModuleKit.ProvideOptions|nil
----@return ModuleKit.Addon self
-local function addonProvideSingleton(self, name, factory, options)
-  ensureNotShutdown(self, "ModuleKit.Addon:ProvideSingleton", 3)
-  validateFactory(factory, "ProvideSingleton")
-  local contract = readProvideOptions(options, "ProvideSingleton", 3)
-  return registerProvider(self, name, {
-    kind = "singleton",
-    factory = factory,
-    resolved = false,
-    value = nil,
-    implements = contract,
-  }, "ProvideSingleton")
-end
-
----Register a factory resolved once per requesting module.
----`options.implements` is checked against each requesting module's value when
----it first arrives.
----@param self ModuleKit.Addon
----@param name string
----@param factory fun(addon: ModuleKit.Addon, module: ModuleKit.Module): any
----@param options ModuleKit.ProvideOptions|nil
----@return ModuleKit.Addon self
-local function addonProvideModule(self, name, factory, options)
-  ensureNotShutdown(self, "ModuleKit.Addon:ProvideModule", 3)
-  validateFactory(factory, "ProvideModule")
-  local contract = readProvideOptions(options, "ProvideModule", 3)
-  return registerProvider(self, name, {
-    kind = "module",
-    factory = factory,
-    cache = {},
-    implements = contract,
-  }, "ProvideModule")
-end
-
----Register a factory resolved on every resolution. Every value it produces is
----new, so `options.implements` is checked on every resolution.
----@param self ModuleKit.Addon
----@param name string
----@param factory fun(addon: ModuleKit.Addon, module: ModuleKit.Module|nil): any
----@param options ModuleKit.ProvideOptions|nil
----@return ModuleKit.Addon self
-local function addonProvideTransient(self, name, factory, options)
-  ensureNotShutdown(self, "ModuleKit.Addon:ProvideTransient", 3)
-  validateFactory(factory, "ProvideTransient")
-  local contract = readProvideOptions(options, "ProvideTransient", 3)
-  return registerProvider(self, name, {
-    kind = "transient",
-    factory = factory,
-    implements = contract,
-  }, "ProvideTransient")
-end
-
----Resolve an injectable, optionally with module scope context.
----@param self ModuleKit.Addon
----@param name string
----@param requestingModule ModuleKit.Module|nil must be owned by this container
----@return any
-local function addonResolve(self, name, requestingModule)
-  if type(requestingModule) ~= "nil" then
-    if isSecretValue(requestingModule) then
-      error("ModuleKit.Addon:Resolve requestingModule must not be a secret value", 2)
-    end
-    -- Ownership is decided by identity with the module this container
-    -- keeps under the name, so nothing read from the caller's table is
-    -- compared: a module listed in `_modules` always belongs to `self`.
-    -- A secret `_name` names no module and is refused as not owned.
-    local modules = rawget(self, "_modules")
-    local requesterName = type(requestingModule) == "table" and rawget(requestingModule, "_name")
-      or nil
-    if
-      isSecretValue(requesterName)
-      or type(requesterName) ~= "string"
-      or rawget(modules, requesterName) ~= requestingModule
-    then
-      error("ModuleKit.Addon:Resolve requestingModule must be a module owned by this addon", 2)
-    end
-  end
-  return resolveProvider(self, name, requestingModule)
-end
-
 -- Addon creation / lifecycle integration -----------------------------------
 
 ---The LifecycleKit phases a container subscribes to, in delivery order.
@@ -4176,13 +3585,6 @@ local PHASE_SUBSCRIBE = {
   shutdown = "OnShutdown",
 }
 
----LifecycleKit query that reports whether a phase has already been reached.
-local PHASE_REACHED_QUERY = {
-  loaded = "IsLoaded",
-  ready = "IsReady",
-  shutdown = "IsShutdown",
-}
-
 ---Shared runtime dispatch entry point per phase.
 local PHASE_DISPATCH = {
   loaded = "initializeAll",
@@ -4190,262 +3592,61 @@ local PHASE_DISPATCH = {
   shutdown = "shutdown",
 }
 
----The LifecycleKit notices a container subscribes to beside the phases:
----its own addon halting, and a declared addon dependency halting. Both are
----keys of `_subscriptions`.
-local HALT_NOTICES = { "halted", "dependencyHalted" }
-
----Report whether LifecycleKit has already reached `phase` for `lifecycle`.
----@param lifecycle LifecycleKit.Instance
----@param phase "loaded"|"ready"|"shutdown"
----@return boolean
-local function isPhaseReached(lifecycle, phase)
-  local query = lifecycle[PHASE_REACHED_QUERY[phase]]
-  return query(lifecycle) == true
-end
-
----Install the per-module fields revision 6 added, on a module an earlier
----revision created.
+---Subscribe a new container to its addon's halted notice.
 ---
----An earlier revision recorded no intent, so it is derived from the fact: a
----disabled module was disabled deliberately or by a failure, and every other
----module is still meant to be enabled. Fields already present are kept, which
----is what carries intent and blocking across an upgrade unchanged.
----@param module ModuleKit.Module
-local function ensureModuleRuntimeFields(module)
-  local moduleState = rawget(module, "_state")
-  if type(rawget(module, "_wantedEnabled")) ~= "boolean" then
-    rawset(module, "_wantedEnabled", moduleState ~= "disabled")
-  end
-  -- An absent `_scopeOpen` reads as closed, and so does an absent
-  -- `_requiredAddons` as none (revision 8 added `requiresAddons`; revision 19
-  -- stopped storing either field before it is needed). Only an enabled
-  -- module from before revision 6 needs its scope marked open.
-  if rawget(module, "_scopeOpen") == nil and moduleState == "enabled" then
-    rawset(module, "_scopeOpen", true)
-  end
-  if type(rawget(module, "_scope")) ~= "table" then
-    local scope = newModuleScope(module)
-    rawset(module, "_scope", scope)
-    if type(rawget(module, "scope")) == "nil" then
-      rawset(module, "scope", scope)
-    end
-  end
-end
-
----Install the per-container runtime fields this implementation revision owns.
----
----A container created by an earlier compatible revision carries neither the
----dispatched-phase set nor the whole-container pass bookkeeping, so an
----in-place upgrade adds them before anything reads them.
----
----The dispatched set is rebuilt from LifecycleKit: every revision subscribed
----to all three phases when it created a container, and LifecycleKit replays a
----phase it has already reached to every new subscriber. For a carried-over
----container, "phase reached" and "phase already dispatched into this
----container" therefore mean the same thing.
+---A LifecycleKit revision older than the halted state offers no notice, and
+---its addons never halt, so nothing is subscribed. The subscription replays
+---synchronously for an addon that has already halted; a new container holds
+---no modules yet, so the replay only records the halt. The notice of another
+---addon's halt is the RequiredAddons part's, subscribed when a module first
+---declares `requiresAddons`.
 ---@param addon ModuleKit.Addon
 ---@param lifecycle LifecycleKit.Instance
-local function ensureContainerRuntimeFields(addon, lifecycle)
-  if type(rawget(addon, "_dispatched")) ~= "table" then
-    local dispatched = {}
-    for index = 1, #LIFECYCLE_PHASES do
-      local phase = LIFECYCLE_PHASES[index]
-      if isPhaseReached(lifecycle, phase) then
-        rawset(dispatched, phase, true)
-      end
-    end
-    rawset(addon, "_dispatched", dispatched)
-  end
-
-  if type(rawget(addon, "_passDepth")) ~= "number" then
-    rawset(addon, "_passDepth", 0)
-  end
-  if type(rawget(addon, "_pendingCatchUp")) ~= "table" then
-    rawset(addon, "_pendingCatchUp", {})
-  end
-  -- A cached graph is rebuilt by the revision that walks it, never trusted
-  -- across an upgrade.
-  invalidateGraph(addon)
-
-  local order = rawget(addon, "_moduleOrder")
-  for index = 1, #order do
-    ensureModuleRuntimeFields(order[index])
-  end
-end
-
----Disconnect one LifecycleKit subscription handle.
----@param subscription any handle returned by a LifecycleKit `On<Phase>` call
-local function disconnectSubscriptionHandle(subscription)
-  local disconnect = type(subscription) == "table" and subscription.Disconnect or nil
-  if type(disconnect) ~= "function" then
-    error("MoltenCodes ModuleKit lifecycle subscription state is corrupted", 2)
-  end
-  disconnect(subscription)
-end
-
----Drop every LifecycleKit subscription this container currently holds.
----@param addon ModuleKit.Addon
-local function disconnectAddonSubscriptions(addon)
-  local subscriptions = rawget(addon, "_subscriptions")
-  if type(subscriptions) ~= "table" then
-    rawset(addon, "_subscriptions", {})
-    return
-  end
-
-  for index = 1, #LIFECYCLE_PHASES do
-    local subscription = rawget(subscriptions, LIFECYCLE_PHASES[index])
-    if subscription ~= nil then
-      disconnectSubscriptionHandle(subscription)
-    end
-  end
-  for index = 1, #HALT_NOTICES do
-    local subscription = rawget(subscriptions, HALT_NOTICES[index])
-    if subscription ~= nil then
-      disconnectSubscriptionHandle(subscription)
-    end
-  end
-  rawset(addon, "_subscriptions", {})
-end
-
----Subscribe the container to its addon's halted notices.
----
----A LifecycleKit revision older than the halted state offers neither notice,
----and its addons never halt, so nothing is subscribed.
----
----Both subscriptions replay synchronously, like the phases, and the replay
----hazard applies to them too:
----
----- `OnHalted` replays for an addon that has already halted. A new container
----  holds no modules yet, so the replay only records the halt. During an
----  upgrade the halt is recorded as dispatched without running, so no module
----  hook can run out of package bootstrap; enabling still refuses every
----  module, because each enable path asks LifecycleKit directly.
----- `OnDependencyHalted` is subscribed only for a container with a module that
----  declares `requiresAddons`; see `subscribeToDependencyHalts`, which also
----  covers its replay.
----@param addon ModuleKit.Addon
----@param lifecycle LifecycleKit.Instance
----@param duringUpgrade boolean|nil `true` while migrating a carried-over container
-local function installHaltSubscriptions(addon, lifecycle, duringUpgrade)
+local function installHaltSubscription(addon, lifecycle)
   local onHalted = lifecycle.OnHalted
-  local onDependencyHalted = lifecycle.OnDependencyHalted
-  if type(onHalted) ~= "function" or type(onDependencyHalted) ~= "function" then
+  if type(onHalted) ~= "function" then
     return
   end
-
-  local dispatched = rawget(addon, "_dispatched")
-  if rawget(dispatched, "halted") ~= true then
-    if duringUpgrade and isContainerHalted(addon) then
-      rawset(dispatched, "halted", true)
-    else
-      local handle = onHalted(lifecycle, function()
-        -- Recorded first, like a phase: the halt has happened even if
-        -- taking the modules down raises.
-        rawset(rawget(addon, "_dispatched"), "halted", true)
-        invokeDispatch("halted", addon)
-      end)
-      rawget(addon, "_subscriptions").halted = handle
-    end
-  end
-
-  local modules = rawget(addon, "_moduleOrder")
-  for index = 1, #modules do
-    if #moduleRequiredAddons(modules[index]) > 0 then
-      subscribeToDependencyHalts(addon)
-      return
-    end
-  end
+  addon._subscriptions.halted = onHalted(lifecycle, function()
+    -- Recorded first, like a phase: the halt has happened even if taking
+    -- the modules down raises.
+    addon._dispatched.halted = true
+    invokeDispatch("halted", addon)
+  end)
 end
 
----Subscribe the container to the LifecycleKit phases it has not received yet.
+---Subscribe a new container to the LifecycleKit phases.
 ---
----LifecycleKit replays a phase it has already reached to every new subscriber.
----That is exactly what a freshly created container wants, and exactly what an
----in-place upgrade must avoid: re-subscribing there would run module hooks out
----of package bootstrap, and the replayed `ready` phase would call `EnableAll`,
----silently re-enabling a module the addon had deliberately disabled.
----
----The dispatched-phase set is the guard. During an upgrade the lifecycle is
----also probed directly, so no already-reached phase can be subscribed to even
----if the set were wrong, and a module hook can therefore never run out of
----package bootstrap.
+---LifecycleKit replays a phase it has already reached to every new
+---subscriber, which is exactly what a freshly created container wants. The
+---dispatched-phase set records each delivered phase before it runs, so a
+---later revision that takes the container over never runs one twice.
 ---@param addon ModuleKit.Addon
----@param duringUpgrade boolean|nil `true` while migrating a carried-over container
-local function installAddonSubscriptions(addon, duringUpgrade)
-  local lifecycle = rawget(addon, "_lifecycle")
-  if
-    type(lifecycle) ~= "table"
-    or type(lifecycle.IsShutdown) ~= "function"
-    or type(lifecycle.IsLoaded) ~= "function"
-    or type(lifecycle.IsReady) ~= "function"
-    or type(lifecycle.OnLoaded) ~= "function"
-    or type(lifecycle.OnReady) ~= "function"
-    or type(lifecycle.OnShutdown) ~= "function"
-  then
-    error("MoltenCodes ModuleKit addon lifecycle state is corrupted", 2)
-  end
-
-  ensureContainerRuntimeFields(addon, lifecycle)
-
-  -- A new container, and one `disconnectAddonSubscriptions` just emptied,
-  -- already holds an empty table.
-  local subscriptions = rawget(addon, "_subscriptions")
-  if type(subscriptions) ~= "table" or next(subscriptions) ~= nil then
-    rawset(addon, "_subscriptions", {})
-  end
-
-  if rawget(addon, "_shutdown") == true then
-    return
-  end
-
-  local dispatched = rawget(addon, "_dispatched")
+local function installAddonSubscriptions(addon)
+  local lifecycle = addon._lifecycle
   for index = 1, #LIFECYCLE_PHASES do
     local phase = LIFECYCLE_PHASES[index]
-    if rawget(dispatched, phase) ~= true then
-      if duringUpgrade and isPhaseReached(lifecycle, phase) then
-        -- The dispatched set disagreed with LifecycleKit. Trust the
-        -- lifecycle and record the phase rather than subscribing, so a
-        -- replay cannot reach module hooks from package bootstrap.
-        rawset(dispatched, phase, true)
-      else
-        local dispatchName = PHASE_DISPATCH[phase]
-        local subscribe = lifecycle[PHASE_SUBSCRIBE[phase]]
-        local handle = subscribe(lifecycle, function()
-          -- Record the phase before dispatching. It has happened even
-          -- if the dispatch raises, and a later in-place upgrade must
-          -- not run it a second time.
-          rawset(rawget(addon, "_dispatched"), phase, true)
-          return invokeDispatch(dispatchName, addon)
-        end)
-
-        -- `subscribe` is not a passive registration: LifecycleKit
-        -- replays a phase it has already reached to the new subscriber,
-        -- synchronously, before it returns the handle. A module hook
-        -- running inside that replay can reach container shutdown, so
-        -- the `_shutdown` test above is stale from here on and the
-        -- container may no longer own the table this loop started with.
-        --
-        -- Re-test and re-read both. A shutdown that happened during the
-        -- replay disconnects the handle it just produced and abandons
-        -- the phases behind it: a shut-down container must not be left
-        -- listening for `ready`, and a handle filed in a `_subscriptions`
-        -- table the container has replaced is one nothing would ever
-        -- disconnect.
-        if rawget(addon, "_shutdown") == true then
-          disconnectSubscriptionHandle(handle)
-          return
-        end
-
-        rawget(addon, "_subscriptions")[phase] = handle
-      end
-    end
+    local dispatchName = PHASE_DISPATCH[phase]
+    local subscribe = lifecycle[PHASE_SUBSCRIBE[phase]]
+    -- A replayed phase runs a pass over a container that holds no module
+    -- yet, so nothing in the replay can shut the container down.
+    addon._subscriptions[phase] = subscribe(lifecycle, function()
+      -- Record the phase before dispatching. It has happened even if the
+      -- dispatch raises, and a later in-place upgrade must not run it a
+      -- second time.
+      addon._dispatched[phase] = true
+      return invokeDispatch(dispatchName, addon)
+    end)
   end
 
-  installHaltSubscriptions(addon, lifecycle, duringUpgrade)
+  installHaltSubscription(addon, lifecycle)
 end
 
 ---Create the container for `addonName` and bind it to its lifecycle.
+---
+---Providers, the resolution stack and the catch-up queue are created on
+---first use (by the Injection part, or by the first deferred catch-up), so a
+---container that never uses them carries none of them.
 ---@param addonName string
 ---@return ModuleKit.Addon
 local function createAddon(addonName)
@@ -4456,23 +3657,19 @@ local function createAddon(addonName)
     _dependencyPolicy = "automatic",
     _modules = {},
     _moduleOrder = {},
-    _providers = {},
-    _resolutionStack = {},
     _shutdown = lifecycle:IsShutdown(),
     _subscriptions = {},
     -- A new container has received nothing yet, so every phase LifecycleKit
     -- has already reached is replayed into it on subscription.
     _dispatched = {},
     _passDepth = 0,
-    _pendingCatchUp = {},
     -- Nothing is blocked yet; see `markBlocked`.
     _mayHaveBlocked = false,
   }, ADDON_METATABLE)
 
-  local addons = rawget(state, "addons")
-  rawset(addons, addonName, addon)
+  state.addons[addonName] = addon
 
-  if not rawget(addon, "_shutdown") then
+  if not addon._shutdown then
     installAddonSubscriptions(addon)
   end
 
@@ -4480,14 +3677,14 @@ local function createAddon(addonName)
 end
 
 ---Return the stable container for `addonName`, creating it on demand.
----@param _ ModuleKit
+---@param self ModuleKit
 ---@param addonName string addon folder name, as LifecycleKit matches it
 ---@return ModuleKit.Addon addon
-local function forAddon(_, addonName)
+local function forAddon(self, addonName)
+  validateFacade(self, "ModuleKit:ForAddon", 3)
   validateNonEmptyString(addonName, "ModuleKit:ForAddon addonName", 3)
 
-  local addons = rawget(state, "addons")
-  local addon = rawget(addons, addonName)
+  local addon = state.addons[addonName]
   if addon ~= nil then
     return addon
   end
@@ -4496,145 +3693,178 @@ end
 
 -- Package-wide limits ------------------------------------------------------
 
----LifecycleKit's per-addon dependency limit, when the loaded LifecycleKit
----reports one through `GetLimits`, or `nil` when it reports none or reports
----its own `UNBOUNDED`.
----
----Read at call time rather than at load: LifecycleKit may be upgraded in
----place, and its limit may be changed, after ModuleKit loaded. `GetLimits` is
----optional because LifecycleKit revisions without it are supported.
----@return integer|nil ceiling
-local function lifecycleDependencyCeiling()
-  local getLimits = rawget(LifecycleKit, "GetLimits")
-  if type(getLimits) ~= "function" then
-    return nil
-  end
-  local limits = getLimits(LifecycleKit)
-  if type(limits) ~= "table" then
-    return nil
-  end
-  local value = rawget(limits, "maxDependencies")
-  if isPositiveInteger(value) then
-    return value
-  end
-  return nil
-end
-
----Refuse `limits` unless every entry names a known limit with a valid value.
----Nothing is changed here, so a refusal leaves every limit as it was.
----@param limits any
----@param level integer error level of the `SetLimits` caller
-local function validateLimitUpdate(limits, level)
-  if type(limits) ~= "table" then
-    error("ModuleKit:SetLimits limits must be a table", level)
-  end
-  local ceiling = lifecycleDependencyCeiling()
-  local key = next(limits)
-  while type(key) ~= "nil" do
-    -- The name is refused before it indexes `KNOWN_LIMITS` or is
-    -- formatted into a message.
-    if isSecretValue(key) then
-      error("ModuleKit:SetLimits limit names must not be secret values", level)
-    end
-    if type(key) ~= "string" or KNOWN_LIMITS[key] ~= true then
-      error(
-        "ModuleKit:SetLimits limits." .. describeKey(key) .. " is not a recognised limit",
-        level
-      )
-    end
-    local value = rawget(limits, key)
-    if isSecretValue(value) then
-      error("ModuleKit:SetLimits limits." .. key .. " must not be a secret value", level)
-    elseif value == UNBOUNDED then
-      if ceiling ~= nil then
-        error(
-          "ModuleKit:SetLimits limits."
-            .. key
-            .. " cannot be ModuleKit.UNBOUNDED: LifecycleKit accepts at most "
-            .. ceiling
-            .. " dependencies per addon",
-          level
-        )
-      end
-    elseif not isPositiveInteger(value) then
-      error(
-        "ModuleKit:SetLimits limits." .. key .. " must be a positive integer or ModuleKit.UNBOUNDED",
-        level
-      )
-    elseif ceiling ~= nil and value > ceiling then
-      error(
-        "ModuleKit:SetLimits limits."
-          .. key
-          .. " must be an integer from 1 to "
-          .. ceiling
-          .. ", LifecycleKit's maxDependencies",
-        level
-      )
-    end
-    key = next(limits, key)
-  end
-end
-
 ---Change any subset of the package-wide limits. Affects every consumer in the
 ---session. Lowering a limit never removes what modules already declared.
+---
+---The shared block checks the whole update first; `UNBOUNDED` is then refused
+---when LifecycleKit reports a `maxDependencies` of its own, which the module
+---could never exceed. Nothing is written until every check passed.
 ---@param self ModuleKit
 ---@param limits ModuleKit.Limits|table
 local function setLimits(self, limits)
-  if type(self) ~= "table" or self ~= ModuleKit then
-    error(
-      "ModuleKit:SetLimits must be called on the ModuleKit facade; use ModuleKit:SetLimits(...)",
-      2
-    )
-  end
+  validateFacade(self, "ModuleKit:SetLimits", 3)
   validateLimitUpdate(limits, 3)
-  for index = 1, #LIMIT_NAMES do
-    local name = LIMIT_NAMES[index]
-    local value = rawget(limits, name)
-    if type(value) ~= "nil" then
-      rawset(sharedLimits, name, value)
+  if rawget(limits, "maxRequiredAddons") == UNBOUNDED then
+    local ceiling = lifecycleDependencyCeiling()
+    if ceiling ~= nil then
+      error(
+        "ModuleKit:SetLimits limits.maxRequiredAddons cannot be ModuleKit.UNBOUNDED: "
+          .. "LifecycleKit accepts at most "
+          .. ceiling
+          .. " dependencies per addon",
+        2
+      )
     end
   end
+  applyLimitUpdate(sharedLimits, limits)
 end
 
 ---Return a fresh copy of the package-wide limits. Allocates one table.
 ---@param self ModuleKit
 ---@return ModuleKit.Limits limits
 local function getLimits(self)
-  if type(self) ~= "table" or self ~= ModuleKit then
-    error(
-      "ModuleKit:GetLimits must be called on the ModuleKit facade; use ModuleKit:GetLimits()",
-      2
-    )
-  end
-  return { maxRequiredAddons = rawget(sharedLimits, "maxRequiredAddons") }
+  validateFacade(self, "ModuleKit:GetLimits", 3)
+  return copyLimits(sharedLimits)
 end
 
----Move every live container's LifecycleKit subscriptions onto this revision.
-local function migrateAddonSubscriptions()
-  local addons = rawget(state, "addons")
-  local names = {}
-  for name in pairs(addons) do
-    names[#names + 1] = name
-  end
-  table.sort(names)
+-- Parts ---------------------------------------------------------------------
+--
+-- The members of each part stay on the prototypes even without it: a stub
+-- that raises at the caller's line with the file to embed. A Kit that uses a
+-- part optionally asks `ModuleKit:HasPart`, never `type(member)`, which a stub
+-- satisfies. The core reaches a part only through `state.dispatch`; the
+-- defaults below stand in while a part is not loaded, and are exact then:
+-- without the part no module can hold what it would serve. State an older
+-- revision made for a part that is not loaded is left in place and reported
+-- once through the host error handler when it would have been served.
 
-  local firstError
-  for index = 1, #names do
-    local addon = rawget(addons, names[index])
-    if type(addon) ~= "table" then
-      if firstError == nil then
-        firstError = { value = "MoltenCodes ModuleKit addon state is corrupted" }
+-- The members each part provides, by prototype, and the dispatch entries it
+-- fills (each with its default here).
+local PART_LAYOUT = {
+  Injection = {
+    Addon = { "ProvideValue", "ProvideSingleton", "ProvideModule", "ProvideTransient", "Resolve" },
+    Module = { "Resolve", "Inject" },
+    dispatch = { "resolveForHook", "addInjections" },
+  },
+  Implements = { dispatch = { "compileImplements", "checkImplements" } },
+  RequiredAddons = {
+    dispatch = {
+      "addRequiredAddon",
+      "declareRequiredAddons",
+      "requiredAddonBlocker",
+      "dependencyHalted",
+    },
+  },
+}
+
+---Report once per part that state it would serve was found without it.
+---@param partName string
+---@param what string what was left unserved, for the message
+local function reportUnserved(partName, what)
+  local reported = state.unservedReported
+  if reported[partName] == true then
+    return
+  end
+  reported[partName] = true
+  reportError(
+    "MoltenCodes ModuleKit found "
+      .. what
+      .. " an earlier revision made: "
+      .. partMissingMessage("serving it", partName)
+  )
+end
+
+-- The dispatch defaults, used while their part is not loaded.
+local PART_DEFAULTS = {
+  -- Every module gets an injection table of its own, even with nothing to
+  -- inject: its hooks receive it and may write into it.
+  resolveForHook = function(module)
+    if module._injectSpec ~= nil then
+      reportUnserved("Injection", "a module with injections")
+    end
+    local injections = {}
+    module._injections = injections
+    return injections
+  end,
+  -- The core refuses `inject`, `implements` and `requiresAddons` before it
+  -- calls these, so only a corrupted state reaches them.
+  addInjections = function()
+    error("MoltenCodes ModuleKit runtime dispatch is corrupted or incomplete", 2)
+  end,
+  compileImplements = function()
+    error("MoltenCodes ModuleKit runtime dispatch is corrupted or incomplete", 2)
+  end,
+  addRequiredAddon = function()
+    error("MoltenCodes ModuleKit runtime dispatch is corrupted or incomplete", 2)
+  end,
+  -- A provider an earlier revision registered with an `implements` contract.
+  checkImplements = function()
+    reportUnserved("Implements", "an implements contract")
+  end,
+  declareRequiredAddons = function() end,
+  requiredAddonBlocker = function()
+    reportUnserved("RequiredAddons", "a module with requiresAddons")
+    return nil
+  end,
+  dependencyHalted = function(addon)
+    return addon
+  end,
+}
+
+---A member that raises, at its caller's line, that `partName` is not loaded.
+---@param label string the member as its caller wrote it, `ModuleKit.Addon:Resolve`
+---@param partName string
+---@return function
+local function newPartStub(label, partName)
+  -- The message is built only when the stub raises, so an addon that never
+  -- calls a missing part holds no message text for it.
+  return function()
+    error(partMissingMessage(label, partName), 2)
+  end
+end
+
+---Install a stub for every member, and the default for every dispatch entry,
+---of each part that is not installed. A part already installed by any addon
+---keeps its members and entries.
+local function installPartStubs()
+  for partName, layout in next, PART_LAYOUT do
+    if type(state.parts[partName]) ~= "table" then
+      for _, prototypeName in ipairs({ "Addon", "Module" }) do
+        local members = layout[prototypeName]
+        if members ~= nil then
+          local prototype = prototypeName == "Addon" and Addon or Module
+          for index = 1, #members do
+            local member = members[index]
+            rawset(
+              prototype,
+              member,
+              newPartStub("ModuleKit." .. prototypeName .. ":" .. member, partName)
+            )
+          end
+        end
       end
-    else
-      local ok, value = pcall(function()
-        disconnectAddonSubscriptions(addon)
-        installAddonSubscriptions(addon, true)
-      end)
-      firstError = captureFirstError(firstError, ok, value)
+      local entries = layout.dispatch
+      for index = 1, #entries do
+        rawset(dispatch, entries[index], PART_DEFAULTS[entries[index]])
+      end
     end
   end
+end
 
-  raiseCaptured(firstError)
+---Whether the named part is installed in this session.
+---@param self ModuleKit
+---@param name string a part name: `"Injection"`, `"Implements"` or `"RequiredAddons"`
+---@return boolean installed
+local function hasPart(self, name)
+  validateFacade(self, "ModuleKit:HasPart", 3)
+  -- Refused before it is used as a key, which would raise here.
+  if isSecret(name) then
+    error("ModuleKit:HasPart name must not be a secret value", 2)
+  end
+  if type(name) ~= "string" then
+    error("ModuleKit:HasPart name must be a part name string", 2)
+  end
+  return type(state.parts[name]) == "table"
 end
 
 -- Commit --------------------------------------------------------------------
@@ -4653,13 +3883,14 @@ rawset(Module, "DependsOn", moduleDependsOn)
 rawset(Module, "OptionalDependency", moduleOptionalDependency)
 rawset(Module, "Before", moduleBefore)
 rawset(Module, "After", moduleAfter)
-rawset(Module, "Inject", moduleInject)
 rawset(Module, "Initialize", moduleInitialize)
 rawset(Module, "Enable", moduleEnable)
 rawset(Module, "Disable", moduleDisable)
 rawset(Module, "Activate", moduleActivate)
-rawset(Module, "Resolve", moduleResolve)
 rawset(Module, "SetEnabledState", addonConveniences.SetEnabledState)
+
+-- The members of every part not loaded are stubs; a loaded part keeps its own.
+installPartStubs()
 
 -- Every prototype layer holds a copy of the `Module` methods, so a module
 -- created with a prototype by an older revision gains this revision's methods
@@ -4685,11 +3916,6 @@ rawset(Addon, "ValidateGraph", addonValidateGraph)
 rawset(Addon, "InitializeAll", addonInitializeAll)
 rawset(Addon, "EnableAll", addonEnableAll)
 rawset(Addon, "DisableAll", addonDisableAll)
-rawset(Addon, "ProvideValue", addonProvideValue)
-rawset(Addon, "ProvideSingleton", addonProvideSingleton)
-rawset(Addon, "ProvideModule", addonProvideModule)
-rawset(Addon, "ProvideTransient", addonProvideTransient)
-rawset(Addon, "Resolve", addonResolve)
 
 rawset(SCOPE_METATABLE, "__index", scopeIndex)
 
@@ -4701,12 +3927,30 @@ rawset(ModuleKit, "FindAddon", addonConveniences.FindAddon)
 rawset(ModuleKit, "GetAddons", addonConveniences.GetAddons)
 rawset(ModuleKit, "SetLimits", setLimits)
 rawset(ModuleKit, "GetLimits", getLimits)
+rawset(ModuleKit, "HasPart", hasPart)
+
+-- The core functions the parts call, read by them at call time, so a part
+-- loaded before this revision serves through this revision's code.
+local helpers = state.helpers
+helpers.isSecret = isSecret
+helpers.describeKey = describeKey
+helpers.validateNonEmptyString = validateNonEmptyString
+helpers.ensureNotShutdown = ensureNotShutdown
+helpers.ensureDefinitionMutable = ensureDefinitionMutable
+helpers.findOptionalPackage = findOptionalPackage
+helpers.partMissingMessage = partMissingMessage
+helpers.refreshLayers = addonConveniences.refreshLayers
+helpers.invokeDispatch = invokeDispatch
+helpers.enabledHardDependents = enabledHardDependents
+helpers.markBlocked = markBlocked
+helpers.disableOne = disableOne
+helpers.captureFirstError = captureFirstError
+helpers.raiseCaptured = raiseCaptured
 
 -- Lifecycle subscriptions installed by revision 1 closed over that revision's
 -- local implementation functions. Revision 2 moves them behind shared-state
 -- dispatch so existing addon containers observe future compatible bug fixes
 -- without replacing container identity or requiring addon reloads.
-local dispatch = rawget(state, "dispatch")
 rawset(dispatch, "initializeAll", initializeAllInternal)
 rawset(dispatch, "enableAll", function(addon)
   return enableAllInternal(addon, true)
@@ -4715,11 +3959,16 @@ rawset(dispatch, "shutdown", function(addon)
   return disableAllInternal(addon, true)
 end)
 rawset(dispatch, "halted", haltAllInternal)
-rawset(dispatch, "dependencyHalted", dependencyHaltedInternal)
 
-if rawget(state, "runtimeRevision") ~= IMPLEMENTATION_REVISION then
-  migrateAddonSubscriptions()
-  rawset(state, "runtimeRevision", IMPLEMENTATION_REVISION)
+if state.runtimeRevision ~= IMPLEMENTATION_REVISION then
+  -- Containers revision 23 made are complete and their LifecycleKit
+  -- subscriptions already reach the shared dispatch, so they are kept as
+  -- they are. Only a cached graph is rebuilt by the revision that walks it.
+  for _, addon in next, state.addons do
+    addon._graphOrder = nil
+    addon._graphDependents = nil
+  end
+  state.runtimeRevision = IMPLEMENTATION_REVISION
 end
 
 if not validatePublicSurface(ModuleKit) or not validateCurrentState(ModuleKit) then

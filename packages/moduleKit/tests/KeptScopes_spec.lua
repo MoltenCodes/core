@@ -403,29 +403,3 @@ describe("ModuleKit missing scope Kit policy", function()
     end)
   end)
 end)
-
-describe("ModuleKit in-place upgrade from revision 21", function()
-  after_each(TestEnv.Reset)
-
-  it("keeps an older copy's containers and modules working", function()
-    TestEnv.LoadDependencies()
-    local previous = TestEnv.LoadRevision(21)
-    local addon = previous:ForAddon("MyAddon")
-    local base = addon:CreateModule("Base")
-    local dependent = addon:CreateModule("Dependent", { dependsOn = { "Base" } })
-    dependent:Enable()
-    base:Disable()
-    -- What revision 21 left: a blocked module, no scan flag, no kept scopes,
-    -- no policy.
-    rawset(addon, "_mayHaveBlocked", nil)
-
-    local upgraded = require("ModuleKit")
-
-    assert.are.equal(previous, upgraded)
-    assert.are.equal(23, upgraded.REVISION)
-    assert.are.equal(addon, upgraded:ForAddon("MyAddon"))
-    assert.are.equal("nil", addon:GetMissingScopePolicy())
-    base:Enable()
-    assert.is_true(dependent:IsEnabled())
-  end)
-end)

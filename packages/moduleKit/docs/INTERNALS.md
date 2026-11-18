@@ -2,27 +2,34 @@
 
 This document explains ModuleKit's implementation invariants for maintainers. It is not a public API contract; [`API.md`](API.md) is authoritative for consumer-visible behavior.
 
-## Why one runtime source file?
+## The core and its parts
 
-ModuleKit keeps its bootstrap and implementation in `src/ModuleKit.lua`, like every other MoltenCodes package. WoW clients load addon files from a `.toc` list and offer no general-purpose module loader, so splitting the runtime would mean either inventing a loader or making consumers list several files in a required order. The file is organised into explicit sections instead, and its header block lists them.
+ModuleKit's core is `src/ModuleKit.lua`; injection, `implements` contracts and required addons live in three part files under `src/parts/` (ADR 0001), which an addon lists after the core only when it uses them. Each file is organised into explicit sections, and its header block lists them.
+
+The core reaches a part only through entries of `_state.dispatch` that the part fills: `resolveForHook` and `addInjections` (Injection), `compileImplements` and `checkImplements` (Implements), `addRequiredAddon`, `declareRequiredAddons`, `requiredAddonBlocker` and `dependencyHalted` (RequiredAddons). While a part is not installed, `installPartStubs` puts a default in each of its entries and a stub on each of its members (`PART_LAYOUT`). The defaults are exact: the core refuses a part's definition fields first, so no module of this revision holds what an absent part would serve. Only state an older revision made can reach a default, which leaves it in place and reports it once (`reportUnserved`, `_state.unservedReported`). A part already installed by any addon keeps its members and entries when a newer core loads.
+
+A part calls the core through `_state.helpers`, which every core revision refills at commit, and reads it at call time, so a core upgraded after the part loaded serves it. Parts record themselves last, `_state.parts[name] = { revision }`, so a part whose file failed is never reported installed, and an equal or older part revision that loads later returns at once.
 
 ## Section map
 
 | Section | Responsibility |
 |---|---|
 | Dependencies | Reads `MoltenCodes.Registry`, validates Registry API 2 and the LifecycleKit API 1 facade. Nothing below runs if this fails. |
-| Bootstrap | Reconciles embedded revisions, decides whether this copy owns the package, and installs or adopts the shared `Addon` / `Module` prototypes and `_state`. |
+| Bootstrap | Reconciles embedded revisions, decides whether this copy owns the package, refuses state older than revision 23 (the upgrade floor), and installs or adopts the shared `Addon` / `Module` prototypes and `_state`. |
+| Shared helpers | `isSecret`, `describeKey`, `reportError`, `validateFacade` and the `limits` loop, copied verbatim from `tooling/shared/lua/` between markers. |
 | Validation helpers | Argument checks, definition-mutability rules (`created` state only), post-shutdown rejection, and the late-module ordering guard. |
 | Graph | Edge construction from the four constraint kinds, cycle reporting, the topological sort, and the graph cache with its invalidation. |
-| Optional packages | The silent `Registry:Find` lookup (with `Get` as the fallback on an older Registry) that the `implements` schema form and the module scopes share. |
-| Dependency injection | Provider registration, `implements` contracts, the four provider scopes, cycle-checked resolution, and injection-table assembly. |
+| Optional packages | The silent `Registry:Find` lookup (with `Get` as the fallback on an older Registry) that the module scopes and the Implements part's schema form share. |
 | Module scopes | The per-module scope object, its lazy fields resolved through `findOptionalPackage`, and closing them. |
-| Lifecycle operations | Single-module transitions, the two dependency policies, intent versus fact and recovery of blocked dependents, halted addons, whole-container passes, deferred catch-up, the two halt passes, shared runtime dispatch (`invokeDispatch`) and the on-demand `OnDependencyHalted` subscription. |
+| Lifecycle operations | Single-module transitions, the two dependency policies, intent versus fact and recovery of blocked dependents, the container's own halt, whole-container passes, deferred catch-up, the halt pass and shared runtime dispatch (`invokeDispatch`). |
 | Module public API | The functions installed on the shared `Module` prototype. |
 | Addon public API | The functions installed on the shared `Addon` prototype. |
 | Addon creation | Container identity, the dispatched-phase set, and LifecycleKit subscriptions, including the addon's own halted notice. |
-| Package-wide limits | `SetLimits` / `GetLimits` and the call-time coupling to LifecycleKit's `maxDependencies`. |
-| Commit | Publishes the public surface, installs shared runtime dispatch, and runs the in-place upgrade. |
+| Package-wide limits | `SetLimits` / `GetLimits` over the shared `limits` block and the call-time coupling to LifecycleKit's `maxDependencies`. |
+| Parts | `PART_LAYOUT`, the stubs, the dispatch defaults, `reportUnserved` and `HasPart`. |
+| Commit | Publishes the public surface, installs the part stubs and shared runtime dispatch, refills `_state.helpers`, and drops cached graphs on an upgrade. |
+
+The parts: `ModuleKit-Injection.lua` (provider registration and resolution with its cycle stack, `Inject`, the `inject` field and the injection table of a module's hooks), `ModuleKit-Implements.lua` (compiling and checking contracts) and `ModuleKit-RequiredAddons.lua` (the `requiresAddons` entries, their `DependsOn` edges and `OnDependencyHalted` subscription, what blocks an enable on another addon's halt, and the cascade when one halts).
 
 ## Shared embedded state
 
@@ -37,16 +44,23 @@ ModuleKit facade
     ├── schema
     ├── runtimeRevision
     ├── addons[name] -- containers
-    ├── dispatch     -- initializeAll / enableAll / shutdown / halted / dependencyHalted
+    ├── dispatch     -- initializeAll / enableAll / shutdown / halted, and the parts' entries
+    ├── parts[name]  -- { revision } of each installed part (revision 24)
+    ├── helpers      -- the core functions the parts call, refilled by every core revision
+    ├── partInterface -- the interface number the parts check (1)
+    ├── unservedReported[part] -- older state found without its part, reported once
     ├── scopeMetatable -- shared by every module scope; each revision installs its __index
     ├── unbounded    -- the UNBOUNDED sentinel, created once so every revision shares its identity
-    └── limits       -- { maxRequiredAddons }, written in place by SetLimits
+    ├── limits       -- { maxRequiredAddons }, written in place by SetLimits
+    └── prototypeLayers -- module prototype to its metatable (revision 23)
 ```
 
-`unbounded` and `limits` were added by revision 14. They are additive, so the
-schema stays 1: an upgrade from an earlier revision creates them with the
-default that revision enforced as a constant, and refuses a `limits` table it
-cannot trust. `SetLimits` asks `LifecycleKit:GetLimits()` at call time, not at
+**The upgrade floor.** No revision was ever published, so the bootstrap takes
+over only the state revision 23 left (every field above but the part fields,
+which it adds) and refuses an older revision's outright rather than filling in
+what it lacked. Containers and modules revision 23 made are complete and their
+subscriptions already reach `_state.dispatch`, so nothing is migrated: the
+commit only drops each container's cached graph. `SetLimits` asks `LifecycleKit:GetLimits()` at call time, not at
 load, because LifecycleKit can be upgraded in place and its limit changed after
 ModuleKit loaded.
 
@@ -141,11 +155,9 @@ is skipped inside a whole-container pass (the pass owns blocking), after
 shutdown, and when the graph is invalid, which targeted operations tolerate but
 a graph-ordered walk cannot.
 
-`ensureModuleRuntimeFields` backfills `_wantedEnabled`, marks the scope of an
-enabled module from before revision 6 open, and creates a missing scope, on
-modules an older revision created; it leaves present fields alone, so an
-upgrade carries intent and blocking across unchanged. Absent optional fields
-need no backfill, because they read as empty (see *Allocation policy*).
+Every module of revision 23 or later carries `_wantedEnabled` and its scope,
+so an upgrade carries intent and blocking across unchanged. Absent optional
+fields need no backfill, because they read as empty (see *Allocation policy*).
 
 ## Revision 23 conveniences
 
@@ -174,17 +186,16 @@ plain module's transitions cost one extra `rawget` for a hook it does not have.
 ## Halted addons
 
 `_requiredAddons` holds a module's `requiresAddons`, deduplicated, in
-declaration order. A module that declares none has no such field;
-`moduleRequiredAddons` reads it as the shared empty array `NO_REQUIRED_ADDONS`,
-which is never written and which modules of revisions 8 to 18 may still carry.
+declaration order; the RequiredAddons part writes it, and a module that
+declares none has no such field.
 
 `haltBlocker(module)` is the single question every enable path asks: `"halted"`
 when the container's own LifecycleKit instance has `_halted == true` (read with
 `rawget`; LifecycleKit documents the field as stable for API 1 and sets it
 before it notifies anyone, and an instance of a revision older than halts has
-no field and never halts), else the first
-required addon whose `LifecycleKit:ForAddon(name):GetHaltReason()` is set, else
-`nil`. It is asked, not cached, because halted is terminal and LifecycleKit is
+no field and never halts), else, for a module with `_requiredAddons`, what the RequiredAddons part's
+`requiredAddonBlocker` answers: the first required addon whose
+`LifecycleKit:ForAddon(name):GetHaltReason()` is set; else `nil`. It is asked, not cached, because halted is terminal and LifecycleKit is
 the authority. Where it is asked:
 
 - `enableWithPolicy`, before the policy logic, for a module that is not
@@ -207,16 +218,16 @@ the authority. Where it is asked:
 - `addonCreateModule`, after publishing: sets `_enableBlockedBy` so the enable
   state shows the block before anything tries to enable the module.
 
-`addonCreateModule` also calls `DependsOn` on the container's lifecycle for
-every required addon, before publishing, so a `"full"` refusal leaves the
-container without the module.
+`addonCreateModule` also has the part call `DependsOn` on the container's
+lifecycle for every required addon (`declareRequiredAddons`), before
+publishing, so a `"full"` refusal leaves the container without the module.
 
 Two notices drive the transitions, through shared dispatch like the phases.
 `halted` is subscribed when the container is created. `dependencyHalted` is
-subscribed by `subscribeToDependencyHalts` only once a module declares
-`requiresAddons` (from `declareRequiredAddons`, before the first `DependsOn`,
-which is when LifecycleKit could first announce a halt that concerns it), or
-by an upgrade for a carried-over container that already has such a module.
+subscribed by the RequiredAddons part's `subscribeToDependencyHalts` only once
+a module declares `requiresAddons` (from `declareRequiredAddons`, before the
+first `DependsOn`, which is when LifecycleKit could first announce a halt that
+concerns it).
 Its handler acts only on modules that require the halted addon, so a
 container without one would receive every notice for nothing, at the cost of
 a LifecycleKit handle and a SignalKit listener for the session:
@@ -225,7 +236,7 @@ a LifecycleKit handle and a SignalKit listener for the session:
   `"halted"` and runs `runDisableAllPass` in terminal mode, because
   LifecycleKit never delivers `shutdown` to a halted addon. It does not set
   `_shutdown`, so the container stays usable for inspection.
-- `dependencyHalted` (`OnDependencyHalted`) runs `dependencyHaltedInternal`:
+- `dependencyHalted` (`OnDependencyHalted`) runs the part's `dependencyHalted`:
   newest module first, every module that requires the halted addon is taken
   down by `blockForHaltedAddon`, which disables enabled hard dependents first
   (recursively, whatever the policy). The module is marked blocked by the
@@ -235,14 +246,10 @@ a LifecycleKit handle and a SignalKit listener for the session:
 
 Both subscriptions replay synchronously, and the replay hazard applies.
 `OnHalted` replays only for an addon that already halted: a new container has
-no modules, so the replay just records it; during an upgrade the halt is
-recorded in `_dispatched.halted` without running, and the enable paths refuse
-every module anyway. `OnDependencyHalted` replays every halted declared
-dependency; its listener ignores deliveries while the subscription call is
-still running, because the module being created is not published yet (it is
-blocked by `haltBlocker` once it is) and an upgrade must not run `OnDisable`
-from package bootstrap. `disconnectAddonSubscriptions` releases
-both handles with the phase handles.
+no modules, so the replay just records it. `OnDependencyHalted` replays every
+halted declared dependency; its listener ignores deliveries while the
+subscription call is still running, because the module being created is not
+published yet (it is blocked by `haltBlocker` once it is).
 
 ## The dependency graph
 
@@ -289,7 +296,7 @@ Per module, `hardDependencies` keeps the resolved, creation-ordered list of its 
 
 `firstEnabledHardDependent` and `enabledHardDependents` read `_graphDependents` when it is present. Without it (never built, invalidated, or invalid, which targeted operations tolerate) they scan the container, which allocates only when a dependent exists.
 
-The cache is container state that no older revision knows, so an in-place upgrade drops it (`ensureContainerRuntimeFields` calls `invalidateGraph`) and the new copy rebuilds it on first use.
+An in-place upgrade drops every container's cache in the commit, and the new copy rebuilds it on first use.
 
 ## Failure model
 
@@ -366,26 +373,20 @@ runs), and `isSchemaLike` answers `false`, without refusing, when
 
 LifecycleKit replays a phase it has already reached to every new subscriber. That is exactly what a newly created container needs: it catches up to `loaded` and `ready` without racing host events.
 
-It is also a hazard. An in-place upgrade re-installs subscriptions on containers that already exist, and subscribing to an already-reached phase would replay it:
+It is also a hazard. Subscribing an existing container again would replay every reached phase:
 
 - module hooks would run out of package bootstrap, where the addon has no way to handle their failure;
 - the replayed `ready` phase calls `EnableAll`, which would re-enable a module the addon had deliberately disabled.
 
-Two things prevent it.
+So only a new container subscribes. Every container carries `_dispatched`, recorded by the subscription callback *before* it dispatches — the phase has happened even if the dispatch raises — and its callbacks reach `_state.dispatch` through `invokeDispatch`, so an in-place upgrade serves them by replacing the dispatch entries and never subscribes again. Revisions before 23 re-subscribed carried-over containers and needed an upgrade probe for that; the upgrade floor removed both.
 
-**The dispatched-phase set.** Every container carries `_dispatched`, recorded by the subscription callback *before* it dispatches — the phase has happened even if the dispatch raises. `installAddonSubscriptions` subscribes only to phases that are not in the set. A container created by an earlier revision has no set; `ensureContainerRuntimeFields` rebuilds it from LifecycleKit, because every revision subscribed to all three phases at creation, so for such a container "phase reached" and "phase already dispatched" mean the same thing.
-
-**The upgrade probe.** During migration the lifecycle is also asked directly, and an already-reached phase is never subscribed to even if the set were wrong. This is what makes "an upgrade can never run a module hook out of package bootstrap" a property of the code rather than of the bookkeeping.
-
-Phases that have *not* been reached are still subscribed to during an upgrade, so a container that has not shut down yet keeps its cleanup.
-
-**A replay is synchronous, inside `subscribe()`.** The callback runs before the handle exists, so anything the install loop read before that call may be stale by the time it returns. A hook running in the replay can reach container shutdown, and the loop must not then keep going: it re-tests `_shutdown` after every subscription, disconnects the handle the shutdown happened inside rather than storing it, and abandons the phases behind it. It also re-reads `_subscriptions` for each phase rather than holding the table it captured, so a handle can never be filed in a table the container has since replaced — where nothing would ever disconnect it.
+A new container's replay runs passes over a container that holds no module yet, so nothing in it can shut the container down while the install loop runs.
 
 ## Re-entrant module creation
 
 A hook may create a module while a whole-container pass is walking the graph. Catching that module up immediately would happen outside the running pass's blocking set, so it could be activated even though the pass had already decided that one of its hard dependencies failed.
 
-`_passDepth` counts the whole-container passes a container is inside. While it is non-zero, definition-table catch-up is queued on `_pendingCatchUp` and flushed once the outermost pass finishes — with the same effect as creating the module immediately after the pass returned. `_flushingCatchUp` keeps a nested pass that ends during the flush from starting a second one; its modules stay on the queue for the running loop.
+`_passDepth` counts the whole-container passes a container is inside. While it is non-zero, definition-table catch-up is queued on `_pendingCatchUp`, created on the first deferral, and flushed once the outermost pass finishes — with the same effect as creating the module immediately after the pass returned. `_flushingCatchUp` keeps a nested pass that ends during the flush from starting a second one; its modules stay on the queue for the running loop.
 
 The queue is drained with an index cursor and cleared once, not by removing the head each time: shifting every remaining entry down a slot per module made a flush quadratic in the number of modules waiting. Entries appended while the loop runs are picked up by the same pass, so the order is the one creation established.
 
@@ -395,7 +396,7 @@ Pass bodies report their first error by *returning* it rather than raising, so `
 
 ## Provider resolution
 
-Providers are container-local; two containers never share registration or caches.
+This is the Injection part's. Providers are container-local; two containers never share registration or caches. `_providers` and `_resolutionStack` are created on the container by the first provider and the first factory run.
 
 | Scope | Cached by |
 |---|---|
@@ -408,7 +409,7 @@ Cycle detection tracks `(provider name, requesting module)` rather than provider
 
 Injection aliases are resolved in sorted alias order, so factories with side effects run in the same order on every Lua implementation.
 
-**Implements contracts.** A provider record carries `implements`, `nil` or the record `compileImplements` built at registration: `{ names = string[] }` for the list form (a copy of the caller's list) or `{ schema = <sealed SchemaKit schema> }` for the schema form. `resolveProvider` runs `checkImplements` on a factory's result after the `nil` check and before caching, so a refused value is produced again next time; `ProvideValue` and `CreateModule` run it at registration. The list check is one `value[name]` lookup per declared name and allocates nothing when the value conforms; the schema check is SchemaKit's `Check`, which also allocates nothing for a valid value. The contract lives on the provider record rather than in `_state`, so revision 15 added nothing to the state schema: a record an older revision registered has no `implements` and resolves unchecked, and a record this revision registered keeps its contract under a newer copy. SchemaKit is looked up through `findOptionalPackage` at registration only; the sealed schema's `Check` is a method on SchemaKit's shared prototype, so an in-place SchemaKit upgrade is observed.
+**Implements contracts.** These are the Implements part's; the Injection part reaches them through `dispatch.compileImplements` and `dispatch.checkImplements`. A provider record carries `implements`, `nil` or the record `compileImplements` built at registration: `{ names = string[] }` for the list form (a copy of the caller's list) or `{ schema = <sealed SchemaKit schema> }` for the schema form. `resolveProvider` runs `checkImplements` on a factory's result after the `nil` check and before caching, so a refused value is produced again next time; `ProvideValue` and `CreateModule` run it at registration. The list check is one `value[name]` lookup per declared name and allocates nothing when the value conforms; the schema check is SchemaKit's `Check`, which also allocates nothing for a valid value. The contract lives on the provider record rather than in `_state`, so a record keeps its contract under a newer copy; a contract found while the Implements part is absent is reported once and the value is served unchecked. SchemaKit is looked up through `findOptionalPackage` at registration only; the sealed schema's `Check` is a method on SchemaKit's shared prototype, so an in-place SchemaKit upgrade is observed.
 
 ## Allocation policy
 
@@ -429,6 +430,6 @@ A provider that declares `implements` keeps one contract record and, for the lis
 
 ## Field access
 
-ModuleKit reads and writes its own fields on containers and modules with plain indexing on the lifecycle paths (`module._state`, `addon._moduleOrder`). Their metatables only point `__index` at the method prototypes, so a present field is a plain table read and an absent one costs one more read of the prototype, which is cheaper than a call to `rawget`; a whole-container pass makes several hundred of these reads. The fields are declared `package` in the LuaCATS classes, so the language server checks them without offering them to consumers. `rawget` stays where it matters: on module scopes, whose `__index` creates Kit scopes, and on tables the caller owns (definitions, options, alias maps, `implements` values).
+ModuleKit reads and writes its own fields on `_state`, containers and modules with plain indexing (`module._state`, `addon._moduleOrder`, `state.addons`); revision 24 converted the remaining literal-key `rawget` / `rawset` calls on them. Their metatables only point `__index` at the method prototypes, so a present field is a plain table read and an absent one costs one more read of the prototype, which is cheaper than a call to `rawget`; a whole-container pass makes several hundred of these reads. The fields are declared `package` in the LuaCATS classes, so the language server checks them without offering them to consumers. `rawget` stays where it matters: on module scopes, whose `__index` creates Kit scopes, on the receiver of a public method, on other Kits' facades and instances, on state the bootstrap has not validated yet, and on tables the caller owns (definitions, options, alias maps, `implements` values, the `SetLimits` table).
 
 `GetModules()` and `GetInjections()` return fresh snapshots, so a consumer mutating the returned table cannot corrupt ModuleKit's own collection.

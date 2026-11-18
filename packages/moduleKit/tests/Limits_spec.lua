@@ -140,14 +140,14 @@ describe("ModuleKit package-wide limits", function()
   it("refuses invalid values at the caller and changes nothing", function()
     ModuleKit:SetLimits({ maxRequiredAddons = 4 })
     local cases = {
-      { 0, "must be a positive integer or ModuleKit.UNBOUNDED" },
-      { -1, "must be a positive integer or ModuleKit.UNBOUNDED" },
-      { 1.5, "must be a positive integer or ModuleKit.UNBOUNDED" },
-      { 0 / 0, "must be a positive integer or ModuleKit.UNBOUNDED" },
-      { math.huge, "must be a positive integer or ModuleKit.UNBOUNDED" },
-      { "8", "must be a positive integer or ModuleKit.UNBOUNDED" },
-      { {}, "must be a positive integer or ModuleKit.UNBOUNDED" },
-      { false, "must be a positive integer or ModuleKit.UNBOUNDED" },
+      { 0, "must be an integer from 1 to 1024" },
+      { -1, "must be an integer from 1 to 1024" },
+      { 1.5, "must be an integer from 1 to 1024" },
+      { 0 / 0, "must be an integer from 1 to 1024" },
+      { math.huge, "must be an integer from 1 to 1024" },
+      { "8", "must be an integer from 1 to 1024" },
+      { {}, "must be an integer from 1 to 1024" },
+      { false, "must be an integer from 1 to 1024" },
     }
 
     for index = 1, #cases do

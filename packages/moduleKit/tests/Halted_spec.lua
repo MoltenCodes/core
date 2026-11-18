@@ -513,35 +513,6 @@ describe("ModuleKit halted state across an in-place upgrade", function()
     assert.are.same({ wanted = true, actual = false, blockedBy = "Other" }, bridge:GetEnableState())
   end)
 
-  it("runs no module hook when the addon halted before the upgrade", function()
-    local ModuleKit, _, _, _, LifecycleKit = TestEnv.NewPackage()
-    local addon = ModuleKit:ForAddon("MyAddon")
-    local log = {}
-    local first = createLoggedModule(addon, "First", log)
-    createLoggedModule(addon, "Second", log)
-    TestEnv.LoadAddon("MyAddon")
-    TestEnv.Login()
-    first:Disable()
-
-    -- Model a container of a revision that did not watch the halt.
-    local subscriptions = rawget(addon, "_subscriptions")
-    subscriptions.halted:Disconnect()
-    subscriptions.halted = nil
-    rawget(addon, "_dispatched").halted = nil
-    LifecycleKit:ForAddon("MyAddon"):Halt("broken")
-    rawset(rawget(ModuleKit, "_state"), "runtimeRevision", ModuleKit.REVISION - 1)
-    log = {}
-
-    TestEnv.ReloadPackage()
-
-    assert.are.same({}, log)
-    assert.is_true(rawget(addon, "_dispatched").halted)
-    assert.has_error(function()
-      first:Enable()
-    end)
-    assert.are.same({}, log)
-  end)
-
   it("takes down a module whose OnEnable halts after an upgrade", function()
     local ModuleKit, _, _, _, LifecycleKit = TestEnv.NewPackage()
     local addon = ModuleKit:ForAddon("MyAddon")
