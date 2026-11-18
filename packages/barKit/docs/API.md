@@ -29,8 +29,8 @@ BarKit does not rely on `require()` at runtime.
 | `CreateFrame`, `UIParent` | `Acquire` | `Acquire` raises at the caller: `BarKit:Acquire needs the client's CreateFrame and UIParent, which this host does not have`. |
 | `GetTime` | timers | Time stands still at 0: a timer never runs out. |
 | `FontString:ClearText` | `Release`, and a plain text after a secret one | `SetText(nil)` instead; every promised client has it (Blizzard's `SimpleFontStringAPIDocumentation.lua` on `live`, `classic` and `classic_era`, read 2026-11-15). |
-| `issecretvalue` | every check | Nothing is treated as secret. |
-| `geterrorhandler` | an `onFinished` that raises | The failure is printed. |
+| `issecretvalue` | every check; read once at load, and again on each check only when it was absent at load | Nothing is treated as secret. |
+| `geterrorhandler` | an `onFinished` that raises | The failure is printed. A handler that itself raises is not propagated either: the failure is printed instead. |
 
 ## Public surface
 
@@ -100,6 +100,8 @@ The time left is always measured against `GetTime`, never summed from frame upda
 Lowering `maxBars` keeps every bar and refuses the next `Acquire`. The limit is shared by every addon in the session.
 
 ## Error behaviour
+
+A failure of a timer's `onFinished` goes to the host error handler (`geterrorhandler()`), called under `pcall`. When the client has no handler, or the handler itself raises (an error-display addon with a bug), the failure is printed instead, so reporting it never raises into the client's script call (revision 3; earlier revisions let a raising handler's error through).
 
 Argument errors raise at the caller's line, before anything changes. The messages:
 
