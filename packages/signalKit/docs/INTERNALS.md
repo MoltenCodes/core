@@ -161,3 +161,20 @@ Revision 11 (state schema 6) adds `connectionMetatable`; a state that already
 carries one keeps it. It converts the idle bus topic signals it inherits and
 leaves raw signals to their next idle connect (see *Two layouts, one per
 signal*).
+
+## Core and parts (revision 13)
+
+The core keeps the listener storage, which the Bus and Journal parts call
+through `_state.helpers` (refilled by every core revision and read by the
+parts at call time, so a newer core serves a part loaded before it). The core
+reaches a part only through its record in `_state.parts`: `Fire` hands a
+signal flagged `_isolated` (only bus topic signals carry it) to
+`parts.Bus.fireIsolated`; a bus scope's subscription reports its disconnect
+to `parts.Bus.noteScopeDisconnect`; `CloseAddonBus` delegates to
+`parts.Bus.closeAddonBus`. A part's methods are listed in its record by target
+(`facadeMethods`, `busMethods`, `scopeMethods`, `journalMethods`) and the
+core's commit reinstalls them over its stubs. Buses an older revision left
+(`_state.inheritedBuses`) get stub methods and a terminal close in the core
+until the Bus part loads and adopts them; in any other session that code is
+freed after load. The named-field handle layout is still handled inline by
+the hot functions, as in revision 12.

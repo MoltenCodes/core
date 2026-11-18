@@ -2,13 +2,13 @@
 
 Package: `signalKit`  
 API generation: `1`  
-Implementation revision: `12`
+Implementation revision: `13`
 
 SignalKit provides deterministic callback dispatch with explicit connection lifetimes, and named message buses built on the same signals. A signal can tell its owner when it becomes observed ([hooks](#hooks-onfirst-and-onlast)), counts its firings ([`GetGeneration`](#signalgetgeneration)) and, as a [journal](#journals), keeps its last firings for explicit pull.
 
 SignalKit instances and connection handles are opaque runtime objects. Only members documented in this file are public API; underscore-prefixed storage fields are private implementation detail and must not be read or mutated by consumers.
 
-## Access
+## Loading
 
 `SignalKit.lua` registers through Registry API 2. Registry must already be loaded.
 
@@ -23,8 +23,65 @@ The source file also returns the same shared package table for pure-Lua test/mod
 
 The facade carries two read-only constants: `SignalKit.API`, the API
 generation (`1`), and `SignalKit.REVISION`, the implementation revision of the
-copy that is active in the session (`11` for this one). A newer embedded copy
+copy that is active in the session (`13` for this one). A newer embedded copy
 replaces `REVISION` when it upgrades the facade in place.
+
+### Parts
+
+SignalKit is a core file and three optional parts (revision 13 and later,
+[ADR 0001](../../../docs/decisions/0001-kit-core-and-parts.md)). The core is
+the counterpart of CallbackHandler-1.0: raw signals (`New`, `Connect`, `Once`,
+`Fire`, `DisconnectAll`, `GetGeneration`), connection handles, method-name
+callbacks, and the package-wide limits. An addon embeds a part after
+`signalKit\SignalKit.lua` when it uses what the part holds:
+
+| Part | File | What it holds |
+|---|---|---|
+| `Bus` | `signalKit\parts\SignalKit-Bus.lua` | [named message buses](#named-message-buses): `Bus`, `ForAddon`, the bus and scope methods, the close at logout, isolated delivery |
+| `Journal` | `signalKit\parts\SignalKit-Journal.lua` | [journals](#journals): `NewJournal`, `journal:Fire`, `journal:History` |
+| `Coalescing` | `signalKit\parts\SignalKit-Coalescing.lua` | [bucketed messages](#bucketed-messages); needs the `Bus` part |
+
+`Bus`, `ForAddon` and `NewJournal` stay on the facade without their part and
+raise at the caller's line, naming the file to add:
+
+```text
+SignalKit:Bus is in SignalKit's Bus part, which is not loaded: add signalKit\parts\SignalKit-Bus.lua to embeds.xml after signalKit\SignalKit.lua
+```
+
+`CloseAddonBus` answers `false` after its argument checks without the `Bus`
+part: no addon bus can exist, so LifecycleKit's shutdown keeps working
+unchanged. `SetLimits` and `GetLimits` keep all three limits whichever parts
+are loaded. A part without its core raises
+`MoltenCodes SignalKit part <Part> requires SignalKit API 1 to be loaded first`;
+the Coalescing part without the Bus part raises
+`MoltenCodes SignalKit part Coalescing requires SignalKit's Bus part to be loaded first: ...`.
+Code that uses a part only when it is there asks
+[`SignalKit:HasPart(name)`](#signalkithaspartname).
+
+## Public surface
+
+| Member | Where | What it does |
+|---|---|---|
+| `SignalKit.API`, `SignalKit.REVISION`, `SignalKit.UNBOUNDED` | core | constants |
+| `SignalKit:New(options)` | core | a new signal |
+| `signal:Connect`, `signal:Once`, `signal:Fire`, `signal:DisconnectAll`, `signal:GetGeneration` | core | the signal methods |
+| `connection:Disconnect`, `connection:IsConnected` | core | the handle methods |
+| `SignalKit:SetLimits`, `SignalKit:GetLimits` | core | the package-wide [limits](#limits) |
+| `SignalKit:HasPart(name)` | core | whether a part is loaded |
+| `SignalKit:CloseAddonBus(addonName)` | core (`false` without the `Bus` part) | closes an addon's bus |
+| `SignalKit:Bus`, `SignalKit:ForAddon`, the bus and scope methods | `Bus` part | [named message buses](#named-message-buses) |
+| `SignalKit:NewJournal`, `journal:Fire`, `journal:History` | `Journal` part | [journals](#journals) |
+| `bus:Coalesce`, `scope:Coalesce` | `Coalescing` part | [bucketed messages](#bucketed-messages) |
+
+## `SignalKit:HasPart(name)`
+
+Whether the named part is loaded in this session: `"Bus"`, `"Journal"` or
+`"Coalescing"` (revision 13 and later). Code that uses a part only when it is
+there asks this, never whether a method is a function: the facade keeps every
+member, raising when its part is absent. Any other string answers `false`. A
+secret `name` raises `SignalKit:HasPart name must not be a secret value`, any
+other non-string `SignalKit:HasPart name must be a string`, at the caller's
+line; a call on another receiver raises the facade-receiver message.
 
 ## `SignalKit:New(options)`
 
@@ -288,6 +345,11 @@ A once-connection reports `false` while its callback is executing because it is 
 
 ## Journals
 
+Journals are the `Journal` part's (`signalKit\parts\SignalKit-Journal.lua`,
+revision 13 and later). A journal an older revision created keeps its slots in a
+session without the part; its `Fire` and `History` raise naming the part, and it
+still fires as a signal through `SignalKit.Fire`.
+
 A **journal** is a signal that also records its last firings in a ring, for
 code that wants to look at what happened rather than be called when it does: a
 debug panel, a "recent messages" view, a consumer that was not yet loaded. It
@@ -473,6 +535,12 @@ stopped: 20,000 eight-argument firings into a fresh 16-slot ring, and 20,000
 walks over an eight-entry history, each allocate 0 KB; specs guard both.
 
 ## Named message buses
+
+Buses are the `Bus` part's (`signalKit\parts\SignalKit-Bus.lua`, revision 13
+and later). The bus and bus-scope prototypes and metatables stay core state, so
+buses survive every revision; the part fills the prototypes. The part reports
+a failing subscriber through the host error handler called through `pcall`;
+a missing or raising handler falls back to `print`.
 
 A signal is anonymous: only code that holds the reference can connect to it or
 fire it. A **bus** is a named, package-wide map from topic to signal, so two
@@ -753,6 +821,9 @@ compaction is amortized `O(1)` per disconnect.
 
 ## Bucketed messages
 
+The Coalescing part needs the `Bus` part (Coalescing part revision 2 and
+later) and refuses to load without it.
+
 AceBucket-3.0's `RegisterBucketMessage`, in SignalKit's optional
 `parts/SignalKit-Coalescing.lua`
 ([ADR 0001](../../../docs/decisions/0001-kit-core-and-parts.md)). The part needs
@@ -854,6 +925,18 @@ signalKit\parts\SignalKit-Coalescing.lua to your embeds.xml` (the same on a
 bus scope); the part loaded before SignalKit raises `MoltenCodes SignalKit part
 Coalescing requires SignalKit API 1 to be loaded first`.
 
+## Secret values
+
+Every argument SignalKit compares, tests or uses as a key is asked about with
+`issecretvalue` first and refused at the caller's line with
+`<label> must not be a secret value`: a method name, a topic, a bus or addon
+name, a limit value, a journal capacity, a `HasPart` name. Listener arguments
+are never compared, so a secret passes through `Fire`, `Publish` and a journal
+untouched. The probe is read once at load; on a host that had none then, it is
+read again on each check, so a probe installed after load is honoured (the
+shared `isSecret` block, in the core and in the Bus and Coalescing parts).
+[Error behaviour](#error-behaviour) lists the messages.
+
 ## Limits
 
 SignalKit follows the framework rule "bounded by default, opened on purpose":
@@ -947,7 +1030,7 @@ the new bound. A per-bus limit is read on every declaration and subscription,
 so it takes effect at once. A journal keeps its ring whatever
 `maxJournalCapacity` becomes; the limit applies to the next `NewJournal`.
 
-## Error messages
+## Error behaviour
 
 Every error below is raised at the caller's line, never inside SignalKit.
 `<...>` marks a value filled in from the call; a published or fired argument
@@ -997,7 +1080,37 @@ Loading `SignalKit.lua` raises `MoltenCodes SignalKit requires Registry API 2 to
 `MoltenCodes SignalKit package state is corrupted or incomplete` when the
 state an embedded copy left behind fails validation.
 
-## Embedded copies and revision upgrades
+Parts (revision 13 and later), at the caller's line:
+
+```text
+SignalKit:<Member> is in SignalKit's <Part> part, which is not loaded: add signalKit\parts\SignalKit-<Part>.lua to embeds.xml after signalKit\SignalKit.lua
+SignalKit:HasPart name must be a string
+SignalKit:HasPart name must not be a secret value
+```
+
+## Performance
+
+Raw signals are what every addon loads, so the core holds only them; buses and
+journals cost nothing until their part is embedded. The per-call costs are in
+[Complexity and allocation behavior](#complexity-and-allocation-behavior).
+
+Resident memory, host Lua 5.1.5, debug information kept, on the shared fake
+client with the string table pre-grown (the 2026-11-15 diagnosis method):
+
+| File | Resident after load | Allocated while loading |
+|---|---:|---:|
+| `SignalKit.lua`, revision 12 (buses and journals included) | 90,473 B | 287,370 B |
+| `SignalKit.lua`, revision 13 (core) | 40,930 B | 151,988 B |
+| `parts/SignalKit-Bus.lua` | 48,022 B | 137,621 B |
+| `parts/SignalKit-Journal.lua` | 8,680 B | 29,302 B |
+
+CallbackHandler-1.0 keeps 10,422 B. What the core keeps above it buys the
+documented guarantees: explicit connection handles, amortised O(1) disconnect
+with tombstones, re-entrant dispatch without a per-`Fire` snapshot, argument
+errors at the caller's line, the method form checked at registration, and
+secret-value refusal.
+
+## Embedded copies and upgrades
 
 Registry owns the stable `SignalKit` package table for `(signalKit, API 1)`. SignalKit instances use that shared table as their method prototype, so existing signal instances observe compatible package-method upgrades loaded into the same API generation.
 
@@ -1084,3 +1197,18 @@ a string, number or boolean by its type instead of converting it with
 `tostring`; an upgrade over revision 9 changes no state.
 
 As with every Registry-managed package, a revision is selected before package initialization completes. Package initialization is therefore written so that all fallible dependency validation occurs before registration and the post-registration commit path performs only local deterministic mutations.
+
+Revision 13 splits the file into the core and the `Bus` and `Journal` parts;
+the state keeps schema 6 and gains `parts`, `helpers` and `partInterface`. A
+state revision 13 creates holds no journal tables and no logout watcher until
+the Journal and Bus parts create them. A part records itself under
+`_state.parts.<Part>` with its own revision; the highest wins and upgrades in
+place, and a core revision that takes over installs the stubs and then the
+methods of every part already loaded. An upgrade from revision 12 keeps every
+bus, topic, signal, subscription, scope and journal as they are: when the Bus
+and Journal parts load they adopt them and every held handle keeps working.
+Until the Bus part loads, a method of an inherited bus or scope raises naming
+the part, and `CloseAddonBus` still performs the terminal close of an
+inherited addon bus, so LifecycleKit's shutdown and the logout watcher keep
+working. An inherited journal's `Fire` and `History` raise naming the Journal
+part, and the journal still fires as a signal through `SignalKit.Fire`.

@@ -260,6 +260,8 @@ schedulerKit/parts/SchedulerKit-Lanes.lua
 schedulerKit/parts/SchedulerKit-Watch.lua
 settingsKit/SettingsKit.lua
 settingsKit/parts/SettingsKit-Namespaces.lua
+signalKit/parts/SignalKit-Bus.lua
+signalKit/parts/SignalKit-Journal.lua
 signalKit/parts/SignalKit-Coalescing.lua
 toastKit/ToastKit.lua
 tooltipKit/TooltipKit.lua
@@ -399,7 +401,9 @@ part loads after its Kit's core and brings in what it needs:
 | `schedulerKit/Lanes` | `schedulerKit/parts/SchedulerKit-Lanes.lua` | Named lanes that ration a resource: in-flight and interval limits, retries with backoff, and Debounce or Coalesce delivery through a lane. | `schedulerKit/Coalescing` |
 | `schedulerKit/Watch` | `schedulerKit/parts/SchedulerKit-Watch.lua` | Watch: poll a predicate on a shared per-interval ticker and call back when its result changes. | `schedulerKit/Coalescing` |
 | `settingsKit/Namespaces` | `settingsKit/parts/SettingsKit-Namespaces.lua` | db:RegisterNamespace and db:GetNamespace: child databases with their own schema over the saved variable's namespaces section, in AceDB's layout, following the parent's profile. | nothing |
-| `signalKit/Coalescing` | `signalKit/parts/SignalKit-Coalescing.lua` | Bucketed bus messages: collect a burst of publishes and deliver it once per interval. | `timerKit`, `schedulerKit`, `schedulerKit/Coalescing` |
+| `signalKit/Bus` | `signalKit/parts/SignalKit-Bus.lua` | Named message buses: topics and their argument policies, Publish and Subscribe, bus scopes, ForAddon with the close of an addon's bus at logout, and isolated delivery. | nothing |
+| `signalKit/Journal` | `signalKit/parts/SignalKit-Journal.lua` | NewJournal: a signal that records its last firings for explicit pull. | nothing |
+| `signalKit/Coalescing` | `signalKit/parts/SignalKit-Coalescing.lua` | Bucketed bus messages: collect a burst of publishes and deliver it once per interval. | `timerKit`, `schedulerKit`, `schedulerKit/Coalescing`, `signalKit/Bus` |
 | `widgetKit/Containers` | `widgetKit/parts/WidgetKit-Containers.lua` | The container types Frame (a movable, resizable window), Group and ScrollFrame. | nothing |
 | `widgetKit/Text` | `widgetKit/parts/WidgetKit-Text.lua` | The display types Label, Heading and Spacer. | nothing |
 | `widgetKit/Button` | `widgetKit/parts/WidgetKit-Button.lua` | The Button type, key capture included. | nothing |

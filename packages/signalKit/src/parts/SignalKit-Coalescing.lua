@@ -16,7 +16,9 @@
 --
 -- SchedulerKit is found through `Registry:Find` when a handle is created; the
 -- manifest names it as this part's dependency, so a generated embeds.xml
--- brings it along.
+-- brings it along. The part needs SignalKit's Bus part (revision 2 and later):
+-- it subscribes through the bus methods that part provides, and refuses to
+-- load without it.
 --
 -- Contents
 -- --------
@@ -53,7 +55,7 @@
 -- Constants ------------------------------------------------------------------
 
 local PART_NAME = "Coalescing"
-local PART_REVISION = 1
+local PART_REVISION = 2
 local REQUIRED_REGISTRY_API = 2
 local CORE_PACKAGE, CORE_API = "signalKit", 1
 local SCHEDULERKIT_API = 1
@@ -85,6 +87,13 @@ if
 then
   error("MoltenCodes SignalKit part Coalescing requires SignalKit API 1 to be loaded first", 2)
 end
+if type(rawget(rawget(state, "parts"), "Bus")) ~= "table" then
+  error(
+    "MoltenCodes SignalKit part Coalescing requires SignalKit's Bus part to be loaded first: add "
+      .. "signalKit\\parts\\SignalKit-Bus.lua to embeds.xml before this part",
+    2
+  )
+end
 
 local parts = rawget(state, "parts")
 local installed = rawget(parts, PART_NAME)
@@ -112,41 +121,50 @@ end
 local HANDLE_METATABLE = partState.handleMetatable
 local handleMethods = {}
 
--- `issecretvalue` is resolved once, when this file loads; when it was absent
--- then, each check reads the global again, so a probe installed later is
--- still honoured.
--- selene: allow(global_usage)
-local nativeIsSecretValue = rawget(_G, "issecretvalue")
-
+-- shared:begin isSecret 1
+-- Copied from tooling/shared/lua/isSecret.lua by python3 -m tooling.shared.sync; edit that file, not this copy.
 ---Whether `value` is a secret value the host forbids comparing.
----@param value any
----@return boolean
-local function isSecret(value)
-  local probe = nativeIsSecretValue
-  if type(probe) ~= "function" then
-    -- selene: allow(global_usage)
-    probe = rawget(_G, "issecretvalue")
-    if type(probe) ~= "function" then
-      return false
-    end
+---@type fun(value: any): boolean
+local isSecret
+do
+  -- issecretvalue is a client API reachable only through the global table.
+  -- selene: allow(global_usage)
+  local loadedProbe = rawget(_G, "issecretvalue")
+  if type(loadedProbe) ~= "function" then
+    loadedProbe = nil
   end
-  return probe(value) == true
-end
 
----Hand a failure to the host error handler, or `print` it outside the client.
+  isSecret = function(value)
+    local probe = loadedProbe
+    if probe == nil then
+      -- selene: allow(global_usage)
+      probe = rawget(_G, "issecretvalue")
+      if type(probe) ~= "function" then
+        return false
+      end
+    end
+    return probe(value) == true
+  end
+end
+-- shared:end isSecret
+
+-- shared:begin reportError 1
+-- Copied from tooling/shared/lua/reportError.lua by python3 -m tooling.shared.sync; edit that file, not this copy.
+---Report `failure` through the host error handler, or print it.
 ---@param failure any
 local function reportError(failure)
+  -- geterrorhandler is a client API reachable only through the global table.
   -- selene: allow(global_usage)
   local getErrorHandler = rawget(_G, "geterrorhandler")
   if type(getErrorHandler) == "function" then
     local handler = getErrorHandler()
-    if type(handler) == "function" then
-      handler(failure)
+    if type(handler) == "function" and pcall(handler, failure) then
       return
     end
   end
   print(failure)
 end
+-- shared:end reportError
 
 ---The SchedulerKit facade, when one with coalescing is registered. A found
 ---facade is kept (Registry hands every compatible revision the same table); a
@@ -175,18 +193,12 @@ end
 
 -- Arguments ------------------------------------------------------------------
 
----Name a caller's table key in a refusal without running its `__tostring`.
+---Name a caller's table key in a refusal without running its `__tostring`: the
+---core's shared `describeKey`, read from `_state.helpers` at call time.
 ---@param key any
 ---@return string
-local function describeKey(key)
-  local kind = type(key)
-  if kind == "string" then
-    return key
-  end
-  if kind == "number" or kind == "boolean" then
-    return tostring(key)
-  end
-  return "<" .. kind .. ">"
+local function describeOptionKey(key)
+  return rawget(state, "helpers").describeKey(key)
 end
 
 ---Check one topic, raising at the caller of `Coalesce`.
@@ -291,7 +303,7 @@ local function readOptions(options, label)
   end
   for key in next, options do
     if isSecret(key) or type(key) ~= "string" or not OPTION_FIELDS[key] then
-      local name = isSecret(key) and "<secret>" or describeKey(key)
+      local name = isSecret(key) and "<secret>" or describeOptionKey(key)
       error(label .. ' options contains unknown field "' .. name .. '"', 4)
     end
   end

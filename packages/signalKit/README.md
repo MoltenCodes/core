@@ -119,9 +119,9 @@ connection:Disconnect()
 | `target.UnregisterCallback(self, "Event")` | `connection:Disconnect()`; `bus:Unsubscribe("Event", callback)` when only the function is kept |
 | `target.UnregisterAllCallbacks(self)` | `scope:Close()` on a `bus:CreateScope()` the subscriber made its subscriptions through |
 | `callbacks.OnUsed`, `callbacks.OnUnused` | the `onFirst` and `onLast` options of `SignalKit:New` |
-| AceEvent-3.0 `RegisterMessage`, `SendMessage` | `SignalKit:ForAddon(addonName)` and `bus:Subscribe`, `bus:Publish` |
-| AceEvent-3.0 `RegisterMessage("Name", "Method")`, `RegisterMessage("Name")` | `bus:Subscribe("Name", self, "Method")`, `bus:Subscribe("Name", self)` (the method named after the message, AceEvent's default) |
-| AceBucket-3.0 `RegisterBucketMessage(messages, interval, callback)` | `bus:Coalesce(topics, interval, callback)` or `bus:Coalesce(topics, interval, self, "Method")` from the Coalescing part; values are `true`, not counts |
+| AceEvent-3.0 `RegisterMessage`, `SendMessage` | `SignalKit:ForAddon(addonName)` and `bus:Subscribe`, `bus:Publish`, from the Bus part |
+| AceEvent-3.0 `RegisterMessage("Name", "Method")`, `RegisterMessage("Name")` | `bus:Subscribe("Name", self, "Method")`, `bus:Subscribe("Name", self)` (the method named after the message, AceEvent's default), from the Bus part |
+| AceBucket-3.0 `RegisterBucketMessage(messages, interval, callback)` | `bus:Coalesce(topics, interval, callback)` or `bus:Coalesce(topics, interval, self, "Method")` from the Coalescing part (which needs the Bus part); values are `true`, not counts |
 | AceBucket-3.0 `UnregisterBucket(handle)` | `handle:Close()`, or close the bus scope it was made through |
 
 Two differences matter when porting. A signal's listeners, method-name ones
@@ -134,7 +134,26 @@ bus isolates its subscribers. See
 
 SignalKit depends on Registry API 2 only for embedded-package identity and revision selection. Its callback implementation uses standard Lua only. At the bus boundary it uses `securecallfunction` and `geterrorhandler` when the client provides them, and falls back to `xpcall` and `print` otherwise.
 
-Registry must be loaded before `SignalKit.lua`. LifecycleKit API 1 and EventKit API 1 are optional: `SignalKit:ForAddon` finds them with `Registry:Find` to arrange an addon bus's close at logout, so they may load in any order.
+Registry must be loaded before `SignalKit.lua`. LifecycleKit API 1 and EventKit API 1 are optional dependencies of the Bus part: `SignalKit:ForAddon` finds them with `Registry:Find` to arrange an addon bus's close at logout, so they may load in any order.
+
+## Core and parts
+
+`SignalKit.lua` is the core every user loads: raw signals, connection handles,
+method-name callbacks and the package-wide limits, the counterpart of
+CallbackHandler-1.0. Since revision 13 the rest are parts, loaded after the
+core only by the addons that use them:
+
+- `parts/SignalKit-Bus.lua`: named message buses (AceEvent-3.0's messages),
+  bus scopes, `ForAddon` and the close of an addon's bus at logout;
+- `parts/SignalKit-Journal.lua`: `NewJournal`;
+- `parts/SignalKit-Coalescing.lua`: bucketed messages, `bus:Coalesce`; it needs
+  the Bus part.
+
+Without its part, `Bus`, `ForAddon` and `NewJournal` raise at the caller's
+line naming the file to add, and `SignalKit:HasPart(name)` answers `false`.
+The core keeps 40.9 KB resident with debug information kept (revision 12, one
+file: 90.5 KB; CallbackHandler-1.0: 10.4 KB), measured as `docs/API.md`
+*Performance* describes.
 
 ## Performance model
 
@@ -164,13 +183,15 @@ troubleshooting. This package's load order inside a consuming addon is:
 ```toc
 Libs\MoltenCodes\registry\Registry.lua
 Libs\MoltenCodes\signalKit\SignalKit.lua
+Libs\MoltenCodes\signalKit\parts\SignalKit-Bus.lua       # only for buses, ForAddon
+Libs\MoltenCodes\signalKit\parts\SignalKit-Journal.lua   # only for NewJournal
 ```
 
 Minimum footprint: embed 2 files: `registry/Registry.lua`, `signalKit/SignalKit.lua`.
 The optional part `parts/SignalKit-Coalescing.lua` (bucketed messages,
-`bus:Coalesce`) also needs TimerKit and SchedulerKit with its Coalescing part;
-`python3 -m tooling.package.embeds` writes the list.
+`bus:Coalesce`) also needs the Bus part, TimerKit and SchedulerKit with its
+Coalescing part; `python3 -m tooling.package.embeds` writes the list.
 
 Direct runtime dependencies: Registry API 2.
-Every file above is required; omitting one makes this package raise at
+Registry and the core are required; omitting one makes this package raise at
 load.

@@ -24,6 +24,7 @@ first, which can make the client stutter for a moment:
 MoltenCodes Test: running signalKit: 8 suites. Results follow when every test has finished.
 MoltenCodes Test: PASS signalKit.facade: Registry:Get('signalKit', 1) is the SignalKit facade with API 1, every documented method and UNBOUNDED
 MoltenCodes Test: PASS signalKit.facade: the installed SignalKit carries the revision of the committed manifest
+MoltenCodes Test: PASS signalKit.facade: SignalKit:HasPart answers true for the three parts the bundle carries
 MoltenCodes Test: PASS signalKit.dispatch: listeners run in connection order, and one function connected twice runs twice
 MoltenCodes Test: PASS signalKit.dispatch: Fire forwards every argument, explicit nils included
 MoltenCodes Test: PASS signalKit.dispatch: a listener connected during Fire is not called by that Fire, only by the next
@@ -60,7 +61,7 @@ MoltenCodes Test: PASS signalKit.secrets: a secret value published on a counted 
 MoltenCodes Test: PASS signalKit.secrets: a secret topic name is refused at the calling line before SignalKit compares it
 MoltenCodes Test: PASS signalKit.secrets: a journal records a secret argument and History hands it back still secret
 MoltenCodes Test: PASS signalKit.secrets: a validator that answers with a secret instead of true refuses the publish
-MoltenCodes Test: signalKit: 38 passed, 0 failed, 0 skipped, 0 timed out (38 tests)
+MoltenCodes Test: signalKit: 39 passed, 0 failed, 0 skipped, 0 timed out (39 tests)
 MoltenCodes Test: results saved in MoltenCodesTestResults; /reload or log out to write them to disk.
 ```
 
@@ -81,7 +82,7 @@ out of combat without side effects: the client's own API documentation
 `packages/apiKit/metadata/retail/namespaces.json`) lists it with no
 restriction, and it only converts the values handed to it. Retail 12.1 has
 both. A client without them prints these four lines instead, and the totals
-line reads `34 passed, 0 failed, 4 skipped, 0 timed out (38 tests)`:
+line reads `35 passed, 0 failed, 4 skipped, 0 timed out (39 tests)`:
 
 ```text
 MoltenCodes Test: SKIP signalKit.secrets: a secret value published on a counted bus topic reaches the subscriber still secret -- the client has no issecretvalue and secretwrap; the secret path was not exercised
@@ -103,9 +104,9 @@ namespace that may be absent.
 
 | Client | Totals line | SKIP lines |
 |---|---|---|
-| Retail (`_retail_`) | `MoltenCodes Test: signalKit: 38 passed, 0 failed, 0 skipped, 0 timed out (38 tests)` | none |
-| Classic Era (`_classic_era_`) | secrets made: `MoltenCodes Test: signalKit: 38 passed, 0 failed, 0 skipped, 0 timed out (38 tests)`; no secrets made: `MoltenCodes Test: signalKit: 34 passed, 0 failed, 4 skipped, 0 timed out (38 tests)` | none, or the four secrets lines below |
-| Mists of Pandaria Classic (`_classic_`) | secrets made: `MoltenCodes Test: signalKit: 38 passed, 0 failed, 0 skipped, 0 timed out (38 tests)`; no secrets made: `MoltenCodes Test: signalKit: 34 passed, 0 failed, 4 skipped, 0 timed out (38 tests)` | none, or the four secrets lines below |
+| Retail (`_retail_`) | `MoltenCodes Test: signalKit: 39 passed, 0 failed, 0 skipped, 0 timed out (39 tests)` | none |
+| Classic Era (`_classic_era_`) | secrets made: `MoltenCodes Test: signalKit: 39 passed, 0 failed, 0 skipped, 0 timed out (39 tests)`; no secrets made: `MoltenCodes Test: signalKit: 35 passed, 0 failed, 4 skipped, 0 timed out (39 tests)` | none, or the four secrets lines below |
+| Mists of Pandaria Classic (`_classic_`) | secrets made: `MoltenCodes Test: signalKit: 39 passed, 0 failed, 0 skipped, 0 timed out (39 tests)`; no secrets made: `MoltenCodes Test: signalKit: 35 passed, 0 failed, 4 skipped, 0 timed out (39 tests)` | none, or the four secrets lines below |
 
 The metadata cannot say whether secret values are active on the Classic
 clients: they document `issecretvalue` and `secretwrap`, but only the running
@@ -116,10 +117,10 @@ secret. The harness measures that once (`Harness:CanMakeSecrets()`, which asks
 
 - **The client makes secrets** (as Retail 12.1 does): every line is the same
   as on Retail, and the totals line is
-  `MoltenCodes Test: signalKit: 38 passed, 0 failed, 0 skipped, 0 timed out (38 tests)`.
+  `MoltenCodes Test: signalKit: 39 passed, 0 failed, 0 skipped, 0 timed out (39 tests)`.
 - **The client has both functions but makes no secrets**: the four secrets
   lines read as below, and the totals line is
-  `MoltenCodes Test: signalKit: 34 passed, 0 failed, 4 skipped, 0 timed out (38 tests)`.
+  `MoltenCodes Test: signalKit: 35 passed, 0 failed, 4 skipped, 0 timed out (39 tests)`.
 
 ```text
 MoltenCodes Test: SKIP signalKit.secrets: a secret value published on a counted bus topic reaches the subscriber still secret -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
@@ -130,7 +131,7 @@ MoltenCodes Test: SKIP signalKit.secrets: a validator that answers with a secret
 
 A client with neither function (contrary to the metadata) prints the four
 SKIP lines under "On a client without secret values" above instead, with the
-same totals line, `34 passed, 0 failed, 4 skipped, 0 timed out (38 tests)`.
+same totals line, `35 passed, 0 failed, 4 skipped, 0 timed out (39 tests)`.
 
 No SignalKit test needs combat, a group, a second character or another addon,
 so the package has no combat suites.
@@ -178,7 +179,7 @@ so the package has no combat suites.
 ## What counts as unexpected
 
 - Any `FAIL` or `TIMEOUT` line, a `SKIP` line on Retail 12.1, or a totals line
-  other than `38 passed, 0 failed, 0 skipped, 0 timed out (38 tests)`; on the
+  other than `39 passed, 0 failed, 0 skipped, 0 timed out (39 tests)`; on the
   Classic clients, anything other than the outcomes listed under "Per
   flavour".
 - No login line, or `Expected.lua is missing`: the harness or the installer

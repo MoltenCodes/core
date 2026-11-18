@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.10.0 — 2026-11-18
+
+- Raw-signal core. `SignalKit.lua` keeps what every user needs, the counterpart of CallbackHandler-1.0: `New`, `Connect`, `Once`, `Fire`, `DisconnectAll`, `GetGeneration`, connection handles, method-name callbacks, `SetLimits`, `GetLimits` and `CloseAddonBus`. Two new parts (ADR 0001), revision 1 each, hold the rest:
+  - `Bus` (`src/parts/SignalKit-Bus.lua`): named buses, topics and their argument policies, `Publish`, `Subscribe`, `SubscribeOnce`, `Unsubscribe`, `Topics`, bus scopes, `ForAddon` with the close of an addon's bus at logout, and isolated delivery. EventKit and LifecycleKit are now this part's optional dependencies.
+  - `Journal` (`src/parts/SignalKit-Journal.lua`): `NewJournal`, `journal:Fire`, `journal:History`.
+  - `Coalescing` goes to part revision 2: it needs the Bus part and refuses to load without it, and takes the shared `isSecret` and `reportError` blocks (a raising host error handler now falls back to `print`) and the core's `describeKey`.
+- `Bus`, `ForAddon` and `NewJournal` stay on the facade, so every older copy's surface check still accepts it; without their part each raises at the caller's line: `SignalKit:Bus is in SignalKit's Bus part, which is not loaded: add signalKit\parts\SignalKit-Bus.lua to embeds.xml after signalKit\SignalKit.lua`. `CloseAddonBus` answers `false` after its argument checks without the Bus part. `SetLimits` and `GetLimits` keep all three limits whichever parts are loaded.
+- New: `SignalKit:HasPart(name)`.
+- The state keeps schema 6 and gains `parts`, `helpers` (the core functions a part calls, read at call time) and `partInterface`. A state this revision creates holds no journal tables and no logout watcher until the parts create them; the bus and scope prototypes and metatables stay core state.
+- Shared helper blocks: `isSecret`, `validateFacade` and `describeKey` in the core; `isSecret` and `reportError` in the Bus part. The limits loop stays hand-written (`tooling/shared/pins.json`). The Bus part's publish and subscribe ask the shared `isSecret` instead of an inline probe read, one call more per publish.
+- Upgrade from revision 12 keeps every bus, topic, signal, subscription, scope and journal. When the parts load they adopt them as they are and every held handle keeps working; until the Bus part loads, an inherited bus's or scope's method raises naming the part and `CloseAddonBus` still performs the terminal close of an inherited addon bus (`_state.inheritedBuses`, sticky), so LifecycleKit's shutdown and the logout watcher keep working. An inherited journal's `Fire` and `History` raise naming the Journal part, and it still fires as a signal through `SignalKit.Fire`. Every in-place upgrade still arranges the logout close of the addon buses it inherits, through the Bus part.
+- Resident, measured on host Lua 5.1.5 with the 2026-11-15 diagnosis method: 90,473 B → 40,930 B for the core (allocated while loading 287,370 B → 151,988 B); the Bus part holds 48,022 B and the Journal part 8,680 B when loaded.
+- Implementation revision 13. Specs: 281 → 317 (`Parts_spec.lua`, `Conformance_spec.lua`); the test environment loads the Bus and Journal parts, `SignalKitTestEnv.Core` the core alone, `LoadRevision` up to 12 loads `tests/fixtures/SignalKit-revision12.lua` (the revision 12 file, verbatim), and `ReloadPackage` reloads the core and then its parts. `Bootstrap_spec.lua` and `HandleLayout_spec.lua` expect revision 13; the two same-revision specs that removed bus and journal methods now remove the core's part records and helpers; specs that load the core by hand load the parts after it.
+
 ## 0.9.0 — 2026-11-15
 
 Bucketed bus messages, AceBucket-3.0's `RegisterBucketMessage`, as a part (roadmap package O, "signalKit: bucketed bus messages", ADR 0001 and ADR 0003).

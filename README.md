@@ -57,7 +57,7 @@ README; its full contract is the package's `docs/API.md`.
 | [`schedulerKit`](packages/schedulerKit/) | Cooperative, frame-budgeted scheduling with priorities, cancellation scopes and TimerKit delays. |
 | [`schemaKit`](packages/schemaKit/) | Sealed value schemas with structured, secret-safe failures: one validation core for arguments, saved variables, options and messages. |
 | [`settingsKit`](packages/settingsKit/) | Saved variables with scopes, schema-validated writes, defaults never written back, profiles and versioned migrations. |
-| [`signalKit`](packages/signalKit/) | Deterministic, re-entrant callback dispatch with explicit connection lifetimes, subscriber-transition hooks, journals and named message buses. |
+| [`signalKit`](packages/signalKit/) | Deterministic, re-entrant callback dispatch with explicit connection lifetimes and subscriber-transition hooks; message buses and journals as parts. |
 | [`timerKit`](packages/timerKit/) | Cancelable one-shot and repeating timers with ownership scopes, and addon scopes closed at logout through LifecycleKit or EventKit when present. |
 | [`toastKit`](packages/toastKit/) | Short notifications that stack at one anchor, hold under the cursor and fade out, with icons and click handlers, pooled and bounded. |
 | [`tooltipKit`](packages/tooltipKit/) | Multi-column tooltips, keyed and pooled, with headers, spans, colours, line handlers, scrolling, smart anchoring and auto-hide. |

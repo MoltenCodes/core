@@ -18,13 +18,47 @@ local FrameworkTestEnv = require("FrameworkTestEnv")
 -- plain `require`, so the refusal helper names luassert itself.
 local assert = require("luassert")
 
+--- The parts the default environment loads after the core, in manifest order.
+--- The Coalescing part needs SchedulerKit and has an environment of its own.
+local PARTS = { "SignalKit-Bus", "SignalKit-Journal" }
+
 local SignalKitTestEnv = FrameworkTestEnv.New({
-  modules = { "Registry", "SignalKit" },
+  modules = { "Registry", "SignalKit", PARTS[1], PARTS[2] },
   -- SignalKit is pure Lua: outside its bus boundary it never touches a World
   -- of Warcraft API, so specs opt into the host error sink explicitly.
   wowApi = false,
   legacyRegistryState = true,
 })
+
+SignalKitTestEnv.PARTS = PARTS
+
+--- The core without its parts, as an addon that embeds only
+--- `signalKit\SignalKit.lua` loads it.
+SignalKitTestEnv.Core = FrameworkTestEnv.New({
+  modules = { "Registry", "SignalKit" },
+  wowApi = false,
+  legacyRegistryState = true,
+})
+
+---Load the parts after the core, as an addon that embeds them does.
+---@return table SignalKit
+function SignalKitTestEnv.LoadParts()
+  local SignalKit = nil
+  for index = 1, #PARTS do
+    package.loaded[PARTS[index]] = nil
+    SignalKit = require(PARTS[index])
+  end
+  return SignalKit
+end
+
+---Load the core again over whatever state is already published, then its
+---parts, as a later addon embedding the core and its parts does.
+---@return table SignalKit
+function SignalKitTestEnv.ReloadPackage()
+  package.loaded["SignalKit"] = nil
+  require("SignalKit")
+  return SignalKitTestEnv.LoadParts()
+end
 
 --- Modules a spec may load on top of the chain, in the order `Reset` unloads
 --- them. They are not in the chain, so the shared `Reset` would leave them in
@@ -102,7 +136,8 @@ function SignalKitTestEnv.NewPackageWithSecureCall()
   SignalKitTestEnv.InstallHostErrorHandler()
   SignalKitTestEnv.InstallSecureCallFunction()
   local Registry = require("Registry")
-  local SignalKit = require("SignalKit")
+  require("SignalKit")
+  local SignalKit = SignalKitTestEnv.LoadParts()
   return SignalKit, Registry
 end
 
@@ -136,15 +171,26 @@ function SignalKitTestEnv.AllocatedKilobytes(workload)
   return after - before
 end
 
----Load the SignalKit source again as a copy carrying `revision`, the way
----another embedded copy loads beside an earlier one in the client.
+-- Revision 12 is the last file with buses and journals in the core; it is kept
+-- verbatim as `fixtures/SignalKit-revision12.lua`.
+local LAST_WHOLE_REVISION = 12
+local SUPPORT_DIRECTORY = debug.getinfo(1, "S").source:match("^@(.*[/\\])") or "./"
+SignalKitTestEnv.WHOLE_FIXTURE = SUPPORT_DIRECTORY .. "../fixtures/SignalKit-revision12.lua"
+
+---Load SignalKit again as a copy carrying `revision`, the way another embedded
+---copy loads beside an earlier one in the client: up to revision 12 the
+---whole-file fixture (buses and journals in the core), after it the core on
+---`package.path`.
 ---@param revision integer
 ---@return table SignalKit
 function SignalKitTestEnv.LoadRevision(revision)
   -- Lua 5.1 has no `package.searchpath`, so walk the path templates the way
   -- `require` does.
   local path = nil
-  for template in package.path:gmatch("[^;]+") do
+  if revision <= LAST_WHOLE_REVISION then
+    path = SignalKitTestEnv.WHOLE_FIXTURE
+  end
+  for template in path == nil and package.path:gmatch("[^;]+") or function() end do
     local candidate = template:gsub("%?", "SignalKit")
     local file = io.open(candidate, "r")
     if file ~= nil then
@@ -218,7 +264,7 @@ end
 --- they drive, then the part itself. SchedulerKit's own `Coalescing` part is
 --- loaded too when the SchedulerKit on the path ships `Coalesce` as one.
 local Scheduled = FrameworkTestEnv.New({
-  modules = { "Registry", "SignalKit", "TimerKit", "SchedulerKit" },
+  modules = { "Registry", "SignalKit", "SignalKit-Bus", "TimerKit", "SchedulerKit" },
 })
 
 --- Modules `Scheduled.NewPackage` loads on top of the chain.
