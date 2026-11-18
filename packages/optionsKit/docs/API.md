@@ -2,7 +2,7 @@
 
 OptionsKit API generation **1** provides a typed, validated, introspectable options tree with no renderer: what an addon exposes as configurable, how each option is read and written, and what a dialog or a command line needs to present it.
 
-Implementation revision: **15**. Since revision 15 OptionsKit is a core file and two optional parts ([ADR 0001](../../../docs/decisions/0001-kit-core-and-parts.md)): **Profiles** (`ProfileOptions`) and **Dynamic** (trees that change shape). See [Parts](#parts).
+Implementation revision: **16**. OptionsKit is a core file and five optional parts ([ADR 0001](../../../docs/decisions/0001-kit-core-and-parts.md)): **Presentation** (AceConfig's presentation fields), **Handlers** (handlers, method names, inherited accessors, plugins), **Bind** (`bind` into a SettingsKit database), **Profiles** (`ProfileOptions`) and **Dynamic** (trees that change shape). The field tables below name the part each field needs. See [Parts](#parts).
 
 ## Loading
 
@@ -12,12 +12,16 @@ Runtime files must be loaded in dependency order:
 Registry.lua
 SignalKit.lua
 SchemaKit.lua
+SchemaKit-Rules.lua                 (SchemaKit's part: input patterns, values functions)
 OptionsKit.lua
-parts/OptionsKit-Profiles.lua   (optional: ProfileOptions)
-parts/OptionsKit-Dynamic.lua    (optional: builders, NotifyChange, Replace, Remove)
+parts/OptionsKit-Presentation.lua   (optional: widths, icons, images, controls, styles, function names and orders, per-interface flags)
+parts/OptionsKit-Handlers.lua       (optional: handler, method names, inherited accessors, plugins)
+parts/OptionsKit-Bind.lua           (optional: bind and ns: binds)
+parts/OptionsKit-Profiles.lua       (optional: ProfileOptions)
+parts/OptionsKit-Dynamic.lua        (optional: builders, NotifyChange, Replace, Remove)
 ```
 
-A part loads after the core; `python3 -m tooling.package.embeds` writes the lines.
+A part loads after the core; `python3 -m tooling.package.embeds` writes the lines. An Ace3 port embeds Presentation and Handlers together; a tree bound to a SettingsKit database embeds Bind. OptionsKit's manifest names SchemaKit's Rules part: an `input` with a `pattern` and a `select` or `multiselect` over a values function build SchemaKit nodes only that part provides, and `Define` refuses them without it (`OptionsKit:Define tree.args.name.pattern needs SchemaKit's Rules part: add schemaKit\parts\SchemaKit-Rules.lua to embeds.xml (or rebuild it with python3 -m tooling.package.embeds)`).
 
 Portable WoW code resolves the package through Registry:
 
@@ -37,7 +41,7 @@ OptionsKit does not rely on `require()` at runtime.
 | `geterrorhandler()` | The Dynamic part, to report a rebuild it refused (Blizzard's own `Blizzard_SharedXMLBase/ErrorUtil.lua` calls it on every flavour) | The report is dropped; the structure is kept either way. |
 | SettingsKit revision 15's `db:GetNamespace` | `bind = "ns:<name>..."` | Such a bind is refused at `Define`. |
 
-`issecretvalue` is read from the global table at every call, as SchemaKit reads it, so a probe that appears later is used at once.
+`issecretvalue` is read through the shared probe (revision 16, `tooling/shared/lua/isSecret.lua`): the probe present at load is kept, and only when none was present at load is the global read again on each call, so a probe that appears later is still used. Every client defines it before any addon runs.
 
 ## Public surface
 
@@ -49,9 +53,9 @@ Package facade:
 | `Get(addonName)` | The tree defined for `addonName`, or `nil`. |
 | `Undefine(addonName)` | Forget the tree and disconnect its listeners. `true` when there was one. |
 | `ProfileOptions(db, options?)` | A ready-made `group` over a SettingsKit database's profiles, to place in a tree; one group per database and options, built on the first call (see [Profile options](#profile-options-optionskitprofileoptionsdb-options)). Profiles part. |
-| `GetFields(kind)` | Every field `kind` accepts, each mapped to a fresh set of its forms (`string`, `number`, `boolean`, `table`, `function`, `method`, `any`). A fresh table per call, for converters (BridgeKit). Revision 14. |
-| `GetTrees()` | The addon names that have a tree, a fresh sorted array (AceConfigRegistry's `IterateOptionsTables`). Revision 15. |
-| `IsPartLoaded(partName)` | Whether the part `"Profiles"` or `"Dynamic"` is loaded. Revision 15. |
+| `GetFields(kind)` | Every field `kind` accepts, each mapped to a fresh set of its forms (`string`, `number`, `boolean`, `table`, `function`, `method`, `any`). A fresh table per call, for converters (BridgeKit). Revision 14. Since revision 16 it reports what the loaded parts accept: without Presentation no presentation field and no `function` form of `name`, `order`, `fontSize` or `sorting`; without Handlers no `method` form, no `handler` and no group accessors or `plugins`; without Bind no `bind`. |
+| `GetTrees()` | The addon names that have a tree, a fresh sorted array (AceConfigRegistry's `IterateOptionsTables`). Revision 15. It takes no argument and reads no receiver, so it answers the same however it is called. |
+| `IsPartLoaded(partName)` | Whether the part `"Presentation"`, `"Handlers"`, `"Bind"` (revision 16), `"Profiles"` or `"Dynamic"` is loaded. Revision 15. |
 | `MAX_OPTIONS` | `1024`: the default `maxOptions`, the most options one tree holds. |
 | `CHILD_GROUPS` | `{ tab = true, tree = true, select = true }`: the `childGroups` values `Define` accepts. A fresh table each revision: writing to it changes nothing. Revision 10. |
 | `MAX_DEPTH` | `8`: the default `maxDepth`, the most keys one option path has. |
@@ -263,25 +267,25 @@ options:Execute("frame.resetPosition")     -- runs func; asking `confirm` is the
 
 ### Fields every option accepts
 
-| Field | Type | Meaning |
-|---|---|---|
-| `type` | string | The kind, below. |
-| `name` | string, or `fun(info): string` | The label. Required, except on the root. A function (revision 14) is called by `Describe` before it sorts; at `Define`, and so in `Walk`, such an option sorts by its key. |
-| `desc` | string, or `fun(info): string` | Longer help text. A function is called by `Describe`, with the option's `info`, and must return a string. |
-| `order` | number, function or method name | Sort position among siblings; default `100`. Ties sort by `name`, then by key. A function or method (revision 14) is called by `Describe`, which then sorts the described siblings on the plain results, so no code of yours runs inside a sort; at `Define`, and in `Walk`, it sorts as `100`. |
-| `disabled` | boolean, function or method name | Shown but not editable. A disabled group disables everything below it. |
-| `hidden` | boolean, function or method name | Not shown. A hidden group hides everything below it. |
-| `guiHidden`, `dialogHidden`, `cmdHidden` | boolean, function or method name | `hidden` for one interface, AceConfig's flags; see [Per interface](#per-interface). Revision 14. |
-| `descStyle` | `"inline"` or `"tooltip"` | Where a renderer shows `desc`. Revision 14. |
-| `confirm` | boolean, the question as a string, or `fun(info, value): string\|boolean` | Ask before a change; a group's applies below it. See [Confirmation](#confirmation). Every kind since revision 14 (`execute` before). |
-| `confirmText` | string | The question when `confirm` is `true`. Revision 14. |
-| `arg` | any value but a secret | Kept by reference, handed to every callback as `info.arg`; never described. Revision 14. |
-| `handler` | table | The object method names are looked up on; a group's applies below it. See [Method names and inheritance](#method-names-and-inheritance). Revision 14. |
-| `icon`, `iconCoords` | texture path or file ID, or a function; an array of 4 or 8 numbers, a function or a method name | A tree renderer's icon. Revision 14. |
-| `tooltipHyperlink` | string, or a function | A hyperlink a renderer's tooltip shows instead of `desc`. Revision 14. |
-| `width` (all but `group`) | `"normal"`, `"half"`, `"double"`, `"full"`, a positive number (units of 170 px) or a function | How wide a renderer draws the control. Revision 14. |
-| `relWidth` (all but `group`) | number, `0 < relWidth <= 1` | A share of the row. Revision 14. |
-| `dialogControl`, `control` (all but `group`) | non-empty string | A widget type name for a renderer to use instead of its default. Revision 14. |
+| Field | Type | Meaning | Part |
+|---|---|---|---|
+| `type` | string | The kind, below. | core |
+| `name` | string, or `fun(info): string` | The label. Required, except on the root. A function (revision 14) is called by `Describe` before it sorts; at `Define`, and so in `Walk`, such an option sorts by its key. | core; a function: Presentation |
+| `desc` | string, or `fun(info): string` | Longer help text. A function is called by `Describe`, with the option's `info`, and must return a string. | core |
+| `order` | number, function or method name | Sort position among siblings; default `100`. Ties sort by `name`, then by key. A function or method (revision 14) is called by `Describe`, which then sorts the described siblings on the plain results, so no code of yours runs inside a sort; at `Define`, and in `Walk`, it sorts as `100`. | core; a function: Presentation; a method name: Handlers and Presentation |
+| `disabled` | boolean, function or method name | Shown but not editable. A disabled group disables everything below it. | core; a method name: Handlers |
+| `hidden` | boolean, function or method name | Not shown. A hidden group hides everything below it. | core; a method name: Handlers |
+| `guiHidden`, `dialogHidden`, `cmdHidden` | boolean, function or method name | `hidden` for one interface, AceConfig's flags; see [Per interface](#per-interface). Revision 14. | Presentation |
+| `descStyle` | `"inline"` or `"tooltip"` | Where a renderer shows `desc`. Revision 14. | Presentation |
+| `confirm` | boolean, the question as a string, or `fun(info, value): string\|boolean` | Ask before a change; a group's applies below it. See [Confirmation](#confirmation). Every kind since revision 14 (`execute` before). | core |
+| `confirmText` | string | The question when `confirm` is `true`. Revision 14. | core |
+| `arg` | any value but a secret | Kept by reference, handed to every callback as `info.arg`; never described. Revision 14. | core |
+| `handler` | table | The object method names are looked up on; a group's applies below it. See [Method names and inheritance](#method-names-and-inheritance). Revision 14. | Handlers |
+| `icon`, `iconCoords` | texture path or file ID, or a function; an array of 4 or 8 numbers, a function or a method name | A tree renderer's icon. Revision 14. | Presentation |
+| `tooltipHyperlink` | string, or a function | A hyperlink a renderer's tooltip shows instead of `desc`. Revision 14. | Presentation |
+| `width` (all but `group`) | `"normal"`, `"half"`, `"double"`, `"full"`, a positive number (units of 170 px) or a function | How wide a renderer draws the control. Revision 14. | Presentation |
+| `relWidth` (all but `group`) | number, `0 < relWidth <= 1` | A share of the row. Revision 14. | Presentation |
+| `dialogControl`, `control` (all but `group`) | non-empty string | A widget type name for a renderer to use instead of its default. Revision 14. | Presentation |
 
 Every presentation field is a hint for renderers, kept in the option's hints table: an option that sets none of them holds nothing more than it did in revision 13. `dropdownHidden`, `dropdownInline` and `dropdownControl` are refused: Ace3 has no dropdown interface that reads them.
 
@@ -291,12 +295,12 @@ A predicate's answer is tested for truth only after `issecretvalue` says it is n
 
 Value options are `toggle`, `range`, `select`, `multiselect`, `input`, `color` and `keybinding`.
 
-| Field | Type | Meaning |
-|---|---|---|
-| `get` | `fun(info): any`, a method name, or `false` | Returns the current value. With `set`; both may come from a group above ([inheritance](#method-names-and-inheritance)). |
-| `set` | `fun(info, value)`, a method name, or `false` | Stores a value that passed the schema and `validate`. With `get`. |
-| `bind` | string | `"<scope>.<key>[.<key>...]"` into `options.db`, instead of `get` and `set`. `<scope>` is `global`, `char`, `realm`, `class`, `faction`, `profile`, or (SettingsKit revision 15, revision 14 here) `race`, `factionrealm`, `factionrealmregion` or `locale`; every segment is an identifier. `"ns:<name>.<scope>.<key>..."` binds into the SettingsKit namespace `<name>` of `options.db` ([Namespaces](#namespaces)). |
-| `validate` | `fun(info, value): boolean, string?`, a method name, or `false` | Runs after the schema accepted the value. Anything but `true` refuses, a secret result included (it is never compared); the second result is the message (`"refused by validate"` when there is none). |
+| Field | Type | Meaning | Part |
+|---|---|---|---|
+| `get` | `fun(info): any`, a method name, or `false` | Returns the current value. With `set`; both may come from a group above ([inheritance](#method-names-and-inheritance)). | core; a method name or a group's: Handlers |
+| `set` | `fun(info, value)`, a method name, or `false` | Stores a value that passed the schema and `validate`. With `get`. | core; a method name or a group's: Handlers |
+| `bind` | string | `"<scope>.<key>[.<key>...]"` into `options.db`, instead of `get` and `set`. `<scope>` is `global`, `char`, `realm`, `class`, `faction`, `profile`, or (SettingsKit revision 15, revision 14 here) `race`, `factionrealm`, `factionrealmregion` or `locale`; every segment is an identifier. `"ns:<name>.<scope>.<key>..."` binds into the SettingsKit namespace `<name>` of `options.db` ([Namespaces](#namespaces)). | Bind |
+| `validate` | `fun(info, value): boolean, string?`, a method name, or `false` | Runs after the schema accepted the value. Anything but `true` refuses, a secret result included (it is never compared); the second result is the message (`"refused by validate"` when there is none). | core; a method name or a group's: Handlers |
 
 ### Kinds and their schemas
 
@@ -315,6 +319,8 @@ Value options are `toggle`, `range`, `select`, `multiselect`, `input`, `color` a
 | `description` | `fontSize` (`"small"`, `"medium"`, `"large"` or a function returning one); the image fields, as `execute`; the text is `name` | none |
 
 `values` tables have string or number keys and string labels, at least one entry and at most `maxDynamicEntries` (1024 by default). `sorting` entries must be keys of a `values` table.
+
+Part of the kinds' own fields (revision 16): a group's `plugins` and its `get`, `set`, `validate` and `func` need the Handlers part; `guiInline`, `dialogInline`, `cmdInline`, `image`, `imageCoords`, `imageWidth`, `imageHeight`, `style`, `itemControl`, a function `fontSize` and a `sorting` function need the Presentation part; a `values` or `sorting` method name needs Handlers. Every other field in the table is the core's.
 
 `step`, `bigStep`, `softMin`, `softMax`, `isPercent`, `multiline`, `usage`, `inline`, `childGroups`, `confirm` and `fontSize` are hints for renderers: nothing in OptionsKit enforces them. In particular `step` is not part of the schema: a slider snaps to it, and a value typed on a command line only has to lie between `min` and `max`.
 
@@ -378,7 +384,7 @@ The option's own flag or predicate, then each ancestor's, up to the root: `true`
 
 ### Bound options
 
-A bind path is split once, at `Define`. At every `Get`, `Set` and `Reset` the scope view is read from the database afresh (`rawget(db, "profile")`), so a profile switch is seen at once, and the keys are walked through the views SettingsKit returns, so its default fallback answers for anything the user never changed. The last write goes through SettingsKit's own validated write.
+The Bind part (revision 16). A bind path is split once, at `Define`. At every `Get`, `Set` and `Reset` the scope view is read from the database afresh (`rawget(db, "profile")`), so a profile switch is seen at once, and the keys are walked through the views SettingsKit returns, so its default fallback answers for anything the user never changed. The last write goes through SettingsKit's own validated write.
 
 SettingsKit reads a record that has no default and no saved data as `nil`. OptionsKit treats such a gap on the bind path as an unset value rather than an error:
 
@@ -444,7 +450,7 @@ The node `Describe` would build for the option at `path`, built alone: the same 
 
 ### Per interface
 
-AceConfig lets an option hide from one interface only. `tree:IsHidden(path, interface)`, `tree:Describe(interface)` and `tree:DescribeOption(path, interface)` take `"dialog"` (WidgetKit, PanelKit) or `"cmd"` (CommandKit). For each option on the way to the root, the first of the interface's own flags that is set replaces `hidden`: `dialogHidden`, then `guiHidden`, for `"dialog"`; `cmdHidden` for `"cmd"`. A group's `inline` for the interface is likewise the first set of `dialogInline`, `guiInline`, `inline`, or of `cmdInline`, `inline`. Without an interface every answer is the one of revision 13. Any other value raises `OptionsKit.Tree:IsHidden interface must be "dialog" or "cmd"`.
+The per-interface flags are the Presentation part's (revision 16); the `interface` argument is the core's, so a renderer may always pass it: without the part no tree can carry such a flag, and the answer is the plain `hidden` and `inline`. AceConfig lets an option hide from one interface only. `tree:IsHidden(path, interface)`, `tree:Describe(interface)` and `tree:DescribeOption(path, interface)` take `"dialog"` (WidgetKit, PanelKit) or `"cmd"` (CommandKit). For each option on the way to the root, the first of the interface's own flags that is set replaces `hidden`: `dialogHidden`, then `guiHidden`, for `"dialog"`; `cmdHidden` for `"cmd"`. A group's `inline` for the interface is likewise the first set of `dialogInline`, `guiInline`, `inline`, or of `cmdInline`, `inline`. Without an interface every answer is the one of revision 13. Any other value raises `OptionsKit.Tree:IsHidden interface must be "dialog" or "cmd"`.
 
 ### Confirmation
 
@@ -463,7 +469,7 @@ A command line needs no widgets: `Walk` lists the paths, `DescribeOption` gives 
 
 ## Method names and inheritance
 
-Revision 14, after [ADR 0003](../../../docs/decisions/0003-method-name-callbacks.md). In `get`, `set`, `validate`, `func`, `disabled`, `hidden`, the three per-interface flags, `values`, `sorting`, `order`, `iconCoords` and `imageCoords`, a string names a method of the **handler in force**: the option's own `handler`, else the nearest group's. Elsewhere a string is the value (`name`, `desc`, `usage`, `width`, `image`, `icon`, `fontSize`, `tooltipHyperlink`, as in AceConfig, and `confirm`).
+The Handlers part (revision 16; revision 14 in the core). After [ADR 0003](../../../docs/decisions/0003-method-name-callbacks.md). In `get`, `set`, `validate`, `func`, `disabled`, `hidden`, the three per-interface flags, `values`, `sorting`, `order`, `iconCoords` and `imageCoords`, a string names a method of the **handler in force**: the option's own `handler`, else the nearest group's. Elsewhere a string is the value (`name`, `desc`, `usage`, `width`, `image`, `icon`, `fontSize`, `tooltipHyperlink`, as in AceConfig, and `confirm`).
 
 - At `Define` the handler in force must have the method, or the field is refused at your line: `OptionsKit:Define tree.args.x.get names method "GetX", which the handler in force does not have`, and without a handler `... is a method name ("GetX"), but no handler is in force`.
 - The method is looked up on every call, so replacing it on the handler takes effect at once, and is called with the handler first: `method(handler, info, ...)`, where `method` is `handler[name]`. A method removed after `Define` raises `OptionsKit (MyAddon) general.scale: handler method "GetX" is missing` when called.
@@ -473,7 +479,7 @@ Revision 14, after [ADR 0003](../../../docs/decisions/0003-method-name-callbacks
 
 ## Namespaces
 
-Revision 14, for SettingsKit revision 15's namespaces: `bind = "ns:Bars.profile.size"` binds into the namespace `Bars` of `options.db`. At `Define` the namespace is asked once (`db:GetNamespace(name, { missingOk = true })`) and its scope checked; every later call reads and writes through that child database, reading its scope table per call, so a profile switch the parent passes on is seen at once, and the read-only rule is the child's. `<name>` is an identifier; a namespace with any other name is bound by passing its child database as `options.db`. Refused at your line: a database without namespaces (`... needs options.db with namespaces (SettingsKit revision 15 or later)`, also when SettingsKit's Namespaces part is not loaded), a namespace not registered (`... namespace "Bars" is not registered in options.db`), and a scope the namespace does not provide. A namespace registered after `Define` is reached by defining again, or by `NotifyChange`.
+The Bind part (revision 16; revision 14 in the core), for SettingsKit revision 15's namespaces: `bind = "ns:Bars.profile.size"` binds into the namespace `Bars` of `options.db`. At `Define` the namespace is asked once (`db:GetNamespace(name, { missingOk = true })`) and its scope checked; every later call reads and writes through that child database, reading its scope table per call, so a profile switch the parent passes on is seen at once, and the read-only rule is the child's. `<name>` is an identifier; a namespace with any other name is bound by passing its child database as `options.db`. Refused at your line: a database without namespaces (`... needs options.db with namespaces (SettingsKit revision 15 or later)`, also when SettingsKit's Namespaces part is not loaded), a namespace not registered (`... namespace "Bars" is not registered in options.db`), and a scope the namespace does not provide. A namespace registered after `Define` is reached by defining again, or by `NotifyChange`.
 
 ## Dynamic trees
 
@@ -494,12 +500,17 @@ The Dynamic part (revision 15) lets a tree change shape after `Define`, as AceCo
 
 ## Parts
 
-| Part | File | Members | Without it |
+| Part | File | What it adds | Without it |
 |---|---|---|---|
-| Profiles | `parts/OptionsKit-Profiles.lua` | `OptionsKit:ProfileOptions` | `OptionsKit:ProfileOptions is in OptionsKit's Profiles part, which is not loaded: add optionsKit\parts\OptionsKit-Profiles.lua to embeds.xml (or rebuild it with python3 -m tooling.package.embeds)`, at your line. A `ProfileOptions` an older single-file revision installed is kept instead. |
+| Presentation | `parts/OptionsKit-Presentation.lua` | `width`, `relWidth`, `descStyle`, `icon`, `iconCoords`, `image`, `imageCoords`, `imageWidth`, `imageHeight`, `tooltipHyperlink`, `dialogControl`, `control`, `itemControl`, `style`; `name`, `order` and `fontSize` as functions and `sorting` functions, resolved by `Describe`; `guiHidden`, `dialogHidden`, `cmdHidden`, `guiInline`, `dialogInline`, `cmdInline` | `Define` refuses each at your line: `OptionsKit:Define tree.args.general.args.scale.width needs OptionsKit's Presentation part: add optionsKit\parts\OptionsKit-Presentation.lua to embeds.xml (or rebuild it with python3 -m tooling.package.embeds)`; a function: `OptionsKit:Define tree.args.x.name is a function, which needs OptionsKit's Presentation part: ...` |
+| Handlers | `parts/OptionsKit-Handlers.lua` | `handler`, method names in every field that takes one, a group's `get`, `set`, `validate` and `func` inherited below it, and `plugins` | The same form: `... .handler needs OptionsKit's Handlers part: ...`; a method name: `... .get is a method name ("GetX"), which needs OptionsKit's Handlers part: ...` |
+| Bind | `parts/OptionsKit-Bind.lua` | `bind` and `ns:` binds through `options.db` | `... .bind needs OptionsKit's Bind part: ...` |
+| Profiles | `parts/OptionsKit-Profiles.lua` | `OptionsKit:ProfileOptions` and, since part revision 2, the links that connect its group to a tree | `OptionsKit:ProfileOptions is in OptionsKit's Profiles part, which is not loaded: add optionsKit\parts\OptionsKit-Profiles.lua to embeds.xml (or rebuild it with python3 -m tooling.package.embeds)`, at your line. A `ProfileOptions` an older single-file revision installed is kept instead. |
 | Dynamic | `parts/OptionsKit-Dynamic.lua` | `tree:NotifyChange`, `Replace`, `Remove`; `Define` with a builder | The same form, naming the member and the Dynamic part. |
 
-The core keeps what every tree needs whoever built it: the profile-group map that lets `Define` recognise a group, the attach and detach of a group's link, `OnStructureChanged`, `GetTrees` and `IsPartLoaded`. A part loads after its core, raises `MoltenCodes OptionsKit part Dynamic requires OptionsKit API 1 to be loaded first` without it, and keeps its record in the core's state; the highest part revision serves every addon, and a newer core hands each loaded part its helpers again.
+The core keeps what every tree needs: `Define` of a static tree with the core fields, schemas, `Get`, `Set`, `Validate`, `Reset`, `Execute`, the predicates, `Walk`, `Describe` and `DescribeOption` (with the `interface` argument), `GetConfirmation`, `OnChange`, `OnStructureChanged`, `GetFields`, `GetTrees`, `IsPartLoaded`, the profile-group map, and the detach of a group's link. A part loads after its core; without the core it raises `MoltenCodes OptionsKit part Dynamic requires OptionsKit API 1 to be loaded first` (each part names itself), and Presentation, Handlers and Bind over a core older than revision 16 raise `MoltenCodes OptionsKit part Presentation requires OptionsKit revision 16 or later to be loaded first`. A part keeps its record in the core's state; the highest part revision serves every addon, and a newer core hands each loaded part its helpers again, so the part extends the newer core's field tables and hooks.
+
+Everything Presentation, Handlers and Bind do is decided at `Define` or reached only through an option that uses them: `Get`, `Set`, `IsHidden(path)` and `IsHidden(path, interface)` allocate nothing and take the same function paths with or without the parts.
 
 ## Profile options: `OptionsKit:ProfileOptions(db, options?)`
 
@@ -617,6 +628,10 @@ Unknown fields and wrong types are refused at your line: `OptionsKit:ProfileOpti
 
 A secret option is refused first (`OptionsKit:ProfileOptions options.name must not be a secret value`). `ProfileOptions` raises at your line when `Registry:Find("settingsKit", 1)` finds nothing (`OptionsKit:ProfileOptions needs SettingsKit API 1 to be loaded`) and when `db` is not a table offering the profile methods of a SettingsKit database (`OptionsKit:ProfileOptions db must be a SettingsKit database`); SettingsKit publishes no predicate for its databases, so the check is structural, as for `options.db`.
 
+## Secret values
+
+On Retail 12.x some client APIs hand addon code secret values (see [`docs/EMBEDDING.md`](../../../docs/EMBEDDING.md#secret-values-retail-12x)). `Set` refuses a secret value at your line before anything compares it, and `Validate` reports it as `false, "secret value"`. A secret path or addon name is refused before it is used as a table key. `Get` and `Describe` return what a getter returns, secret or not, without inspecting it: `Describe` asks `issecretvalue` before it copies a table value, and passes a secret, at the top or nested inside the table, through without being copied. A secret nested in a table value (a `color` field) is refused by the schema with SchemaKit's `secret` rule. A secret `maxOptions`, `maxDepth` or `maxDynamicEntries` is refused at your line before it is compared with `OptionsKit.UNBOUNDED`, and a secret returned by `validate` or by the database's `Validate` counts as a refusal without being compared with `true`. Every field of an option table, and the `name`, `order`, `description` and `localize` options of `ProfileOptions`, is asked about before OptionsKit tests or compares it: a secret one, a secret `true` for `disabled`, `tristate` or `hasAlpha` included, is refused at your line (`OptionsKit:Define tree.args.general.disabled must not be a secret value`, `OptionsKit:ProfileOptions options.name must not be a secret value`), because testing a secret for truth raises (measured on Retail 12.1.0 b69933). A secret answer from a `disabled` or `hidden` predicate counts as `false`, and a secret string from a `desc` function is passed through `Describe` as the description, like a getter's secret value. Whether a field of your tree, your options or a value read from the database is absent is asked with `type`, never by comparing it with `nil`, so an absent-or-present test never touches a secret.
+
 ## Limits
 
 Every tree is bounded by default, and each bound is an option of the `Define` call that creates the tree. OptionsKit has no package-wide limit, so it has no `SetLimits`. A limit reached makes `Define` raise at the caller's line; a multiselect over a values function refuses a larger map through its schema.
@@ -640,13 +655,9 @@ OptionsKit:Define("MyAddon", tree, {
 
 Opening `maxDynamicEntries` past `1024` is honoured by OptionsKit, but a renderer has its own bound on what it shows: WidgetKit's dropdown holds 1024 entries by default, so open `WidgetKit:SetLimits{ maxDropdownEntries }` to the same value (or `WidgetKit.UNBOUNDED`) when WidgetKit renders the tree.
 
-## Secret values
-
-On Retail 12.x some client APIs hand addon code secret values (see [`docs/EMBEDDING.md`](../../../docs/EMBEDDING.md#secret-values-retail-12x)). `Set` refuses a secret value at your line before anything compares it, and `Validate` reports it as `false, "secret value"`. A secret path or addon name is refused before it is used as a table key. `Get` and `Describe` return what a getter returns, secret or not, without inspecting it: `Describe` asks `issecretvalue` before it copies a table value, and passes a secret, at the top or nested inside the table, through without being copied. A secret nested in a table value (a `color` field) is refused by the schema with SchemaKit's `secret` rule. A secret `maxOptions`, `maxDepth` or `maxDynamicEntries` is refused at your line before it is compared with `OptionsKit.UNBOUNDED`, and a secret returned by `validate` or by the database's `Validate` counts as a refusal without being compared with `true`. Every field of an option table, and the `name`, `order`, `description` and `localize` options of `ProfileOptions`, is asked about before OptionsKit tests or compares it: a secret one, a secret `true` for `disabled`, `tristate` or `hasAlpha` included, is refused at your line (`OptionsKit:Define tree.args.general.disabled must not be a secret value`, `OptionsKit:ProfileOptions options.name must not be a secret value`), because testing a secret for truth raises (measured on Retail 12.1.0 b69933). A secret answer from a `disabled` or `hidden` predicate counts as `false`, and a secret string from a `desc` function is passed through `Describe` as the description, like a getter's secret value. Whether a field of your tree, your options or a value read from the database is absent is asked with `type`, never by comparing it with `nil`, so an absent-or-present test never touches a secret.
-
 ## Error behaviour
 
-Every argument failure, schema refusal and bind-path failure reports the line that called OptionsKit, never a line inside it, and names the method and the offending path or field. Calling a tree method on something that is not a tree raises `OptionsKit.Tree:Get must be called on an OptionsKit tree`; on a tree that was undefined, `OptionsKit.Tree:Get cannot be called on an undefined tree`. Errors raised by your own callbacks (`get`, `set`, `validate`, predicates, `func`, a `Walk` visitor, an `OnChange` listener) propagate unchanged.
+Every argument failure, schema refusal and bind-path failure reports the line that called OptionsKit, never a line inside it, and names the method and the offending path or field. Calling a tree method on something that is not a tree raises `OptionsKit.Tree:Get must be called on an OptionsKit tree`; on a tree that was undefined, `OptionsKit.Tree:Get cannot be called on an undefined tree`. Errors raised by your own callbacks (`get`, `set`, `validate`, predicates, `func`, a `Walk` visitor, an `OnChange` listener) propagate unchanged. A field of a part that is not loaded is refused by `Define` at your line, naming the part's file ([Parts](#parts)); an input `pattern` or a values function without SchemaKit's Rules part is refused the same way, naming SchemaKit's file ([Loading](#loading)).
 
 ## Performance
 
@@ -661,6 +672,8 @@ Every argument failure, schema refusal and bind-path failure reports the line th
 | `ProfileOptions` | The first call for a database and options builds the group (about 4.5 µs and 6 KB on host Lua 5.1, revision 7's cost of every call). A later call runs the checks, then one cache lookup: no allocation, about 0.5 µs on host Lua 5.1 (2026-11-15, revision 13 with SettingsKit revision 14; AceDBOptions about 0.26 µs; revision 12: 1.6 µs), most of it `Registry:Find` and the checks of the options. |
 | The profile group's callbacks | Allocate: they call `db:GetProfiles()`. An options screen, not a hot path. |
 
+Resident memory (host Lua 5.1.5, 64-bit, debug information kept, each file loaded after its dependencies, after a full collection, measured 2026-11-18): the core 134.1 KB (revision 15: 158.7 KB); Presentation 30.1 KB, Handlers 8.2 KB, Bind 10.9 KB, Profiles 41.2 KB (part revision 1: 36.4 KB), Dynamic 17.4 KB. A tree with `get`/`set` only embeds the core; an Ace3 port adds Presentation and Handlers; a tree bound to SettingsKit adds Bind. Per option nothing changed.
+
 ## Deviations from the planned contract
 
 The nine-point plan in `docs/ROADMAP.md` is followed except where recorded here:
@@ -671,6 +684,7 @@ The nine-point plan in `docs/ROADMAP.md` is followed except where recorded here:
 - **`options.db` is checked structurally**: `Registry:Find("settingsKit", 1)` must find SettingsKit, and the database must be a table with `OnChange` and `Validate` methods whose bound scopes are tables. SettingsKit API 1 publishes no predicate that recognises its databases.
 - **Additions:** `tree:Validate`, `tree:Execute`, `tree:IsDisabled`, `tree:IsHidden` and `tree:DescribeOption` (revision 7) — a renderer and a command line need to check typed input, run a button, re-evaluate predicates and describe one option without rebuilding the whole description — and `OptionsKit:Undefine`, `OptionsKit.MAX_OPTIONS`, `OptionsKit.MAX_DEPTH`, `OptionsKit.UNBOUNDED` and the `maxOptions`, `maxDepth` and `maxDynamicEntries` options of `Define`; `OptionsKit:ProfileOptions` (revision 2) and, for it, `desc` as a function evaluated by `Describe`.
 - **Not carried over from AceConfig:** `hasAlpha` as a function (it shapes the schema, fixed at `Define`), a `confirm` string as a method name (it is the question), the `dropdown*` fields (no Ace3 interface reads them), `info.option`, `info.options`, `info.appName` and `info.uiType`, `validate` on `execute`, a plugin key that silently wins over an `args` key (refused instead), and validation at render time (everything is checked once at `Define`). Revision 14 added `name` and `order` as functions (resolved before any sort), method names and inheritance, `width`, `arg` and AceConfig's other presentation fields.
+- **Parts** (revision 16): the presentation fields, handlers and method names, and binds live in three optional parts; a field of an absent part is refused at `Define` rather than ignored.
 - **`GetFields(kind)`** rather than a published `FIELDS` table: a table per kind would stay resident in every addon for a converter that asks once.
 
 ## Embedded copies and upgrades
@@ -678,5 +692,7 @@ The nine-point plan in `docs/ROADMAP.md` is followed except where recorded here:
 Several addons may embed OptionsKit; Registry selects the newest compatible revision and every copy shares one facade. An upgrade happens in place: trees defined under an older copy stay registered, keep their records, `info` tables, schemas and `OnChange` listeners, and gain the newer copy's methods through the shared `OptionsKit.Tree` prototype. Revision 2 added the profile group map to the package state and a link list to every tree; a tree built by revision 1 gets an empty one when a later revision loads over it. Revisions 3 to 6 changed no layout; a predicate recorded by an older revision is answered secret-aware as soon as revision 5 loads. Revision 7 builds lighter records (no prebuilt `Set` label, absent fields left out, `info` built on first use, shared schemas and hints) and reads an older record's layout as it is: its `info` table and schema stay the ones it was built with. A profile group defined before an upgrade keeps its database connections and the callbacks of the revision that built it: `ProfileOptions` builds them as closures, so a newer copy's fixes reach the groups built after it loads. Revision 8 adds the per-database group cache to the package state; groups built earlier are not in it, and the first call after the upgrade builds the one later calls return. Revision 9 keeps one group per database: it reduces a revision 8 cache to the last group built for each database, and lets the profile group map release groups nobody holds; groups built earlier keep working. Revision 10 accepts the `childGroups` hint and publishes `CHILD_GROUPS`; it changes no layout, and trees defined earlier keep theirs. Revision 11 adds the spec-profile selects to profile groups and the link field `specProfiles`: a link an older revision cached has no such field, so the first `ProfileOptions` call after the upgrade builds a new group, with the selects, and caches it; the older group keeps working wherever it is held. Revision 12 changes no layout: a cached link built without the selects while SettingsKit lacked spec profiles is replaced as soon as SettingsKit offers them.
 
 Revision 14 changes no layout: records gain hint keys only, and a record an older revision built (no new hint, never a function name) is read as before. Revision 15 makes the tree layout 3: it keeps `_maxOptions`, `_maxDepth` and `_maxDynamicEntries` (an older tree gets the defaults, or the values revisions 8 and earlier wrote) and, for a builder, `_builder`; the state gains `parts`, `helpers`, `treeSources` and, after a single-file revision, `legacyMembers`. A tree defined before revision 15 has no source to read again, so `NotifyChange` raises for it; `Replace` and `Remove` work.
+
+Revision 16 moves the presentation fields, handlers and binds into the Presentation, Handlers and Bind parts and the profile links into the Profiles part (revision 2); records and the tree layout are unchanged. Revision 15 was the last core with those features inside, so an addon embedding revision 15 alone may share a session with one embedding revision 16 without the parts. An upgrade from revision 15 keeps that addon working: before it commits, the revision 16 core captures revision 15's `Define` and tree methods into `state.legacyMembers.revision15` and marks the trees that use a part. Routing happens only on the branch that needs an absent part: a bound option's `Get`, `Set`, `Validate` and `Reset` call revision 15's method while Bind is absent; a marked tree's `Describe`, `DescribeOption` and `IsHidden` with an interface call revision 15's while Presentation or Bind is absent; a `Define` that uses a field of an absent part is handed to revision 15's `Define`, and its tree is marked. Method callers, inherited accessors and plugins are resolved into the records at `Define`, so such trees need no routing. Once Presentation, Handlers and Bind are all loaded, the captured functions are dropped and revision 16 serves throughout. Known limits: a revision 15 copy loaded after revision 16 yields, and its addon's trees meet the refusals until some addon embeds the parts; a profile group a Profiles revision 1 part (or a single-file revision's `ProfileOptions`) builds is defined and works with the revision 16 core, but is not linked to its tree, so its database's profile signals do not reach the tree's `OnChange` until the Profiles part revision 2 loads; a routed `Define` reports its own refusals at a line inside OptionsKit.
 
 Nothing survives `/reload`: trees are defined again when the addon loads.

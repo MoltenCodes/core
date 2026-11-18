@@ -3,16 +3,17 @@
   "displayName": "OptionsKit",
   "description": "A typed, validated, introspectable options tree for World of Warcraft addons, bound to getters and setters or to a SettingsKit database, with no renderer.",
   "summary": "A typed, validated, introspectable options tree bound to getters or a SettingsKit database, with no renderer.",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "license": "MIT",
   "api": 1,
-  "revision": 15,
+  "revision": 16,
   "dependencies": {
     "registry": {
       "api": 2
     },
     "schemaKit": {
-      "api": 1
+      "api": 1,
+      "parts": ["Rules"]
     },
     "signalKit": {
       "api": 1
@@ -24,13 +25,36 @@
     }
   },
   "parts": {
-    "Profiles": {
-      "description": "OptionsKit:ProfileOptions: the ready-made group over a SettingsKit database's profiles, with the per-specialization choices.",
+    "Presentation": {
+      "description": "AceConfig's presentation fields: widths, icons, images, controls, styles, function names and orders, sorting functions and the per-interface hidden and inline flags.",
+      "revision": 1,
+      "dependencies": {},
+      "optionalDependencies": {}
+    },
+    "Handlers": {
+      "description": "AceConfig's ways of wiring a tree: a handler and method names, accessors declared on groups and inherited, and plugins.",
+      "revision": 1,
+      "dependencies": {},
+      "optionalDependencies": {}
+    },
+    "Bind": {
+      "description": "bind = \"profile.path\" and ns: binds: options read and written through a SettingsKit database passed as options.db.",
       "revision": 1,
       "dependencies": {},
       "optionalDependencies": {
         "settingsKit": {
           "api": 1
+        }
+      }
+    },
+    "Profiles": {
+      "description": "OptionsKit:ProfileOptions: the ready-made group over a SettingsKit database's profiles, with the per-specialization choices.",
+      "revision": 2,
+      "dependencies": {},
+      "optionalDependencies": {
+        "settingsKit": {
+          "api": 1,
+          "parts": ["SpecProfiles"]
         }
       }
     },

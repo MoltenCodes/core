@@ -71,7 +71,7 @@ end
 local function openDatabase()
   local OptionsKit = TestEnv.NewPackage()
   installIdentity()
-  local SettingsKit = require("SettingsKit")
+  local SettingsKit = TestEnv.RequireSettingsKit()
   local S = require("SchemaKit")
   local db = SettingsKit:Open(SAVED_VARIABLE, {
     profile = S.table({
@@ -268,7 +268,7 @@ describe("OptionsKit ProfileOptions", function()
   it("offers the database's own default profile, never a constant one", function()
     local OptionsKit = TestEnv.NewPackage()
     installIdentity()
-    local SettingsKit = require("SettingsKit")
+    local SettingsKit = TestEnv.RequireSettingsKit()
     local S = require("SchemaKit")
     local db = SettingsKit:Open(SAVED_VARIABLE, {
       profile = S.table({ fields = { scale = S.optional(S.number(), 1) } }),
@@ -654,7 +654,7 @@ describe("OptionsKit ProfileOptions", function()
 
   it("holds two profile groups over two databases in one tree", function()
     local OptionsKit, db = openDatabase()
-    local SettingsKit = require("SettingsKit")
+    local SettingsKit = TestEnv.RequireSettingsKit()
     local S = require("SchemaKit")
     setGlobal("OptionsKitOtherDB", nil)
     local other = SettingsKit:Open("OptionsKitOtherDB", {
@@ -825,7 +825,7 @@ describe("OptionsKit ProfileOptions", function()
   local function openNewerDatabase(allowNewerData)
     local OptionsKit = TestEnv.NewPackage()
     installIdentity()
-    local SettingsKit = require("SettingsKit")
+    local SettingsKit = TestEnv.RequireSettingsKit()
     local S = require("SchemaKit")
     setGlobal(SAVED_VARIABLE, {
       version = 9,
@@ -944,7 +944,7 @@ describe("OptionsKit ProfileOptions", function()
       end
 
       local S = require("SchemaKit")
-      local SettingsKit = require("SettingsKit")
+      local SettingsKit = TestEnv.RequireSettingsKit()
       local other = SettingsKit:Open("OptionsKitProfileOtherDB", {
         profile = S.table({ fields = { scale = S.optional(S.number(), 1) } }),
       })

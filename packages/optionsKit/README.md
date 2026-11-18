@@ -79,9 +79,9 @@ local description = options:Describe() -- a plain table for a renderer
 What each piece promises:
 
 - **Checked once, at your line.** `Define` checks the whole tree — every kind's fields, unknown fields, bind paths, bounds, method names — and raises at the line that called it, naming the field (`OptionsKit:Define tree.args.general.args.scale.min must be a number`). The tree is copied: later edits to your tables have no effect until `tree:NotifyChange()` (Dynamic part).
-- **AceConfig's fields.** `width`, `relWidth`, `descStyle`, `confirm` on every kind with `confirmText`, `arg`, images and icons, `tooltipHyperlink`, `dialogControl`, per-interface `guiHidden`/`dialogHidden`/`cmdHidden` and `*Inline`, `plugins`, `style = "radio"`, a `multiline` line count, multiselect `tristate`; `name`, `order`, `width` and the image fields may be functions, resolved by `Describe`. Method names of a `handler` (ADR 0003) are checked at `Define` and looked up on every call; `get`, `set`, `validate`, `func`, `handler` and `confirm` are inherited from groups as AceConfig inherits them (revision 14).
+- **AceConfig's fields** (Presentation and Handlers parts since revision 16). `width`, `relWidth`, `descStyle`, `confirm` on every kind with `confirmText`, `arg`, images and icons, `tooltipHyperlink`, `dialogControl`, per-interface `guiHidden`/`dialogHidden`/`cmdHidden` and `*Inline`, `plugins`, `style = "radio"`, a `multiline` line count, multiselect `tristate`; `name`, `order`, `width` and the image fields may be functions, resolved by `Describe`. Method names of a `handler` (ADR 0003) are checked at `Define` and looked up on every call; `get`, `set`, `validate`, `func`, `handler` and `confirm` are inherited from groups as AceConfig inherits them (revision 14).
 - **Typed values.** Every value option gets a SchemaKit schema at `Define`: `toggle` a boolean, `range` a bounded number, `select` one of its keys, `multiselect` a map of keys to booleans, `input` a string matching its pattern, `color` `{ r, g, b[, a] }` in `0..1`, `keybinding` a string. `Set` asserts it at your line, then runs your `validate`, then writes, then fires `OnChange`.
-- **Two ways to store a value.** Your own `get(info)` / `set(info, value)`, or `bind = "profile.path"` into a SettingsKit database; `Reset` restores a bound option's default.
+- **Two ways to store a value.** Your own `get(info)` / `set(info, value)`, or `bind = "profile.path"` into a SettingsKit database (Bind part); `Reset` restores a bound option's default.
 - **Cheap where it is called often.** `Get`, `Set`, `Walk`, `IsDisabled` and `IsHidden` look paths up in a map built at `Define` and allocate nothing (the profile group's options aside, which ask the database for its profiles); `Describe` allocates by design, and `DescribeOption(path)` describes one option or group when that is all a caller needs. Options of one kind with the same inputs share one schema, and each option's record keeps to 8 fields (revision 13): a toggle with a name, getter and setter holds 477 bytes, strings included, and the fields of revision 14 cost nothing to an option that does not set them.
 - **Trees that change** (Dynamic part, revision 15). `Define` takes a builder function; `tree:NotifyChange()` only marks the tree, and the next method that reads it rebuilds it once, keeping the handle and its listeners; `Replace` and `Remove` change one subtree; `OnStructureChanged` tells a renderer to redraw.
 - **Bounded.** At most 1024 options per tree and 8 keys per path by default, refused at `Define`; `maxOptions`, `maxDepth` (up to 32) and `maxDynamicEntries` open them per tree, and `OptionsKit.UNBOUNDED` lifts the first and last (see *Limits* in the API).
@@ -102,14 +102,14 @@ See [`docs/API.md`](docs/API.md) for every kind's fields and schema, the `Descri
 | `IterateOptionsTables()` | `OptionsKit:GetTrees()`, a sorted array of addon names. |
 | `AceConfigDialog:Open(name)`, `AddToBlizOptions` | WidgetKit's `RenderOptions` and PanelKit, which read the tree. |
 | `AceConfigCmd` | CommandKit's `BindOptions`. |
-| `get = "Method"`, `handler`, inherited `get`/`set` | The same (revision 14): a method name is checked at `Define` and looked up per call; `get`, `set`, `validate`, `func` and `handler` on a group apply below it. `confirm = "Method"` is the exception: a `confirm` string is the question, so write a function. |
-| `width`, `relWidth`, `arg`, `descStyle`, `image`, `icon`, `tooltipHyperlink`, `dialogControl`, `style = "radio"`, `plugins` | The same fields (revision 14); `info.arg` and `info.handler` as in Ace3. `dropdownHidden`, `dropdownInline` and `dropdownControl` are refused: no Ace3 interface reads them. |
+| `get = "Method"`, `handler`, inherited `get`/`set` | The same, with the Handlers part (revision 16; revision 14 in the core): a method name is checked at `Define` and looked up per call; `get`, `set`, `validate`, `func` and `handler` on a group apply below it. `confirm = "Method"` is the exception: a `confirm` string is the question, so write a function. |
+| `width`, `relWidth`, `arg`, `descStyle`, `image`, `icon`, `tooltipHyperlink`, `dialogControl`, `style = "radio"`, `plugins`, function `name` and `order`, per-interface `guiHidden`/`dialogHidden`/`cmdHidden` | The same fields; `arg` is the core's, `plugins` the Handlers part's, the rest the Presentation part's (revision 16); `info.arg` and `info.handler` as in Ace3. `dropdownHidden`, `dropdownInline` and `dropdownControl` are refused: no Ace3 interface reads them. |
 | `name` and `order` as functions | The same; `Describe` calls them before it sorts, while `Walk` keeps the order of `Define`. |
 | `confirm` on a toggle or select | The same; a renderer asks `tree:GetConfirmation(path, value)` before `Set`. |
 | `guiHidden`, `dialogHidden`, `cmdHidden`, `*Inline` | The same; `tree:IsHidden(path, "dialog")` and `Describe("cmd")` answer per interface. |
 | `childGroups = "tab"`, `"tree"`, `"select"` | The same hint on a `group` (revision 10); WidgetKit draws it. |
 | `AceDBOptions:GetOptionsTable(db)` | `OptionsKit:ProfileOptions(db)` (Profiles part), one cached group per database and options. |
-| An AceDB namespace's settings | `bind = "ns:<name>.profile.key"` into SettingsKit's namespaces (SettingsKit revision 15). |
+| An AceDB namespace's settings | `bind = "ns:<name>.profile.key"` into SettingsKit's namespaces (SettingsKit revision 15), with the Bind part. |
 | Converting an existing AceConfig table | BridgeKit's `DefineAceConfig`. |
 
 The full guide, with every difference, is in [`docs/MIGRATING_FROM_ACE3.md`](../../docs/MIGRATING_FROM_ACE3.md).
@@ -132,26 +132,34 @@ troubleshooting. This package's load order inside a consuming addon is:
 Libs\MoltenCodes\registry\Registry.lua
 Libs\MoltenCodes\signalKit\SignalKit.lua
 Libs\MoltenCodes\schemaKit\SchemaKit.lua
+Libs\MoltenCodes\schemaKit\parts\SchemaKit-Rules.lua
 Libs\MoltenCodes\optionsKit\OptionsKit.lua
+Libs\MoltenCodes\optionsKit\parts\OptionsKit-Presentation.lua
+Libs\MoltenCodes\optionsKit\parts\OptionsKit-Handlers.lua
+Libs\MoltenCodes\optionsKit\parts\OptionsKit-Bind.lua
 Libs\MoltenCodes\optionsKit\parts\OptionsKit-Profiles.lua
 Libs\MoltenCodes\optionsKit\parts\OptionsKit-Dynamic.lua
 ```
 
-Minimum footprint: embed 4 files: `registry/Registry.lua`, `signalKit/SignalKit.lua`, `schemaKit/SchemaKit.lua`, `optionsKit/OptionsKit.lua`.
+Minimum footprint: embed 5 files: `registry/Registry.lua`, `signalKit/SignalKit.lua`, `schemaKit/SchemaKit.lua`, `schemaKit/parts/SchemaKit-Rules.lua` (OptionsKit's manifest names SchemaKit's Rules part, for input patterns and values functions), `optionsKit/OptionsKit.lua`.
 
-Since revision 15 OptionsKit is a core and two optional parts (ADR 0001). Embed a part only when the addon uses it; `python3 -m tooling.package.embeds` writes the lines for you:
+OptionsKit is a core and five optional parts (ADR 0001; revision 16). Embed a part only when the addon uses it; `python3 -m tooling.package.embeds` writes the lines for you. An Ace3 port embeds Presentation and Handlers; the example above, which binds every option, embeds Bind:
 
-| Part | Embed it for | Resident (host Lua 5.1, debug information kept) |
+| Part | Embed it for | Resident (host Lua 5.1, debug information kept, 2026-11-18) |
 |---|---|---:|
-| core `OptionsKit.lua` | every tree | 148.8 KB |
-| `parts/OptionsKit-Profiles.lua` | `OptionsKit:ProfileOptions` | 35.4 KB |
-| `parts/OptionsKit-Dynamic.lua` | builder trees, `NotifyChange`, `Replace`, `Remove` | 16.6 KB |
+| core `OptionsKit.lua` | every tree | 134.1 KB |
+| `parts/OptionsKit-Presentation.lua` | `width`, `relWidth`, `descStyle`, icons, images, `dialogControl`, `control`, `itemControl`, `style`, function `name`/`order`/`fontSize`, `sorting` functions, per-interface flags | 30.1 KB |
+| `parts/OptionsKit-Handlers.lua` | `handler`, method names, accessors inherited from groups, `plugins` | 8.2 KB |
+| `parts/OptionsKit-Bind.lua` | `bind` and `ns:` binds into `options.db` | 10.9 KB |
+| `parts/OptionsKit-Profiles.lua` | `OptionsKit:ProfileOptions` | 41.2 KB |
+| `parts/OptionsKit-Dynamic.lua` | builder trees, `NotifyChange`, `Replace`, `Remove` | 17.4 KB |
 
-Without a part, its members raise at your line and name the file to add (`OptionsKit:ProfileOptions is in OptionsKit's Profiles part, which is not loaded: add optionsKit\parts\OptionsKit-Profiles.lua to embeds.xml ...`).
+Without a part, its members raise at your line and name the file to add (`OptionsKit:ProfileOptions is in OptionsKit's Profiles part, which is not loaded: add optionsKit\parts\OptionsKit-Profiles.lua to embeds.xml ...`), and `Define` refuses its fields the same way (`OptionsKit:Define tree.args.general.args.scale.width needs OptionsKit's Presentation part: add optionsKit\parts\OptionsKit-Presentation.lua to embeds.xml ...`).
 
 Direct runtime dependencies: Registry API 2, SchemaKit API 1 and SignalKit API 1.
-All four files above are required; omitting any of the first three makes this
-package raise at load.
+The first five files above are required; omitting any of the first three
+makes this package raise at load, and without SchemaKit's Rules part an input
+`pattern` or a values function is refused at `Define`.
 
 Optional: SettingsKit API 1, needed only when an option uses `bind` or the tree
 holds `ProfileOptions`. OptionsKit looks it up with `Registry:Find` when

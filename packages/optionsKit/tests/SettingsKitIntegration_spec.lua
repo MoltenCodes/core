@@ -39,7 +39,7 @@ describe("OptionsKit with the real SettingsKit", function()
 
   it("binds to a real SettingsKit database, sets and resets a value", function()
     local OptionsKit = TestEnv.NewPackage()
-    local SettingsKit = require("SettingsKit")
+    local SettingsKit = TestEnv.RequireSettingsKit()
     local SchemaKit = require("SchemaKit")
     local S = SchemaKit
     local db = SettingsKit:Open(SAVED_VARIABLE, {
@@ -73,7 +73,7 @@ describe("OptionsKit with the real SettingsKit", function()
   ---@return table db
   local function openFrameDatabase()
     local OptionsKit = TestEnv.NewPackage()
-    local SettingsKit = require("SettingsKit")
+    local SettingsKit = TestEnv.RequireSettingsKit()
     local S = require("SchemaKit")
     local db = SettingsKit:Open(SAVED_VARIABLE, {
       profile = S.table({
@@ -162,7 +162,7 @@ describe("OptionsKit with the real SettingsKit", function()
     assert.is_true(tree:Set("x", 3))
     assert.are.equal(3, tree:Get("x"))
 
-    db:SetProfile(require("SettingsKit").DEFAULT_PROFILE)
+    db:SetProfile(TestEnv.RequireSettingsKit().DEFAULT_PROFILE)
     assert.are.equal(1, tree:Get("x"))
     assert.are.equal(2, tree:Reset("x"))
   end)
@@ -214,7 +214,7 @@ describe("OptionsKit with the real SettingsKit", function()
 
   it("describes a bound table value as a plain copy, never as a SettingsKit view", function()
     local OptionsKit = TestEnv.NewPackage()
-    local SettingsKit = require("SettingsKit")
+    local SettingsKit = TestEnv.RequireSettingsKit()
     local S = require("SchemaKit")
     local db = SettingsKit:Open(SAVED_VARIABLE, {
       profile = S.table({
@@ -266,7 +266,7 @@ describe("OptionsKit with the real SettingsKit", function()
 
   it("works over a record stored as a scalar: reads the default, then repairs on Set", function()
     local OptionsKit = TestEnv.NewPackage()
-    local SettingsKit = require("SettingsKit")
+    local SettingsKit = TestEnv.RequireSettingsKit()
     local S = require("SchemaKit")
     -- Hand-edited or corrupted data: `frame` is declared as a record.
     -- selene: allow(global_usage)
@@ -304,7 +304,7 @@ describe("OptionsKit with the real SettingsKit", function()
   ---@return table db
   local function defineOverNewerData(allowNewerData)
     local OptionsKit = TestEnv.NewPackage()
-    local SettingsKit = require("SettingsKit")
+    local SettingsKit = TestEnv.RequireSettingsKit()
     local S = require("SchemaKit")
     -- selene: allow(global_usage)
     rawset(_G, SAVED_VARIABLE, { version = 9, profiles = { Default = { scale = 1.5 } } })
@@ -395,7 +395,7 @@ describe("OptionsKit with the real SettingsKit", function()
   if isOnPath("SettingsKit-Namespaces") then
     it("binds into a real namespace and refuses one without the part", function()
       local OptionsKit = TestEnv.NewPackage()
-      local SettingsKit = require("SettingsKit")
+      local SettingsKit = TestEnv.RequireSettingsKit()
       local S = require("SchemaKit")
       local db = SettingsKit:Open(SAVED_VARIABLE, {
         profile = S.table({ fields = { scale = S.optional(S.number(), 1) } }),

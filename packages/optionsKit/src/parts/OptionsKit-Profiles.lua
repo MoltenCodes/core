@@ -7,24 +7,27 @@
 -- revision 11 and later it also carries one profile choice per
 -- specialization. `docs/API.md`, *Profile options*, is the contract.
 --
--- The part needs OptionsKit's core loaded first (revision 15 or later). The
--- core keeps what every tree needs to hold such a group: it recognises the
--- group in `Define` through `state.profileGroups`, and it attaches and
--- detaches the group's link to and from the tree. This part only builds
--- groups. Without it, `OptionsKit:ProfileOptions` raises at the caller's line
--- and names this file (ADR 0001, point 5).
+-- The part needs OptionsKit's core loaded first (revision 15 or later). Part
+-- revision 2 also holds the links that connect a group to the tree `Define`
+-- places it in, which core revision 16 calls through its hooks
+-- (`Hints.collectProfileLink`, `Hints.attachLinks`); a revision 15 core still
+-- attaches links itself and has no such hooks. The core keeps the group map
+-- `state.profileGroups` and a detach for `Undefine`. Without this part,
+-- `OptionsKit:ProfileOptions` raises at the caller's line and names this file
+-- (ADR 0001, point 5).
 --
 -- Contents
 -- --------
 --   Constants ........ identity
 --   Dependencies ..... OptionsKit's core, its state and the helpers it lends
 --   Profile options .. the group, its strings, choices and spec selects
+--   Profile links .... a group's link to its tree: collect, attach
 --   Commit ........... the facade member and the part's revision
 
 -- Constants ------------------------------------------------------------------
 
 local PART_NAME = "Profiles"
-local PART_REVISION = 1
+local PART_REVISION = 2
 local REQUIRED_REGISTRY_API = 2
 local CORE_PACKAGE, CORE_API = "optionsKit", 1
 
@@ -76,6 +79,11 @@ local profileGroups, profileLinksByDatabase
 -- no lookup per call.
 local isSecret, isDatabaseReadOnly, findSettingsKit
 local checkOptionalString, checkNumber, checkOptionalFunction
+-- The whole helpers table, for the link functions defined below `bind`.
+local linkHelpers
+-- The link functions, defined in "Profile links" below and installed by
+-- `bind` as the core's hooks.
+local collectProfileLink, attachLinks
 
 ---Take the core's helpers. Called by this file and by every newer core.
 ---@param helpers table the core's `state.helpers`
@@ -88,6 +96,14 @@ local function bind(helpers)
   checkOptionalString = helpers.checkOptionalString
   checkNumber = helpers.checkNumber
   checkOptionalFunction = helpers.checkOptionalFunction
+  linkHelpers = helpers
+  -- A revision 16 core or later publishes `Hints`; the links are its hooks.
+  local Hints = helpers.Hints
+  if type(Hints) == "table" then
+    Hints.collectProfileLink = collectProfileLink
+    Hints.attachLinks = attachLinks
+    Hints.detachProfileLink = helpers.detachProfileLink
+  end
 end
 
 -- Profile options ------------------------------------------------------------
@@ -472,6 +488,14 @@ end
 ---@return boolean
 local function supportsSpecProfiles(link)
   local db = link.db
+  -- Since SettingsKit split spec profiles into its SpecProfiles part, the
+  -- facade and the database carry stubs that raise while the part is not
+  -- loaded, so the part is asked first (part revision 2). A SettingsKit
+  -- without `HasPart` holds spec profiles in its core, when it has them.
+  local hasPart = rawget(link.SettingsKit, "HasPart")
+  if type(hasPart) == "function" and hasPart(link.SettingsKit, "SpecProfiles") ~= true then
+    return false
+  end
   return type(rawget(link.SettingsKit, "GetSpecIndex")) == "function"
     and type(db.SetSpecProfile) == "function"
     and type(db.GetSpecProfile) == "function"
@@ -848,6 +872,123 @@ local function profileOptions(_, db, options)
   }
   link.specProfiles = supportsSpecProfiles(link)
   return buildProfileGroup(link)
+end
+
+-- Profile links --------------------------------------------------------------
+--
+-- Part revision 2 (core revision 16): the links that connect a group to the
+-- tree `Define` places it in moved here from the core. The core calls them
+-- through three hooks this part fills when it binds (`Hints.collectProfileLink`,
+-- `Hints.attachLinks`, `Hints.detachProfileLink`); it keeps a detach of its
+-- own for links any revision attached.
+
+-- The database methods a link connects to, in connection order.
+local PROFILE_SIGNAL_METHODS =
+  { "OnProfileChanged", "OnProfileCopied", "OnProfileReset", "OnProfileDeleted" }
+
+---Disconnect every connection in `connections`.
+---@param connections table
+local function disconnectAll(connections)
+  for index = 1, #connections do
+    connections[index]:Disconnect()
+  end
+end
+
+---Attach `link` to the tree `Define` placed its group in, at `path`: connect
+---the database's profile signals, then record the tree. Each signal fires the
+---tree's `OnChange` with the current-profile option's path and the current
+---profile's name — unless the group's own `current` is switching, which
+---fires by itself. A connect that raises (a database that is not SettingsKit's
+---after all) undoes the connections made before it and leaves the link free,
+---so the error reaches the caller of `Define` without a stuck group.
+---@param link table
+---@param tree OptionsKit.Tree
+---@param path string the group's path, `""` when the group is the root
+local function attachProfileLink(link, tree, path)
+  local currentPath = path == "" and PROFILE_KEY_CURRENT or path .. "." .. PROFILE_KEY_CURRENT
+  local db = link.db
+  local function notify()
+    if link.suppress then
+      return
+    end
+    rawget(tree, "_changed"):Fire(tree, currentPath, db:GetProfile())
+  end
+  local connections = {}
+  for index = 1, #PROFILE_SIGNAL_METHODS do
+    local connected, result = pcall(db[PROFILE_SIGNAL_METHODS[index]], db, notify)
+    if not connected then
+      disconnectAll(connections)
+      error(result, 0)
+    end
+    connections[index] = result
+  end
+  link.connections = connections
+  link.tree = tree
+  -- Revision 15: where the group sits, so `Remove` of a group above it
+  -- detaches it. Links an older revision attached have no path.
+  link.path = path
+end
+
+---When `spec` is a group `ProfileOptions` returned, remember its link and
+---the path it lands at, so `define` can attach it once the whole tree is
+---built. A group already defined in a tree, or appearing twice in this one,
+---is refused: its link carries the chosen profiles and the tree it notifies,
+---which cannot be shared.
+---@param context table
+---@param spec table
+---@param path string
+---@param record table
+---@param level integer
+collectProfileLink = function(context, spec, path, record, level)
+  local link = rawget(profileGroups, spec)
+  if link == nil then
+    return
+  end
+  -- A rebuild or a `Replace` (revision 15) meets the groups its own tree
+  -- already holds, which stay attached.
+  if link.tree and link.tree ~= context.rebuilding then
+    error(
+      linkHelpers.labelOf(record)
+        .. ' is a profile group already defined in the tree of "'
+        .. rawget(link.tree, "_addonName")
+        .. '"; Undefine it first',
+      level
+    )
+  end
+  local links = context.profileLinks
+  for index = 1, #links do
+    if links[index] == link then
+      error(
+        linkHelpers.labelOf(record) .. " is a profile group that already appears in this tree",
+        level
+      )
+    end
+  end
+  links[#links + 1] = link
+  context.profilePaths[#links] = path
+end
+
+---Attach every link of `links` (at `paths`) that is not attached to `tree`
+---yet. A link that fails to attach detaches the ones this call attached, and
+---the error is raised again as it is.
+---@param links table[]
+---@param paths string[]
+---@param tree OptionsKit.Tree
+attachLinks = function(links, paths, tree)
+  local attached = {}
+  for index = 1, #links do
+    local link = links[index]
+    if link.tree ~= tree then
+      local ok, failure = pcall(attachProfileLink, link, tree, paths[index])
+      if not ok then
+        for previous = 1, #attached do
+          linkHelpers.detachProfileLink(attached[previous])
+        end
+        error(failure, 0)
+      end
+      attached[#attached + 1] = link
+    end
+  end
 end
 
 -- Commit ---------------------------------------------------------------------

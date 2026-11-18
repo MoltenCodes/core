@@ -106,7 +106,7 @@ describe("OptionsKit records", function()
 
   it("keeps the bind text it was given, in Describe and in a failure", function()
     TestEnv.InstallWowApi()
-    local SettingsKit = require("SettingsKit")
+    local SettingsKit = TestEnv.RequireSettingsKit()
     local S = require("SchemaKit")
     local db = SettingsKit:Open("RecordsDB", {
       profile = S.table({

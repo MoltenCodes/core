@@ -120,7 +120,7 @@ describe("OptionsKit bootstrap", function()
     require("SignalKit")
     require("SchemaKit")
     local OptionsKit = TestEnv.LoadRevision(2)
-    local SettingsKit = require("SettingsKit")
+    local SettingsKit = TestEnv.RequireSettingsKit()
     local S = require("SchemaKit")
     local db = SettingsKit:Open(PROFILE_SAVED_VARIABLE, {
       profile = S.table({ fields = { scale = S.optional(S.number(), 1) } }),
@@ -284,7 +284,7 @@ describe("OptionsKit bootstrap", function()
     require("SignalKit")
     require("SchemaKit")
     local OptionsKit = TestEnv.LoadRevision(7)
-    local SettingsKit = require("SettingsKit")
+    local SettingsKit = TestEnv.RequireSettingsKit()
     local S = require("SchemaKit")
     local db = SettingsKit:Open(PROFILE_SAVED_VARIABLE, {
       profile = S.table({ fields = { scale = S.optional(S.number(), 1) } }),
@@ -329,7 +329,7 @@ describe("OptionsKit bootstrap", function()
     require("SignalKit")
     require("SchemaKit")
     local OptionsKit = TestEnv.LoadRevision(8)
-    local SettingsKit = require("SettingsKit")
+    local SettingsKit = TestEnv.RequireSettingsKit()
     local S = require("SchemaKit")
     local db = SettingsKit:Open(PROFILE_SAVED_VARIABLE, {
       profile = S.table({ fields = { scale = S.optional(S.number(), 1) } }),
