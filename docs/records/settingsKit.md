@@ -984,7 +984,7 @@ Moved from `docs/ROADMAP.md` (Package O — memory, performance and ease of use 
    EventKit Units split; the manifest's optional `eventKit` contract does not
    yet name `"parts": ["Units"]` because this branch's EventKit has no such
    part (validation would refuse it): the integrator adds it with EventKit's
-   change. Only revision 15 (proved with its byte copy) has its members kept
+   change (done at integration, 2026-11-18). Only revision 15 (proved with its byte copy) has its members kept
    on an upgrade; revisions 11 to 14 get the stubs. The core keeps setting
    `state.specListenerConnected` and the revision 10 catch-up flag
    (`specProfilesCatchUp`), which the part consumes. Outside (reported):

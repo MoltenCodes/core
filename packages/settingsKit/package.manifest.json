@@ -46,7 +46,10 @@
       "dependencies": {},
       "optionalDependencies": {
         "eventKit": {
-          "api": 1
+          "api": 1,
+          "parts": [
+            "Units"
+          ]
         }
       }
     }
