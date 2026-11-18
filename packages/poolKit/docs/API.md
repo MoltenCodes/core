@@ -2,6 +2,44 @@
 
 PoolKit API generation **1** provides bounded, ownership-safe reusable object pools. The implementation is pure Lua and intentionally independent from WoW-specific APIs.
 
+## Loading
+
+`PoolKit.lua` loads after `registry\Registry.lua` and needs nothing else. It
+is the core (revision 12 and later, [ADR 0001](../../../docs/decisions/0001-kit-core-and-parts.md)):
+the plain pool, with retention bounds, the creation cap, strict diagnostics,
+`maxActiveWarning` and the re-entrancy guard. Four parts load after it and add
+the mechanisms only some pools use:
+
+| Part | File | What it adds |
+|---|---|---|
+| `Waiting` | `poolKit\parts\PoolKit-Waiting.lua` | `maxActive`, `maxWaiting`, queued `Acquire(onAvailable)`, `CancelWaiting` ([Objects the host can never free](#objects-the-host-can-never-free)) |
+| `Children` | `poolKit\parts\PoolKit-Children.lua` | `AttachChild`, `DetachChild` ([Cascading release](#cascading-release)) |
+| `Deferred` | `poolKit\parts\PoolKit-Deferred.lua` | `ReleaseAfter` ([Deferred release](#deferred-release)) |
+| `Generations` | `poolKit\parts\PoolKit-Generations.lua` | the `generation` option, `SetGeneration` ([Generations](#generations)) |
+
+```toc
+Libs\MoltenCodes\registry\Registry.lua
+Libs\MoltenCodes\poolKit\PoolKit.lua
+Libs\MoltenCodes\poolKit\parts\PoolKit-Waiting.lua   # only for maxActive, maxWaiting, CancelWaiting
+```
+
+Every method stays on `PoolKit.Pool` whichever parts are loaded. Without its
+part, a mutator raises at the caller's line, naming the file to add:
+
+```text
+PoolKit.Pool:AttachChild is in PoolKit's Children part, which is not loaded: add poolKit\parts\PoolKit-Children.lua to embeds.xml after poolKit\PoolKit.lua
+```
+
+A constructor option raises the same way (`PoolKit:New maxActive is in
+PoolKit's Waiting part, ...`). The getters of an absent part answer the neutral
+value, which is exact because no pool can be in another state without the
+part: `GetWaitingCount` and `GetParkedCount` `0`, `GetGeneration` `1`. Without
+the `Waiting` part a pool has no queue, so `Acquire(onAvailable)` at capacity
+answers `nil, "queueFull"`. A part without its core raises
+`MoltenCodes PoolKit part <Part> requires PoolKit API 1 to be loaded first`.
+Code that uses a part only when it is there asks
+[`PoolKit:HasPart(name)`](#poolkithaspartname).
+
 ## Public surface
 
 Package facade:
@@ -10,9 +48,10 @@ Package facade:
 |---|---|
 | `New(options)` | Create a generic object pool. |
 | `NewTablePool(options?)` | Create a shallow-clearing Lua table pool. |
+| `HasPart(name)` | Whether the named part (`"Waiting"`, `"Children"`, `"Deferred"`, `"Generations"`) is loaded. |
 | `UNBOUNDED` | Explicit sentinel for unbounded retention. |
 | `DEFAULT_MAX_RETAINED` | Default retained-object limit (`128`). |
-| `API`, `REVISION` | The API generation (`1`) and the implementation revision of the copy active in the session (`11` for this one); a newer embedded copy replaces `REVISION` when it upgrades the facade in place. |
+| `API`, `REVISION` | The API generation (`1`) and the implementation revision of the copy active in the session (`12` for this one); a newer embedded copy replaces `REVISION` when it upgrades the facade in place. |
 
 Pool handles:
 
@@ -34,15 +73,15 @@ Pool handles:
 | `Owns(object)` | Return whether an object is currently borrowed from, parked in or retained by this pool. |
 | `IsActive(object)` | Return whether an object is currently borrowed/releasing; a parked object is not. |
 | `GetGeneration()` | Return the generation stamped on newly built objects. |
-| `SetGeneration(n)` | Raise the generation; destroy retained objects of older generations; return how many. |
+| `SetGeneration(n)` | Raise the generation; destroy retained objects of older generations; return how many. `Generations` part. |
 | `GetWaitingCount()` | Return the number of queued `Acquire(onAvailable)` requests. |
-| `CancelWaiting(callback)` | Withdraw the oldest queued request made with `callback`. |
+| `CancelWaiting(callback)` | Withdraw the oldest queued request made with `callback`. `Waiting` part. |
 | `GetParkedCount()` | Return the number of objects waiting for an animation before release. |
 | `GetMaxCreated()` | Return the creation cap, or `false` when the pool has none. |
 | `SetMaxCreated(n)` | Raise the creation cap; never lowers it. |
-| `AttachChild(parent, child, childPool)` | Release `child` (from `childPool`) whenever `parent` is released. |
-| `DetachChild(child)` | Undo `AttachChild` without releasing anything. |
-| `ReleaseAfter(object, animationGroup)` | Release `object` when `animationGroup` finishes playing. |
+| `AttachChild(parent, child, childPool)` | Release `child` (from `childPool`) whenever `parent` is released. `Children` part. |
+| `DetachChild(child)` | Undo `AttachChild` without releasing anything. `Children` part. |
+| `ReleaseAfter(object, animationGroup)` | Release `object` when `animationGroup` finishes playing. `Deferred` part. |
 
 ## Method reference
 
@@ -56,6 +95,15 @@ inside that pool's own `create`, `reset` or `destroy` (see
 otherwise, argument errors are reported at the caller's line and errors raised by
 a consumer callback are re-raised unchanged. "Allocates nothing" means PoolKit
 creates no table or string of its own; consumer callbacks may allocate.
+
+### `PoolKit:HasPart(name)`
+
+Whether the named part is loaded in this session (revision 12 and later).
+Code that uses a part only when it is there asks this, never whether the
+method is a function: the prototype keeps every method, raising when its part
+is absent. Any other string answers `false`. A secret `name` raises
+`PoolKit:HasPart name must not be a secret value`, any other non-string
+`PoolKit:HasPart name must be a string`, at the caller's line.
 
 ### `PoolKit:New(options)` and `PoolKit:NewTablePool(options?)`
 
@@ -326,28 +374,6 @@ pool:Prewarm(-1)
 
 This holds for constructor options, pool-method arguments, closed-pool rejections, factory results rejected by the pool, methods called on something that is not a PoolKit pool, and mutation attempted from inside a lifecycle callback.
 
-### Secret values
-
-A secret value (Retail 12.0.0 and later) raises when it is compared, so a numeric or boolean argument is asked about with `issecretvalue` before any other check and a secret is refused at the caller's line with `<label> must not be a secret value`:
-
-| Message | Raised by |
-|---|---|
-| `PoolKit:New maxRetained must not be a secret value` (likewise `PoolKit:NewTablePool`) | a secret `maxRetained` option |
-| `PoolKit:New strict must not be a secret value` (likewise `PoolKit:NewTablePool`) | a secret `strict` option |
-| `PoolKit:New prewarm must not be a secret value`, `... maxActiveWarning ...`, `... generation ...` (likewise `PoolKit:NewTablePool`) | those options when secret |
-| `PoolKit:New maxCreated must not be a secret value`, `... maxActive ...`, `... maxWaiting ...`, `PoolKit:New strictReset must not be a secret value` | those options when secret |
-| `PoolKit.Pool:Prewarm count must not be a secret value` | `Prewarm` |
-| `PoolKit.Pool:Trim retainCount must not be a secret value` | `Trim` |
-| `PoolKit.Pool:SetMaxRetained maxRetained must not be a secret value` | `SetMaxRetained` |
-| `PoolKit.Pool:SetGeneration generation must not be a secret value` | `SetGeneration` |
-| `PoolKit.Pool:SetMaxCreated maxCreated must not be a secret value` | `SetMaxCreated` |
-
-An absent option or argument is recognised by its type, never by comparing it with `nil`. A host without `issecretvalue` has no secret values. Pooled objects are tables or userdata, which the type check already requires, so they are never compared as secrets.
-
-Errors that are re-raised after best-effort cleanup keep the original error object unchanged and therefore carry no added position. Constructor-time `prewarm` failures are re-raised the same way.
-
-Loading `PoolKit.lua` raises `MoltenCodes PoolKit requires Registry API 2 to be loaded first`, `MoltenCodes PoolKit requires a valid Registry API 2 facade`, or `MoltenCodes PoolKit package state is corrupted or incomplete`.
-
 ## Strict diagnostics
 
 With `strict = true` (the default), PoolKit stores discarded-object history in a **weak-key** table. This lets a second release of an overflow/trimmed object report “already released” while the caller still references that object, without PoolKit keeping discarded objects alive.
@@ -389,6 +415,10 @@ The built-in reset is **shallow**: all direct keys are removed, while referenced
 Because the built-in table create/reset callbacks are framework-owned and cannot execute arbitrary consumer code, `NewTablePool` uses a trusted internal fast path that avoids the protected-callback/re-entrancy machinery required by generic pools.
 
 ## Generations
+
+The `generation` option and `SetGeneration` are the `Generations` part's
+(`poolKit\parts\PoolKit-Generations.lua`, revision 12 and later); without it
+`GetGeneration` answers `1`.
 
 Every pool has a generation, a positive integer. Objects are stamped with the
 generation in force when the factory built them. Raising the generation with
@@ -446,6 +476,10 @@ generation never changed writes no stamps at all; after a raise, stamping costs
 one table write per object built.
 
 ## Objects the host can never free
+
+`maxCreated` is the core's. `maxActive`, `maxWaiting`, the queue and
+`CancelWaiting` are the `Waiting` part's (`poolKit\parts\PoolKit-Waiting.lua`,
+revision 12 and later); without it a pool has no queue.
 
 World of Warcraft can create Frames, Textures and FontStrings but never destroy
 them. Pooling them needs bounds the host will not provide.
@@ -518,6 +552,9 @@ error handler:
 
 ## Cascading release
 
+`AttachChild` and `DetachChild` are the `Children` part's
+(`poolKit\parts\PoolKit-Children.lua`, revision 12 and later).
+
 ```lua
 frames:AttachChild(frame, background, textures)
 frames:AttachChild(frame, border, textures)
@@ -553,6 +590,9 @@ parent's pool, created on that pool's first `AttachChild`. Attaching and
 detaching are constant time.
 
 ## Deferred release
+
+`ReleaseAfter` is the `Deferred` part's (`poolKit\parts\PoolKit-Deferred.lua`,
+revision 12 and later); without it `GetParkedCount` answers `0`.
 
 ```lua
 fadeOut:Play()
@@ -607,6 +647,25 @@ PoolKit stays free of any WoW dependency: it calls only two methods of the
 group it is handed, `HookScript` and `IsPlaying`, and checks that `Play` and
 `Stop` exist without calling them.
 
+## Secret values
+
+A secret value (Retail 12.0.0 and later) raises when it is compared, so a numeric or boolean argument is asked about with `issecretvalue` before any other check and a secret is refused at the caller's line with `<label> must not be a secret value`:
+
+| Message | Raised by |
+|---|---|
+| `PoolKit:New maxRetained must not be a secret value` (likewise `PoolKit:NewTablePool`) | a secret `maxRetained` option |
+| `PoolKit:New strict must not be a secret value` (likewise `PoolKit:NewTablePool`) | a secret `strict` option |
+| `PoolKit:New prewarm must not be a secret value`, `... maxActiveWarning ...`, `... generation ...` (likewise `PoolKit:NewTablePool`) | those options when secret |
+| `PoolKit:New maxCreated must not be a secret value`, `... maxActive ...`, `... maxWaiting ...`, `PoolKit:New strictReset must not be a secret value` | those options when secret |
+| `PoolKit.Pool:Prewarm count must not be a secret value` | `Prewarm` |
+| `PoolKit.Pool:Trim retainCount must not be a secret value` | `Trim` |
+| `PoolKit.Pool:SetMaxRetained maxRetained must not be a secret value` | `SetMaxRetained` |
+| `PoolKit.Pool:SetGeneration generation must not be a secret value` | `SetGeneration` |
+| `PoolKit.Pool:SetMaxCreated maxCreated must not be a secret value` | `SetMaxCreated` |
+| `PoolKit:HasPart name must not be a secret value` | `HasPart` |
+
+An absent option or argument is recognised by its type, never by comparing it with `nil`. A host without `issecretvalue` has no secret values. The probe is read once at load; on a host that had none then, it is read again on each check, so a probe installed after load is honoured (revision 12 and later, the shared `isSecret` block). Pooled objects are tables or userdata, which the type check already requires, so they are never compared as secrets.
+
 ## Limits
 
 PoolKit follows the framework rule "bounded by default, opened on purpose".
@@ -618,8 +677,8 @@ named reason or discards on release, as each row says; nothing grows silently.
 |---|---|---|---|
 | `maxRetained`: released objects kept for reuse | `128` (`PoolKit.DEFAULT_MAX_RETAINED`); `maxCreated` when that is set and this is not | `New` / `NewTablePool` option, or `pool:SetMaxRetained(n)`; a non-negative integer (`0` retains nothing) | Yes: `PoolKit.UNBOUNDED`. The retained objects are the pool owner's own memory. A release beyond the limit is discarded. |
 | `maxCreated`: objects the factory builds over the pool's life | none | `New` option, a positive integer; `pool:SetMaxCreated(n)` raises it and never lowers it | Not needed: omitting it is unbounded. It exists for objects the host never frees (Frames, Textures). At the cap, `Acquire` returns `nil, "exhausted"` or queues. |
-| `maxActive`: objects borrowed or parked at once | none | `New` option, a positive integer | Not needed: omitting it is unbounded. At the cap, `Acquire` returns `nil, "exhausted"` or queues. |
-| `maxWaiting`: queued `Acquire(onAvailable)` requests | `0` | `New` option, a non-negative integer; requires `maxCreated` or `maxActive` | No: the queue is a ring of `maxWaiting` slots allocated once when the pool is built, so it needs a size. A request that finds it full gets `nil, "queueFull"`. |
+| `maxActive`: objects borrowed or parked at once (`Waiting` part) | none | `New` option, a positive integer | Not needed: omitting it is unbounded. At the cap, `Acquire` returns `nil, "exhausted"` or queues. |
+| `maxWaiting`: queued `Acquire(onAvailable)` requests (`Waiting` part) | `0` | `New` option, a non-negative integer; requires `maxCreated` or `maxActive` | No: the queue is a ring of `maxWaiting` slots allocated once when the pool is built, so it needs a size. A request that finds it full gets `nil, "queueFull"`. |
 
 `maxActiveWarning` is a diagnostic, not a limit: it reports once when that many
 objects are borrowed and refuses nothing. Borrowed objects are caller-owned and
@@ -630,7 +689,46 @@ unbounded unless `maxActive` is set (see
 embedded copy and every revision publishes the same table and a pool created
 with it stays unbounded after an upgrade.
 
-## Embedded copies
+## Error behaviour
+
+Argument errors are raised at the caller's line; see
+[Argument errors point at the caller](#argument-errors-point-at-the-caller) and
+[Method reference](#method-reference) for the messages. A part that is not
+loaded is named at the caller's line, as [Loading](#loading) shows. Errors
+that are re-raised after best-effort cleanup keep the original error object
+unchanged and therefore carry no added position. Constructor-time `prewarm`
+failures are re-raised the same way. What cannot reach a caller (a waiting
+request's callback, a deferred release completed by the host, the leak
+warning) is handed to `geterrorhandler()` when the host has one; PoolKit is
+pure Lua, so without one it stays silent.
+
+Loading `PoolKit.lua` raises `MoltenCodes PoolKit requires Registry API 2 to be loaded first`, `MoltenCodes PoolKit requires a valid Registry API 2 facade`, or `MoltenCodes PoolKit package state is corrupted or incomplete`.
+
+## Performance
+
+`Acquire` and `Release` take fast paths that allocate nothing and keep their
+order of checks; each part's mechanism costs one field test on the release
+path and a call only when a pool uses it. Constructors allocate the pool and
+its maps; `SetGeneration` allocates one scratch list.
+
+Resident memory, host Lua 5.1.5, debug information kept, on the shared fake
+client with the string table pre-grown (the 2026-11-15 diagnosis method):
+
+| File | Resident after load | Allocated while loading |
+|---|---:|---:|
+| `PoolKit.lua`, revision 11 (one file) | 82,413 B | 221,616 B |
+| `PoolKit.lua`, revision 12 (core) | 62,240 B | 189,184 B |
+| `parts/PoolKit-Waiting.lua` | 7,441 B | 22,461 B |
+| `parts/PoolKit-Children.lua` | 8,835 B | 26,663 B |
+| `parts/PoolKit-Deferred.lua` | 8,920 B | 26,085 B |
+| `parts/PoolKit-Generations.lua` | 4,284 B | 18,322 B |
+
+A pool carries only the fields in use (revision 12 and later): the twelve
+every pool needs and the options it was given, at most 16 for every
+combination the repository's Kits use, so one 16-slot hash part; strict pools
+share one weak metatable for their `_released` set.
+
+## Embedded copies and upgrades
 
 PoolKit is registered as `poolKit`, API generation `1`, through Registry API 2. The facade, `Pool` prototype, metatable, and `UNBOUNDED` sentinel live in Registry-owned shared state, so compatible future revisions can preserve existing pool identity while replacing methods in place.
 
@@ -651,3 +749,22 @@ gains the re-entrancy counter and the disabled leak warning it predates. The
 `OnFinished` hook calls
 through shared state, so a hook installed by one revision runs the newest
 accepted revision's code.
+
+Revision 12 splits the file into the core and four parts. The state gains
+`parts`, `helpers`, `partInterface` and the shared weak metatable; a part
+records itself under `parts.<Part>` with its own revision, and the highest
+revision of a part wins and upgrades in place. A core revision that takes over
+installs a stub for every part method and then the methods of every part
+already loaded, so either load order ends with the part serving. Pools
+revision 11 built keep their full layout (fields `false` or `0` where a
+revision 12 pool carries none) and are read as they are: every path tests
+such a field by truthiness. Pools cannot be enumerated, so a pool revision 11
+left in a mechanism's state (a queue, a parked object, children, a raised
+generation) in a session without that part is found when a core method
+touches that state: it is reported once per part through `geterrorhandler()`
+and the core takes the safe exact path (it fails the waiting requests with
+`"closed"`, releases a parked object at once, detaches children without
+cascading, and retains no stale object). With the part loaded, everything is
+adopted as it is. The pool upgrade for revisions 1 to 3 and these fallbacks
+exist only in a session where such a revision loaded; elsewhere their code is
+freed after load.

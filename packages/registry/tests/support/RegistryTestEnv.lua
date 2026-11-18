@@ -4,11 +4,22 @@
 --- capture live in the shared `FrameworkTestEnv` fixture at `tests/support/`.
 --- What stays here is this package's own module load order and the
 --- bootstrap-state accessors only Registry's own specs need.
+---
+--- The default environment loads the core and both parts (`Handover`,
+--- `Diagnostics`), so every member serves; `RegistryTestEnv.Core` loads the
+--- core alone, as an addon that embeds only `registry\Registry.lua` does.
 local FrameworkTestEnv = require("FrameworkTestEnv")
 
 local RegistryTestEnv = FrameworkTestEnv.New({
-  modules = { "Registry" },
+  modules = { "Registry", "Registry-Handover", "Registry-Diagnostics" },
   -- Registry is zero-dependency pure Lua.
+  wowApi = false,
+  legacyRegistryState = true,
+})
+
+--- The core without its parts.
+RegistryTestEnv.Core = FrameworkTestEnv.New({
+  modules = { "Registry" },
   wowApi = false,
   legacyRegistryState = true,
 })
@@ -25,10 +36,13 @@ function RegistryTestEnv.NewRegistry()
   return RegistryTestEnv.NewPackage()
 end
 
---- Load Registry again over whatever state is already published.
+--- Load the Registry core again over whatever state is already published.
+--- The parts are not reloaded: an addon that embeds the core alone loads it
+--- the same way after an earlier addon loaded the parts.
 ---@return Registry
 function RegistryTestEnv.Reload()
-  return RegistryTestEnv.ReloadPackage()
+  package.loaded["Registry"] = nil
+  return require("Registry")
 end
 
 --- The private bootstrap state Registry publishes, or `nil`.

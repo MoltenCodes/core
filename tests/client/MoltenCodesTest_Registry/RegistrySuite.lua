@@ -57,7 +57,8 @@ local ALLOCATION_CALLS = 10000
 local ALLOCATION_TOLERANCE_KB = 1
 
 --- Every method docs/API.md of registry lists on the facade.
-local FACADE_METHODS = { "Register", "Get", "GetInfo", "Find", "Packages", "OnRetire", "Bootstrap" }
+local FACADE_METHODS =
+  { "Register", "Get", "GetInfo", "Find", "Packages", "OnRetire", "Bootstrap", "HasPart" }
 
 ---@type Registry
 local Registry = rawget(rawget(namespace, "Registries") or {}, REGISTRY_API)
@@ -323,6 +324,23 @@ lookup:Test(
       startLine = select(2, splitPosition(callerPosition()))
       Registry:Find("signalKit", 0)
     end, "Registry:Find api must be a positive integer up to 2^53")
+    ctx:Expect(line):ToBe(startLine + 1)
+  end
+)
+
+lookup:Test(
+  "Registry:HasPart answers true for both parts the bundle carries, and a non-string name raises at the calling line",
+  function(ctx)
+    -- The installed bundle carries every part of every Kit, so a member's
+    -- missing-part error cannot be seen here; the Busted specs prove it.
+    ctx:Expect(Registry:HasPart("Handover")):ToBe(true)
+    ctx:Expect(Registry:HasPart("Diagnostics")):ToBe(true)
+    ctx:Expect(Registry:HasPart("NoSuchPart")):ToBe(false)
+    local startLine
+    local line = expectErrorAtCallingLine(ctx, function()
+      startLine = select(2, splitPosition(callerPosition()))
+      Registry:HasPart(1)
+    end, "Registry:HasPart name must be a string")
     ctx:Expect(line):ToBe(startLine + 1)
   end
 )

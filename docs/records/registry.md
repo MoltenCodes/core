@@ -73,7 +73,7 @@ Moved from `docs/ROADMAP.md` (Package O — memory, performance and ease of use 
 
 **Minimal core (2026-11-16)**
 
-Status: recorded 2026-11-16; code follows.
+Status: implemented 2026-11-18, 0.7.0, revision 17, 166 specs (see item 9).
 
 Measured on host Lua 5.1.5 (64-bit), debug information kept as the client keeps
 it, on the shared fake client, with the string table pre-grown (the method of
@@ -252,4 +252,41 @@ opt-out because Registry has neither.
    `docs/ARCHITECTURE.md` (the Registry paragraph and the line-budget
    sentences in the interopKit and addonKit paragraphs), `docs/EMBEDDING.md`
    footprint table.
-9. Status: recorded 2026-11-16; code follows.
+9. Status: implemented 2026-11-18, 0.7.0, revision 17, 166 specs. Core 495
+   code lines (budget 600, `tests/Budget_spec.lua`). Measured with the
+   diagnosis harness (host Lua 5.1.5, debug kept, fake client, string table
+   pre-grown): core resident 32,349 B → 26,455 B (-18%), transient while
+   loading 88,486 B → 77,502 B; `Handover` part 10,711 B resident (31,298 B
+   transient), `Diagnostics` part 2,428 B (13,137 B). The 23,000 B target and
+   the 24 KB resident budget are **not reached**, by about 3 KB: the core
+   carries what the research copy did not, namely the report of inherited
+   hand-over state (item 5, with the shared `reportError` block), the three
+   part stubs with their message builder, `HasPart`, and the `helpers` table
+   the parts call through. Choices where the record left one open:
+   - The parts call the core through a `helpers` table in the shared state
+     (validators, entry accessors, the corruption message), read at call
+     time, the pattern the other split Kits use.
+   - `sealFacade = false` needs no part (it asks for no seal, which the core
+     honours trivially); only `retire`, `migrations` and `sealFacade = true`
+     raise without the `Handover` part.
+   - "Left untouched": without the part the core neither calls an inherited
+     retire hook nor resumes an unfinished run nor removes a seal; an
+     unfinished run keeps its `migrating`, `pendingState` and
+     `migratedThrough`. The hook itself is still dropped when a newer
+     revision is selected, as `Register` always did. The report is once per
+     entry (`handoverReported` on the entry).
+   - The core reports through the shared `reportError` block (the opt-out is
+     narrowed to `isSecret` as recorded, so the block is allowed); the
+     `Handover` part takes the `isSecret`, `reportError` and `describeKey`
+     blocks.
+   Deviations: the conformance suite's `arguments` group does not fit either:
+   Registry refuses a secret identifier with the wrong-type message, which
+   never names the secret (`SecretValues_spec.lua` covers each refusal), and
+   the `manifest` group's `Registry:Get(packageId)` case does not apply to
+   Registry itself; `Conformance_spec.lua` registers the rest of `manifest`.
+   The client suite cannot show a stub error, because the installed bundle
+   carries every part; it checks `HasPart` and its refusal. Other owners:
+   InteropKit's manifest must name
+   `"registry": { "api": 2, "parts": ["Diagnostics"] }` and its test
+   environment must load `Registry-Diagnostics` (its `ExposeAll` specs fail
+   without it).

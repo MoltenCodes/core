@@ -26,11 +26,17 @@ local function loadCopy(Registry, revision, sealFacade)
   return implementation
 end
 
----Load the Registry source again, as an embedded copy carrying `revision`.
+-- Revision 16 is the last whole file, sealing included; it is kept verbatim.
+local WHOLE_REVISION = 16
+
+---Load the Registry source again, as an embedded copy carrying `revision`: the
+---whole-file fixture up to revision 16, the core in `src/` after it.
 ---@param revision integer
 ---@return Registry
 local function loadRegistryAtRevision(revision)
-  local path = "packages/registry/src/Registry.lua"
+  local path = revision <= WHOLE_REVISION
+      and "packages/registry/tests/fixtures/Registry-revision16.lua"
+    or "packages/registry/src/Registry.lua"
   local file = assert(io.open(path, "r"))
   local source = file:read("*a")
   file:close()
@@ -136,6 +142,7 @@ describe("Registry sealed facades", function()
     local entries = TestEnv.GetState().entries
 
     local Registry = TestEnv.Reload()
+    require("Registry-Handover")
     assert.are.equal(previous, Registry)
     assert.are.equal(workingRevision, Registry.REVISION)
     assert.are.equal(entries, TestEnv.GetState().entries)

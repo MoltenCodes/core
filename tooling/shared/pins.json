@@ -3,8 +3,13 @@
   "optOuts": [
     {
       "package": "registry",
-      "helpers": ["isSecret", "reportError", "describeKey", "validateFacade", "limits"],
-      "reason": "Registry's 1000-line budget cannot take the marker lines, and it reports nothing these helpers report."
+      "helpers": ["isSecret"],
+      "reason": "Registry's lookup fast path reads the load-time issecretvalue probe directly, once for both arguments; the shared block keeps the probe inside its do block, so converting would add two calls to every Get and Find."
+    },
+    {
+      "package": "signalKit",
+      "helpers": ["limits"],
+      "reason": "The shared limits block measured 1.3 to 2.6 KB more resident than this Kit's own loop and changes its refusals; kept until a leaner revision of the block."
     },
     {
       "package": "bridgeKit",

@@ -1,6 +1,6 @@
 local TestEnv = require("SignalKitTestEnv")
 
-local CURRENT_REVISION = 12
+local CURRENT_REVISION = 13
 
 ---Reduce the package state to the shape revisions 9 and 10 left behind:
 ---schema 5, no shared connection metatable.

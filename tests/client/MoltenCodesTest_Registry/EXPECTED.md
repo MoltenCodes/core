@@ -31,6 +31,7 @@ MoltenCodes Test: PASS registry.lookup: Registry:Get of a package nobody registe
 MoltenCodes Test: PASS registry.lookup: Registry:Find and Registry:Get allocate nothing over 10000 calls each (allocation guard)
 MoltenCodes Test: PASS registry.lookup: a Registry:Get argument error names RegistrySuite.lua at the calling line
 MoltenCodes Test: PASS registry.lookup: a Registry:Find argument error names RegistrySuite.lua at the calling line
+MoltenCodes Test: PASS registry.lookup: Registry:HasPart answers true for both parts the bundle carries, and a non-string name raises at the calling line
 MoltenCodes Test: PASS registry.bootstrap: Bootstrap of a new probe package registers it and hands back a fresh table
 MoltenCodes Test: PASS registry.bootstrap: a second probe copy at the same revision reuses the first copy's table
 MoltenCodes Test: PASS registry.bootstrap: a higher probe revision upgrades the shared table in place and keeps its identity
@@ -38,7 +39,7 @@ MoltenCodes Test: PASS registry.bootstrap: a lower probe revision steps aside an
 MoltenCodes Test: PASS registry.bootstrap: the outgoing copy's retire hook runs once and its hand-over reaches the incoming migration
 MoltenCodes Test: PASS registry.bootstrap: a Registry:Bootstrap argument error names RegistrySuite.lua at the calling line
 MoltenCodes Test: PASS registry.globals: the framework publishes only the globals docs/EMBEDDING.md names
-MoltenCodes Test: registry: 17 passed, 0 failed, 0 skipped, 0 timed out (17 tests)
+MoltenCodes Test: registry: 18 passed, 0 failed, 0 skipped, 0 timed out (18 tests)
 MoltenCodes Test: results saved in MoltenCodesTestResults; /reload or log out to write them to disk.
 ```
 
@@ -60,9 +61,9 @@ prints the same lines.
 
 | Client | Totals line | SKIP lines |
 |---|---|---|
-| Retail (`_retail_`) | `MoltenCodes Test: registry: 17 passed, 0 failed, 0 skipped, 0 timed out (17 tests)` | none |
-| Classic Era (`_classic_era_`) | `MoltenCodes Test: registry: 17 passed, 0 failed, 0 skipped, 0 timed out (17 tests)` | none; same as Retail |
-| Mists of Pandaria Classic (`_classic_`) | `MoltenCodes Test: registry: 17 passed, 0 failed, 0 skipped, 0 timed out (17 tests)` | none; same as Retail |
+| Retail (`_retail_`) | `MoltenCodes Test: registry: 18 passed, 0 failed, 0 skipped, 0 timed out (18 tests)` | none |
+| Classic Era (`_classic_era_`) | `MoltenCodes Test: registry: 18 passed, 0 failed, 0 skipped, 0 timed out (18 tests)` | none; same as Retail |
+| Mists of Pandaria Classic (`_classic_`) | `MoltenCodes Test: registry: 18 passed, 0 failed, 0 skipped, 0 timed out (18 tests)` | none; same as Retail |
 
 On the Classic clients, `every installed Kit is registered at its committed
 API and revision ...` is the first place a Kit that failed to load on that
@@ -92,7 +93,7 @@ package defect on that flavour, not a fault of this suite.
 ## What counts as unexpected
 
 - Any `FAIL`, `SKIP` or `TIMEOUT` line, or a totals line other than
-  `17 passed, 0 failed, 0 skipped, 0 timed out (17 tests)`.
+  `18 passed, 0 failed, 0 skipped, 0 timed out (18 tests)`.
 - No login line, or `Expected.lua is missing`: the harness or the installer
   did not run as intended.
 - A Lua error window or a BugSack entry naming `MoltenCodes`,

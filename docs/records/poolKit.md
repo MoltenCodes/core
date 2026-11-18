@@ -2,7 +2,7 @@
 
 **Minimal core (2026-11-16)**
 
-Status: recorded 2026-11-16; code follows.
+Status: implemented 2026-11-18, 0.5.0, revision 12, 157 specs (see item 9).
 
 Measured on host Lua 5.1.5 (64-bit), debug information kept as the client keeps
 it, on the shared fake client, string table pre-grown (the method of the
@@ -199,4 +199,41 @@ without a host error handler, where the shared `reportError` prints.
    `tests/README.md`, `src/.luarc.json`, the file header ("Every pool also
    carries a generation" becomes the Generations part's sentence). Shared files (kept by their owner): `docs/EMBEDDING.md` footprint and load order,
    `packages/README.md`.
-9. Status: recorded 2026-11-16; code follows.
+9. Status: implemented 2026-11-18, 0.5.0, revision 12, 157 specs. Measured
+   with the diagnosis harness (host Lua 5.1.5, debug kept, fake client, string
+   table pre-grown, Registry revision 17 loaded first): core resident
+   82,413 B → 62,240 B (-24%), transient while loading 221,616 B →
+   189,184 B; parts when loaded: `Waiting` 7,441 B, `Children` 8,835 B,
+   `Deferred` 8,920 B, `Generations` 4,284 B. The 54,000 B core target is
+   **not reached**, by about 8 KB: P4's rule list was first written as one
+   table per option and measured larger than the code it replaced, so it is
+   one array of rule strings read only while a constructor runs; the part
+   plumbing (`_state.helpers`, the per-mechanism lookup, five stubs, `HasPart`)
+   and the shared blocks add what the research copy priced at +500 B but
+   measures at about 2 KB; and the hot paths (`Acquire`, `Release`,
+   `releaseActive`, construction) stay as they were. Empty pool: twelve fields
+   plus the options given. Choices where the record left one open:
+   - At most 16 fields holds for every option combination the repository's
+     Kits use; a pool given all five optional settings (`reset`, `destroy`,
+     `maxCreated`, `maxActiveWarning` and the default `strict`) carries 17.
+     `_callbackPhase` stays present (as `false`) so that a reset callback
+     never adds a key, which would grow the hash part on every such pool.
+   - The pool fallbacks of item 5 (`_state.fullPools`, sticky, set when
+     revision 11 or older loaded) are built only in such a session, like
+     `upgradePool` under `_state.legacyPools`; the report is once per part
+     per session. Without the `Waiting` part, a revision 11 pool's new
+     `Acquire(onAvailable)` at capacity answers `"queueFull"`.
+   - A part's getter stays a core method answering the neutral value; only
+     the five mutators are stubs.
+   - The layout constants (`ACTIVE`, `PARKED`, `"closed"`) are each part's
+     own, not helpers: they are values of the pool layout every revision
+     shares.
+   Specs adjusted: `SecretValues_spec.lua` loads the parts after the core (two
+   of its cases use `generation` and `SetGeneration`); the test environment's
+   `ReloadPackage` reloads the core and then its parts, and `LoadRevision` up
+   to 11 loads the revision 11 file. Client suite: `HasPart` for the four
+   parts; a stub error cannot be seen there, because the installed bundle
+   carries every part. Other owners: WidgetKit's revision 13 fixture
+   (`tests/support/WidgetKitRevision13.lua`) builds pools with `generation`,
+   so `Revision13_spec.lua`'s environment must load `PoolKit-Generations`
+   after `PoolKit` (3 specs fail without it).

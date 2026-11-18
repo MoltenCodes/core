@@ -4,7 +4,7 @@ local expectErrorContaining = TestEnv.expectErrorContaining
 
 ---The implementation revision `src/SignalKit.lua` carries; `Manifest_spec.lua`
 ---pins the same number against `package.manifest.json`.
-local CURRENT_REVISION = 12
+local CURRENT_REVISION = 13
 
 ---The package-wide limits a fresh session starts with.
 local DEFAULT_LIMITS = { maxBuses = 64, maxJournalCapacity = 1024, maxJournalArguments = 8 }
@@ -101,7 +101,9 @@ describe("SignalKit package bootstrap", function()
     rawset(SignalKit, "REVISION", 99)
     rawset(SignalKit, "_state", futureState)
 
-    local reloaded = TestEnv.ReloadPackage()
+    -- The core alone: it yields to the newer copy before any part could load.
+    package.loaded["SignalKit"] = nil
+    local reloaded = require("SignalKit")
 
     assert.are.equal(SignalKit, reloaded)
     assert.are.equal(99, reloaded.REVISION)
@@ -478,18 +480,20 @@ describe("SignalKit package bootstrap", function()
     end)
   end)
 
-  it("rejects a same-revision facade whose journal prototype is incomplete", function()
+  -- Since revision 13 the bus and journal methods are the parts'; what a
+  -- same-revision copy must find complete is the core's own state.
+  it("rejects a same-revision facade whose part records are missing", function()
     local SignalKit = TestEnv.NewPackage()
-    rawset(rawget(SignalKit, "_state"), "journalPrototype", {})
+    rawset(rawget(SignalKit, "_state"), "parts", nil)
 
     expectErrorContaining("corrupted or incomplete", function()
       TestEnv.ReloadPackage()
     end)
   end)
 
-  it("rejects a same-revision facade whose bus state is incomplete", function()
+  it("rejects a same-revision facade whose part helpers are missing", function()
     local SignalKit = TestEnv.NewPackage()
-    rawset(rawget(SignalKit, "_state"), "busPrototype", {})
+    rawset(rawget(SignalKit, "_state"), "helpers", nil)
 
     expectErrorContaining("corrupted or incomplete", function()
       TestEnv.ReloadPackage()

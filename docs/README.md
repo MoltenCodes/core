@@ -84,7 +84,7 @@ Current package entry points:
 - [`SchedulerKit`](../packages/schedulerKit/README.md) — Cooperative, frame-budgeted scheduling with priorities, cancellation scopes and TimerKit delays.
 - [`SchemaKit`](../packages/schemaKit/README.md) — Sealed value schemas with structured, secret-safe failures: one validation core for arguments, saved variables, options and messages.
 - [`SettingsKit`](../packages/settingsKit/README.md) — Saved variables with scopes, schema-validated writes, defaults never written back, profiles and versioned migrations.
-- [`SignalKit`](../packages/signalKit/README.md) — Deterministic, re-entrant callback dispatch with explicit connection lifetimes, subscriber-transition hooks, journals and named message buses.
+- [`SignalKit`](../packages/signalKit/README.md) — Deterministic, re-entrant callback dispatch with explicit connection lifetimes and subscriber-transition hooks; message buses and journals as parts.
 - [`TimerKit`](../packages/timerKit/README.md) — Cancelable one-shot and repeating timers with ownership scopes, and addon scopes closed at logout through LifecycleKit or EventKit when present.
 - [`ToastKit`](../packages/toastKit/README.md) — Short notifications that stack at one anchor, hold under the cursor and fade out, with icons and click handlers, pooled and bounded.
 - [`TooltipKit`](../packages/tooltipKit/README.md) — Multi-column tooltips, keyed and pooled, with headers, spans, colours, line handlers, scrolling, smart anchoring and auto-hide.

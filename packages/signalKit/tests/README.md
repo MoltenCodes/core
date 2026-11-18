@@ -160,3 +160,14 @@ loaded facade with `rawset`, or removes it to model a LifecycleKit older than
 0.6.0.
 
 All executable specs use Busted's `*_spec.lua` convention and are discovered through the repository package-aware test runner.
+
+Revision 13 adds `Parts_spec.lua` (the Bus and Journal parts: the facade
+members and `CloseAddonBus` without them, `HasPart`, either load order, a
+part without its core, Coalescing without the Bus part, part revisions, a
+later core over installed parts, and the upgrade from revision 12 with and
+without the parts) and `Conformance_spec.lua` (every group of the shared
+conformance suite). `support/SignalKitTestEnv.lua` loads the core and the Bus
+and Journal parts; `SignalKitTestEnv.Core` loads the core alone, `LoadParts`
+loads the parts, `ReloadPackage` reloads the core and then its parts, and
+`LoadRevision` loads the whole-file fixture `fixtures/SignalKit-revision12.lua`
+up to revision 12 and the core in `src/` after it.

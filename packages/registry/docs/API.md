@@ -1,11 +1,11 @@
 # Registry API
 
 Registry API generation: **2**  
-Implementation revision: **16**
+Implementation revision: **17**
 
 Registry is a zero-dependency runtime resolver for independently embedded framework packages.
 
-## Public runtime access
+## Loading
 
 The portable World of Warcraft access path is:
 
@@ -32,10 +32,6 @@ Registry has no dependencies and must be listed before every framework package
 that uses it:
 
 ```toc
-
-The key `MoltenCodes.For` is reserved for AddonKit, which installs its entry
-function there (`local MC = MoltenCodes:For(...)`); Registry never writes it.
-
 ## Interface: 120105, 50504, 20506, 11509
 ## Title: My Addon
 ## Notes: Example of embedding MoltenCodes packages
@@ -61,6 +57,54 @@ local EventKit = Registry:Get("eventKit", 1)
 Every addon lists its own bundled copies. Registry reconciles them: whichever
 copy of a package carries the highest revision wins, and all addons end up
 sharing that one instance.
+
+The key `MoltenCodes.For` is reserved for AddonKit, which installs its entry
+function there (`local MC = MoltenCodes:For(...)`); Registry never writes it.
+
+### Parts
+
+Registry is a core file and two optional parts
+([ADR 0001](../../../docs/decisions/0001-kit-core-and-parts.md), revision 17
+and later). Every Kit needs only the core; an addon embeds a part after
+`registry\Registry.lua` when it uses what the part holds:
+
+| Part | File | What it holds |
+|---|---|---|
+| `Handover` | `registry\parts\Registry-Handover.lua` | `request.retire`, `request.migrations` and `request.sealFacade` of `Bootstrap`, and `OnRetire`: see [Retirement and migration](#retirement-and-migration) and [Sealed facades](#sealed-facades) |
+| `Diagnostics` | `registry\parts\Registry-Diagnostics.lua` | `GetInfo` and `Packages` |
+
+```toc
+Libs\MoltenCodes\registry\Registry.lua
+Libs\MoltenCodes\registry\parts\Registry-Diagnostics.lua
+```
+
+The generated `embeds.xml` (`python3 -m tooling.package.embeds`) adds a part
+when a manifest names it, as InteropKit's does for `Diagnostics`. Each moved
+member stays on the facade without its part and raises at the caller's line,
+naming the file to add:
+
+```text
+Registry:Packages is in Registry's Diagnostics part, which is not loaded: add registry\parts\Registry-Diagnostics.lua to embeds.xml after registry\Registry.lua
+```
+
+A part loads after the core and raises
+`MoltenCodes Registry part <Part> requires Registry API 2 to be loaded first`
+without it. Code that uses a part only when it is there asks
+[`Registry:HasPart(name)`](#registryhaspartname).
+
+## Public surface
+
+| Member | Where | What it does |
+|---|---|---|
+| `Registry.API`, `Registry.REVISION` | core | [Registry constants](#registry-constants) |
+| `Registry:Register(packageName, api, revision)` | core | requests initialization rights for one package revision |
+| `Registry:Get(packageName, api)` | core | the selected shared package table and its revision |
+| `Registry:Find(packageName, api)` | core | silent lookup for an optional dependency, with a reason on a miss |
+| `Registry:Bootstrap(request)` | core (three request fields: `Handover` part) | the reconciliation every Kit calls at load |
+| `Registry:HasPart(name)` | core | whether a part is loaded |
+| `Registry:GetInfo(packageName, api)` | `Diagnostics` part | a metadata snapshot of one registration |
+| `Registry:Packages()` | `Diagnostics` part | every registration, sorted |
+| `Registry:OnRetire(packageName, api, retire)` | `Handover` part | registers the selected copy's retire hook |
 
 ## Package identity
 
@@ -174,7 +218,7 @@ run the full argument checks (revision 14 and later). Every Registry revision
 validated a name and an API generation before either became a key of its
 private state, so a lookup that finds a well-formed entry skips the name
 pattern; the private state must not be written by consumers (see
-[Embedded Registry copies](#embedded-registry-copies)). What a hit still does:
+[Embedded copies and upgrades](#embedded-copies-and-upgrades)). What a hit still does:
 
 - asks `issecretvalue`, on a client that has it, about the name and the API
   before either is used as a key, and about the stored revision before it is
@@ -196,6 +240,9 @@ and 2.5 to 3 times LibStub's lookup on a host that is not idle; the rest is the 
 check, which the contract keeps.
 
 ## `Registry:GetInfo(packageName, api)`
+
+In the `Diagnostics` part (revision 17 and later); without it the call raises
+at the caller, naming `registry\parts\Registry-Diagnostics.lua`.
 
 Returns a metadata snapshot:
 
@@ -237,7 +284,28 @@ revision. On a miss it returns `nil` and one reason from a fixed vocabulary:
 `Find` never raises because a package is missing. It raises at the caller only
 for malformed arguments, exactly as `Get` does, and it performs no allocation.
 
+## `Registry:HasPart(name)`
+
+Whether the named part is loaded in this session: `"Handover"` or
+`"Diagnostics"` (revision 17 and later). Every member stays on the facade
+whether its part is loaded or not, so code that uses a part only when it is
+there asks this, never whether the method is a function:
+
+```lua
+if Registry:HasPart("Diagnostics") then
+  for _, row in ipairs(Registry:Packages()) do
+    print(row.package, row.revision)
+  end
+end
+```
+
+Any other string answers `false`. A `name` that is not a string, or is secret,
+raises `Registry:HasPart name must be a string` at the caller.
+
 ## `Registry:Packages()`
+
+In the `Diagnostics` part (revision 17 and later); without it the call raises
+at the caller, naming `registry\parts\Registry-Diagnostics.lua`.
 
 Diagnostic enumeration of every registration:
 
@@ -255,6 +323,9 @@ an entry `Find` would refuse. Mutating the result cannot touch Registry state.
 and debugging, never for a hot path. Available from revision **7**.
 
 ## `Registry:OnRetire(packageName, api, retire)`
+
+In the `Handover` part (revision 17 and later); without it the call raises at
+the caller, naming `registry\parts\Registry-Handover.lua`.
 
 Registers the hand-over hook of the revision currently selected for
 `(packageName, api)`. It is the alternative to passing `request.retire` to
@@ -298,9 +369,21 @@ documented load order, which already puts Registry first.
 | `validatePublicSurface` | yes | `fun(implementation): boolean` — whether a table exposes the complete public API of this generation. |
 | `validateState` | no | `fun(implementation): boolean` — whether a copy carrying this exact revision already committed its private state. Without it, a same-revision copy that passes `validatePublicSurface` counts as complete. |
 | `resume` | no | `fun(implementation, complete): integer\|nil` — the same-revision repair hook described below. |
-| `retire` | no | `fun(implementation, incomingRevision): any` — this copy's hand-over hook, called once when a newer revision replaces it. Revision 7. |
-| `migrations` | no | `{ [revision] = fun(state, implementation): any }` — per-revision migration steps. Revision 7. |
-| `sealFacade` | no | `boolean` — refuse new facade fields written from outside the package. Revision 7. |
+| `retire` | no | `fun(implementation, incomingRevision): any` — this copy's hand-over hook, called once when a newer revision replaces it. Revision 7; `Handover` part. |
+| `migrations` | no | `{ [revision] = fun(state, implementation): any }` — per-revision migration steps. Revision 7; `Handover` part. |
+| `sealFacade` | no | `boolean` — refuse new facade fields written from outside the package. Revision 7; `true` needs the `Handover` part. |
+
+The last three are the `Handover` part's (revision 17 and later). Without the
+part they are still type-checked, and a request that names `retire` or
+`migrations`, or sets `sealFacade = true`, raises at the package file's
+`Bootstrap` call:
+
+```text
+Registry:Bootstrap request.retire is in Registry's Handover part, which is not loaded: add registry\parts\Registry-Handover.lua to embeds.xml after registry\Registry.lua
+```
+
+`sealFacade = false` asks for no seal and needs no part. No Kit in this
+repository uses any of the three.
 
 ### Return values
 
@@ -378,6 +461,11 @@ bootstrap has to run before any facade method exists. It stays hand-written.
 
 ## Retirement and migration
 
+Everything in this section is the `Handover` part's (revision 17 and later;
+see [Parts](#parts)). Without it, Registry still keeps each entry's `status`
+and the last revision migrated through, which is all a request without these
+fields needs.
+
 Retirement is a two-sided contract (revision 7 and later): the outgoing copy
 says what it hands over, and the incoming copy says how to convert it, instead
 of guessing from `previousRevision` alone.
@@ -439,6 +527,8 @@ Registry does not migrate saved variables, and there is no downgrade path.
 
 ## Sealed facades
 
+The seal is the `Handover` part's (revision 17 and later; see [Parts](#parts)).
+
 `request.sealFacade = true` installs a metatable on the shared table whose
 `__newindex` raises at the writer's line:
 
@@ -473,6 +563,36 @@ Limits, stated plainly:
 The seal is opt-in in API 2. It is intended to become the default in a later
 Registry API generation. No `Unseal` method exists, by design.
 
+## Secret values
+
+On a client with secret values, comparing a secret with a
+value of its own type raises (`==`, `~=`, `<`, `<=` and `rawequal` alike), and
+so does using it as a table key; a comparison with `nil` or with a value of
+another type happens not to raise (measured on Retail 12.1.0 b69933, see
+[`docs/EMBEDDING.md`](../../../docs/EMBEDDING.md#secret-values-retail-12x)).
+Registry still tests every value it did not create for absence with
+`type(value) == "nil"`, the repository rule, which never compares anything, and
+asks `issecretvalue` before it compares one. A secret is never a valid argument, and it is refused
+at the same line and with the same message as a value of the wrong type
+(revision 12 and later):
+
+```text
+Registry:<Method> packageName must be a non-empty string
+Registry:<Method> api must be a positive integer up to 2^53
+Registry:<Method> revision must be a positive integer up to 2^53
+Registry:Bootstrap request.label must be a non-empty string
+Registry:Bootstrap request.<field> must be a <function|table|boolean>
+Registry:Bootstrap request.resume must return a revision
+```
+
+A `validateState` hook that returns a secret counts as "not complete", so the
+same-revision copy is refused or handed to `resume` as incomplete. A
+`validatePublicSurface` hook that returns a secret counts as "surface not
+valid" (revision 13 and later): a secret cannot be tested as a boolean, so
+Registry never truth-tests the answer and refuses the copy with
+`<label> package state is corrupted or incomplete`, exactly as for `false`. A migration
+step may return a secret: it becomes the migrated state without being compared.
+
 ## Limits
 
 Registry has no limits and no `UNBOUNDED` sentinel. What it retains is one
@@ -486,16 +606,113 @@ identifiers: an API generation or revision above `2^53` is refused because Lua
 [Package identity](#package-identity)). That is a wire-format-like ceiling, not
 retention, so it is not opened.
 
-## Registry constants
+## Error behaviour
 
-```lua
-Registry.API
-Registry.REVISION
+Registry raises two kinds of error, and the stack level differs on purpose.
+
+**Argument errors** from `Register()`, `Get()`, `GetInfo()`, `Find()`,
+`OnRetire()`, `HasPart()` and `Bootstrap()`, a member whose part is not loaded, and corrupted package state discovered while
+serving one of those calls or `Packages()`, point at the calling line. A package
+author sees their own `Registry:Register(...)` call, not a line inside
+`Registry.lua`. Failures `Bootstrap` raises on a package's behalf — a
+refused state, a failed migration step, a seal that cannot be applied — carry
+the package's `label` and point at the package's `Bootstrap` call. Corrupted
+package state that `Bootstrap` finds, in its own lookup, while registering or
+while adopting the state a hook handed over, raises the same
+`Registry: package state is corrupted` error and also points at the package's
+`Bootstrap` call (revision 10 and later).
+
+The argument and state messages, with `<Method>` the public method's name and
+`<label>` the request's label:
+
+```text
+Registry:<Method> packageName must be a non-empty string
+Registry:<Method> packageName must match ^[a-z][A-Za-z0-9]*$
+Registry:<Method> api must be a positive integer up to 2^53
+Registry:Register revision must be a positive integer up to 2^53
+Registry:Register does not accept an implementation argument; initialize the returned shared package table instead
+Registry:OnRetire retire must be a function
+Registry:OnRetire package "<packageName>" is not registered
+Registry:Bootstrap request must be a table
+Registry:Bootstrap revision must be a positive integer up to 2^53
+Registry:Bootstrap request.label must be a non-empty string
+Registry:Bootstrap request.validatePublicSurface must be a function
+Registry:Bootstrap request.<field> must be a <function|table|boolean>
+Registry:Bootstrap request.resume must return a revision
+Registry:HasPart name must be a string
+Registry:<Member> is in Registry's <Part> part, which is not loaded: add registry\parts\Registry-<Part>.lua to embeds.xml after registry\Registry.lua
+Registry:Bootstrap request.<field> is in Registry's Handover part, which is not loaded: add registry\parts\Registry-Handover.lua to embeds.xml after registry\Registry.lua
+Registry: package state is corrupted
+<label> package state is corrupted or incomplete
+<label> request.migrations must map positive revisions to functions
+<label> migration to revision <n> failed: <error>
+<label> cannot seal a facade that already carries a metatable
+<label> Registry state changed unexpectedly during bootstrap
 ```
 
-`API` identifies the Registry API generation. `REVISION` identifies the Registry implementation revision.
+A retire hook that raises is not an error at any call site: it is reported as
+`<label> retire hook failed: <error>` through the host error handler. So is
+hand-over state an older revision left that only the `Handover` part can run
+(a retire hook, an unfinished migration run or a seal) when a newer revision
+bootstraps over it without the part: once per entry, as
+`<label> inherited a retire hook, a migration run or a seal; running it is in
+Registry's Handover part, which is not loaded: ...`, and left as it is. The
+handler is called through `pcall`; a missing or raising handler falls back to
+`print` (revision 17 and later).
 
-## Embedded Registry copies
+**Load-time failures** — incompatible or corrupted bootstrap state, a corrupted
+facade, a hostile owner of `MoltenCodes` or `MoltenCodes.Registries` — raise with
+level `0`, which attaches no source position, and carry an explicit `Registry:`
+prefix instead:
+
+```text
+Registry: bootstrap state is incompatible
+Registry: bootstrap state is corrupted
+Registry: API generation is incompatible
+Registry: facade is corrupted or incompatible
+Registry: MoltenCodes global namespace is owned by an incompatible value
+Registry: MoltenCodes.Registries is owned by an incompatible value
+Registry: MoltenCodes.Registries[2] is not this facade
+Registry: MoltenCodes.Registry is owned by an incompatible value
+Registry: MoltenCodes.Registry claims API 2 but is not the shared facade
+```
+
+These run at file scope, where the only "caller" is whichever addon TOC happened
+to load the file. A stack level there names an arbitrary consumer line that has
+nothing to do with the failure, so the prefix carries the attribution instead.
+
+A part loaded without its core raises at file scope:
+
+```text
+MoltenCodes Registry part <Part> requires Registry API 2 to be loaded first
+```
+
+## Performance
+
+`Register`, `Get` and `Find` take the lookup fast path described under
+[Lookup cost](#lookup-cost) and allocate nothing on a hit. `Bootstrap` runs
+once per embedded Kit at load. `GetInfo` and `Packages` allocate their
+results by design.
+
+What Registry keeps resident is measured on host Lua 5.1.5, 64-bit, debug
+information kept as the client keeps it, on the shared fake client with the
+string table pre-grown (the method of the 2026-11-15 memory diagnosis):
+
+| File | Resident after load | Allocated while loading |
+|---|---:|---:|
+| `Registry.lua`, revision 16 (one file) | 32,349 B | 88,486 B |
+| `Registry.lua`, revision 17 (core) | 26,455 B | 77,502 B |
+| `parts/Registry-Handover.lua` | 10,711 B | 31,298 B |
+| `parts/Registry-Diagnostics.lua` | 2,428 B | 13,137 B |
+
+LibStub keeps 2,623 B. What the core keeps above it buys the documented
+guarantees: the `Bootstrap` reconciliation every Kit would otherwise carry
+itself, shape-checked lookups, and errors at the caller's line. The core's
+budget is at most 600 code lines (`tests/Budget_spec.lua`) and at most 24 KB
+resident; revision 17 is at 495 code lines and above the resident figure, see
+`CHANGELOG.md` 0.7.0.
+
+## Embedded copies and upgrades
 
 Registry stores one private bootstrap object in the WoW global environment, per
 API generation, and publishes two public entries:
@@ -514,6 +731,26 @@ The private bootstrap key is implementation detail and must not be read or writt
 Registry validates package buckets and entries lazily when they are accessed, on the fast path as on the full one. If private package state is malformed, `Register()`, `Get()`, `GetInfo()`, `Find()`, `OnRetire()`, `Packages()` and `Bootstrap()` fail consistently with a Registry corruption error at the calling line rather than returning partial or invalid data. `Packages()` validates every entry it lists, so a malformed one is never reported as a row.
 
 Bootstrap-state and facade integrity checks use raw table access. Metatable hooks on corrupted or foreign tables cannot synthesize Registry-owned fields or intercept an in-place facade upgrade.
+
+Revision 17 adds two optional fields to the shared state, `parts` and
+`helpers`; its `schema` stays `1`, because every older copy refuses any other
+schema with "bootstrap state is incompatible" and never reads the new fields.
+A part records itself under `parts.<Part>` with its own revision; two addons
+may embed different revisions of a part and the highest wins, upgrading in
+place. A core revision that takes over the facade installs a stub for every
+moved member and then the methods of every part already loaded, so whichever
+loaded first, the part serves. An upgrade from revision 16 keeps every entry;
+see [Error behaviour](#error-behaviour) for the hand-over state revision 16
+may leave behind.
+
+## Registry constants
+
+```lua
+Registry.API
+Registry.REVISION
+```
+
+`API` identifies the Registry API generation. `REVISION` identifies the Registry implementation revision.
 
 ## Load-order semantics
 
@@ -604,95 +841,3 @@ Registry does not translate between generations. A generation-3 facade is not
 routed generation-2 calls and vice versa; a package that needs both asks for
 both by number.
 
-## Error reporting
-
-Registry raises two kinds of error, and the stack level differs on purpose.
-
-**Argument errors** from `Register()`, `Get()`, `GetInfo()`, `Find()`,
-`OnRetire()` and `Bootstrap()`, and corrupted package state discovered while
-serving one of those calls or `Packages()`, point at the calling line. A package
-author sees their own `Registry:Register(...)` call, not a line inside
-`Registry.lua`. Failures `Bootstrap` raises on a package's behalf — a
-refused state, a failed migration step, a seal that cannot be applied — carry
-the package's `label` and point at the package's `Bootstrap` call. Corrupted
-package state that `Bootstrap` finds, in its own lookup, while registering or
-while adopting the state a hook handed over, raises the same
-`Registry: package state is corrupted` error and also points at the package's
-`Bootstrap` call (revision 10 and later).
-
-The argument and state messages, with `<Method>` the public method's name and
-`<label>` the request's label:
-
-```text
-Registry:<Method> packageName must be a non-empty string
-Registry:<Method> packageName must match ^[a-z][A-Za-z0-9]*$
-Registry:<Method> api must be a positive integer up to 2^53
-Registry:Register revision must be a positive integer up to 2^53
-Registry:Register does not accept an implementation argument; initialize the returned shared package table instead
-Registry:OnRetire retire must be a function
-Registry:OnRetire package "<packageName>" is not registered
-Registry:Bootstrap request must be a table
-Registry:Bootstrap revision must be a positive integer up to 2^53
-Registry:Bootstrap request.label must be a non-empty string
-Registry:Bootstrap request.validatePublicSurface must be a function
-Registry:Bootstrap request.<field> must be a <function|table|boolean>
-Registry:Bootstrap request.resume must return a revision
-Registry: package state is corrupted
-<label> package state is corrupted or incomplete
-<label> request.migrations must map positive revisions to functions
-<label> migration to revision <n> failed: <error>
-<label> cannot seal a facade that already carries a metatable
-<label> Registry state changed unexpectedly during bootstrap
-```
-
-A retire hook that raises is not an error at any call site: it is reported as
-`<label> retire hook failed: <error>` through the host error handler.
-
-**Secret values.** On a client with secret values, comparing a secret with a
-value of its own type raises (`==`, `~=`, `<`, `<=` and `rawequal` alike), and
-so does using it as a table key; a comparison with `nil` or with a value of
-another type happens not to raise (measured on Retail 12.1.0 b69933, see
-[`docs/EMBEDDING.md`](../../../docs/EMBEDDING.md#secret-values-retail-12x)).
-Registry still tests every value it did not create for absence with
-`type(value) == "nil"`, the repository rule, which never compares anything, and
-asks `issecretvalue` before it compares one. A secret is never a valid argument, and it is refused
-at the same line and with the same message as a value of the wrong type
-(revision 12 and later):
-
-```text
-Registry:<Method> packageName must be a non-empty string
-Registry:<Method> api must be a positive integer up to 2^53
-Registry:<Method> revision must be a positive integer up to 2^53
-Registry:Bootstrap request.label must be a non-empty string
-Registry:Bootstrap request.<field> must be a <function|table|boolean>
-Registry:Bootstrap request.resume must return a revision
-```
-
-A `validateState` hook that returns a secret counts as "not complete", so the
-same-revision copy is refused or handed to `resume` as incomplete. A
-`validatePublicSurface` hook that returns a secret counts as "surface not
-valid" (revision 13 and later): a secret cannot be tested as a boolean, so
-Registry never truth-tests the answer and refuses the copy with
-`<label> package state is corrupted or incomplete`, exactly as for `false`. A migration
-step may return a secret: it becomes the migrated state without being compared.
-
-**Load-time failures** — incompatible or corrupted bootstrap state, a corrupted
-facade, a hostile owner of `MoltenCodes` or `MoltenCodes.Registries` — raise with
-level `0`, which attaches no source position, and carry an explicit `Registry:`
-prefix instead:
-
-```text
-Registry: bootstrap state is incompatible
-Registry: bootstrap state is corrupted
-Registry: API generation is incompatible
-Registry: facade is corrupted or incompatible
-Registry: MoltenCodes global namespace is owned by an incompatible value
-Registry: MoltenCodes.Registries is owned by an incompatible value
-Registry: MoltenCodes.Registries[2] is not this facade
-Registry: MoltenCodes.Registry is owned by an incompatible value
-Registry: MoltenCodes.Registry claims API 2 but is not the shared facade
-```
-
-These run at file scope, where the only "caller" is whichever addon TOC happened
-to load the file. A stack level there names an arbitrary consumer line that has
-nothing to do with the failure, so the prefix carries the attribution instead.

@@ -30,6 +30,7 @@ first, which can make the client stutter for a moment:
 MoltenCodes Test: running poolKit: 9 suites. Results follow when every test has finished.
 MoltenCodes Test: PASS poolKit.facade: Registry:Get('poolKit', 1) is the PoolKit facade with API 1, New, NewTablePool, UNBOUNDED and DEFAULT_MAX_RETAINED 128
 MoltenCodes Test: PASS poolKit.facade: the installed PoolKit carries the revision of the committed manifest
+MoltenCodes Test: PASS poolKit.facade: PoolKit:HasPart answers true for the four parts the bundle carries
 MoltenCodes Test: PASS poolKit.frames: a released Frame comes back from Acquire as the same Frame, hidden, unanchored and without a parent
 MoltenCodes Test: PASS poolKit.frames: a second pool doing the same work draws the Frames the first gave back, so no Frame is created twice
 MoltenCodes Test: PASS poolKit.frames: maxRetained 1 keeps one released Frame and hands the other to destroy, which gives it back to this file's bank
@@ -64,7 +65,7 @@ MoltenCodes Test: PASS poolKit.secrets: a secret maxCreated is refused by PoolKi
 MoltenCodes Test: PASS poolKit.secrets: a secret strictReset is refused by PoolKit:New at the calling line
 MoltenCodes Test: PASS poolKit.secrets: a secret Prewarm count is refused at the calling line and builds no Frame
 MoltenCodes Test: PASS poolKit.secrets: secret Trim, SetMaxRetained, SetGeneration and SetMaxCreated arguments are each refused at the calling line
-MoltenCodes Test: poolKit: 36 passed, 0 failed, 0 skipped, 0 timed out (36 tests)
+MoltenCodes Test: poolKit: 37 passed, 0 failed, 0 skipped, 0 timed out (37 tests)
 MoltenCodes Test: results saved in MoltenCodesTestResults; /reload or log out to write them to disk.
 ```
 
@@ -103,7 +104,7 @@ that time is passed on to the handler it replaced.
 The client plays no animation under a hidden `UIParent`, so the six
 animation tests that need one to play end as skipped when the interface is
 hidden (Alt+Z) at the moment they run. They print these lines instead, and the
-totals line reads `30 passed, 0 failed, 6 skipped, 0 timed out (36 tests)`:
+totals line reads `31 passed, 0 failed, 6 skipped, 0 timed out (37 tests)`:
 
 ```text
 MoltenCodes Test: SKIP poolKit.animation: ReleaseAfter a playing Alpha animation parks the Frame, and the client's OnFinished returns it to the pool -- the interface is hidden (Alt+Z); an animation does not play under a hidden UIParent
@@ -123,7 +124,7 @@ out of combat without side effects: the client's own API documentation
 `packages/apiKit/metadata/retail/namespaces.json`) lists it with no
 restriction, and it only converts the values handed to it. Retail 12.1 has
 both. A client without them prints these five lines instead, and the totals
-line reads `31 passed, 0 failed, 5 skipped, 0 timed out (36 tests)`:
+line reads `32 passed, 0 failed, 5 skipped, 0 timed out (37 tests)`:
 
 ```text
 MoltenCodes Test: SKIP poolKit.secrets: a secret maxRetained is refused by PoolKit:New at the calling line -- the client has no issecretvalue and secretwrap; the secret path was not exercised
@@ -137,7 +138,7 @@ A client that has both functions but makes no secret with them (the harness
 asks once whether `issecretvalue` reports what `secretwrap` returns as
 secret) skips the same five tests with the harness's own reason, and the
 totals line is the same
-`31 passed, 0 failed, 5 skipped, 0 timed out (36 tests)`:
+`32 passed, 0 failed, 5 skipped, 0 timed out (37 tests)`:
 
 ```text
 MoltenCodes Test: SKIP poolKit.secrets: a secret maxRetained is refused by PoolKit:New at the calling line -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
@@ -164,7 +165,7 @@ AnimationGroup and Alpha animation methods every client has (`Show`, `Hide`,
 ### Retail (12.1)
 
 The lines above:
-`MoltenCodes Test: poolKit: 36 passed, 0 failed, 0 skipped, 0 timed out (36 tests)`,
+`MoltenCodes Test: poolKit: 37 passed, 0 failed, 0 skipped, 0 timed out (37 tests)`,
 with no `SKIP` line while the interface is shown.
 
 ### Classic Era (1.15) and Mists of Pandaria Classic (5.5)
@@ -176,10 +177,10 @@ only the running client gives: whether its `secretwrap` makes a value
 functions).
 
 - When it does, the totals line is Retail's:
-  `MoltenCodes Test: poolKit: 36 passed, 0 failed, 0 skipped, 0 timed out (36 tests)`.
+  `MoltenCodes Test: poolKit: 37 passed, 0 failed, 0 skipped, 0 timed out (37 tests)`.
 - When it does not, the five lines above with the reason
   `the client makes no secret values (...)` are `SKIP`, and the totals line is
-  `MoltenCodes Test: poolKit: 31 passed, 0 failed, 5 skipped, 0 timed out (36 tests)`.
+  `MoltenCodes Test: poolKit: 32 passed, 0 failed, 5 skipped, 0 timed out (37 tests)`.
 
 With the interface hidden, the six animation tests skip on every flavour as
 [With the interface hidden](#with-the-interface-hidden) shows, and each
@@ -228,7 +229,7 @@ totals line has six more skipped and six fewer passed tests.
 
 - Any `FAIL` or `TIMEOUT` line, a `SKIP` line on Retail 12.1 with the
   interface shown, or a totals line other than
-  `36 passed, 0 failed, 0 skipped, 0 timed out (36 tests)`; on a Classic
+  `37 passed, 0 failed, 0 skipped, 0 timed out (37 tests)`; on a Classic
   client, a `SKIP` or a totals line that [Per flavour](#per-flavour) does
   not list.
 - No login line, or `Expected.lua is missing`: the harness or the installer

@@ -44,7 +44,7 @@ Current packages:
 - [`schedulerKit`](schedulerKit/) — Cooperative, frame-budgeted scheduling with priorities, cancellation scopes and TimerKit delays.
 - [`schemaKit`](schemaKit/) — Sealed value schemas with structured, secret-safe failures: one validation core for arguments, saved variables, options and messages.
 - [`settingsKit`](settingsKit/) — Saved variables with scopes, schema-validated writes, defaults never written back, profiles and versioned migrations.
-- [`signalKit`](signalKit/) — Deterministic, re-entrant callback dispatch with explicit connection lifetimes, subscriber-transition hooks, journals and named message buses.
+- [`signalKit`](signalKit/) — Deterministic, re-entrant callback dispatch with explicit connection lifetimes and subscriber-transition hooks; message buses and journals as parts.
 - [`timerKit`](timerKit/) — Cancelable one-shot and repeating timers with ownership scopes, and addon scopes closed at logout through LifecycleKit or EventKit when present.
 - [`toastKit`](toastKit/) — Short notifications that stack at one anchor, hold under the cursor and fade out, with icons and click handlers, pooled and bounded.
 - [`tooltipKit`](tooltipKit/) — Multi-column tooltips, keyed and pooled, with headers, spans, colours, line handlers, scrolling, smart anchoring and auto-hide.

@@ -231,7 +231,7 @@ Moved from `docs/ROADMAP.md` (Package O — memory, performance and ease of use 
 
 **Minimal core (2026-11-16)**
 
-Status: recorded 2026-11-16; code follows.
+Status: implemented 2026-11-18, 0.10.0, revision 13, 317 specs (see item 9).
 
 Measured on host Lua 5.1.5 (64-bit), debug information kept as the client keeps
 it, on the shared fake client, string table pre-grown (the method of the
@@ -447,4 +447,55 @@ one body per helper under the `--check` gate, not memory.
    `RegisterMessage`, `RegisterBucketMessage` rows name the parts),
    `docs/EMBEDDING.md` footprint and load order, `packages/README.md`,
    coverage floors for the new part files if they are tracked per file.
-9. Status: recorded 2026-11-16; code follows.
+9. Status: implemented 2026-11-18, 0.10.0, revision 13, 317 specs; Bus and
+   Journal parts revision 1, Coalescing part revision 2. Measured with the
+   diagnosis harness (host Lua 5.1.5, debug kept, fake client, string table
+   pre-grown, Registry revision 17 loaded first): core resident 90,473 B →
+   40,930 B (-55%), transient while loading 287,370 B → 151,988 B; Bus part
+   48,022 B, Journal part 8,680 B when loaded. The 35,000 B core target is
+   **not reached**, by about 6 KB: S4 is not done, and the part interface (a
+   22-entry `_state.helpers`, the facade stubs, `HasPart`, the shared blocks)
+   measures larger than priced.
+   Done: S1, S2, S3, S5, S6. **Not done: S4** (the cold named-field layout):
+   the hot functions still carry both layouts inline as in revision 12; it
+   was left out for lack of time, priced at about -2.5 KB.
+   Choices and deviations:
+   - In-place upgrade from revision 12 without the Bus part (item 5): the
+     core does **not** close inherited buses at takeover. A rev 13 core always
+     takes over before its parts can load, so closing there would close the
+     buses the Bus part loaded right after it is meant to adopt; and a report
+     at takeover proved a false alarm in that same case. Instead the buses are
+     kept (`_state.inheritedBuses`, sticky): their bus and scope methods are
+     stubs naming the part until it loads and adopts them, `CloseAddonBus`
+     still performs the terminal close of an inherited addon bus (so
+     LifecycleKit's shutdown and the logout watcher keep working), and the
+     stub errors are the report. The stubs on the bus and scope prototypes are
+     installed only in such a session: elsewhere no bus can exist without the
+     part.
+   - Every in-place upgrade still arranges the logout close of inherited addon
+     buses (revision 12 did it at takeover): the core calls the Bus part's
+     `arrangeInherited` when the part is loaded, and the part does it on its
+     first load over inherited buses.
+   - `_state.helpers` holds more than the seven the record names: the listener
+     storage `Unsubscribe` and the scopes edit (`releaseConnection`,
+     `tombstoneCount`, `shouldCompact`, `compact`, `settleInPlace`,
+     `connectedKeyOf`, `isLiveHandle`, `convertToArrayLayout`), the argument
+     checks (`refuseSecret`, `validateNonEmptyString`, `validateFacade`,
+     `isIntegerUpTo`), `readSignalOptions`, `fire` and the signal metatable.
+   - The Bus part's publish and subscribe ask the shared `isSecret` block
+     instead of reading the probe inline: one call more per publish.
+   - `validateCurrentState` no longer requires the bus, scope and journal
+     methods or the logout watcher (they are the parts'); two
+     `Bootstrap_spec.lua` cases that removed them now remove the core's part
+     records and helpers.
+   - The client suite cannot show a stub error, because the installed bundle
+     carries every part; it checks `HasPart`.
+   Record correction: LogKit's core calls `SignalKit:NewJournal`
+   (`LogKit.lua:587`, `:1157`), contrary to the diagnosis's usage read.
+   Other owners (text for their changes): LogKit names
+   `"signalKit": { "api": 1, "parts": ["Journal"] }` and its test environment
+   loads `SignalKit-Journal`; ModuleKit names `["Bus"]` (its `Messages` scope
+   uses `ForAddon`) and loads `SignalKit-Bus` in its test environment, and asks
+   `SignalKit:HasPart("Bus")` as the record says; LifecycleKit's and
+   AddonKit's test environments load `SignalKit-Bus` (their specs use
+   `ForAddon`); `examples/embeds.xml` lists the parts its Kits now name.

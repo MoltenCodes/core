@@ -4,11 +4,21 @@
 -- PoolKit is pure Lua: it owns object lifecycle and retention policy without
 -- depending on Frames, timers, or other WoW APIs.
 --
--- Beyond plain reuse, a pool can serve objects the host can never free, such
--- as Frames: a creation cap, a live limit with a bounded waiting queue,
--- cascading release of attached children, and release deferred until an
--- animation finishes. Every pool also carries a generation, so objects built
--- by a superseded factory are retired instead of reused after an upgrade.
+-- This file is the core (ADR 0001, docs/decisions/0001-kit-core-and-parts.md):
+-- the plain pool every Kit in the repository uses, with its bounds, its
+-- creation cap for objects the host can never free, and its diagnostics.
+-- Four parts load after it and add the mechanisms only some pools use:
+--   Waiting ..... a live limit (`maxActive`) and a bounded waiting queue
+--                 (`maxWaiting`, `Acquire(onAvailable)`, `CancelWaiting`);
+--   Children .... cascading release of attached children;
+--   Deferred .... release deferred until an animation finishes;
+--   Generations . a generation stamped on objects, so objects built by a
+--                 superseded factory are retired instead of reused.
+-- The core keeps one test per mechanism on the paths a mechanism changes and
+-- calls the part through `_state.parts`; a pool can only reach a mechanism's
+-- state through its part. Without a part, its mutators raise at the caller
+-- with the file to embed, its constructor options are refused the same way,
+-- and its getters answer the neutral value.
 --
 -- Contents
 -- --------
@@ -16,39 +26,62 @@
 --   Public types .......... LuaCATS declarations for the published surface
 --   Dependencies .......... Registry
 --   Bootstrap ............. surface/state validation, registration, migration
---   Validation ............ argument checks and lazy pool upgrade
---   Option parsing ........ constructor options and their defaults
+--   Validation ............ shared helper blocks and argument checks
+--   Option parsing ........ one rule table and its walker
 --   Error helpers ......... best-effort error capture
 --   Diagnostics ........... host error-handler reporting
 --   Internal lifecycle .... callback guard, factory, discard, trimming
---   Generations ........... stamps and stale-object detection
---   Capacity and waiting .. creation cap, live limit, waiting ring
---   Children .............. intrusive parent/child links
---   Release helpers ....... unparking and the child cascade
+--   Parts ................. part lookup, stubs, and older pools' mechanisms
+--   Capacity .............. creation cap, live limit, borrowing
 --   Release transaction ... the one path every release goes through
---   Deferred release ...... parking until an animation finishes
 --   Construction .......... pool creation and constructor prewarm
 --   Pool methods .......... the handle a pool owner receives
---   Package constructors .. New and NewTablePool
---   Commit ................ prototype/facade assignment and self-check
+--   Package constructors .. New, NewTablePool and HasPart
+--   Commit ................ prototype/facade assignment, part helpers, self-check
 
 -- Constants ------------------------------------------------------------------
 
 local PACKAGE_NAME = "poolKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 11
+local IMPLEMENTATION_REVISION = 12
 local REQUIRED_REGISTRY_API = 2
 local STATE_SCHEMA = 2
 local DEFAULT_MAX_RETAINED = 128
+
+-- The generation of what the core offers its parts: the `_state.helpers`
+-- entries and the hooks a part record carries. Entries are only ever added; a
+-- core that must change one adds a new entry and raises this number.
+local PART_INTERFACE = 1
+
+-- What a member of a part that is not loaded tells the caller to embed.
+local PART_FILES = {
+  Waiting = "poolKit\\parts\\PoolKit-Waiting.lua",
+  Children = "poolKit\\parts\\PoolKit-Children.lua",
+  Deferred = "poolKit\\parts\\PoolKit-Deferred.lua",
+  Generations = "poolKit\\parts\\PoolKit-Generations.lua",
+}
+
+-- The `PoolKit.Pool` mutators each part provides. Without the part each stays
+-- on the prototype as a stub naming the file to embed, so the surface check
+-- of every older embedded copy keeps accepting the prototype.
+local PART_METHODS = {
+  CancelWaiting = "Waiting",
+  AttachChild = "Children",
+  DetachChild = "Children",
+  ReleaseAfter = "Deferred",
+  SetGeneration = "Generations",
+}
 
 -- A pool's generation when its constructor names none, and the generation of
 -- every pool an older revision built. Fixed rather than tied to PoolKit's own
 -- revision, so behaviour never depends on which embedded copy won.
 local DEFAULT_GENERATION = 1
 
--- The shape every pool carries. Pools built by an older revision have no
+-- The shape every pool carries. Pools built by revisions 1 to 3 have no
 -- `_schema` field and are brought up to this shape the first time a method of
--- this revision touches them (see `upgradePool`).
+-- this revision touches them (see `upgradePool`). Revision 12 pools are sparse
+-- (a field that would be `false` or `0` is absent) and keep this schema: every
+-- path reads such a field by truthiness, which reads `false` and `nil` alike.
 local POOL_SCHEMA = 2
 
 -- Per-object status in a pool's `_active` map. `PARKED` is an object whose
@@ -76,7 +109,7 @@ local REASON_CLOSED = "closed"
 ---@field strict boolean? Keep weak discarded-object history for richer duplicate-release diagnostics; default `true`.
 ---@field prewarm integer? Objects to create up front; default `0`.
 ---@field maxActiveWarning integer? Report once through `geterrorhandler` when this many objects are borrowed at the same time.
----@field generation integer? Positive integer stamped on every object the factory builds; default `1`.
+---@field generation integer? Positive integer stamped on every object the factory builds; default `1`. Needs the Generations part.
 
 ---Options accepted by `PoolKit:New`.
 ---@class PoolKit.NewOptions : PoolKit.CommonOptions
@@ -85,8 +118,8 @@ local REASON_CLOSED = "closed"
 ---@field destroy PoolKit.ObjectCallback? Called when an object leaves pool ownership.
 ---@field strictReset boolean? Refuse to construct a pool that has no `reset`; default `false`.
 ---@field maxCreated integer? Positive cap on factory calls over the pool's lifetime; for objects the host can never free.
----@field maxActive integer? Positive cap on objects borrowed or parked at the same time.
----@field maxWaiting integer? Bounded waiting-queue size for `Acquire(onAvailable)`; default `0`; requires `maxCreated` or `maxActive`.
+---@field maxActive integer? Positive cap on objects borrowed or parked at the same time. Needs the Waiting part.
+---@field maxWaiting integer? Bounded waiting-queue size for `Acquire(onAvailable)`; default `0`; requires `maxCreated` or `maxActive`. Needs the Waiting part.
 
 ---The factory a pool calls when it has no retained object to hand out.
 ---@alias PoolKit.Factory fun(pool: PoolKit.Pool): table|userdata
@@ -137,36 +170,36 @@ local REASON_CLOSED = "closed"
 ---@field ReleaseAfter fun(self: PoolKit.Pool, object: table|userdata, animationGroup: PoolKit.AnimationGroup): boolean
 ---@field package _schema integer pool shape; see `upgradePool`
 ---@field package _create PoolKit.Factory
----@field package _reset PoolKit.ObjectCallback|false
----@field package _destroy PoolKit.ObjectCallback|false
+---@field package _reset PoolKit.ObjectCallback|false|nil
+---@field package _destroy PoolKit.ObjectCallback|false|nil
 ---@field package _maxRetained integer|table a count or `UNBOUNDED`
 ---@field package _available table<integer, table|userdata> retained objects, newest last
 ---@field package _availableCount integer
 ---@field package _active table<table|userdata, integer> borrowed and parked objects and their status
 ---@field package _activeCount integer
----@field package _maxActiveWarning integer|false
----@field package _activeWarned boolean
+---@field package _maxActiveWarning integer|false|nil
+---@field package _activeWarned boolean|nil
 ---@field package _retained table<table|userdata, boolean> identity set of `_available`
----@field package _released table|false weak set of discarded objects, for strict pools
+---@field package _released table|false|nil weak set of discarded objects, for strict pools
 ---@field package _createdCount integer
 ---@field package _discardedCount integer
----@field package _closed boolean
----@field package _callbackPhase string|false the lifecycle callback running, for the refusal message
+---@field package _closed boolean|nil
+---@field package _callbackPhase string|false|nil the lifecycle callback running, for the refusal message
 ---@field package _callbackDepth integer lifecycle callbacks running on this pool
----@field package _trustedCallbacks boolean built-in table-pool callbacks
----@field package _generation integer
----@field package _baseGeneration integer
----@field package _stamps table|false
----@field package _maxCreated integer|false
----@field package _maxActive integer|false
----@field package _maxWaiting integer
----@field package _waiting table|false
----@field package _waitingHead integer
----@field package _waitingCount integer
----@field package _parked table|false
----@field package _parkedCount integer
----@field package _children table|false
----@field package _attachedTo table|false
+---@field package _trustedCallbacks boolean|nil built-in table-pool callbacks
+---@field package _maxCreated integer|false|nil
+---@field package _generation integer|nil Generations part
+---@field package _baseGeneration integer|nil Generations part
+---@field package _stamps table|false|nil Generations part
+---@field package _maxActive integer|false|nil Waiting part
+---@field package _maxWaiting integer|nil Waiting part
+---@field package _waiting table|false|nil Waiting part
+---@field package _waitingHead integer|nil Waiting part
+---@field package _waitingCount integer|nil Waiting part
+---@field package _parked table|false|nil Deferred part
+---@field package _parkedCount integer|nil Deferred part
+---@field package _children table|false|nil Children part
+---@field package _attachedTo table|false|nil Children part
 
 ---The PoolKit package facade published through Registry.
 ---@class PoolKit
@@ -177,6 +210,7 @@ local REASON_CLOSED = "closed"
 ---@field DEFAULT_MAX_RETAINED integer Retention bound a pool gets when `maxRetained` is absent (`128`).
 ---@field New fun(self: PoolKit, options: PoolKit.NewOptions): PoolKit.Pool
 ---@field NewTablePool fun(self: PoolKit, options: PoolKit.CommonOptions?): PoolKit.Pool
+---@field HasPart fun(self: PoolKit, name: string): boolean Whether the named part (`"Waiting"`, `"Children"`, `"Deferred"`, `"Generations"`) is loaded.
 
 -- Dependencies --------------------------------------------------------------
 
@@ -203,7 +237,8 @@ end
 
 -- Bootstrap -----------------------------------------------------------------
 
----Whether `implementation` exposes the complete PoolKit API 1 surface.
+---Whether `implementation` exposes the complete PoolKit API 1 surface. Every
+---member of a part stays on the prototype as a stub when the part is absent.
 ---@param implementation any shared package table handed back by Registry
 ---@return boolean
 local function validatePublicSurface(implementation)
@@ -221,6 +256,7 @@ local function validatePublicSurface(implementation)
   local Pool = rawget(implementation, "Pool")
   return type(rawget(implementation, "New")) == "function"
     and type(rawget(implementation, "NewTablePool")) == "function"
+    and type(rawget(implementation, "HasPart")) == "function"
     and type(rawget(Pool, "Acquire")) == "function"
     and type(rawget(Pool, "Release")) == "function"
     and type(rawget(Pool, "Prewarm")) == "function"
@@ -261,12 +297,17 @@ end
 ---@param currentState any
 ---@return boolean
 local function validateState(currentState)
-  return validateStateBase(currentState)
+  local partInterface = validateStateBase(currentState) and rawget(currentState, "partInterface")
+  return type(partInterface) == "number"
+    and partInterface >= PART_INTERFACE
     and rawget(currentState, "schema") == STATE_SCHEMA
     and type(rawget(currentState, "hookedGroups")) == "table"
     and type(rawget(currentState, "deferredPool")) == "table"
     and type(rawget(currentState, "deferredObject")) == "table"
     and type(rawget(currentState, "dispatch")) == "table"
+    and type(rawget(currentState, "parts")) == "table"
+    and type(rawget(currentState, "helpers")) == "table"
+    and type(rawget(currentState, "releasedMetatable")) == "table"
 end
 
 ---Whether `implementation` and its package state still agree with each other.
@@ -314,7 +355,8 @@ if type(previousRevision) == "nil" then
     poolMetatable = {},
     unbounded = {},
     -- Animation groups carry one permanent `OnFinished` hook each, so the
-    -- set of hooked groups is remembered and never hooked twice.
+    -- set of hooked groups is remembered and never hooked twice (Deferred
+    -- part).
     hookedGroups = setmetatable({}, { __mode = "k" }),
     -- The pending deferred release of each animation group, if any.
     deferredPool = {},
@@ -322,6 +364,13 @@ if type(previousRevision) == "nil" then
     -- Host hooks call through this table, so a newer revision replaces
     -- the behaviour behind hooks an older revision installed.
     dispatch = {},
+    -- The parts loaded (name to record), what they call, and the interface
+    -- generation the core offers them.
+    parts = {},
+    helpers = {},
+    partInterface = PART_INTERFACE,
+    -- One weak-keyed metatable every strict pool's `_released` set shares.
+    releasedMetatable = { __mode = "k" },
   }
   rawset(PoolKit, "Pool", Pool)
   rawset(PoolKit, "_state", state)
@@ -331,13 +380,36 @@ else
   if rawget(state, "schema") == 1 then
     -- Revisions 1 to 3 kept no generations and no deferred releases. Their
     -- pools cannot be enumerated from here, so they are upgraded lazily
-    -- (see `upgradePool`). Revision 4 also recorded a `legacyGeneration`
-    -- here; revisions 5 and later never read it and leave it where it is.
+    -- (see `upgradePool`), which this flag keeps available for good: a later
+    -- revision that inherits from this one still finds such pools. Revision 4
+    -- also recorded a `legacyGeneration` here; revisions 5 and later never
+    -- read it and leave it where it is.
     rawset(state, "hookedGroups", setmetatable({}, { __mode = "k" }))
     rawset(state, "deferredPool", {})
     rawset(state, "deferredObject", {})
     rawset(state, "dispatch", {})
     rawset(state, "schema", STATE_SCHEMA)
+    rawset(state, "legacyPools", true)
+  end
+  if previousRevision < 12 then
+    -- Revisions 11 and older built every mechanism into one file, so their
+    -- pools may hold a queue, a parked object, children or a raised
+    -- generation without the part that now owns it. Sticky, like
+    -- `legacyPools`, for the same reason.
+    rawset(state, "fullPools", true)
+  end
+  if type(rawget(state, "parts")) ~= "table" then
+    rawset(state, "parts", {})
+  end
+  if type(rawget(state, "helpers")) ~= "table" then
+    rawset(state, "helpers", {})
+  end
+  if type(rawget(state, "releasedMetatable")) ~= "table" then
+    rawset(state, "releasedMetatable", { __mode = "k" })
+  end
+  local partInterface = rawget(state, "partInterface")
+  if type(partInterface) ~= "number" or partInterface < PART_INTERFACE then
+    rawset(state, "partInterface", PART_INTERFACE)
   end
 
   if not validateState(state) then
@@ -347,6 +419,8 @@ end
 
 local POOL_METATABLE = rawget(state, "poolMetatable")
 local UNBOUNDED = rawget(state, "unbounded")
+local RELEASED_METATABLE = rawget(state, "releasedMetatable")
+local parts = rawget(state, "parts")
 rawset(POOL_METATABLE, "__index", Pool)
 
 -- Validation ----------------------------------------------------------------
@@ -356,29 +430,73 @@ rawset(POOL_METATABLE, "__index", Pool)
 -- of a caller's value is tested with `type(value) == "nil"`. A host without
 -- `issecretvalue` has no secret values.
 
--- issecretvalue is a World of Warcraft client API reachable only through the global table.
--- selene: allow(global_usage)
-local nativeIsSecretValue = rawget(_G, "issecretvalue")
-if type(nativeIsSecretValue) ~= "function" then
-  nativeIsSecretValue = nil
-end
-
+-- shared:begin isSecret 1
+-- Copied from tooling/shared/lua/isSecret.lua by python3 -m tooling.shared.sync; edit that file, not this copy.
 ---Whether `value` is a secret value the host forbids comparing.
----@param value any
----@return boolean
-local function isSecretValue(value)
-  if nativeIsSecretValue == nil then
-    return false
+---@type fun(value: any): boolean
+local isSecret
+do
+  -- issecretvalue is a client API reachable only through the global table.
+  -- selene: allow(global_usage)
+  local loadedProbe = rawget(_G, "issecretvalue")
+  if type(loadedProbe) ~= "function" then
+    loadedProbe = nil
   end
-  return nativeIsSecretValue(value) and true or false
+
+  isSecret = function(value)
+    local probe = loadedProbe
+    if probe == nil then
+      -- selene: allow(global_usage)
+      probe = rawget(_G, "issecretvalue")
+      if type(probe) ~= "function" then
+        return false
+      end
+    end
+    return probe(value) == true
+  end
 end
+-- shared:end isSecret
+
+-- shared:begin describeKey 1
+-- Copied from tooling/shared/lua/describeKey.lua by python3 -m tooling.shared.sync; edit that file, not this copy.
+---Name `key` for an error message without running any of the caller's code.
+---@param key any
+---@return string
+local function describeKey(key)
+  if isSecret(key) then
+    return "<secret>"
+  end
+  local kind = type(key)
+  if kind == "string" then
+    return key
+  end
+  if kind == "number" or kind == "boolean" then
+    return tostring(key)
+  end
+  return "<" .. kind .. ">"
+end
+-- shared:end describeKey
+
+-- shared:begin validateFacade 1 __FACADE__=PoolKit
+-- Copied from tooling/shared/lua/validateFacade.lua by python3 -m tooling.shared.sync; edit that file, not this copy.
+---Raise at `level` unless `receiver` is the PoolKit facade.
+---@param receiver any the table the method was called on
+---@param label string qualified method name, used in the argument error
+---@param level integer stack level the failure is reported at
+local function validateFacade(receiver, label, level)
+  if type(receiver) ~= "table" or receiver ~= PoolKit then
+    local hint = "; use " .. label .. "(...)"
+    error(label .. " must be called on the PoolKit facade" .. hint, level)
+  end
+end
+-- shared:end validateFacade
 
 ---Refuse a secret argument before any comparison touches it.
 ---@param value any
 ---@param label string argument description, used in the argument error
 ---@param level integer stack level the failure is reported at
 local function refuseSecret(value, label, level)
-  if isSecretValue(value) then
+  if isSecret(value) then
     error(label .. " must not be a secret value", level)
   end
 end
@@ -390,7 +508,7 @@ end
 ---@return boolean
 local function isNonNegativeInteger(value)
   return type(value) == "number"
-    and not isSecretValue(value)
+    and not isSecret(value)
     and value == value
     and value ~= math.huge
     and value ~= -math.huge
@@ -424,43 +542,54 @@ local function isPositiveInteger(value)
   return isNonNegativeInteger(value) and value >= 1
 end
 
----Bring a pool built by an older revision up to this revision's shape.
----
----Pools are not registered anywhere, so a bootstrap cannot migrate them. Every
----pool method validates its receiver first, and that check upgrades a pool whose
----`_schema` is not current: one field comparison per call, nothing allocated
----once the pool is current. The defaults reproduce the older behaviour exactly:
----no caps, no queue, no children, and the default generation.
----
----Revision 1 pools also predate the re-entrancy depth counter and the leak
----warning, which revision 2 added to every pool it built but never back-filled.
----Those fields are filled only when absent, so a revision 2 or 3 pool keeps the
----warning threshold and warned flag it already has.
----@param pool table
-local function upgradePool(pool)
-  if rawget(pool, "_callbackDepth") == nil then
-    rawset(pool, "_callbackDepth", 0)
+-- Bring a pool built by revisions 1 to 3 up to the schema every later
+-- revision reads. Pools are not registered anywhere, so a bootstrap cannot
+-- migrate them; every pool method validates its receiver first, and that
+-- check upgrades a pool whose `_schema` is not current. The function exists
+-- only in a session where such a revision loaded (`legacyPools`): elsewhere no
+-- pool can carry an older schema and the code is freed after load.
+---@type fun(pool: table)|nil
+local upgradePool = nil
+if rawget(state, "legacyPools") == true then
+  -- Revision 1 pools also predate the re-entrancy depth counter and the leak
+  -- warning, which revision 2 added to every pool it built but never
+  -- back-filled. Those fields are filled only when absent, so a revision 2 or
+  -- 3 pool keeps the warning threshold and warned flag it already has. The
+  -- defaults reproduce the older behaviour exactly: no caps, no queue, no
+  -- children, and the default generation.
+  upgradePool = function(pool)
+    if rawget(pool, "_callbackDepth") == nil then
+      rawset(pool, "_callbackDepth", 0)
+    end
+    if rawget(pool, "_maxActiveWarning") == nil then
+      rawset(pool, "_maxActiveWarning", false)
+    end
+    if rawget(pool, "_activeWarned") == nil then
+      rawset(pool, "_activeWarned", false)
+    end
+    rawset(pool, "_generation", DEFAULT_GENERATION)
+    rawset(pool, "_baseGeneration", DEFAULT_GENERATION)
+    rawset(pool, "_stamps", false)
+    rawset(pool, "_maxCreated", false)
+    rawset(pool, "_maxActive", false)
+    rawset(pool, "_maxWaiting", 0)
+    rawset(pool, "_waiting", false)
+    rawset(pool, "_waitingHead", 1)
+    rawset(pool, "_waitingCount", 0)
+    rawset(pool, "_parked", false)
+    rawset(pool, "_parkedCount", 0)
+    rawset(pool, "_children", false)
+    rawset(pool, "_attachedTo", false)
+    rawset(pool, "_schema", POOL_SCHEMA)
   end
-  if rawget(pool, "_maxActiveWarning") == nil then
-    rawset(pool, "_maxActiveWarning", false)
+end
+
+---Upgrade `pool` when an older revision built it in an earlier schema.
+---@param pool table a table carrying the pool metatable
+local function upgradeIfOld(pool)
+  if rawget(pool, "_schema") ~= POOL_SCHEMA and upgradePool ~= nil then
+    upgradePool(pool)
   end
-  if rawget(pool, "_activeWarned") == nil then
-    rawset(pool, "_activeWarned", false)
-  end
-  rawset(pool, "_generation", DEFAULT_GENERATION)
-  rawset(pool, "_baseGeneration", DEFAULT_GENERATION)
-  rawset(pool, "_stamps", false)
-  rawset(pool, "_maxCreated", false)
-  rawset(pool, "_maxActive", false)
-  rawset(pool, "_maxWaiting", 0)
-  rawset(pool, "_waiting", false)
-  rawset(pool, "_waitingHead", 1)
-  rawset(pool, "_waitingCount", 0)
-  rawset(pool, "_parked", false)
-  rawset(pool, "_parkedCount", 0)
-  rawset(pool, "_children", false)
-  rawset(pool, "_attachedTo", false)
-  rawset(pool, "_schema", POOL_SCHEMA)
 end
 
 ---@param self any receiver the public method was called on
@@ -470,9 +599,7 @@ local function validatePool(self, methodName, level)
   if type(self) ~= "table" or getmetatable(self) ~= POOL_METATABLE then
     error(methodName .. " must be called on a PoolKit pool", level)
   end
-  if rawget(self, "_schema") ~= POOL_SCHEMA then
-    upgradePool(self)
-  end
+  upgradeIfOld(self)
 end
 
 ---@param object any
@@ -533,59 +660,69 @@ local function validateCallback(value, label, required, level)
   end
 end
 
--- Option parsing --------------------------------------------------------------
-
-local GENERIC_OPTION_KEYS = {
-  create = true,
-  reset = true,
-  destroy = true,
-  maxRetained = true,
-  strict = true,
-  strictReset = true,
-  prewarm = true,
-  maxActiveWarning = true,
-  generation = true,
-  maxCreated = true,
-  maxActive = true,
-  maxWaiting = true,
-}
-
-local TABLE_OPTION_KEYS = {
-  maxRetained = true,
-  strict = true,
-  prewarm = true,
-  maxActiveWarning = true,
-  generation = true,
-}
-
----Name a caller's table key in a refusal without running its `__tostring`.
----`tostring` on a table or userdata runs the caller's `__tostring`, foreign
----code that may raise or answer a secret and so lose the real refusal. A
----string is shown as written, a number or boolean through `tostring` (no
----foreign code runs for those), and anything else by its type, as `<table>`.
----A key read from a Lua table cannot be a secret: storing one raises.
----@param key any
+---The message a member of `partName` raises while that part is not loaded.
+---@param member string the member as its caller wrote it
+---@param partName string
 ---@return string
-local function describeKey(key)
-  local keyType = type(key)
-  if keyType == "string" then
-    return key
+local function missingPart(member, partName)
+  return member
+    .. " is in PoolKit's "
+    .. partName
+    .. " part, which is not loaded: add "
+    .. PART_FILES[partName]
+    .. " to embeds.xml after poolKit\\PoolKit.lua"
+end
+
+-- Option parsing --------------------------------------------------------------
+--
+-- Every constructor option, in the order the constructors check them. One
+-- walker reads the list; the cross-option checks run after the option they
+-- follow, so every refusal keeps its text and its precedence. Each rule is one
+-- string, `<name> <kind> [flags]`, read only while a constructor runs, so the
+-- list costs one array of strings rather than a table per option:
+--   required      `PoolKit:New` refuses the option's absence
+--   new           only `PoolKit:New` accepts it, `PoolKit:NewTablePool` does not
+--   part=<Part>   the part that must be loaded when the option is given
+--   default=<v>   what an absent option reads as: `true`, `false` or a number
+
+local OPTION_RULES = {
+  "create callback required new",
+  "reset callback new",
+  "destroy callback new",
+  "strictReset boolean new",
+  "maxRetained maxRetained",
+  "strict boolean default=true",
+  "prewarm count default=0",
+  "maxActiveWarning count default=false",
+  "generation positive part=Generations",
+  "maxCreated positive new default=false",
+  "maxActive positive new part=Waiting default=false",
+  "maxWaiting count new part=Waiting default=0",
+}
+
+---Whether the constructor accepts the option field `key`.
+---@param key any a key of the caller's options table
+---@param isNew boolean `PoolKit:New` rather than `PoolKit:NewTablePool`
+---@return boolean
+local function acceptsOption(key, isNew)
+  for index = 1, #OPTION_RULES do
+    local name, flags = string.match(OPTION_RULES[index], "^(%S+) %S+(.*)$")
+    if name == key then
+      return isNew or string.find(flags, " new", 1, true) == nil
+    end
   end
-  if keyType == "number" or keyType == "boolean" then
-    return tostring(key)
-  end
-  return "<" .. keyType .. ">"
+  return false
 end
 
 ---Reject the alphabetically first unrecognised option field, if any.
 ---@param options table
----@param allowed table<string, boolean>
+---@param isNew boolean `PoolKit:New` rather than `PoolKit:NewTablePool`
 ---@param methodName string public method name, used in the argument error
 ---@param level integer stack level the failure is reported at
-local function validateKnownFields(options, allowed, methodName, level)
+local function validateKnownFields(options, isNew, methodName, level)
   local firstUnknown = nil
   for key in next, options do
-    if allowed[key] ~= true then
+    if not acceptsOption(key, isNew) then
       local text = describeKey(key)
       if firstUnknown == nil or text < firstUnknown then
         firstUnknown = text
@@ -597,70 +734,113 @@ local function validateKnownFields(options, allowed, methodName, level)
   end
 end
 
----Validate the options every constructor shares and apply their defaults.
----@param options PoolKit.CommonOptions|nil
----@param allowed table<string, boolean> option keys this constructor accepts
+---Validate one present option value by its rule's kind.
+---@param kind string the rule's kind
+---@param value any
+---@param label string `<method> <option>`, used in the argument error
+---@param level integer stack level the failure is reported at
+local function validateOption(kind, value, label, level)
+  if kind == "callback" then
+    validateCallback(value, label, true, level + 1)
+  elseif kind == "boolean" then
+    refuseSecret(value, label, level + 1)
+    if type(value) ~= "boolean" then
+      error(label .. " must be a boolean", level)
+    end
+  elseif kind == "maxRetained" then
+    validateMaxRetained(value, label, level + 1)
+  elseif kind == "count" then
+    validateCount(value, label, level + 1)
+  else
+    validatePositiveInteger(value, label, level + 1)
+  end
+end
+
+---What an absent option reads as, from its rule's `default=` flag.
+---@param text string|nil
+---@return any
+local function readDefault(text)
+  if text == "true" then
+    return true
+  elseif text == "false" then
+    return false
+  end
+  return text and tonumber(text)
+end
+
+---Run the checks that relate one option to those before it.
+---@param settings table the options read so far
+---@param name string the option just read
 ---@param methodName string public method name, used in the argument errors
 ---@param level integer stack level the failures are reported at
----@param defaultMaxRetained integer retention bound when `maxRetained` is absent
----@return integer|table maxRetained
----@return boolean strict
----@return integer prewarm
----@return integer|false maxActiveWarning `false` when leak warnings are disabled
----@return integer generation
-local function parseCommonOptions(options, allowed, methodName, level, defaultMaxRetained)
-  if type(options) == "nil" then
+local function checkAfter(settings, name, methodName, level)
+  if name == "strictReset" and settings.strictReset == true and type(settings.reset) == "nil" then
+    error(methodName .. " strictReset requires a reset callback", level)
+  elseif name == "prewarm" then
+    local maxRetained = settings.maxRetained
+    if maxRetained ~= UNBOUNDED and settings.prewarm > maxRetained then
+      error(methodName .. " prewarm cannot exceed maxRetained", level)
+    end
+  elseif
+    name == "maxWaiting"
+    and settings.maxWaiting > 0
+    and not settings.maxCreated
+    and not settings.maxActive
+  then
+    error(methodName .. " maxWaiting requires maxCreated or maxActive", level)
+  end
+end
+
+---Validate a constructor's options and return the settings they select.
+---@param options any
+---@param isNew boolean `PoolKit:New` rather than `PoolKit:NewTablePool`
+---@param methodName string public method name, used in the argument errors
+---@param level integer stack level the failures are reported at
+---@return table settings option name to value, defaults applied
+local function parseOptions(options, isNew, methodName, level)
+  if type(options) == "nil" and not isNew then
     options = {}
   elseif type(options) ~= "table" then
     error(methodName .. " options must be a table", level)
   end
 
-  validateKnownFields(options, allowed, methodName, level + 1)
-
-  local maxRetained = rawget(options, "maxRetained")
-  if type(maxRetained) == "nil" then
-    maxRetained = defaultMaxRetained
-  else
-    maxRetained = validateMaxRetained(maxRetained, methodName .. " maxRetained", level + 1)
+  local settings = {}
+  for index = 1, #OPTION_RULES do
+    local name, kind, flags = string.match(OPTION_RULES[index], "^(%S+) (%S+)(.*)$")
+    if isNew or string.find(flags, " new", 1, true) == nil then
+      local value = rawget(options, name)
+      local label = methodName .. " " .. name
+      if name == "maxRetained" then
+        -- The unknown-field refusal comes before every option the table
+        -- pool shares, after the callbacks only `New` takes.
+        validateKnownFields(options, isNew, methodName, level + 1)
+      end
+      if type(value) ~= "nil" then
+        local part = string.match(flags, " part=(%a+)")
+        if part ~= nil and rawget(parts, part) == nil then
+          error(missingPart(label, part), level)
+        end
+        validateOption(kind, value, label, level + 1)
+      elseif string.find(flags, " required", 1, true) then
+        validateOption(kind, value, label, level + 1)
+      elseif name == "maxRetained" then
+        -- A capped pool retains everything it may ever create by default:
+        -- the objects a cap exists for cannot be freed, so discarding one on
+        -- release would only lose it for good.
+        local requestedMaxCreated = isNew and rawget(options, "maxCreated") or nil
+        value = isPositiveInteger(requestedMaxCreated) and requestedMaxCreated
+          or DEFAULT_MAX_RETAINED
+      else
+        value = readDefault(string.match(flags, " default=(%S+)"))
+      end
+      settings[name] = value
+      checkAfter(settings, name, methodName, level + 1)
+    end
   end
-
-  local strict = rawget(options, "strict")
-  refuseSecret(strict, methodName .. " strict", level + 1)
-  if type(strict) == "nil" then
-    strict = true
-  elseif type(strict) ~= "boolean" then
-    error(methodName .. " strict must be a boolean", level)
+  if settings.maxCreated and settings.prewarm > settings.maxCreated then
+    error(methodName .. " prewarm cannot exceed maxCreated", level)
   end
-
-  local prewarm = rawget(options, "prewarm")
-  if type(prewarm) == "nil" then
-    prewarm = 0
-  else
-    validateCount(prewarm, methodName .. " prewarm", level + 1)
-  end
-
-  if maxRetained ~= UNBOUNDED and prewarm > maxRetained then
-    error(methodName .. " prewarm cannot exceed maxRetained", level)
-  end
-
-  -- Leak diagnostics are opt-in. `false` means "never warn" and is the value
-  -- the acquire hot path compares against, so the default costs one
-  -- comparison per `Acquire`.
-  local maxActiveWarning = rawget(options, "maxActiveWarning")
-  if type(maxActiveWarning) == "nil" then
-    maxActiveWarning = false
-  else
-    validateCount(maxActiveWarning, methodName .. " maxActiveWarning", level + 1)
-  end
-
-  local generation = rawget(options, "generation")
-  if type(generation) == "nil" then
-    generation = DEFAULT_GENERATION
-  else
-    validatePositiveInteger(generation, methodName .. " generation", level + 1)
-  end
-
-  return maxRetained, strict, prewarm, maxActiveWarning, generation
+  return settings
 end
 
 -- Error helpers --------------------------------------------------------------
@@ -754,7 +934,7 @@ end
 ---@param object table|userdata
 local function markDiscarded(pool, object)
   local released = rawget(pool, "_released")
-  if released ~= false then
+  if released then
     rawset(released, object, true)
   end
   rawset(pool, "_discardedCount", rawget(pool, "_discardedCount") + 1)
@@ -766,7 +946,7 @@ end
 local function destroyDiscarded(pool, object)
   markDiscarded(pool, object)
   local destroy = rawget(pool, "_destroy")
-  if destroy ~= false then
+  if destroy then
     invokeLifecycleCallback(pool, "destroy", destroy, object, pool)
   end
 end
@@ -786,17 +966,63 @@ local function validateFactoryObject(pool, object, methodName, level)
   end
 
   local released = rawget(pool, "_released")
-  if released ~= false then
+  if released then
     rawset(released, object, nil)
   end
 end
 
+-- Parts ---------------------------------------------------------------------
+--
+-- A part records itself in `_state.parts.<Part>` with its revision, the
+-- `PoolKit.Pool` methods it provides and the hooks the core calls, and reads
+-- the core's helpers from `_state.helpers` at call time. A pool reaches a
+-- mechanism's state only through its part, so the core asks for the part only
+-- once a pool is in that state.
+--
+-- Pools revisions 11 and older built may already be in such a state in a
+-- session without the part (`_state.fullPools`). For those this core carries
+-- a fallback per mechanism, reported once per part through the host error
+-- handler, that takes the safe exact path: a queue's requests fail with
+-- `"closed"`, a parked object is released at once, children are detached
+-- without cascading, and no stale object is retained. The fallbacks are
+-- built only in such a session (`Older pools' mechanisms` below).
+
+---@type table<string, table>|nil
+local fallbackMechanisms = nil
+
+---The hooks of `partName`: the loaded part, or the fallback for a pool an
+---older revision built.
+---@param partName string
+---@return table hooks
+local function mechanism(partName)
+  local part = rawget(parts, partName)
+  if part ~= nil then
+    return part
+  end
+  if fallbackMechanisms == nil then
+    -- No pool this core built can be in a part's state without the part.
+    error(missingPart("PoolKit", partName), 3)
+  end
+  fallbackMechanisms.report(partName)
+  return fallbackMechanisms[partName]
+end
+
+---A `PoolKit.Pool` method that raises at its caller, naming the part to embed.
+---@param methodName string a key of `PART_METHODS`
+---@return function
+local function newPartStub(methodName)
+  return function()
+    error(missingPart("PoolKit.Pool:" .. methodName, PART_METHODS[methodName]), 2)
+  end
+end
+
+-- Capacity ------------------------------------------------------------------
+
 ---Build one new object through the pool's factory and count it.
 ---
 ---An object built while the pool's generation differs from the generation the
----pool was created with is stamped; an unstamped object belongs to that base
----generation. A pool that never changes its generation therefore writes no
----stamps at all.
+---pool was created with is stamped by the Generations part; a pool that never
+---changes its generation therefore writes no stamps at all.
 ---@param pool PoolKit.Pool
 ---@param methodName string public method name, used in the argument error
 ---@param level integer stack level the failure is reported at
@@ -812,9 +1038,8 @@ local function createObject(pool, methodName, level)
   validateFactoryObject(pool, object, methodName, nestedLevel(level))
   rawset(pool, "_createdCount", rawget(pool, "_createdCount") + 1)
 
-  local generation = rawget(pool, "_generation")
-  if generation ~= rawget(pool, "_baseGeneration") then
-    rawset(rawget(pool, "_stamps"), object, generation)
+  if rawget(pool, "_generation") ~= rawget(pool, "_baseGeneration") then
+    mechanism("Generations").stamp(pool, object)
   end
   return object
 end
@@ -887,7 +1112,7 @@ local function prewarmInternal(pool, targetCount, level)
 
   local maxCreated = rawget(pool, "_maxCreated")
   if
-    maxCreated ~= false
+    maxCreated
     and targetCount > count
     and rawget(pool, "_createdCount") + (targetCount - count) > maxCreated
   then
@@ -912,80 +1137,15 @@ local function prewarmInternal(pool, targetCount, level)
   return created
 end
 
--- Generations ----------------------------------------------------------------
---
--- Stamps live in a weak-keyed side table owned by the pool, never on the
--- object, so a consumer's objects keep exactly the shape its factory gave them
--- and a stamp never keeps an object alive.
-
----Whether `object` was built by a generation older than the pool's current one.
----@param pool PoolKit.Pool
----@param object table|userdata
----@return boolean stale
-local function isStale(pool, object)
-  local generation = rawget(pool, "_generation")
-  local baseGeneration = rawget(pool, "_baseGeneration")
-  if generation == baseGeneration then
-    return false
-  end
-  local stamp = rawget(rawget(pool, "_stamps"), object) or baseGeneration
-  return stamp < generation
-end
-
----Destroy every retained object a newer generation superseded.
----@param pool PoolKit.Pool
----@return integer removed
-local function trimStale(pool)
-  local available = rawget(pool, "_available")
-  local count = rawget(pool, "_availableCount")
-  local kept = 0
-  -- `SetGeneration` is rare and never on a hot path, so one scratch list here
-  -- is cheaper to read than an allocation-free two-pass variant.
-  local stale = {}
-  local staleCount = 0
-
-  -- Compact the fresh objects towards the bottom of the stack, keeping their
-  -- order, and publish the new count before any destroy callback runs.
-  for index = 1, count do
-    local object = rawget(available, index)
-    if isStale(pool, object) then
-      staleCount = staleCount + 1
-      stale[staleCount] = object
-    else
-      kept = kept + 1
-      rawset(available, kept, object)
-    end
-  end
-  for index = kept + 1, count do
-    rawset(available, index, nil)
-  end
-  rawset(pool, "_availableCount", kept)
-
-  local firstError = nil
-  for index = 1, staleCount do
-    local ok, value = discardAvailableObject(pool, stale[index])
-    firstError = captureFirstError(firstError, ok, value)
-  end
-
-  raiseCaptured(firstError)
-  return staleCount
-end
-
--- Capacity and waiting ------------------------------------------------------
---
--- The waiting queue is a ring of `maxWaiting` slots filled with `false` when
--- the pool is built, so enqueueing and dequeueing only overwrite existing array
--- slots: no allocation, ever. A request past the ring's size is refused with
--- `"queueFull"` rather than growing it.
-
----Whether the pool may hand out one more object right now.
+---Whether the pool may hand out one more object right now. A live limit
+---(`maxActive`, the Waiting part's) counts parked objects too.
 ---@param pool PoolKit.Pool
 ---@return boolean
 local function hasCapacity(pool)
   local maxActive = rawget(pool, "_maxActive")
   if
-    maxActive ~= false
-    and rawget(pool, "_activeCount") + rawget(pool, "_parkedCount") >= maxActive
+    maxActive
+    and rawget(pool, "_activeCount") + (rawget(pool, "_parkedCount") or 0) >= maxActive
   then
     return false
   end
@@ -993,68 +1153,7 @@ local function hasCapacity(pool)
     return true
   end
   local maxCreated = rawget(pool, "_maxCreated")
-  return maxCreated == false or rawget(pool, "_createdCount") < maxCreated
-end
-
----Append a waiting request at the back of the ring. The caller checked room.
----@param pool PoolKit.Pool
----@param callback PoolKit.WaitCallback
-local function enqueueWaiter(pool, callback)
-  local capacity = rawget(pool, "_maxWaiting")
-  local count = rawget(pool, "_waitingCount")
-  local slot = (rawget(pool, "_waitingHead") + count - 1) % capacity + 1
-  rawset(rawget(pool, "_waiting"), slot, callback)
-  rawset(pool, "_waitingCount", count + 1)
-end
-
----Put a request back at the front of the ring after a hand-off failed.
----@param pool PoolKit.Pool
----@param callback PoolKit.WaitCallback
-local function requeueFront(pool, callback)
-  local capacity = rawget(pool, "_maxWaiting")
-  local head = (rawget(pool, "_waitingHead") - 2) % capacity + 1
-  rawset(rawget(pool, "_waiting"), head, callback)
-  rawset(pool, "_waitingHead", head)
-  rawset(pool, "_waitingCount", rawget(pool, "_waitingCount") + 1)
-end
-
----Remove and return the oldest waiting request. The caller checked one exists.
----@param pool PoolKit.Pool
----@return PoolKit.WaitCallback callback
-local function dequeueWaiter(pool)
-  local waiting = rawget(pool, "_waiting")
-  local head = rawget(pool, "_waitingHead")
-  local callback = rawget(waiting, head)
-  rawset(waiting, head, false)
-  rawset(pool, "_waitingHead", head % rawget(pool, "_maxWaiting") + 1)
-  rawset(pool, "_waitingCount", rawget(pool, "_waitingCount") - 1)
-  return callback
-end
-
----Remove the oldest waiting request equal to `callback`, keeping FIFO order.
----@param pool PoolKit.Pool
----@param callback function
----@return boolean removed
-local function removeWaiter(pool, callback)
-  local count = rawget(pool, "_waitingCount")
-  local capacity = rawget(pool, "_maxWaiting")
-  local head = rawget(pool, "_waitingHead")
-  local waiting = rawget(pool, "_waiting")
-
-  for offset = 0, count - 1 do
-    if rawget(waiting, (head + offset - 1) % capacity + 1) == callback then
-      -- Shift every request behind it one slot towards the head.
-      for later = offset, count - 2 do
-        local target = (head + later - 1) % capacity + 1
-        local source = (head + later) % capacity + 1
-        rawset(waiting, target, rawget(waiting, source))
-      end
-      rawset(waiting, (head + count - 2) % capacity + 1, false)
-      rawset(pool, "_waitingCount", count - 1)
-      return true
-    end
-  end
-  return false
+  return not maxCreated or rawget(pool, "_createdCount") < maxCreated
 end
 
 ---Take the newest retained object, or build one through the factory.
@@ -1096,7 +1195,7 @@ end
 ---@param object table|userdata
 local function markActive(pool, object)
   local released = rawget(pool, "_released")
-  if released ~= false then
+  if released then
     rawset(released, object, nil)
   end
 
@@ -1105,221 +1204,9 @@ local function markActive(pool, object)
   rawset(pool, "_activeCount", activeCount)
 
   local warnAt = rawget(pool, "_maxActiveWarning")
-  if warnAt ~= false and activeCount >= warnAt and rawget(pool, "_activeWarned") ~= true then
+  if warnAt and activeCount >= warnAt and rawget(pool, "_activeWarned") ~= true then
     warnActiveThreshold(pool, activeCount)
   end
-end
-
----Hand freed capacity to waiting requests, oldest first.
----
----A request's object is borrowed on its behalf before its callback runs, so
----the callback owns it exactly as an `Acquire` caller would. A callback that
----raises is reported through the host error handler and keeps the object. A
----factory that raises is reported the same way; the request goes back to the
----front of the queue and waits for the next release.
----@param pool PoolKit.Pool
-local function drainWaiting(pool)
-  while
-    rawget(pool, "_waitingCount") > 0
-    and rawget(pool, "_closed") ~= true
-    and hasCapacity(pool)
-  do
-    local callback = dequeueWaiter(pool)
-    local ok, object = pcall(takeObject, pool, "PoolKit.Pool:Acquire", 0)
-    if not ok then
-      requeueFront(pool, callback)
-      reportWarning(object)
-      return
-    end
-
-    markActive(pool, object)
-    local delivered, callbackError = pcall(callback, object, pool)
-    if not delivered then
-      reportWarning(callbackError)
-    end
-  end
-end
-
----Fail every waiting request because the pool closed. Errors are reported.
----@param pool PoolKit.Pool
-local function failWaiting(pool)
-  while rawget(pool, "_waitingCount") > 0 do
-    local callback = dequeueWaiter(pool)
-    local ok, callbackError = pcall(callback, nil, pool, REASON_CLOSED)
-    if not ok then
-      reportWarning(callbackError)
-    end
-  end
-end
-
--- Children ------------------------------------------------------------------
---
--- A parent's children form an intrusive doubly linked list kept in side tables
--- owned by the parent's pool, keyed by the child. The child's own pool records
--- which pool it is attached in, so a child released on its own leaves its
--- parent's list in constant time. The tables are created on a pool's first
--- `AttachChild`, so pools that never use children carry only a `false`.
-
-local releaseActive
-
----Return the parent-side link tables of `pool`, creating them once.
----@param pool PoolKit.Pool
----@return table links
-local function ensureChildLinks(pool)
-  local links = rawget(pool, "_children")
-  if links == false then
-    links = {
-      first = {},
-      nextSibling = {},
-      previousSibling = {},
-      childPool = {},
-      parent = {},
-    }
-    rawset(pool, "_children", links)
-  end
-  return links
-end
-
----Return the child-side attachment table of `pool`, creating it once.
----@param pool PoolKit.Pool
----@return table attachedTo child -> the pool its parent belongs to
-local function ensureAttachments(pool)
-  local attachedTo = rawget(pool, "_attachedTo")
-  if attachedTo == false then
-    attachedTo = {}
-    rawset(pool, "_attachedTo", attachedTo)
-  end
-  return attachedTo
-end
-
----Put `child` at the front of `parent`'s child list.
----@param parentPool PoolKit.Pool
----@param parent table|userdata
----@param child table|userdata
----@param childPool PoolKit.Pool
-local function linkChild(parentPool, parent, child, childPool)
-  local links = ensureChildLinks(parentPool)
-  local first = rawget(links.first, parent)
-  rawset(links.nextSibling, child, first or false)
-  rawset(links.previousSibling, child, false)
-  if first ~= nil then
-    rawset(links.previousSibling, first, child)
-  end
-  rawset(links.first, parent, child)
-  rawset(links.childPool, child, childPool)
-  rawset(links.parent, child, parent)
-  rawset(ensureAttachments(childPool), child, parentPool)
-end
-
----Take `child` out of its parent's list. Never raises.
----@param parentPool PoolKit.Pool
----@param child table|userdata
-local function unlinkChild(parentPool, child)
-  local links = rawget(parentPool, "_children")
-  local parent = rawget(links.parent, child)
-  local childPool = rawget(links.childPool, child)
-  local previous = rawget(links.previousSibling, child)
-  local following = rawget(links.nextSibling, child)
-
-  if previous == false then
-    rawset(links.first, parent, following or nil)
-  else
-    rawset(links.nextSibling, previous, following)
-  end
-  if following ~= false then
-    rawset(links.previousSibling, following, previous)
-  end
-
-  rawset(links.nextSibling, child, nil)
-  rawset(links.previousSibling, child, nil)
-  rawset(links.childPool, child, nil)
-  rawset(links.parent, child, nil)
-  rawset(rawget(childPool, "_attachedTo"), child, nil)
-end
-
----Leave the parent `object` is attached to, if any.
----@param pool PoolKit.Pool pool `object` belongs to
----@param object table|userdata
-local function detachFromParent(pool, object)
-  local attachedTo = rawget(pool, "_attachedTo")
-  if attachedTo == false then
-    return
-  end
-  local parentPool = rawget(attachedTo, object)
-  if parentPool ~= nil then
-    unlinkChild(parentPool, object)
-  end
-end
-
--- Release helpers -------------------------------------------------------------
-
----Move a parked object back to plain borrowed state and forget its animation.
----@param pool PoolKit.Pool
----@param object table|userdata
-local function unpark(pool, object)
-  local parked = rawget(pool, "_parked")
-  local group = rawget(parked, object)
-  rawset(parked, object, nil)
-  if group ~= nil then
-    rawset(rawget(state, "deferredPool"), group, nil)
-    rawset(rawget(state, "deferredObject"), group, nil)
-  end
-
-  rawset(rawget(pool, "_active"), object, ACTIVE)
-  rawset(pool, "_parkedCount", rawget(pool, "_parkedCount") - 1)
-  rawset(pool, "_activeCount", rawget(pool, "_activeCount") + 1)
-end
-
----Complete a deferred release now.
----@param pool PoolKit.Pool
----@param object table|userdata
----@return boolean released
-local function finalizeParked(pool, object)
-  unpark(pool, object)
-  return releaseActive(pool, object)
-end
-
----Release one attached child as part of its parent's release.
----@param childPool PoolKit.Pool
----@param child table|userdata
-local function releaseCascadedChild(childPool, child)
-  local status = rawget(rawget(childPool, "_active"), child)
-  if status ~= ACTIVE and status ~= PARKED then
-    -- `RELEASING` is a cycle back to an object already being released;
-    -- anything else is no longer borrowed. Either way there is nothing to do.
-    return
-  end
-
-  ensureMutationAllowed(childPool, "PoolKit.Pool:Release", 0)
-  if status == PARKED then
-    finalizeParked(childPool, child)
-  else
-    releaseActive(childPool, child)
-  end
-end
-
----Release every child attached to `parent`, most recently attached first.
----@param pool PoolKit.Pool
----@param parent table|userdata
----@return table|nil firstError
-local function releaseChildren(pool, parent)
-  local links = rawget(pool, "_children")
-  if links == false then
-    return nil
-  end
-
-  local firstError = nil
-  local child = rawget(links.first, parent)
-  while child ~= nil do
-    local childPool = rawget(links.childPool, child)
-    -- Unlink first so the child's own release does not look for a parent,
-    -- and so the loop always advances whatever the release does.
-    unlinkChild(pool, child)
-    local ok, value = pcall(releaseCascadedChild, childPool, child)
-    firstError = captureFirstError(firstError, ok, value)
-    child = rawget(links.first, parent)
-  end
-  return firstError
 end
 
 -- Release transaction ---------------------------------------------------------
@@ -1331,25 +1218,26 @@ end
 ---
 ---This is the hot half of every `Release`, so pool fields and the pool's own
 ---maps are read and written by plain indexing rather than `rawget`/`rawset`.
----That is the same operation here: every field it touches is always present on
----a pool of the current schema (a pool reaches this point only after
----`validatePool` upgraded it), the maps have no metatable, `_released` has only
----`__mode`, and the pool metatable has no `__newindex`. A plain index is a VM
----instruction; `rawget` is a C call, which dominated this path.
+---That is the same operation here: the pool metatable has no `__newindex` and
+---its `__index` is the `PoolKit.Pool` prototype, which holds no field starting
+---with `_`, so an absent field of a sparse pool reads `nil`; the maps have no
+---metatable and `_released` has only `__mode`. A plain index is a VM
+---instruction; `rawget` is a C call, which dominated this path. Each part's
+---mechanism costs one truthiness test here and a call only when it is in use.
 ---@param pool PoolKit.Pool
 ---@param object table|userdata
 ---@return boolean released
-function releaseActive(pool, object)
+local function releaseActive(pool, object)
   local active = pool._active
   active[object] = RELEASING
 
   local firstError = nil
-  if pool._children ~= false then
-    firstError = releaseChildren(pool, object)
+  if pool._children then
+    firstError = mechanism("Children").releaseChildren(pool, object)
   end
 
   local reset = pool._reset
-  if reset ~= false then
+  if reset then
     if pool._trustedCallbacks == true then
       reset(object, pool)
     else
@@ -1372,8 +1260,8 @@ function releaseActive(pool, object)
     end
   end
 
-  if pool._attachedTo ~= false then
-    detachFromParent(pool, object)
+  if pool._attachedTo then
+    mechanism("Children").detachFromParent(pool, object)
   end
   active[object] = nil
   pool._activeCount = pool._activeCount - 1
@@ -1383,7 +1271,10 @@ function releaseActive(pool, object)
   if
     pool._closed ~= true
     and (maxRetained == UNBOUNDED or count < maxRetained)
-    and (pool._generation == pool._baseGeneration or not isStale(pool, object))
+    and (
+      pool._generation == pool._baseGeneration
+      or not mechanism("Generations").isStale(pool, object)
+    )
   then
     count = count + 1
     pool._available[count] = object
@@ -1394,14 +1285,23 @@ function releaseActive(pool, object)
     firstError = captureFirstError(firstError, ok, value)
   end
 
-  if pool._waitingCount > 0 then
-    drainWaiting(pool)
+  local waitingCount = pool._waitingCount
+  if waitingCount and waitingCount > 0 then
+    mechanism("Waiting").drain(pool)
   end
 
   if firstError ~= nil then
     raiseCaptured(firstError)
   end
   return true
+end
+
+---Complete the deferred release of a parked object now (Deferred part).
+---@param pool PoolKit.Pool
+---@param object table|userdata
+---@return boolean released
+local function finalizeParked(pool, object)
+  return mechanism("Deferred").finalizeParked(pool, object)
 end
 
 ---Raise the error that explains why `object` cannot be released.
@@ -1421,177 +1321,59 @@ local function raiseNotReleasable(pool, object, status, methodName, level)
     error(methodName .. " object has already been released", level)
   end
   local released = rawget(pool, "_released")
-  if released ~= false and rawget(released, object) == true then
+  if released and rawget(released, object) == true then
     error(methodName .. " object has already been released", level)
   end
   error(methodName .. " object was not acquired from this pool", level)
 end
 
--- Deferred release ------------------------------------------------------------
-
----`OnFinished` hook shared by every animation group PoolKit ever hooked.
----
----Reads its behaviour from shared state, so a hook an older revision installed
----runs the newest accepted revision's completion.
----@param group PoolKit.AnimationGroup
-local function onAnimationFinished(group)
-  local finish = rawget(rawget(state, "dispatch"), "animationFinished")
-  return finish(group)
-end
-
----Complete the deferred release waiting on `group`, if any. Called by the host.
----
----Failures cannot reach a caller here, so they are reported through the host
----error handler. A pool that is inside one of its own lifecycle callbacks when
----the animation ends keeps the object parked; `Release` or `Close` completes it.
----@param group PoolKit.AnimationGroup
-local function completeDeferredRelease(group)
-  local pool = rawget(rawget(state, "deferredPool"), group)
-  if pool == nil then
-    return
-  end
-  local object = rawget(rawget(state, "deferredObject"), group)
-
-  if rawget(pool, "_callbackDepth") > 0 then
-    reportWarning(
-      "PoolKit could not complete a deferred release because its pool was inside a "
-        .. tostring(rawget(pool, "_callbackPhase"))
-        .. " callback; release the object explicitly"
-    )
-    return
-  end
-
-  local ok, value = pcall(finalizeParked, pool, object)
-  if not ok then
-    reportWarning(value)
-  end
-end
-
----Whether `value` has the shape of an animation group: `HookScript`,
----`IsPlaying`, `Play` and `Stop` methods.
----
----`HookScript` alone is not enough: every Frame has it, and a Frame passed by
----mistake would get past the check and fail later inside the client's own
----`OnFinished` handling instead of at the caller. A Frame has none of the other
----three. Only `HookScript` and `IsPlaying` are ever called; `Play` and `Stop`
----are read, never called. Run under `pcall`, because indexing a userdata
----without an `__index` raises.
----@param value table|userdata
----@return boolean
-local function hasAnimationGroupShape(value)
-  return type(value.HookScript) == "function"
-    and type(value.IsPlaying) == "function"
-    and type(value.Play) == "function"
-    and type(value.Stop) == "function"
-end
-
----Install PoolKit's `OnFinished` hook on `group`, once per group ever.
----
----`HookScript` cannot be undone, so hooking per release would stack one more
----permanent hook on a pooled Frame's animation every time it is reused.
----@param group PoolKit.AnimationGroup
-local function hookAnimationGroup(group)
-  local hooked = rawget(state, "hookedGroups")
-  if rawget(hooked, group) == true then
-    return
-  end
-  group:HookScript("OnFinished", onAnimationFinished)
-  rawset(hooked, group, true)
-end
-
----Park a borrowed object until `group` finishes.
----@param pool PoolKit.Pool
----@param object table|userdata
----@param group PoolKit.AnimationGroup
-local function park(pool, object, group)
-  local parked = rawget(pool, "_parked")
-  if parked == false then
-    parked = {}
-    rawset(pool, "_parked", parked)
-  end
-  rawset(parked, object, group)
-  rawset(rawget(state, "deferredPool"), group, pool)
-  rawset(rawget(state, "deferredObject"), group, object)
-
-  rawset(rawget(pool, "_active"), object, PARKED)
-  rawset(pool, "_activeCount", rawget(pool, "_activeCount") - 1)
-  rawset(pool, "_parkedCount", rawget(pool, "_parkedCount") + 1)
-end
-
 -- Construction ------------------------------------------------------------------
 
----Settings a constructor resolved from its options.
----@class PoolKit.PoolSettings
----@field create PoolKit.Factory
----@field reset PoolKit.ObjectCallback|nil
----@field destroy PoolKit.ObjectCallback|nil
----@field maxRetained integer|table
----@field strict boolean
----@field prewarm integer
----@field maxActiveWarning integer|false
----@field trustedCallbacks boolean whether PoolKit itself owns the callbacks
----@field generation integer
----@field maxCreated integer|false
----@field maxActive integer|false
----@field maxWaiting integer
-
----Construct one pool and, when asked, prewarm it before it escapes.
----@param settings PoolKit.PoolSettings
+---Construct one pool from parsed settings and, when asked, prewarm it before
+---it escapes. The pool carries only the fields in use: the twelve every pool
+---needs fit one 16-slot hash part with the optional ones, and a part's fields
+---appear only when its `configure` hook sets them.
+---@param settings table what `parseOptions` returned, plus `trustedCallbacks`
 ---@return PoolKit.Pool
 local function newPool(settings)
-  -- `false` rather than `nil` so the hot path can test the field with one
-  -- comparison instead of distinguishing "absent" from "empty".
-  ---@type table|false
-  local released = false
-  if settings.strict then
-    released = setmetatable({}, { __mode = "k" })
-  end
-
-  -- The ring is filled once here, so queue traffic only overwrites slots.
-  local maxWaiting = settings.maxWaiting
-  ---@type table|false
-  local waiting = false
-  if maxWaiting > 0 then
-    waiting = {}
-    for slot = 1, maxWaiting do
-      waiting[slot] = false
-    end
-  end
-
   local pool = setmetatable({
     _schema = POOL_SCHEMA,
     _create = settings.create,
-    _reset = settings.reset or false,
-    _destroy = settings.destroy or false,
     _maxRetained = settings.maxRetained,
     _available = {},
     _availableCount = 0,
     _active = {},
     _activeCount = 0,
-    _maxActiveWarning = settings.maxActiveWarning,
-    _activeWarned = false,
     _retained = {},
-    _released = released,
     _createdCount = 0,
     _discardedCount = 0,
-    _closed = false,
     _callbackPhase = false,
     _callbackDepth = 0,
-    _trustedCallbacks = settings.trustedCallbacks == true,
-    _generation = settings.generation,
-    _baseGeneration = settings.generation,
-    _stamps = false,
-    _maxCreated = settings.maxCreated,
-    _maxActive = settings.maxActive,
-    _maxWaiting = maxWaiting,
-    _waiting = waiting,
-    _waitingHead = 1,
-    _waitingCount = 0,
-    _parked = false,
-    _parkedCount = 0,
-    _children = false,
-    _attachedTo = false,
   }, POOL_METATABLE)
+  if settings.reset ~= nil then
+    pool._reset = settings.reset
+  end
+  if settings.destroy ~= nil then
+    pool._destroy = settings.destroy
+  end
+  if settings.strict then
+    pool._released = setmetatable({}, RELEASED_METATABLE)
+  end
+  if settings.maxActiveWarning then
+    pool._maxActiveWarning = settings.maxActiveWarning
+  end
+  if settings.trustedCallbacks then
+    pool._trustedCallbacks = true
+  end
+  if settings.maxCreated then
+    pool._maxCreated = settings.maxCreated
+  end
+  if settings.generation ~= nil then
+    rawget(parts, "Generations").configure(pool, settings.generation)
+  end
+  if settings.maxActive or (settings.maxWaiting or 0) > 0 then
+    rawget(parts, "Waiting").configure(pool, settings.maxActive, settings.maxWaiting)
+  end
 
   if settings.prewarm > 0 then
     -- The failure is re-raised verbatim below, so level 0 keeps a
@@ -1617,6 +1399,8 @@ end
 ---capacity it returns `nil` and a reason instead: `"exhausted"` when no
 ---`onAvailable` callback was given, `"waiting"` when the request was queued, and
 ---`"queueFull"` when the bounded queue had no room and the request was refused.
+---A pool without the Waiting part has no queue, so `onAvailable` at capacity
+---answers `"queueFull"`.
 ---@param self PoolKit.Pool
 ---@param onAvailable PoolKit.WaitCallback? called with the object once one frees
 ---@return table|userdata|nil object
@@ -1634,11 +1418,11 @@ local function poolAcquire(self, onAvailable)
     and self._callbackDepth == 0
     and self._closed ~= true
     and type(onAvailable) == "nil"
-    and self._waitingCount == 0
-    and self._maxActive == false
+    and not self._maxActive
   then
+    local waitingCount = self._waitingCount
     local count = self._availableCount
-    if count > 0 then
+    if count > 0 and (waitingCount == nil or waitingCount == 0) then
       local available = self._available
       local object = available[count]
       available[count] = nil
@@ -1651,7 +1435,7 @@ local function poolAcquire(self, onAvailable)
       local activeCount = self._activeCount + 1
       self._activeCount = activeCount
       local warnAt = self._maxActiveWarning
-      if warnAt ~= false and activeCount >= warnAt and self._activeWarned ~= true then
+      if warnAt and activeCount >= warnAt and self._activeWarned ~= true then
         warnActiveThreshold(self, activeCount)
       end
       return object
@@ -1670,18 +1454,23 @@ local function poolAcquire(self, onAvailable)
 
   -- Requests already waiting are served first, so a new caller never jumps
   -- the queue; normally the queue is empty and this is one comparison.
-  if rawget(self, "_waitingCount") > 0 then
-    drainWaiting(self)
+  local waitingCount = rawget(self, "_waitingCount")
+  if waitingCount and waitingCount > 0 then
+    mechanism("Waiting").drain(self)
+    waitingCount = rawget(self, "_waitingCount")
   end
+  waitingCount = waitingCount or 0
 
-  if rawget(self, "_waitingCount") > 0 or not hasCapacity(self) then
+  if waitingCount > 0 or not hasCapacity(self) then
     if onAvailableType == "nil" then
       return nil, REASON_EXHAUSTED
     end
-    if rawget(self, "_waitingCount") >= rawget(self, "_maxWaiting") then
+    if
+      waitingCount >= (rawget(self, "_maxWaiting") or 0)
+      or mechanism("Waiting").enqueue(self, onAvailable) == false
+    then
       return nil, REASON_QUEUE_FULL
     end
-    enqueueWaiter(self, onAvailable)
     return nil, REASON_WAITING
   end
 
@@ -1764,28 +1553,6 @@ local function poolClear(self)
   return trimTo(self, 0)
 end
 
----Complete every parked release of a closing pool, best effort.
----@param pool PoolKit.Pool
----@return table|nil firstError
-local function finalizeAllParked(pool)
-  local parked = rawget(pool, "_parked")
-  if parked == false then
-    return nil
-  end
-
-  local firstError = nil
-  local object = next(parked)
-  while object ~= nil do
-    local ok, value = pcall(finalizeParked, pool, object)
-    firstError = captureFirstError(firstError, ok, value)
-    -- `unpark` removes the entry before anything can raise; this only
-    -- guarantees the loop advances if that ever stops being true.
-    rawset(parked, object, nil)
-    object = next(parked)
-  end
-  return firstError
-end
-
 ---Terminally close the pool: fail waiting requests, complete parked releases,
 ---and destroy everything it retains.
 ---@param self PoolKit.Pool
@@ -1798,8 +1565,15 @@ local function poolClose(self)
   end
   rawset(self, "_closed", true)
 
-  failWaiting(self)
-  local firstError = finalizeAllParked(self)
+  local waitingCount = rawget(self, "_waitingCount")
+  if waitingCount and waitingCount > 0 then
+    mechanism("Waiting").fail(self)
+  end
+  local firstError = nil
+  local parkedCount = rawget(self, "_parkedCount")
+  if parkedCount and parkedCount > 0 then
+    firstError = mechanism("Deferred").finalizeAllParked(self)
+  end
   local ok, value = pcall(trimTo, self, 0)
   firstError = captureFirstError(firstError, ok, value)
 
@@ -1807,52 +1581,23 @@ local function poolClose(self)
   return true
 end
 
----Whether the pool is terminally closed.
----@param self PoolKit.Pool
----@return boolean closed
-local function poolIsClosed(self)
-  validatePool(self, "PoolKit.Pool:IsClosed", 3)
-  return rawget(self, "_closed") == true
-end
-
----Number of objects retained and ready to hand out.
----@param self PoolKit.Pool
----@return integer availableCount
-local function poolGetAvailableCount(self)
-  validatePool(self, "PoolKit.Pool:GetAvailableCount", 3)
-  return rawget(self, "_availableCount")
-end
-
----Number of objects currently borrowed. Parked objects are not counted.
----@param self PoolKit.Pool
----@return integer activeCount
-local function poolGetActiveCount(self)
-  validatePool(self, "PoolKit.Pool:GetActiveCount", 3)
-  return rawget(self, "_activeCount")
-end
-
----Number of objects this pool has ever built through its factory.
----@param self PoolKit.Pool
----@return integer createdCount
-local function poolGetCreatedCount(self)
-  validatePool(self, "PoolKit.Pool:GetCreatedCount", 3)
-  return rawget(self, "_createdCount")
-end
-
----Number of objects this pool has released from its ownership.
----@param self PoolKit.Pool
----@return integer discardedCount
-local function poolGetDiscardedCount(self)
-  validatePool(self, "PoolKit.Pool:GetDiscardedCount", 3)
-  return rawget(self, "_discardedCount")
-end
-
----Current retention bound, or `PoolKit.UNBOUNDED`.
----@param self PoolKit.Pool
----@return integer|table maxRetained
-local function poolGetMaxRetained(self)
-  validatePool(self, "PoolKit.Pool:GetMaxRetained", 3)
-  return rawget(self, "_maxRetained")
+---Build a getter: validate the receiver at the caller's level, then return
+---one field, or `default` when a sparse pool does not carry it. The getters of
+---a part answer the part's neutral value when the part was never used.
+---@param methodName string the `PoolKit.Pool` method, for the argument error
+---@param field string the pool field
+---@param default any the value an absent field reads as
+---@return function
+local function newGetter(methodName, field, default)
+  local label = "PoolKit.Pool:" .. methodName
+  return function(self)
+    validatePool(self, label, 3)
+    local value = rawget(self, field)
+    if value == nil then
+      return default
+    end
+    return value
+  end
 end
 
 ---Change the retention bound, trimming immediately when it shrinks.
@@ -1900,84 +1645,6 @@ local function poolIsActive(self, object)
   return status == ACTIVE or status == RELEASING
 end
 
----The generation stamped on objects the factory builds from now on.
----@param self PoolKit.Pool
----@return integer generation
-local function poolGetGeneration(self)
-  validatePool(self, "PoolKit.Pool:GetGeneration", 3)
-  return rawget(self, "_generation")
-end
-
----Raise the pool's generation. Retained objects from an older generation are
----destroyed at once; borrowed ones are destroyed instead of retained when they
----come back. Lowering the generation is refused.
----@param self PoolKit.Pool
----@param generation integer positive integer no lower than the current one
----@return integer removed retained objects destroyed by this call
-local function poolSetGeneration(self, generation)
-  validatePool(self, "PoolKit.Pool:SetGeneration", 3)
-  ensureMutationAllowed(self, "PoolKit.Pool:SetGeneration", 3)
-  validatePositiveInteger(generation, "PoolKit.Pool:SetGeneration generation", 3)
-
-  local current = rawget(self, "_generation")
-  if generation < current then
-    error(
-      "PoolKit.Pool:SetGeneration cannot lower the generation from "
-        .. tostring(current)
-        .. " to "
-        .. tostring(generation),
-      2
-    )
-  end
-  if generation == current then
-    return 0
-  end
-
-  if rawget(self, "_stamps") == false then
-    rawset(self, "_stamps", setmetatable({}, { __mode = "k" }))
-  end
-  rawset(self, "_generation", generation)
-  return trimStale(self)
-end
-
----Number of `Acquire(onAvailable)` requests waiting for an object.
----@param self PoolKit.Pool
----@return integer waitingCount
-local function poolGetWaitingCount(self)
-  validatePool(self, "PoolKit.Pool:GetWaitingCount", 3)
-  return rawget(self, "_waitingCount")
-end
-
----Withdraw the oldest waiting request made with `callback`.
----@param self PoolKit.Pool
----@param callback PoolKit.WaitCallback
----@return boolean removed `false` when no such request was waiting.
-local function poolCancelWaiting(self, callback)
-  validatePool(self, "PoolKit.Pool:CancelWaiting", 3)
-  ensureMutationAllowed(self, "PoolKit.Pool:CancelWaiting", 3)
-  validateCallback(callback, "PoolKit.Pool:CancelWaiting callback", true, 3)
-  if rawget(self, "_waitingCount") == 0 then
-    return false
-  end
-  return removeWaiter(self, callback)
-end
-
----Number of objects whose release waits for an animation to finish.
----@param self PoolKit.Pool
----@return integer parkedCount
-local function poolGetParkedCount(self)
-  validatePool(self, "PoolKit.Pool:GetParkedCount", 3)
-  return rawget(self, "_parkedCount")
-end
-
----The creation cap, or `false` when the pool has none.
----@param self PoolKit.Pool
----@return integer|false maxCreated
-local function poolGetMaxCreated(self)
-  validatePool(self, "PoolKit.Pool:GetMaxCreated", 3)
-  return rawget(self, "_maxCreated")
-end
-
 ---Raise the creation cap. Destroyed objects keep counting against the cap, so
 ---this is how a pool whose stale objects were retired by `SetGeneration` gets
 ---room to build their replacements. A retention bound that equalled the old
@@ -1992,7 +1659,7 @@ local function poolSetMaxCreated(self, maxCreated)
   validatePositiveInteger(maxCreated, "PoolKit.Pool:SetMaxCreated maxCreated", 3)
 
   local current = rawget(self, "_maxCreated")
-  if current == false then
+  if not current then
     error("PoolKit.Pool:SetMaxCreated cannot cap a pool that was built without maxCreated", 2)
   end
   if maxCreated < current then
@@ -2009,206 +1676,23 @@ local function poolSetMaxCreated(self, maxCreated)
   if rawget(self, "_maxRetained") == current then
     rawset(self, "_maxRetained", maxCreated)
   end
-  if rawget(self, "_waitingCount") > 0 and rawget(self, "_closed") ~= true then
-    drainWaiting(self)
+  local waitingCount = rawget(self, "_waitingCount")
+  if waitingCount and waitingCount > 0 and rawget(self, "_closed") ~= true then
+    mechanism("Waiting").drain(self)
   end
   return self
-end
-
----Attach `child`, borrowed from `childPool`, to `parent`, borrowed from this
----pool. Releasing `parent` releases its children first, most recently attached
----first, through their own pools; a child released on its own is detached.
----@param self PoolKit.Pool
----@param parent table|userdata an object borrowed from this pool
----@param child table|userdata an object borrowed from `childPool`
----@param childPool PoolKit.Pool the pool `child` belongs to; may be this pool
----@return PoolKit.Pool self
-local function poolAttachChild(self, parent, child, childPool)
-  validatePool(self, "PoolKit.Pool:AttachChild", 3)
-  ensureMutationAllowed(self, "PoolKit.Pool:AttachChild", 3)
-  validatePoolObject(parent, "PoolKit.Pool:AttachChild parent", 3)
-  validatePoolObject(child, "PoolKit.Pool:AttachChild child", 3)
-  if type(childPool) ~= "table" or getmetatable(childPool) ~= POOL_METATABLE then
-    error("PoolKit.Pool:AttachChild childPool must be a PoolKit pool", 2)
-  end
-  if rawget(childPool, "_schema") ~= POOL_SCHEMA then
-    upgradePool(childPool)
-  end
-
-  if rawget(rawget(self, "_active"), parent) ~= ACTIVE then
-    error("PoolKit.Pool:AttachChild parent must be borrowed from this pool", 2)
-  end
-  if rawget(rawget(childPool, "_active"), child) ~= ACTIVE then
-    error("PoolKit.Pool:AttachChild child must be borrowed from childPool", 2)
-  end
-  if parent == child then
-    error("PoolKit.Pool:AttachChild cannot attach an object to itself", 2)
-  end
-  local attachedTo = rawget(childPool, "_attachedTo")
-  if attachedTo ~= false and rawget(attachedTo, child) ~= nil then
-    error("PoolKit.Pool:AttachChild child is already attached to a parent", 2)
-  end
-
-  linkChild(self, parent, child, childPool)
-  return self
-end
-
----Detach `child` from its parent in this pool without releasing either.
----@param self PoolKit.Pool
----@param child table|userdata
----@return boolean detached `false` when `child` had no parent in this pool.
-local function poolDetachChild(self, child)
-  validatePool(self, "PoolKit.Pool:DetachChild", 3)
-  ensureMutationAllowed(self, "PoolKit.Pool:DetachChild", 3)
-  validatePoolObject(child, "PoolKit.Pool:DetachChild child", 3)
-
-  local links = rawget(self, "_children")
-  if links == false or rawget(links.parent, child) == nil then
-    return false
-  end
-  unlinkChild(self, child)
-  return true
-end
-
----Release `object` once `animationGroup` finishes playing.
----
----The object is parked: still owned by the pool (`Owns` is `true`), no longer
----borrowed (`IsActive` is `false`), and still counted against `maxActive`
----because it is still on screen. PoolKit hooks the group's `OnFinished` once per
----group. A group that is not playing would never finish, so the object is
----released at once instead. `Release(object)` completes a parked release early.
----@param self PoolKit.Pool
----@param object table|userdata an object borrowed from this pool
----@param animationGroup PoolKit.AnimationGroup the fade-out or other animation
----@return boolean deferred `false` when the object was released immediately.
-local function poolReleaseAfter(self, object, animationGroup)
-  validatePool(self, "PoolKit.Pool:ReleaseAfter", 3)
-  ensureMutationAllowed(self, "PoolKit.Pool:ReleaseAfter", 3)
-  validatePoolObject(object, "PoolKit.Pool:ReleaseAfter object", 3)
-
-  local groupType = type(animationGroup)
-  local isGroup = false
-  if groupType == "table" or groupType == "userdata" then
-    local readable, shaped = pcall(hasAnimationGroupShape, animationGroup)
-    isGroup = readable and shaped
-  end
-  if not isGroup then
-    error("PoolKit.Pool:ReleaseAfter animationGroup must be an animation group", 2)
-  end
-  -- The shape check above is what makes it one, whatever its Lua type.
-  ---@cast animationGroup PoolKit.AnimationGroup
-
-  local status = rawget(rawget(self, "_active"), object)
-  if status ~= ACTIVE then
-    raiseNotReleasable(self, object, status, "PoolKit.Pool:ReleaseAfter", 3)
-  end
-  if rawget(rawget(state, "deferredPool"), animationGroup) ~= nil then
-    error("PoolKit.Pool:ReleaseAfter animationGroup already has a pending release", 2)
-  end
-
-  if not animationGroup:IsPlaying() then
-    releaseActive(self, object)
-    return false
-  end
-
-  hookAnimationGroup(animationGroup)
-  park(self, object, animationGroup)
-  return true
 end
 
 -- Package constructors -------------------------------------------------------
 
----Validate the capacity options of `PoolKit:New`.
----@param options table
----@param level integer stack level the failures are reported at
----@return integer|false maxCreated
----@return integer|false maxActive
----@return integer maxWaiting
-local function parseCapacityOptions(options, level)
-  local maxCreated = rawget(options, "maxCreated")
-  if type(maxCreated) == "nil" then
-    maxCreated = false
-  else
-    validatePositiveInteger(maxCreated, "PoolKit:New maxCreated", level + 1)
-  end
-
-  local maxActive = rawget(options, "maxActive")
-  if type(maxActive) == "nil" then
-    maxActive = false
-  else
-    validatePositiveInteger(maxActive, "PoolKit:New maxActive", level + 1)
-  end
-
-  local maxWaiting = rawget(options, "maxWaiting")
-  if type(maxWaiting) == "nil" then
-    maxWaiting = 0
-  else
-    validateCount(maxWaiting, "PoolKit:New maxWaiting", level + 1)
-  end
-  if maxWaiting > 0 and maxCreated == false and maxActive == false then
-    error("PoolKit:New maxWaiting requires maxCreated or maxActive", level)
-  end
-
-  return maxCreated, maxActive, maxWaiting
-end
-
 ---Create a generic object pool.
----@param _ PoolKit
+---@param self PoolKit
 ---@param options PoolKit.NewOptions
 ---@return PoolKit.Pool pool
-local function packageNew(_, options)
-  if type(options) ~= "table" then
-    error("PoolKit:New options must be a table", 2)
-  end
-  local create = rawget(options, "create")
-  local reset = rawget(options, "reset")
-  local destroy = rawget(options, "destroy")
-  validateCallback(create, "PoolKit:New create", true, 3)
-  validateCallback(reset, "PoolKit:New reset", false, 3)
-  validateCallback(destroy, "PoolKit:New destroy", false, 3)
-
-  -- A construction-time check only: `strictReset` never reaches the pool, so
-  -- opting into it costs the acquire/release hot paths nothing.
-  local strictReset = rawget(options, "strictReset")
-  refuseSecret(strictReset, "PoolKit:New strictReset", 3)
-  local strictResetType = type(strictReset)
-  if strictResetType ~= "nil" and strictResetType ~= "boolean" then
-    error("PoolKit:New strictReset must be a boolean", 2)
-  end
-  if strictReset == true and type(reset) == "nil" then
-    error("PoolKit:New strictReset requires a reset callback", 2)
-  end
-
-  -- A capped pool retains everything it may ever create by default: the
-  -- objects a cap exists for cannot be freed, so discarding one on release
-  -- would only lose it for good.
-  local requestedMaxCreated = rawget(options, "maxCreated")
-  local defaultMaxRetained = DEFAULT_MAX_RETAINED
-  if isPositiveInteger(requestedMaxCreated) then
-    defaultMaxRetained = requestedMaxCreated
-  end
-
-  local maxRetained, strict, prewarm, maxActiveWarning, generation =
-    parseCommonOptions(options, GENERIC_OPTION_KEYS, "PoolKit:New", 3, defaultMaxRetained)
-  local maxCreated, maxActive, maxWaiting = parseCapacityOptions(options, 3)
-  if maxCreated ~= false and prewarm > maxCreated then
-    error("PoolKit:New prewarm cannot exceed maxCreated", 2)
-  end
-
-  return newPool({
-    create = create,
-    reset = reset,
-    destroy = destroy,
-    maxRetained = maxRetained,
-    strict = strict,
-    prewarm = prewarm,
-    maxActiveWarning = maxActiveWarning,
-    trustedCallbacks = false,
-    generation = generation,
-    maxCreated = maxCreated,
-    maxActive = maxActive,
-    maxWaiting = maxWaiting,
-  })
+local function packageNew(self, options)
+  validateFacade(self, "PoolKit:New", 3)
+  local settings = parseOptions(options, true, "PoolKit:New", 3)
+  return newPool(settings)
 end
 
 ---Factory for `PoolKit:NewTablePool`.
@@ -2232,26 +1716,183 @@ local function tableReset(object)
 end
 
 ---Create a shallow-clearing Lua table pool.
----@param _ PoolKit
+---@param self PoolKit
 ---@param options PoolKit.CommonOptions?
 ---@return PoolKit.Pool pool
-local function packageNewTablePool(_, options)
-  local maxRetained, strict, prewarm, maxActiveWarning, generation =
-    parseCommonOptions(options, TABLE_OPTION_KEYS, "PoolKit:NewTablePool", 3, DEFAULT_MAX_RETAINED)
-  return newPool({
-    create = tableCreate,
-    reset = tableReset,
-    destroy = nil,
-    maxRetained = maxRetained,
-    strict = strict,
-    prewarm = prewarm,
-    maxActiveWarning = maxActiveWarning,
-    trustedCallbacks = true,
-    generation = generation,
-    maxCreated = false,
-    maxActive = false,
-    maxWaiting = 0,
-  })
+local function packageNewTablePool(self, options)
+  validateFacade(self, "PoolKit:NewTablePool", 3)
+  local settings = parseOptions(options, false, "PoolKit:NewTablePool", 3)
+  settings.create = tableCreate
+  settings.reset = tableReset
+  settings.trustedCallbacks = true
+  return newPool(settings)
+end
+
+---Whether the named part is loaded in this session: `"Waiting"`, `"Children"`,
+---`"Deferred"` or `"Generations"`. Code that uses a part only when it is there
+---asks this, never whether the method is a function: the prototype keeps every
+---method, raising when its part is absent.
+---@param self PoolKit
+---@param name string
+---@return boolean
+local function packageHasPart(self, name)
+  validateFacade(self, "PoolKit:HasPart", 3)
+  refuseSecret(name, "PoolKit:HasPart name", 3)
+  if type(name) ~= "string" then
+    error("PoolKit:HasPart name must be a string", 2)
+  end
+  return type(rawget(parts, name)) == "table"
+end
+
+-- Older pools' mechanisms ------------------------------------------------------
+--
+-- Built only in a session where a revision 11 or older loaded (`fullPools`):
+-- its pools may hold a mechanism's state with that mechanism's part absent.
+-- Elsewhere this block never runs and its code is freed after load.
+
+if rawget(state, "fullPools") == true then
+  local reported = {}
+
+  ---Tell the host once per part that a pool needs it.
+  ---@param partName string
+  local function reportMissingPart(partName)
+    if reported[partName] then
+      return
+    end
+    reported[partName] = true
+    reportWarning(
+      missingPart("A pool an older PoolKit revision built uses a mechanism that", partName)
+        .. "; PoolKit takes the safe path without it"
+    )
+  end
+
+  ---Fail every waiting request of `pool` with `"closed"`, oldest first.
+  ---@param pool table
+  local function failEveryWaiter(pool)
+    local waiting = rawget(pool, "_waiting")
+    local capacity = rawget(pool, "_maxWaiting")
+    while rawget(pool, "_waitingCount") > 0 do
+      local head = rawget(pool, "_waitingHead")
+      local callback = rawget(waiting, head)
+      rawset(waiting, head, false)
+      rawset(pool, "_waitingHead", head % capacity + 1)
+      rawset(pool, "_waitingCount", rawget(pool, "_waitingCount") - 1)
+      local ok, failure = pcall(callback, nil, pool, REASON_CLOSED)
+      if not ok then
+        reportWarning(failure)
+      end
+    end
+  end
+
+  ---Release a parked object at once.
+  ---@param pool table
+  ---@param object table|userdata
+  ---@return boolean released
+  local function releaseParkedNow(pool, object)
+    local parked = rawget(pool, "_parked")
+    local group = rawget(parked, object)
+    rawset(parked, object, nil)
+    if group ~= nil then
+      rawset(rawget(state, "deferredPool"), group, nil)
+      rawset(rawget(state, "deferredObject"), group, nil)
+    end
+    rawset(rawget(pool, "_active"), object, ACTIVE)
+    rawset(pool, "_parkedCount", rawget(pool, "_parkedCount") - 1)
+    rawset(pool, "_activeCount", rawget(pool, "_activeCount") + 1)
+    return releaseActive(pool, object)
+  end
+
+  ---Take `child` out of its parent's list in `parentPool`. Never raises.
+  ---@param parentPool table
+  ---@param child table|userdata
+  local function unlinkChild(parentPool, child)
+    local links = rawget(parentPool, "_children")
+    local parent = rawget(links.parent, child)
+    local previous = rawget(links.previousSibling, child)
+    local following = rawget(links.nextSibling, child)
+    if previous == false then
+      rawset(links.first, parent, following or nil)
+    else
+      rawset(links.nextSibling, previous, following)
+    end
+    if following ~= false then
+      rawset(links.previousSibling, following, previous)
+    end
+    rawset(rawget(rawget(links.childPool, child), "_attachedTo"), child, nil)
+    rawset(links.nextSibling, child, nil)
+    rawset(links.previousSibling, child, nil)
+    rawset(links.childPool, child, nil)
+    rawset(links.parent, child, nil)
+  end
+
+  fallbackMechanisms = {
+    report = reportMissingPart,
+    Waiting = {
+      drain = failEveryWaiter,
+      fail = failEveryWaiter,
+      -- No queue without the part: a new request is refused as `"queueFull"`.
+      enqueue = function()
+        return false
+      end,
+    },
+    Deferred = {
+      finalizeParked = releaseParkedNow,
+      finalizeAllParked = function(pool)
+        local parked = rawget(pool, "_parked")
+        local firstError = nil
+        local object = next(parked)
+        while object ~= nil do
+          local ok, value = pcall(releaseParkedNow, pool, object)
+          firstError = captureFirstError(firstError, ok, value)
+          rawset(parked, object, nil)
+          object = next(parked)
+        end
+        return firstError
+      end,
+      -- An animation an older revision hooked finishes: release at once.
+      animationFinished = function(group)
+        local pool = rawget(rawget(state, "deferredPool"), group)
+        if pool == nil then
+          return
+        end
+        reportMissingPart("Deferred")
+        local ok, value =
+          pcall(releaseParkedNow, pool, rawget(rawget(state, "deferredObject"), group))
+        if not ok then
+          reportWarning(value)
+        end
+      end,
+    },
+    Children = {
+      -- Detach every child without releasing it.
+      releaseChildren = function(pool, parent)
+        local links = rawget(pool, "_children")
+        local child = rawget(links.first, parent)
+        while child ~= nil do
+          unlinkChild(pool, child)
+          child = rawget(links.first, parent)
+        end
+        return nil
+      end,
+      detachFromParent = function(pool, object)
+        local parentPool = rawget(rawget(pool, "_attachedTo"), object)
+        if parentPool ~= nil then
+          unlinkChild(parentPool, object)
+        end
+      end,
+    },
+    Generations = {
+      -- A revision 11 pool keeps its stamps, so staleness stays exact.
+      isStale = function(pool, object)
+        local stamps = rawget(pool, "_stamps")
+        local stamp = stamps and rawget(stamps, object) or rawget(pool, "_baseGeneration")
+        return stamp < rawget(pool, "_generation")
+      end,
+      -- Unstamped, an object counts as the base generation: it is stale, so
+      -- it is destroyed on release rather than retained.
+      stamp = function() end,
+    },
+  }
 end
 
 -- Commit --------------------------------------------------------------------
@@ -2262,25 +1903,33 @@ rawset(Pool, "Prewarm", poolPrewarm)
 rawset(Pool, "Trim", poolTrim)
 rawset(Pool, "Clear", poolClear)
 rawset(Pool, "Close", poolClose)
-rawset(Pool, "IsClosed", poolIsClosed)
-rawset(Pool, "GetAvailableCount", poolGetAvailableCount)
-rawset(Pool, "GetActiveCount", poolGetActiveCount)
-rawset(Pool, "GetCreatedCount", poolGetCreatedCount)
-rawset(Pool, "GetDiscardedCount", poolGetDiscardedCount)
-rawset(Pool, "GetMaxRetained", poolGetMaxRetained)
+rawset(Pool, "IsClosed", newGetter("IsClosed", "_closed", false))
+rawset(Pool, "GetAvailableCount", newGetter("GetAvailableCount", "_availableCount", 0))
+rawset(Pool, "GetActiveCount", newGetter("GetActiveCount", "_activeCount", 0))
+rawset(Pool, "GetCreatedCount", newGetter("GetCreatedCount", "_createdCount", 0))
+rawset(Pool, "GetDiscardedCount", newGetter("GetDiscardedCount", "_discardedCount", 0))
+rawset(Pool, "GetMaxRetained", newGetter("GetMaxRetained", "_maxRetained", DEFAULT_MAX_RETAINED))
 rawset(Pool, "SetMaxRetained", poolSetMaxRetained)
 rawset(Pool, "Owns", poolOwns)
 rawset(Pool, "IsActive", poolIsActive)
-rawset(Pool, "GetGeneration", poolGetGeneration)
-rawset(Pool, "SetGeneration", poolSetGeneration)
-rawset(Pool, "GetWaitingCount", poolGetWaitingCount)
-rawset(Pool, "CancelWaiting", poolCancelWaiting)
-rawset(Pool, "GetParkedCount", poolGetParkedCount)
-rawset(Pool, "GetMaxCreated", poolGetMaxCreated)
+rawset(Pool, "GetGeneration", newGetter("GetGeneration", "_generation", DEFAULT_GENERATION))
+rawset(Pool, "GetWaitingCount", newGetter("GetWaitingCount", "_waitingCount", 0))
+rawset(Pool, "GetParkedCount", newGetter("GetParkedCount", "_parkedCount", 0))
+rawset(Pool, "GetMaxCreated", newGetter("GetMaxCreated", "_maxCreated", false))
 rawset(Pool, "SetMaxCreated", poolSetMaxCreated)
-rawset(Pool, "AttachChild", poolAttachChild)
-rawset(Pool, "DetachChild", poolDetachChild)
-rawset(Pool, "ReleaseAfter", poolReleaseAfter)
+for methodName in next, PART_METHODS do
+  rawset(Pool, methodName, newPartStub(methodName))
+end
+
+-- A part loaded before this core keeps serving: its methods replace the stubs.
+for _, part in next, parts do
+  local methods = type(part) == "table" and rawget(part, "methods") or nil
+  if type(methods) == "table" then
+    for methodName, method in next, methods do
+      rawset(Pool, methodName, method)
+    end
+  end
+end
 
 rawset(PoolKit, "API", API_GENERATION)
 rawset(PoolKit, "REVISION", IMPLEMENTATION_REVISION)
@@ -2289,8 +1938,41 @@ rawset(PoolKit, "UNBOUNDED", UNBOUNDED)
 rawset(PoolKit, "DEFAULT_MAX_RETAINED", DEFAULT_MAX_RETAINED)
 rawset(PoolKit, "New", packageNew)
 rawset(PoolKit, "NewTablePool", packageNewTablePool)
+rawset(PoolKit, "HasPart", packageHasPart)
 
-rawset(rawget(state, "dispatch"), "animationFinished", completeDeferredRelease)
+-- What the parts call, refilled by every core revision so a part loaded
+-- before an upgrade is served by the newer core. Parts read it at call time.
+do
+  local helpers = rawget(state, "helpers")
+  rawset(helpers, "validatePool", validatePool)
+  rawset(helpers, "upgradeIfOld", upgradeIfOld)
+  rawset(helpers, "ensureMutationAllowed", ensureMutationAllowed)
+  rawset(helpers, "validatePoolObject", validatePoolObject)
+  rawset(helpers, "validatePositiveInteger", validatePositiveInteger)
+  rawset(helpers, "validateCallback", validateCallback)
+  rawset(helpers, "raiseNotReleasable", raiseNotReleasable)
+  rawset(helpers, "releaseActive", releaseActive)
+  rawset(helpers, "finalizeParked", finalizeParked)
+  rawset(helpers, "hasCapacity", hasCapacity)
+  rawset(helpers, "takeObject", takeObject)
+  rawset(helpers, "markActive", markActive)
+  rawset(helpers, "discardAvailableObject", discardAvailableObject)
+  rawset(helpers, "captureFirstError", captureFirstError)
+  rawset(helpers, "raiseCaptured", raiseCaptured)
+  rawset(helpers, "reportWarning", reportWarning)
+end
+
+-- Host animation hooks call through `dispatch`: the Deferred part's completion
+-- when it is loaded, otherwise the fallback for groups an older revision
+-- hooked (no hook exists in a session without either).
+do
+  local deferred = rawget(parts, "Deferred")
+  local finished = deferred and rawget(deferred, "animationFinished")
+  if finished == nil and fallbackMechanisms ~= nil then
+    finished = fallbackMechanisms.Deferred.animationFinished
+  end
+  rawset(rawget(state, "dispatch"), "animationFinished", finished)
+end
 
 if not validatePublicSurface(PoolKit) or not validateCurrentState(PoolKit) then
   error("MoltenCodes PoolKit package state is corrupted or incomplete", 2)

@@ -367,6 +367,15 @@ facade:Test("the installed SignalKit carries the revision of the committed manif
   ctx:Fail("Expected.lua does not list signalKit")
 end)
 
+facade:Test("SignalKit:HasPart answers true for the three parts the bundle carries", function(ctx)
+  -- The installed bundle carries every part of every Kit, so a facade
+  -- member's missing-part error cannot be seen here; the Busted specs prove it.
+  for _, part in ipairs({ "Bus", "Journal", "Coalescing" }) do
+    ctx:Expect(SignalKit:HasPart(part)):ToBe(true)
+  end
+  ctx:Expect(SignalKit:HasPart("NoSuchPart")):ToBe(false)
+end)
+
 -- signalKit.dispatch ----------------------------------------------------------------------
 
 local dispatch = newSuite("dispatch")

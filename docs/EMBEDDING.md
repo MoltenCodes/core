@@ -257,9 +257,15 @@ widgetKit/parts/WidgetKit-Dropdown.lua
 widgetKit/parts/WidgetKit-ColorPicker.lua
 widgetKit/parts/WidgetKit-Renderer.lua
 panelKit/PanelKit.lua
+poolKit/parts/PoolKit-Waiting.lua
+poolKit/parts/PoolKit-Children.lua
+poolKit/parts/PoolKit-Deferred.lua
+poolKit/parts/PoolKit-Generations.lua
 profileKit/ProfileKit.lua
 rangeKit/RangeKit.lua
 readinessKit/ReadinessKit.lua
+registry/parts/Registry-Handover.lua
+registry/parts/Registry-Diagnostics.lua
 schedulerKit/SchedulerKit.lua
 schedulerKit/parts/SchedulerKit-Coalescing.lua
 schedulerKit/parts/SchedulerKit-Lanes.lua
@@ -269,6 +275,8 @@ settingsKit/SettingsKit.lua
 settingsKit/parts/SettingsKit-Namespaces.lua
 settingsKit/parts/SettingsKit-Defaults.lua
 settingsKit/parts/SettingsKit-SpecProfiles.lua
+signalKit/parts/SignalKit-Bus.lua
+signalKit/parts/SignalKit-Journal.lua
 signalKit/parts/SignalKit-Coalescing.lua
 timerKit/parts/TimerKit-Pausing.lua
 toastKit/ToastKit.lua
@@ -409,6 +417,12 @@ part loads after its Kit's core and brings in what it needs:
 | `optionsKit/Bind` | `optionsKit/parts/OptionsKit-Bind.lua` | bind = "profile.path" and ns: binds: options read and written through a SettingsKit database passed as options.db. | nothing |
 | `optionsKit/Profiles` | `optionsKit/parts/OptionsKit-Profiles.lua` | OptionsKit:ProfileOptions: the ready-made group over a SettingsKit database's profiles, with the per-specialization choices. | nothing |
 | `optionsKit/Dynamic` | `optionsKit/parts/OptionsKit-Dynamic.lua` | Trees that change shape after Define: builder functions, tree:NotifyChange(), tree:Replace and tree:Remove. | nothing |
+| `poolKit/Waiting` | `poolKit/parts/PoolKit-Waiting.lua` | A live limit (maxActive) and a bounded waiting queue (maxWaiting, Acquire(onAvailable), CancelWaiting) for objects the host can never free. | nothing |
+| `poolKit/Children` | `poolKit/parts/PoolKit-Children.lua` | Cascading release: AttachChild and DetachChild, and children released before their parent. | nothing |
+| `poolKit/Deferred` | `poolKit/parts/PoolKit-Deferred.lua` | ReleaseAfter: release deferred until an animation group finishes. | nothing |
+| `poolKit/Generations` | `poolKit/parts/PoolKit-Generations.lua` | The generation option and SetGeneration: objects built by a superseded factory are retired instead of reused. | nothing |
+| `registry/Handover` | `registry/parts/Registry-Handover.lua` | Retire hooks, migration steps and sealed facades for a revision that replaces an older one. | nothing |
+| `registry/Diagnostics` | `registry/parts/Registry-Diagnostics.lua` | Registry:GetInfo and Registry:Packages, the read-only views of every registration. | nothing |
 | `schedulerKit/Coalescing` | `schedulerKit/parts/SchedulerKit-Coalescing.lua` | Debounce and Coalesce handles on the facade and on scopes, with the coalescing family's shared clock, member links and protected delivery. | nothing |
 | `schedulerKit/Lanes` | `schedulerKit/parts/SchedulerKit-Lanes.lua` | Named lanes that ration a resource: in-flight and interval limits, retries with backoff, and Debounce or Coalesce delivery through a lane. | `schedulerKit/Coalescing` |
 | `schedulerKit/Watch` | `schedulerKit/parts/SchedulerKit-Watch.lua` | Watch: poll a predicate on a shared per-interval ticker and call back when its result changes. | `schedulerKit/Coalescing` |
@@ -417,7 +431,9 @@ part loads after its Kit's core and brings in what it needs:
 | `settingsKit/Namespaces` | `settingsKit/parts/SettingsKit-Namespaces.lua` | db:RegisterNamespace and db:GetNamespace: child databases with their own schema over the saved variable's namespaces section, in AceDB's layout, following the parent's profile. | nothing |
 | `settingsKit/Defaults` | `settingsKit/parts/SettingsKit-Defaults.lua` | SettingsKit:Open and db:RegisterNamespace from plain AceDB-style defaults: the write rules inferred from each default, checked without SchemaKit. | nothing |
 | `settingsKit/SpecProfiles` | `settingsKit/parts/SettingsKit-SpecProfiles.lua` | Profiles assigned per specialization or talent group: SettingsKit:GetSpecIndex, db:SetSpecProfile, db:GetSpecProfile and db:ApplySpecProfile, switched by itself on spec changes while EventKit is embedded. | nothing |
-| `signalKit/Coalescing` | `signalKit/parts/SignalKit-Coalescing.lua` | Bucketed bus messages: collect a burst of publishes and deliver it once per interval. | `timerKit`, `schedulerKit`, `schedulerKit/Coalescing` |
+| `signalKit/Bus` | `signalKit/parts/SignalKit-Bus.lua` | Named message buses: topics and their argument policies, Publish and Subscribe, bus scopes, ForAddon with the close of an addon's bus at logout, and isolated delivery. | nothing |
+| `signalKit/Journal` | `signalKit/parts/SignalKit-Journal.lua` | NewJournal: a signal that records its last firings for explicit pull. | nothing |
+| `signalKit/Coalescing` | `signalKit/parts/SignalKit-Coalescing.lua` | Bucketed bus messages: collect a burst of publishes and deliver it once per interval. | `timerKit`, `schedulerKit`, `schedulerKit/Coalescing`, `signalKit/Bus` |
 | `timerKit/Pausing` | `timerKit/parts/TimerKit-Pausing.lua` | Pause and Resume: a running timer paused and resumed later with what was left of its delay, a repeating timer back on its interval after that first fire. | nothing |
 | `widgetKit/Containers` | `widgetKit/parts/WidgetKit-Containers.lua` | The container types Frame (a movable, resizable window), Group and ScrollFrame. | nothing |
 | `widgetKit/Text` | `widgetKit/parts/WidgetKit-Text.lua` | The display types Label, Heading and Spacer. | nothing |

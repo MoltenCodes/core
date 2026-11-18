@@ -1,29 +1,37 @@
 {
   "name": "signalKit",
   "displayName": "SignalKit",
-  "description": "A deterministic, re-entrant pure-Lua signal primitive and named message bus for MoltenCodes runtime packages.",
-  "summary": "Deterministic, re-entrant callback dispatch with explicit connection lifetimes, subscriber-transition hooks, journals and named message buses.",
-  "version": "0.9.0",
+  "description": "A deterministic, re-entrant pure-Lua signal primitive, with named message buses and journals as optional parts, for MoltenCodes runtime packages.",
+  "summary": "Deterministic, re-entrant callback dispatch with explicit connection lifetimes and subscriber-transition hooks; message buses and journals as parts.",
+  "version": "0.10.0",
   "license": "MIT",
   "api": 1,
-  "revision": 12,
+  "revision": 13,
   "dependencies": {
     "registry": {
       "api": 2
     }
   },
-  "optionalDependencies": {
-    "eventKit": {
-      "api": 1
-    },
-    "lifecycleKit": {
-      "api": 1
-    }
-  },
   "parts": {
+    "Bus": {
+      "description": "Named message buses: topics and their argument policies, Publish and Subscribe, bus scopes, ForAddon with the close of an addon's bus at logout, and isolated delivery.",
+      "revision": 1,
+      "optionalDependencies": {
+        "eventKit": {
+          "api": 1
+        },
+        "lifecycleKit": {
+          "api": 1
+        }
+      }
+    },
+    "Journal": {
+      "description": "NewJournal: a signal that records its last firings for explicit pull.",
+      "revision": 1
+    },
     "Coalescing": {
       "description": "Bucketed bus messages: collect a burst of publishes and deliver it once per interval.",
-      "revision": 1,
+      "revision": 2,
       "dependencies": {
         "schedulerKit": {
           "api": 1,
@@ -31,7 +39,10 @@
             "Coalescing"
           ]
         }
-      }
+      },
+      "parts": [
+        "Bus"
+      ]
     }
   }
 }
