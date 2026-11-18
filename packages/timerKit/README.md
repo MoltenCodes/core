@@ -19,7 +19,7 @@ end)
 
 `timer:GetRemaining()` and `timer:GetDeadline()` answer "how long until this fires?" for a running timer; a paused timer answers its kept seconds from `GetRemaining()` and `nil` from `GetDeadline()`, and every other state answers `nil`. They read `GetTimePreciseSec`, which is optional: on a host without it TimerKit still loads, both methods return `nil` for a running timer, and a paused one keeps its full delay.
 
-`timer:Pause()` keeps what is left of a running timer's delay and `timer:Resume()` starts it again for that remainder; a repeating timer then returns to its interval. Both are built on `C_Timer` handles: no frame, nothing per frame.
+`timer:Pause()` keeps what is left of a running timer's delay and `timer:Resume()` starts it again for that remainder; a repeating timer then returns to its interval. Both are built on `C_Timer` handles: no frame, nothing per frame. Pausing is the optional Pausing part (`parts/TimerKit-Pausing.lua`); without it `Pause`, `Resume` and `IsPaused` raise with the file to embed, and `TimerKit:HasPart("Pausing")` answers `false`.
 
 TimerKit adds a logical timer state machine, restart/cancel guards against stale native callbacks, deterministic scope cleanup, and per-addon ownership without exposing native FunctionContainer details to consumers.
 
@@ -44,8 +44,8 @@ See [`docs/API.md`](docs/API.md) for the full state model, scope semantics, erro
 | `self:TimeLeft(handle)` | `timer:GetRemaining()` |
 
 A cancelled TimerKit timer leaves nothing pending in the client. Timers can
-also be paused and resumed one by one (`Pause`/`Resume`), and closing a scope
-cancels all of its timers at once.
+also be paused and resumed one by one (`Pause`/`Resume`, the Pausing part),
+and closing a scope cancels all of its timers at once.
 
 ## Embedding
 
@@ -66,3 +66,20 @@ load. LifecycleKit and EventKit are optional, never dependencies: when an
 addon also embeds LifecycleKit, it closes the addon's timer scope at logout
 through `TimerKit:CloseAddonScopes`; with EventKit alone, TimerKit's own
 `PLAYER_LOGOUT` connection does.
+
+`Pause`, `Resume` and `IsPaused` are the optional Pausing part, embedded after
+the core:
+
+```toc
+Libs\MoltenCodes\timerKit\parts\TimerKit-Pausing.lua
+```
+
+`python3 -m tooling.package.embeds timerKit/Pausing` prints the full list.
+
+An embedded copy upgrades in place over revision 14 and later only; no older
+revision was ever published (see "Embedded copies and upgrades" in
+[`docs/API.md`](docs/API.md)).
+
+Memory (resident on Lua 5.1 with debug information, measured 2026-11-18):
+the core holds 49.6 KB and the Pausing part 2.9 KB; revision 14,
+one file, held 60.2 KB.

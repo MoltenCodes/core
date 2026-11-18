@@ -5,10 +5,13 @@ local TestEnv = require("TimerKitTestEnv")
 -- first `ForAddon` decides who makes the `CloseAddonScopes` call (docs/API.md,
 -- "At logout"):
 --
---   a. a LifecycleKit that lists "timerKit" in CLOSES_ADDON_SCOPES;
---   b. an older LifecycleKit, through an OnShutdown subscription;
---   c. without LifecycleKit, one EventKit PLAYER_LOGOUT connection;
---   d. with neither, the addon itself.
+--   1. a LifecycleKit that lists "timerKit" in CLOSES_ADDON_SCOPES;
+--   3. without such a LifecycleKit, one EventKit PLAYER_LOGOUT connection;
+--   4. with neither, the addon itself.
+--
+-- Route 2, an OnShutdown subscription for a LifecycleKit before revision 13,
+-- went with the upgrade floor of revision 15: no such LifecycleKit was ever
+-- published.
 
 ---The package-private logout fields of `TimerKit`, for assertions.
 ---@param TimerKit table
@@ -50,7 +53,7 @@ describe("TimerKit at logout with a LifecycleKit that closes timer scopes", func
     end)
 
     assert.are.equal("lifecycleKit", rawget(timers, "_logoutRoute"))
-    assert.is_false(rawget(timers, "_logoutSubscription"))
+    assert.is_nil(rawget(timers, "_logoutSubscription"))
     assert.is_false(privateState(TimerKit).logoutConnection)
 
     TestEnv.Logout()
@@ -75,81 +78,21 @@ end)
 describe("TimerKit at logout with a LifecycleKit without the capability", function()
   after_each(TestEnv.Reset)
 
-  it("closes the scope from an OnShutdown subscription", function()
+  it("subscribes nothing to LifecycleKit and closes through PLAYER_LOGOUT", function()
     local TimerKit = TestEnv.NewPackage()
     local LifecycleKit = TestEnv.LoadLifecycleKit()
     withoutCapability(LifecycleKit)
     local timers = TimerKit:ForAddon("MyAddon")
     local ticker = timers:Every(1, function() end)
-    local subscription = rawget(timers, "_logoutSubscription")
 
-    assert.are.equal("onShutdown", rawget(timers, "_logoutRoute"))
-    assert.is_true(subscription:IsConnected())
-    assert.is_false(privateState(TimerKit).logoutConnection)
-    -- The subscription asked LifecycleKit for the addon's instance.
-    assert.is_false(LifecycleKit:ForAddon("MyAddon"):IsShutdown())
+    assert.are.equal("playerLogout", rawget(timers, "_logoutRoute"))
+    assert.is_nil(rawget(timers, "_logoutSubscription"))
+    assert.is_true(privateState(TimerKit).logoutConnection:IsConnected())
 
     logoutWithoutLifecycleCall(TimerKit)
 
     assert.is_true(timers:IsClosed())
     assert.is_true(ticker:IsCancelled())
-    assert.is_false(rawget(timers, "_logoutSubscription"))
-  end)
-
-  it("subscribes once per addon", function()
-    local TimerKit = TestEnv.NewPackage()
-    local LifecycleKit = TestEnv.LoadLifecycleKit()
-    withoutCapability(LifecycleKit)
-    local timers = TimerKit:ForAddon("MyAddon")
-    local subscription = rawget(timers, "_logoutSubscription")
-
-    assert.are.equal(timers, TimerKit:ForAddon("MyAddon"))
-    assert.are.equal(subscription, rawget(timers, "_logoutSubscription"))
-  end)
-
-  it("disconnects the subscription when CloseAddonScopes closes the scope", function()
-    local TimerKit = TestEnv.NewPackage()
-    local LifecycleKit = TestEnv.LoadLifecycleKit()
-    withoutCapability(LifecycleKit)
-    local timers = TimerKit:ForAddon("MyAddon")
-    local subscription = rawget(timers, "_logoutSubscription")
-
-    assert.is_true(TimerKit:CloseAddonScopes("MyAddon"))
-
-    assert.is_false(subscription:IsConnected())
-    assert.is_false(rawget(timers, "_logoutSubscription"))
-  end)
-
-  it("disconnects the subscription when the scope is closed by hand", function()
-    local TimerKit = TestEnv.NewPackage()
-    local LifecycleKit = TestEnv.LoadLifecycleKit()
-    withoutCapability(LifecycleKit)
-    local timers = TimerKit:ForAddon("MyAddon")
-    local subscription = rawget(timers, "_logoutSubscription")
-
-    assert.is_true(timers:Close())
-
-    assert.is_false(subscription:IsConnected())
-  end)
-
-  it("steps aside when a LifecycleKit that closes timer scopes replaced it", function()
-    local TimerKit = TestEnv.NewPackage()
-    local LifecycleKit = TestEnv.LoadLifecycleKit()
-    local capabilities = rawget(LifecycleKit, "CLOSES_ADDON_SCOPES")
-    withoutCapability(LifecycleKit)
-    local timers = TimerKit:ForAddon("MyAddon")
-    local closedDuringShutdown
-    LifecycleKit:ForAddon("MyAddon"):OnShutdown(function()
-      closedDuringShutdown = timers:IsClosed()
-    end)
-
-    -- An upgraded LifecycleKit publishes the capability; the subscription
-    -- from before then leaves the call to it, after the callbacks.
-    rawset(LifecycleKit, "CLOSES_ADDON_SCOPES", capabilities)
-    TestEnv.Logout()
-
-    assert.is_false(closedDuringShutdown)
-    assert.is_true(timers:IsClosed())
   end)
 end)
 
@@ -229,7 +172,7 @@ describe("TimerKit at logout with neither LifecycleKit nor EventKit", function()
     local ticker = timers:Every(1, function() end)
 
     assert.are.equal("none", rawget(timers, "_logoutRoute"))
-    assert.is_false(rawget(timers, "_logoutSubscription"))
+    assert.is_nil(rawget(timers, "_logoutSubscription"))
     assert.is_false(privateState(TimerKit).logoutConnection)
 
     TestEnv.Logout()
@@ -266,69 +209,48 @@ describe("TimerKit at logout with neither LifecycleKit nor EventKit", function()
   end)
 end)
 
-describe("TimerKit logout routes across an upgrade", function()
+describe("TimerKit logout routes across an upgrade from revision 14", function()
   after_each(TestEnv.Reset)
 
-  it("gives the scopes of a revision without routes one when it upgrades them", function()
-    local current = TestEnv.NewPackage().REVISION
+  it("carries the PLAYER_LOGOUT connection revision 14 made", function()
     TestEnv.Reset()
     TestEnv.InstallWowApi()
     require("Registry")
     TestEnv.LoadEventKit()
-    local old = TestEnv.LoadRevision(6)
-    local timers = old:ForAddon("MyAddon")
-    local ticker = timers:Every(1, function() end)
-    -- Revision 6 decided no route and kept no logout fields.
-    rawset(timers, "_logoutRoute", nil)
-    rawset(timers, "_logoutSubscription", nil)
-    local oldState = privateState(old)
-    oldState.logoutConnection:Disconnect()
-    rawset(oldState, "logoutConnection", nil)
-    rawset(oldState, "logoutEventScope", nil)
-
-    local upgraded = require("TimerKit")
-
-    assert.are.equal(old, upgraded)
-    assert.are.equal(current, upgraded.REVISION)
-    assert.are.equal("playerLogout", rawget(timers, "_logoutRoute"))
-    TestEnv.Logout()
-    assert.is_true(timers:IsClosed())
-    assert.is_true(ticker:IsCancelled())
-  end)
-
-  it("carries an OnShutdown subscription an older copy made", function()
-    TestEnv.Reset()
-    TestEnv.InstallWowApi()
-    require("Registry")
-    local LifecycleKit = TestEnv.LoadLifecycleKit()
-    withoutCapability(LifecycleKit)
-    local old = TestEnv.LoadRevision(6)
-    local timers = old:ForAddon("MyAddon")
-    local subscription = rawget(timers, "_logoutSubscription")
-
-    local upgraded = require("TimerKit")
-
-    assert.are.equal(subscription, rawget(timers, "_logoutSubscription"))
-    assert.is_true(subscription:IsConnected())
-    logoutWithoutLifecycleCall(upgraded)
-    assert.is_true(timers:IsClosed())
-  end)
-
-  it("carries the PLAYER_LOGOUT connection an older copy made", function()
-    TestEnv.Reset()
-    TestEnv.InstallWowApi()
-    require("Registry")
-    TestEnv.LoadEventKit()
-    local old = TestEnv.LoadRevision(6)
+    local old = TestEnv.LoadRevision14()
     local timers = old:ForAddon("MyAddon")
     local connection = privateState(old).logoutConnection
 
     local upgraded = require("TimerKit")
     local later = upgraded:ForAddon("Later")
 
+    assert.are.equal(old, upgraded)
     assert.are.equal(connection, privateState(upgraded).logoutConnection)
     TestEnv.Logout()
     assert.is_true(timers:IsClosed())
     assert.is_true(later:IsClosed())
+  end)
+
+  it("lets go of a revision 14 OnShutdown subscription and routes the scope again", function()
+    TestEnv.Reset()
+    TestEnv.InstallWowApi()
+    require("Registry")
+    local LifecycleKit = TestEnv.LoadLifecycleKit()
+    withoutCapability(LifecycleKit)
+    local old = TestEnv.LoadRevision14()
+    local timers = old:ForAddon("MyAddon")
+    local ticker = timers:Every(1, function() end)
+    local subscription = rawget(timers, "_logoutSubscription")
+    assert.are.equal("onShutdown", rawget(timers, "_logoutRoute"))
+
+    local upgraded = require("TimerKit")
+
+    assert.is_false(subscription:IsConnected())
+    assert.is_nil(rawget(timers, "_logoutSubscription"))
+    assert.are.equal("playerLogout", rawget(timers, "_logoutRoute"))
+    assert.is_nil(rawget(privateState(upgraded).dispatch, "closeOnShutdown"))
+    logoutWithoutLifecycleCall(upgraded)
+    assert.is_true(timers:IsClosed())
+    assert.is_true(ticker:IsCancelled())
   end)
 end)

@@ -18,6 +18,8 @@ from unittest import mock
 from tooling.test import coverage as module
 
 
+# timerKit declares a Pausing part; its row (no lines, so no totals move) says
+# the part was loaded, which a run judging timerKit requires.
 REPORT = """\
 ==============================================================================
 /root/packages/timerKit/src/TimerKit.lua
@@ -33,6 +35,7 @@ File                                                 Hits Missed Coverage
 /root/packages/apiKit/src/ApiKit.lua                 10   0      100.00%
 /root/packages/apiKit/src/flavours/Retail.lua        30   10     75.00%
 /root/packages/timerKit/src/TimerKit.lua             90   10     90.00%
+/root/packages/timerKit/src/parts/TimerKit-Pausing.lua 0 0     0.00%
 /root/tests/support/FrameworkTestEnv.lua             5    5      50.00%
 -------------------------------------------------------------------------
 Total                                                135  25     84.38%

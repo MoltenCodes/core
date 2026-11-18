@@ -4,10 +4,12 @@ local TestEnv = require("TimerKitTestEnv")
 -- every remainder below is exact.
 local function noop() end
 
+-- Pausing is TimerKit's Pausing part, loaded on top of the core.
 describe("TimerKit pausing", function()
   local TimerKit
   before_each(function()
     TimerKit = TestEnv.NewPackage()
+    TestEnv.LoadPausing()
   end)
   after_each(TestEnv.Reset)
 
@@ -199,6 +201,7 @@ describe("TimerKit pausing", function()
     -- selene: allow(global_usage)
     rawset(_G, "GetTimePreciseSec", nil)
     local clockless = require("TimerKit")
+    TestEnv.LoadPausing()
     local timer = clockless:After(3, noop)
     timer:Pause()
     assert.are.equal(3, timer:GetRemaining())
@@ -206,26 +209,4 @@ describe("TimerKit pausing", function()
     assert.are.equal(3, TestEnv.NativeTimers()[2].seconds)
     assert.is_nil(timer:GetDeadline())
   end)
-
-  it(
-    "upgrades in place from revision 11: timers keep running and pause under the new code",
-    function()
-      TestEnv.Reset()
-      TestEnv.InstallWowApi()
-      require("Registry")
-      local old = TestEnv.LoadRevision(11)
-      local fired = 0
-      local timer = old:After(2, function()
-        fired = fired + 1
-      end)
-      local upgraded = require("TimerKit")
-      assert.are.equal(old, upgraded)
-      assert.is_true(upgraded.REVISION > 11)
-      TestEnv.AdvanceMs(1000)
-      assert.is_true(timer:Pause())
-      assert.is_true(timer:Resume())
-      TestEnv.FireNative(2)
-      assert.are.equal(1, fired)
-    end
-  )
 end)

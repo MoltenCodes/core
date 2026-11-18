@@ -124,7 +124,8 @@ local CALLBACK_FAILURE = "mctTimerKit deliberate callback failure"
 local PROBE_ADDON_PREFIX = "MoltenCodesTest_TimerKitProbe"
 
 --- Every method docs/API.md of timerKit lists on the facade.
-local FACADE_METHODS = { "New", "After", "Every", "CreateScope", "ForAddon", "CloseAddonScopes" }
+local FACADE_METHODS =
+  { "New", "After", "Every", "CreateScope", "ForAddon", "CloseAddonScopes", "HasPart" }
 
 --- Every method docs/API.md of timerKit lists on a timer handle.
 local TIMER_METHODS = {
@@ -188,6 +189,10 @@ local TimerKit = TimerKitOrNil
 --- on a client without the clock TimerKit's deadlines use.
 local getTimePreciseSec = readHost("GetTimePreciseSec")
 local CLOCK_AVAILABLE = type(getTimePreciseSec) == "function"
+
+--- Read once at load: `Pause` and `Resume` are TimerKit's Pausing part, which
+--- the bundle loads; the pause suite registers its test as skipped without it.
+local PAUSING_READY = TimerKit:HasPart("Pausing") == true
 
 --- Read once at load: the allocation guards measure against the client's own
 --- `C_Timer` cost, and are registered as skipped without it.
@@ -874,8 +879,19 @@ clockTest(
 
 local pause = newSuite("pause")
 
-clockTest(
-  pause,
+---Register `body` as a clock test when the Pausing part is loaded, and as a
+---skipped test naming why otherwise.
+---@param name string
+---@param body fun(ctx: TestKit.Context)
+local function pauseTest(name, body)
+  if PAUSING_READY then
+    clockTest(pause, name, body)
+  else
+    pause:Skip(name, "TimerKit's Pausing part is not loaded; Pause and Resume were not exercised")
+  end
+end
+
+pauseTest(
   "Pause keeps a one-shot from firing past its deadline, and Resume fires it once, its kept remainder later (lateness logged)",
   function(ctx)
     local scope = trackScope(TimerKit:CreateScope())

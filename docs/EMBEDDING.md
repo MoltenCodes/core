@@ -255,6 +255,7 @@ schedulerKit/parts/SchedulerKit-Watch.lua
 settingsKit/SettingsKit.lua
 settingsKit/parts/SettingsKit-Namespaces.lua
 signalKit/parts/SignalKit-Coalescing.lua
+timerKit/parts/TimerKit-Pausing.lua
 toastKit/ToastKit.lua
 tooltipKit/TooltipKit.lua
 unitFrameKit/UnitFrameKit.lua
@@ -388,6 +389,7 @@ part loads after its Kit's core and brings in what it needs:
 | `schedulerKit/Watch` | `schedulerKit/parts/SchedulerKit-Watch.lua` | Watch: poll a predicate on a shared per-interval ticker and call back when its result changes. | `schedulerKit/Coalescing` |
 | `settingsKit/Namespaces` | `settingsKit/parts/SettingsKit-Namespaces.lua` | db:RegisterNamespace and db:GetNamespace: child databases with their own schema over the saved variable's namespaces section, in AceDB's layout, following the parent's profile. | nothing |
 | `signalKit/Coalescing` | `signalKit/parts/SignalKit-Coalescing.lua` | Bucketed bus messages: collect a burst of publishes and deliver it once per interval. | `timerKit`, `schedulerKit`, `schedulerKit/Coalescing` |
+| `timerKit/Pausing` | `timerKit/parts/TimerKit-Pausing.lua` | Pause and Resume: a running timer paused and resumed later with what was left of its delay, a repeating timer back on its interval after that first fire. | nothing |
 | `widgetKit/Containers` | `widgetKit/parts/WidgetKit-Containers.lua` | The container types Frame (a movable, resizable window), Group and ScrollFrame. | nothing |
 | `widgetKit/Text` | `widgetKit/parts/WidgetKit-Text.lua` | The display types Label, Heading and Spacer. | nothing |
 | `widgetKit/Button` | `widgetKit/parts/WidgetKit-Button.lua` | The Button type, key capture included. | nothing |

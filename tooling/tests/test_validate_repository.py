@@ -1283,7 +1283,7 @@ class ApiSectionTests(unittest.TestCase):
         manifests, _ = validate_manifests.load_manifests()
         warnings = module.repository_warnings(manifests)
         flagged = {item.split("/")[1] for item in (w.split("packages", 1)[1] for w in warnings)}
-        self.assertIn("timerKit", flagged)
+        self.assertIn("clientKit", flagged)
         self.assertNotIn("glowKit", flagged)
 
 
