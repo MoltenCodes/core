@@ -12,8 +12,12 @@ The PanelKit suite covers:
 
 `support/PanelKitTestEnv.lua` provides `UIParent`, a stand-in for Blizzard's `Settings` (`InstallSettings`) that registers canvas categories and subcategories, keeps the AddOns list, shows one canvas at a time on `OpenToCategory` and refreshes it right after the show as Blizzard's `DisplayLayout` does, calls `OnRefresh` and `OnDefault` on the shown canvas and `OnDefault` on every canvas (`DefaultAll`), a small tree (`DefineTree`), the secret probe and `LoadRevision`; `Reset` removes `Settings`.
 
+The shared helper specs load the Kit with the secret probe already installed (through `package.preload`), raise from the host error handler, and load the committed revision 2 file (`fixtures/PanelKit-revision2.lua`) before the current one.
+
 | Spec | Covers |
 |---|---|
+| `SharedHelpers_spec.lua` | the shared `isSecret`, `reportError` and `validateFacade` blocks, the upgrade from revision 2 |
+| `Conformance_spec.lua` | the repository conformance suite (`tests/support/KitConformance.lua`) |
 | `Register_spec.lua` | `Register`, `Get`, receivers |
 | `Page_spec.lua` | drawing, releasing, refresh, defaults, failures, `Open` |
 | `Limits_spec.lua` | `SetLimits`, `GetLimits`, `maxPanels` |

@@ -3,10 +3,10 @@
   "displayName": "PanelKit",
   "description": "OptionsKit trees in Blizzard's settings panel for World of Warcraft addons: a category or subcategory per tree, drawn by WidgetKit only while its page is shown.",
   "summary": "An OptionsKit tree in Blizzard's settings panel, as a category or subcategory, drawn by WidgetKit only while its page is shown.",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "license": "MIT",
   "api": 1,
-  "revision": 2,
+  "revision": 3,
   "dependencies": {
     "registry": {
       "api": 2

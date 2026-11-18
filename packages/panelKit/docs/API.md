@@ -45,8 +45,8 @@ PanelKit reads these host globals at call time, never at load:
 | `Settings.RegisterCanvasLayoutCategory`, `Settings.RegisterCanvasLayoutSubcategory`, `Settings.RegisterAddOnCategory` | `Register` | `Register` raises at the caller: `PanelKit:Register needs the client's Settings API, which this host does not have`. |
 | `Settings.OpenToCategory` | `panel:Open` | `Open` answers `nil, "unavailable"`. |
 | `CreateFrame` | `Register` (one frame per panel) | Required. |
-| `issecretvalue` | every argument check | Nothing is treated as secret. |
-| `geterrorhandler` | a page that cannot be drawn, a default handler that raises | The failure is printed. |
+| `issecretvalue` | every argument check; read once at load, and again on each check only when it was absent at load | Nothing is treated as secret. |
+| `geterrorhandler` | a page that cannot be drawn, a default handler that raises | The failure is printed, also when the handler itself raises. |
 
 Retail, Mists of Pandaria Classic and Classic Era ship the four `Settings` functions with the same code (`Blizzard_Settings_Shared`, branches `live`, `classic` and `classic_era` of Blizzard's interface source, read 2026-11-15), so on every promised client they are there. PanelKit does not fall back to the pre-10.0 `InterfaceOptions_AddCategory`.
 
@@ -144,6 +144,8 @@ Every message an argument error carries, by method (`<name>` is the value passed
 | `SetLimits` | `PanelKit:SetLimits limits must be a table`; `PanelKit:SetLimits limits holds an unknown field; it accepts maxPanels`; `PanelKit:SetLimits limits.maxPanels must not be a secret value`; `PanelKit:SetLimits limits.maxPanels must be an integer from 1 to 1024` |
 | `panel:SetDefaultHandler` | `PanelKit.Panel:SetDefaultHandler callback must be a function or nil` |
 | every method | the two receiver messages above |
+
+A host error handler that itself raises does not turn a reported failure into a second error raised into the client: the failure is printed instead, as on a host without a handler (implementation revision 3).
 
 ## Performance
 
