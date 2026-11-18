@@ -22,7 +22,7 @@ The CacheKit suite covers:
 
 The randomized and model-based specs draw from a fixed linear congruential generator, so every run replays the same workload. The draw uses the generator's high bits: with a power-of-two modulus the low bits repeat with periods as short as two, which would make a "random" workload cycle through a handful of steps.
 
-EventKit is an optional dependency, declared under `optionalDependencies` in the manifest, so the test runner puts EventKit and SignalKit on `LUA_PATH` for this suite and the clear-on-event specs exercise the real EventKit rather than a stub. The release load order ignores optional dependencies; `cache:ClearOn` finds EventKit through `Registry:Find` at call time.
+EventKit is an optional dependency, declared under `optionalDependencies` in the manifest, so the test runner puts EventKit on `LUA_PATH` for this suite and the clear-on-event specs exercise the real EventKit rather than a stub. The release load order ignores optional dependencies; `cache:ClearOn` finds EventKit through `Registry:Find` at call time.
 
 | Spec | Covers |
 |---|---|

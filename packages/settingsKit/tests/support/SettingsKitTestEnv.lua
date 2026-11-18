@@ -23,11 +23,14 @@
 ---
 --- EventKit is an optional dependency of SettingsKit, declared under
 --- `optionalDependencies`, so the test runner puts it on `LUA_PATH` for this
---- suite; `NewPackageWithoutEventKit` models an addon that embeds none.
+--- suite; `NewPackageWithoutEventKit` models an addon that embeds none. Spec
+--- profiles listen for specialization changes through `ConnectUnit`, which is
+--- in EventKit's Units part (EventKit revision 23 and later), so the chain
+--- loads that part after the core, as an addon using spec profiles embeds it.
 local FrameworkTestEnv = require("FrameworkTestEnv")
 
 local SettingsKitTestEnv = FrameworkTestEnv.New({
-  modules = { "Registry", "SignalKit", "EventKit", "SchemaKit", "SettingsKit" },
+  modules = { "Registry", "SignalKit", "EventKit", "EventKit-Units", "SchemaKit", "SettingsKit" },
 })
 
 --- The player identity host functions this environment installs and removes.
@@ -255,7 +258,7 @@ end
 ---Load the module chain and install the default player identity.
 ---@return table SettingsKit, table Registry, table SignalKit, table EventKit, table SchemaKit
 function SettingsKitTestEnv.NewPackage()
-  local SettingsKit, Registry, SignalKit, EventKit, SchemaKit = baseNewPackage()
+  local SettingsKit, Registry, SignalKit, EventKit, _, SchemaKit = baseNewPackage()
   SettingsKitTestEnv.SetPlayer()
   return SettingsKit, Registry, SignalKit, EventKit, SchemaKit
 end

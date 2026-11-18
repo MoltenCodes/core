@@ -20,7 +20,7 @@ The ReadinessKit suite covers:
 - the repository conformance suite (`tests/support/KitConformance.lua`): manifest, receivers, the secret `Gate` and `Get` names, and upgrade; its limits group is pending, with the reason in the spec;
 - manifest/runtime API and revision consistency.
 
-The required closure is Registry and TimerKit; EventKit is listed under `optionalDependencies`, so the runner puts it and SignalKit on `LUA_PATH` as well. The module chain in `support/ReadinessKitTestEnv.lua` loads Registry, SignalKit, EventKit, TimerKit and ReadinessKit, as an addon that uses `ReprobeOn` would; `NewPackageWithoutEventKit` loads the three-file minimum footprint (Registry, TimerKit, ReadinessKit), so the absent case is a real absence and `Registry:Find` reports `absent`.
+The required closure is Registry and TimerKit; EventKit is listed under `optionalDependencies`, so the runner puts it on `LUA_PATH` as well. The module chain in `support/ReadinessKitTestEnv.lua` loads Registry, EventKit, TimerKit and ReadinessKit, as an addon that uses `ReprobeOn` would; `NewPackageWithoutEventKit` loads the three-file minimum footprint (Registry, TimerKit, ReadinessKit), so the absent case is a real absence and `Registry:Find` reports `absent`.
 
 The allocation guard calls the native ticker's callback directly rather than through the fixture's `FireNative`, because that helper checks its argument with luassert and allocates on every call.
 

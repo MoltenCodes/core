@@ -28,7 +28,7 @@ local SchedulerKitTestEnv = FrameworkTestEnv.New({
 })
 
 --- The optional modules the helpers below may load, in load order.
-local OPTIONAL_MODULES = { "SignalKit", "EventKit", "LifecycleKit" }
+local OPTIONAL_MODULES = { "EventKit", "LifecycleKit" }
 
 --- The part modules, in load order (Lanes and Watch need Coalescing).
 SchedulerKitTestEnv.PARTS = { "Coalescing", "Lanes", "Watch" }
@@ -86,14 +86,13 @@ function SchedulerKitTestEnv.NewPackage()
   return SchedulerKit, Registry, TimerKit
 end
 
----Load SignalKit and EventKit after the chain `NewPackage` loaded.
+---Load EventKit after the chain `NewPackage` loaded.
 ---@return table EventKit
 function SchedulerKitTestEnv.LoadEventKit()
-  require("SignalKit")
   return require("EventKit")
 end
 
----Load SignalKit, EventKit and LifecycleKit after the chain `NewPackage`
+---Load EventKit and LifecycleKit after the chain `NewPackage`
 ---loaded.
 ---@return table LifecycleKit
 ---@return table EventKit

@@ -28,7 +28,7 @@
 ---
 --- EventKit and LifecycleKit are optional dependencies too: they decide who
 --- closes an addon scope at logout. `LoadEventKit` and `LoadLifecycleKit` load
---- them (and SignalKit, which both require) on top of the chain, after HookKit,
+--- them on top of the chain, after HookKit,
 --- as an addon that embeds them later would; `Reset` unloads them again.
 local FrameworkTestEnv = require("FrameworkTestEnv")
 
@@ -39,7 +39,7 @@ local HookKitTestEnv = FrameworkTestEnv.New({
 --- Modules a spec may load on top of the chain, in the order `Reset` unloads
 --- them. They are not in the chain, so the shared `Reset` would leave them in
 --- `package.loaded` bound to a Registry that no longer exists.
-local OPTIONAL_MODULES = { "LifecycleKit", "EventKit", "SignalKit" }
+local OPTIONAL_MODULES = { "LifecycleKit", "EventKit" }
 
 --- What LifecycleKit 0.6.0 publishes as `CLOSES_ADDON_SCOPES`: the package ids
 --- whose addon scopes (or bus) it closes at shutdown.
@@ -201,14 +201,13 @@ function HookKitTestEnv.NewPackageWithoutHookApi()
   return require("HookKit")
 end
 
----Load EventKit (and SignalKit, which it requires) on top of the chain.
+---Load EventKit on top of the chain.
 ---@return table EventKit
 function HookKitTestEnv.LoadEventKit()
-  require("SignalKit")
   return require("EventKit")
 end
 
----Load LifecycleKit (and SignalKit and EventKit, which it requires) on top of
+---Load LifecycleKit (and EventKit, which it requires) on top of
 ---the chain, then make it announce `CLOSES_ADDON_SCOPES` or not.
 ---
 ---`closesAddonScopes` `true` models LifecycleKit 0.6.0 and later, `false` an

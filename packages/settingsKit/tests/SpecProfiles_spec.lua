@@ -558,6 +558,7 @@ describe("SettingsKit spec profiles", function()
       require("Registry")
       require("SignalKit")
       require("EventKit")
+      require("EventKit-Units")
       local SchemaKit = require("SchemaKit")
       S = SchemaKit
       local previous = TestEnv.LoadRevision(10)

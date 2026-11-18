@@ -15,7 +15,6 @@ local FrameworkTestEnv = require("FrameworkTestEnv")
 local TestKitTestEnv = FrameworkTestEnv.New({
   modules = {
     "Registry",
-    "SignalKit",
     "EventKit",
     "LifecycleKit",
     "TimerKit",

@@ -85,7 +85,7 @@ describe("ReadinessKit ReprobeOn", function()
   end)
 
   it("leaves a gate closed during the dispatch in flight alone", function()
-    local ReadinessKit, _, _, EventKit = TestEnv.NewPackage()
+    local ReadinessKit, _, EventKit = TestEnv.NewPackage()
     local calls = 0
     local gate = ReadinessKit:Gate("spellbook", function()
       calls = calls + 1

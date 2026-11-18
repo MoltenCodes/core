@@ -6,13 +6,12 @@
 ---
 --- EventKit is an optional dependency of CacheKit: only `cache:ClearOn` uses
 --- it, found through `Registry:Find` at call time. The manifest declares it
---- under `optionalDependencies`, so the test runner puts EventKit and the
---- SignalKit it needs on `LUA_PATH` for this suite while the release load
---- order ignores them.
+--- under `optionalDependencies`, so the test runner puts EventKit on
+--- `LUA_PATH` for this suite while the release load order ignores it.
 local FrameworkTestEnv = require("FrameworkTestEnv")
 
 local CacheKitTestEnv = FrameworkTestEnv.New({
-  modules = { "Registry", "SignalKit", "EventKit", "CacheKit" },
+  modules = { "Registry", "EventKit", "CacheKit" },
 })
 
 ---Load Registry and CacheKit only, as a consumer that embeds no EventKit does.
@@ -35,7 +34,6 @@ function CacheKitTestEnv.NewPackageWithoutClock()
   -- selene: allow(global_usage)
   rawset(_G, "GetTimePreciseSec", nil)
   require("Registry")
-  require("SignalKit")
   require("EventKit")
   return require("CacheKit")
 end

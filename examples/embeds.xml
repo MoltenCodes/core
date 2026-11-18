@@ -33,8 +33,9 @@
     <Script file="Libs\MoltenCodes\eventKit\EventKit.lua" />
     <Script file="Libs\MoltenCodes\timerKit\TimerKit.lua" /> <!-- module scope timers; ReadinessKit needs it -->
     <Script file="Libs\MoltenCodes\commKit\CommKit.lua" /> <!-- optional here -->
-    <Script file="Libs\MoltenCodes\schemaKit\SchemaKit.lua" />
     <Script file="Libs\MoltenCodes\commandKit\CommandKit.lua" />
+    <Script file="Libs\MoltenCodes\schemaKit\SchemaKit.lua" />
+    <Script file="Libs\MoltenCodes\commandKit\parts\CommandKit-Arguments.lua" /> <!-- argument schemas; the Options part needs it -->
     <Script file="Libs\MoltenCodes\optionsKit\OptionsKit.lua" />
     <Script file="Libs\MoltenCodes\commandKit\parts\CommandKit-Options.lua" /> <!-- BindOptions, which Commands.lua uses -->
     <Script file="Libs\MoltenCodes\compatKit\CompatKit.lua" /> <!-- optional here -->

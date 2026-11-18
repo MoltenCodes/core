@@ -213,8 +213,9 @@ timerKit/TimerKit.lua
 commKit/CommKit.lua
 commKit/parts/CommKit-SyncSet.lua
 commKit/parts/CommKit-ChatThrottle.lua
-schemaKit/SchemaKit.lua
 commandKit/CommandKit.lua
+schemaKit/SchemaKit.lua
+commandKit/parts/CommandKit-Arguments.lua
 optionsKit/OptionsKit.lua
 commandKit/parts/CommandKit-Options.lua
 commandKit/parts/CommandKit-Completion.lua
@@ -351,12 +352,11 @@ files:
 <!-- generated:footprint -->
 | Files | Kit | Alongside `registry/Registry.lua` |
 |---|---|---|
-| 2 | `addonKit`, `apiKit`, `poolKit`, `bindingKit`, `bridgeKit`, `signalKit`, `cacheKit`, `clientKit`, `eventKit`, `timerKit`, `schemaKit`, `compatKit`, `dialogKit`, `editModeKit`, `hookKit`, `interopKit`, `localeKit`, `menuKit`, `widgetKit`, `profileKit`, `rangeKit`, `unitFrameKit` | nothing |
+| 2 | `addonKit`, `apiKit`, `poolKit`, `bindingKit`, `bridgeKit`, `signalKit`, `cacheKit`, `clientKit`, `eventKit`, `timerKit`, `commandKit`, `schemaKit`, `compatKit`, `dialogKit`, `editModeKit`, `hookKit`, `interopKit`, `localeKit`, `menuKit`, `widgetKit`, `profileKit`, `rangeKit`, `unitFrameKit` | nothing |
 | 3 | `barKit`, `codecKit`, `glowKit`, `toastKit`, `tooltipKit` | `poolKit` |
 | 3 | `brokerKit`, `logKit`, `mediaKit` | `signalKit` |
 | 3 | `lifecycleKit` | `eventKit` |
 | 3 | `readinessKit`, `schedulerKit` | `timerKit` |
-| 3 | `commandKit` | `schemaKit` |
 | 4 | `launcherKit` | `signalKit`, `brokerKit` |
 | 4 | `moduleKit` | `eventKit`, `lifecycleKit` |
 | 4 | `optionsKit`, `settingsKit` | `schemaKit`, `signalKit` |
@@ -386,7 +386,8 @@ part loads after its Kit's core and brings in what it needs:
 | `codecKit/Compression` | `codecKit/parts/CodecKit-Compression.lua` | Raw DEFLATE compression and inflation: Compress, Decompress, compress = "deflate" on the encoders and compressed frames on decode, natively through C_EncodingUtil.CompressString where the client has it. | nothing |
 | `commKit/SyncSet` | `commKit/parts/CommKit-SyncSet.lua` | scope:SyncSet: named fields synchronised with peers by content hash, answering only with the fields that differ. | `codecKit` |
 | `commKit/ChatThrottle` | `commKit/parts/CommKit-ChatThrottle.lua` | scope:SendChat and Battle.net game data (scope:SendBattleNet, scope:RegisterBattleNet) through the shared bandwidth budget, the senders ChatThrottleLib throttles beside addon messages. | nothing |
-| `commandKit/Options` | `commandKit/parts/CommandKit-Options.lua` | Drive an OptionsKit tree from a slash command: the get, set, reset, list and exec verbs and AceConfigCmd's path syntax. | `signalKit`, `optionsKit` |
+| `commandKit/Arguments` | `commandKit/parts/CommandKit-Arguments.lua` | Schema-checked command arguments: SchemaKit schemas per position or one array, coercion of the typed words, generated usage and refusals. | `schemaKit` |
+| `commandKit/Options` | `commandKit/parts/CommandKit-Options.lua` | Drive an OptionsKit tree from a slash command: the get, set, reset, list and exec verbs and AceConfigCmd's path syntax. | `schemaKit`, `signalKit`, `optionsKit`, `commandKit/Arguments` |
 | `commandKit/Completion` | `commandKit/parts/CommandKit-Completion.lua` | Tab completion in chat edit boxes: the scopes' own commands and AceTab-style completion providers. | nothing |
 | `eventKit/Units` | `eventKit/parts/EventKit-Units.lua` | ConnectUnit and OnceUnit: events filtered to one or two unit tokens on a bounded set of unit-filter Frames. | nothing |
 | `eventKit/CombatLog` | `eventKit/parts/EventKit-CombatLog.lua` | ConnectCombatLog: the combat log read once per event and routed by sub-event. | nothing |
@@ -503,8 +504,9 @@ by the example and are listed so the file is a complete template.
     <Script file="Libs\MoltenCodes\eventKit\EventKit.lua" />
     <Script file="Libs\MoltenCodes\timerKit\TimerKit.lua" /> <!-- module scope timers; ReadinessKit needs it -->
     <Script file="Libs\MoltenCodes\commKit\CommKit.lua" /> <!-- optional here -->
-    <Script file="Libs\MoltenCodes\schemaKit\SchemaKit.lua" />
     <Script file="Libs\MoltenCodes\commandKit\CommandKit.lua" />
+    <Script file="Libs\MoltenCodes\schemaKit\SchemaKit.lua" />
+    <Script file="Libs\MoltenCodes\commandKit\parts\CommandKit-Arguments.lua" /> <!-- argument schemas; the Options part needs it -->
     <Script file="Libs\MoltenCodes\optionsKit\OptionsKit.lua" />
     <Script file="Libs\MoltenCodes\commandKit\parts\CommandKit-Options.lua" /> <!-- BindOptions, which Commands.lua uses -->
     <Script file="Libs\MoltenCodes\compatKit\CompatKit.lua" /> <!-- optional here -->

@@ -15,7 +15,6 @@ describe("CacheKit snapshots and secret values", function()
       return rawequal(value, secret)
     end)
     require("Registry")
-    require("SignalKit")
     require("EventKit")
     return require("CacheKit")
   end

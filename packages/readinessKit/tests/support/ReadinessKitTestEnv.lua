@@ -8,13 +8,13 @@
 ---
 --- ReadinessKit requires Registry and TimerKit. EventKit is an optional
 --- dependency (`ReprobeOn`), so the test runner puts it and its own required
---- closure (SignalKit) on `LUA_PATH`; no path entry has to be added here. The
+--- closure on `LUA_PATH`; no path entry has to be added here. The
 --- module chain loads EventKit as an addon that embeds it would, and
 --- `NewPackageWithoutEventKit` loads the three-file minimum footprint instead.
 local FrameworkTestEnv = require("FrameworkTestEnv")
 
 local ReadinessKitTestEnv = FrameworkTestEnv.New({
-  modules = { "Registry", "SignalKit", "EventKit", "TimerKit", "ReadinessKit" },
+  modules = { "Registry", "EventKit", "TimerKit", "ReadinessKit" },
 })
 
 ---Return how many native timers are still armed (neither cancelled nor spent).
@@ -70,7 +70,6 @@ function ReadinessKitTestEnv.NewPackageWithoutClock()
   -- selene: allow(global_usage)
   rawset(_G, "GetTimePreciseSec", nil)
   require("Registry")
-  require("SignalKit")
   require("EventKit")
   require("TimerKit")
   return require("ReadinessKit")
