@@ -101,7 +101,9 @@ end
 ---@param host table
 ---@return table adapter, table[] libraries
 local function kitAdapter(host)
-  local loaded = host.RequireAll({ "Registry", "SchemaKit", "CommandKit" })
+  -- The `dispatch-words` command declares a number schema, which CommandKit's
+  -- Arguments part compiles from revision 12.
+  local loaded = host.RequireAll({ "Registry", "SchemaKit", "CommandKit", "CommandKit-Arguments" })
   local SchemaKit, CommandKit = loaded[2], loaded[3]
   local scope = CommandKit:CreateScope()
   local parsed = {}
