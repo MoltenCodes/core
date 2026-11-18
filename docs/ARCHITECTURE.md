@@ -106,15 +106,13 @@ and repository validation holds EMBEDDING's quoted order to it:
 
 ```text
 registry
+├──→ addonKit
 ├──→ apiKit
 ├──→ clientKit
 ├──→ compatKit
 ├──→ cacheKit
 ├──→ profileKit
-├──→ schemaKit
-│       ├──→ commandKit
-│       ├──→ settingsKit   (also needs signalKit)
-│       └──→ optionsKit    (also needs signalKit)
+├──→ commandKit
 ├──→ localeKit
 ├──→ hookKit
 ├──→ interopKit
@@ -125,29 +123,30 @@ registry
 ├──→ editModeKit
 ├──→ rangeKit
 ├──→ unitFrameKit
+├──→ widgetKit
+├──→ schemaKit
+│       └──→ optionsKit    (also needs signalKit)
+│               └──→ panelKit   (also needs widgetKit)
 ├──→ poolKit
 │       ├──→ codecKit
 │       ├──→ tooltipKit
 │       ├──→ barKit
 │       ├──→ toastKit
-│       ├──→ glowKit
-│       └──→ widgetKit   (also needs signalKit)
-│               └──→ panelKit   (also needs optionsKit)
+│       └──→ glowKit
 ├──→ timerKit
 │       ├──→ readinessKit
-│       └──→ schedulerKit
-│               ├──→ commKit   (also signalKit, eventKit, poolKit)
-│               └──→ testKit   (also lifecycleKit; development only, never bundled)
+│       ├──→ schedulerKit
+│       └──→ commKit   (also signalKit, eventKit, poolKit)
+├──→ eventKit
+│       └──→ lifecycleKit
+│               ├──→ moduleKit
+│               └──→ testKit   (also schedulerKit; development only, never bundled)
 └──→ signalKit
-       ├──→ mediaKit
-       ├──→ brokerKit
-       │       └──→ launcherKit
-       ├──→ logKit
-       ↓
-     eventKit
-       ↓
-   lifecycleKit
-    └──→ moduleKit
+        ├──→ settingsKit
+        ├──→ mediaKit
+        ├──→ logKit
+        └──→ brokerKit
+                └──→ launcherKit
 ```
 
 `timerKit` sits on Registry alone and `schedulerKit` on TimerKit; neither depends on LifecycleKit, and each finds it and EventKit only through `Registry:Find` to arrange that its addon scopes close at logout. LifecycleKit calls `CloseAddonScopes` on both at an addon's shutdown when they are present, the same two-step it uses for EventKit. `moduleKit` is the one capability that depends on LifecycleKit by design, because modules follow addon phases.
@@ -359,7 +358,7 @@ The dependency layer directly above Registry holds the Kits that need nothing el
 
 `addonKit` depends on Registry API 2 only and is depended on by nothing. It installs `MoltenCodes.For` on the shared namespace (only when the key is free or already its own entry function, which every revision keeps) and hands each addon one facade whose `__index` resolves a Kit through `Registry:Find` on the first read and caches it with `rawset`, at the API generation AddonKit API 1 records for it; `MC:Use` pins another. The addon object is ModuleKit's module `"Main"`. Two optional parts, `AddonKit-Database` (a SettingsKit database from plain defaults, the schema inferred) and `AddonKit-Composition` (OptionsKit with PanelKit and a CommandKit command; BrokerKit with LauncherKit), install their methods into the core's shared state under their own revisions. Every other Kit is found at call time. Registry is not touched: its core holds only what every Kit needs and is loaded by every addon, so the catalogue lives in an optional Kit.
 
-`widgetKit` depends on Registry API 2, PoolKit API 1 and SignalKit API 1. It owns a versioned registry of widget types, each drawn from one capped, generation-stamped PoolKit pool; containers laid out by registered layout functions only when asked, never from `OnSizeChanged`; a plain anchor value type with position bindings; and a renderer for OptionsKit trees. OptionsKit, SchedulerKit and MediaKit are found at call time through `Registry:Find`, adding no load-order edge; a SettingsKit scope view is accepted as the position storage table without WidgetKit depending on SettingsKit.
+`widgetKit` depends only on Registry API 2. It owns a versioned registry of widget types, each kept on its own capped, generation-stamped free list (since WidgetKit revision 14; PoolKit is optional, found through `Registry:Find` only to adopt the pools an older revision left behind on an in-place upgrade); containers laid out by registered layout functions only when asked, never from `OnSizeChanged`; a plain anchor value type with position bindings, in its `Position` part, which needs SignalKit API 1; and a renderer for OptionsKit trees. OptionsKit, SchedulerKit and MediaKit are found at call time through `Registry:Find`, adding no load-order edge; a SettingsKit scope view is accepted as the position storage table without WidgetKit depending on SettingsKit.
 
 `panelKit` depends on Registry API 2, WidgetKit API 1 and OptionsKit API 1, all required. It puts an OptionsKit tree in Blizzard's settings panel through the client's `Settings` API (`RegisterCanvasLayoutCategory`, `RegisterCanvasLayoutSubcategory`, `RegisterAddOnCategory`, `OpenToCategory`), wrapped rather than rebuilt, with one plain canvas frame per panel. The page is drawn with `WidgetKit:RenderOptions` into a pooled `ScrollFrame` when Blizzard shows the canvas and released when it hides it, so a hidden page holds no widget. The canvas keeps its scripts for the session, so they call through a dispatch table in the shared state that every revision rewrites.
 
