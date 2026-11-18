@@ -169,15 +169,9 @@ Raised at the caller's line:
 - `LocaleKit:Format template has an unsupported specifier "%x"`, including a `%` at the end of the template;
 - `LocaleKit:Format template has an invalid specifier "%100s"`, for a shape `string.format` refuses: a width or precision over two digits, or a repeated flag;
 - `LocaleKit:Format argument 1 must be a number, got string` (and `must be a string or a number` for `%s`);
-- `LocaleKit:Format template must not be a secret value` and `LocaleKit:Format argument 2 must not be a secret value`, see below.
+- `LocaleKit:Format template must not be a secret value` and `LocaleKit:Format argument 2 must not be a secret value`, see [Secret values](#secret-values).
 
 `Format` runs one `string.gsub` per call and allocates only strings (the formatted piece of each specifier and the result), no table and no closure.
-
-### Secret values
-
-On Retail 12.x the client hands tainted code secret values that raise when compared, tested as a boolean or used as table keys, and formatting one produces a secret result. `Format` asks `issecretvalue` about the template and every argument before formatting and refuses a secret one at the caller, so a secret never becomes part of a translated message by accident and `string.gsub` never runs over a secret template (a secret string from the host passed as the template, say). A read table cannot produce a secret template: the client already refuses `L[secretKey]` at the index (see [Missing keys](#missing-keys)).
-
-The other methods ask `issecretvalue` about each argument before comparing it, testing it or using it as a table key, each of which raises for a secret: `NewLocale`'s `addonName`, `locale` and `options.isDefault`, `GetLocale`'s `addonName`, `options.missing` and `options.maxMissingKeys`, `MissingKeys`' `addonName` and `SetLocaleOverride`'s `locale`. A secret one is refused at the caller with `LocaleKit:<Method> <argument> must not be a secret value` (`LocaleKit:NewLocale addonName must not be a secret value`, `LocaleKit:GetLocale missing must not be a secret value`; a secret `maxMissingKeys` gets the limit's own message, see [Limits](#limits)), and the call changes nothing. `issecretvalue` is resolved once when LocaleKit loads (the client defines it before any addon runs); when it was absent then, it is looked up again at every call, so a probe installed later is still honoured. Without it nothing is secret. See [`docs/EMBEDDING.md`](../../../docs/EMBEDDING.md#secret-values-retail-12x).
 
 ## `LocaleKit:SetLocaleOverride(locale?)`
 
@@ -187,6 +181,12 @@ LocaleKit:SetLocaleOverride("koKR")
 ```
 
 Makes every addon registered from now on use `locale` as its client locale; `enGB` is folded to `enUS`. `nil` clears the override. An addon already registered keeps the locale it was registered with, because its read table has already been built for it. The override is shared by every addon in the session and replaces AceLocale's `GAME_LOCALE` global, which LocaleKit does not read.
+
+## Secret values
+
+On Retail 12.x the client hands tainted code secret values that raise when compared, tested as a boolean or used as table keys, and formatting one produces a secret result. `Format` asks `issecretvalue` about the template and every argument before formatting and refuses a secret one at the caller, so a secret never becomes part of a translated message by accident and `string.gsub` never runs over a secret template (a secret string from the host passed as the template, say). A read table cannot produce a secret template: the client already refuses `L[secretKey]` at the index (see [Missing keys](#missing-keys)).
+
+The other methods ask `issecretvalue` about each argument before comparing it, testing it or using it as a table key, each of which raises for a secret: `NewLocale`'s `addonName`, `locale` and `options.isDefault`, `GetLocale`'s `addonName`, `options.missing` and `options.maxMissingKeys`, `MissingKeys`' `addonName` and `SetLocaleOverride`'s `locale`. A secret one is refused at the caller with `LocaleKit:<Method> <argument> must not be a secret value` (`LocaleKit:NewLocale addonName must not be a secret value`, `LocaleKit:GetLocale missing must not be a secret value`; a secret `maxMissingKeys` gets the limit's own message, see [Limits](#limits)), and the call changes nothing. `issecretvalue` is resolved once when LocaleKit loads (the client defines it before any addon runs); when it was absent then, it is looked up again at every call, so a probe installed later is still honoured. Without it nothing is secret. See [`docs/EMBEDDING.md`](../../../docs/EMBEDDING.md#secret-values-retail-12x).
 
 ## Limits
 

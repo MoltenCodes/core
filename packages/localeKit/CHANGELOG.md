@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.8 — 2026-11-18
+
+- Documentation and tests only; implementation revision 5 is unchanged. `docs/API.md` follows the repository skeleton: *Secret values* is a section of its own, after the methods. LocaleKit carries no copy of the shared helper blocks: its probe is `loadedSecretProbe` with `readSecretProbe`, which its callers hoist, and its `report` stays as it is (docs/records/shared-helpers.md, D5).
+- New spec: `Conformance_spec.lua` (the repository's conformance suite; its limits group is pending, LocaleKit has no `SetLimits`, and so is its receivers group, because every method ignores its receiver).
+
 ## 0.1.7 — 2026-11-15
 
 - Performance: `NewLocale` for a locale the client does not need, the call nearly every translation file makes, answers before its full checks. With no options it asks `issecretvalue` about the addon name and the locale, then finds the addon's record and the locale among the client codes; when both are found and the locale is not the addon's, it returns `nil`. Everything else takes the full path, with every message and error level unchanged. Host benchmark (`python3 -m tooling.bench.run --workload locale`): `unneeded-locale` 190 ns → 104 ns, from 4.02× to 2.07× AceLocale-3.0's in the same run (2026-11-15, a machine that was not idle); `lookup` stays at parity and nothing allocates.

@@ -28,4 +28,5 @@ The shared fixture does not stub `GetLocale`, so `support/LocaleKitTestEnv.lua` 
 | `FastPaths_spec.lua` | revision 3 fast paths: known and pattern-checked locale codes, inline proxy checks, the eight-field record (layout 2), layout-1 records after an upgrade, allocation of an unneeded locale and a new addon; revision 5's unneeded-locale fast path, its refusals and its answer after an upgrade |
 | `ErrorLevels_spec.lua` | errors reported at the caller's line |
 | `Bootstrap_spec.lua` | publication, duplicate loads, upgrades |
+| `Conformance_spec.lua` | the repository conformance suite (`tests/support/KitConformance.lua`) on a mainline-profile environment: manifest, arguments and upgrade; limits and receivers are pending, with the reason in the spec |
 | `Manifest_spec.lua` | manifest and runtime metadata |
