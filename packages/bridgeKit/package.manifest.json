@@ -3,10 +3,10 @@
   "displayName": "BridgeKit",
   "description": "Migration tools from Ace3 to the MoltenCodes Kits for World of Warcraft addons: AceSerializer-3.0 text written and read byte for byte, AceConfig-3.0 tables converted to OptionsKit trees, AceDB-3.0 saved variables imported into SettingsKit, and AceComm-3.0 spoken through CommKit, with limits and refusals where Ace3 would raise.",
   "summary": "Migration from Ace3: AceSerializer-3.0 text written and read byte for byte, AceConfig-3.0 tables converted to OptionsKit trees, AceDB-3.0 saved variables imported into SettingsKit, AceComm-3.0 spoken through CommKit.",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "license": "MIT",
   "api": 1,
-  "revision": 8,
+  "revision": 9,
   "dependencies": {
     "registry": {
       "api": 2

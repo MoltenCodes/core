@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.6.1 — 2026-11-18
+
+- `isSecret` and `validateFacade` are now the shared helper blocks (`tooling/shared/lua/`, kept in step by `python3 -m tooling.shared.sync`); `isSecretValue` is renamed `isSecret` at its 20 call sites. The probe rule is the one BridgeKit already followed (`issecretvalue` resolved at load, read again on each check only when it was absent then). The block also asks the probe about `nil`, which the client's `issecretvalue` answers `false`, so only a test stub that calls `nil` secret sees a difference. `loadedSecretProbe` and `readSecretProbe` stay for the serializer walk and the option tables, which read the probe once and test many values with it. Refusal messages are unchanged; the limits loop keeps its own messages (`tooling/shared/pins.json` opts it out).
+- `docs/API.md` follows the repository skeleton: *Secret values* before *Limits*, a new *Error behaviour* section, *Cost* renamed *Performance*, *Upgrades* renamed *Embedded copies and upgrades*.
+- Implementation revision 9. No state changed: an upgrade over revision 8 keeps every limit, channel and counter.
+- New specs: `SharedHelpers_spec.lua` (a nil multiselect state with the test probe, the probe kept from load, the facade message, the upgrade over the committed revision 8 file in `tests/fixtures/BridgeKit-revision8.lua`) and `Conformance_spec.lua` (the repository's conformance suite, every group described).
+
 ## 0.6.0 — 2026-11-15
 
 Fields carried over to OptionsKit, converted trees rebuilt, AceDB namespaces imported natively (roadmap package O, "bridgeKit carries option fields over and rebuilds converted trees").

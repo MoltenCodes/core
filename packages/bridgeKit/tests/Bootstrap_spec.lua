@@ -61,7 +61,7 @@ describe("BridgeKit bootstrap", function()
     package.loaded["BridgeKit"] = nil
     local upgraded = require("BridgeKit")
     assert.are.equal(older, upgraded)
-    assert.are.equal(8, upgraded.REVISION)
+    assert.are.equal(9, upgraded.REVISION)
     assert.are.equal(6, upgraded:GetLimits().maxDepth)
     assert.are.same({ true, text }, { upgraded:AceSerialize(value) })
     assert.are.same({ true, value }, { upgraded:AceDeserialize(text) })
@@ -76,7 +76,7 @@ describe("BridgeKit bootstrap", function()
     package.loaded["BridgeKit"] = nil
     local upgraded = require("BridgeKit")
     assert.are.equal(older, upgraded)
-    assert.are.equal(8, upgraded.REVISION)
+    assert.are.equal(9, upgraded.REVISION)
     assert.are.equal(5, upgraded:GetLimits().maxDepth)
     local conversion = upgraded:ConvertAceConfig("MyAddon", {
       type = "group",

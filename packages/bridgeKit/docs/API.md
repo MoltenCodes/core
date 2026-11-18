@@ -639,6 +639,20 @@ counts the entries past the limit, whose counts are still included.
 default), then one summary line: `41 converted, 6 dropped, 3 changed, 1
 renamed`, with `N more not shown` when entries were left out.
 
+## Secret values
+
+`issecretvalue` is resolved once when BridgeKit loads (the client defines it before any addon runs) and, when it was absent then, read at every call, so a probe installed later is still honoured; a probe that replaces the one present at load is not asked (revision 9). Single values are asked through the shared `isSecret` block (`tooling/shared/lua/isSecret.lua`); the serializer walk and the option tables read the probe once and test many values with it. A secret argument, a secret value or
+key inside the values given to `AceSerialize`, a secret `text`, a secret
+`SetLimits` key or value, a secret option field, key or option of an AceConfig
+source, and a secret result of a `name`, `order` or `hasAlpha` evaluated at
+conversion raise at the caller. A secret answer of a wrapped `validate`
+refuses without being compared; a secret `disabled` or `hidden` answer counts
+as `false`, as OptionsKit counts it. A secret `OpenAceComm` scope, prefix or
+option, and a secret `Send` field or text raise at the caller. Error messages
+never format a
+secret: the one caller value a message names, an unknown limit name, is
+checked first, and only a string is named.
+
 ## Limits
 
 The limits are shared by every embedded copy and every consumer in the
@@ -673,21 +687,22 @@ the next part received. A conversion's own bounds, `maxOptions` and `maxDepth`, 
 options of the call, because the tree belongs to one call, as OptionsKit's
 are.
 
-## Secret values
+## Error behaviour
 
-`issecretvalue` is resolved once when BridgeKit loads (the client defines it before any addon runs) and, when it was absent then, read at every call, so a probe installed later is still honoured. A secret argument, a secret value or
-key inside the values given to `AceSerialize`, a secret `text`, a secret
-`SetLimits` key or value, a secret option field, key or option of an AceConfig
-source, and a secret result of a `name`, `order` or `hasAlpha` evaluated at
-conversion raise at the caller. A secret answer of a wrapped `validate`
-refuses without being compared; a secret `disabled` or `hidden` answer counts
-as `false`, as OptionsKit counts it. A secret `OpenAceComm` scope, prefix or
-option, and a secret `Send` field or text raise at the caller. Error messages
-never format a
-secret: the one caller value a message names, an unknown limit name, is
-checked first, and only a string is named.
+A malformed argument raises at the caller's line, before anything changes,
+naming the method and the parameter, as every message quoted on this page
+does. A facade method called with a dot instead of a colon raises
+`BridgeKit:<Method> must be called on the BridgeKit facade; use
+BridgeKit:<Method>(...)`. What the caller cannot control is answered, not
+raised: `AceDeserialize` returns `false` and the reason, a conversion and an
+import list what they dropped in their report, and the AceComm channel
+reports a dropped stream through the client's error handler (at most once per
+sender per minute, see [The AceComm channel](#the-acecomm-channel)). A
+channel callback that raises is isolated: with `securecallfunction` the
+client reports it, otherwise its failure goes to the client's error handler
+and the next callback still runs.
 
-## Cost
+## Performance
 
 `AceSerialize` writes into one piece array it reuses from call to call (a
 token and its data as separate pieces) and allocates only the result:
@@ -723,7 +738,7 @@ and a channel's per-message cost is CommKit's (`docs/BENCHMARKS.md`,
 "Multipart addon messages") plus one table read per message and one
 `table.concat` per reassembled stream.
 
-## Upgrades
+## Embedded copies and upgrades
 
 The package state (`_state`) holds the limits, the `UNBOUNDED` sentinel, the
 read-only baseline and the AceComm state (open prefixes, held streams,
@@ -742,6 +757,10 @@ same text. Revision 8 changes no state: the field cache lives in each
 conversion's work table and the rebuilding builder in the closure
 `DefineAceConfig` hands OptionsKit, so an upgrade over revision 7 keeps every
 limit, channel and counter, and trees defined before stay snapshots.
+Revision 9 changes no state: the secret check and the facade check are the
+shared helper blocks, so an upgrade over revision 8 keeps every limit,
+channel and counter (`tests/SharedHelpers_spec.lua`, over the committed
+revision 8 file in `tests/fixtures/BridgeKit-revision8.lua`).
 
 ## Testing
 
