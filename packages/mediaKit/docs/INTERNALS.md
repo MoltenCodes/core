@@ -90,4 +90,4 @@ Every argument validator takes an explicit `level`, which is the value `error` n
 
 ## Upgrades
 
-The upgrade specs load the same source a second time with `IMPLEMENTATION_REVISION` raised by one and check that entries, cached lists, a connection, a defaults object, adoption, the single subscription, mirroring and the set limits survive, and that the built-ins are not registered twice. Further specs load the source as revision 1, 2, 3 and 4 and upgrade each with the current file. Revisions 2 to 5 changed no state: they keep the revision 1 state and replace the methods.
+The upgrade specs load the same source a second time with `IMPLEMENTATION_REVISION` raised by one and check that entries, cached lists, a connection, a defaults object, adoption, the single subscription, mirroring and the set limits survive, and that the built-ins are not registered twice. Further specs load the source as revision 1, 2, 3 and 4 and upgrade each with the current file, and `SharedHelpers_spec.lua` upgrades the committed revision 5 file. Revisions 2 to 6 changed no state: they keep the revision 1 state and replace the methods.
