@@ -27,7 +27,7 @@ GlowKit does not rely on `require()` at runtime.
 | Facility | Used by | Without it |
 |---|---|---|
 | `CreateFrame` | `Start` (the first overlays) | `Start` raises at the caller: `GlowKit:Start needs the client's CreateFrame, which this host does not have`. |
-| `issecretvalue` | every check, every size read | Nothing is treated as secret. |
+| `issecretvalue` | every check, every size read; read once at load, and again on each check only when it was absent at load | Nothing is treated as secret. |
 
 ## Public surface
 
