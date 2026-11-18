@@ -157,8 +157,9 @@ describe("AddonKit database", function()
     local MC = loadedFacade()
     local cases = {
       {
-        { factionrealm = { a = 1 } },
-        "has the scope factionrealm, which SettingsKit does not have",
+        { realms = { a = 1 } },
+        "has the scope realms, which SettingsKit does not have; its scopes are profile, global, char,"
+          .. " realm, class, faction, race, factionrealm, factionrealmregion, locale",
       },
       { {}, "must hold at least one scope" },
       { { profile = 1 }, "defaults.profile must be a table of defaults" },
@@ -188,6 +189,61 @@ describe("AddonKit database", function()
       MC:Database("MyAddonDB", { profile = deep })
     end)
     assert.is_truthy(string.find(message, "nest deeper than 16 tables", 1, true))
+  end)
+
+  it("opens the scopes SettingsKit added in its revision 15 too", function()
+    local MC = loadedFacade()
+    local db = MC:Database("MyAddonDB", {
+      race = { shown = true },
+      factionrealm = { count = 1 },
+      factionrealmregion = { count = 2 },
+      locale = { name = "x" },
+    })
+    -- Reading these views needs host answers (`UnitRace`, the faction, the
+    -- region, the locale) the fake client does not give; opening a database
+    -- that declares them is what MC:Database refused before.
+    assert.is_table(db)
+    assert.is_table(TestEnv.GetGlobal("MyAddonDB"))
+  end)
+
+  it("opens plain defaults without SchemaKit", function()
+    TestEnv.NewPackage()
+    TestEnv.LoadKits({
+      "SignalKit",
+      "EventKit",
+      "LifecycleKit",
+      "SettingsKit",
+      "SettingsKit-Defaults",
+    })
+    require("AddonKit-Database")
+    TestEnv.LoadAddon("MyAddon")
+    local MC = TestEnv.Namespace():For("MyAddon")
+    local db = MC:Database("MyAddonDB", { profile = { scale = 1 } })
+    assert.are.equal(1, db.profile.scale)
+    assert.has_error(function()
+      db.profile.scale = "big"
+    end)
+  end)
+
+  it("names SettingsKit's Defaults part when it is not loaded", function()
+    TestEnv.NewPackage()
+    TestEnv.LoadKits({ "SignalKit", "EventKit", "LifecycleKit", "SchemaKit", "SettingsKit" })
+    require("AddonKit-Database")
+    TestEnv.LoadAddon("MyAddon")
+    local MC = TestEnv.Namespace():For("MyAddon")
+    local message = TestEnv.ErrorOf(function()
+      MC:Database("MyAddonDB", { profile = { scale = 1 } })
+    end)
+    assert.is_truthy(
+      string.find(
+        message,
+        "plain defaults are in SettingsKit's Defaults part, which is not loaded: add settingsKit\\parts\\SettingsKit-Defaults.lua",
+        1,
+        true
+      ),
+      message
+    )
+    assert.is_nil(string.find(message, "AddonKit-Database.lua", 1, true), message)
   end)
 
   it("names the Kit to embed when SettingsKit is not loaded", function()

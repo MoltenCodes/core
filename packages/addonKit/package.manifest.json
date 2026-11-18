@@ -65,8 +65,8 @@
       }
     },
     "Database": {
-      "description": "MC:Database (a SettingsKit database from AceDB-style defaults, the schema inferred), MC.Range and MC.Enum.",
-      "revision": 1,
+      "description": "MC:Database (a SettingsKit database from AceDB-style defaults, which SettingsKit's Defaults part reads), MC.Range and MC.Enum.",
+      "revision": 2,
       "dependencies": {},
       "optionalDependencies": {
         "lifecycleKit": {
@@ -76,7 +76,10 @@
           "api": 1
         },
         "settingsKit": {
-          "api": 1
+          "api": 1,
+          "parts": [
+            "Defaults"
+          ]
         }
       }
     }

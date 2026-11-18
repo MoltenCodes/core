@@ -1,60 +1,57 @@
 -- MoltenCodes AddonKit part Database
 --
 -- `MC:Database(savedVariable, defaults, options?)`: a SettingsKit database
--- opened from an AceDB-style defaults table, with the SchemaKit schema
--- inferred from the defaults, plus `MC.Range` and `MC.Enum`, the two schema
--- nodes a defaults table most often needs written by hand.
+-- opened from an AceDB-style defaults table, plus `MC.Range` and `MC.Enum`,
+-- the two schema nodes a defaults table most often needs written by hand.
 --
--- The inference gives every field a type and every map a bound, which is
--- what SettingsKit's guarantees need. It does not invent constraints: a
--- range or a choice is written inline as a schema node. What it infers:
+-- The defaults go to `SettingsKit:Open` as they are: SettingsKit's Defaults
+-- part reads plain defaults itself, infers every field's type and every map's
+-- bound from them and checks writes without SchemaKit (part revision 1 of
+-- this file inferred a SchemaKit schema instead; the rules are the same, see
+-- SettingsKit's docs/API.md, *Opening a database*). SchemaKit nodes inside the
+-- defaults (`MC.Range`, `MC.Enum`, `MC.S.*`) are kept as written. This part
+-- adds the AddonKit side: the refusal to open before ADDON_LOADED, the same
+-- database for the same defaults table, and refusals of the defaults' scopes
+-- that say what to write.
 --
---   true / 1 / "text"     optional(boolean / number / string, value);
---                         strings get a length bound, numbers are not made
---                         integers (`scale = 1` accepts 1.5)
---   { a = ..., b = ... }  an optional record of the inferred fields
---   {}                    a bounded free-form bag: string or number keys, any values
---   { ["*"] = ... }       a bounded map whose entries read the wildcard's defaults
---   { 1, 2, 3 }           an optional array of that one primitive type
---   a SchemaKit node      itself, made optional when it is not
---
--- The part needs AddonKit's core loaded first, and SchemaKit, SettingsKit and
--- LifecycleKit when `Database` runs (LifecycleKit tells whether the addon has
--- loaded: the client restores a saved variable only at ADDON_LOADED).
+-- The part needs AddonKit's core loaded first, and SettingsKit with its
+-- Defaults part and LifecycleKit when `Database` runs (LifecycleKit tells
+-- whether the addon has loaded: the client restores a saved variable only at
+-- ADDON_LOADED). SchemaKit is needed only for the schema nodes.
 --
 -- Contents
 -- --------
---   Constants ........ identity, scopes, inferred bounds
+--   Constants ........ identity, scopes
 --   Dependencies ..... AddonKit's core and its state
---   Inference ........ defaults to schema nodes
+--   Scopes ........... the defaults table's scopes checked
 --   Methods .......... Database, Range, Enum
 --   Commit ........... members and the part's revision
 
 -- Constants ------------------------------------------------------------------
 
 local PART_NAME = "Database"
-local PART_REVISION = 1
+local PART_REVISION = 2
 local REQUIRED_REGISTRY_API = 2
 local CORE_PACKAGE, CORE_API = "addonKit", 1
 
--- SettingsKit's scopes, in the order a message lists them.
-local SCOPE_NAMES = { "profile", "global", "char", "realm", "class", "faction" }
+-- SettingsKit's scopes (all ten since its revision 15), in the order a
+-- message lists them.
+local SCOPE_NAMES = {
+  "profile",
+  "global",
+  "char",
+  "realm",
+  "class",
+  "faction",
+  "race",
+  "factionrealm",
+  "factionrealmregion",
+  "locale",
+}
 local SCOPES = {}
 for index = 1, #SCOPE_NAMES do
   SCOPES[SCOPE_NAMES[index]] = true
 end
-
--- Bounds the inferred schema adds where AceDB has none, so an inferred
--- database is still bounded: SchemaKit requires every map to have one.
-local INFERRED_STRING_MAX = 4096
-local INFERRED_KEY_MAX = 256
-local INFERRED_MAP_MAX = 1024
-
--- How deep a defaults table may nest: SchemaKit's own default depth.
-local MAX_DEFAULTS_DEPTH = 16
-
--- What `getmetatable` answers for SchemaKit's nodes and sealed schemas.
-local SCHEMA_TAGS = { ["SchemaKit.Node"] = true, ["SchemaKit.Schema"] = true }
 
 -- Dependencies ---------------------------------------------------------------
 
@@ -92,210 +89,17 @@ local methods = rawget(state, "methods")
 -- Read at call time, never copied: an upgraded core's helpers serve this part.
 local helpers = rawget(state, "helpers")
 
--- Inference ------------------------------------------------------------------
+-- Scopes ---------------------------------------------------------------------
 --
--- Inference raises with level 0 (no position): `Database` runs it under
--- `callAtCaller`, which raises the message again at the author's line.
+-- SettingsKit refuses the same mistakes, in its own words ("schema must
+-- declare at least one scope"); these say what to write in the defaults an
+-- author passed. They raise with level 0 (no position): `Database` runs them
+-- under `callAtCaller`, which raises the message again at the author's line.
 
-local inferNode
-
----Whether `value` is a SchemaKit node or sealed schema.
----@param value any
----@return boolean
-local function isSchemaNode(value)
-  return type(value) == "table" and SCHEMA_TAGS[getmetatable(value)] == true
-end
-
----`node` made optional; a node that already is optional stays as it is.
----@param SchemaKit table
----@param node table
----@return table
-local function asOptional(SchemaKit, node)
-  local ok, optional = pcall(SchemaKit.optional, node)
-  if ok then
-    return optional
-  end
-  return node
-end
-
----The key schema of an inferred map or bag: a bounded string, or a number.
----@param SchemaKit table
----@return table
-local function inferredKeys(SchemaKit)
-  return SchemaKit.oneOf({ SchemaKit.string({ max = INFERRED_KEY_MAX }), SchemaKit.number() })
-end
-
----The node of one primitive value, without a default.
----@param SchemaKit table
----@param value boolean|number|string
----@return table
-local function primitiveNode(SchemaKit, value)
-  local valueType = type(value)
-  if valueType == "boolean" then
-    return SchemaKit.boolean()
-  elseif valueType == "number" then
-    return SchemaKit.number()
-  end
-  return SchemaKit.string({ max = math.max(INFERRED_STRING_MAX, #value) })
-end
-
----Whether `value` is a non-empty sequence with keys exactly `1..n`.
----@param value table
----@return boolean
-local function isSequence(value)
-  local count = 0
-  for _ in pairs(value) do
-    count = count + 1
-  end
-  return count > 0 and count == #value
-end
-
----An array default: every element one primitive type.
----@param SchemaKit table
----@param value table
----@param path string
----@return table node
-local function inferArray(SchemaKit, value, path)
-  local elementType = type(value[1])
-  for index = 1, #value do
-    local element = value[index]
-    local thisType = type(element)
-    if
-      thisType ~= elementType
-      or (thisType ~= "boolean" and thisType ~= "number" and thisType ~= "string")
-    then
-      error(
-        "MC:Database defaults "
-          .. path
-          .. " is a list of mixed or table values; write its schema node inline (MC.S.array{ of = ... })",
-        0
-      )
-    end
-  end
-  local copy = {}
-  for index = 1, #value do
-    copy[index] = value[index]
-  end
-  local longest = 0
-  if elementType == "string" then
-    for index = 1, #value do
-      longest = math.max(longest, #value[index])
-    end
-  end
-  local element = elementType == "string"
-      and SchemaKit.string({ max = math.max(INFERRED_STRING_MAX, longest) })
-    or primitiveNode(SchemaKit, value[1])
-  return SchemaKit.optional(
-    SchemaKit.array({ of = element, max = math.max(INFERRED_MAP_MAX, #value) }),
-    copy
-  )
-end
-
----A record: a defaults table with named keys, or a wildcard map.
----@param SchemaKit table
+---Check the scopes of a whole defaults table: at least one, each a scope
+---SettingsKit has, each a table (plain defaults or a schema node).
 ---@param defaults table
----@param path string
----@param depth integer
----@return table node a required `table` or `map` node
-local function inferRecord(SchemaKit, defaults, path, depth)
-  if depth > MAX_DEFAULTS_DEPTH then
-    error(
-      "MC:Database defaults " .. path .. " nest deeper than " .. MAX_DEFAULTS_DEPTH .. " tables",
-      0
-    )
-  end
-  if defaults["**"] ~= nil then
-    error(
-      "MC:Database defaults "
-        .. path
-        .. ' uses ["**"], which has no SettingsKit form; give each key its defaults, or use ["*"] alone',
-      0
-    )
-  end
-  local wildcard = defaults["*"]
-  local fieldNodes = {}
-  local named = false
-  for key, value in pairs(defaults) do
-    if key ~= "*" then
-      if type(key) ~= "string" or key == "" then
-        error(
-          "MC:Database defaults "
-            .. path
-            .. " has a "
-            .. type(key)
-            .. ' key; record keys are non-empty strings (use ["*"] for a keyed bag)',
-          0
-        )
-      end
-      named = true
-      fieldNodes[key] = inferNode(SchemaKit, value, path .. "." .. key, depth + 1)
-    end
-  end
-  if wildcard == nil then
-    return SchemaKit.table({ fields = fieldNodes })
-  end
-  if named then
-    error(
-      "MC:Database defaults "
-        .. path
-        .. ' puts ["*"] beside named keys, which has no SettingsKit form; move the named keys'
-        .. ' into a record of their own, or keep ["*"] alone',
-      0
-    )
-  end
-  -- The optional default of the values is SettingsKit's wildcard default:
-  -- every key reads it until written, as AceDB's ["*"] does.
-  local values = inferNode(SchemaKit, wildcard, path .. "[*]", depth + 1)
-  return SchemaKit.map({ keys = inferredKeys(SchemaKit), values = values, max = INFERRED_MAP_MAX })
-end
-
----The optional node of one default value.
----@param SchemaKit table
----@param value any
----@param path string
----@param depth integer
----@return table node
-function inferNode(SchemaKit, value, path, depth)
-  local valueType = type(value)
-  if valueType == "boolean" or valueType == "number" or valueType == "string" then
-    return SchemaKit.optional(primitiveNode(SchemaKit, value), value)
-  end
-  if valueType ~= "table" then
-    error(
-      "MC:Database defaults "
-        .. path
-        .. " is a "
-        .. valueType
-        .. "; a default is a boolean, number, string, table or schema node",
-      0
-    )
-  end
-  if isSchemaNode(value) then
-    return asOptional(SchemaKit, value)
-  end
-  if next(value) == nil then
-    -- `{}`: a free-form bag, as AceDB users use it; bounded, values unchecked.
-    return SchemaKit.optional(
-      SchemaKit.map({
-        keys = inferredKeys(SchemaKit),
-        values = SchemaKit.any(),
-        max = INFERRED_MAP_MAX,
-      }),
-      {}
-    )
-  end
-  if isSequence(value) then
-    return inferArray(SchemaKit, value, path)
-  end
-  return SchemaKit.optional(inferRecord(SchemaKit, value, path, depth), {})
-end
-
----The SettingsKit schema of a whole defaults table: one record per scope.
----@param SchemaKit table
----@param defaults table
----@return table schema
-local function inferSchema(SchemaKit, defaults)
-  local schema = {}
+local function checkScopes(defaults)
   local any = false
   for scope, scopeDefaults in pairs(defaults) do
     if type(scope) ~= "string" or not SCOPES[scope] then
@@ -307,11 +111,7 @@ local function inferSchema(SchemaKit, defaults)
         0
       )
     end
-    if isSchemaNode(scopeDefaults) then
-      schema[scope] = scopeDefaults
-    elseif type(scopeDefaults) == "table" then
-      schema[scope] = inferRecord(SchemaKit, scopeDefaults, scope, 1)
-    else
+    if type(scopeDefaults) ~= "table" then
       error("MC:Database defaults." .. scope .. " must be a table of defaults", 0)
     end
     any = true
@@ -319,12 +119,12 @@ local function inferSchema(SchemaKit, defaults)
   if not any then
     error("MC:Database defaults must hold at least one scope, such as profile = { ... }", 0)
   end
-  return schema
 end
 
 -- Methods --------------------------------------------------------------------
 
----Open a database from AceDB-style defaults, the schema inferred.
+---Open a database from AceDB-style defaults, which SettingsKit's Defaults
+---part reads.
 ---
 ---Refuses to open before the addon's ADDON_LOADED: the client restores the
 ---saved variable only then and replaces what an earlier open created. A
@@ -357,7 +157,6 @@ local function facadeDatabase(self, savedVariable, defaults, options)
     return opened.db
   end
   local LifecycleKit = helpers.requireKit(record, "LifecycleKit", 3)
-  local SchemaKit = helpers.requireKit(record, "SchemaKit", 3)
   local SettingsKit = helpers.requireKit(record, "SettingsKit", 3)
   local lifecycle = helpers.callAtCaller(3, LifecycleKit.ForAddon, LifecycleKit, record.addonName)
   if not lifecycle:IsLoaded() then
@@ -369,8 +168,9 @@ local function facadeDatabase(self, savedVariable, defaults, options)
       2
     )
   end
-  local schema = helpers.callAtCaller(3, inferSchema, SchemaKit, defaults)
-  local db = helpers.callAtCaller(3, SettingsKit.Open, SettingsKit, savedVariable, schema, options)
+  helpers.callAtCaller(3, checkScopes, defaults)
+  local db =
+    helpers.callAtCaller(3, SettingsKit.Open, SettingsKit, savedVariable, defaults, options)
   record.databases[savedVariable] = { defaults = defaults, db = db }
   return db
 end

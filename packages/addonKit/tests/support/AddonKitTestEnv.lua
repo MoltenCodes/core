@@ -34,15 +34,30 @@ local AddonKitTestEnv = FrameworkTestEnv.New({
 
 --- The Kit module chains specs load after the core, dependency first.
 AddonKitTestEnv.CHAINS = {
-  modules = { "SignalKit", "EventKit", "LifecycleKit", "ModuleKit" },
-  database = { "SignalKit", "EventKit", "LifecycleKit", "SchemaKit", "SettingsKit" },
-  composition = {
+  -- SignalKit's Bus part carries `ForAddon`, which ModuleKit's
+  -- `OnModuleCreated` subscribes on.
+  modules = { "SignalKit", "SignalKit-Bus", "EventKit", "LifecycleKit", "ModuleKit" },
+  -- SettingsKit's Defaults part reads the plain defaults `MC:Database` passes.
+  database = {
     "SignalKit",
     "EventKit",
     "LifecycleKit",
     "SchemaKit",
     "SettingsKit",
+    "SettingsKit-Defaults",
+  },
+  -- OptionsKit needs SchemaKit's Rules part; its Bind part serves the
+  -- `bind = "profile.path"` options the specs' trees use.
+  composition = {
+    "SignalKit",
+    "EventKit",
+    "LifecycleKit",
+    "SchemaKit",
+    "SchemaKit-Rules",
+    "SettingsKit",
+    "SettingsKit-Defaults",
     "OptionsKit",
+    "OptionsKit-Bind",
     "WidgetKit",
     "WidgetKit-Containers",
     "WidgetKit-Text",
@@ -79,12 +94,16 @@ local OWNED_MODULES = {
   "AddonKit-Database",
   "AddonKit-Composition",
   "SignalKit",
+  "SignalKit-Bus",
   "EventKit",
   "LifecycleKit",
   "ModuleKit",
   "SchemaKit",
+  "SchemaKit-Rules",
   "SettingsKit",
+  "SettingsKit-Defaults",
   "OptionsKit",
+  "OptionsKit-Bind",
   "WidgetKit",
   "WidgetKit-Containers",
   "WidgetKit-Text",

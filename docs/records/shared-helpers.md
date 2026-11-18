@@ -193,6 +193,12 @@ found by running each Kit's specs after its conversion.
    fallback) and the skeleton fixes the validator asks for (`## Cost` →
    `## Performance`, a `## Secret values` section), tests/README.
 9. Status: implemented 2026-11-18, 0.2.1, revision 3, 93 specs.
+   Integration (2026-11-18): the Database part moves to revision 2 and
+   passes plain defaults to SettingsKit's Defaults part, as the settingsKit
+   record's report item and the schemaKit record ("until it moves to
+   SettingsKit's Defaults part") point to, rather than naming SchemaKit's
+   Rules part for its `oneOf` key schema; the part's scope list takes
+   SettingsKit's ten scopes. Database part 17.9 → 9.1 KB resident. 96 specs.
 
 **apiKit: shared `isSecret`, `describeKey`** — a change to facade `ApiKit`
 

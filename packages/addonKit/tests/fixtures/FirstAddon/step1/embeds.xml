@@ -6,7 +6,6 @@
     -->
     <Script file="Libs\MoltenCodes\registry\Registry.lua" />
     <Script file="Libs\MoltenCodes\addonKit\AddonKit.lua" />
-    <Script file="Libs\MoltenCodes\signalKit\SignalKit.lua" />
     <Script file="Libs\MoltenCodes\eventKit\EventKit.lua" />
     <Script file="Libs\MoltenCodes\lifecycleKit\LifecycleKit.lua" />
     <Script file="Libs\MoltenCodes\moduleKit\ModuleKit.lua" />

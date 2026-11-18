@@ -37,7 +37,7 @@ python3 -m tooling.package.embeds addonKit eventKit moduleKit \
   --root 'Libs\MoltenCodes' --out embeds.xml
 ```
 
-For this first step that is six files:
+For this first step that is five files:
 
 <!-- fixture: FirstAddon/step1/embeds.xml -->
 ```xml
@@ -49,7 +49,6 @@ For this first step that is six files:
     -->
     <Script file="Libs\MoltenCodes\registry\Registry.lua" />
     <Script file="Libs\MoltenCodes\addonKit\AddonKit.lua" />
-    <Script file="Libs\MoltenCodes\signalKit\SignalKit.lua" />
     <Script file="Libs\MoltenCodes\eventKit\EventKit.lua" />
     <Script file="Libs\MoltenCodes\lifecycleKit\LifecycleKit.lua" />
     <Script file="Libs\MoltenCodes\moduleKit\ModuleKit.lua" />
@@ -99,11 +98,13 @@ error names the file to add, at the line that needed it.
 
 ## 3. Saved settings
 
-Generate `embeds.xml` again with the database part and SettingsKit:
+Generate `embeds.xml` again with the database part, SettingsKit with its
+Defaults part (`settingsKit/Defaults`, which reads plain defaults) and SchemaKit
+(for `MC.Range`):
 
 ```sh
-python3 -m tooling.package.embeds addonKit addonKit/Database eventKit moduleKit settingsKit \
-  --root 'Libs\MoltenCodes' --out embeds.xml
+python3 -m tooling.package.embeds addonKit addonKit/Database eventKit moduleKit schemaKit \
+  settingsKit/Defaults --root 'Libs\MoltenCodes' --out embeds.xml
 ```
 
 and declare the saved variable in the `.toc`:
@@ -146,8 +147,8 @@ end
 
 - `defaults` is a plain table, as with AceDB. `profile` values follow the
   player's chosen profile; `global` values are shared by every character.
-- `MC:Database` opens the saved variable with those defaults. It infers a type
-  for every field from its default, so `self.db.global.logins = "many"` raises
+- `MC:Database` opens the saved variable with those defaults. SettingsKit
+  infers a type for every field from its default, so `self.db.global.logins = "many"` raises
   at that line instead of saving garbage.
 - `MC.Range(0.5, 2, 1)` is a number from 0.5 to 2 that reads 1 until set.
   Defaults give you types; `MC.Range`, `MC.Enum` or a SchemaKit node give you
@@ -159,12 +160,13 @@ end
 ## 4. An options panel and a slash command
 
 Generate `embeds.xml` again with both parts (`addonKit/*`), PanelKit,
-CommandKit and OptionsKit's Profiles part (`optionsKit/Profiles`, for
-`ProfileOptions`):
+CommandKit and OptionsKit's Bind part (`optionsKit/Bind`, for `bind`) and
+Profiles part (`optionsKit/Profiles`, for `ProfileOptions`):
 
 ```sh
-python3 -m tooling.package.embeds 'addonKit/*' commandKit eventKit moduleKit optionsKit/Profiles \
-  panelKit settingsKit --root 'Libs\MoltenCodes' --out embeds.xml
+python3 -m tooling.package.embeds 'addonKit/*' commandKit eventKit moduleKit optionsKit/Bind \
+  optionsKit/Profiles panelKit schemaKit settingsKit/Defaults --root 'Libs\MoltenCodes' \
+  --out embeds.xml
 ```
 
 PanelKit draws the panel with WidgetKit's Renderer part, so the generator adds
@@ -224,7 +226,8 @@ Add `launcherKit` to the generator command:
 
 ```sh
 python3 -m tooling.package.embeds 'addonKit/*' commandKit eventKit launcherKit moduleKit \
-  optionsKit/Profiles panelKit settingsKit --root 'Libs\MoltenCodes' --out embeds.xml
+  optionsKit/Bind optionsKit/Profiles panelKit schemaKit settingsKit/Defaults \
+  --root 'Libs\MoltenCodes' --out embeds.xml
 ```
 
 <!-- fixture: FirstAddon/step4/Core.lua -->

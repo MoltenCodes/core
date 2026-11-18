@@ -294,12 +294,18 @@ function addon:OnInitialize()
 end
 ```
 
-Opens `SettingsKit:Open(savedVariable, schema, options)` with the schema
-inferred from `defaults`. The keys of `defaults` are SettingsKit's scopes:
-`profile`, `global`, `char`, `realm`, `class` and `faction`. `options` are
-`SettingsKit:Open`'s (`defaultProfile`, `version`, `migrations`, ...).
+Opens `SettingsKit:Open(savedVariable, defaults, options)`: SettingsKit's
+Defaults part (`settingsKit\parts\SettingsKit-Defaults.lua`, SettingsKit 0.7.0
+on) reads the plain defaults, infers each field's rules and checks writes
+without SchemaKit. Part revision 1 of `MC:Database` inferred a SchemaKit schema
+itself; the rules are the same, so a database accepts and refuses the same
+writes. The keys of `defaults` are SettingsKit's scopes: `profile`, `global`,
+`char`, `realm`, `class`, `faction`, `race`, `factionrealm`,
+`factionrealmregion` and `locale`. `options` are `SettingsKit:Open`'s
+(`defaultProfile`, `version`, `migrations`, ...). SchemaKit is needed only for
+SchemaKit nodes in the defaults (`MC.Range`, `MC.Enum`, `MC.S.*`).
 
-The inference:
+The rules SettingsKit infers:
 
 | Default | Schema |
 |---|---|
@@ -310,7 +316,7 @@ The inference:
 | `{ 1, 2, 3 }`, `{ "a", "b" }` | An optional `array` of that one type, with the list as its default. |
 | A SchemaKit node or sealed schema | Itself, made optional when it is not. A scope given as a node is used as it is. |
 
-The inference gives every field a type and every map a bound, which is what
+The rules give every field a type and every map a bound, which is what
 SettingsKit's guarantees need. It adds no ranges or choices: write those
 inline with `MC.Range`, `MC.Enum` or a SchemaKit node. A field whose default
 would be `nil` cannot be inferred; declare it with a node
@@ -322,7 +328,7 @@ replace what an earlier open created. Open it in `OnInitialize`.
 
 A second call for the same saved variable returns the same database when it is
 given the same defaults table, and raises otherwise (SettingsKit refuses a
-second schema for an open name, and an inferred schema is always new).
+second open of a name, so a database is opened once and kept).
 
 Raised at the caller:
 
@@ -334,18 +340,24 @@ MC:Database defaults must be a table: { profile = { ... }, global = { ... } }
 MC:Database options must be a table of SettingsKit:Open options or nil
 MC:Database MyAddonDB is already open with another defaults table; open it once and keep the database (self.db)
 MyAddon opened MyAddonDB before ADDON_LOADED; open it in OnInitialize, after the client restored it
-MC:Database defaults has the scope factionrealm, which SettingsKit does not have; its scopes are profile, global, char, realm, class, faction
+MC:Database defaults has the scope realms, which SettingsKit does not have; its scopes are profile, global, char, realm, class, faction, race, factionrealm, factionrealmregion, locale
 MC:Database defaults must hold at least one scope, such as profile = { ... }
 MC:Database defaults.profile must be a table of defaults
-MC:Database defaults profile.list uses ["**"], which has no SettingsKit form; give each key its defaults, or use ["*"] alone
-MC:Database defaults profile.list puts ["*"] beside named keys, which has no SettingsKit form; move the named keys into a record of their own, or keep ["*"] alone
-MC:Database defaults profile.callback is a function; a default is a boolean, number, string, table or schema node
-MC:Database defaults profile has a number key; record keys are non-empty strings (use ["*"] for a keyed bag)
-MC:Database defaults profile.mixed is a list of mixed or table values; write its schema node inline (MC.S.array{ of = ... })
-MC:Database defaults profile.deep nest deeper than 16 tables
 ```
 
-The "not loaded" message for LifecycleKit, SchemaKit or SettingsKit, and every
+SettingsKit's Defaults part refuses what it cannot read, also at the caller:
+
+```text
+SettingsKit:Open defaults profile.list uses ["**"], which has no SettingsKit form; give each key its defaults, or use ["*"] alone
+SettingsKit:Open defaults profile.list puts ["*"] beside named keys, which has no SettingsKit form; move the named keys into a record of their own, or keep ["*"] alone
+SettingsKit:Open defaults profile.callback is a function; a default is a boolean, number, string, table or schema node
+SettingsKit:Open defaults profile has a number key; record keys are non-empty strings (use ["*"] for a keyed bag)
+SettingsKit:Open defaults profile.mixed is a list of mixed or table values; write its schema node inline (SchemaKit.array{ of = ... })
+SettingsKit:Open defaults profile.deep nest deeper than 16 tables
+SettingsKit:Open plain defaults are in SettingsKit's Defaults part, which is not loaded: add settingsKit\parts\SettingsKit-Defaults.lua
+```
+
+The "not loaded" message for LifecycleKit or SettingsKit, and every other
 refusal of `SettingsKit:Open`, with SettingsKit's message.
 
 ### `MC.Range(min, max, default)` and `MC.Enum(values, default)`
@@ -480,10 +492,13 @@ handler's error through).
 | `MC.<Kit>`, first read | One `Registry:Find` and one field stored (about 33 bytes). |
 | `MoltenCodes:For`, first call per addon | One facade (about 450 bytes with its record). |
 | A method call on `MC` | One `__index` function call; meant for setup, not hot paths. |
-| `MC:Database` | The inference allocates the schema nodes SettingsKit needs anyway, once. |
+| `MC:Database` | SettingsKit's Defaults part compiles the defaults once, without schema nodes. |
 
 Resident after loading, host Lua 5.1.5 with debug info kept: core 40.6 KB,
-Database part 17.7 KB, Composition part 9.8 KB (measured 2026-11-15).
+Database part 17.7 KB, Composition part 9.8 KB (measured 2026-11-15). Database
+part revision 2 holds 9.1 KB (17.9 KB for revision 1 in the same run, host Lua
+5.1.5, after a full collection, measured 2026-11-18): the inference moved to
+SettingsKit's Defaults part, which an addon embeds instead of needing SchemaKit.
 
 ## Embedded copies and upgrades
 
@@ -506,7 +521,8 @@ limit. See
 |---|---|---|---|
 | Registry | 2 | required | everything |
 | ModuleKit, LifecycleKit | 1 | optional | the addon object |
-| LifecycleKit, SchemaKit, SettingsKit | 1 | optional (Database part) | `MC:Database`, `MC.Range`, `MC.Enum` |
+| LifecycleKit, SettingsKit with its Defaults part | 1 | optional (Database part) | `MC:Database` |
+| SchemaKit | 1 | optional (Database part) | `MC.Range`, `MC.Enum`, SchemaKit nodes in the defaults |
 | OptionsKit, PanelKit, CommandKit | 1 | optional (Composition part) | `MC:Options` |
 | BrokerKit, LauncherKit | 1 | optional (Composition part) | `MC:Launcher` |
 | every catalogue Kit | 1 | optional | `MC.<Kit>` |

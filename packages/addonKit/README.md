@@ -58,9 +58,9 @@ python3 -m tooling.package.embeds addonKit eventKit moduleKit \
   --root 'Libs\MoltenCodes' --out embeds.xml
 ```
 
-That is the first step's set: Registry, AddonKit, SignalKit, EventKit,
-LifecycleKit and ModuleKit, six files. Each later step adds Kits or parts to
-the command (`addonKit/Database`, `settingsKit`, ...), and the generator puts
+That is the first step's set: Registry, AddonKit, EventKit, LifecycleKit and
+ModuleKit, five files. Each later step adds Kits or parts to the command
+(`addonKit/Database`, `settingsKit/Defaults`, ...), and the generator puts
 their dependencies in front of them.
 
 ### 2. The `.toc`
@@ -93,7 +93,8 @@ function addon:OnInitialize()
 end
 ```
 
-The defaults are an AceDB-style table. AddonKit infers the schema from them:
+The defaults are an AceDB-style table. SettingsKit's Defaults part infers the
+rules from them:
 `greet` accepts only booleans, `logins` only numbers, and `scale`, written with
 `MC.Range`, only numbers from 0.5 to 2. A write of the wrong type raises at the
 writing line. Defaults give you types; write `MC.Range`, `MC.Enum` or a
@@ -214,8 +215,9 @@ Minimum footprint: embed 2 files: `registry/Registry.lua`, `addonKit/AddonKit.lu
 The parts are optional; each needs the core loaded before it.
 
 Direct runtime dependencies: Registry API 2. Everything else is found when it
-is used: ModuleKit and LifecycleKit for the addon object, SchemaKit, SettingsKit
-and LifecycleKit for `MC:Database`, OptionsKit, PanelKit and CommandKit for
+is used: ModuleKit and LifecycleKit for the addon object, SettingsKit with its
+Defaults part and LifecycleKit for `MC:Database` (SchemaKit only for
+`MC.Range`, `MC.Enum` and other schema nodes), OptionsKit, PanelKit and CommandKit for
 `MC:Options`, BrokerKit and LauncherKit for `MC:Launcher`. A helper whose Kit
 is not loaded raises with the file to add.
 
