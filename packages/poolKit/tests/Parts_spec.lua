@@ -399,6 +399,61 @@ describe("PoolKit parts", function()
       end
     )
 
+    it(
+      "without the parts, Close completes every parked release and a released child leaves its siblings linked",
+      function()
+        Env.Reset()
+        Env.InstallHostErrorHandler()
+        require("Registry")
+        local previous = Env.LoadRevision(11)
+        local destroyed = {}
+        local fading = previous:New({
+          create = create,
+          destroy = function(object)
+            destroyed[#destroyed + 1] = object
+          end,
+        })
+        local firstGroup, secondGroup = Env.NewAnimationGroup(), Env.NewAnimationGroup()
+        local first, second = fading:Acquire(), fading:Acquire()
+        assert.is_true(fading:ReleaseAfter(first, firstGroup))
+        assert.is_true(fading:ReleaseAfter(second, secondGroup))
+        local parents, children = previous:NewTablePool(), previous:NewTablePool()
+        local parent = parents:Acquire()
+        local oldest, middle, newest = children:Acquire(), children:Acquire(), children:Acquire()
+        for _, child in ipairs({ oldest, middle, newest }) do
+          parents:AttachChild(parent, child, children)
+        end
+
+        package.loaded["PoolKit"] = nil
+        local PoolKit = require("PoolKit")
+        assert.is_false(PoolKit:HasPart("Deferred"))
+        assert.is_false(PoolKit:HasPart("Children"))
+
+        -- Close completes both parked releases at once; a closed pool keeps
+        -- nothing, so both objects are destroyed.
+        fading:Close()
+        assert.are.equal(0, fading:GetParkedCount())
+        assert.are.equal(2, #destroyed)
+        assert.is_false(fading:Owns(first))
+        assert.is_false(fading:Owns(second))
+        -- The animations finishing afterwards find nothing left to release.
+        firstGroup:Finish()
+        secondGroup:Finish()
+        assert.are.equal(2, #destroyed)
+
+        -- Releasing the middle child unlinks it alone: its siblings stay
+        -- attached and the parent's release detaches both, unreleased.
+        children:Release(middle)
+        assert.is_false(children:IsActive(middle))
+        parents:Release(parent)
+        assert.is_true(children:IsActive(oldest))
+        assert.is_true(children:IsActive(newest))
+        children:Release(oldest)
+        children:Release(newest)
+        assert.are.equal(3, children:GetAvailableCount())
+      end
+    )
+
     it("serves a revision 11 full pool and a sparse pool side by side", function()
       Env.Reset()
       require("Registry")

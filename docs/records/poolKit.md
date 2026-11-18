@@ -2,7 +2,7 @@
 
 **Minimal core (2026-11-16)**
 
-Status: implemented 2026-11-18, 0.5.0, revision 12, 157 specs (see item 9).
+Status: implemented 2026-11-18, 0.5.0, revision 12, 158 specs (see item 9).
 
 Measured on host Lua 5.1.5 (64-bit), debug information kept as the client keeps
 it, on the shared fake client, string table pre-grown (the method of the
@@ -199,7 +199,7 @@ without a host error handler, where the shared `reportError` prints.
    `tests/README.md`, `src/.luarc.json`, the file header ("Every pool also
    carries a generation" becomes the Generations part's sentence). Shared files (kept by their owner): `docs/EMBEDDING.md` footprint and load order,
    `packages/README.md`.
-9. Status: implemented 2026-11-18, 0.5.0, revision 12, 157 specs. Measured
+9. Status: implemented 2026-11-18, 0.5.0, revision 12, 158 specs. Measured
    with the diagnosis harness (host Lua 5.1.5, debug kept, fake client, string
    table pre-grown, Registry revision 17 loaded first): core resident
    82,413 B → 62,240 B (-24%), transient while loading 221,616 B →
