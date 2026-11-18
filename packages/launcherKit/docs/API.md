@@ -34,8 +34,8 @@ LauncherKit reads these host globals at call time, never at load:
 | `GetCursorPosition` | dragging | Required while a button is dragged. |
 | `GetMinimapShape` | placing a button | The minimap counts as round. |
 | `AddonCompartmentFrame` | `AddToCompartment` | `AddToCompartment` answers `nil, "unavailable"`. Retail has it; Mists of Pandaria Classic and Classic Era do not (Blizzard's interface source, branches `live`, `classic` and `classic_era`, 2026-11-15). |
-| `issecretvalue` | every check, every saved field read | Nothing is treated as secret. |
-| `geterrorhandler` | callbacks that raise, a storage that fails | The failure is printed. |
+| `issecretvalue` | every check, every saved field read; read once at load, and again on each check only when it was absent at load | Nothing is treated as secret. |
+| `geterrorhandler` | callbacks that raise, a storage that fails | The failure is printed, also when the handler itself raises. |
 
 `GetMinimapShape` is not a Blizzard function. It is a convention minimap addons share: an addon that changes the minimap's shape defines the global, and every addon that places buttons on the minimap asks it.
 
@@ -133,6 +133,8 @@ Every argument is checked with `issecretvalue` before anything else touches it a
 ## Error behaviour
 
 Argument errors raise at the caller's line. Facade methods called without the facade raise `LauncherKit:Register must be called on the LauncherKit facade; use LauncherKit:Register(...)`; launcher methods called on anything else raise `LauncherKit.Launcher:Show must be called on a LauncherKit launcher; use launcher:Show(...)`. What the client calls is reported through `geterrorhandler`, as above.
+
+A host error handler that itself raises does not turn a reported failure into a second error raised into the client: the failure is printed instead, as on a host without a handler (implementation revision 3).
 
 ## Performance
 
