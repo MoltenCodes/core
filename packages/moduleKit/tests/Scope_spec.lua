@@ -326,8 +326,8 @@ describe("ModuleKit module scopes over the real HookKit", function()
   end)
 end)
 
--- SignalKit is a dependency of the chain (LifecycleKit requires it), so the
--- real addon bus is always on this package's test path.
+-- SignalKit and its Bus part are an optional dependency the manifest names, so
+-- the real addon bus is always on this package's test path.
 describe("ModuleKit module scopes over the real SignalKit bus", function()
   local ModuleKit, SignalKit
   before_each(function()
@@ -399,12 +399,54 @@ describe("ModuleKit module scopes over the real SignalKit bus", function()
 
     module:Enable()
     module:Disable()
-    local bus = rawget(SignalKit, "Bus")
-    rawset(SignalKit, "Bus", nil)
+    -- A SignalKit whose Bus part is not loaded answers HasPart("Bus") false.
+    local hasPart = rawget(SignalKit, "HasPart")
+    rawset(SignalKit, "HasPart", function()
+      return false
+    end)
     module:Enable()
-    rawset(SignalKit, "Bus", bus)
+    rawset(SignalKit, "HasPart", hasPart)
 
     assert.are.same({ false, false }, observed)
+  end)
+end)
+
+describe("ModuleKit module scopes over a SignalKit without its Bus part", function()
+  after_each(TestEnv.Reset)
+
+  it("reads nil under the default policy and names the part under raise", function()
+    local loaded, ModuleKit = TestEnv.NewPackageWithout("SignalKit-Bus")
+    assert.is_true(loaded)
+    local SignalKit = require("SignalKit")
+    assert.is_false(SignalKit:HasPart("Bus"))
+    local addon = ModuleKit:ForAddon("MyAddon")
+    local module = addon:CreateModule("Listener")
+    local observed = "unset"
+    module.OnEnable = function(self)
+      observed = self.scope.Messages
+    end
+    module:Enable()
+    module:Disable()
+    assert.is_nil(observed)
+
+    addon:SetMissingScopePolicy("raise")
+    local ok, message
+    module.OnEnable = function(self)
+      ok, message = pcall(function()
+        return self.scope.Messages
+      end)
+    end
+    module:Enable()
+
+    assert.is_false(ok)
+    assert.is_truthy(
+      string.find(
+        message,
+        "scope.Messages needs SignalKit's Bus part, which is not loaded; add signalKit\\parts\\SignalKit-Bus.lua",
+        1,
+        true
+      )
+    )
   end)
 end)
 

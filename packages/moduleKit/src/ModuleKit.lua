@@ -1506,6 +1506,26 @@ local function findOptionalPackage(packageName, api)
   return implementation
 end
 
+-- The file an addon adds for SignalKit's buses, named in the missing-part
+-- errors of `scope.Messages` and `OnModuleCreated`.
+local SIGNALKIT_BUS_FILE = "signalKit\\parts\\SignalKit-Bus.lua"
+
+---Whether a SignalKit facade serves buses.
+---
+---A SignalKit split into parts (revision 13 on) keeps `Bus` and `ForAddon` on
+---its facade as stubs that raise until its Bus part loads, so only `HasPart`
+---can tell; a revision before 13 has no `HasPart` and serves buses when it has
+---both methods.
+---@param kit table the SignalKit facade
+---@return boolean
+local function signalKitHasBuses(kit)
+  local hasPart = rawget(kit, "HasPart")
+  if type(hasPart) == "function" then
+    return hasPart(kit, "Bus") == true
+  end
+  return type(rawget(kit, "Bus")) == "function" and type(rawget(kit, "ForAddon")) == "function"
+end
+
 -- Module scopes -------------------------------------------------------------
 --
 -- A module registers addon-message prefixes, slash commands, timers, events,
@@ -1555,22 +1575,17 @@ do
 
   ---Create a scope over the SignalKit bus of the module's addon.
   ---
-  ---A SignalKit revision older than the one that introduced buses has neither
-  ---`Bus` nor `ForAddon` and yields `nil`. So does a bus that cannot be had:
-  ---`ForAddon` answers `nil, "full"` when the session already holds its bound
-  ---of buses, and a bus that was closed refuses new scopes. The field then reads
-  ---as `nil`, exactly as it does when the Kit is absent.
+  ---The caller has checked that `kit` serves buses (`signalKitHasBuses`). A
+  ---bus that cannot be had yields `nil`: `ForAddon` answers `nil, "full"` when
+  ---the session already holds its bound of buses, and a bus that was closed
+  ---refuses new scopes. The field then reads as `nil`, exactly as it does when
+  ---the Kit is absent.
   ---@param kit table the SignalKit facade
   ---@param module ModuleKit.Module
   ---@return table|nil scope
   local function createMessagesScope(kit, module)
-    local forAddon = rawget(kit, "ForAddon")
-    if type(rawget(kit, "Bus")) ~= "function" or type(forAddon) ~= "function" then
-      return nil
-    end
-
     local addonName = rawget(module._addon, "_name")
-    local bus = forAddon(kit, addonName)
+    local bus = rawget(kit, "ForAddon")(kit, addonName)
     if type(bus) ~= "table" then
       return nil
     end
@@ -1605,6 +1620,21 @@ do
       return
     end
     local facade = SCOPE_FACADES[key]
+    local signalKit = key == "Messages"
+        and findOptionalPackage(SCOPE_PACKAGES[key], SCOPE_PACKAGE_API)
+      or nil
+    if signalKit ~= nil and rawget(signalKit, "HasPart") ~= nil then
+      -- SignalKit is split into parts and loaded without its Bus part: name
+      -- the part's file rather than SignalKit's core.
+      error(
+        'ModuleKit module "'
+          .. tostring(module._name)
+          .. "\" scope.Messages needs SignalKit's Bus part, which is not loaded; add "
+          .. SIGNALKIT_BUS_FILE
+          .. " from MoltenCodes to your embeds.xml after signalKit\\SignalKit.lua",
+        3
+      )
+    end
     error(
       'ModuleKit module "'
         .. tostring(module._name)
@@ -1691,7 +1721,7 @@ do
 
     local created
     if key == "Messages" then
-      if type(rawget(kit, "Bus")) ~= "function" or type(rawget(kit, "ForAddon")) ~= "function" then
+      if not signalKitHasBuses(kit) then
         -- Not a tail call, so the error level still counts this frame.
         missingScopeKit(module, key)
         return nil
@@ -3162,8 +3192,22 @@ function addonConveniences.OnModuleCreated(self, callback, methodName)
   end
 
   local SignalKit = findOptionalPackage("signalKit", 1)
-  if SignalKit == nil or type(rawget(SignalKit, "ForAddon")) ~= "function" then
+  if SignalKit == nil then
     error(label .. " needs SignalKit API 1, which is not loaded", 2)
+  end
+  if not signalKitHasBuses(SignalKit) then
+    -- A SignalKit split into parts lacks only the part; an older one without
+    -- `ForAddon` predates buses and counts as no SignalKit at all.
+    if rawget(SignalKit, "HasPart") == nil then
+      error(label .. " needs SignalKit API 1, which is not loaded", 2)
+    end
+    error(
+      label
+        .. " needs SignalKit's Bus part, which is not loaded: add "
+        .. SIGNALKIT_BUS_FILE
+        .. " to embeds.xml after signalKit\\SignalKit.lua",
+      2
+    )
   end
   local bus, reason = SignalKit:ForAddon(rawget(self, "_name"))
   if bus == nil then

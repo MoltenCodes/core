@@ -32,7 +32,10 @@
       "api": 1
     },
     "signalKit": {
-      "api": 1
+      "api": 1,
+      "parts": [
+        "Bus"
+      ]
     },
     "timerKit": {
       "api": 1

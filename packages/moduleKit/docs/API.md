@@ -337,10 +337,12 @@ The rules:
   closed, and works again once the module is re-enabled and has read the
   field. A disabled module keeps up to seven such closed, empty scopes.
 - **Optional Kits.** ModuleKit has no required dependency on TimerKit, EventKit,
-  SchedulerKit, HookKit, CommandKit or CommKit, and uses SignalKit only through LifecycleKit. Each
+  SchedulerKit, HookKit, CommandKit, CommKit or SignalKit. Each
   is resolved through `Registry:Find` at first read, and a field reads as `nil`
   when its Kit is not loaded or is a revision without `CreateScope` (for
-  `Messages`: without `Bus` and `ForAddon`). Test for `nil` when your addon
+  `Messages`: a SignalKit whose `HasPart("Bus")` answers `false`, because its
+  Bus part is not loaded, or a revision before 13 without `Bus` and
+  `ForAddon`). Test for `nil` when your addon
   does not embed the Kit, or make the mistake loud with
   `addon:SetMissingScopePolicy("raise")` (below).
 - **Missing Kits as an error, on request.** `addon:SetMissingScopePolicy(policy)`
@@ -349,6 +351,8 @@ The rules:
   field whose Kit is not loaded, or is a revision without owner scopes, raises
   at the reading line and names the file to embed:
   `ModuleKit module "Core" scope.Timers needs TimerKit API 1, which is not loaded; add timerKit\TimerKit.lua from MoltenCodes to your embeds.xml`.
+  With SignalKit loaded but not its Bus part, `Messages` names the part:
+  `ModuleKit module "Core" scope.Messages needs SignalKit's Bus part, which is not loaded; add signalKit\parts\SignalKit-Bus.lua from MoltenCodes to your embeds.xml after signalKit\SignalKit.lua`.
   A `Messages` bus that cannot be had (the session's bus bound is reached, or
   the bus was closed) still reads as `nil`, because that is a runtime state,
   not a missing file. The policy costs nothing until a field is missing: the
@@ -507,9 +511,11 @@ The bus isolates a listener that raises and reports it through the host error
 handler, as AceAddon's `safecall` does; `CreateModule` still returns the
 module. Nothing is published, and the bus is not touched, until something
 subscribed. A module's `scope.Messages` can subscribe to the same topic and is
-released when the module disables. SignalKit is always loaded where ModuleKit is
-(LifecycleKit requires it); without it the call raises
-`ModuleKit.Addon:OnModuleCreated needs SignalKit API 1, which is not loaded`.
+released when the module disables. It needs SignalKit and its Bus part, both
+optional for ModuleKit otherwise; without SignalKit the call raises
+`ModuleKit.Addon:OnModuleCreated needs SignalKit API 1, which is not loaded`,
+and without the Bus part
+`ModuleKit.Addon:OnModuleCreated needs SignalKit's Bus part, which is not loaded: add signalKit\parts\SignalKit-Bus.lua to embeds.xml after signalKit\SignalKit.lua`.
 
 ## Halted addons
 
@@ -914,7 +920,7 @@ at the `CreateModule` line. Messages name the public method in full.
 | `SetMissingScopePolicy` | `ModuleKit.Addon:SetMissingScopePolicy policy must be "nil" or "raise"` |
 | `SetEnabledState`, `SetDefaultModuleState`, definition `enabledState` | `ModuleKit.Module:SetEnabledState enabled must be a boolean`; `ModuleKit.Addon:SetDefaultModuleState enabled must be a boolean`; `ModuleKit module definition enabledState must be a boolean` |
 | `SetDefaultModulePrototype`, definition `prototype` | `<label> must be a table`; `<label> key "<name>" shadows ModuleKit's Module:<name>`; `<label> key "<name>" is reserved for ModuleKit`, where `<label>` is `ModuleKit.Addon:SetDefaultModulePrototype prototype` or `ModuleKit module definition prototype` |
-| `OnModuleCreated` | `ModuleKit.Addon:OnModuleCreated callback must be a function, or a receiver table followed by a method name`; `... methodName must be a non-empty string`; `... receiver has no method "<name>"`; `... needs SignalKit API 1, which is not loaded` |
+| `OnModuleCreated` | `ModuleKit.Addon:OnModuleCreated callback must be a function, or a receiver table followed by a method name`; `... methodName must be a non-empty string`; `... receiver has no method "<name>"`; `... needs SignalKit API 1, which is not loaded`; `... needs SignalKit's Bus part, which is not loaded: add signalKit\parts\SignalKit-Bus.lua to embeds.xml after signalKit\SignalKit.lua` |
 | `FindAddon` | `ModuleKit:FindAddon addonName must be a non-empty string` |
 | `HasPart` | `ModuleKit:HasPart name must be a part name string` |
 | a member of a part that is not loaded | `<member> is in ModuleKit's <Part> part, which is not loaded: add moduleKit\parts\ModuleKit-<Part>.lua to embeds.xml after moduleKit\ModuleKit.lua`; for a definition field `ModuleKit.Addon:CreateModule definition field "<field>" is in ModuleKit's <Part> part, ...`; for a provider's option `ModuleKit.Addon:<Method> options field "implements" is in ModuleKit's Implements part, ...` |
@@ -1055,7 +1061,7 @@ ModuleKit API 1 requires:
 Its parts need nothing more, except the RequiredAddons part, which needs
 LifecycleKit's Halt part; see [Loading](#loading).
 
-ModuleKit does not depend directly on EventKit or SignalKit; those are implementation dependencies of LifecycleKit and remain outside ModuleKit's direct contract.
+ModuleKit does not depend directly on EventKit; it is an implementation dependency of LifecycleKit and remains outside ModuleKit's direct contract.
 
 Module scopes use TimerKit API 1, EventKit API 1, SchedulerKit API 1, HookKit
 API 1, CommandKit API 1, CommKit API 1 and SignalKit API 1 when they are
@@ -1065,8 +1071,9 @@ fallback). None of them is a required dependency: without them the matching scop
 reads as `nil`. The schema form of `implements` (Implements part) uses SchemaKit API 1 the same
 way, at registration, and refuses a schema when SchemaKit is not loaded; the
 list form needs nothing. TimerKit, SchedulerKit, HookKit, CommandKit, CommKit
-and SchemaKit are declared under `optionalDependencies` in the manifest;
-EventKit and SignalKit are always present through LifecycleKit.
+SchemaKit and SignalKit are declared under `optionalDependencies` in the
+manifest, SignalKit with its Bus part (`"parts": ["Bus"]`), which `Messages`
+and `OnModuleCreated` use; EventKit is always present through LifecycleKit.
 
 ## Internals
 

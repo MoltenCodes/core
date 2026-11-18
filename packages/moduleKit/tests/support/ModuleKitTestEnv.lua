@@ -31,6 +31,10 @@ local ModuleKitTestEnv = FrameworkTestEnv.New({
     "HookKit",
     "SchemaKit",
     "CommandKit",
+    -- Buses, which `scope.Messages` and `OnModuleCreated` use, are SignalKit's
+    -- Bus part from its revision 13 on. It is listed last so the positions
+    -- `NewPackage` returns the other modules at stay as they were.
+    "SignalKit-Bus",
     "ModuleKit",
   },
 })
@@ -145,11 +149,18 @@ local PART_MODULES = { "ModuleKit-Injection", "ModuleKit-Implements", "ModuleKit
 --- LifecycleKit whose Halt part is still built into its core has no such file.
 local LIFECYCLE_HALT_PART = "LifecycleKit-Halt"
 
+--- Other Kits' parts a spec loads on top of the chain: SchemaKit's Rules part,
+--- whose `custom` the schema form of `implements` is tested with.
+local EXTRA_PART_MODULES = { "SchemaKit-Rules" }
+
 ---Clear the part modules from `package.loaded`, so the next load runs each
 ---part file again.
 local function unloadParts()
   for index = 1, #PART_MODULES do
     package.loaded[PART_MODULES[index]] = nil
+  end
+  for index = 1, #EXTRA_PART_MODULES do
+    package.loaded[EXTRA_PART_MODULES[index]] = nil
   end
   package.loaded[LIFECYCLE_HALT_PART] = nil
 end
@@ -219,6 +230,7 @@ function ModuleKitTestEnv.NewPackageWithoutOptionalKits()
   ModuleKitTestEnv.InstallWowApi()
   require("Registry")
   require("SignalKit")
+  require("SignalKit-Bus")
   require("EventKit")
   require("LifecycleKit")
   require("ModuleKit")
@@ -233,6 +245,7 @@ function ModuleKitTestEnv.LoadDependencies()
   ModuleKitTestEnv.InstallWowApi()
   require("Registry")
   require("SignalKit")
+  require("SignalKit-Bus")
   require("EventKit")
   local LifecycleKit = require("LifecycleKit")
   loadLifecycleHaltPart()

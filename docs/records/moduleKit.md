@@ -484,6 +484,14 @@ Measurements, classification, the upgrade floor and the part contract:
    revision 23 keeps containers' subscriptions instead of re-subscribing;
    the defensive re-test of shutdown inside a new container's phase replay
    was removed (a new container holds no module, so it was dead code).
+   Integration (2026-11-18, with SignalKit 0.10.0 split into parts): the
+   manifest names `signalKit` `"parts": ["Bus"]` under
+   `optionalDependencies`; `scope.Messages` and `OnModuleCreated` ask
+   `SignalKit:HasPart("Bus")` (a pre-13 SignalKit without `HasPart` still by
+   its `Bus` and `ForAddon`), and the missing-part errors name
+   `signalKit\parts\SignalKit-Bus.lua`; the test chain loads `SignalKit-Bus`
+   and the SchemaKit-schema `implements` specs load `SchemaKit-Rules` (for
+   `SchemaKit.custom`). 317 specs.
 
 **Not recorded (owner decisions, priced):**
 - **The module graph as a part** (dependency edges, ordering constraints,

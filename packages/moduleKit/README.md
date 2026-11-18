@@ -82,7 +82,6 @@ troubleshooting. This package's load order inside a consuming addon is:
 
 ```toc
 Libs\MoltenCodes\registry\Registry.lua
-Libs\MoltenCodes\signalKit\SignalKit.lua
 Libs\MoltenCodes\eventKit\EventKit.lua
 Libs\MoltenCodes\lifecycleKit\LifecycleKit.lua
 Libs\MoltenCodes\moduleKit\ModuleKit.lua
@@ -91,12 +90,14 @@ Libs\MoltenCodes\moduleKit\parts\ModuleKit-Implements.lua   (only for implements
 Libs\MoltenCodes\moduleKit\parts\ModuleKit-RequiredAddons.lua (only for requiresAddons)
 ```
 
-Minimum footprint: embed 5 files: `registry/Registry.lua`, `signalKit/SignalKit.lua`, `eventKit/EventKit.lua`, `lifecycleKit/LifecycleKit.lua`, `moduleKit/ModuleKit.lua`.
+Minimum footprint: embed 4 files: `registry/Registry.lua`, `eventKit/EventKit.lua`, `lifecycleKit/LifecycleKit.lua`, `moduleKit/ModuleKit.lua`.
 
 Direct runtime dependencies: LifecycleKit API 1, Registry API 2.
 Every core file above is required; omitting one makes this package raise at
-load. The parts are optional. TimerKit, SchedulerKit, HookKit, CommandKit and CommKit are optional: `module.scope` uses
-each one the addon embeds. A field whose Kit is not embedded reads as `nil`;
+load. The parts are optional. TimerKit, SchedulerKit, HookKit, CommandKit, CommKit and
+SignalKit with its Bus part (`signalKit\SignalKit.lua`, then
+`signalKit\parts\SignalKit-Bus.lua`) are optional: `module.scope` uses
+each one the addon embeds, and `addon:OnModuleCreated` needs SignalKit's Bus part. A field whose Kit is not embedded reads as `nil`;
 `addon:SetMissingScopePolicy("raise")` turns that into an error at the reading
 line that names the file to add to `embeds.xml`. SchemaKit is optional too: the schema form of
 `implements` (Implements part) uses it when the addon embeds it.

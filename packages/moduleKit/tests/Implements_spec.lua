@@ -347,6 +347,8 @@ describe("ModuleKit implements with SchemaKit loaded", function()
   before_each(function()
     ModuleKit = TestEnv.NewPackage()
     SchemaKit = require("SchemaKit")
+    -- `SchemaKit.custom`, which these schemas use, is in SchemaKit's Rules part.
+    require("SchemaKit-Rules")
     addon = ModuleKit:ForAddon("MyAddon")
   end)
 

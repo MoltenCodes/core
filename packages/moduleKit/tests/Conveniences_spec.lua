@@ -385,6 +385,18 @@ describe("ModuleKit module-created notice", function()
     assert.is_false(ok)
     assert.is_not_nil(tostring(message):find("needs SignalKit API 1, which is not loaded", 1, true))
   end)
+
+  it("raises at the caller naming SignalKit's Bus part when only that part is missing", function()
+    local loaded, ModuleKitWithoutBuses = TestEnv.NewPackageWithout("SignalKit-Bus")
+    assert.is_true(loaded)
+    local addon = ModuleKitWithoutBuses:ForAddon("MyAddon")
+    TestEnv.expectCallerError(
+      "OnModuleCreated needs SignalKit's Bus part, which is not loaded: add signalKit\\parts\\SignalKit-Bus.lua",
+      function()
+        addon:OnModuleCreated(function() end)
+      end
+    )
+  end)
 end)
 
 describe("ModuleKit conveniences and secret values", function()
@@ -396,6 +408,7 @@ describe("ModuleKit conveniences and secret values", function()
     TestEnv.InstallWowApi()
     require("Registry")
     require("SignalKit")
+    require("SignalKit-Bus")
     require("EventKit")
     require("LifecycleKit")
     ModuleKit = require("ModuleKit")

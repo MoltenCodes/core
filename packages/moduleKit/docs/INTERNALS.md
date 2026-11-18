@@ -82,8 +82,12 @@ Kit through `Registry:Find` (read from the facade on every call, because an
 embedded Registry upgrade replaces the method), creates the scope and stores
 the result with `rawset`, so every later read is a plain table hit. Every field
 but `Messages` calls the Kit's `CreateScope()`. `Messages` calls
-`SignalKit:ForAddon(addonName)` and then the bus's `CreateScope()`: a SignalKit
-without `Bus` and `ForAddon` predates buses, `ForAddon` may answer
+`SignalKit:ForAddon(addonName)` and then the bus's `CreateScope()`, after
+`signalKitHasBuses` said the SignalKit serves buses: one split into parts
+(revision 13 on) keeps `Bus` and `ForAddon` on its facade as stubs, so only its
+`HasPart("Bus")` can tell, and an older one without `Bus` and `ForAddon`
+predates buses. Under the `"raise"` policy a SignalKit without its Bus part is
+named by the part's file rather than the core's. `ForAddon` may answer
 `nil, "full"`, and a closed bus raises from `CreateScope` without offering a
 public query to ask first, so that one call runs under `pcall`. A missing Kit,
 one without `CreateScope`, or a bus that cannot be had yields `nil` and stores
