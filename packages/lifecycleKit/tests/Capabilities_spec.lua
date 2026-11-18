@@ -114,32 +114,23 @@ describe("LifecycleKit.CLOSES_ADDON_SCOPES", function()
     assert.is_true(capabilities.schedulerKit)
   end)
 
-  it("is seeded into state a revision without it wrote", function()
+  it("is part of the state an upgrade requires", function()
     local LifecycleKit = TestEnv.NewPackage()
-    local life = LifecycleKit:ForAddon("MyAddon")
     local state = rawget(LifecycleKit, "_state")
 
-    -- Revision 12 state has no capability set. (Its facade has no field
-    -- either; the upgrade specs in OwnedScopes_spec.lua load over such a
-    -- facade.)
+    -- Every revision LifecycleKit upgrades from (18, the upgrade floor) wrote
+    -- the capability set; state without it is not one of them.
     rawset(state, "addonScopeCapabilities", nil)
-    local reloaded = TestEnv.ReloadPackage()
-
-    assert.are.equal(LifecycleKit, reloaded)
-    assert.are.same({
-      timerKit = true,
-      schedulerKit = true,
-      eventKit = true,
-      hookKit = true,
-      commandKit = true,
-      commKit = true,
-      signalKit = true,
-    }, readListed(reloaded.CLOSES_ADDON_SCOPES))
-    assert.are.equal(life, reloaded:ForAddon("MyAddon"))
+    package.loaded["LifecycleKit"] = nil
+    TestEnv.expectErrorContaining("corrupted or incomplete", function()
+      require("LifecycleKit")
+    end)
   end)
 
   it("names exactly what shutdown closes", function()
-    local LifecycleKit, _, SignalKit, EventKit, HookKit, _, CommandKit = TestEnv.NewPackage()
+    local LifecycleKit, _, SignalKit, EventKit = TestEnv.NewPackage()
+    local HookKit = TestEnv.Module("HookKit")
+    local CommandKit = TestEnv.Module("CommandKit")
     local CommKit = TestEnv.LoadCommKit()
     local TimerKit = require("TimerKit")
     local SchedulerKit = require("SchedulerKit")

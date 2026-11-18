@@ -42,7 +42,7 @@ README; its full contract is the package's `docs/API.md`.
 | [`hookKit`](packages/hookKit/) | Reversible, secure-first hooking of functions, methods and frame scripts in three named semantics. |
 | [`interopKit`](packages/interopKit/) | The LibStub bridge: expose Kits to LibStub consumers and adopt LibStub libraries read-only. |
 | [`launcherKit`](packages/launcherKit/) | Minimap buttons for BrokerKit objects, dragged round any minimap shape, state in LibDBIcon's saved fields, and Retail's addon compartment. |
-| [`lifecycleKit`](packages/lifecycleKit/) | Replay-aware per-addon loading, readiness and shutdown, a shared combat gate with a bounded out-of-combat queue, and a halted state. |
+| [`lifecycleKit`](packages/lifecycleKit/) | Replay-aware per-addon loading, readiness and shutdown that closes the addon's scopes in the other Kits; a combat gate and halting as parts. |
 | [`localeKit`](packages/localeKit/) | Per-addon translations, missing-key reporting and coverage, indexed format specifiers. |
 | [`logKit`](packages/logKit/) | Levelled, structured logging with lazy secret-safe formatting, a bounded journal and chat, callback and table sinks. |
 | [`mediaKit`](packages/mediaKit/) | A typed media registry with font scripts, sorted cached lists, per-consumer defaults and LibSharedMedia adoption and mirroring. |

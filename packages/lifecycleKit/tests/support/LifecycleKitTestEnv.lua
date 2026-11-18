@@ -10,8 +10,8 @@
 --- found through `Registry:Find`. The manifest declares all five under
 --- `optionalDependencies`, so the test runner puts them and their required
 --- closures on `LUA_PATH`. The module
---- chain loads HookKit and CommandKit (and SchemaKit, which CommandKit
---- requires) before LifecycleKit, as an addon that embeds them would;
+--- chain loads HookKit and CommandKit (and SchemaKit, while CommandKit's
+--- manifest requires it) before LifecycleKit, as an addon that embeds them would;
 --- `NewPackageWithoutHookKit` loads the chain without either. CommKit is kept
 --- out of the chain, so `LoadCommKit` adds it afterwards. The slash-command section
 --- below models the host surface CommandKit writes to.
@@ -22,23 +22,90 @@
 --- the next one.
 local FrameworkTestEnv = require("FrameworkTestEnv")
 
-local LifecycleKitTestEnv = FrameworkTestEnv.New({
-  modules = {
-    "Registry",
-    "SignalKit",
-    "EventKit",
-    "HookKit",
-    "SchemaKit",
-    "CommandKit",
-    "LifecycleKit",
-  },
-})
+---Whether CommandKit's manifest still lists SchemaKit as a required
+---dependency. A CommandKit whose schema-checked arguments moved into a part
+---needs SchemaKit only for that part, and then the chain leaves it out.
+---@return boolean
+local function commandKitRequiresSchemaKit()
+  local file = io.open("packages/commandKit/package.manifest.json", "r")
+  if file == nil then
+    return true
+  end
+  local text = file:read("*a")
+  file:close()
+  local dependencies = text:match('"dependencies"%s*:%s*(%b{})') or ""
+  return dependencies:find('"schemaKit"', 1, true) ~= nil
+end
+
+--- The module chain, in load order; the package under test last.
+local MODULES = { "Registry", "SignalKit", "EventKit", "HookKit" }
+if commandKitRequiresSchemaKit() then
+  MODULES[#MODULES + 1] = "SchemaKit"
+end
+MODULES[#MODULES + 1] = "CommandKit"
+MODULES[#MODULES + 1] = "LifecycleKit"
+
+local LifecycleKitTestEnv = FrameworkTestEnv.New({ modules = MODULES })
+
+---A module the chain loaded, by name, so a spec need not count its position
+---in the chain (which changes with what CommandKit requires).
+---@param name string such as `"CommandKit"`
+---@return table
+function LifecycleKitTestEnv.Module(name)
+  local loaded = package.loaded[name]
+  if type(loaded) ~= "table" then
+    error("LifecycleKitTestEnv.Module: " .. tostring(name) .. " is not loaded", 2)
+  end
+  return loaded
+end
 
 --- The host's combat lockdown, as `InCombatLockdown()` reports it.
 local combat = { lockdown = false }
 
 local installFixtureWowApi = LifecycleKitTestEnv.InstallWowApi
 local resetFixture = LifecycleKitTestEnv.Reset
+local loadChain = LifecycleKitTestEnv.NewPackage
+
+-- The parts -----------------------------------------------------------------
+--
+-- `NewPackage` loads both parts after the core, as an addon embedding them
+-- does, so the suites of the combat gate and of halting run unchanged.
+-- `NewCore` loads the core alone, and `LoadParts` adds the parts later, as an
+-- addon loaded after it would. `Reset` unloads them.
+
+--- The part modules, in load order.
+local PART_MODULES = { "LifecycleKit-CombatGate", "LifecycleKit-Halt" }
+
+---Clear the part modules from `package.loaded`.
+local function unloadParts()
+  for index = #PART_MODULES, 1, -1 do
+    package.loaded[PART_MODULES[index]] = nil
+  end
+end
+
+---Load both parts on top of a core already loaded.
+---@return table LifecycleKit
+function LifecycleKitTestEnv.LoadParts()
+  local loaded
+  for index = 1, #PART_MODULES do
+    loaded = require(PART_MODULES[index])
+  end
+  return loaded
+end
+
+---Load the module chain without either part.
+---@return ... LifecycleKit first, then the chain in load order
+function LifecycleKitTestEnv.NewCore()
+  return loadChain()
+end
+
+---Load the module chain and both parts.
+---@return ... LifecycleKit first, then the chain in load order
+function LifecycleKitTestEnv.NewPackage()
+  local results = { loadChain() }
+  LifecycleKitTestEnv.LoadParts()
+  return unpack(results)
+end
 
 -- The slash-command host surface -------------------------------------------
 --
@@ -153,6 +220,7 @@ end
 ---Reset the shared fixture, unload what `LoadCommKit` added, and remove the
 ---slash-command globals and the combat lockdown stub.
 function LifecycleKitTestEnv.Reset()
+  unloadParts()
   resetFixture()
   unloadCommKit()
   removeSlashApi()
@@ -175,6 +243,7 @@ function LifecycleKitTestEnv.NewPackageWithoutHookKit()
   local SignalKit = require("SignalKit")
   local EventKit = require("EventKit")
   local LifecycleKit = require("LifecycleKit")
+  LifecycleKitTestEnv.LoadParts()
   return LifecycleKit, Registry, SignalKit, EventKit
 end
 
@@ -198,6 +267,17 @@ end
 function LifecycleKitTestEnv.LeaveCombat()
   combat.lockdown = false
   LifecycleKitTestEnv.Emit("PLAYER_REGEN_ENABLED")
+end
+
+-- Revision 18, the last revision before the parts and the upgrade floor, kept
+-- verbatim so a spec can stand in for an addon that embeds it.
+local REVISION_18_FIXTURE = "packages/lifecycleKit/tests/fixtures/LifecycleKit-revision18.lua"
+
+---Run revision 18 as an older embedded copy would.
+---@return table LifecycleKit the facade Registry hands that copy
+function LifecycleKitTestEnv.LoadRevision18()
+  local chunk = assert(loadfile(REVISION_18_FIXTURE))
+  return chunk()
 end
 
 ---Run the LifecycleKit source once more as a copy carrying `revision`, the way

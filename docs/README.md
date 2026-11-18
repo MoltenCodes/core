@@ -69,7 +69,7 @@ Current package entry points:
 - [`HookKit`](../packages/hookKit/README.md) — Reversible, secure-first hooking of functions, methods and frame scripts in three named semantics.
 - [`InteropKit`](../packages/interopKit/README.md) — The LibStub bridge: expose Kits to LibStub consumers and adopt LibStub libraries read-only.
 - [`LauncherKit`](../packages/launcherKit/README.md) — Minimap buttons for BrokerKit objects, dragged round any minimap shape, state in LibDBIcon's saved fields, and Retail's addon compartment.
-- [`LifecycleKit`](../packages/lifecycleKit/README.md) — Replay-aware per-addon loading, readiness and shutdown, a shared combat gate with a bounded out-of-combat queue, and a halted state.
+- [`LifecycleKit`](../packages/lifecycleKit/README.md) — Replay-aware per-addon loading, readiness and shutdown that closes the addon's scopes in the other Kits; a combat gate and halting as parts.
 - [`LocaleKit`](../packages/localeKit/README.md) — Per-addon translations, missing-key reporting and coverage, indexed format specifiers.
 - [`LogKit`](../packages/logKit/README.md) — Levelled, structured logging with lazy secret-safe formatting, a bounded journal and chat, callback and table sinks.
 - [`MediaKit`](../packages/mediaKit/README.md) — A typed media registry with font scripts, sorted cached lists, per-consumer defaults and LibSharedMedia adoption and mirroring.

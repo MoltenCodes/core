@@ -227,6 +227,8 @@ hookKit/HookKit.lua
 interopKit/InteropKit.lua
 launcherKit/LauncherKit.lua
 lifecycleKit/LifecycleKit.lua
+lifecycleKit/parts/LifecycleKit-CombatGate.lua
+lifecycleKit/parts/LifecycleKit-Halt.lua
 localeKit/LocaleKit.lua
 logKit/LogKit.lua
 mediaKit/MediaKit.lua
@@ -382,6 +384,8 @@ part loads after its Kit's core and brings in what it needs:
 | `commandKit/Options` | `commandKit/parts/CommandKit-Options.lua` | Drive an OptionsKit tree from a slash command: the get, set, reset, list and exec verbs and AceConfigCmd's path syntax. | `signalKit`, `optionsKit` |
 | `commandKit/Completion` | `commandKit/parts/CommandKit-Completion.lua` | Tab completion in chat edit boxes: the scopes' own commands and AceTab-style completion providers. | nothing |
 | `eventKit/Coalescing` | `eventKit/parts/EventKit-Coalescing.lua` | Coalesce and Derive: events collected into one callback per interval, and values recomputed after a quiet period, timed by TimerKit (a lane by SchedulerKit). | nothing |
+| `lifecycleKit/CombatGate` | `lifecycleKit/parts/LifecycleKit-CombatGate.lua` | The combat gate: one shared lockdown state, a bounded per-addon queue of calls that wait for the end of combat, and the combat notices. | nothing |
+| `lifecycleKit/Halt` | `lifecycleKit/parts/LifecycleKit-Halt.lua` | Halting: Halt, DependsOn and OnDependencyHalted, which tell the addons that declared a halted one. | nothing |
 | `optionsKit/Profiles` | `optionsKit/parts/OptionsKit-Profiles.lua` | OptionsKit:ProfileOptions: the ready-made group over a SettingsKit database's profiles, with the per-specialization choices. | nothing |
 | `optionsKit/Dynamic` | `optionsKit/parts/OptionsKit-Dynamic.lua` | Trees that change shape after Define: builder functions, tree:NotifyChange(), tree:Replace and tree:Remove. | nothing |
 | `schedulerKit/Coalescing` | `schedulerKit/parts/SchedulerKit-Coalescing.lua` | Debounce and Coalesce handles on the facade and on scopes, with the coalescing family's shared clock, member links and protected delivery. | nothing |

@@ -4,16 +4,7 @@ local expectErrorContaining = TestEnv.expectErrorContaining
 
 ---The implementation revision `src/LifecycleKit.lua` carries; `Manifest_spec.lua`
 ---pins the same number against `package.manifest.json`.
-local CURRENT_REVISION = 18
-
--- Lua 5.1 leaves a sentinel in `package.loaded` when a `require` raises, so a
--- second `require` of the same module reports "loop or previous error loading
--- module" instead of re-running the chunk. Clearing the sentinel is what lets a
--- single test observe more than one bootstrap guard.
-local function requireAfterFailedLoad(moduleName)
-  package.loaded[moduleName] = nil
-  return require(moduleName)
-end
+local CURRENT_REVISION = 19
 
 -- Instance prototypes that model other revisions' published surfaces. Only the
 -- presence of each method matters to the bootstrap checks under test.
@@ -68,26 +59,12 @@ describe("LifecycleKit package bootstrap", function()
     end)
   end)
 
-  it("requires SignalKit to load first", function()
-    TestEnv.Reset()
-    TestEnv.InstallWowApi()
-    require("Registry")
-    expectErrorContaining("requires SignalKit API 1", function()
-      require("LifecycleKit")
-    end)
-  end)
-
   it("requires EventKit to load first", function()
     TestEnv.Reset()
     TestEnv.InstallWowApi()
     require("Registry")
-    expectErrorContaining("requires SignalKit API 1", function()
-      require("LifecycleKit")
-    end)
-
-    require("SignalKit")
     expectErrorContaining("requires EventKit API 1", function()
-      requireAfterFailedLoad("LifecycleKit")
+      require("LifecycleKit")
     end)
   end)
 
@@ -296,197 +273,27 @@ describe("LifecycleKit package bootstrap", function()
     assert.are.equal(1, shutdowns)
   end)
 
-  it("keeps the notice subscribers of an instance whose signals were created eagerly", function()
-    TestEnv.Reset()
-    TestEnv.InstallWowApi()
-    require("Registry")
-    local SignalKit = require("SignalKit")
-    require("EventKit")
-
-    -- Revisions 7 to 14 created every notice signal with the instance;
-    -- revision 15 creates them for their first subscriber.
-    local legacy = TestEnv.LoadSourceAtRevision(CURRENT_REVISION - 1)
-    local instance = legacy:ForAddon("MyAddon")
-    local signals = rawget(instance, "_signals")
-    for _, key in ipairs({ "dependencyHalted", "combatStart", "combatEnd" }) do
-      if rawget(signals, key) == nil then
-        rawset(signals, key, SignalKit:New())
-      end
-    end
-    TestEnv.LoadAddon("MyAddon")
-    local seen = {}
-    local startSubscription = instance:OnCombatStart(function()
-      seen[#seen + 1] = "start"
-    end)
-    local startSignal = rawget(signals, "combatStart")
-
-    local upgraded = require("LifecycleKit")
-    local endSubscription = instance:OnCombatEnd(function()
-      seen[#seen + 1] = "end"
-    end)
-    TestEnv.EnterCombat()
-    TestEnv.LeaveCombat()
-
-    assert.are.equal(legacy, upgraded)
-    assert.are.equal(startSignal, rawget(signals, "combatStart"))
-    assert.are.same({ "start", "end" }, seen)
-    TestEnv.Logout()
-    assert.is_false(startSubscription:IsConnected())
-    assert.is_false(endSubscription:IsConnected())
-  end)
-
-  it("releases the retired revision-3 capture slot during an in-place upgrade", function()
+  it("refuses state older than revision 18's schema", function()
     TestEnv.Reset()
     TestEnv.InstallWowApi()
     local Registry = require("Registry")
-    local SignalKit = require("SignalKit")
+    require("SignalKit")
     require("EventKit")
 
-    -- Model the shared state a revision-3 embedded copy leaves behind: the
-    -- same schema, plus the retired per-instance `_phaseErrors` slot.
-    local old = Registry:Register("lifecycleKit", 1, 3)
-    old.API = 1
-    old.REVISION = 3
-    old.Instance = newRevision6InstancePrototype()
-    old.Subscription = { Disconnect = function() end, IsConnected = function() end }
-    old.ForAddon = function() end
-
-    local instance = setmetatable({
-      _addonName = "CarriedOver",
-      _loaded = true,
-      _ready = false,
-      _shutdown = false,
-      _signals = {
-        loaded = SignalKit:New(),
-        ready = SignalKit:New(),
-        shutdown = SignalKit:New(),
-      },
-      _phaseErrors = {},
-      _phaseCaptures = {},
-    }, { __index = old.Instance })
-    old._state = {
-      schema = 2,
-      addons = { CarriedOver = instance },
-      globalWatchers = {},
-      loginSeen = false,
-      shutdownSeen = false,
-    }
-
-    local upgraded = require("LifecycleKit")
-
-    assert.are.equal(old, upgraded)
-    assert.are.equal(CURRENT_REVISION, upgraded.REVISION)
-    assert.are.equal(instance, upgraded:ForAddon("CarriedOver"))
-    assert.is_nil(rawget(instance, "_phaseErrors"))
-
-    -- The carried-over instance still dispatches through the new capture
-    -- protocol, so an upgrade does not strand its pending phases.
-    local readyCalls = 0
-    instance:OnReady(function()
-      readyCalls = readyCalls + 1
-    end)
-    TestEnv.Login()
-    assert.is_true(instance:IsReady())
-    assert.are.equal(1, readyCalls)
-  end)
-
-  -- Models the shared state a revision 6 copy leaves behind: schema 2, no
-  -- combat flag or instance list, instances without the gate fields, and
-  -- host watchers that call revision 6's handlers.
-  local function registerRevision6(Registry, SignalKit, EventKit)
+    -- The upgrade floor: schema 2 (revisions 4 to 6) is no longer migrated.
     local old = Registry:Register("lifecycleKit", 1, 6)
     old.API = 1
     old.REVISION = 6
     old.Instance = newRevision6InstancePrototype()
     old.Subscription = { Disconnect = function() end, IsConnected = function() end }
     old.ForAddon = function() end
-
-    local oldHandlerCalls = { count = 0 }
-    local function oldHandler()
-      oldHandlerCalls.count = oldHandlerCalls.count + 1
-    end
-
-    local instance = setmetatable({
-      _addonName = "CarriedOver",
-      _loaded = false,
-      _ready = false,
-      _shutdown = false,
-      _signals = {
-        loaded = SignalKit:New(),
-        ready = SignalKit:New(),
-        shutdown = SignalKit:New(),
-      },
-      _phaseCaptures = {},
-    }, { __index = old.Instance })
     old._state = {
       schema = 2,
-      addons = { CarriedOver = instance },
-      globalWatchers = {
-        addonLoaded = EventKit:Connect("ADDON_LOADED", oldHandler),
-        playerLogin = EventKit:Once("PLAYER_LOGIN", oldHandler),
-        playerLogout = EventKit:Once("PLAYER_LOGOUT", oldHandler),
-      },
+      addons = {},
+      globalWatchers = {},
       loginSeen = false,
       shutdownSeen = false,
     }
-    return old, instance, oldHandlerCalls
-  end
-
-  it("upgrades revision 6 state to schema 3 and carries pending phases", function()
-    TestEnv.Reset()
-    TestEnv.InstallWowApi()
-    local Registry = require("Registry")
-    local SignalKit = require("SignalKit")
-    local EventKit = require("EventKit")
-    local old, instance, oldHandlerCalls = registerRevision6(Registry, SignalKit, EventKit)
-    local oldLoadedWatcher = old._state.globalWatchers.addonLoaded
-
-    -- A pending subscription revision 6 created: a SignalKit once-listener
-    -- on the instance's own signal, which the upgrade must not strand.
-    local loadedCalls = 0
-    instance._signals.loaded:Once(function()
-      loadedCalls = loadedCalls + 1
-    end)
-
-    TestEnv.SetCombatLockdown(true)
-    local upgraded = require("LifecycleKit")
-
-    assert.are.equal(old, upgraded)
-    assert.are.equal(CURRENT_REVISION, upgraded.REVISION)
-    assert.are.equal(3, upgraded._state.schema)
-    assert.are.same({ instance }, upgraded._state.instances)
-    assert.is_true(upgraded:IsInCombat())
-    assert.are.equal(instance, upgraded:ForAddon("CarriedOver"))
-    assert.are.equal("table", type(upgraded.DeferredCall))
-
-    -- Revision 6's watchers are replaced, so its handlers no longer run.
-    assert.is_false(oldLoadedWatcher:IsConnected())
-    TestEnv.LoadAddon("CarriedOver")
-    TestEnv.Login()
-    assert.are.equal(0, oldHandlerCalls.count)
-    assert.are.equal(1, loadedCalls)
-    assert.are.equal("ready", instance:GetState())
-
-    -- The carried-over instance has a working combat gate and can halt.
-    local ran = false
-    local handle = instance:WhenOutOfCombat(function()
-      ran = true
-    end)
-    assert.is_true(handle:IsPending())
-    TestEnv.LeaveCombat()
-    assert.is_true(ran)
-    assert.is_true(instance:Halt("carried over and broken"))
-    assert.are.equal("halted", instance:GetState())
-  end)
-
-  it("rejects older-revision state whose schema it does not know", function()
-    TestEnv.Reset()
-    TestEnv.InstallWowApi()
-    local Registry = require("Registry")
-    local SignalKit = require("SignalKit")
-    local EventKit = require("EventKit")
-    local old = registerRevision6(Registry, SignalKit, EventKit)
-    old._state.schema = 1
 
     expectErrorContaining("corrupted or incomplete", function()
       require("LifecycleKit")

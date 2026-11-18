@@ -1,6 +1,38 @@
 # LifecycleKit API
 
-LifecycleKit API generation **1** provides per-addon lifecycle coordination over MoltenCodes EventKit and SignalKit: four lifecycle phases, a halted state an addon can declare, and a combat gate shared by every addon.
+LifecycleKit API generation **1** provides per-addon lifecycle coordination over MoltenCodes EventKit: four lifecycle phases, the closing of each addon's scopes in the other Kits at shutdown, and, as optional parts, a halted state an addon can declare and a combat gate shared by every addon.
+
+## Loading
+
+Load Registry and EventKit first, then `LifecycleKit.lua`, then the parts the addon uses:
+
+```toc
+Libs\MoltenCodes\registry\Registry.lua
+Libs\MoltenCodes\eventKit\EventKit.lua
+Libs\MoltenCodes\lifecycleKit\LifecycleKit.lua
+Libs\MoltenCodes\lifecycleKit\parts\LifecycleKit-CombatGate.lua
+Libs\MoltenCodes\lifecycleKit\parts\LifecycleKit-Halt.lua
+```
+
+`python3 -m tooling.package.embeds` writes this list for any selection of Kits and parts. While EventKit itself still requires SignalKit (its revisions up to 22), SignalKit loads before EventKit.
+
+LifecycleKit API 1 requires Registry API 2 and EventKit API 1. Neither part needs anything beyond the core. It optionally uses SignalKit API 1, TimerKit API 1, SchedulerKit API 1, HookKit API 1, CommandKit API 1 and CommKit API 1, each found through `Registry:Find` (Registry revision 7; an older Registry's `Get` is the equivalent fallback) when an addon shuts down. Without them nothing changes except that there are no timers to cancel, no jobs to cancel, no hooks to undo, no commands to make inert, no addon-message scopes and no bus to close. None of the Kits whose scopes shutdown closes depends on LifecycleKit: LifecycleKit calls into them, which is what lets each embed without it. Each finds LifecycleKit through `Registry:Find` in the same way and reads `CLOSES_ADDON_SCOPES` to learn that it closes that Kit's addon scopes. Before revision 19 SignalKit was required: each instance kept its subscribers in SignalKit signals.
+
+LifecycleKit does not create WoW Frames directly. All frame/event registration remains inside EventKit.
+
+Host API read directly: `C_AddOns.IsAddOnLoaded` (falling back to the legacy `IsAddOnLoaded`), `IsLoggedIn`, and, in the CombatGate part, `InCombatLockdown`. Every one is optional; without it LifecycleKit assumes not loaded, not logged in, and not in combat respectively. Host events observed through EventKit: `ADDON_LOADED`, `PLAYER_LOGIN`, `PLAYER_LOGOUT`, and, in the CombatGate part, `PLAYER_REGEN_DISABLED` and `PLAYER_REGEN_ENABLED`.
+
+## Public surface
+
+The facade carries two read-only constants: `LifecycleKit.API`, the API generation (`1`), and `LifecycleKit.REVISION`, the implementation revision of the copy that is active in the session (`19` for this one). A newer embedded copy replaces `REVISION` when it upgrades the facade in place.
+
+| Member | Where |
+|---|---|
+| `LifecycleKit:ForAddon(addonName)`, `LifecycleKit:HasPart(name)`, `LifecycleKit:SetLimits(limits)`, `LifecycleKit:GetLimits()`, `LifecycleKit.UNBOUNDED`, `LifecycleKit.CLOSES_ADDON_SCOPES` | core |
+| `GetAddonName`, `GetState`, `IsLoaded`, `IsReady`, `IsShutdown`, `IsHalted`, `GetHaltReason`, `OnLoaded`, `OnReady`, `OnShutdown`, `OnHalted` | core (instance) |
+| `Subscription:Disconnect()`, `Subscription:IsConnected()` | core |
+| `LifecycleKit:IsInCombat()`, `WhenOutOfCombat`, `OnCombatStart`, `OnCombatEnd`, `SetCombatQueueLimit`, `GetCombatQueueLimit`, `DeferredCall:Cancel()`, `DeferredCall:IsPending()` | CombatGate part |
+| `Halt`, `DependsOn`, `OnDependencyHalted` | Halt part |
 
 ## State model
 
@@ -94,7 +126,7 @@ When an addon reaches `shutdown`, LifecycleKit first closes the addon's canonica
 
 After those two, LifecycleKit closes that addon's canonical EventKit scope (`EventKit:ForAddon(addonName)`) after the shutdown callbacks have run, so event connections made through the scope need no teardown code in the addon. EventKit cannot do this itself: it loads before LifecycleKit and never observes shutdown. With an EventKit revision that has no `CloseAddonScopes`, nothing is closed and shutdown is otherwise unchanged. Closing the scope never takes the logout away from the scope's own listeners: LifecycleKit's watcher runs inside EventKit's `PLAYER_LOGOUT` dispatch, and EventKit defers the disconnects until that dispatch returns, so a scoped `PLAYER_LOGOUT` listener still runs once. Combat-log listeners connected through the scope's `ConnectCombatLog` are closed with the rest. An addon that never asked for an EventKit scope has none to close: `CloseAddonScopes` answers `false` and records nothing.
 
-The same two-step applies to the addon's HookKit scope, its CommandKit scope, its CommKit scope and its SignalKit bus. After the EventKit scope, LifecycleKit closes the addon's canonical HookKit scope (`HookKit:CloseAddonScopes(addonName)`), which undoes every hook made through `HookKit:ForAddon(addonName)`, then its canonical CommandKit scope (`CommandKit:CloseAddonScopes(addonName)`), which leaves every slash command registered through `CommandKit:ForAddon(addonName)` inert, then its canonical CommKit scope (`CommKit:CloseAddonScopes(addonName)`), which cancels its pending sends, closes its SyncSets and disconnects its prefix registrations, and then its bus (`SignalKit:CloseAddonBus(addonName)`), which disconnects every subscription on the bus named after the addon, including those made through its scopes. HookKit, CommandKit and CommKit are optional: each is found through `Registry:Find` (`"hookKit"`, `"commandKit"`, `"commKit"`, API 1) at shutdown, and without it, or with a revision that has no `CloseAddonScopes`, that step does nothing; `false` from `CloseAddonScopes` (no scope, or already closed) is not a failure. A CommKit older than 0.2.0 closes the scope of `CommKit:ForAddon` from its own `OnShutdown` subscription, among the shutdown callbacks, and then answers `false` here. A SignalKit revision without `CloseAddonBus` skips the last step the same way, and an addon that never asked for a bus has nothing to close (`CloseAddonBus` answers `false`, which is not a failure).
+The same two-step applies to the addon's HookKit scope, its CommandKit scope, its CommKit scope and its SignalKit bus. After the EventKit scope, LifecycleKit closes the addon's canonical HookKit scope (`HookKit:CloseAddonScopes(addonName)`), which undoes every hook made through `HookKit:ForAddon(addonName)`, then its canonical CommandKit scope (`CommandKit:CloseAddonScopes(addonName)`), which leaves every slash command registered through `CommandKit:ForAddon(addonName)` inert, then its canonical CommKit scope (`CommKit:CloseAddonScopes(addonName)`), which cancels its pending sends, closes its SyncSets and disconnects its prefix registrations, and then its bus (`SignalKit:CloseAddonBus(addonName)`, SignalKit found through `Registry:Find` like the others), which disconnects every subscription on the bus named after the addon, including those made through its scopes. HookKit, CommandKit, CommKit and SignalKit are optional: each is found through `Registry:Find` (`"hookKit"`, `"commandKit"`, `"commKit"`, `"signalKit"`, API 1) at shutdown, and without it, or with a revision that has no `CloseAddonScopes`, that step does nothing; `false` from `CloseAddonScopes` (no scope, or already closed) is not a failure. A CommKit older than 0.2.0 closes the scope of `CommKit:ForAddon` from its own `OnShutdown` subscription, among the shutdown callbacks, and then answers `false` here. A SignalKit revision without `CloseAddonBus` skips the last step the same way, and an addon that never asked for a bus has nothing to close (`CloseAddonBus` answers `false`, which is not a failure).
 
 The seven are closed in this order for a reason:
 
@@ -108,7 +140,7 @@ The seven are closed in this order for a reason:
 
 Shutdown callbacks run before any of the seven is closed, so an `OnShutdown` callback can still rely on its timers, jobs, event connections, hooks, slash commands and addon-message scope and can still publish on its bus.
 
-Shutdown therefore runs these steps per addon, in this order: the addon's combat queue is closed (each pending deferred call receives `(instance, false, "shutdown")`), the shutdown callbacks run, then the TimerKit scope, the SchedulerKit scope, the EventKit scope, the HookKit scope, the CommandKit scope, the CommKit scope and the SignalKit bus are closed. Every step runs even when an earlier one failed. Errors follow a first-error-wins policy in that order: a deferred-call error is re-raised before a shutdown callback error, which is re-raised before a TimerKit, then a SchedulerKit, then an EventKit, then a HookKit, then a CommandKit, then a CommKit, then a SignalKit closing failure. Either way every addon's lifecycle has advanced first.
+Shutdown therefore runs these steps per addon, in this order: the addon's combat queue is closed (CombatGate part; each pending deferred call receives `(instance, false, "shutdown")`), the shutdown callbacks run, then the TimerKit scope, the SchedulerKit scope, the EventKit scope, the HookKit scope, the CommandKit scope, the CommKit scope and the SignalKit bus are closed. Every step runs even when an earlier one failed. Errors follow a first-error-wins policy in that order: a deferred-call error is re-raised before a shutdown callback error, which is re-raised before a TimerKit, then a SchedulerKit, then an EventKit, then a HookKit, then a CommandKit, then a CommKit, then a SignalKit closing failure. Either way every addon's lifecycle has advanced first.
 
 ### Addon-scope capability: `CLOSES_ADDON_SCOPES`
 
@@ -129,7 +161,29 @@ Every Kit it names reads it in its own `ForAddon` (TimerKit from 0.6.0, Schedule
 
 If shutdown occurs before `loaded` or `ready` was reached (for example, a lifecycle was created for a load-on-demand addon that never loaded), pending subscriptions for those now-impossible phases are disconnected without invocation. New subscriptions to an earlier phase that is already impossible because shutdown occurred are returned already disconnected. Shutdown also disconnects the addon's `OnHalted`, `OnDependencyHalted`, `OnCombatStart` and `OnCombatEnd` subscriptions.
 
+Each phase and notice keeps its subscriptions in a list of its own, delivered in subscription order. A subscription made while a notice is being delivered waits for the next delivery; one disconnected meanwhile is skipped at once; a raising callback does not stop the rest.
+
+## Parts
+
+```lua
+LifecycleKit:HasPart("CombatGate") -- boolean
+LifecycleKit:HasPart("Halt")       -- boolean
+```
+
+LifecycleKit is a core file and two optional parts (ADR 0001, `docs/decisions/0001-kit-core-and-parts.md`):
+
+| Part | File | Members |
+|---|---|---|
+| `CombatGate` | `lifecycleKit\parts\LifecycleKit-CombatGate.lua` | `IsInCombat`, `WhenOutOfCombat`, `OnCombatStart`, `OnCombatEnd`, `SetCombatQueueLimit`, `GetCombatQueueLimit`, `DeferredCall:Cancel`, `DeferredCall:IsPending` |
+| `Halt` | `lifecycleKit\parts\LifecycleKit-Halt.lua` | `Halt`, `DependsOn`, `OnDependencyHalted` |
+
+A part loads after the core; loaded before it, it raises `MoltenCodes LifecycleKit part <Part> requires LifecycleKit API 1 to be loaded first`. Without a part its members stay on the facade and the prototypes, and each raises at the caller's line, for example `LifecycleKit.Instance:WhenOutOfCombat is in LifecycleKit's CombatGate part, which is not loaded: add lifecycleKit\parts\LifecycleKit-CombatGate.lua to embeds.xml after lifecycleKit\LifecycleKit.lua`. Another Kit that uses a part optionally asks `HasPart`, never `type(member) == "function"`, which a stub satisfies. `HasPart` raises `LifecycleKit:HasPart name must be a part name string` at the caller for a name that is not a string or is secret.
+
+Without either part, `ForAddon`, the phases and their queries, `GetState`, `IsHalted`, `GetHaltReason`, `OnHalted`, `SetLimits`/`GetLimits` (both names), `UNBOUNDED` and `CLOSES_ADDON_SCOPES` work unchanged. A part keeps its per-addon state in the addon's instance (the combat queue from the first queued call, the dependency list from the first `DependsOn`) and its two combat watchers in the core's watcher table, so the core's logout teardown releases them, and a higher part revision loaded by another addon takes everything over in place.
+
 ## Halted state
+
+`IsHalted`, `GetHaltReason` and `OnHalted` are in the core; `Halt`, `DependsOn` and `OnDependencyHalted` are in the **Halt part** (`parts/LifecycleKit-Halt.lua`, see [Parts](#parts)). A halt can come from any addon that embeds the part, so an addon that only watches for one needs the core alone; without the part in the session nothing halts, and an `OnHalted` subscription simply never fires and is disconnected at shutdown.
 
 ```lua
 instance:Halt(reason)                    -- boolean
@@ -176,6 +230,8 @@ If the dependency has already halted, `DependsOn` delivers `OnDependencyHalted` 
 A dependent may itself `Halt` from inside `OnDependencyHalted`; its own dependents are then told in turn. Dependents that are already halted or shut down are not told.
 
 ## Combat gate
+
+Everything in this section is the **CombatGate part** (`parts/LifecycleKit-CombatGate.lua`, see [Parts](#parts)).
 
 ```lua
 LifecycleKit:IsInCombat()                 -- boolean
@@ -227,7 +283,7 @@ A load-on-demand addon loaded mid-combat reaches `loaded` after the combat began
 
 Failing notice subscribers are isolated and reported with the same first-error policy as the queued calls.
 
-A combat transition allocates nothing once the subscriptions exist, and nothing for an addon without them; only queuing a call allocates its handle. An instance creates the signal behind `OnDependencyHalted`, `OnCombatStart` or `OnCombatEnd` when that notice gets its first subscriber, so an addon that never subscribes to one pays nothing for it.
+A combat transition allocates nothing once the subscriptions exist, and nothing for an addon without them; only queuing a call allocates its handle. An instance creates the subscriber list of `OnDependencyHalted`, `OnCombatStart` or `OnCombatEnd` when that notice gets its first subscriber, and its combat queue with its first queued call, so an addon that never uses one pays nothing for it.
 
 ## Subscription
 
@@ -240,19 +296,7 @@ subscription:IsConnected()  -- boolean
 
 Phase subscriptions (`OnLoaded`, `OnReady`, `OnShutdown`, `OnHalted`) are one-shot: they disconnect themselves when delivered. Notice subscriptions (`OnCombatStart`, `OnCombatEnd`, `OnDependencyHalted`) repeat until they are disconnected or the addon halts or shuts down; a notice subscription made after that is returned already disconnected.
 
-## Argument errors
-
-Every public method validates its arguments and raises at the caller's own file and line. Each message starts with the qualified method name, `LifecycleKit:<Method>` for a facade method and `LifecycleKit.Instance:<Method>` for an instance method, followed by the text below: for example `LifecycleKit.Instance:OnReady callback must be a function`.
-
-| Call | Message |
-|---|---|
-| `LifecycleKit:ForAddon` | `addonName must be a non-empty string` |
-| `OnLoaded`, `OnReady`, `OnShutdown`, `OnHalted`, `OnDependencyHalted`, `OnCombatStart`, `OnCombatEnd`, `WhenOutOfCombat` | `callback must be a function` |
-| `Halt` | `reason must be a non-empty string` |
-| `DependsOn` | `addonName must be a non-empty string`, `addonName must name another addon` |
-| `SetCombatQueueLimit` | `limit must be a positive integer or LifecycleKit.UNBOUNDED` |
-| `LifecycleKit:SetLimits` | `limits must be a table`, `limits.<name> is not a recognised limit` (a key that is not a string, number or boolean is named by its type, `limits.<table>`, so its `__tostring` never runs), `limits.<name> must be a positive integer or LifecycleKit.UNBOUNDED`, `must be called on the LifecycleKit facade` |
-| `LifecycleKit:GetLimits` | `must be called on the LifecycleKit facade` |
+## Secret values
 
 On a client with secret values, comparing a secret with a value of its own
 type raises (`==`, `~=`, `<`, `<=` and `rawequal` alike), and so does using it
@@ -265,7 +309,8 @@ refuses a secret at the caller before it would compare one (revision 14 and
 later). The probe, `issecretvalue`, is read once when the file loads, since
 every client defines it before any addon runs; only when it was absent at load
 does each check read the global again, accepting it only as a function, so a
-probe installed later is still honoured (revision 18):
+probe installed later is still honoured (revision 18; from revision 19 the
+shared `isSecret` block, `tooling/shared/lua/isSecret.lua`):
 
 | Call | Message |
 |---|---|
@@ -278,9 +323,7 @@ probe installed later is still honoured (revision 18):
 `SetLimits` and `GetLimits` called with a dot and a secret first argument are
 refused as calls without the facade, by its type, before any comparison.
 
-Writing to `LifecycleKit.CLOSES_ADDON_SCOPES` raises `LifecycleKit.CLOSES_ADDON_SCOPES is read-only; field "<key>" cannot be written`. A string key is shown as written and a number or boolean as `tostring` gives it; any other key is named by its type (`field "<table>"`), and a secret key by `<secret value>`, so neither a key's `__tostring` nor a secret conversion runs inside LifecycleKit.
-
-Loading `LifecycleKit.lua` raises `MoltenCodes LifecycleKit requires Registry API 2 to be loaded first`, `MoltenCodes LifecycleKit requires a valid Registry API 2 facade`, the same two for SignalKit API 1 and for EventKit API 1 (`MoltenCodes LifecycleKit requires SignalKit API 1 to be loaded first`, `... requires a valid EventKit API 1 facade` and so on), or `MoltenCodes LifecycleKit package state is corrupted or incomplete`. An instance whose private fields are damaged raises `MoltenCodes LifecycleKit instance state is corrupted or incomplete`.
+`HasPart` refuses a secret name with its argument error.
 
 ## Limits
 
@@ -298,35 +341,53 @@ local limits = LifecycleKit:GetLimits() -- { maxDependencies = 32, defaultCombat
 instance:SetCombatQueueLimit(LifecycleKit.UNBOUNDED) -- one addon only
 ```
 
-- `LifecycleKit:SetLimits(limits)` changes any subset of the two. The limits are package-wide: they apply to every addon in the session. The whole table is validated before anything is applied, so a refused call changes nothing. It must be called on the facade.
+- `LifecycleKit:SetLimits(limits)` changes any subset of the two, each an integer from 1 to 2147483647 or `LifecycleKit.UNBOUNDED`. The limits are package-wide: they apply to every addon in the session. The whole table is validated before anything is applied, so a refused call changes nothing. It must be called on the facade.
 - `LifecycleKit:GetLimits()` returns a fresh table with both values (one allocation per call).
 - `LifecycleKit.UNBOUNDED` is one sentinel table, the same across embedded copies and upgrades; compare against it, never copy it.
 - Lowering `maxDependencies` forgets no dependency already declared; further `DependsOn` calls answer `nil, "full"` until the list is below it.
 - `defaultCombatQueueLimit` is the limit instances created from then on start with. Instances that already exist keep theirs; `instance:SetCombatQueueLimit(limit)` changes one addon's.
 - ModuleKit reads `maxDependencies` through `GetLimits` when it validates its own `maxRequiredAddons` in `ModuleKit:SetLimits`, and refuses a value above it. Lower `maxDependencies` after that and ModuleKit's limit is not revisited, so set LifecycleKit's limits first.
 
-State written by revisions before 12 has neither field; an upgrade seeds the defaults those revisions enforced as constants, so behaviour carries over unchanged until a consumer calls `SetLimits`.
+Both limits stay in the core's table whether or not their part is loaded (`maxDependencies` is applied by the Halt part, `defaultCombatQueueLimit` by the CombatGate part), so `SetLimits` and `GetLimits` have one shape in every embedding. The ceiling of 2147483647 only refuses a mistaken number: both lists belong to one addon and accept `UNBOUNDED`.
 
-## Dependencies
+## Error behaviour
 
-The facade carries two read-only constants: `LifecycleKit.API`, the API generation (`1`), and `LifecycleKit.REVISION`, the implementation revision of the copy that is active in the session (`18` for this one). A newer embedded copy replaces `REVISION` when it upgrades the facade in place.
 
-LifecycleKit API 1 requires:
+Every public method validates its arguments and raises at the caller's own file and line. Each message starts with the qualified method name, `LifecycleKit:<Method>` for a facade method and `LifecycleKit.Instance:<Method>` for an instance method, followed by the text below: for example `LifecycleKit.Instance:OnReady callback must be a function`.
 
-- Registry API 2
-- SignalKit API 1
-- EventKit API 1
+| Call | Message |
+|---|---|
+| `LifecycleKit:ForAddon` | `addonName must be a non-empty string` |
+| `OnLoaded`, `OnReady`, `OnShutdown`, `OnHalted`, `OnDependencyHalted`, `OnCombatStart`, `OnCombatEnd`, `WhenOutOfCombat` | `callback must be a function` |
+| `Halt` | `reason must be a non-empty string` |
+| `DependsOn` | `addonName must be a non-empty string`, `addonName must name another addon` |
+| `SetCombatQueueLimit` | `limit must be a positive integer or LifecycleKit.UNBOUNDED` |
+| `LifecycleKit:HasPart` | `name must be a part name string` |
+| `LifecycleKit:SetLimits` | `limits must be a table`, `limits.<name> is not a recognised limit; it accepts maxDependencies, defaultCombatQueueLimit` (a key that is not a string, number or boolean is named by its type, `limits.<table>`, so its `__tostring` never runs), `limits.<name> must be an integer from 1 to 2147483647`, `must be called on the LifecycleKit facade` |
+| `LifecycleKit:GetLimits` | `must be called on the LifecycleKit facade` |
 
-It optionally uses TimerKit API 1, SchedulerKit API 1, HookKit API 1, CommandKit API 1 and CommKit API 1, each found through `Registry:Find` (Registry revision 7; an older Registry's `Get` is the equivalent fallback) when an addon shuts down. Without them nothing changes except that there are no timers to cancel, no jobs to cancel, no hooks to undo, no commands to make inert and no addon-message scopes to close. None of the Kits whose scopes shutdown closes depends on LifecycleKit: LifecycleKit calls into them, which is what lets each embed without it. Each finds LifecycleKit through `Registry:Find` in the same way and reads `CLOSES_ADDON_SCOPES` to learn that it closes that Kit's addon scopes.
+A member of a part that is not loaded raises at the caller's line, naming the file to embed (see [Parts](#parts)).
 
-LifecycleKit does not create WoW Frames directly. All frame/event registration remains inside EventKit.
+Writing to `LifecycleKit.CLOSES_ADDON_SCOPES` raises `LifecycleKit.CLOSES_ADDON_SCOPES is read-only; field "<key>" cannot be written`. A string key is shown as written and a number or boolean as `tostring` gives it; any other key is named by its type (`field "<table>"`), and a secret key by `<secret>`, so neither a key's `__tostring` nor a secret conversion runs inside LifecycleKit.
 
-Host API read directly: `C_AddOns.IsAddOnLoaded` (falling back to the legacy `IsAddOnLoaded`), `IsLoggedIn`, and `InCombatLockdown`. Every one is optional; without it LifecycleKit assumes not loaded, not logged in, and not in combat respectively. Host events observed through EventKit: `ADDON_LOADED`, `PLAYER_LOGIN`, `PLAYER_LOGOUT`, `PLAYER_REGEN_DISABLED`, `PLAYER_REGEN_ENABLED`.
+Loading `LifecycleKit.lua` raises `MoltenCodes LifecycleKit requires Registry API 2 to be loaded first`, `MoltenCodes LifecycleKit requires a valid Registry API 2 facade`, the same two for EventKit API 1 (`MoltenCodes LifecycleKit requires EventKit API 1 to be loaded first`, `... requires a valid EventKit API 1 facade`), or `MoltenCodes LifecycleKit package state is corrupted or incomplete`.
 
-## Embedded bootstrap recovery
+## Performance
 
-Compatible embedded copies share one LifecycleKit facade and state through Registry. Pending phase subscriptions created by the previous compatible implementation revision remain valid across an in-place upgrade; the upgrade releases per-instance state that the newer revision no longer owns.
+Resident memory on host Lua 5.1.5 with debug information kept (`tooling/bench` host, one process per set, after a full collection), revision 18 against revision 19:
 
-Revisions 8 to 18 keep schema 3. Upgrading from revision 7, 8, 9, 10, 11, 12, 13, 14 or 15 replaces its shared host watchers, which would otherwise keep calling the older revision's handlers: revision 7's logout handler closes no HookKit scope and no bus, revision 8's no CommandKit scope, revision 9's no CommKit scope, and no revision before 12 closes a TimerKit or SchedulerKit scope. Revision 13 adds `CLOSES_ADDON_SCOPES` without a schema change: an upgrade seeds the capability set into the state (`addonScopeCapabilities`) and publishes it. Revision 14 refuses secret arguments before comparing them and changes no state. Revision 15 creates the signals of the three repeating notices on first subscription instead of with the instance; an instance an older revision created keeps the signals it has, with their subscribers, and one it lacks is created when first needed. Revision 16 changes no state; when an upgrade catches up a login its watchers missed, it re-reads the combat state before any addon enters `ready`, as `PLAYER_LOGIN` does, and still re-reads it when an `OnReady` callback raises. Revision 17 changes no state; it names an unrecognised `SetLimits` key or a `CLOSES_ADDON_SCOPES` write key without passing a table key to `tostring`. Revision 18 changes no state; it resolves `issecretvalue` once at load (see [Argument errors](#argument-errors)) and documents the `_halted` instance field.
+| File | Revision 18 | Revision 19 |
+|---|---:|---:|
+| `LifecycleKit.lua` | 72.4 KB | 51.3 KB |
+| `parts/LifecycleKit-CombatGate.lua`, when embedded | (in the core) | 12.5 KB |
+| `parts/LifecycleKit-Halt.lua`, when embedded | (in the core) | 5.3 KB |
+| Allocated while loading the core | 231.8 KB | 179.7 KB |
+| Per instance (`ForAddon`, no subscriptions) | 3,289 B | 329 B |
 
-Revision 7 changed the package state from schema 2 to schema 3. Upgrading from an older revision adds the shared combat flag (seeded from `InCombatLockdown()`), the instance list (inherited instances in name order) and every instance's combat queue, dependency list and halted flag, and replaces the older revision's shared host watchers with its own, because a watcher keeps calling the handler of the revision that installed it. Pending deferred calls and notice subscriptions are carried across a same-revision reload unchanged. Bootstrap is idempotent for the current implementation revision: if a prior live upgrade accepted the Registry revision but host event registration failed before shared watchers were fully established, a later compatible copy retries the missing watcher setup instead of silently returning an incomplete runtime state. If a one-shot global phase passed while that watcher was absent, bootstrap also reconciles existing instances from the observable host/package state.
+An instance holds its name and its four phase flags; a subscriber list is created by the first subscription to each phase or notice, the combat queue by the first queued call, the dependency list by the first `DependsOn`. With the CombatGate part each instance also records the combat-queue limit it was created with. A phase delivery runs each subscriber under `pcall` in one loop, with no call into another Kit. A combat transition allocates nothing once the subscriptions exist, and nothing for an addon without them.
+
+## Embedded copies and upgrades
+
+Compatible embedded copies share one LifecycleKit facade and state through Registry. Bootstrap is idempotent for the current implementation revision: if a prior live upgrade accepted the Registry revision but host event registration failed before shared watchers were fully established, a later compatible copy retries the missing watcher setup instead of silently returning an incomplete runtime state. If a one-shot global phase passed while that watcher was absent, bootstrap also reconciles existing instances from the observable host/package state, re-reading the combat state (CombatGate part) before any addon enters `ready`.
+
+**The upgrade floor.** Revision 19 takes over only revision 18's state (schema 3), which it brings to schema 4: the part interface (`parts`, `helpers`, `dispatch`) and the delivery depth are added, every instance keeps its fields, and revision 18's host watchers are replaced, because a watcher keeps calling the handler of the revision that installed it. No revision before 19 was ever published, so the migrations from older state (schema 2, the per-revision fills of revisions 7 to 15) are gone: such state is refused as `package state is corrupted or incomplete`. Revision 18's subscriptions live in SignalKit signals on its instances (`_signals`); revision 19 keeps firing those signals, with the capture records their listeners write into, before its own lists, and answers `Disconnect`/`IsConnected` of their handles. Instances revision 19 creates never use SignalKit. Revision 18's combat queues, dependency lists and halts are read by the parts unchanged. When the CombatGate part is not embedded, revision 18's queued calls run on the next frame if the player is out of combat and are closed with `"shutdown"` or `"halted"` otherwise, and the missing file is reported once through `geterrorhandler()`.

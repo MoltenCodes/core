@@ -29,7 +29,7 @@ Current packages:
 - [`hookKit`](hookKit/) — Reversible, secure-first hooking of functions, methods and frame scripts in three named semantics.
 - [`interopKit`](interopKit/) — The LibStub bridge: expose Kits to LibStub consumers and adopt LibStub libraries read-only.
 - [`launcherKit`](launcherKit/) — Minimap buttons for BrokerKit objects, dragged round any minimap shape, state in LibDBIcon's saved fields, and Retail's addon compartment.
-- [`lifecycleKit`](lifecycleKit/) — Replay-aware per-addon loading, readiness and shutdown, a shared combat gate with a bounded out-of-combat queue, and a halted state.
+- [`lifecycleKit`](lifecycleKit/) — Replay-aware per-addon loading, readiness and shutdown that closes the addon's scopes in the other Kits; a combat gate and halting as parts.
 - [`localeKit`](localeKit/) — Per-addon translations, missing-key reporting and coverage, indexed format specifiers.
 - [`logKit`](logKit/) — Levelled, structured logging with lazy secret-safe formatting, a bounded journal and chat, callback and table sinks.
 - [`mediaKit`](mediaKit/) — A typed media registry with font scripts, sorted cached lists, per-consumer defaults and LibSharedMedia adoption and mirroring.
