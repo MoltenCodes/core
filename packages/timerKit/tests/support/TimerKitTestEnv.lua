@@ -26,7 +26,7 @@ TimerKitTestEnv.FailNextCreate = TimerKitTestEnv.FailNextTimerCreate
 TimerKitTestEnv.FailNextCancel = TimerKitTestEnv.FailNextTimerCancel
 
 --- The optional modules the helpers below may load, in load order.
-local OPTIONAL_MODULES = { "TimerKit-Pausing", "SignalKit", "EventKit", "LifecycleKit" }
+local OPTIONAL_MODULES = { "TimerKit-Pausing", "EventKit", "LifecycleKit" }
 
 local resetFixture = TimerKitTestEnv.Reset
 
@@ -54,14 +54,13 @@ function TimerKitTestEnv.LoadRevision14()
   return chunk()
 end
 
----Load SignalKit and EventKit after the chain `NewPackage` loaded.
+---Load EventKit after the chain `NewPackage` loaded.
 ---@return table EventKit
 function TimerKitTestEnv.LoadEventKit()
-  require("SignalKit")
   return require("EventKit")
 end
 
----Load SignalKit, EventKit and LifecycleKit after the chain `NewPackage`
+---Load EventKit and LifecycleKit after the chain `NewPackage`
 ---loaded.
 ---@return table LifecycleKit
 ---@return table EventKit
