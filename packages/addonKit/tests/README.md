@@ -8,6 +8,8 @@ The AddonKit suite covers:
 - composition: the panel and its slash command, a title, no slash command, a taken slash name raised with nothing left behind, the command unregistered when the tree is refused, the launcher kept in the profile and refreshed on a profile switch, an undeclared launcher field, per-addon `LAUNCHER_DEFAULTS`, every argument check;
 - arguments and secrets: every argument error at the caller's line, through `__index`, `__newindex`, the namespace entry and each method, secret receivers, arguments, keys and limits, AddonKit's position removed from a message raised again, a non-string error object passed through;
 - Registry publication, a duplicate embedded load, yielding to a newer revision, an in-place upgrade that keeps facades, cached Kits, pins, limits, the entry and the parts, part revisions (equal kept, newer installed, older ignored), a foreign `MoltenCodes.For` left alone and reported once, a missing or incomplete Registry, corrupted state, a part loaded before the core;
+- the shared helper blocks: a raising host error handler while the foreign entry is reported, the probe kept from load, the facade message, and the in-place upgrade over the committed revision 2 file (`fixtures/AddonKit-revision2.lua`);
+- the repository conformance suite (`tests/support/KitConformance.lua`): manifest, receivers, arguments and upgrade; its limits group is pending, with the reason in the spec;
 - the manifest: API, revision, each part's revision against its `PART_REVISION`, the dependencies; the catalogue against every package manifest and the published generations;
 - the ten tasks of the usability comparison, run as an addon folder (`fixtures/TenTasks`);
 - the getting-started guide: each step's addon folder (`fixtures/FirstAddon/step1` to `step4`) loaded and logged in, and every guide block marked with a fixture equal to it (pending until `docs/GETTING_STARTED.md` is in the repository);
@@ -26,6 +28,8 @@ The fixture addons carry a `--# selene:` line because they are linted as test co
 | `Composition_spec.lua` | the Composition part |
 | `Arguments_spec.lua` | argument errors at the caller's line, secrets, re-raised messages |
 | `Bootstrap_spec.lua` | publication, duplicate loads, upgrades, parts, the namespace entry |
+| `SharedHelpers_spec.lua` | the shared `isSecret`, `reportError` and `validateFacade` blocks, the upgrade from revision 2 |
+| `Conformance_spec.lua` | the conformance suite |
 | `Manifest_spec.lua` | manifest agreement and the catalogue |
 | `TenTasks_spec.lua` | the ten-task addon |
 | `Guide_spec.lua` | the getting-started guide's steps and blocks |

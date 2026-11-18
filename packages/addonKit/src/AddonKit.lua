@@ -24,8 +24,9 @@
 -- generation AddonKit API 1 hands out. An entry's generation never changes
 -- inside AddonKit API 1 (a spec holds it to a baseline); `MC:Use` pins another.
 --
--- AddonKit requires Registry API 2 and nothing else. It reads `issecretvalue`
--- and `geterrorhandler` at call time and calls no other client function.
+-- AddonKit requires Registry API 2 and nothing else. It reads `geterrorhandler`
+-- at call time and `issecretvalue` once at load (again on each check only when
+-- the host had none at load), and calls no other client function.
 --
 -- Contents
 -- --------
@@ -47,7 +48,7 @@
 
 local PACKAGE_NAME = "addonKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 2
+local IMPLEMENTATION_REVISION = 3
 local REQUIRED_REGISTRY_API = 2
 local STATE_SCHEMA = 1
 
@@ -298,15 +299,6 @@ if type(bootstrapPackage) ~= "function" or type(findPackage) ~= "function" then
   error("MoltenCodes AddonKit requires a valid Registry API 2 facade", 2)
 end
 
----Read a host global without triggering a metatable, or `nil`.
----@param name string
----@return any
-local function readGlobal(name)
-  -- Host APIs are reachable only through the global table.
-  -- selene: allow(global_usage)
-  return rawget(_G, name)
-end
-
 -- Validation -----------------------------------------------------------------
 
 ---Whether `implementation` exposes the complete AddonKit API 1 surface.
@@ -460,29 +452,50 @@ local sharedLimits = rawget(state, "limits")
 
 -- Host facilities ------------------------------------------------------------
 
----Whether `value` is a secret value (Retail 12.x). `issecretvalue` is looked
----up at every call, so a probe that appears after load is used at once.
----@param value any
----@return boolean
-local function isSecret(value)
-  local probe = readGlobal("issecretvalue")
-  return type(probe) == "function" and probe(value) == true
-end
+-- shared:begin isSecret 1
+-- Copied from tooling/shared/lua/isSecret.lua by python3 -m tooling.shared.sync; edit that file, not this copy.
+---Whether `value` is a secret value the host forbids comparing.
+---@type fun(value: any): boolean
+local isSecret
+do
+  -- issecretvalue is a client API reachable only through the global table.
+  -- selene: allow(global_usage)
+  local loadedProbe = rawget(_G, "issecretvalue")
+  if type(loadedProbe) ~= "function" then
+    loadedProbe = nil
+  end
 
----Hand `failure` to the host error handler without raising. Outside a client
----it is printed, as the client's own default handler would.
+  isSecret = function(value)
+    local probe = loadedProbe
+    if probe == nil then
+      -- selene: allow(global_usage)
+      probe = rawget(_G, "issecretvalue")
+      if type(probe) ~= "function" then
+        return false
+      end
+    end
+    return probe(value) == true
+  end
+end
+-- shared:end isSecret
+
+-- shared:begin reportError 1
+-- Copied from tooling/shared/lua/reportError.lua by python3 -m tooling.shared.sync; edit that file, not this copy.
+---Report `failure` through the host error handler, or print it.
 ---@param failure any
 local function reportError(failure)
-  local getErrorHandler = readGlobal("geterrorhandler")
+  -- geterrorhandler is a client API reachable only through the global table.
+  -- selene: allow(global_usage)
+  local getErrorHandler = rawget(_G, "geterrorhandler")
   if type(getErrorHandler) == "function" then
     local handler = getErrorHandler()
-    if type(handler) == "function" then
-      handler(failure)
+    if type(handler) == "function" and pcall(handler, failure) then
       return
     end
   end
   print(failure)
 end
+-- shared:end reportError
 
 ---Remove a leading `AddonKit...lua:<line>: ` position from `message`, so a
 ---message raised again at the author's line names only the author's line.
@@ -1059,15 +1072,19 @@ end
 
 -- Package public API ---------------------------------------------------------
 
----@param receiver any
----@param label string
+-- shared:begin validateFacade 1 __FACADE__=AddonKit
+-- Copied from tooling/shared/lua/validateFacade.lua by python3 -m tooling.shared.sync; edit that file, not this copy.
+---Raise at `level` unless `receiver` is the AddonKit facade.
+---@param receiver any the table the method was called on
+---@param label string qualified method name, used in the argument error
 ---@param level integer stack level the failure is reported at
 local function validateFacade(receiver, label, level)
-  -- `type` first: a secret receiver is never a table, and only a table is compared.
   if type(receiver) ~= "table" or receiver ~= AddonKit then
-    error(label .. " must be called on the AddonKit facade; use " .. label .. "(...)", level)
+    local hint = "; use " .. label .. "(...)"
+    error(label .. " must be called on the AddonKit facade" .. hint, level)
   end
 end
+-- shared:end validateFacade
 
 ---A fresh copy of the catalogue: facade name to package ID and generation.
 ---@param self AddonKit

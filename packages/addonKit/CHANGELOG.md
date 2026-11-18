@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.2.1 — 2026-11-18
+
+- `isSecret`, `reportError` and `validateFacade` are now the shared helper blocks (`tooling/shared/lua/`, kept in step by `python3 -m tooling.shared.sync`).
+- Fixed: a host error handler that itself raises no longer turns the report of a foreign `MoltenCodes.For` into an error raised into the loading file; the report is printed instead.
+- Changed: the secret check takes the probe rule: `issecretvalue` is read once at load and asked directly; only a host that had no probe at load reads the global again on each check. A probe that replaces the one present at load is no longer asked. Refusal messages are unchanged.
+- `readGlobal` lost its last caller and is removed: one main-chunk local fewer.
+- Implementation revision 3; an embedded revision 2 is upgraded in place, facades and limits kept. The parts are unchanged.
+- Docs: `docs/API.md` gains `## Secret values`, renames `## Cost` to `## Performance` and documents the error handler fallback.
+- New specs: `SharedHelpers_spec.lua` (the raising handler, the probe kept from load, the facade message, the upgrade over the committed revision 2 file in `tests/fixtures/AddonKit-revision2.lua`) and `Conformance_spec.lua` (the conformance suite; its limits group is pending, see the spec). `AddonKitTestEnv.NewSecret` marks its value in the client stub's probe as well, the one AddonKit finds at load.
+
 ## 0.2.0 — 2026-11-15
 
 The module defaults and the module-created notice on the facade (roadmap package O, "addonKit: the module defaults and the created notice on the facade", ADR 0004).
