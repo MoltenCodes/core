@@ -327,16 +327,19 @@ end
 
 -- Limits -------------------------------------------------------------------------
 
+-- shared:begin validateFacade 1 __FACADE__=ProfileKit
+-- Copied from tooling/shared/lua/validateFacade.lua by python3 -m tooling.shared.sync; edit that file, not this copy.
+---Raise at `level` unless `receiver` is the ProfileKit facade.
 ---@param receiver any the table the method was called on
----@param label string public method name, used in the argument error
+---@param label string qualified method name, used in the argument error
 ---@param level integer stack level the failure is reported at
 local function validateFacade(receiver, label, level)
-  -- The type test runs first so a caller's non-table receiver, a secret
-  -- included, is never compared with the facade.
   if type(receiver) ~= "table" or receiver ~= ProfileKit then
-    error(label .. " must be called on the ProfileKit facade; use " .. label .. "(...)", level)
+    local hint = "; use " .. label .. "(...)"
+    error(label .. " must be called on the ProfileKit facade" .. hint, level)
   end
 end
+-- shared:end validateFacade
 
 ---Name a caller's table key in a refusal without running its `__tostring`.
 ---
