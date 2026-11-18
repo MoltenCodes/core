@@ -3,10 +3,10 @@
   "displayName": "CacheKit",
   "description": "Bounded LRU and TTL caches with negative entries, memoisation, diffed snapshots, lazy namespace trees, ring queues and clear-on-event for World of Warcraft addons.",
   "summary": "Bounded LRU and TTL caches, memoisation, negative entries, lazy namespaces, bounded queues and snapshots with diffs.",
-  "version": "0.2.9",
+  "version": "0.3.0",
   "license": "MIT",
   "api": 1,
-  "revision": 7,
+  "revision": 8,
   "dependencies": {
     "registry": {
       "api": 2
