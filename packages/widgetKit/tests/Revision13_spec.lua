@@ -11,7 +11,16 @@ local function loadRevision13()
   TestEnv.InstallWowApi()
   TestEnv.InstallClientRules()
   TestEnv.InstallScreen()
-  for _, name in ipairs({ "Registry", "SignalKit", "PoolKit", "SchemaKit", "OptionsKit" }) do
+  -- Revision 13 creates its pools with a `generation`, which PoolKit serves
+  -- from its Generations part since PoolKit 0.5.0.
+  for _, name in ipairs({
+    "Registry",
+    "SignalKit",
+    "PoolKit",
+    "PoolKit-Generations",
+    "SchemaKit",
+    "OptionsKit",
+  }) do
     require(name)
   end
   return TestEnv.LoadRevision13()

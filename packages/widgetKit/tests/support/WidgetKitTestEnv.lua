@@ -101,6 +101,8 @@ function WidgetKitTestEnv.Reset()
   for index = 1, #WidgetKitTestEnv.PARTS do
     package.loaded["WidgetKit-" .. WidgetKitTestEnv.PARTS[index]] = nil
   end
+  -- The PoolKit part `Revision13_spec.lua` loads for revision 13's pools.
+  package.loaded["PoolKit-Generations"] = nil
   sharedReset()
 end
 

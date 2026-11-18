@@ -5,8 +5,10 @@
 --- MediaKit's names. This environment loads all of them, in dependency order,
 --- before WidgetKit:
 ---
----   Registry, SignalKit, TimerKit, SchedulerKit, PoolKit, SchemaKit,
----   SettingsKit, OptionsKit, MediaKit, WidgetKit
+---   Registry, SignalKit, TimerKit, SchedulerKit and its Coalescing part,
+---   PoolKit, SchemaKit and its Rules part (which OptionsKit requires),
+---   SettingsKit, OptionsKit and its Bind part (the `bind` options of the
+---   media and position specs), MediaKit, WidgetKit
 ---
 --- EventKit and LifecycleKit are optional for every Kit here since package F,
 --- so the runner no longer puts them on `LUA_PATH` for this suite.
@@ -28,8 +30,10 @@ local WidgetKitHostTestEnv = FrameworkTestEnv.New({
     "SchedulerKit-Coalescing",
     "PoolKit",
     "SchemaKit",
+    "SchemaKit-Rules",
     "SettingsKit",
     "OptionsKit",
+    "OptionsKit-Bind",
     "MediaKit",
     "WidgetKit",
   },
@@ -84,8 +88,10 @@ function WidgetKitHostTestEnv.NewPackage()
     "SchedulerKit-Coalescing",
     "PoolKit",
     "SchemaKit",
+    "SchemaKit-Rules",
     "SettingsKit",
     "OptionsKit",
+    "OptionsKit-Bind",
     "MediaKit",
     "WidgetKit",
   }) do
