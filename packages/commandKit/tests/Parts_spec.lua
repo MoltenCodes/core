@@ -87,12 +87,12 @@ describe("CommandKit part revisions", function()
     local parts = rawget(rawget(CommandKit, "_state"), "parts")
     local first = rawget(CommandKit.Scope, "BindOptions")
 
-    TestEnv.LoadPartRevision("Options", 0)
+    TestEnv.LoadPartRevision("Options", 1)
     assert.are.equal(first, rawget(CommandKit.Scope, "BindOptions"))
-    assert.are.equal(1, parts.Options.revision)
-
-    TestEnv.LoadPartRevision("Options", 2)
     assert.are.equal(2, parts.Options.revision)
+
+    TestEnv.LoadPartRevision("Options", 3)
+    assert.are.equal(3, parts.Options.revision)
     assert.are_not.equal(first, rawget(CommandKit.Scope, "BindOptions"))
     assert.are.equal(parts.Options.methods.BindOptions, rawget(CommandKit.Scope, "BindOptions"))
   end)
@@ -101,7 +101,7 @@ describe("CommandKit part revisions", function()
     TestEnv.Reset()
     TestEnv.InstallWowApi()
     require("Registry")
-    for _, partName in ipairs({ "Options", "Completion" }) do
+    for _, partName in ipairs({ "Arguments", "Options", "Completion" }) do
       local ok, message = pcall(require, "CommandKit-" .. partName)
       assert.is_false(ok)
       assert.is_not_nil(
@@ -130,6 +130,7 @@ describe("CommandKit in-place upgrade from revision 10", function()
     require("SchemaKit")
     local OptionsKit = require("OptionsKit")
     local previous = TestEnv.LoadRevision(10)
+    require("CommandKit-Arguments")
     require("CommandKit-Options")
     require("CommandKit-Completion")
     local state = rawget(previous, "_state")
@@ -162,8 +163,11 @@ describe("CommandKit in-place upgrade from revision 10", function()
 
     local upgraded = require("CommandKit")
 
-    assert.are.equal(11, upgraded.REVISION)
+    assert.are.equal(12, upgraded.REVISION)
     assert.are.same({}, rawget(state, "parts"))
+    -- The addon that brought revision 12 embeds the Arguments part, which
+    -- loads after its core and serves the records revision 10 compiled.
+    TestEnv.LoadPartRevision("Arguments", 1)
     assert.are.equal(32, upgraded:GetLimits().maxCompletionProviders)
     assert.are.equal(tabPressed, rawget(rawget(state, "dispatch"), "tabPressed"))
     TestEnv.RunSlash("/cfg get size")

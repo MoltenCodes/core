@@ -314,3 +314,87 @@ describe("CommandKit logout close", function()
     end)
   end)
 end)
+
+describe("CommandKit inherited logout arrangement", function()
+  after_each(TestEnv.Reset)
+
+  ---Every function reachable from `root` through table keys and values,
+  ---metatables and function upvalues.
+  ---@param root table
+  ---@return function[]
+  local function reachableFunctions(root)
+    local seen, found, pending = {}, {}, { root }
+    while #pending > 0 do
+      local value = table.remove(pending)
+      local kind = type(value)
+      if (kind == "table" or kind == "function") and not seen[value] then
+        seen[value] = true
+        if kind == "table" then
+          for key, entry in next, value do
+            pending[#pending + 1] = key
+            pending[#pending + 1] = entry
+          end
+          pending[#pending + 1] = debug.getmetatable(value)
+        else
+          found[#found + 1] = value
+          local index = 1
+          while true do
+            local name, upvalue = debug.getupvalue(value, index)
+            if name == nil then
+              break
+            end
+            pending[#pending + 1] = upvalue
+            index = index + 1
+          end
+        end
+      end
+    end
+    return found
+  end
+
+  ---Whether a reachable function of CommandKit.lua spans `line`.
+  ---@param functions function[]
+  ---@param line integer
+  ---@return boolean
+  local function spanned(functions, line)
+    for index = 1, #functions do
+      local info = debug.getinfo(functions[index], "S")
+      if
+        info.source:find("CommandKit.lua", 1, true)
+        and info.linedefined > 0
+        and info.linedefined <= line
+        and info.lastlinedefined >= line
+      then
+        return true
+      end
+    end
+    return false
+  end
+
+  ---The first line of CommandKit.lua that contains `text`.
+  ---@param text string
+  ---@return integer
+  local function lineOf(text)
+    local path = debug.getinfo(TestEnv.NewPackage().CreateScope, "S").source:sub(2)
+    local number = 0
+    for line in io.lines(path) do
+      number = number + 1
+      if line:find(text, 1, true) then
+        return number
+      end
+    end
+    error("CommandKit.lua has no line containing " .. text)
+  end
+
+  it("keeps no code for arranging inherited scopes after load (revision 12)", function()
+    local arrangeLine = lineOf("local inherited = {}")
+    local closeLine = lineOf("function LogoutClose.closeAtLogout()")
+    local functions = reachableFunctions(require("CommandKit"))
+
+    -- The walk reaches the logout code that stays resident...
+    assert.is_true(spanned(functions, closeLine))
+    -- ...but not the arrangement of inherited scopes, which runs once in the
+    -- main chunk and is freed with it.
+    assert.is_false(spanned(functions, arrangeLine))
+  end)
+end)

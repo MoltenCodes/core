@@ -1,25 +1,19 @@
 {
   "name": "commandKit",
   "displayName": "CommandKit",
-  "description": "Slash commands for World of Warcraft addons: hyperlink-aware argument parsing, sub-commands with generated usage, schema-checked arguments, output sinks, tab completion and an OptionsKit command line.",
-  "summary": "Slash commands with hyperlink-aware parsing, generated usage, schema-checked arguments, sinks, completion and an OptionsKit command line.",
-  "version": "0.3.0",
+  "description": "Slash commands for World of Warcraft addons: hyperlink-aware argument parsing, sub-commands with generated usage, output sinks, and in parts schema-checked arguments, tab completion and an OptionsKit command line.",
+  "summary": "Slash commands with hyperlink-aware parsing, generated usage and sinks; schema-checked arguments, completion and an OptionsKit command line in parts.",
+  "version": "0.4.0",
   "license": "MIT",
   "api": 1,
-  "revision": 11,
+  "revision": 12,
   "dependencies": {
     "registry": {
       "api": 2
-    },
-    "schemaKit": {
-      "api": 1
     }
   },
   "optionalDependencies": {
     "localeKit": {
-      "api": 1
-    },
-    "clientKit": {
       "api": 1
     },
     "eventKit": {
@@ -30,14 +24,26 @@
     }
   },
   "parts": {
+    "Arguments": {
+      "description": "Schema-checked command arguments: SchemaKit schemas per position or one array, coercion of the typed words, generated usage and refusals.",
+      "revision": 1,
+      "dependencies": {
+        "schemaKit": {
+          "api": 1
+        }
+      }
+    },
     "Options": {
       "description": "Drive an OptionsKit tree from a slash command: the get, set, reset, list and exec verbs and AceConfigCmd's path syntax.",
-      "revision": 1,
+      "revision": 2,
       "dependencies": {
         "optionsKit": {
           "api": 1
         }
-      }
+      },
+      "parts": [
+        "Arguments"
+      ]
     },
     "Completion": {
       "description": "Tab completion in chat edit boxes: the scopes' own commands and AceTab-style completion providers.",

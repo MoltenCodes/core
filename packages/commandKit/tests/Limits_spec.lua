@@ -287,7 +287,7 @@ describe("CommandKit limits", function()
       local before = CommandKit:GetLimits()
       for _, value in ipairs({ 0, -1, 1.5, 0 / 0, math.huge, "8", {} }) do
         assertReportedAtCaller(
-          "CommandKit:SetLimits limits.maxCaptured must be a positive integer or CommandKit.UNBOUNDED",
+          "CommandKit:SetLimits limits.maxCaptured must be an integer from 1 to 2147483647",
           function(mark)
             mark()
             CommandKit:SetLimits({ maxCompletions = 4, maxCaptured = value })
@@ -295,14 +295,16 @@ describe("CommandKit limits", function()
         )
       end
       assertReportedAtCaller(
-        "CommandKit:SetLimits limits.maxBuses is not a recognised limit",
+        "CommandKit:SetLimits limits.maxBuses is not a recognised limit"
+          .. "; it accepts maxCaptured, maxCompletions, maxEmotes, maxCompletionProviders",
         function(mark)
           mark()
           CommandKit:SetLimits({ maxEmotes = 4, maxBuses = 4 })
         end
       )
       assertReportedAtCaller(
-        "CommandKit:SetLimits limits.1 is not a recognised limit",
+        "CommandKit:SetLimits limits.1 is not a recognised limit"
+          .. "; it accepts maxCaptured, maxCompletions, maxEmotes, maxCompletionProviders",
         function(mark)
           mark()
           CommandKit:SetLimits({ 4 })
@@ -332,7 +334,8 @@ describe("CommandKit limits", function()
       })
       local before = CommandKit:GetLimits()
       assertReportedAtCaller(
-        "CommandKit:SetLimits limits.<table> is not a recognised limit",
+        "CommandKit:SetLimits limits.<table> is not a recognised limit"
+          .. "; it accepts maxCaptured, maxCompletions, maxEmotes, maxCompletionProviders",
         function(mark)
           mark()
           CommandKit:SetLimits({ [key] = 4 })

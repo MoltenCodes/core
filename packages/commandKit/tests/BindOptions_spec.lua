@@ -436,6 +436,10 @@ describe("CommandKit BindOptions", function()
   it("requires OptionsKit", function()
     TestEnv.Reset()
     local Alone = TestEnv.NewPackageAlone()
+    -- The Options part needs the Arguments part, which needs SchemaKit;
+    -- OptionsKit itself stays unloaded.
+    require("SchemaKit")
+    require("CommandKit-Arguments")
     require("CommandKit-Options")
     TestEnv.expectErrorContaining(
       "CommandKit.Scope:BindOptions requires OptionsKit API 1",

@@ -1,6 +1,6 @@
 # CommandKit
 
-CommandKit gives a World of Warcraft addon its slash commands: registration owned by a scope, an argument parser that keeps quoted text and shift-clicked item links whole, sub-commands with usage text generated from their declarations, arguments checked against SchemaKit schemas, output to a replaceable sink, optional tab completion, and a command line over an OptionsKit tree.
+CommandKit gives a World of Warcraft addon its slash commands: registration owned by a scope, an argument parser that keeps quoted text and shift-clicked item links whole, sub-commands with usage text generated from their declarations and output to a replaceable sink in its core; arguments checked against SchemaKit schemas, tab completion and a command line over an OptionsKit tree in optional parts.
 
 ```lua
 local Registry = MoltenCodes.Registries[2]
@@ -32,13 +32,13 @@ commands:Register("myaddon", {
 })
 ```
 
-Typing `/myaddon` prints the generated usage; `/myaddon scale 3` prints `/myaddon scale: argument 1: expected number <= 2, found larger number` followed by the usage; `/myaddon link` followed by a shift-clicked item receives the whole link as one argument.
+The `arguments` schemas need the Arguments part (`parts/CommandKit-Arguments.lua`) and SchemaKit; without them a command receives its words as strings. Typing `/myaddon` prints the generated usage; `/myaddon scale 3` prints `/myaddon scale: argument 1: expected number <= 2, found larger number` followed by the usage; `/myaddon link` followed by a shift-clicked item receives the whole link as one argument.
 
 What each piece promises:
 
 - **Collision-safe registration.** CommandKit writes `SlashCmdList[<key>]` and `SLASH_<key>1` with a key built from the addon and command names, and returns `nil, "taken"` when another owner or a chat type already uses the slash name, or `nil, "emote"` when an emote does, instead of silently overwriting or shadowing it.
 - **A parser that understands WoW text.** `"double"` and `'single'` quotes with `\"` escapes (an unclosed `'` is an apostrophe), `|H…|h[…]|h` hyperlinks, `|c…|r` colour-wrapped text and `|T…|t` textures are single tokens; an unterminated double quote or link is refused with a reason. `CommandKit:ParseInto` fills a caller-owned array and allocates nothing for text it has seen.
-- **Declarative sub-commands.** Up to three levels deep, with usage lines generated from the argument schemas (`<number 0.5..2>`, `[TOP|CENTER]`) and descriptions.
+- **Declarative sub-commands.** Up to three levels deep, with usage lines generated from the argument schemas (`<number 0.5..2>`, `[TOP|CENTER]`; the Arguments part) and descriptions.
 - **Two kinds of failure, two channels.** A bad spec raises at your line when you register it; a bad thing the user typed is printed to the sink with the usage. A handler that raises is reported to the sink and to the host error handler.
 - **Cheap dispatch.** A slash command allocates nothing when its text has been seen before, unless a table default is filled (each dispatch gets a fresh copy); the parser has no state outside the call; everything is bounded (64 commands per scope, 3 sub-command levels, 4 nested dispatches).
 - **Bounded by default, opened on purpose.** Scope options (`maxCommands`, `maxSubcommands`, `maxPositions`, `maxSlashAliases`), `CommandKit:SetLimits{}` and `CommandKit.UNBOUNDED` lift the defaults where the memory is yours; see [Limits](docs/API.md#limits).
@@ -75,23 +75,31 @@ troubleshooting. This package's load order inside a consuming addon is:
 
 ```toc
 Libs\MoltenCodes\registry\Registry.lua
-Libs\MoltenCodes\schemaKit\SchemaKit.lua
 Libs\MoltenCodes\commandKit\CommandKit.lua
-Libs\MoltenCodes\commandKit\parts\CommandKit-Completion.lua   # only with completion
+Libs\MoltenCodes\schemaKit\SchemaKit.lua                       # with the Arguments part
+Libs\MoltenCodes\commandKit\parts\CommandKit-Arguments.lua    # only with argument schemas or BindOptions
 Libs\MoltenCodes\signalKit\SignalKit.lua                       # with the Options part
 Libs\MoltenCodes\optionsKit\OptionsKit.lua                     # with the Options part
 Libs\MoltenCodes\commandKit\parts\CommandKit-Options.lua      # only with BindOptions
+Libs\MoltenCodes\commandKit\parts\CommandKit-Completion.lua   # only with completion
 ```
 
-Minimum footprint: embed 3 files: `registry/Registry.lua`, `schemaKit/SchemaKit.lua`, `commandKit/CommandKit.lua`.
-The two parts ([ADR 0001](../../docs/decisions/0001-kit-core-and-parts.md)) are
-optional: `parts/CommandKit-Options.lua` for `BindOptions` (it needs
-OptionsKit), and `parts/CommandKit-Completion.lua` for tab completion.
-`python3 -m tooling.package.embeds` writes the list for any selection.
+Minimum footprint: embed 2 files: `registry/Registry.lua`, `commandKit/CommandKit.lua`.
+The three parts ([ADR 0001](../../docs/decisions/0001-kit-core-and-parts.md)) are
+optional; `python3 -m tooling.package.embeds` writes the list for any selection.
+Resident sizes on host Lua 5.1.5 (64-bit, debug information kept, measured
+2026-11-18, each file after its dependencies in one process):
 
-Direct runtime dependencies: Registry API 2 and SchemaKit API 1.
-All three files above are required; omitting either of the first two makes this
-package raise at load.
+| File | Adds | Needs | Resident |
+|---|---|---|---:|
+| `CommandKit.lua` | registration, parsing, dispatch, sub-commands and usage, sinks | Registry | 113.3 KB |
+| `parts/CommandKit-Arguments.lua` | `arguments` schemas: coercion, usage words, refusals | SchemaKit | 12.1 KB |
+| `parts/CommandKit-Options.lua` | `BindOptions`, `GetBoundTree` | OptionsKit, the Arguments part | 40.2 KB |
+| `parts/CommandKit-Completion.lua` | tab completion and completion providers | nothing more | 19.3 KB |
+
+Direct runtime dependency of the core: Registry API 2; omitting it makes this
+package raise at load. The Arguments part needs SchemaKit API 1 and raises at
+load without it.
 
 Optional, each found with `Registry:Find` when it is used, so they may load in
 any order:
@@ -100,8 +108,6 @@ any order:
   (`scope:BindOptions`), which names it as its dependency;
 - LocaleKit API 1, used by `context:Printf` for indexed specifiers such as
   `%2$s`; without it `Printf` uses `string.format`;
-- ClientKit API 1, used to recognise a secret value; without it CommandKit asks
-  the host's `issecretvalue` directly;
 - LifecycleKit API 1 and EventKit API 1, used to close an addon scope at
   logout (below).
 

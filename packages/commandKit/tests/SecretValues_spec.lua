@@ -71,19 +71,7 @@ describe("CommandKit and secret values", function()
     )
   end)
 
-  it("asks ClientKit when it is registered", function()
-    TestEnv.Reset()
-    local WithClientKit, ClientKit = TestEnv.NewPackageWithClientKit()
-    TestEnv.SetGlobal("issecretvalue", nil)
-    rawset(ClientKit, "IsSecret", function(_, value)
-      return value == "hidden"
-    end)
-    TestEnv.expectErrorContaining("CommandKit:Parse text must not be a secret value", function()
-      WithClientKit:Parse("hidden")
-    end)
-  end)
-
-  it("looks ClientKit up on the first secret question only, a miss included", function()
+  it("asks the client's probe and never ClientKit, which is no longer looked up", function()
     TestEnv.Reset()
     local Kit = TestEnv.NewPackage()
     local Registry = require("Registry")
@@ -98,28 +86,14 @@ describe("CommandKit and secret values", function()
     TestEnv.SetGlobal("issecretvalue", function(value)
       return value == "hidden"
     end)
-    for _ = 1, 3 do
-      TestEnv.expectErrorContaining("CommandKit:Parse text must not be a secret value", function()
-        Kit:Parse("hidden")
-      end)
-    end
-    local kitScope = Kit:CreateScope()
-    assert.is_true(kitScope:Register("once", { handler = function() end }))
-    rawset(Registry, "Find", find)
-    assert.are.equal(1, clientKitLookups)
-
-    -- The miss is kept: a ClientKit registered later is not asked, and the
-    -- host probe answers as ClientKit would.
-    local ClientKit = require("ClientKit")
-    local asked = 0
-    rawset(ClientKit, "IsSecret", function()
-      asked = asked + 1
-      return false
-    end)
     TestEnv.expectErrorContaining("CommandKit:Parse text must not be a secret value", function()
       Kit:Parse("hidden")
     end)
-    assert.are.equal(0, asked)
+    local kitScope = Kit:CreateScope()
+    assert.is_true(kitScope:Register("once", { handler = function() end }))
+    rawset(Registry, "Find", find)
+    assert.are.equal(0, clientKitLookups)
+    assert.is_nil(rawget(rawget(Kit, "_state"), "clientKitLookup"))
   end)
 
   it("skips secret completion candidates and secret slash globals", function()
@@ -277,14 +251,14 @@ describe("CommandKit and secret values", function()
       end
     )
     assertReportedAtCaller(
-      "CommandKit:SetLimits limits.maxCaptured must be a positive integer or CommandKit.UNBOUNDED",
+      "CommandKit:SetLimits limits.maxCaptured must not be a secret value",
       function(mark)
         mark()
         CommandKit:SetLimits({ maxCaptured = secret })
       end
     )
     assertReportedAtCaller(
-      "CommandKit:SetLimits limits.maxCompletions must be an integer from 1 to 256",
+      "CommandKit:SetLimits limits.maxCompletions must not be a secret value",
       function(mark)
         mark()
         CommandKit:SetLimits({ maxCompletions = secret })
