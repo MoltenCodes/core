@@ -9,6 +9,8 @@ The TooltipKit suite covers:
 - secret values: secret texts refused in `AddLine`, `AddHeader` and `SetCell` without `allowSecret` and drawn with it, secret sizes counted as 0, secret keys, columns, justifications, lines, options, colours, limits and receivers refused, a secret mouse-over answer counted as off, a secret wheel delta ignored, and either `GetCenter` coordinate answered secret anchoring to the default side;
 - `error` levels: every argument failure reports the caller's own line;
 - Registry publication, a duplicate embedded load keeping tooltips, yielding to a newer revision, an in-place upgrade keeping tooltips, pools and limits while line handlers and auto-hide made before it run the new code, a revision-1 copy upgraded in place to the shipped revision, a refusal of state holding an invalid limit, missing Registry or PoolKit, and an incomplete facade;
+- the shared helper blocks: the secret probe kept from load and a probe installed after load asked, the facade message, a line handler printed when the host error handler raises, and the in-place upgrade over the committed revision 2 file (`fixtures/TooltipKit-revision2.lua`);
+- the repository conformance suite (`tests/support/KitConformance.lua`): manifest, receivers, arguments and upgrade; its limits group is pending, with the reason in the spec;
 - manifest/runtime API and revision consistency, and the declared dependencies.
 
 `support/TooltipKitTestEnv.lua` provides `UIParent`, `FrameAt` (a frame at a screen position), `SetMouseOver` (an `IsMouseOver` answer, which the shared stub does not model), `BoundStringWidths` (font strings measuring as the client's do: `GetStringWidth` stopped at the width given, and `GetUnboundedStringWidth`), `Run` (a frame's script), `TakeReportedValues`, the secret probe and `LoadRevision`. Specs read line frames from the package state.
@@ -22,4 +24,6 @@ The TooltipKit suite covers:
 | `SecretValues_spec.lua` | secret texts, sizes, arguments and answers |
 | `ErrorLevels_spec.lua` | argument errors reported at the caller's line |
 | `Bootstrap_spec.lua` | publication, duplicate loads, load order, upgrades |
+| `SharedHelpers_spec.lua` | the shared `isSecret`, `reportError` and `validateFacade` blocks, the upgrade from revision 2 |
+| `Conformance_spec.lua` | the conformance suite on a mainline-profile environment |
 | `Manifest_spec.lua` | manifest and runtime `API` / `REVISION` agreement, declared dependencies |
