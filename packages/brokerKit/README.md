@@ -109,5 +109,6 @@ load.
 LibStub and LibDataBroker-1.1 are optional and found when
 `ExposeToLibDataBroker` or `AdoptFromLibDataBroker` is called, so they may load
 before or after BrokerKit; call those two after them (on `PLAYER_LOGIN`, say).
-BrokerKit reads the host's `issecretvalue` when it needs it; it is optional
+BrokerKit reads the host's `issecretvalue` once at load (again at each check
+only when it was absent at load); it is optional
 (see *Host facilities* in the API).

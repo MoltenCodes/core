@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.7 — 2026-11-18
+
+- `isSecret` and `validateFacade` are now the shared helper blocks (`tooling/shared/lua/`, kept in step by `python3 -m tooling.shared.sync`). The secret check takes the probe rule: `issecretvalue` is read once at load and asked directly, about 50 ns less per check on the host; only a host that had no probe at load reads the global again on each check. A probe that replaces the one present at load is no longer asked. Refusal messages are unchanged; the `SetLimits` validation stays BrokerKit's own.
+- Implementation revision 4; an embedded revision 3 is upgraded in place, objects and limits kept.
+- New specs: `SharedHelpers_spec.lua` (the probe rule, the facade message, the upgrade over the committed revision 3 file in `tests/fixtures/BrokerKit-revision3.lua`) and `Conformance_spec.lua` (the repository's conformance suite; its limits group is pending, see the spec).
+
 ## 0.1.6 — 2026-11-15
 
 - Documentation: the README's non-goals called the minimap launcher button "a user-interface Kit". That Kit exists now; the README names [LauncherKit](../launcherKit/), which puts a BrokerKit object on the minimap.
