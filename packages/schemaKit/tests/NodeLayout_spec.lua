@@ -115,6 +115,10 @@ describe("SchemaKit compiled node layout", function()
     local current = require("SchemaKit")
     assert.are.equal(previous, current)
     assert.are.equal(working, current.REVISION)
+    -- Revision 5 kept no members for the parts to replace: `Apply` comes
+    -- from the Apply part, as in a session that embeds it.
+    TestEnv.LoadPart("Rules")
+    TestEnv.LoadPart("Apply")
 
     -- Every node behind a proxy is a sparse copy, and the children point
     -- at the copies too.

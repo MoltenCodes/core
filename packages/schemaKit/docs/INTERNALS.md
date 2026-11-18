@@ -84,9 +84,24 @@ A failing map key rewrites `expected` to `key <expected>`: the one string built 
 - **Size.** `array` and `map` count entries with `next` and fail on entry `max + 1`, before any element is checked. `array` then requires `rawget(value, index)` for every `index` in `1..count`; `count` entries all present at `1..count` means the keys are exactly `1..count`.
 - **Closed tables.** The undeclared-key walk returns at the first key missing from `fieldSet`, so it runs at most `#fields + 1` steps.
 
+## Parts
+
+Revision 7 splits the builders only some schemas need into two part files (ADR 0001). The checker stays whole in the core: `checkString` keeps the pattern match (`string.find` with the node's `pattern`), `checkNode` the custom call and `checkOneOf` stays as it is. So a node built while a part was loaded, or by an older copy that had every builder, checks the same in any session, and a session pays for a builder only where it builds such nodes.
+
+| State field | Purpose |
+|---|---|
+| `parts` | Part name to `{ revision = n }`, written by each part when it installs. Kept across upgrades. |
+| `dispatch` | Entries a part installs and no core revision overwrites: `compilePattern(node, pattern, level)` (Rules), which the core's `string` builder calls for a `pattern` field. While Rules is absent the core installs a stub that raises the not-loaded message at `level`. |
+| `helpers` | The core functions a part calls (`isSecret`, `currentSecretProbe`, `refuseColonCall`, `validateList`, `resolveChild`, `newCompiledNode`, `publishNode`, `quote`, `recordOf`, `checkNode`, `runCheck`, `restoreSegments`, `copyPlain`, `adoptPart`). Rewritten by every core revision and read by the parts at call time, so a newer core loaded after a part serves it. |
+| `legacyMembers` | Present only after an upgrade from revision 6 while a part is absent: revision 6's `string`, `custom`, `oneOf` and `Schema.Apply`, kept instead of the stubs. `adoptPart(name)`, which each part calls once its members are installed, drops the members it replaces and the table once it is empty; the Rules part also gives the facade the core's `string` back. |
+
+The Rules part holds `patternClassEnd`, `isValidPattern`, `compilePattern`, `buildOneOf` and `buildCustom`, and installs `SchemaKit.oneOf`, `SchemaKit.custom` and `dispatch.compilePattern`. It reads `maxPatternCaptures` from `state.limits` when it walks a pattern. The Apply part holds `copyNode` and its per-kind copiers, `countEntries` and `schemaApply`, and installs `Schema.Apply`; it reads `maxDepth` from `state.limits` at the start of every `Apply`. `copyPlain` and `plainDepthWithin` stay in the core: `optional` and `Describe` use them.
+
+Installing the core's members is inline code of the main chunk, so it is freed once the file has run: a member whose part is loaded is left as the part installed it; otherwise it is the kept revision 6 member or the stub.
+
 ## Apply
 
-`Apply` runs `copyNode` and then an ordinary check of the result. `copyNode` mirrors `checkNode` but is tolerant: whenever it meets something it cannot copy (a secret, a wrong type, a table too deep, too large or with holes, an undeclared key of a closed table) it keeps the original value and moves on, and the check that follows reports it with the same rule and path `Check` would. A `nil` under an `optional` with a default becomes `copyPlain(default)`, which then goes through the inner schema so its own defaults are filled. For `oneOf`, each alternative's copy is checked in turn and the first that passes is kept; the trial checks restore the path stack.
+`Apply` (the Apply part) runs `copyNode` and then an ordinary check of the result. `copyNode` mirrors `checkNode` but is tolerant: whenever it meets something it cannot copy (a secret, a wrong type, a table too deep, too large or with holes, an undeclared key of a closed table) it keeps the original value and moves on, and the check that follows reports it with the same rule and path `Check` would. A `nil` under an `optional` with a default becomes `copyPlain(default)`, which then goes through the inner schema so its own defaults are filled. For `oneOf`, each alternative's copy is checked in turn and the first that passes is kept; the trial checks restore the path stack.
 
 `copyPlain` deep-copies tables only. It needs no bound at `Apply` time because the `optional` builder refuses a default nesting more than `maxDepth` tables (which also refuses a cyclic one).
 

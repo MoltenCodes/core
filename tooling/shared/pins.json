@@ -15,6 +15,11 @@
       "package": "hookKit",
       "helpers": ["validateFacade"],
       "reason": "HookKit compares the receiver with rawequal; its owner decides whether to take the shared type-first form."
+    },
+    {
+      "package": "schemaKit",
+      "helpers": ["limits"],
+      "reason": "SchemaKit's limits loop keeps its own messages and its uncapped defaultArrayMax; the shared limits block requires a ceiling per limit and measured larger. Deferred by the schemaKit Rules and Apply parts record."
     }
   ]
 }

@@ -2,7 +2,7 @@
 
 SchemaKit API generation **1** provides value schemas: builders that describe a value, a seal that makes the description immutable, and a checker that reports structured failures which never contain the checked value.
 
-Implementation revision: **5**.
+Implementation revision: **7**.
 
 ## Loading
 
@@ -11,7 +11,27 @@ Runtime files must be loaded in dependency order:
 ```text
 Registry.lua
 SchemaKit.lua
+parts/SchemaKit-Rules.lua     (optional)
+parts/SchemaKit-Apply.lua     (optional)
 ```
+
+`SchemaKit.lua` is the core ([ADR 0001](../../../docs/decisions/0001-kit-core-and-parts.md)): every builder but `custom` and `oneOf`, `Seal`, `Check`, `Assert`, `Describe`, the limits and `HasPart`. Two optional parts hold what only some schemas need; embed a part after the core, or let `python3 -m tooling.package.embeds schemaKit/Rules` write the list:
+
+| Part | File | Adds |
+|---|---|---|
+| `Rules` | `parts/SchemaKit-Rules.lua` | the `pattern` field of `SchemaKit.string` (validated when built), `SchemaKit.custom` and `SchemaKit.oneOf` |
+| `Apply` | `parts/SchemaKit-Apply.lua` | `schema:Apply(value)` |
+
+The checker in the core reads every kind, so a node built while a part was loaded checks the same in a session without it. A member of a part that is not loaded is still on the facade or the `Schema` prototype, as a stub that raises at the caller's line with the file to add:
+
+```text
+SchemaKit.custom is in SchemaKit's Rules part, which is not loaded: add schemaKit\parts\SchemaKit-Rules.lua
+SchemaKit.oneOf is in SchemaKit's Rules part, which is not loaded: add schemaKit\parts\SchemaKit-Rules.lua
+SchemaKit.string pattern is in SchemaKit's Rules part, which is not loaded: add schemaKit\parts\SchemaKit-Rules.lua
+SchemaKit.Schema:Apply is in SchemaKit's Apply part, which is not loaded: add schemaKit\parts\SchemaKit-Apply.lua
+```
+
+`SchemaKit:HasPart(name)` answers whether a part is loaded, without raising. A part loaded before the core raises `MoltenCodes SchemaKit part Rules requires SchemaKit API 1 to be loaded first` (or `Apply`).
 
 Portable WoW code resolves the package through Registry:
 
@@ -25,9 +45,9 @@ SchemaKit does not rely on `require()` at runtime. Loaded without Registry API 2
 
 | Facility | Used by | Without it |
 |---|---|---|
-| `issecretvalue` | every `Check`, `Assert` and `Apply`, `SetLimits`, and the builders' argument checks | Nothing is treated as secret, which is correct on clients without secret values. |
+| `issecretvalue` | every `Check`, `Assert` and `Apply`, `SetLimits`, `GetLimit`, `HasPart`, and the builders' argument checks | Nothing is treated as secret, which is correct on clients without secret values. |
 
-`issecretvalue` is read from the global table at every call, not once at load, so a probe that appears later is used at once. It costs one `rawget` per call.
+`Check`, `Assert`, `Apply` and `SetLimits` read `issecretvalue` from the global table once per call, so a probe that appears later is used at once; it costs one `rawget` per call. The builders, `GetLimit` and `HasPart` ask through the shared probe (revision 7, `tooling/shared/lua/isSecret.lua`): the probe present at load is kept, and only when none was present at load is the global read again on each call. Every client defines `issecretvalue` before any addon runs, so both answer the same in the game.
 
 ## Public surface
 
@@ -35,7 +55,7 @@ Package facade:
 
 | Field | Purpose |
 |---|---|
-| `string(spec?)` | A string, optionally bounded in length, matched against a pattern or restricted to a list. |
+| `string(spec?)` | A string, optionally bounded in length, matched against a pattern (Rules part) or restricted to a list. |
 | `number(spec?)` | A number, optionally bounded and restricted to whole numbers. |
 | `boolean()` | `true` or `false`. |
 | `enum(values)` | One of the listed strings, numbers or booleans. |
@@ -43,13 +63,14 @@ Package facade:
 | `array(spec)` | A sequence with keys exactly `1..n`. |
 | `map(spec)` | A table whose keys and values each match a schema, with a required size bound. |
 | `optional(schema, default?)` | `nil` or a value matching `schema`; `Apply` fills in `default`. |
-| `oneOf(alternatives)` | A value matching at least one alternative, tried in order. |
+| `oneOf(alternatives)` | A value matching at least one alternative, tried in order. Rules part. |
 | `any()` | Any value except `nil`. |
-| `custom(check, description)` | A value your function accepts. |
+| `custom(check, description)` | A value your function accepts. Rules part. |
 | `Seal(node, options?)` | Seal a node (or re-seal a schema) into a schema. |
 | `SetLimits(limits)` | Change any subset of the shared limits (see [Limits](#limits)). |
 | `GetLimits()` | Return the four limits in a fresh table. |
 | `GetLimit(name)` | Revision 6: return one limit's current value without allocating. |
+| `HasPart(name)` | Revision 7: whether the part `"Rules"` or `"Apply"` is loaded; `false` for any other name. |
 | `MAX_DEPTH` | `16`: the default of the `maxDepth` limit. |
 | `DEFAULT_ARRAY_MAX` | `1024`: the default of the `defaultArrayMax` limit. |
 | `UNBOUNDED` | Sentinel `SetLimits{ defaultArrayMax }` accepts to lift the default array bound. |
@@ -63,7 +84,7 @@ Sealed schemas:
 |---|---|
 | `Check(value)` | `true`, or `false` and a failure. Allocates nothing for a valid value. |
 | `Assert(value, argumentName?, level?)` | Raise a message built from the failure; return `value` when valid. |
-| `Apply(value)` | `true` and a copy with defaults filled in, or `false` and a failure. Allocates. |
+| `Apply(value)` | `true` and a copy with defaults filled in, or `false` and a failure. Allocates. Apply part. |
 | `Describe()` | A fresh plain description of the schema. Allocates. |
 
 ## Nodes and sealing
@@ -232,6 +253,27 @@ Returns a fresh plain table on every call; edit it freely.
 
 An array or map is counted with `next` and refused one step past its bound, before any element is checked, so an oversized table costs `max + 1` steps however large it is. A closed table's keys are walked only until the first undeclared one. The depth bound holds however the schema is nested: a schema may describe deeper tables, but a value is never followed past `maxDepth`.
 
+## Secret values
+
+On Retail 12.x the client hands tainted code **secret values**, which raise when compared, tested, indexed or used as a table key (see [`docs/EMBEDDING.md`](../../../docs/EMBEDDING.md#secret-values-retail-12x)). Every node asks `issecretvalue(value)` first, before any comparison, type test or index, and a secret fails with rule `secret` and found `secret value`. The failure and the `Assert` message never contain it. `Apply` keeps a secret where it found it and the check of the copy reports it. Custom checks are never called with a secret, and a secret answer from one rejects the value with rule `custom` (see [`SchemaKit.custom`](#schemakitcustomcheck-description)).
+
+The boolean flags `SchemaKit.number{ integer }`, `SchemaKit.table{ open }` and `Seal`'s `freshFailures` are asked about with `issecretvalue` before they are tested. A secret flag is refused at the caller's line with the message an invalid value of that flag gets (`SchemaKit.number integer must be a boolean`, `SchemaKit.table open must be a boolean`, `SchemaKit:Seal freshFailures must be a boolean`), the style `SetLimits` uses for a secret limit.
+
+Every other builder and `Assert` argument that SchemaKit would compare, look up or do arithmetic on is asked about the same way first, and a secret is refused at the caller's line with the message an invalid value gets:
+
+| Argument | Message for a secret |
+|---|---|
+| `string{ min, max }`, `array{ min, max }` | `SchemaKit.<builder> min must be a non-negative integer` (or `max`) |
+| `number{ min, max }` | `SchemaKit.number min must be a number` (or `max`) |
+| `map{ max }` | `SchemaKit.map max must be a positive integer` |
+| `string{ pattern }` | `SchemaKit.string pattern must be a non-empty string` |
+| a literal in `string{ oneOf }` or `enum(values)` | `SchemaKit.string oneOf values must be strings, numbers or booleans`, `SchemaKit.enum values must be strings, numbers or booleans` |
+| `custom(check, description)`'s `description` | `SchemaKit.custom description must be a non-empty string` |
+| `Assert`'s `argumentName` | `SchemaKit.Schema:Assert argumentName must be a non-empty string` |
+| `Assert`'s `level` | `SchemaKit.Schema:Assert level must be a positive integer` |
+
+Without the probe first, a secret bound would raise inside SchemaKit at `min > max` or the NaN test, a secret literal at the NaN test or the set lookup that uses it as a key, a secret `argumentName` at the empty-string test and a secret `level` at the integer test. Plain values pay one `issecretvalue` call each, at build time or per `Assert` call.
+
 ## Limits
 
 Four limits are package-wide and set through `SetLimits`; the bounds a schema author writes (`max` on strings, numbers, arrays and maps) are options on the node and need nothing here.
@@ -255,27 +297,6 @@ local maxDepth = SchemaKit:GetLimit("maxDepth") -- one value, no allocation
 **The limits are shared by every consumer in the session**: every embedded copy and every addon uses one set. A library should rely on the defaults; an addon that changes a limit changes it for everybody. `maxDepth` and `pathKeyLimit` apply from the next check, to every schema. `maxPatternCaptures` and `defaultArrayMax` apply to nodes built after the change; a node keeps what it was built with. A pattern refused by a lowered `maxPatternCaptures` raises `SchemaKit.string pattern is not a valid Lua pattern`.
 
 An array built without `max` while `defaultArrayMax` is `SchemaKit.UNBOUNDED` accepts any number of elements, and checking it walks every one: give arrays that hold received data an explicit `max`. `SchemaKit.UNBOUNDED` is one table kept in the package state, so every copy and revision publishes the same sentinel.
-
-## Secret values
-
-On Retail 12.x the client hands tainted code **secret values**, which raise when compared, tested, indexed or used as a table key (see [`docs/EMBEDDING.md`](../../../docs/EMBEDDING.md#secret-values-retail-12x)). Every node asks `issecretvalue(value)` first, before any comparison, type test or index, and a secret fails with rule `secret` and found `secret value`. The failure and the `Assert` message never contain it. `Apply` keeps a secret where it found it and the check of the copy reports it. Custom checks are never called with a secret, and a secret answer from one rejects the value with rule `custom` (see [`SchemaKit.custom`](#schemakitcustomcheck-description)).
-
-The boolean flags `SchemaKit.number{ integer }`, `SchemaKit.table{ open }` and `Seal`'s `freshFailures` are asked about with `issecretvalue` before they are tested. A secret flag is refused at the caller's line with the message an invalid value of that flag gets (`SchemaKit.number integer must be a boolean`, `SchemaKit.table open must be a boolean`, `SchemaKit:Seal freshFailures must be a boolean`), the style `SetLimits` uses for a secret limit.
-
-Every other builder and `Assert` argument that SchemaKit would compare, look up or do arithmetic on is asked about the same way first, and a secret is refused at the caller's line with the message an invalid value gets:
-
-| Argument | Message for a secret |
-|---|---|
-| `string{ min, max }`, `array{ min, max }` | `SchemaKit.<builder> min must be a non-negative integer` (or `max`) |
-| `number{ min, max }` | `SchemaKit.number min must be a number` (or `max`) |
-| `map{ max }` | `SchemaKit.map max must be a positive integer` |
-| `string{ pattern }` | `SchemaKit.string pattern must be a non-empty string` |
-| a literal in `string{ oneOf }` or `enum(values)` | `SchemaKit.string oneOf values must be strings, numbers or booleans`, `SchemaKit.enum values must be strings, numbers or booleans` |
-| `custom(check, description)`'s `description` | `SchemaKit.custom description must be a non-empty string` |
-| `Assert`'s `argumentName` | `SchemaKit.Schema:Assert argumentName must be a non-empty string` |
-| `Assert`'s `level` | `SchemaKit.Schema:Assert level must be a positive integer` |
-
-Without the probe first, a secret bound would raise inside SchemaKit at `min > max` or the NaN test, a secret literal at the NaN test or the set lookup that uses it as a key, a secret `argumentName` at the empty-string test and a secret `level` at the integer test. Plain values pay one `issecretvalue` call each, at build time or per `Assert` call.
 
 ## Cookbook
 
@@ -396,6 +417,8 @@ Builder, `Seal` and method argument failures report the line that called them, n
 | Schema methods | `SchemaKit.Schema:<Method> must be called on a sealed SchemaKit schema`; `SchemaKit.Schema:Assert argumentName must be a non-empty string`; `SchemaKit.Schema:Assert level must be a positive integer` |
 | Writes | `SchemaKit schemas are sealed and cannot be modified`; `SchemaKit schema nodes are immutable` (raised at the writing line) |
 | `SetLimits`, `GetLimits`, `GetLimit` | `SchemaKit:SetLimits limits must be a table`; `SchemaKit:SetLimits is called with a colon, not a dot` (and `GetLimits`, `GetLimit`); the value messages listed under [Limits](#limits) |
+| `HasPart` | `SchemaKit:HasPart is called with a colon, not a dot`; `SchemaKit:HasPart partName must not be a secret value`; `SchemaKit:HasPart partName must be a string` |
+| A part's member without the part | `<member> is in SchemaKit's <Part> part, which is not loaded: add schemaKit\parts\SchemaKit-<Part>.lua`, for `SchemaKit.custom`, `SchemaKit.oneOf`, `SchemaKit.string pattern` (Rules) and `SchemaKit.Schema:Apply` (Apply, after the receiver check) |
 
 ## Performance
 
@@ -408,7 +431,9 @@ Builder, `Seal` and method argument failures report the line that called them, n
 | `Check` failing below the root | Also builds the path string, and `key <expected>` for a failing map key. |
 | `Apply`, `Describe` | Allocate their results. |
 
-Each node costs one function call plus one `issecretvalue` call when the client has it. The compiled form behind these numbers is in [`INTERNALS.md`](INTERNALS.md).
+Each node costs one function call plus one `issecretvalue` call when the client has it.
+
+Resident memory (host Lua 5.1.5, 64-bit, debug information kept, measured 2026-11-18 after a full collection): the core 78.7 KB (revision 6, every builder in one file: 85.4 KB), the Rules part 7.8 KB, the Apply part 6.8 KB. An addon that builds no pattern, `custom` or `oneOf` and never calls `Apply` embeds the core alone. The compiled form behind these numbers is in [`INTERNALS.md`](INTERNALS.md).
 
 ## Deviations from the planned contract
 
@@ -417,6 +442,7 @@ The nine-point plan in `docs/ROADMAP.md` is followed except where recorded here:
 - **Nodes are immutable from birth** rather than frozen by `Seal`; see [Nodes and sealing](#nodes-and-sealing).
 - **`Apply` returns `true, copy` or `false, failure`** rather than the copy alone. An `optional` root without a default legitimately applies to `nil`, so a bare return value could not tell a valid `nil` from a failure; the pair has the same shape as `Check`.
 - **The depth bound is enforced on values, not on schemas.** `Seal` does not refuse a schema that describes more nested tables than the `maxDepth` limit (16 by default); a value is simply never followed past `maxDepth`, and the deeper levels of such a schema can never accept anything.
+- **Parts** (revision 7): patterns, `custom`, `oneOf` and `Apply` live in two optional files; see [Loading](#loading).
 - **Additions:** `SchemaKit.MAX_DEPTH` and `SchemaKit.DEFAULT_ARRAY_MAX` publish the two defaults, `SetLimits`, `GetLimits`, `GetLimit` (revision 6) and `UNBOUNDED` open the limits (principle 4a), and `Assert` returns the value it checked so it can be used inline.
 
 ## Embedded copies and upgrades
@@ -424,5 +450,7 @@ The nine-point plan in `docs/ROADMAP.md` is followed except where recorded here:
 Several addons may embed SchemaKit; Registry selects the newest compatible revision and every copy shares one facade. An upgrade happens in place: nodes and schemas built by an older copy keep their compiled form and failure tables, compose with nodes built by the newer copy, and run the newer checker. The shared limits and the `UNBOUNDED` sentinel live in the package state, so a newer revision inherits the limits a consumer set.
 
 Nothing survives `/reload`: schemas are rebuilt when the addon loads.
+
+Revision 7 moves patterns, `custom` and `oneOf` into the Rules part and `Apply` into the Apply part, and adds `HasPart`. An upgrade from revision 6 with a part absent keeps revision 6's `string`, `custom`, `oneOf` and `Schema.Apply` instead of the stubs: they build layout 2 nodes into the shared state, which revision 7's checker reads unchanged, so the addon that embedded revision 6 keeps working. The part replaces them when it loads, and the core's `string` takes over again with the Rules part. The reverse order cannot be served: with revision 7 loaded first, a revision 6 copy loaded after it yields, and that addon's patterns, `custom`, `oneOf` and `Apply` raise the not-loaded message until some addon embeds the parts. A revision 5 or older copy keeps nothing: its members are replaced by the stubs.
 
 Revision 6 changes no documented behaviour and adds `GetLimit`. Compiled nodes hold only the fields their kind uses (node layout 2). An in-place upgrade from an earlier revision copies every node built before it into a node of layout 2 and points every reference at the copy (the proxies, the schema records and the child fields of other nodes), so schemas built before the upgrade give their memory back; they check, apply and describe as before.
