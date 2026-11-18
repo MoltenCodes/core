@@ -417,7 +417,10 @@ Each of these ten Kits carries the same three copies with the same bodies
    revision 3. KitConformance opt-in.
 8. Docs: CHANGELOG `## 0.1.4`; API.md skeleton (renames, `## Loading`,
    `## Performance`, order).
-9. Status: implemented 2026-11-18, 0.1.4, revision 4, 74 specs.
+9. Status: implemented 2026-11-18, 0.1.4, revision 4, 74 specs. At
+   integration the manifest names Registry's Diagnostics part, whose
+   `Packages` `ExposeAll` walks since Registry revision 17, and an
+   `ExposeAll` spec covers the absent part: 75 specs.
 
 **logKit: shared `isSecret`, `reportError`, `validateFacade`, `describeKey`; `limits` opted out** — a change to facade `LogKit`
 

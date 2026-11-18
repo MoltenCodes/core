@@ -9,7 +9,10 @@
   "revision": 4,
   "dependencies": {
     "registry": {
-      "api": 2
+      "api": 2,
+      "parts": [
+        "Diagnostics"
+      ]
     }
   }
 }

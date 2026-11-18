@@ -12,8 +12,12 @@ local InteropKit = MoltenCodes.Registries[2]:Get("interopKit", 1)
 
 ## Loading
 
-Load `Registry.lua` first, then `InteropKit.lua`; InteropKit has no parts and
-no other dependency. LibStub is looked up at call time, so it may load before
+Load `Registry.lua` and Registry's Diagnostics part
+(`registry/parts/Registry-Diagnostics.lua`) first, then `InteropKit.lua`;
+InteropKit has no parts and no other dependency. `ExposeAll` walks
+`Registry:Packages()`, which that part provides; without it `ExposeAll` raises
+Registry's message, `Registry:Packages is in Registry's Diagnostics part, which
+is not loaded`, and every other method works. LibStub is looked up at call time, so it may load before
 or after InteropKit. `issecretvalue` is read once at load; a host without it
 at load reads the global again on each check.
 

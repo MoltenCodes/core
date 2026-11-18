@@ -91,12 +91,15 @@ troubleshooting. This package's load order inside a consuming addon is:
 
 ```toc
 Libs\MoltenCodes\registry\Registry.lua
+Libs\MoltenCodes\registry\parts\Registry-Diagnostics.lua
 Libs\MoltenCodes\interopKit\InteropKit.lua
 ```
 
-Minimum footprint: embed 2 files: `registry/Registry.lua`, `interopKit/InteropKit.lua`.
+Minimum footprint: embed 3 files: `registry/Registry.lua`,
+`registry/parts/Registry-Diagnostics.lua`, `interopKit/InteropKit.lua`.
 
-Direct runtime dependencies: Registry API 2.
+Direct runtime dependencies: Registry API 2 with its Diagnostics part, whose
+`Registry:Packages` `ExposeAll` walks.
 Every file above is required; omitting one makes this package raise at
 load. LibStub is not a dependency: InteropKit finds it through
 `rawget(_G, "LibStub")` on every call, so LibStub and the libraries you adopt

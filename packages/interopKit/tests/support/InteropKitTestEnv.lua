@@ -4,7 +4,8 @@
 --- capture live in the shared `FrameworkTestEnv` fixture at `tests/support/`.
 --- What stays here is InteropKit's own:
 ---
----   the module chain            Registry, then InteropKit;
+---   the module chain            Registry and its Diagnostics part (whose
+---                               `Packages` `ExposeAll` walks), then InteropKit;
 ---   a LibStub stub              `InstallLibStub` publishes a global `LibStub`
 ---                               with LibStub's semantics (see `NewLibStub`),
 ---                               and `Reset` removes it again, because it is
@@ -25,13 +26,13 @@
 local FrameworkTestEnv = require("FrameworkTestEnv")
 
 local InteropKitTestEnv = FrameworkTestEnv.New({
-  modules = { "Registry", "InteropKit" },
+  modules = { "Registry", "Registry-Diagnostics", "InteropKit" },
 })
 
 --- A second environment over the same module chain, for the specs that need
 --- real Kits registered beside InteropKit.
 local KitsTestEnv = FrameworkTestEnv.New({
-  modules = { "Registry", "InteropKit" },
+  modules = { "Registry", "Registry-Diagnostics", "InteropKit" },
 })
 InteropKitTestEnv.Kits = KitsTestEnv
 

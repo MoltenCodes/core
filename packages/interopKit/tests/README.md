@@ -27,7 +27,8 @@ The suite covers:
 - `ExposeAll` against real Kits: counts, `LibStub("MoltenCodes-EventKit-1")`
   returning the EventKit facade, `options.except`, a foreign major counted as
   refused, idempotence, LibStub absent, and EventKit upgraded in place and
-  exposed again with the higher minor;
+  exposed again with the higher minor, and Registry's message naming its
+  Diagnostics part when that part is absent;
 - adoption: absent LibStub, an unknown major, string minors, `Find` before and
   after adoption and after LibStub is gone, refreshing the recorded minor, no
   writes into LibStub or the library, the sorted and fresh `Adopted()` listing,
