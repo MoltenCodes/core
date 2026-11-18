@@ -452,7 +452,8 @@ Each of these ten Kits carries the same three copies with the same bodies
 9. Status: implemented 2026-11-18, 0.2.3, revision 6, 173 specs. At
    integration the manifest names SignalKit's Journal part, which the core's
    `NewJournal` call needs since SignalKit 0.10.0, and a bootstrap spec covers
-   the load without it: 174 specs.
+   the load without it: 174 specs. The coverage gate added two
+   corrupted-state cases (`limits` not a table, an unknown `schema`): 176.
 
 **mediaKit: shared `isSecret`, `describeKey`, `validateFacade`; `limits` opted out** — a change to facade `MediaKit`
 

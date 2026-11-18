@@ -77,7 +77,8 @@ The LogKit suite covers:
   keeps loggers, levels, sinks, the journal, `LEVELS` and `UNBOUNDED`, an older
   chat sink routed through the newest `Write`, the slash command working across
   it, and corrupted-state refusals (limits, global level, `delivering`,
-  `pendingRemovals`, `binding`, missing tables);
+  `pendingRemovals`, `binding`, `limits` not a table, an unknown state
+  schema, missing tables);
 - `error` levels: every argument failure reports the caller's own line;
 - the shared helper blocks: the secret probe kept from load and a probe
   installed after load asked, the facade message, and the in-place upgrade

@@ -261,6 +261,8 @@ describe("LogKit bootstrap", function()
     { field = "delivering", value = 1 },
     { field = "pendingRemovals", value = false },
     { field = "binding", value = "db" },
+    { field = "limits", value = false },
+    { field = "schema", value = "LogKit.State.Unknown" },
   }) do
     it("refuses a corrupted " .. case.field .. " on reload", function()
       local LogKit = Env.NewPackage()

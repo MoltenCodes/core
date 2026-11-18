@@ -8,6 +8,7 @@
 - `package.manifest.json` names SignalKit's Journal part: `"signalKit": { "api": 1, "parts": ["Journal"] }`. SignalKit 0.10.0 moved `NewJournal` into that part, and LogKit's core creates its journal with it at load, so an addon that embeds LogKit embeds `signalKit/parts/SignalKit-Journal.lua` after SignalKit. Without it LogKit's load raises SignalKit's message naming the part. The README load order and footprint (4 files) and the *Loading* section of `docs/API.md` say so; `docs/API.md` also gave implementation revision 5, now 6. LogKit's code is unchanged.
 - Implementation revision 6; an embedded revision 5 is upgraded in place, loggers, levels, sinks and limits kept.
 - New specs: `SharedHelpers_spec.lua` (the probe rule, the facade message, the upgrade over the committed revision 5 file in `tests/fixtures/LogKit-revision5.lua`) and `Conformance_spec.lua` (the repository's conformance suite; its limits group is pending, see the spec). `support/LogKitTestEnv.lua` installs, at load, a probe that `InstallSecretProbe` steers, since LogKit no longer asks a probe installed over the one it loaded with.
+- Specs: `Bootstrap_spec.lua` refuses two more corrupted states on reload, `limits` that is not a table and a state of another schema, both with `package state is corrupted or incomplete`.
 
 ## 0.2.2 — 2026-11-15
 
