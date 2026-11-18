@@ -652,6 +652,20 @@ rendered below with `python3 -m tooling.bench.report`.
   the end of this section. Both sides of every case still alternate in the
   same rounds, so its ratios are fairer than its absolute times.
 
+- A fifth run,
+  [`2026-11-18-host.json`](../tooling/bench/results/2026-11-18-host.json), at
+  commit `59fed2e`, after package P (minimal cores with optional parts, the
+  shared helper blocks), on an idle machine (load average 1.2 to 1.5). All
+  fifteen workloads, each loading the parts it uses. MoltenCodes is faster in
+  15 cases, slower in 66 and within noise in 3 (the fourth run: 8, 68, 8).
+  Against the fourth run's ratios the largest gains are the settings reads
+  (`read-entry-default` 45.62× to 1.95×, `read-default` 32.13× to 3.49×) and
+  the multipart sends (`send-200` 7.38× to 2.70×); package O also landed
+  after the fourth run, so these are not package P's alone. The largest losses
+  are Registry's lookups (`foreign-lookup` 2.03× to 2.36×, `new-library` 2.02× to 2.16×) and
+  `dispatch-subcommand` (2.59× to 2.89×). The tables and the analysis below
+  still quote the third run and have not been rewritten from this one yet.
+
 **What the catalogue covers.** A workload exists only where an Ace3 library
 does the same work, so the fifteen workloads cover the Kits with an Ace3
 counterpart. The Kits that replace libraries from outside Ace3 (BrokerKit,
