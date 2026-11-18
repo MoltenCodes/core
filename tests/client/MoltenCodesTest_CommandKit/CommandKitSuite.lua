@@ -854,7 +854,7 @@ facade:Test("the installed CommandKit carries the revision of the committed mani
 end)
 
 facade:Test(
-  "the client has SlashCmdList and a default chat frame with AddMessage, OptionsKit is found, and the other host facilities are logged",
+  "the client has SlashCmdList and a default chat frame with AddMessage, OptionsKit is found, the Arguments part is loaded, and the other host facilities are logged",
   function(ctx)
     ctx:Expect(type(readHost("SlashCmdList"))):ToBe("table")
     local chatFrame = readHost("DEFAULT_CHAT_FRAME")
@@ -862,6 +862,11 @@ facade:Test(
     ctx:Expect(type(chatFrame and chatFrame.AddMessage)):ToBe("function")
     local foundOptionsKit = Registry:Find("optionsKit", OPTIONS_KIT_API)
     ctx:Expect(type(foundOptionsKit)):ToBe("table")
+    -- The bundle embeds every part. Since revision 12 the Arguments part
+    -- compiles the argument schemas the dispatch tests declare; the core alone
+    -- would refuse them at Register.
+    local parts = rawget(rawget(CommandKit, "_state"), "parts")
+    ctx:Expect(type(rawget(parts, "Arguments"))):ToBe("table")
 
     for _, name in ipairs({
       "SecureCmdList",
@@ -892,7 +897,7 @@ facade:Test(
     end
     local editBox = chatEditBox()
     ctx:Log("the default chat frame's edit box: " .. type(editBox))
-    for _, packageName in ipairs({ "localeKit", "clientKit", "lifecycleKit", "eventKit" }) do
+    for _, packageName in ipairs({ "schemaKit", "localeKit", "lifecycleKit", "eventKit" }) do
       local found, revisionOrReason = Registry:Find(packageName, 1)
       ctx:Log(
         ("Registry:Find('%s', 1): %s %s"):format(

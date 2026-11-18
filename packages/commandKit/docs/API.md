@@ -1,30 +1,33 @@
 # CommandKit API
 
-CommandKit API generation **1** provides slash commands for World of Warcraft addons: collision-safe registration owned by a scope, a hyperlink-aware argument parser, sub-commands with generated usage, schema-checked arguments, output sinks, optional tab completion, and a command line over an OptionsKit tree.
+CommandKit API generation **1** provides slash commands for World of Warcraft addons: collision-safe registration owned by a scope, a hyperlink-aware argument parser, sub-commands with generated usage and output sinks in the core, and, in optional parts, schema-checked arguments, tab completion and a command line over an OptionsKit tree.
 
-Implementation revision: **11**.
+Implementation revision: **12**.
 
 ## Loading
 
-CommandKit is a core file and two optional parts
+CommandKit is a core file and three optional parts
 ([ADR 0001](../../../docs/decisions/0001-kit-core-and-parts.md)). An addon
-embeds the core and only the parts it uses:
+embeds the core and only the parts it uses; an addon whose commands take
+plain words embeds the core alone, without SchemaKit:
 
 | File | Holds | Needs |
 |---|---|---|
-| `CommandKit.lua` | registration, parsing, dispatch, sinks, the prefix, `Dispatch`, `Reopen` | Registry API 2, SchemaKit API 1 |
-| `parts/CommandKit-Options.lua` | `BindOptions` and `GetBoundTree`: the command line over an OptionsKit tree | the core, OptionsKit API 1 |
+| `CommandKit.lua` | registration, parsing, dispatch, sub-commands and usage, sinks, the prefix, `Dispatch`, `Reopen` | Registry API 2 |
+| `parts/CommandKit-Arguments.lua` | a spec's `arguments`: SchemaKit schemas, coercion of the typed words, generated usage words and refusals | the core, SchemaKit API 1 |
+| `parts/CommandKit-Options.lua` | `BindOptions` and `GetBoundTree`: the command line over an OptionsKit tree | the core, OptionsKit API 1, the Arguments part |
 | `parts/CommandKit-Completion.lua` | `EnableCompletion`, `DisableCompletion` and the completion providers | the core |
 
 Runtime files must be loaded in dependency order:
 
 ```text
 Registry.lua
-SchemaKit.lua
 CommandKit.lua
-parts/CommandKit-Completion.lua      (optional)
+SchemaKit.lua                        (with the Arguments part)
+parts/CommandKit-Arguments.lua       (optional; the Options part needs it)
 OptionsKit.lua                       (with the Options part)
 parts/CommandKit-Options.lua         (optional)
+parts/CommandKit-Completion.lua      (optional)
 ```
 
 `python3 -m tooling.package.embeds` writes this order for any selection. A
@@ -36,13 +39,26 @@ CommandKit part Options requires CommandKit API 1 to be loaded first` (the
 same for `Completion`). Until revision 11 both were inside `CommandKit.lua`;
 an addon that calls them adds the part's file to its list.
 
+A spec with `arguments` (at any sub-command level) registered while the
+Arguments part is not loaded raises at the caller's line: `CommandKit.Scope:Register
+spec.arguments needs CommandKit's Arguments part, which is not loaded: add
+commandKit\parts\CommandKit-Arguments.lua to your embeds.xml` (the label
+names the field's path, as `spec.subcommands.a.arguments`). Until revision 12
+the arguments were inside `CommandKit.lua`. The Arguments part loaded without
+SchemaKit raises `MoltenCodes CommandKit part Arguments requires SchemaKit API
+1 to be loaded first`, and over a core older than revision 12 `MoltenCodes
+CommandKit part Arguments requires CommandKit revision 12 or later to be
+loaded first`; the Options part loaded without the Arguments part raises
+`MoltenCodes CommandKit part Options requires CommandKit's Arguments part to
+be loaded first`.
+
 Portable WoW code resolves the package through Registry:
 
 ```lua
 local CommandKit = MoltenCodes.Registries[2]:Get("commandKit", 1)
 ```
 
-CommandKit does not rely on `require()` at runtime. Loaded without Registry API 2, `CommandKit.lua` raises `MoltenCodes CommandKit requires Registry API 2 to be loaded first`; over a Registry whose facade has no `Bootstrap`, `MoltenCodes CommandKit requires a valid Registry API 2 facade`; without SchemaKit, `MoltenCodes CommandKit requires SchemaKit API 1 to be loaded first`. A shared package state that fails validation raises `MoltenCodes CommandKit package state is corrupted or incomplete` instead of being overwritten.
+CommandKit does not rely on `require()` at runtime. Loaded without Registry API 2, `CommandKit.lua` raises `MoltenCodes CommandKit requires Registry API 2 to be loaded first`; over a Registry whose facade has no `Bootstrap`, `MoltenCodes CommandKit requires a valid Registry API 2 facade`. The core needs no SchemaKit (revision 12). A shared package state that fails validation raises `MoltenCodes CommandKit package state is corrupted or incomplete` instead of being overwritten.
 
 ### Optional dependencies and host facilities
 
@@ -54,9 +70,10 @@ CommandKit does not rely on `require()` at runtime. Loaded without Registry API 
 | `ChatEdit_CustomTabPressed` | `EnableCompletion`, `RegisterCompletion` (Completion part) | `EnableCompletion` returns `false` and `RegisterCompletion` `nil, "unavailable"`; nothing is installed. |
 | `ChatEdit_GetActiveWindow` | completion, when the client passes no edit box | That Tab press is not completed. |
 | `geterrorhandler` | handler and completion failures | Falls back to `print`. |
+| SchemaKit API 1 | the Arguments part, at load | The part raises at load; the core does not need it. |
 | OptionsKit API 1, through `Registry:Find` | `BindOptions` (Options part) | `BindOptions` raises at the caller. |
 | LocaleKit API 1, through `Registry:Find` | `context:Printf`, `scope:Printf` | `string.format`, without indexed specifiers. |
-| ClientKit API 1, through `Registry:Find` | every secret check but the taken check, which asks `issecretvalue` directly. Looked up on the first secret question and kept, a miss included (revision 10): a ClientKit registered after that question is not asked, which changes no answer on the client, since ClientKit's `IsSecret` asks the same `issecretvalue`. | The host's `issecretvalue`; without that, nothing is secret. |
+| `issecretvalue` | every secret check. Read once at load and kept when it is a function; read again on each check only when it was absent at load (the shared `isSecret` block, revision 12). Revisions 10 and 11 asked ClientKit's `IsSecret` first, which asks the same probe. | Nothing is secret. |
 | LifecycleKit API 1, through `Registry:Find` | closing an addon scope at logout (see [At logout](#at-logout)) | EventKit's `PLAYER_LOGOUT` closes it instead. |
 | EventKit API 1, through `Registry:Find` | closing an addon scope at logout when LifecycleKit is absent | Without either, the consumer closes it (case d). |
 
@@ -116,6 +133,8 @@ Context, handed to every handler and completion function:
 ## A complete slash command
 
 An addon with a `/myaddon` command: a status line, a scale setting checked against a schema, a mode chosen from a list, an item link argument, a sub-command group, custom completion, and its options tree bound to `/myaddon_options`.
+
+It embeds SchemaKit, OptionsKit and all three parts: the schemas need the Arguments part, `BindOptions` the Options part and `EnableCompletion` the Completion part.
 
 ```lua
 local Registry = MoltenCodes.Registries[2]
@@ -279,6 +298,11 @@ A slash name keeps the key of its first registration for the session. When any s
 A spec with an unknown field raises (`CommandKit.Scope:Register spec.subcommands.frame contains unknown field "desc"`), as does a sub-command key that is not a valid name, two keys equal without case, a spec with neither `handler` nor `subcommands`, `arguments` without a `handler` to receive them, and nesting deeper than three levels. The spec is compiled into records once; later edits to your tables have no effect. Functions are kept by reference.
 
 ### Arguments
+
+Argument schemas are the Arguments part's (`parts/CommandKit-Arguments.lua`,
+which needs SchemaKit API 1). Without the part, a spec with `arguments` is
+refused at `Register` (see [Loading](#loading)), and every command receives
+its tokens as strings.
 
 A **list of schemas** declares one schema per position, at most the scope's `maxPositions` (16). The handler receives exactly that many arguments. A missing `optional` position is `nil`, or a fresh copy of its default when it was declared with one (`SchemaKit.optional(SchemaKit.number(), 10)`). Typing more tokens than positions is refused (`expected at most 2 arguments`).
 
@@ -538,7 +562,7 @@ In case (b) CommandKit's `OnShutdown` subscription is made at the first `ForAddo
 
 ## Secret values
 
-On Retail 12.x some client APIs hand addon code secret values (see [`docs/EMBEDDING.md`](../../../docs/EMBEDDING.md#secret-values-retail-12x)). CommandKit asks ClientKit's `IsSecret` when ClientKit is registered, and the host's `issecretvalue` otherwise.
+On Retail 12.x some client APIs hand addon code secret values (see [`docs/EMBEDDING.md`](../../../docs/EMBEDDING.md#secret-values-retail-12x)). CommandKit asks the host's `issecretvalue`, read once at load (and on each check while the host has none).
 
 - `context:Print` and `context:Printf` refuse a secret argument (the template included) at the caller: `CommandKit.Context:Print argument 2 must not be a secret value`. A secret never becomes part of chat output by accident.
 - `Parse`, `ParseInto`, every name argument, and `Fail`'s reason refuse a secret before comparing it.
@@ -546,7 +570,7 @@ On Retail 12.x some client APIs hand addon code secret values (see [`docs/EMBEDD
 - A secret completion candidate is skipped, and the taken check skips a secret `SLASH_<key><n>` or `EMOTE<n>_CMD<m>` value, a secret entry of the client's lookup tables and a secret `IsSecureCmd` answer.
 - A handler failure whose message is secret is written to the sink without the message and handed to the host error handler unchanged.
 - A secret sub-command key is refused before the keys are sorted: `CommandKit.Scope:Register spec.subcommands key must not be a secret value`.
-- A secret limit, as a scope option or in `SetLimits`, is refused before it is compared with `CommandKit.UNBOUNDED`, with the message a value of the wrong type gets: `CommandKit:CreateScope options.maxCommands must be a positive integer or CommandKit.UNBOUNDED`, `CommandKit:SetLimits limits.maxCaptured must be a positive integer or CommandKit.UNBOUNDED`, and for a limit with a ceiling `CommandKit:SetLimits limits.maxCompletions must be an integer from 1 to 256`.
+- A secret limit, as a scope option or in `SetLimits`, is refused before it is compared with `CommandKit.UNBOUNDED`: a scope option with the message a value of the wrong type gets (`CommandKit:CreateScope options.maxCommands must be a positive integer or CommandKit.UNBOUNDED`), a `SetLimits` value as secret (`CommandKit:SetLimits limits.maxCaptured must not be a secret value`; revision 12, the shared `limits` block).
 - A receiver or tree whose metatable is replaced by a secret `__metatable` (or whose `__index` is secret) is tested by type before it is compared, and refused with the usual `... must be called on a CommandKit scope` or `CommandKit.Scope:BindOptions tree must be an OptionsKit tree`.
 - `set <path> toggle` on a bound `toggle` whose value is secret, or on a `multiselect` key whose entry is secret, prints `/cmd set: the current value is secret; use on or off` and writes nothing; `on` and `off` still work.
 - Tab completion leaves a line to the client when the edit box reports a secret cursor position.
@@ -554,50 +578,6 @@ On Retail 12.x some client APIs hand addon code secret values (see [`docs/EMBEDD
 - Absence of anything CommandKit did not create itself (arguments, spec and option fields, host globals, values an OptionsKit tree describes) is tested with `type(value) == "nil"`, never by comparing the value with `nil`.
 
 Text typed by the user never is secret, so dispatch does not probe it.
-
-## Error behaviour
-
-Every argument failure and spec refusal reports the line that called CommandKit, never a line inside it, and names the method and the field by its path in the spec:
-
-```text
-MyAddon.lua:12: CommandKit.Scope:Register spec.subcommands.frame.subcommands.show.arguments[1] must be a SchemaKit schema
-MyAddon.lua:30: CommandKit.Scope:Register "myaddon" is already registered in this scope; Unregister it first
-MyAddon.lua:31: CommandKit.Scope:BindOptions requires OptionsKit API 1
-```
-
-Calling a scope method on something that is not a scope raises `CommandKit.Scope:Register must be called on a CommandKit scope`; a facade method called with a dot raises `CommandKit:ForAddon must be called on the CommandKit facade; use CommandKit:ForAddon(...)`; `Register`, `BindOptions`, `EnableCompletion`, `RegisterCompletion` and `Dispatch` on a closed scope raise `... cannot be used on a closed scope`. A part method whose part is not loaded raises `CommandKit.Scope:<Method> needs CommandKit's <Part> part, which is not loaded: add commandKit\parts\CommandKit-<Part>.lua to your embeds.xml`.
-
-The other argument and spec messages, where `<label>` is the method and the field's path (`CommandKit.Scope:Register spec.subcommands.show`):
-
-| Raised by | Messages |
-|---|---|
-| A name or text argument (`Register`, `Unregister`, `IsRegistered`, `ForAddon`, `CloseAddonScopes`, `context:Fail`) | `<label> must be a non-empty string`; `<label> must not be a secret value`; for a slash or sub-command name also `<label> "<name>" must be letters, digits and underscores, starting with a letter, at most 32 long` |
-| `Parse`, `ParseInto` | `CommandKit:Parse text must be a string`; `CommandKit:Parse text must not be a secret value` (and `ParseInto`); `CommandKit:ParseInto array must be a table` |
-| `CreateScope`, `ForAddon` options | `<label> must be a table` (also for a table with a metatable); `<label>.<name> is not a recognised option` (a key that is not a string, number or boolean is named by its type, as `options.<table>`, so its `__tostring` never runs); the limit messages under [Limits](#limits) |
-| A spec | `<label> must be a table`; `<label>.handler must be a function`; `<label>.complete must be a function`; `<label>.usage must be a string` (and `description`); `<label> needs a handler or subcommands`; `<label>.arguments needs a handler to receive them`; `<label> keys must be sub-command names`; `<label> nests sub-commands deeper than 3 levels` |
-| A spec's `arguments` | `<label> must be a SchemaKit.array schema or a list of schemas`; `<label> must be a list of schemas` (a key that is no position); `<label> must be a list of at most 16 schemas` (a position past `maxPositions`); `<label> must be a non-empty list of schemas without holes` |
-| `Register` on a host without slash commands | `CommandKit.Scope:Register requires the host's SlashCmdList table` (and `BindOptions`) |
-| `SetSink` | `CommandKit.Scope:SetSink sink must be a table with an AddMessage method` |
-| `BindOptions` | `CommandKit.Scope:BindOptions requires OptionsKit API 1`; `CommandKit.Scope:BindOptions tree must be an OptionsKit tree`; `CommandKit.Scope:BindOptions options must be a table`; `... options.syntax must be "verbs" or "path"`; `... options.onEmpty must be a function` |
-| `RegisterCompletion` | `<label> name must be a non-empty string`; `... pattern must be a string`; `... pattern must not be a secret value`; `... pattern is not a valid Lua pattern: <reason>`; `... provider must be a function` |
-| `SetPrefix`, `Print`, `Printf`, `Dispatch`, `Reopen` | `CommandKit.Scope:SetPrefix prefix must be a non-empty string` (or a secret); `CommandKit.Scope:Print argument <n> must not be a secret value` (and `Printf`); `CommandKit.Scope:Printf template must be a string`; `CommandKit.Scope:Dispatch name must be a non-empty string`; `CommandKit.Scope:Dispatch text must be a string`; `CommandKit.Scope:Reopen cannot reopen an addon scope; closing it is its addon's teardown` |
-| The context | `CommandKit.Context:Print must be called on a CommandKit context` (every context method); `CommandKit.Context:Printf template must be a string` |
-| `SetLimits` | `CommandKit:SetLimits limits must be a table`; the value messages under [Limits](#limits) |
-
-What the user types is never an error: it is printed to the sink. Errors raised by your handler, `complete` function or sink are isolated during dispatch and completion and reported to the host error handler.
-
-## Performance
-
-| Operation | Cost |
-|---|---|
-| `Register` | Compiles the spec once; seals and describes each argument schema; reads the slash tables' keys and their `SLASH_<key><n>` globals once (each global name is built once per session); asks the emote index (built at the first check). Allocates the command's record; a command without arguments or sub-commands shares their empty parts. |
-| Dispatch | One read of the key's name, one of the active command, one per sub-command level; a schema `Check` per argument; the handler under `pcall`. No allocation for text seen before, except the copy `Apply` makes when a table default is filled. |
-| An unregistered dispatcher | Two table reads; no allocation. |
-| `ParseInto` | One pass over the text, jumping with `string.find` from one byte that matters (whitespace, quote, backslash, pipe) to the next; only token strings, none for text seen before. |
-| `Parse` | As `ParseInto`, plus the array. |
-| Usage, bound sub-commands, completion | Allocate; not hot paths. |
-| A path-syntax line | One table read per word in the binding's path index (built by one `tree:Walk` on the first line), then the bound sub-command's one `DescribeOption`. Host bench, same typed line on both sides: 1.83× of AceConfigCmd-3.0 (`cmd-set-range-path`), against 1.73× for the verbs' `set` line. |
-| The prefix | One field read per written line; nothing when no prefix is set. |
 
 ## Limits
 
@@ -609,7 +589,7 @@ Everything CommandKit keeps or scans is bounded by default, and every bound that
 | `maxSubcommands`: sub-commands per level | 64 | scope option | yes: the scope's own spec | `Register` raises |
 | `maxPositions`: per-position argument schemas | 16 | scope option | yes: the scope's own spec | `Register` raises |
 | `maxSlashAliases`: `SLASH_<key><n>` read per foreign key | 16 | scope option | yes: the scan still stops at the first gap | the rest are not read |
-| `maxCaptured`: lines a capture sink keeps | 256 | `SetLimits` | yes: the sink's lines belong to whoever made it | the oldest are dropped |
+| `maxCaptured`: lines a capture sink keeps | 256 | `SetLimits`, at most 2147483647 | yes: the sink's lines belong to whoever made it | the oldest are dropped |
 | `maxCompletions`: candidates one completion offers | 32 | `SetLimits`, at most 256 | no: the candidates are printed to the shared chat frame as one line | the rest are not offered |
 | `maxEmotes`: emote indexes the emote check reads | 1024 (or a smaller `MAXEMOTEINDEX`) | `SetLimits`, at most 16384 | no: emote indexes have gaps, so the scan needs an end | the rest are not read |
 | `maxCompletionProviders`: completion providers in the session (Completion part) | 32 | `SetLimits`, at most 256 | no: every Tab press asks every provider | `RegisterCompletion` answers `nil, "full"` |
@@ -630,7 +610,7 @@ CommandKit:SetLimits({ maxCaptured = CommandKit.UNBOUNDED, maxCompletions = 64 }
 local limits = CommandKit:GetLimits() -- a fresh table on every call
 ```
 
-`SetLimits` accepts any subset. It raises at the caller on a table that is not one, an unknown name (`CommandKit:SetLimits limits.<name> is not a recognised limit`, with a key that is not a string, number or boolean named by its type, as `limits.<table>`), a value that is not a positive integer or `CommandKit.UNBOUNDED` (`must be a positive integer or CommandKit.UNBOUNDED`), a value above a ceiling (`must be an integer from 1 to <ceiling>`) and `UNBOUNDED` where it is refused (`cannot be CommandKit.UNBOUNDED: <reason>`), and it checks the whole table before changing anything, so a refused call changes nothing. **These limits are shared by every consumer in the session**: every embedded copy and every addon reads one set, so a library should rely on the defaults and an addon that raises a limit raises it for everybody. `GetLimits` returns `CommandKit.UNBOUNDED` itself for an unbounded limit.
+`SetLimits` accepts any subset. It raises at the caller on a value that is not a table, an unknown name (`CommandKit:SetLimits limits.<name> is not a recognised limit; it accepts maxCaptured, maxCompletions, maxEmotes, maxCompletionProviders`, with a key that is not a string, number or boolean named by its type, as `limits.<table>`, and a secret key as `limits.<secret>`), a secret value (`must not be a secret value`), a value that is not an integer from 1 to the limit's ceiling (`must be an integer from 1 to <ceiling>`; `maxCaptured`'s ceiling, 2147483647, only gives the check an upper bound) and `UNBOUNDED` where it is refused (`cannot be CommandKit.UNBOUNDED: <reason>`), and it checks the whole table before changing anything, so a refused call changes nothing. **These limits are shared by every consumer in the session**: every embedded copy and every addon reads one set, so a library should rely on the defaults and an addon that raises a limit raises it for everybody. `GetLimits` returns `CommandKit.UNBOUNDED` itself for an unbounded limit.
 
 Lowering a limit never drops what is already kept: a scope past a lowered limit keeps its commands and refuses the next one, and a capture sink already longer than a lowered `maxCaptured` keeps its length instead of shrinking.
 
@@ -643,6 +623,50 @@ Hard ceilings stay, because no setting makes them safe to lift:
 | Name length | 32 bytes | The name becomes part of the `SlashCmdList` key and the `SLASH_<key><n>` global names the client keeps for the session. | `Register` raises |
 | Commands per emote read | 8 | The scan over `EMOTE<n>_CMD<m>` reads globals by constructed name and stops at the first gap, so it needs an end that does not depend on the global table being well formed. The client defines at most a handful of commands per emote (a name and its localised aliases), so 8 ends the inner scan without missing one. | the rest are not read |
 
+## Error behaviour
+
+Every argument failure and spec refusal reports the line that called CommandKit, never a line inside it, and names the method and the field by its path in the spec:
+
+```text
+MyAddon.lua:12: CommandKit.Scope:Register spec.subcommands.frame.subcommands.show.arguments[1] must be a SchemaKit schema
+MyAddon.lua:30: CommandKit.Scope:Register "myaddon" is already registered in this scope; Unregister it first
+MyAddon.lua:31: CommandKit.Scope:BindOptions requires OptionsKit API 1
+```
+
+Calling a scope method on something that is not a scope raises `CommandKit.Scope:Register must be called on a CommandKit scope`; a facade method called with a dot raises `CommandKit:ForAddon must be called on the CommandKit facade; use CommandKit:ForAddon(...)`; `Register`, `BindOptions`, `EnableCompletion`, `RegisterCompletion` and `Dispatch` on a closed scope raise `... cannot be used on a closed scope`. A part method whose part is not loaded raises `CommandKit.Scope:<Method> needs CommandKit's <Part> part, which is not loaded: add commandKit\parts\CommandKit-<Part>.lua to your embeds.xml`, and a spec field `arguments` without the Arguments part `<label>.arguments needs CommandKit's Arguments part, which is not loaded: add commandKit\parts\CommandKit-Arguments.lua to your embeds.xml`.
+
+The other argument and spec messages, where `<label>` is the method and the field's path (`CommandKit.Scope:Register spec.subcommands.show`):
+
+| Raised by | Messages |
+|---|---|
+| A name or text argument (`Register`, `Unregister`, `IsRegistered`, `ForAddon`, `CloseAddonScopes`, `context:Fail`) | `<label> must be a non-empty string`; `<label> must not be a secret value`; for a slash or sub-command name also `<label> "<name>" must be letters, digits and underscores, starting with a letter, at most 32 long` |
+| `Parse`, `ParseInto` | `CommandKit:Parse text must be a string`; `CommandKit:Parse text must not be a secret value` (and `ParseInto`); `CommandKit:ParseInto array must be a table` |
+| `CreateScope`, `ForAddon` options | `<label> must be a table` (also for a table with a metatable); `<label>.<name> is not a recognised option` (a key that is not a string, number or boolean is named by its type, as `options.<table>`, so its `__tostring` never runs); the limit messages under [Limits](#limits) |
+| A spec | `<label> must be a table`; `<label>.handler must be a function`; `<label>.complete must be a function`; `<label>.usage must be a string` (and `description`); `<label> needs a handler or subcommands`; `<label>.arguments needs a handler to receive them`; `<label> keys must be sub-command names`; `<label> nests sub-commands deeper than 3 levels` |
+| A spec's `arguments` (Arguments part) | `<label> must be a SchemaKit.array schema or a list of schemas`; `<label> must be a list of schemas` (a key that is no position); `<label> must be a list of at most 16 schemas` (a position past `maxPositions`); `<label> must be a non-empty list of schemas without holes` |
+| `Register` on a host without slash commands | `CommandKit.Scope:Register requires the host's SlashCmdList table` (and `BindOptions`) |
+| `SetSink` | `CommandKit.Scope:SetSink sink must be a table with an AddMessage method` |
+| `BindOptions` | `CommandKit.Scope:BindOptions requires OptionsKit API 1`; `CommandKit.Scope:BindOptions tree must be an OptionsKit tree`; `CommandKit.Scope:BindOptions options must be a table`; `... options.syntax must be "verbs" or "path"`; `... options.onEmpty must be a function` |
+| `RegisterCompletion` | `<label> name must be a non-empty string`; `... pattern must be a string`; `... pattern must not be a secret value`; `... pattern is not a valid Lua pattern: <reason>`; `... provider must be a function` |
+| `SetPrefix`, `Print`, `Printf`, `Dispatch`, `Reopen` | `CommandKit.Scope:SetPrefix prefix must be a non-empty string` (or a secret); `CommandKit.Scope:Print argument <n> must not be a secret value` (and `Printf`); `CommandKit.Scope:Printf template must be a string`; `CommandKit.Scope:Dispatch name must be a non-empty string`; `CommandKit.Scope:Dispatch text must be a string`; `CommandKit.Scope:Reopen cannot reopen an addon scope; closing it is its addon's teardown` |
+| The context | `CommandKit.Context:Print must be called on a CommandKit context` (every context method); `CommandKit.Context:Printf template must be a string` |
+| `SetLimits` | `CommandKit:SetLimits limits must be a table` (a table with a metatable is accepted since revision 12 and read with `next` and `rawget`); the value messages under [Limits](#limits) |
+
+What the user types is never an error: it is printed to the sink. Errors raised by your handler, `complete` function or sink are isolated during dispatch and completion and reported to the host error handler.
+
+## Performance
+
+| Operation | Cost |
+|---|---|
+| `Register` | Compiles the spec once; with the Arguments part, seals and describes each argument schema; reads the slash tables' keys and their `SLASH_<key><n>` globals once (each global name is built once per session); asks the emote index (built at the first check). Allocates the command's record; a command without arguments or sub-commands shares their empty parts. |
+| Dispatch | One read of the key's name, one of the active command, one per sub-command level; for a command with `arguments`, a schema `Check` per argument; the handler under `pcall`. No allocation for text seen before, except the copy `Apply` makes when a table default is filled. |
+| An unregistered dispatcher | Two table reads; no allocation. |
+| `ParseInto` | One pass over the text, jumping with `string.find` from one byte that matters (whitespace, quote, backslash, pipe) to the next; only token strings, none for text seen before. |
+| `Parse` | As `ParseInto`, plus the array. |
+| Usage, bound sub-commands, completion | Allocate; not hot paths. |
+| A path-syntax line | One table read per word in the binding's path index (built by one `tree:Walk` on the first line), then the bound sub-command's one `DescribeOption`. Host bench, same typed line on both sides: 1.83× of AceConfigCmd-3.0 (`cmd-set-range-path`), against 1.73× for the verbs' `set` line. |
+| The prefix | One field read per written line; nothing when no prefix is set. |
+
 ## Deviations from the planned contract
 
 The nine-point plan in `docs/ROADMAP.md` is followed except where recorded here:
@@ -653,6 +677,7 @@ The nine-point plan in `docs/ROADMAP.md` is followed except where recorded here:
 - **`BindOptions` adds `exec`** beside `get`, `set`, `reset` and `list`, honours `confirm` with an explicit word, and parses values per option kind before OptionsKit's schema and `validate` check them; it describes the option it names once per run (`DescribeOption`, or `Describe` with an OptionsKit older than revision 7).
 - **Completion is opt-in per scope** (`EnableCompletion`), because it replaces a client global; the plan made it optional without naming the switch.
 - **Additions:** `scope:IsRegistered`, `scope:DisableCompletion`, `scope:GetAddonName`, `CommandKit.MAX_COMMANDS`, `CommandKit.MAX_DEPTH`, the `CommandKit.Context` prototype, and the limits (scope options, `SetLimits`, `GetLimits` and `CommandKit.UNBOUNDED`); argument tokens are converted for number and boolean schemas; textures are single tokens; `Print` writes no prefix unless `SetPrefix` set one (revision 11).
+- **Revision 12** moves schema-checked arguments into the Arguments part, so the core needs Registry alone, and drops the ClientKit lookup of the secret probe.
 - **Revision 11** adds the command lists, the prefix, `scope:Print`/`Printf`, `Dispatch`, `Reopen`, the path syntax, `GetBoundTree`, `onEmpty` and the completion providers, and moves options binding and completion into the two parts (ADR 0001).
 - **Closing at logout** through LifecycleKit API 1 or EventKit API 1, both optional dependencies found through `Registry:Find` (see [At logout](#at-logout)); the plan named neither.
 - **Localised help** is the addon's: usage and description strings are passed in already translated, and `Printf` goes through LocaleKit. CommandKit's own fixed words stay English.
@@ -664,5 +689,7 @@ Several addons may embed CommandKit; Registry selects the newest compatible revi
 Revision 2 upgrades the addon scopes revision 1 built in place and arranges their [logout close](#at-logout) while it loads, for every open one. Revisions 3 to 10 change no layout: each takes over the state of the one before as it is. A command bound with `BindOptions` keeps the sub-command handlers of the revision that bound it, because they are compiled into its record; binding it again after the upgrade gives it the newer ones. A later revision keeps the `OnShutdown` subscriptions and the `PLAYER_LOGOUT` watcher it inherits: both call through the facade or the shared package state, so they run the newest code, and nothing is subscribed twice.
 
 Revision 11 adds two fields to the package state, `parts` (each loaded part's record: its `revision` and the scope methods it serves) and `helpers` (the core functions the parts call, read at call time), and the `maxCompletionProviders` limit at its default; scopes, records and dispatchers are kept. The core puts every part method on the scope prototype at load: the loaded part's function, or a method naming the file to embed. A part puts its methods there when it loads too, so any load order of core and part revisions ends with the newest of each serving, and an equal or older part revision loaded again changes nothing. A revision-10 copy left completion's tab function in the shared `dispatch` table; the revision-11 core keeps it, so completion enabled before the upgrade keeps working until a Completion part loads and replaces it, and `Close` still counts such a scope's completion off.
+
+Revision 12 moves argument schemas into the Arguments part and drops `clientKitLookup` from its own use (the field stays in an inherited state). Revision 11 was the last core with arguments inside, so an addon embedding only revision 11 may share a session with a revision-12 core and no Arguments part. For that case, a revision-12 core that upgrades revision 11 while the Arguments part is absent keeps revision 11's `registerCommand` and slash dispatcher in `state.legacyArguments`: a command revision 11 compiled with arguments (anywhere in its tree) keeps dispatching through revision 11's dispatcher, and a `Register` that declares `arguments` is handed to revision 11's `registerCommand` instead of being refused. A revision-1 Options part keeps working this way too. When the Arguments part loads, it serves revision 11's records as they are (same fields) and drops `state.legacyArguments`. The part keeps its record in `_state.parts.Arguments` with its revision; the highest part revision wins.
 
 Nothing survives `/reload`: commands are registered again when the addon loads.

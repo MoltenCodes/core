@@ -145,8 +145,8 @@ registry
 ├──→ compatKit
 ├──→ cacheKit
 ├──→ profileKit
+├──→ commandKit   (its Arguments part needs schemaKit, its Options part optionsKit)
 ├──→ schemaKit
-│       ├──→ commandKit
 │       ├──→ settingsKit   (also needs signalKit)
 │       └──→ optionsKit    (also needs signalKit)
 ├──→ localeKit
@@ -213,8 +213,9 @@ timerKit/TimerKit.lua
 commKit/CommKit.lua
 commKit/parts/CommKit-SyncSet.lua
 commKit/parts/CommKit-ChatThrottle.lua
-schemaKit/SchemaKit.lua
 commandKit/CommandKit.lua
+schemaKit/SchemaKit.lua
+commandKit/parts/CommandKit-Arguments.lua
 optionsKit/OptionsKit.lua
 commandKit/parts/CommandKit-Options.lua
 commandKit/parts/CommandKit-Completion.lua
@@ -343,11 +344,10 @@ files:
 <!-- generated:footprint -->
 | Files | Kit | Alongside `registry/Registry.lua` |
 |---|---|---|
-| 2 | `addonKit`, `apiKit`, `poolKit`, `bindingKit`, `bridgeKit`, `signalKit`, `cacheKit`, `clientKit`, `timerKit`, `schemaKit`, `compatKit`, `dialogKit`, `editModeKit`, `hookKit`, `interopKit`, `localeKit`, `menuKit`, `widgetKit`, `profileKit`, `rangeKit`, `unitFrameKit` | nothing |
+| 2 | `addonKit`, `apiKit`, `poolKit`, `bindingKit`, `bridgeKit`, `signalKit`, `cacheKit`, `clientKit`, `timerKit`, `commandKit`, `schemaKit`, `compatKit`, `dialogKit`, `editModeKit`, `hookKit`, `interopKit`, `localeKit`, `menuKit`, `widgetKit`, `profileKit`, `rangeKit`, `unitFrameKit` | nothing |
 | 3 | `barKit`, `codecKit`, `glowKit`, `toastKit`, `tooltipKit` | `poolKit` |
 | 3 | `brokerKit`, `eventKit`, `logKit`, `mediaKit` | `signalKit` |
 | 3 | `readinessKit`, `schedulerKit` | `timerKit` |
-| 3 | `commandKit` | `schemaKit` |
 | 4 | `launcherKit` | `signalKit`, `brokerKit` |
 | 4 | `lifecycleKit` | `signalKit`, `eventKit` |
 | 4 | `optionsKit`, `settingsKit` | `schemaKit`, `signalKit` |
@@ -378,7 +378,8 @@ part loads after its Kit's core and brings in what it needs:
 | `codecKit/Compression` | `codecKit/parts/CodecKit-Compression.lua` | Raw DEFLATE compression and inflation: Compress, Decompress, compress = "deflate" on the encoders and compressed frames on decode, natively through C_EncodingUtil.CompressString where the client has it. | nothing |
 | `commKit/SyncSet` | `commKit/parts/CommKit-SyncSet.lua` | scope:SyncSet: named fields synchronised with peers by content hash, answering only with the fields that differ. | `codecKit` |
 | `commKit/ChatThrottle` | `commKit/parts/CommKit-ChatThrottle.lua` | scope:SendChat and Battle.net game data (scope:SendBattleNet, scope:RegisterBattleNet) through the shared bandwidth budget, the senders ChatThrottleLib throttles beside addon messages. | nothing |
-| `commandKit/Options` | `commandKit/parts/CommandKit-Options.lua` | Drive an OptionsKit tree from a slash command: the get, set, reset, list and exec verbs and AceConfigCmd's path syntax. | `signalKit`, `optionsKit` |
+| `commandKit/Arguments` | `commandKit/parts/CommandKit-Arguments.lua` | Schema-checked command arguments: SchemaKit schemas per position or one array, coercion of the typed words, generated usage and refusals. | `schemaKit` |
+| `commandKit/Options` | `commandKit/parts/CommandKit-Options.lua` | Drive an OptionsKit tree from a slash command: the get, set, reset, list and exec verbs and AceConfigCmd's path syntax. | `schemaKit`, `signalKit`, `optionsKit`, `commandKit/Arguments` |
 | `commandKit/Completion` | `commandKit/parts/CommandKit-Completion.lua` | Tab completion in chat edit boxes: the scopes' own commands and AceTab-style completion providers. | nothing |
 | `eventKit/Coalescing` | `eventKit/parts/EventKit-Coalescing.lua` | Coalesce and Derive: events collected into one callback per interval, and values recomputed after a quiet period, timed by TimerKit (a lane by SchedulerKit). | nothing |
 | `optionsKit/Profiles` | `optionsKit/parts/OptionsKit-Profiles.lua` | OptionsKit:ProfileOptions: the ready-made group over a SettingsKit database's profiles, with the per-specialization choices. | nothing |
@@ -798,7 +799,7 @@ actually touch, which is deliberately small:
 | `localeKit` | nothing but Lua 5.1 | `GetLocale` (client locale `enUS`), `geterrorhandler` (missing-key reports fall back to `print`), `issecretvalue` (`Format` and missing-key reads treat nothing as secret) |
 | `settingsKit` | SchemaKit's and SignalKit's surfaces | `UnitName` and `GetRealmName` (`db.char`, and `db.realm` without `GetRealmName`, unavailable), `UnitClass` (`db.class` unavailable), `UnitFactionGroup` (`db.faction` unavailable); an unavailable scope raises at the reader; `issecretvalue` (nothing treated as secret), `geterrorhandler` (`print`), EventKit API 1 through `Registry:Find` (no compaction at `PLAYER_LOGOUT`; call `db:Compact()`; no automatic spec-profile switching; call `db:ApplySpecProfile()`), `C_SpecializationInfo`, `GetNumTalentGroups`, `WOW_PROJECT_ID` (no spec index: spec-profile assignments are kept and nothing switches) |
 | `optionsKit` | SchemaKit's and SignalKit's surfaces | `issecretvalue` (looked up at every call; absent: nothing is treated as secret), SettingsKit API 1 through `Registry:Find` (`Define` with `options.db` and `ProfileOptions` raise; `get`/`set` options unaffected); `UnitName` / `GetRealmName` (`ProfileOptions` then offers no per-character profile choice); SettingsKit revision 11 or later (`ProfileOptions` then carries no spec-profile selects); `UnitClass` / `GetSpecializationInfoForClassID` (spec selects labelled by index) |
-| `commandKit` | SchemaKit's surface; `SlashCmdList` (`Register` and `BindOptions` raise at the caller) | `SLASH_<key><n>`, `SecureCmdList`, `ChatTypeInfo`, `EMOTE<n>_CMD<m>` and `MAXEMOTEINDEX` (the taken check finds nothing), `DEFAULT_CHAT_FRAME` (`print`), `ChatEdit_CustomTabPressed` (`EnableCompletion` returns `false`), `ChatEdit_GetActiveWindow`, `geterrorhandler` (`print`), ClientKit API 1 / `issecretvalue`, OptionsKit API 1 (`BindOptions` raises), LocaleKit API 1 (`Printf` uses `string.format`); LifecycleKit and EventKit API 1 through `Registry:Find` decide who closes an addon scope at logout (with neither, call `CommandKit:CloseAddonScopes` on `PLAYER_LOGOUT`) |
+| `commandKit` | `SlashCmdList` (`Register` and `BindOptions` raise at the caller); the Arguments part needs SchemaKit's surface | `SLASH_<key><n>`, `SecureCmdList`, `ChatTypeInfo`, `EMOTE<n>_CMD<m>` and `MAXEMOTEINDEX` (the taken check finds nothing), `DEFAULT_CHAT_FRAME` (`print`), `ChatEdit_CustomTabPressed` (`EnableCompletion` returns `false`), `ChatEdit_GetActiveWindow`, `geterrorhandler` (`print`), `issecretvalue`, OptionsKit API 1 (`BindOptions` raises), LocaleKit API 1 (`Printf` uses `string.format`); LifecycleKit and EventKit API 1 through `Registry:Find` decide who closes an addon scope at logout (with neither, call `CommandKit:CloseAddonScopes` on `PLAYER_LOGOUT`) |
 | `codecKit` | PoolKit's surface | SchedulerKit API 1 through `Registry:Find` (`EncodeAsync` and `DecodeAsync` raise at the caller), `issecretvalue` (looked up at every call; absent: nothing is treated as secret), `C_EncodingUtil.CompressString` and `Enum.CompressionMethod`/`Enum.CompressionLevel`, read by the Compression part (looked up at every call; absent: every input is compressed in Lua; documented on every supported client); the Compression part itself (absent: compressing raises at the caller naming `codecKit\parts\CodecKit-Compression.lua`, and a compressed frame decodes to `false, "compressionUnavailable"`) |
 | `interopKit` | nothing but Lua 5.1 | `LibStub` (every call returns `"absent"`), `issecretvalue` (nothing treated as secret) |
 | `bridgeKit` | nothing but Lua 5.1 | OptionsKit API 1 through `Registry:Find` (`DefineAceConfig` raises at the caller; `ConvertAceConfig` still returns a plain tree), SchemaKit API 1 (the AceDB importer raises at the caller), SettingsKit API 1 (its profile-name limit; 64 bytes without it), CommKit API 1 with raw addon messages (`OpenAceComm` raises at the caller without it), `Ambiguate` (absent: senders are passed unchanged), `GetTime` (absent: streams never expire, still bounded by `maxAceSpoolBytes`), `issecretvalue` (looked up at every call; absent: nothing is treated as secret) |
@@ -1523,9 +1524,12 @@ You passed something other than the addon folder name. Use the `...` vararg:
 
 ### `MoltenCodes <Kit> requires SchemaKit API 1 to be loaded first`
 
-SettingsKit, OptionsKit and CommandKit validate through SchemaKit and load
-after it. Put `schemaKit/SchemaKit.lua` before them in `embeds.xml`; the
-release artifact's `loadOrder` already does.
+SettingsKit, OptionsKit and CommandKit's Arguments part validate through
+SchemaKit and load after it. Put `schemaKit/SchemaKit.lua` before them in
+`embeds.xml`; the release artifact's `loadOrder` already does. CommandKit's
+core needs no SchemaKit; a command spec with `arguments` registered without
+the Arguments part raises at the caller naming
+`commandKit\parts\CommandKit-Arguments.lua`.
 
 ### `Coalesce` is refused, or `EncodeAsync` / `RenderOptions` / `BindOptions` raise "not loaded"
 

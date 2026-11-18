@@ -218,6 +218,9 @@ local function kitAdapter(host)
     -- `ProfileOptions` is in OptionsKit's Profiles part from revision 15.
     "OptionsKit-Profiles",
     "CommandKit",
+    -- The Options part registers its verbs with argument schemas, which
+    -- CommandKit's Arguments part compiles from revision 12.
+    "CommandKit-Arguments",
     -- `BindOptions` is in CommandKit's Options part.
     "CommandKit-Options",
   })

@@ -19,7 +19,7 @@ Current packages:
 - [`cacheKit`](cacheKit/) — Bounded LRU and TTL caches, memoisation, negative entries, lazy namespaces, bounded queues and snapshots with diffs.
 - [`clientKit`](clientKit/) — Client flavour, build floor, probed capability flags, secret-value and frame-access probes, and shims with one shape per host call.
 - [`codecKit`](codecKit/) — Serialise, compress and channel-encode values behind a self-describing header; decoding never raises.
-- [`commandKit`](commandKit/) — Slash commands with hyperlink-aware parsing, generated usage, schema-checked arguments, sinks, completion and an OptionsKit command line.
+- [`commandKit`](commandKit/) — Slash commands with hyperlink-aware parsing, generated usage and sinks; schema-checked arguments, completion and an OptionsKit command line in parts.
 - [`commKit`](commKit/) — Addon messaging of any length: a chunk protocol with bounded reassembly, refusing priority queues, a session bandwidth budget and sync sets.
 - [`compatKit`](compatKit/) — Versioned shims with a host opt-out, provider registries with a fallback cascade, and the catalogue of taint-hostile subsystems as data.
 - [`dialogKit`](dialogKit/) — Confirmation and input dialogs without StaticPopupDialogs: one frame of their own, a bounded queue, Escape through UISpecialFrames, timeouts.

@@ -18,7 +18,8 @@
 -- Contents
 -- --------
 --   Constants ........ identity, option fields, value kinds
---   Dependencies ..... CommandKit's core, its state and helpers
+--   Dependencies ..... CommandKit's core, its state and helpers, the
+--                      Arguments part
 --   Describing ....... finding an option, formatting and parsing values
 --   Handlers ......... get, set, reset, list and exec
 --   Path syntax ...... resolving `group option` words, the path handler
@@ -29,7 +30,7 @@
 -- Constants ------------------------------------------------------------------
 
 local PART_NAME = "Options"
-local PART_REVISION = 1
+local PART_REVISION = 2
 local REQUIRED_REGISTRY_API = 2
 local CORE_PACKAGE, CORE_API = "commandKit", 1
 local OPTIONSKIT_API = 1
@@ -58,6 +59,15 @@ if
   or type(rawget(state, "helpers")) ~= "table"
 then
   error("MoltenCodes CommandKit part Options requires CommandKit API 1 to be loaded first", 2)
+end
+-- The verbs are registered with argument schemas (revision 2: the core no
+-- longer compiles them), so the Arguments part, which also publishes
+-- `SchemaKit` and `BOOLEAN_WORDS` into the helpers, must be loaded first.
+if type(rawget(rawget(state, "parts"), "Arguments")) ~= "table" then
+  error(
+    "MoltenCodes CommandKit part Options requires CommandKit's Arguments part to be loaded first",
+    2
+  )
 end
 
 local parts = rawget(state, "parts")

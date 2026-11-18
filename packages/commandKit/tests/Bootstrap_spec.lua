@@ -50,7 +50,7 @@ describe("CommandKit bootstrap", function()
     assert.is_true(tostring(value):find("MoltenCodes CommandKit", 1, true) ~= nil)
   end)
 
-  it("loads and dispatches with Registry and SchemaKit alone", function()
+  it("loads and dispatches with Registry alone", function()
     local CommandKit, Registry = TestEnv.NewPackageAlone()
     assert.are.equal(CommandKit, Registry:Get("commandKit", 1))
     local seen
@@ -138,6 +138,7 @@ describe("CommandKit bootstrap", function()
     require("SchemaKit")
     require("OptionsKit")
     local previous = TestEnv.LoadRevision(previousRevision)
+    require("CommandKit-Arguments")
     require("CommandKit-Options")
     require("CommandKit-Completion")
     local previousState = rawget(previous, "_state")
@@ -183,7 +184,7 @@ describe("CommandKit bootstrap", function()
       return rawequal(value, secret)
     end)
     TestEnv.expectErrorContaining(
-      "CommandKit:SetLimits limits.maxCaptured must be a positive integer or CommandKit.UNBOUNDED",
+      "CommandKit:SetLimits limits.maxCaptured must not be a secret value",
       function()
         current:SetLimits({ maxCaptured = secret })
       end
@@ -276,7 +277,8 @@ describe("CommandKit bootstrap", function()
       end,
     })
     TestEnv.expectErrorContaining(
-      "CommandKit:SetLimits limits.<table> is not a recognised limit",
+      "CommandKit:SetLimits limits.<table> is not a recognised limit"
+        .. "; it accepts maxCaptured, maxCompletions, maxEmotes, maxCompletionProviders",
       function()
         current:SetLimits({ [key] = 4 })
       end
@@ -291,36 +293,24 @@ describe("CommandKit bootstrap", function()
     assert.is_true(current:CloseAddonScopes("MyAddon"))
   end)
 
-  it(
-    "upgrades a revision 9 package in place and keeps its ClientKit lookup from then on",
-    function()
-      TestEnv.Reset()
-      TestEnv.InstallWowApi()
-      TestEnv.InstallChatApi()
-      require("Registry")
-      require("SignalKit")
-      require("SchemaKit")
-      require("OptionsKit")
-      local previous = TestEnv.LoadRevision(9)
-      -- Revision 9 kept no lookup in its state.
-      local previousState = rawget(previous, "_state")
-      rawset(previousState, "clientKitLookup", nil)
-
-      local current = require("CommandKit")
-      assert.are.equal(previous, current)
-      assert.are.same(
-        { looked = false, clientKit = false },
-        rawget(previousState, "clientKitLookup")
-      )
-      TestEnv.SetGlobal("issecretvalue", function(value)
-        return value == "hidden"
-      end)
-      TestEnv.expectErrorContaining("CommandKit:Parse text must not be a secret value", function()
-        current:Parse("hidden")
-      end)
-      assert.is_true(rawget(previousState, "clientKitLookup").looked)
-    end
-  )
+  it("upgrades a revision 9 package in place and asks the client's probe from then on", function()
+    TestEnv.Reset()
+    TestEnv.InstallWowApi()
+    TestEnv.InstallChatApi()
+    require("Registry")
+    require("SignalKit")
+    require("SchemaKit")
+    require("OptionsKit")
+    local previous = TestEnv.LoadRevision(9)
+    local current = require("CommandKit")
+    assert.are.equal(previous, current)
+    TestEnv.SetGlobal("issecretvalue", function(value)
+      return value == "hidden"
+    end)
+    TestEnv.expectErrorContaining("CommandKit:Parse text must not be a secret value", function()
+      current:Parse("hidden")
+    end)
+  end)
 
   it("requires Registry", function()
     TestEnv.Reset()
@@ -330,13 +320,10 @@ describe("CommandKit bootstrap", function()
     assert.is_true(tostring(value):find("Registry API 2", 1, true) ~= nil)
   end)
 
-  it("requires SchemaKit", function()
-    TestEnv.Reset()
-    TestEnv.InstallWowApi()
-    require("Registry")
-    local ok, value = pcall(TestEnv.requireAfterFailedLoad, "CommandKit")
-    assert.is_false(ok)
-    assert.is_true(tostring(value):find("SchemaKit API 1", 1, true) ~= nil)
+  it("loads its core with Registry alone, without SchemaKit", function()
+    local CommandKit, Registry = TestEnv.NewPackageAlone()
+    assert.is_nil(Registry:Find("schemaKit", 1))
+    assert.are.equal(12, CommandKit.REVISION)
   end)
 
   it("refuses an incomplete facade left by an earlier failed load", function()

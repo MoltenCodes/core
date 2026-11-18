@@ -3,9 +3,9 @@
 -- Slash commands for World of Warcraft addons, done once: registration owned by
 -- a scope, an argument parser that keeps quoted text, hyperlinks and colour
 -- codes whole, sub-commands whose usage text is generated from their
--- declarations, arguments checked against SchemaKit schemas, output written to
--- a replaceable sink, optional tab completion, and a binding that drives an
--- OptionsKit tree from the command line.
+-- declarations, output written to a replaceable sink, and, in parts (ADR
+-- 0001), arguments checked against SchemaKit schemas, tab completion and a
+-- binding that drives an OptionsKit tree from the command line.
 --
 -- The client's slash tables are shared and collision-prone. CommandKit writes
 -- `SlashCmdList[<key>]` and `SLASH_<key>1` through `rawset`, with a key derived
@@ -14,9 +14,11 @@
 -- function behind a slash name, so an unregistered command keeps a permanent
 -- dispatcher that does nothing until the name is registered again.
 --
--- CommandKit needs Registry API 2 and SchemaKit API 1. OptionsKit API 1
--- (`BindOptions`), LocaleKit API 1 (`Printf`) and ClientKit API 1 (`IsSecret`)
--- are optional and found through `Registry:Find` when they are used.
+-- The core needs Registry API 2 only. LocaleKit API 1 (`Printf`) is optional
+-- and found through `Registry:Find` when it is used. The Arguments part
+-- (`parts/CommandKit-Arguments.lua`) needs SchemaKit API 1, the Options part
+-- OptionsKit API 1 and the Arguments part; the Completion part needs nothing
+-- beyond the core.
 --
 -- CommandKit does not depend on LifecycleKit, yet an addon scope is closed at
 -- logout whenever the framework can observe logout at all (design
@@ -28,21 +30,21 @@
 -- --------
 --   Constants ............. identity, bounds, field lists, method lists
 --   Public types .......... LuaCATS declarations for the published surface
---   Dependencies .......... Registry, SchemaKit and the host facilities read
+--   Dependencies .......... Registry and the host facilities read
 --   Validation ............ public-surface and shared-state predicates
 --   Bootstrap ............. Registry registration and inherited state
 --   Host access ........... slash tables, the error handler, the secret probe
 --   Argument checks ....... receivers, names, spec tables
 --   Parser ................ the tokeniser behind Parse, ParseInto and dispatch
 --   Output ................ sinks, the capture sink, line writing
---   Argument schemas ...... sealing, coercion and usage text from schemas
+--   Arguments ............. the hand-over to the Arguments part
 --   Command records ....... compiling a spec into an immutable record tree
 --   Slash registration .... keys, the taken check and its caches, dispatchers
 --   Dispatch .............. frames, sub-command walk, validation, the handler
 --   Context methods ....... what a handler receives
---   Options binding ....... get, set, reset, list and exec over OptionsKit
---   Completion ............ the ChatEdit_CustomTabPressed replacement chain
 --   Logout close .......... who closes an addon scope at logout
+--   Scope extras .......... command lists, prefix, printing, Dispatch, Reopen,
+--                            and the methods the parts serve
 --   Scope methods ......... the handle a scope owner receives
 --   Package public API .... the facade published through Registry
 --   Commit ................ prototype/facade assignment and self-check
@@ -53,11 +55,12 @@
 
 local PACKAGE_NAME = "commandKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 11
+local IMPLEMENTATION_REVISION = 12
+-- The last revision whose core compiled and checked arguments itself; the
+-- Arguments part has done it since (see "Arguments").
+local LAST_CORE_ARGUMENTS_REVISION = 11
 local REQUIRED_REGISTRY_API = 2
-local REQUIRED_SCHEMAKIT_API = 1
 local OPTIONAL_LOCALEKIT_API = 1
-local OPTIONAL_CLIENTKIT_API = 1
 local STATE_SCHEMA = 1
 
 -- Every scope, command record and context carries the layout it was built
@@ -163,19 +166,29 @@ local MAX_EMOTE_COMMANDS = 8
 -- keeps for the session; long keys are what the bound refuses.
 local MAX_NAME_LENGTH = 32
 
--- The package-wide limits `SetLimits` accepts, in the order `GetLimits` and
--- the validation read them.
-local LIMIT_NAMES = { "maxCaptured", "maxCompletions", "maxEmotes", "maxCompletionProviders" }
--- A ceiling for the limits that refuse `UNBOUNDED`, and the reason given.
-local LIMIT_CEILINGS = {
-  maxCompletions = MAX_COMPLETIONS_CEILING,
-  maxEmotes = MAX_EMOTES_CEILING,
-  maxCompletionProviders = MAX_COMPLETIONS_CEILING,
-}
-local LIMIT_UNBOUNDED_REFUSALS = {
-  maxCompletions = "the candidates are printed to the shared chat frame as one line",
-  maxEmotes = "emote indexes have gaps, so the scan needs an end",
-  maxCompletionProviders = "every Tab press asks every provider",
+-- The package-wide limits `SetLimits` accepts, in the order `GetLimits`
+-- reports them, as the rules of the shared `limits` block
+-- (`tooling/shared/lua/limits.lua`). `maxCaptured` may be lifted with
+-- `UNBOUNDED`; its ceiling, the largest 32-bit integer, only gives the block
+-- the upper bound it needs and refuses nothing a sink could use. The others
+-- refuse `UNBOUNDED` for the reason given.
+local LIMIT_RULES = {
+  { name = "maxCaptured", ceiling = 2147483647, unbounded = true },
+  {
+    name = "maxCompletions",
+    ceiling = MAX_COMPLETIONS_CEILING,
+    unboundedReason = "the candidates are printed to the shared chat frame as one line",
+  },
+  {
+    name = "maxEmotes",
+    ceiling = MAX_EMOTES_CEILING,
+    unboundedReason = "emote indexes have gaps, so the scan needs an end",
+  },
+  {
+    name = "maxCompletionProviders",
+    ceiling = MAX_COMPLETIONS_CEILING,
+    unboundedReason = "every Tab press asks every provider",
+  },
 }
 
 -- The limits a scope option accepts, with their defaults.
@@ -198,18 +211,6 @@ local SPEC_FIELDS = {
   description = true,
   subcommands = true,
   complete = true,
-}
-
--- Words a boolean argument and a toggle option accept, lower-case.
-local BOOLEAN_WORDS = {
-  on = true,
-  off = false,
-  ["true"] = true,
-  ["false"] = false,
-  yes = true,
-  no = false,
-  ["1"] = true,
-  ["0"] = false,
 }
 
 -- The published surface, listed once so the public-surface predicate reads as
@@ -412,20 +413,6 @@ if type(bootstrapPackage) ~= "function" or type(getPackage) ~= "function" then
   error("MoltenCodes CommandKit requires a valid Registry API 2 facade", 2)
 end
 
--- SchemaKit is required: argument schemas are sealed and checked with it, and
--- `BindOptions` builds its own. It is checked at load, so a missing one fails
--- loudly at this file instead of at the first `Register`.
-local SchemaKit = getPackage(Registry, "schemaKit", REQUIRED_SCHEMAKIT_API)
-if
-  type(SchemaKit) ~= "table"
-  or rawget(SchemaKit, "API") ~= REQUIRED_SCHEMAKIT_API
-  or type(rawget(SchemaKit, "Seal")) ~= "function"
-  or type(rawget(SchemaKit, "string")) ~= "function"
-  or type(rawget(SchemaKit, "optional")) ~= "function"
-then
-  error("MoltenCodes CommandKit requires SchemaKit API 1 to be loaded first", 2)
-end
-
 -- Validation -----------------------------------------------------------------
 
 ---Whether every name in `methodNames` is a function field of `prototype`.
@@ -578,9 +565,6 @@ if previousRevision == nil then
     -- EventKit scope that owns it, the connection once made, and the
     -- trampoline handed to EventKit, which calls through `dispatch`.
     logoutWatch = { scope = false, connection = false, trampoline = false },
-    -- ClientKit as `isSecret` found it on its first question (revision 10):
-    -- `looked` once asked, `clientKit` the implementation or `false`.
-    clientKitLookup = { looked = false, clientKit = false },
     -- Each loaded part's record, `{ revision, methods, ... }` (revision 11,
     -- ADR 0001), and the core functions the parts call.
     parts = {},
@@ -600,11 +584,11 @@ end
 if rawget(state, "logoutWatch") == nil then
   rawset(state, "logoutWatch", { scope = false, connection = false, trampoline = false })
 end
--- Revisions before 10 looked ClientKit up on every secret question and kept
--- nothing; the lookup starts empty and is filled by the next question.
-if rawget(state, "clientKitLookup") == nil then
-  rawset(state, "clientKitLookup", { looked = false, clientKit = false })
-end
+-- Revisions 10 and 11 kept `clientKitLookup`, the ClientKit their secret
+-- probe asked. Revision 12 asks the client's probe itself (the shared
+-- `isSecret` block) and no longer reads it; the field stays in an inherited
+-- state, because the revision-11 functions kept for the Arguments hand-over
+-- (see "Arguments") still read it.
 -- Revisions before 11 had no parts and no provider limit.
 if rawget(state, "parts") == nil then
   rawset(state, "parts", {})
@@ -681,56 +665,55 @@ local function findOptional(packageName, api)
   return nil
 end
 
----Hand a failure to the host error handler.
----
----The failure is passed on unchanged: it may be a secret string built from a
----secret argument, and CommandKit never inspects it.
+-- The failure handed to `reportError` is passed on unchanged: it may be a
+-- secret string built from a secret argument, and CommandKit never inspects
+-- it. The secret probe is the client's `issecretvalue` (revision 12: earlier
+-- revisions asked ClientKit first, whose `IsSecret` asks the same probe). The
+-- allocation-free dispatch path never calls it: typed text is never secret.
+-- shared:begin reportError 1
+-- Copied from tooling/shared/lua/reportError.lua by python3 -m tooling.shared.sync; edit that file, not this copy.
+---Report `failure` through the host error handler, or print it.
 ---@param failure any
 local function reportError(failure)
-  local getErrorHandler = readGlobal("geterrorhandler")
+  -- geterrorhandler is a client API reachable only through the global table.
+  -- selene: allow(global_usage)
+  local getErrorHandler = rawget(_G, "geterrorhandler")
   if type(getErrorHandler) == "function" then
     local handler = getErrorHandler()
-    if type(handler) == "function" then
-      handler(failure)
+    if type(handler) == "function" and pcall(handler, failure) then
       return
     end
   end
-
-  -- Outside a WoW client there is no error handler to report through.
-  -- Printing is what the client's own default handler does, and staying
-  -- silent would turn a handler bug into an invisible one.
   print(failure)
 end
+-- shared:end reportError
 
----Whether `value` is a secret value, asking ClientKit when one is registered
----and the host's `issecretvalue` otherwise. The allocation-free dispatch path
----never calls it: typed text is never secret. Only Register, failures, output
----and the options binding do.
----
----ClientKit is looked up through the Registry on the first question only
----(revision 10; each lookup cost 70 to 100 instructions, twice per Register),
----and the answer is kept, a miss included. A found implementation table is
----stable per package and API across its own upgrades. A ClientKit registered
----after the first question is not asked, which changes no answer on the
----client: ClientKit's `IsSecret` asks the same `issecretvalue`.
----@param value any
----@return boolean
-local function isSecret(value)
-  local lookup = state.clientKitLookup
-  if not lookup.looked then
-    lookup.clientKit = findOptional("clientKit", OPTIONAL_CLIENTKIT_API) or false
-    lookup.looked = true
+-- shared:begin isSecret 1
+-- Copied from tooling/shared/lua/isSecret.lua by python3 -m tooling.shared.sync; edit that file, not this copy.
+---Whether `value` is a secret value the host forbids comparing.
+---@type fun(value: any): boolean
+local isSecret
+do
+  -- issecretvalue is a client API reachable only through the global table.
+  -- selene: allow(global_usage)
+  local loadedProbe = rawget(_G, "issecretvalue")
+  if type(loadedProbe) ~= "function" then
+    loadedProbe = nil
   end
-  local ClientKit = lookup.clientKit
-  if ClientKit then
-    local clientIsSecret = rawget(ClientKit, "IsSecret")
-    if type(clientIsSecret) == "function" then
-      return clientIsSecret(ClientKit, value) == true
+
+  isSecret = function(value)
+    local probe = loadedProbe
+    if probe == nil then
+      -- selene: allow(global_usage)
+      probe = rawget(_G, "issecretvalue")
+      if type(probe) ~= "function" then
+        return false
+      end
     end
+    return probe(value) == true
   end
-  local probe = readGlobal("issecretvalue")
-  return type(probe) == "function" and probe(value) == true
 end
+-- shared:end isSecret
 
 -- Argument checks ------------------------------------------------------------
 --
@@ -772,17 +755,19 @@ local function ensureOpen(scope, methodName, level)
   end
 end
 
----Refuse a receiver other than the CommandKit facade (a `.` call, say). The
----type is tested first: a `.` call passes the first argument as the receiver,
----and only a table is ever compared with the facade.
----@param receiver any
----@param label string qualified public method name, used in the argument error
+-- shared:begin validateFacade 1 __FACADE__=CommandKit
+-- Copied from tooling/shared/lua/validateFacade.lua by python3 -m tooling.shared.sync; edit that file, not this copy.
+---Raise at `level` unless `receiver` is the CommandKit facade.
+---@param receiver any the table the method was called on
+---@param label string qualified method name, used in the argument error
 ---@param level integer stack level the failure is reported at
 local function validateFacade(receiver, label, level)
   if type(receiver) ~= "table" or receiver ~= CommandKit then
-    error(label .. " must be called on the CommandKit facade; use " .. label .. "(...)", level)
+    local hint = "; use " .. label .. "(...)"
+    error(label .. " must be called on the CommandKit facade" .. hint, level)
   end
 end
+-- shared:end validateFacade
 
 ---Refuse anything but a non-empty, non-secret string. The secret check comes
 ---before the emptiness comparison, which would raise on a secret.
@@ -1185,149 +1170,21 @@ local function newCaptureSink()
   return sink
 end
 
--- Argument schemas -----------------------------------------------------------
+-- Arguments ----------------------------------------------------------------
 --
--- A command declares its arguments either as one `SchemaKit.array` schema, or
--- as a list of per-position schemas. Tokens arrive as strings, so each
--- position (or the array's element) is given a coercion when the command is
--- registered, read from the schema's own description: a number schema turns
--- the token into a number with `tonumber`, a boolean schema accepts the words
--- in `BOOLEAN_WORDS`, and everything else stays a string. A token that does
--- not convert stays a string, and the schema refuses it with its own message.
-
--- The names `getmetatable` returns for SchemaKit nodes and sealed schemas,
--- which set `__metatable`. Used only to tell a schema from a plain list.
-local SCHEMA_METATABLE_NAMES = { ["SchemaKit.Schema"] = true, ["SchemaKit.Node"] = true }
-
----Whether `value` is a SchemaKit node or sealed schema.
----@param value any
----@return boolean
-local function isSchema(value)
-  return type(value) == "table" and SCHEMA_METATABLE_NAMES[getmetatable(value)] == true
-end
-
----Seal a node or schema, or raise at the caller naming `label`.
----@param value any
----@param label string argument description, used in the argument error
----@param level integer stack level the failure is reported at
----@return table schema
-local function sealSchema(value, label, level)
-  if not isSchema(value) then
-    error(label .. " must be a SchemaKit schema", level)
-  end
-  local ok, schema = pcall(rawget(SchemaKit, "Seal"), SchemaKit, value)
-  if not ok then
-    error(label .. " must be a SchemaKit schema", level)
-  end
-  return schema
-end
-
----Whether every entry of `values` has the Lua type `typeName`.
----@param values any[]
----@param typeName string
----@return boolean
-local function allOfType(values, typeName)
-  for index = 1, #values do
-    if type(values[index]) ~= typeName then
-      return false
-    end
-  end
-  return #values > 0
-end
-
----The coercion a token needs before a schema described by `description`
----checks it: `"number"`, `"boolean"` or `"string"` (none).
----@param description table a SchemaKit description
----@return string
-local function coercionOf(description)
-  local kind = description.kind
-  if kind == "number" or kind == "boolean" then
-    return kind
-  end
-  if kind == "enum" then
-    if allOfType(description.values, "number") then
-      return "number"
-    end
-    if allOfType(description.values, "boolean") then
-      return "boolean"
-    end
-  end
-  return "string"
-end
-
----Convert one token as `coercion` says; a token that does not convert is
----returned unchanged, for the schema to refuse.
----@param token any
----@param coercion string
----@return any
-local function coerce(token, coercion)
-  if type(token) ~= "string" then
-    return token
-  end
-  if coercion == "number" then
-    local number = tonumber(token)
-    if number ~= nil then
-      return number
-    end
-  elseif coercion == "boolean" then
-    local word = BOOLEAN_WORDS[token:lower()]
-    if word ~= nil then
-      return word
-    end
-  end
-  return token
-end
-
----Join the string forms of `values` with `separator`.
----@param values any[]
----@param separator string
----@return string
-local function joinValues(values, separator)
-  local parts = {}
-  for index = 1, #values do
-    parts[index] = tostring(values[index])
-  end
-  return table.concat(parts, separator)
-end
-
----The usage word of one argument, from its schema description: `<number>`,
----`<integer 1..10>`, `<on|off>`, `<a|b|c>`, `<text>`; square brackets when the
----argument may be left out.
----@param description table a SchemaKit description
----@return string
-local function usageWord(description)
-  local kind = description.kind
-  local word
-  if kind == "number" then
-    word = description.integer and "integer" or "number"
-    if type(description.min) ~= "nil" and type(description.max) ~= "nil" then
-      word = word .. " " .. tostring(description.min) .. ".." .. tostring(description.max)
-    end
-  elseif kind == "boolean" then
-    word = "on|off"
-  elseif kind == "enum" then
-    word = joinValues(description.values, "|")
-  elseif kind == "string" then
-    if type(description.oneOf) == "table" then
-      word = joinValues(description.oneOf, "|")
-    else
-      word = "text"
-    end
-  elseif kind == "array" then
-    word = usageWord(description.of):sub(2, -2) .. "..."
-    local min = description.min
-    if type(min) == "nil" or (type(min) == "number" and not isSecret(min) and min == 0) then
-      return "[" .. word .. "]"
-    end
-    return "<" .. word .. ">"
-  else
-    word = kind
-  end
-  if description.optional then
-    return "[" .. word .. "]"
-  end
-  return "<" .. word .. ">"
-end
+-- Schema-checked arguments live in the Arguments part (ADR 0001,
+-- `parts/CommandKit-Arguments.lua`), which needs SchemaKit. The core compiles a
+-- spec without `arguments` itself (every token reaches the handler as a
+-- string) and hands a spec's `arguments` to the part, read from
+-- `_state.parts` at call time. Without the part a spec with `arguments` is
+-- refused at the caller's line, naming the file to embed.
+--
+-- Revision 11 and older kept the arguments in the core. When this revision
+-- upgrades one of them and the part is not loaded, the older revision's
+-- `registerCommand` and slash dispatcher are kept in
+-- `state.legacyArguments`, so an addon that embeds only the older file keeps
+-- registering and running its commands with arguments (see "Commit"). The
+-- part drops them when it loads: it reads the records they built as its own.
 
 -- A record's parts are never modified once compiled, so every record without
 -- arguments shares one compiled form, and every record without sub-commands
@@ -1339,7 +1196,7 @@ local EMPTY = {}
 local NO_ARGUMENTS =
   { mode = "none", schemas = EMPTY, coercions = EMPTY, defaulted = EMPTY, count = 0, usage = "" }
 
----Compile a spec's `arguments` field.
+---Compile a spec's `arguments` field through the Arguments part.
 ---@param arguments any
 ---@param label string argument description, used in the argument errors
 ---@param level integer stack level the failures are reported at
@@ -1349,73 +1206,16 @@ local function compileArguments(arguments, label, level, maxPositions)
   if type(arguments) == "nil" then
     return NO_ARGUMENTS
   end
-  local compiled =
-    { mode = "none", schemas = {}, coercions = {}, defaulted = {}, count = 0, usage = "" }
-  if isSchema(arguments) then
-    local schema = sealSchema(arguments, label, level + 1)
-    local description = schema:Describe()
-    if description.kind ~= "array" then
-      error(label .. " must be a SchemaKit.array schema or a list of schemas", level)
-    end
-    compiled.mode = "array"
-    compiled.schemas[1] = schema
-    compiled.coercions[1] = coercionOf(description.of)
-    compiled.usage = usageWord(description)
-    return compiled
+  local part = rawget(rawget(state, "parts"), "Arguments")
+  if type(part) ~= "table" then
+    error(
+      label
+        .. " needs CommandKit's Arguments part, which is not loaded: add commandKit\\parts\\CommandKit-Arguments.lua to your embeds.xml",
+      level
+    )
   end
-  if type(arguments) ~= "table" or type(getmetatable(arguments)) ~= "nil" then
-    error(label .. " must be a SchemaKit.array schema or a list of schemas", level)
-  end
-  local count = 0
-  for key in next, arguments do
-    if type(key) ~= "number" or key < 1 or key % 1 ~= 0 then
-      error(label .. " must be a list of schemas", level)
-    end
-    -- Only a position past the limit is refused with the limit: any other
-    -- key makes the table no list at all.
-    if key > maxPositions then
-      error(label .. " must be a list of at most " .. maxPositions .. " schemas", level)
-    end
-    count = count + 1
-  end
-  if count == 0 or type(arguments[count]) == "nil" then
-    error(label .. " must be a non-empty list of schemas without holes", level)
-  end
-  local words = {}
-  for position = 1, count do
-    local schema = sealSchema(arguments[position], label .. "[" .. position .. "]", level + 1)
-    local description = schema:Describe()
-    compiled.schemas[position] = schema
-    compiled.coercions[position] = coercionOf(description)
-    compiled.defaulted[position] = type(description.default) ~= "nil"
-    words[position] = usageWord(description)
-  end
-  compiled.mode = "positions"
-  compiled.count = count
-  compiled.usage = table.concat(words, " ")
+  local compiled = part.compile(arguments, label, level + 1, maxPositions)
   return compiled
-end
-
----The message for a refused argument, from a SchemaKit failure. Read at once:
----the failure table belongs to the schema and is reused.
----@param prefix string `"argument 2"` or `"arguments"`
----@param failure table
----@return string
-local function describeFailure(prefix, failure)
-  local path = failure.path
-  local where = prefix
-  if type(path) == "string" and path ~= "" then
-    if path:sub(1, 1) == "[" then
-      where = prefix .. path
-    else
-      where = prefix .. "." .. path
-    end
-  end
-  return where
-    .. ": expected "
-    .. tostring(failure.expected)
-    .. ", found "
-    .. tostring(failure.found)
 end
 
 -- Command records ------------------------------------------------------------
@@ -1904,6 +1704,16 @@ end
 ---@return true|nil registered
 ---@return "taken"|"emote"|"full"|nil reason
 local function registerCommand(scope, name, spec, methodName, level)
+  -- The revision-11 hand-over (see "Arguments"): only while an older core's
+  -- functions are kept and the Arguments part is absent.
+  local legacy = state.legacyArguments
+  if legacy ~= nil and legacy.declaresArguments(spec, 0) then
+    local registered, reason = legacy.registerCommand(scope, name, spec, methodName, level + 1)
+    if registered then
+      legacy.records[activeByName[string.lower(name)]] = true
+    end
+    return registered, reason
+  end
   validateScope(scope, methodName, level + 1)
   ensureOpen(scope, methodName, level + 1)
   local lowerName = readCommandName(name, methodName .. " name", level + 1)
@@ -2079,59 +1889,6 @@ local function failWithUsage(scope, record, reason)
   writeLines(scope, rawget(record, "_usageLines"))
 end
 
----Coerce and check a command's arguments in place.
----@param scope CommandKit.Scope
----@param record table
----@param arguments any[]
----@param count integer tokens after the command path
----@return integer|nil passCount how many arguments the handler receives
-local function checkArguments(scope, record, arguments, count)
-  local mode = record._mode
-  if mode == "none" then
-    return count
-  end
-  local schemas = record._schemas
-  local coercions = record._coercions
-  if mode == "array" then
-    local coercion = coercions[1]
-    for index = 1, count do
-      arguments[index] = coerce(arguments[index], coercion)
-    end
-    local ok, failure = schemas[1]:Check(arguments)
-    if not ok then
-      failWithUsage(scope, record, describeFailure("arguments", failure))
-      return nil
-    end
-    return count
-  end
-  local positions = record._positionCount
-  if count > positions then
-    local noun = positions == 1 and " argument" or " arguments"
-    failWithUsage(scope, record, "expected at most " .. positions .. noun)
-    return nil
-  end
-  local defaulted = record._defaulted
-  for position = 1, positions do
-    local schema = schemas[position]
-    local value = coerce(arguments[position], coercions[position])
-    local ok, failure = schema:Check(value)
-    if not ok then
-      failWithUsage(scope, record, describeFailure("argument " .. position, failure))
-      return nil
-    end
-    if value == nil and defaulted[position] then
-      -- `Check` never fills a default; `Apply` hands out a fresh copy
-      -- of the one `SchemaKit.optional` declared.
-      local applied, filled = schema:Apply(nil)
-      if applied then
-        value = filled
-      end
-    end
-    arguments[position] = value
-  end
-  return positions
-end
-
 ---Report a handler failure to the sink and to the host error handler.
 ---@param scope CommandKit.Scope
 ---@param record table
@@ -2188,9 +1945,14 @@ local function runCommand(frame, record, text)
   end
   frame.argumentMark = writtenCount
 
-  local passCount = checkArguments(scope, node, arguments, argumentCount)
-  if passCount == nil then
-    return
+  local passCount = argumentCount
+  if node._mode ~= "none" then
+    -- Only the Arguments part compiles such a record, so it is loaded. The
+    -- state and its tables have no metatable: plain indexing, no C call.
+    passCount = state.parts.Arguments.check(scope, node, arguments, argumentCount)
+    if passCount == nil then
+      return
+    end
   end
   local ok, failure = pcall(handler, context, unpack(arguments, 1, passCount))
   if not ok then
@@ -2201,8 +1963,8 @@ end
 ---The body of every permanent slash dispatcher.
 ---@param key string
 ---@param text any what the client passes: the text after the slash name
----@param _ any the edit box the command was typed in
-local function slashDispatch(key, text, _)
+---@param editBox any the edit box the command was typed in
+local function slashDispatch(key, text, editBox)
   local name = ownedKeys[key]
   if name == nil then
     return
@@ -2211,6 +1973,11 @@ local function slashDispatch(key, text, _)
   if record == nil then
     -- Unregistered or closed: the dispatcher stays in the client's table,
     -- inert, until the name is registered again.
+    return
+  end
+  local legacy = state.legacyArguments
+  if legacy ~= nil and legacy.records[record] then
+    legacy.slash(key, text, editBox)
     return
   end
   if type(text) ~= "string" then
@@ -2501,21 +2268,7 @@ function LogoutClose.closeAtLogout()
   end
 end
 
----Arrange the logout close of every open addon scope an upgrade inherited, in
----addon-name order: an older revision never arranged it, and the addon may
----never call `ForAddon` again.
-function LogoutClose.arrangeInherited()
-  local inherited = {}
-  for addonName, scope in next, addonScopes do
-    if rawget(scope, "_closed") ~= true then
-      inherited[#inherited + 1] = addonName
-    end
-  end
-  table.sort(inherited)
-  for index = 1, #inherited do
-    LogoutClose.arrangeProtected(inherited[index], rawget(addonScopes, inherited[index]))
-  end
-end
+-- Scope extras ---------------------------------------------------------------
 
 ---Check the text argument of `Parse`, `ParseInto` and `Dispatch`.
 ---@param text any
@@ -2532,7 +2285,7 @@ end
 
 -- Revision 11 additions share one main-chunk local, because Lua 5.1 allows a
 -- chunk at most 200: the command lists, the prefix, printing outside a
--- handler, dispatch from code, `Reopen`, and the bookkeeping of the two parts
+-- handler, dispatch from code, `Reopen`, and the bookkeeping of the method parts
 -- (ADR 0001): which scope methods each part serves, the stubs that name the
 -- part to embed while it is not loaded, and the release `Close` asks for.
 local scopeExtras = {
@@ -2878,24 +2631,25 @@ local function readScopeLimit(options, field, label, level)
   return value
 end
 
----Name a caller's table key in a refusal without running its `__tostring`.
----
----`tostring` on a table or userdata runs the key's `__tostring`, foreign code
----that can raise or answer a secret and so replace the real refusal. A string
----is shown as written and a number or boolean through `tostring`, which runs
----no foreign code for them; anything else is named by its type, as `<table>`.
----@param key any a table key, which `next` never returns as `nil`
+-- shared:begin describeKey 1
+-- Copied from tooling/shared/lua/describeKey.lua by python3 -m tooling.shared.sync; edit that file, not this copy.
+---Name `key` for an error message without running any of the caller's code.
+---@param key any
 ---@return string
 local function describeKey(key)
-  local keyType = type(key)
-  if keyType == "string" then
+  if isSecret(key) then
+    return "<secret>"
+  end
+  local kind = type(key)
+  if kind == "string" then
     return key
   end
-  if keyType == "number" or keyType == "boolean" then
+  if kind == "number" or kind == "boolean" then
     return tostring(key)
   end
-  return "<" .. keyType .. ">"
+  return "<" .. kind .. ">"
 end
+-- shared:end describeKey
 
 ---Check a scope option table and resolve its limits, raising at the caller
 ---before anything is created.
@@ -3068,37 +2822,95 @@ local function captureSink(self)
   return newCaptureSink()
 end
 
----Check a `SetLimits` table whole, raising at the caller before anything
----changes.
----@param limits any
----@param level integer stack level the failures are reported at
-local function validateLimitUpdate(limits, level)
-  if type(limits) ~= "table" or type(getmetatable(limits)) ~= "nil" then
-    error("CommandKit:SetLimits limits must be a table", level)
+-- `SetLimits` and `GetLimits` over `LIMIT_RULES`: the whole update is checked
+-- before anything is written, so a refused one leaves every limit as it was.
+-- shared:begin limits 1 __FACADE__=CommandKit
+-- Copied from tooling/shared/lua/limits.lua by python3 -m tooling.shared.sync; edit that file, not this copy.
+---Check a whole `SetLimits` update; raises at `level`.
+---@type fun(limits: any, level: integer)
+local validateLimitUpdate
+---Write the names an update gives into `target`.
+---@type fun(target: table, limits: table)
+local applyLimitUpdate
+---A fresh table of every limit in `source`.
+---@type fun(source: table): table
+local copyLimits
+do
+  local rulesByName = {}
+  local names = {}
+  for index = 1, #LIMIT_RULES do
+    local rule = LIMIT_RULES[index]
+    rulesByName[rule.name] = rule
+    names[index] = rule.name
   end
-  for key, value in next, limits do
-    if type(key) ~= "string" or rawget(sharedLimits, key) == nil then
-      error(
-        "CommandKit:SetLimits limits." .. describeKey(key) .. " is not a recognised limit",
-        level
-      )
+  local accepted = table.concat(names, ", ")
+
+  local function validateValue(rule, value, level)
+    local where = "CommandKit:SetLimits limits." .. rule.name
+    if isSecret(value) then
+      error(where .. " must not be a secret value", level)
     end
-    local label = "CommandKit:SetLimits limits." .. key
-    local ceiling = LIMIT_CEILINGS[key]
-    -- A secret is refused with the type message before any comparison;
-    -- after this, `value == UNBOUNDED` compares a plain value.
-    local secret = isSecret(value)
-    if ceiling == nil then
-      if secret or (value ~= UNBOUNDED and not isPositiveInteger(value)) then
-        error(label .. " must be a positive integer or CommandKit.UNBOUNDED", level)
+    if value == UNBOUNDED and UNBOUNDED ~= nil then
+      if rule.unbounded then
+        return
       end
-    elseif not secret and value == UNBOUNDED then
-      error(label .. " cannot be CommandKit.UNBOUNDED: " .. LIMIT_UNBOUNDED_REFUSALS[key], level)
-    elseif secret or not isPositiveInteger(value) or value > ceiling then
-      error(label .. " must be an integer from 1 to " .. ceiling, level)
+      local reason = rule.unboundedReason and (": " .. rule.unboundedReason) or ""
+      error(where .. " cannot be CommandKit.UNBOUNDED" .. reason, level)
     end
+    local minimum = rule.minimum or 1
+    local integer = rule.integer ~= false
+    if
+      type(value) ~= "number"
+      or value ~= value
+      or value < minimum
+      or value > rule.ceiling
+      or (integer and value % 1 ~= 0)
+    then
+      local kind = integer and "an integer" or "a number"
+      local range = " from " .. minimum .. " to " .. rule.ceiling
+      error(where .. " must be " .. kind .. range, level)
+    end
+    if rule.check then
+      rule.check(value, level + 1)
+    end
+  end
+
+  validateLimitUpdate = function(limits, level)
+    if isSecret(limits) or type(limits) ~= "table" then
+      error("CommandKit:SetLimits limits must be a table", level)
+    end
+    local key = next(limits)
+    while type(key) ~= "nil" do
+      local rule = type(key) == "string" and rulesByName[key] or nil
+      if rule == nil then
+        local named = "CommandKit:SetLimits limits." .. describeKey(key)
+        error(named .. " is not a recognised limit; it accepts " .. accepted, level)
+      end
+      validateValue(rule, rawget(limits, key), level + 1)
+      key = next(limits, key)
+    end
+  end
+
+  applyLimitUpdate = function(target, limits)
+    for index = 1, #LIMIT_RULES do
+      local name = LIMIT_RULES[index].name
+      local value = rawget(limits, name)
+      if type(value) ~= "nil" then
+        rawset(target, name, value)
+      end
+    end
+  end
+
+  copyLimits = function(source)
+    local copy = {}
+    for index = 1, #LIMIT_RULES do
+      local name = LIMIT_RULES[index].name
+      copy[name] = rawget(source, name)
+    end
+    return copy
   end
 end
+-- shared:end limits
 
 ---Change any subset of the package-wide limits. They are shared by every
 ---consumer in the session; lowering one never drops what is already kept.
@@ -3107,13 +2919,7 @@ end
 local function setLimits(self, limits)
   validateFacade(self, "CommandKit:SetLimits", 3)
   validateLimitUpdate(limits, 3)
-  for index = 1, #LIMIT_NAMES do
-    local name = LIMIT_NAMES[index]
-    local value = rawget(limits, name)
-    if type(value) ~= "nil" then
-      rawset(sharedLimits, name, value)
-    end
-  end
+  applyLimitUpdate(sharedLimits, limits)
 end
 
 ---Return a fresh copy of the package-wide limits. Allocates one table.
@@ -3121,12 +2927,7 @@ end
 ---@return CommandKit.Limits
 local function getLimits(self)
   validateFacade(self, "CommandKit:GetLimits", 3)
-  return {
-    maxCaptured = rawget(sharedLimits, "maxCaptured"),
-    maxCompletions = rawget(sharedLimits, "maxCompletions"),
-    maxEmotes = rawget(sharedLimits, "maxEmotes"),
-    maxCompletionProviders = rawget(sharedLimits, "maxCompletionProviders"),
-  }
+  return copyLimits(sharedLimits)
 end
 
 -- Commit ---------------------------------------------------------------------
@@ -3170,6 +2971,76 @@ rawset(CommandKit, "SetLimits", setLimits)
 rawset(CommandKit, "GetLimits", getLimits)
 rawset(CommandKit, "GetCommands", scopeExtras.GetAllCommands)
 
+-- The revision-11 hand-over (see "Arguments"). Captured before this
+-- revision replaces the dispatcher: the older core's `registerCommand` (from
+-- its helpers) and slash dispatcher still compile and run commands with
+-- arguments while the Arguments part is absent. Every command an older
+-- revision registered with arguments anywhere in its tree is listed, so
+-- `slashDispatch` hands its lines to the older dispatcher.
+if
+  type(previousRevision) == "number"
+  and previousRevision <= LAST_CORE_ARGUMENTS_REVISION
+  and rawget(rawget(state, "parts"), "Arguments") == nil
+  and state.legacyArguments == nil
+  and type(rawget(dispatch, "slash")) == "function"
+then
+  local legacyRecords = setmetatable({}, { __mode = "k" })
+  local legacyRegister = rawget(rawget(state, "helpers"), "registerCommand")
+  if type(legacyRegister) ~= "function" then
+    legacyRegister = function(_, _, _, methodName, level)
+      error(
+        methodName
+          .. " spec.arguments needs CommandKit's Arguments part, which is not loaded: add commandKit\\parts\\CommandKit-Arguments.lua to your embeds.xml",
+        level
+      )
+    end
+  end
+  -- Whether `spec` or a sub-command below it declares `arguments`. Reads raw
+  -- fields and stops at `MAX_DEPTH`; a malformed spec answers `false` and is
+  -- refused by the normal compile. Kept in the hand-over rather than as a
+  -- file-level function, so a session without one keeps no code for it.
+  local function declaresArguments(spec, depth)
+    if type(spec) ~= "table" or depth > MAX_DEPTH then
+      return false
+    end
+    if type(rawget(spec, "arguments")) ~= "nil" then
+      return true
+    end
+    local subcommands = rawget(spec, "subcommands")
+    if type(subcommands) ~= "table" then
+      return false
+    end
+    for _, child in next, subcommands do
+      if declaresArguments(child, depth + 1) then
+        return true
+      end
+    end
+    return false
+  end
+  local function hasArguments(record)
+    if record._mode ~= "none" then
+      return true
+    end
+    local names = record._subcommandNames
+    for index = 1, #names do
+      if hasArguments(record._subcommands[names[index]]) then
+        return true
+      end
+    end
+    return false
+  end
+  for _, record in next, activeByName do
+    if hasArguments(record) then
+      legacyRecords[record] = true
+    end
+  end
+  state.legacyArguments = {
+    registerCommand = legacyRegister,
+    declaresArguments = declaresArguments,
+    slash = rawget(dispatch, "slash"),
+    records = legacyRecords,
+  }
+end
 rawset(dispatch, "slash", slashDispatch)
 rawset(dispatch, "closeAddonScopesAtLogout", LogoutClose.closeAtLogout)
 
@@ -3187,7 +3058,6 @@ helpers.validateOptionalString = validateOptionalString
 helpers.refuseUnknownFields = refuseUnknownFields
 helpers.tokenize = tokenize
 helpers.writeLine = writeLine
-helpers.joinValues = joinValues
 helpers.registerCommand = registerCommand
 helpers.acquireFrame = acquireFrame
 helpers.releaseFrame = releaseFrame
@@ -3198,16 +3068,28 @@ helpers.contextUsage = contextUsage
 helpers.contextFail = contextFail
 helpers.contextGetCommandPath = contextGetCommandPath
 helpers.installPartMethods = scopeExtras.installPartMethods
-helpers.BOOLEAN_WORDS = BOOLEAN_WORDS
-helpers.SchemaKit = SchemaKit
+helpers.failWithUsage = failWithUsage
 rawset(state, "runtimeRevision", IMPLEMENTATION_REVISION)
 
 if not validatePublicSurface(CommandKit) or not validateCurrentState(CommandKit) then
   error("MoltenCodes CommandKit package state is corrupted or incomplete", 2)
 end
 
+-- Arrange the logout close of every open addon scope an upgrade inherited, in
+-- addon-name order: an older revision never arranged it, and the addon may
+-- never call `ForAddon` again. Written in the main chunk rather than as a
+-- function of `LogoutClose`, so it is freed after load (revision 12).
 if previousRevision ~= nil then
-  LogoutClose.arrangeInherited()
+  local inherited = {}
+  for addonName, scope in next, addonScopes do
+    if rawget(scope, "_closed") ~= true then
+      inherited[#inherited + 1] = addonName
+    end
+  end
+  table.sort(inherited)
+  for index = 1, #inherited do
+    LogoutClose.arrangeProtected(inherited[index], rawget(addonScopes, inherited[index]))
+  end
 end
 
 return CommandKit

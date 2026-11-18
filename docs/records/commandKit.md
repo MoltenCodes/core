@@ -573,4 +573,60 @@ a full collection. KB is 1000 bytes. Ace3 is the pinned bench copy
    dependency rows (generated; `commandKit` no longer needs `schemaKit`),
    `tooling/shared/pins.json` (the CommandKit `isSecret` opt-out removed).
 
-9. Status: recorded 2026-11-16; code follows.
+9. Status: implemented 2026-11-18, 0.4.0, revision 12, 242 specs (Arguments
+   part revision 1, Options part revision 2, Completion part revision 1).
+
+   Measured 2026-11-18 on host Lua 5.1.5 (64-bit), debug information kept,
+   each file loaded after its dependencies in one process on the shared fake
+   client, resident bytes after a full collection (the load-and-execute
+   harness of the earlier memory work, without the pre-grown string table, so
+   its baseline reads 120,746 B where point 2 reads 116,896 B):
+
+   | | Revision 11 | Revision 12 |
+   |---|---:|---:|
+   | core | 120,746 B | 113,230 B (−7,516 B, −6.2%) |
+   | Arguments part | — | 12,085 B |
+   | Options part | 40,196 B | 40,160 B |
+   | Completion part | 19,263 B | 19,287 B |
+   | smallest set (Registry + core; revision 11 with SchemaKit) | 236,550 B | 145,557 B (−38%) |
+   | Registry + SchemaKit + core + Arguments | 236,550 B | 240,161 B (+1.5%) |
+
+   The core's prototypes went from 75,872 B to 68,960 B. The core gained less
+   than point 6 expected (about −12.8 KB, to about 104 KB). By prototype:
+   the moved functions −8,216 B and `arrangeInherited` −696 B as priced, but
+   the hand-over branches that stay resident (`registerCommand`,
+   `runCommand`, `slashDispatch`) +776 B, and the shared `limits` block
+   +1,384 B against everything it replaces (`setLimits` and `getLimits`
+   lose their loops), where point 2e priced +784 B; and the resident bytes
+   per prototype byte of the moved code came out near 1.09, not 1.342. To keep the hand-over small, `declaresArguments` lives in
+   `state.legacyArguments` (built only by an upgrade over revision 11) rather
+   than as a file-level function (−776 B resident).
+
+   Host bench (`python3 -m tooling.bench.run --workload slashCommands
+   --workload options`, revision 11 and revision 12 in separate runs on one
+   machine), ratios against Ace3: `dispatch-subcommand` 2.86× → 2.87×,
+   `dispatch-words` 2.15× → 2.05×, `register-unregister` 29.97× → 29.29×,
+   `cmd-set-range` 1.76× → 1.71×, `cmd-refused` 1.24× → 1.19×: within noise.
+   The dispatch path reads the part's `check` with plain indexing only for a
+   record whose `_mode` is not `"none"`.
+
+   Choices where the record left one open, and deviations:
+   - The Arguments part refuses to load over a core older than revision 12
+     (`... requires CommandKit revision 12 or later to be loaded first`): an
+     older core compiles arguments itself and never asks a part.
+   - Point 2e did not list one more `SetLimits` message the shared block
+     changes: a secret value is refused as `... must not be a secret value`
+     instead of with the type message. Documented in `docs/API.md` and the
+     CHANGELOG.
+   - `Conformance_spec.lua` runs on an environment of its own (Registry and
+     the core; SchemaKit loaded for the committed revision 11 in the upgrade
+     case) and lists no secret arguments: every facade argument is tested for
+     its type before anything compares it, and the suite's secret value is a
+     table (ADR 0002). Secret strings stay covered by `SecretValues_spec.lua`.
+   - `tooling/bench/lua/workloads/SlashCommands.lua` and `Options.lua` load
+     the Arguments part (both declare argument schemas).
+   - Other owners' code that must follow (not changed here):
+     `examples/embeds.xml`, `examples/.luarc.json`, `examples/README.md` and
+     the embedding guide's quote of `embeds.xml` (the core before SchemaKit,
+     then the Arguments part); LifecycleKit's test environment, which loads
+     SchemaKit for CommandKit and must drop it from its module chain.

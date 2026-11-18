@@ -26,12 +26,12 @@
 --- because they are not among the globals the shared fixture owns, together
 --- with every `SLASH_*` and `EMOTE*_CMD*` global.
 ---
---- OptionsKit, LocaleKit and ClientKit are optional dependencies of
---- CommandKit, declared under `optionalDependencies`, so the test runner puts
---- them on `LUA_PATH`; `NewPackage` loads OptionsKit (and SignalKit, which it
---- needs), `NewPackageWithLocaleKit` adds LocaleKit, `NewPackageWithClientKit`
---- adds ClientKit, and `NewPackageAlone` models an addon that embeds only
---- Registry, SchemaKit and CommandKit.
+--- SchemaKit (the Arguments part's), OptionsKit (the Options part's) and
+--- LocaleKit (optional) are dependencies the manifest declares, so the test
+--- runner puts them on `LUA_PATH`; `NewPackage` loads SchemaKit, OptionsKit
+--- (and SignalKit, which it needs) and the three parts,
+--- `NewPackageWithLocaleKit` adds LocaleKit, and `NewPackageAlone` models an
+--- addon that embeds only Registry and CommandKit's core.
 ---
 --- EventKit and LifecycleKit are optional dependencies too: they decide who
 --- closes an addon scope at logout. `LoadEventKit` and `LoadLifecycleKit` load
@@ -45,7 +45,9 @@ local CommandKitTestEnv = FrameworkTestEnv.New({
     "SignalKit",
     "SchemaKit",
     "OptionsKit",
+    "OptionsKit-Bind",
     "CommandKit",
+    "CommandKit-Arguments",
     "CommandKit-Options",
     "CommandKit-Completion",
   },
@@ -67,7 +69,7 @@ local CHAT_GLOBALS = {
 }
 
 --- Every module a variant of `NewPackage` may load, cleared by `Reset`.
-local EXTRA_MODULES = { "LocaleKit", "ClientKit", "LifecycleKit", "EventKit" }
+local EXTRA_MODULES = { "LocaleKit", "LifecycleKit", "EventKit" }
 
 --- What LifecycleKit 0.6.0 publishes as `CLOSES_ADDON_SCOPES`: the package ids
 --- whose addon scopes (or bus) it closes at shutdown.
@@ -173,12 +175,17 @@ function CommandKitTestEnv.NewPackageWithoutParts()
   local SignalKit = require("SignalKit")
   local SchemaKit = require("SchemaKit")
   local OptionsKit = require("OptionsKit")
+  -- The bound trees of the BindOptions specs use `bind`, which OptionsKit
+  -- serves from its Bind part since its revision 16.
+  if CommandKitTestEnv.FindModule("OptionsKit-Bind") ~= nil then
+    require("OptionsKit-Bind")
+  end
   local CommandKit = require("CommandKit")
   return CommandKit, Registry, SignalKit, SchemaKit, OptionsKit
 end
 
----As `NewPackageWithoutParts`, then CommandKit's two parts, Options and
----Completion, as an addon that embeds the whole Kit does.
+---As `NewPackageWithoutParts`, then CommandKit's three parts, Arguments,
+---Options and Completion, as an addon that embeds the whole Kit does.
 ---@return table CommandKit
 ---@return table Registry
 ---@return table SignalKit
@@ -187,28 +194,36 @@ end
 function CommandKitTestEnv.NewPackage()
   local CommandKit, Registry, SignalKit, SchemaKit, OptionsKit =
     CommandKitTestEnv.NewPackageWithoutParts()
+  require("CommandKit-Arguments")
   require("CommandKit-Options")
   require("CommandKit-Completion")
   return CommandKit, Registry, SignalKit, SchemaKit, OptionsKit
 end
 
----Run a part's source as if it declared part revision `revision`, the way a
----newer embedded copy of the part loads over an older one.
----@param partName "Options"|"Completion"
----@param revision integer
----@return any result what the part's file returned
-function CommandKitTestEnv.LoadPartRevision(partName, revision)
-  local moduleName = "CommandKit-" .. partName
-  local path = nil
+---The file `require(moduleName)` would load, or `nil` when no `package.path`
+---entry has it.
+---@param moduleName string
+---@return string|nil path
+function CommandKitTestEnv.FindModule(moduleName)
   for template in package.path:gmatch("[^;]+") do
     local candidate = template:gsub("%?", moduleName)
     local file = io.open(candidate, "r")
     if file ~= nil then
       file:close()
-      path = candidate
-      break
+      return candidate
     end
   end
+  return nil
+end
+
+---Run a part's source as if it declared part revision `revision`, the way a
+---newer embedded copy of the part loads over an older one.
+---@param partName "Arguments"|"Options"|"Completion"
+---@param revision integer
+---@return any result what the part's file returned
+function CommandKitTestEnv.LoadPartRevision(partName, revision)
+  local moduleName = "CommandKit-" .. partName
+  local path = CommandKitTestEnv.FindModule(moduleName)
   if path == nil then
     error("CommandKitTestEnv.LoadPartRevision could not find " .. moduleName, 2)
   end
@@ -234,28 +249,48 @@ function CommandKitTestEnv.NewPackageWithLocaleKit()
   return CommandKit, SchemaKit, LocaleKit
 end
 
----As `NewPackage`, with ClientKit loaded too.
----@return table CommandKit
----@return table ClientKit
-function CommandKitTestEnv.NewPackageWithClientKit()
-  local CommandKit = CommandKitTestEnv.NewPackage()
-  local ClientKit = require("ClientKit")
-  return CommandKit, ClientKit
-end
-
----Load Registry, SchemaKit and CommandKit only, as an addon that embeds
----neither OptionsKit nor LocaleKit does.
+---Load Registry and CommandKit's core only, as an addon whose commands take
+---plain words does: no SchemaKit, no OptionsKit, no part.
 ---@return table CommandKit
 ---@return table Registry
----@return table SchemaKit
 function CommandKitTestEnv.NewPackageAlone()
   CommandKitTestEnv.Reset()
   CommandKitTestEnv.InstallWowApi()
   CommandKitTestEnv.InstallChatApi()
   local Registry = require("Registry")
-  local SchemaKit = require("SchemaKit")
   local CommandKit = require("CommandKit")
-  return CommandKit, Registry, SchemaKit
+  return CommandKit, Registry
+end
+
+---Read a test fixture's text from `tests/fixtures/`.
+---@param name string the fixture's file name
+---@return string text
+---@return string path
+function CommandKitTestEnv.ReadFixture(name)
+  local directory = debug.getinfo(1, "S").source:match("^@(.*[/\\])support[/\\]") or "./"
+  local path = directory .. "fixtures/" .. name
+  local file = assert(io.open(path, "r"))
+  local text = file:read("*a")
+  file:close()
+  return text, path
+end
+
+---Load the byte copy of revision 11, the last core with arguments inside,
+---after Registry, SignalKit, SchemaKit and OptionsKit, with the chat globals
+---installed: the session an addon that embeds only that older file makes.
+---@return table CommandKit the revision-11 facade
+---@return table SchemaKit
+function CommandKitTestEnv.NewRevision11Package()
+  CommandKitTestEnv.Reset()
+  CommandKitTestEnv.InstallWowApi()
+  CommandKitTestEnv.InstallChatApi()
+  require("Registry")
+  require("SignalKit")
+  local SchemaKit = require("SchemaKit")
+  require("OptionsKit")
+  local text, path = CommandKitTestEnv.ReadFixture("CommandKit-revision11.lua")
+  local CommandKit = assert(loadstring(text, "@" .. path))()
+  return CommandKit, SchemaKit
 end
 
 ---Load EventKit (and SignalKit, which it requires) on top of the chain.

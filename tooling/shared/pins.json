@@ -7,11 +7,6 @@
       "reason": "Registry's 1000-line budget cannot take the marker lines, and it reports nothing these helpers report."
     },
     {
-      "package": "commandKit",
-      "helpers": ["isSecret"],
-      "reason": "CommandKit asks ClientKit's secret probe first, which the shared probe does not do; its owner decides when that changes."
-    },
-    {
       "package": "bridgeKit",
       "helpers": ["limits"],
       "reason": "The shared limits block measured 2.3 to 2.7 KB more resident than this Kit's own loop (host Lua 5.1.5, 2026-11-18) and changes its refusals; kept until a leaner revision of the block (docs/records/shared-helpers.md, D1)."
