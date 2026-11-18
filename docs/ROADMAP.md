@@ -870,23 +870,26 @@ or below where the documented guarantees allow, move the rest into parts
 ([ADR 0001](decisions/0001-kit-core-and-parts.md)), bind the helper copies
 to their single source in `tooling/shared/lua/`, then run every test.
 Records are written before their code.
+Implemented 2026-11-18. Where a core stayed above the size its record
+aimed for, or a step of a record was left out, the record's status note
+gives the measurement and the reason.
 
 | Record | Package | Status |
 |---|---|---|
-| [Shared helper blocks in 27 Kits](records/shared-helpers.md#shared-helper-blocks-in-27-kits) | 27 packages | recorded 2026-11-16; code follows |
-| [optionsKit minimal core: AceConfig presentation, handlers and SettingsKit binds become parts; profile links join the Profiles part; the shared secret probe](records/optionsKit.md#optionskit-minimal-core-aceconfig-presentation-handlers-and-settingskit-binds-become-parts-profile-links-join-the-profiles-part-the-shared-secret-probe) | `optionsKit` | recorded 2026-11-16; code follows |
-| [commandKit minimal core: schema-checked arguments become a part, so the core no longer needs SchemaKit; the shared helper blocks](records/commandKit.md#commandkit-minimal-core-schema-checked-arguments-become-a-part-so-the-core-no-longer-needs-schemakit-the-shared-helper-blocks) | `commandKit` | recorded 2026-11-16; code follows |
-| [timerKit (core slimming): pausing as a part, the upgrade floor, one logout route fewer](records/timerKit.md#timerkit-core-slimming-pausing-as-a-part-the-upgrade-floor-one-logout-route-fewer) | `timerKit` | recorded 2026-11-16; code follows |
-| [eventKit (core slimming): unit events and the combat log as parts, SignalKit off the core, the upgrade floor](records/eventKit.md#eventkit-core-slimming-unit-events-and-the-combat-log-as-parts-signalkit-off-the-core-the-upgrade-floor) | `eventKit` | recorded 2026-11-16; code follows |
-| [lifecycleKit (core slimming): the combat gate and halting as parts, own phase lists instead of SignalKit, one scope-closing step](records/lifecycleKit.md#lifecyclekit-core-slimming-the-combat-gate-and-halting-as-parts-own-phase-lists-instead-of-signalkit-one-scope-closing-step) | `lifecycleKit` | recorded 2026-11-16; code follows |
-| [moduleKit (core slimming): injection, implements contracts and required addons as parts, the upgrade floor](records/moduleKit.md#modulekit-core-slimming-injection-implements-contracts-and-required-addons-as-parts-the-upgrade-floor) | `moduleKit` | recorded 2026-11-16; code follows |
-| [registry: minimal core, Handover and Diagnostics parts, restated budget](records/registry.md#registry-minimal-core-handover-and-diagnostics-parts-restated-budget--a-change-to-facade-registry) | `registry` | recorded 2026-11-16; code follows |
-| [signalKit: raw-signal core, Bus and Journal parts](records/signalKit.md#signalkit-raw-signal-core-bus-and-journal-parts--a-change-to-facade-signalkit) | `signalKit` | recorded 2026-11-16; code follows |
-| [poolKit: plain-pool core, Waiting, Children, Deferred and Generations parts](records/poolKit.md#poolkit-plain-pool-core-waiting-children-deferred-and-generations-parts--a-change-to-facade-poolkit) | `poolKit` | recorded 2026-11-16; code follows |
-| [settingsKit Defaults part: plain AceDB-style defaults without SchemaKit](records/settingsKit.md#settingskit-defaults-part-plain-acedb-style-defaults-without-schemakit) | `settingsKit` | recorded 2026-11-16; code follows |
-| [settingsKit SpecProfiles part: spec profiles out of the core](records/settingsKit.md#settingskit-specprofiles-part-spec-profiles-out-of-the-core) | `settingsKit` | recorded 2026-11-16; code follows |
-| [settingsKit core trims: sparse plans, SchemaKit fallbacks, option rules, shared helper blocks](records/settingsKit.md#settingskit-core-trims-sparse-plans-schemakit-fallbacks-option-rules-shared-helper-blocks) | `settingsKit` | recorded 2026-11-16; code follows |
-| [schemaKit Rules and Apply parts: the heavy builders out of the core](records/schemaKit.md#schemakit-rules-and-apply-parts-the-heavy-builders-out-of-the-core) | `schemaKit` | recorded 2026-11-16; code follows |
+| [Shared helper blocks in 27 Kits](records/shared-helpers.md#shared-helper-blocks-in-27-kits) | 27 packages | implemented 2026-11-18 in all 27 (versions and revisions per Kit in the record); 7031 specs repository-wide |
+| [optionsKit minimal core: AceConfig presentation, handlers and SettingsKit binds become parts; profile links join the Profiles part; the shared secret probe](records/optionsKit.md#optionskit-minimal-core-aceconfig-presentation-handlers-and-settingskit-binds-become-parts-profile-links-join-the-profiles-part-the-shared-secret-probe) | `optionsKit` | implemented 2026-11-18, 0.9.0, revision 16, 296 specs |
+| [commandKit minimal core: schema-checked arguments become a part, so the core no longer needs SchemaKit; the shared helper blocks](records/commandKit.md#commandkit-minimal-core-schema-checked-arguments-become-a-part-so-the-core-no-longer-needs-schemakit-the-shared-helper-blocks) | `commandKit` | implemented 2026-11-18, 0.4.0, revision 12, 242 specs |
+| [timerKit (core slimming): pausing as a part, the upgrade floor, one logout route fewer](records/timerKit.md#timerkit-core-slimming-pausing-as-a-part-the-upgrade-floor-one-logout-route-fewer) | `timerKit` | implemented 2026-11-18, 0.10.0, revision 15, 154 specs |
+| [eventKit (core slimming): unit events and the combat log as parts, SignalKit off the core, the upgrade floor](records/eventKit.md#eventkit-core-slimming-unit-events-and-the-combat-log-as-parts-signalkit-off-the-core-the-upgrade-floor) | `eventKit` | implemented 2026-11-18, 0.12.0, revision 23, 320 specs |
+| [lifecycleKit (core slimming): the combat gate and halting as parts, own phase lists instead of SignalKit, one scope-closing step](records/lifecycleKit.md#lifecyclekit-core-slimming-the-combat-gate-and-halting-as-parts-own-phase-lists-instead-of-signalkit-one-scope-closing-step) | `lifecycleKit` | implemented 2026-11-18, 0.7.0, revision 19, 235 specs |
+| [moduleKit (core slimming): injection, implements contracts and required addons as parts, the upgrade floor](records/moduleKit.md#modulekit-core-slimming-injection-implements-contracts-and-required-addons-as-parts-the-upgrade-floor) | `moduleKit` | implemented 2026-11-18, 0.11.0, revision 24, 317 specs |
+| [registry: minimal core, Handover and Diagnostics parts, restated budget](records/registry.md#registry-minimal-core-handover-and-diagnostics-parts-restated-budget--a-change-to-facade-registry) | `registry` | implemented 2026-11-18, 0.7.0, revision 17, 166 specs |
+| [signalKit: raw-signal core, Bus and Journal parts](records/signalKit.md#signalkit-raw-signal-core-bus-and-journal-parts--a-change-to-facade-signalkit) | `signalKit` | implemented 2026-11-18, 0.10.0, revision 13, 317 specs |
+| [poolKit: plain-pool core, Waiting, Children, Deferred and Generations parts](records/poolKit.md#poolkit-plain-pool-core-waiting-children-deferred-and-generations-parts--a-change-to-facade-poolkit) | `poolKit` | implemented 2026-11-18, 0.5.0, revision 12, 157 specs |
+| [settingsKit Defaults part: plain AceDB-style defaults without SchemaKit](records/settingsKit.md#settingskit-defaults-part-plain-acedb-style-defaults-without-schemakit) | `settingsKit` | implemented 2026-11-18, 0.7.0, revision 16, 420 specs |
+| [settingsKit SpecProfiles part: spec profiles out of the core](records/settingsKit.md#settingskit-specprofiles-part-spec-profiles-out-of-the-core) | `settingsKit` | implemented 2026-11-18, 0.7.0, revision 16, 420 specs |
+| [settingsKit core trims: sparse plans, SchemaKit fallbacks, option rules, shared helper blocks](records/settingsKit.md#settingskit-core-trims-sparse-plans-schemakit-fallbacks-option-rules-shared-helper-blocks) | `settingsKit` | implemented 2026-11-18, 0.7.0, revision 16, 420 specs |
+| [schemaKit Rules and Apply parts: the heavy builders out of the core](records/schemaKit.md#schemakit-rules-and-apply-parts-the-heavy-builders-out-of-the-core) | `schemaKit` | implemented 2026-11-18, 0.3.0, revision 7, 161 specs |
 
 ### Standing obligations
 
