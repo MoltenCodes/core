@@ -79,11 +79,19 @@ The LogKit suite covers:
   it, and corrupted-state refusals (limits, global level, `delivering`,
   `pendingRemovals`, `binding`, missing tables);
 - `error` levels: every argument failure reports the caller's own line;
+- the shared helper blocks: the secret probe kept from load and a probe
+  installed after load asked, the facade message, and the in-place upgrade
+  over the committed revision 5 file (`fixtures/LogKit-revision5.lua`);
+- the repository conformance suite (`tests/support/KitConformance.lua`):
+  manifest, receivers, the secret `ForAddon` and `History` names, and
+  upgrade; its limits group is pending, with the reason in the spec;
 - manifest/runtime API and revision consistency, and the declared required and
   optional dependencies.
 
 `support/LogKitTestEnv.lua` loads Registry, SignalKit and LogKit under the
-shared fixture's `mainline` profile (which publishes `issecretvalue`). It
+shared fixture's `mainline` profile (which publishes `issecretvalue`), over
+which it installs at load a probe that `InstallSecretProbe` steers, because
+LogKit keeps the probe it loaded with. It
 installs `DEFAULT_CHAT_FRAME` on request (`InstallChatApi`, `ChatLines`), a
 `SlashCmdList` with `LoadCommandKit` and `RunSlash`, loads SettingsKit with
 `LoadSettingsKit`, and removes all of it in `Reset`. CommandKit and SettingsKit
@@ -105,4 +113,6 @@ load them.
 | `Allocation_spec.lua` | the allocation guards |
 | `ErrorLevels_spec.lua` | argument errors reported at the caller's line |
 | `Bootstrap_spec.lua` | publication, duplicate loads, upgrades, corrupted state |
+| `SharedHelpers_spec.lua` | the shared helper blocks, the upgrade from revision 5 |
+| `Conformance_spec.lua` | the conformance suite on a mainline-profile environment |
 | `Manifest_spec.lua` | manifest and runtime `API` / `REVISION` agreement, declared dependencies |

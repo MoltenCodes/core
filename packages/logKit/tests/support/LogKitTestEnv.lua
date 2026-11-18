@@ -96,13 +96,39 @@ function LogKitTestEnv.InstallAddOns(names)
   end
 end
 
----Make the host's `issecretvalue` report `secret` (compared with `rawequal`)
----as a secret value. The shared fixture owns and clears this global.
+-- The secret a spec chose with `InstallSecretProbe`, or none. LogKit keeps the
+-- `issecretvalue` it found at load (the shared probe rule), so a probe a spec
+-- installed later would never be asked. `InstallWowApi` therefore installs, in
+-- place of the mainline profile's probe, one that answers from this choice
+-- once a spec has made it and from the profile's probe until then.
+local chosenSecret = { active = false, value = nil }
+
+local sharedInstallWowApi = LogKitTestEnv.InstallWowApi
+
+---Install the shared stubs, then the probe that `InstallSecretProbe` steers.
+function LogKitTestEnv.InstallWowApi()
+  sharedInstallWowApi()
+  local profileProbe = getGlobal("issecretvalue")
+  setGlobal("issecretvalue", function(value)
+    if chosenSecret.active then
+      return rawequal(value, chosenSecret.value)
+    end
+    return type(profileProbe) == "function" and profileProbe(value) == true
+  end)
+end
+
+---Make `issecretvalue` report `secret` (compared with `rawequal`) as the only
+---secret value, from now until the next `Reset`; it works whether LogKit
+---loaded before or after the call. A host without the probe gets one.
 ---@param secret any
 function LogKitTestEnv.InstallSecretProbe(secret)
-  setGlobal("issecretvalue", function(value)
-    return rawequal(value, secret)
-  end)
+  chosenSecret.active = true
+  chosenSecret.value = secret
+  if type(getGlobal("issecretvalue")) ~= "function" then
+    setGlobal("issecretvalue", function(value)
+      return chosenSecret.active and rawequal(value, chosenSecret.value)
+    end)
+  end
 end
 
 ---Load the module chain into a host that publishes no `GetTimePreciseSec`.
@@ -191,6 +217,8 @@ local sharedReset = LogKitTestEnv.Reset
 ---of the chain, the chat and slash globals and every saved variable.
 function LogKitTestEnv.Reset()
   sharedReset()
+  chosenSecret.active = false
+  chosenSecret.value = nil
   for index = 1, #EXTRA_MODULES do
     package.loaded[EXTRA_MODULES[index]] = nil
   end
