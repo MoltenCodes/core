@@ -5,9 +5,8 @@ local TestEnv = require("EventKitTestEnv")
 -- call (docs/API.md, "At logout"):
 --
 --   a. a LifecycleKit that lists "eventKit" in CLOSES_ADDON_SCOPES;
---   b. an older LifecycleKit, through an OnShutdown subscription;
---   c. without LifecycleKit, EventKit's own PLAYER_LOGOUT one-shot;
---   d. only when the host refuses that registration, the addon itself.
+--   b. otherwise, EventKit's own PLAYER_LOGOUT one-shot;
+--   c. only when the host refuses that registration, the addon itself.
 --
 -- Every route closes inside the PLAYER_LOGOUT dispatch, so the scope's own
 -- PLAYER_LOGOUT listeners still run.
@@ -20,7 +19,7 @@ local function privateState(EventKit)
 end
 
 ---Remove LifecycleKit's capability field, turning the real LifecycleKit into
----one that, like every revision before 13, does not say what it closes.
+---one that does not say what it closes.
 ---@param LifecycleKit table
 local function withoutCapability(LifecycleKit)
   rawset(LifecycleKit, "CLOSES_ADDON_SCOPES", nil)
@@ -59,7 +58,7 @@ describe("EventKit at logout with a LifecycleKit that closes event scopes", func
     local logouts = countLogouts(events)
 
     assert.are.equal("lifecycleKit", rawget(events, "_logoutRoute"))
-    assert.is_false(rawget(events, "_logoutSubscription"))
+    assert.is_nil(rawget(events, "_logoutSubscription"))
     assert.is_false(privateState(EventKit).logoutConnection)
 
     TestEnv.Logout()
@@ -85,55 +84,22 @@ end)
 describe("EventKit at logout with a LifecycleKit without the capability", function()
   after_each(TestEnv.Reset)
 
-  it("closes the scope from an OnShutdown subscription after the dispatch", function()
+  it("closes the scope from its own PLAYER_LOGOUT one-shot, subscribing nothing", function()
     local EventKit = TestEnv.NewPackage()
     local LifecycleKit = TestEnv.LoadLifecycleKit()
     withoutCapability(LifecycleKit)
     local events = EventKit:ForAddon("MyAddon")
     local logouts = countLogouts(events)
-    local subscription = rawget(events, "_logoutSubscription")
 
-    assert.are.equal("onShutdown", rawget(events, "_logoutRoute"))
-    assert.is_true(subscription:IsConnected())
-    assert.is_false(privateState(EventKit).logoutConnection)
+    assert.are.equal("playerLogout", rawget(events, "_logoutRoute"))
+    assert.is_nil(rawget(events, "_logoutSubscription"))
+    assert.is_true(privateState(EventKit).logoutConnection:IsConnected())
 
     logoutWithoutLifecycleCall(EventKit)
 
     assert.are.equal(1, logouts.count)
     assert.is_true(events:IsClosed())
     assert.are.equal(0, events:GetActiveCount())
-    assert.is_false(rawget(events, "_logoutSubscription"))
-  end)
-
-  it("disconnects the subscription when CloseAddonScopes closes the scope", function()
-    local EventKit = TestEnv.NewPackage()
-    local LifecycleKit = TestEnv.LoadLifecycleKit()
-    withoutCapability(LifecycleKit)
-    local events = EventKit:ForAddon("MyAddon")
-    local subscription = rawget(events, "_logoutSubscription")
-
-    assert.is_true(EventKit:CloseAddonScopes("MyAddon"))
-
-    assert.is_false(subscription:IsConnected())
-    assert.is_false(rawget(events, "_logoutSubscription"))
-  end)
-
-  it("steps aside when a LifecycleKit that closes event scopes replaced it", function()
-    local EventKit = TestEnv.NewPackage()
-    local LifecycleKit = TestEnv.LoadLifecycleKit()
-    local capabilities = rawget(LifecycleKit, "CLOSES_ADDON_SCOPES")
-    withoutCapability(LifecycleKit)
-    local events = EventKit:ForAddon("MyAddon")
-    local closedDuringShutdown
-    LifecycleKit:ForAddon("MyAddon"):OnShutdown(function()
-      closedDuringShutdown = events:IsClosed()
-    end)
-
-    rawset(LifecycleKit, "CLOSES_ADDON_SCOPES", capabilities)
-    TestEnv.Logout()
-
-    assert.is_false(closedDuringShutdown)
-    assert.is_true(events:IsClosed())
   end)
 end)
 
@@ -227,69 +193,22 @@ end)
 describe("EventKit logout routes across an upgrade", function()
   after_each(TestEnv.Reset)
 
-  ---Load Registry and SignalKit with the WoW stubs, without EventKit.
-  local function loadChainWithoutEventKit()
+  it("carries the PLAYER_LOGOUT one-shot and the routes of the previous revision", function()
     TestEnv.Reset()
     TestEnv.InstallWowApi()
     require("Registry")
-    require("SignalKit")
-  end
-
-  it("gives the scopes of a revision without routes one when it upgrades them", function()
-    loadChainWithoutEventKit()
-    local legacy = TestEnv.LoadSourceAtRevision(10)
-    local events = legacy:ForAddon("MyAddon")
-    local logouts = countLogouts(events)
-    -- Revision 10 decided no route and kept no logout connection.
-    local legacyState = privateState(legacy)
-    legacyState.logoutConnection:Disconnect()
-    rawset(legacyState, "logoutConnection", nil)
-    rawset(legacyState, "schema", 6)
-    rawset(events, "_logoutRoute", nil)
-    rawset(events, "_logoutSubscription", nil)
-
-    local EventKit = require("EventKit")
-
-    -- The loading copy is the current source, whatever its revision.
-    local _, revision = require("Registry"):Get("eventKit", 1)
-    assert.are.equal(legacy, EventKit)
-    assert.are.equal(revision, EventKit.REVISION)
-    assert.is_true(EventKit.REVISION > 10)
-    assert.are.equal(10, privateState(EventKit).schema)
-    assert.are.equal("playerLogout", rawget(events, "_logoutRoute"))
-    TestEnv.Logout()
-    assert.are.equal(1, logouts.count)
-    assert.is_true(events:IsClosed())
-  end)
-
-  it("carries the PLAYER_LOGOUT one-shot an older copy made", function()
-    loadChainWithoutEventKit()
-    local legacy = TestEnv.LoadSourceAtRevision(10)
+    local legacy = TestEnv.LoadSourceAtRevision(22)
     local events = legacy:ForAddon("MyAddon")
     local connection = privateState(legacy).logoutConnection
 
     local EventKit = require("EventKit")
     local later = EventKit:ForAddon("Later")
 
+    assert.are.equal(legacy, EventKit)
     assert.are.equal(connection, privateState(EventKit).logoutConnection)
+    assert.are.equal("playerLogout", rawget(events, "_logoutRoute"))
     TestEnv.Logout()
     assert.is_true(events:IsClosed())
     assert.is_true(later:IsClosed())
-  end)
-
-  it("carries an OnShutdown subscription an older copy made", function()
-    loadChainWithoutEventKit()
-    local legacy = TestEnv.LoadSourceAtRevision(10)
-    local LifecycleKit = TestEnv.LoadLifecycleKit()
-    withoutCapability(LifecycleKit)
-    local events = legacy:ForAddon("MyAddon")
-    local subscription = rawget(events, "_logoutSubscription")
-
-    local EventKit = require("EventKit")
-
-    assert.are.equal(subscription, rawget(events, "_logoutSubscription"))
-    assert.is_true(subscription:IsConnected())
-    logoutWithoutLifecycleCall(EventKit)
-    assert.is_true(events:IsClosed())
   end)
 end)

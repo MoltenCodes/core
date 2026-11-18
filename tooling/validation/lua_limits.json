@@ -1,8 +1,5 @@
 {
   "files": {
-    "packages/moduleKit/src/ModuleKit.lua": {
-      "mainLocals": 193
-    },
     "packages/settingsKit/src/SettingsKit.lua": {
       "mainLocals": 193
     }

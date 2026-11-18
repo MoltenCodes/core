@@ -40,7 +40,7 @@ describe("LifecycleKit secret values", function()
     })
     installSecretProbe(secret)
     expectRefusalAtCaller(
-      'LifecycleKit.CLOSES_ADDON_SCOPES is read-only; field "<secret value>" cannot be written',
+      'LifecycleKit.CLOSES_ADDON_SCOPES is read-only; field "<secret>" cannot be written',
       function()
         LifecycleKit.CLOSES_ADDON_SCOPES[secret] = true
       end

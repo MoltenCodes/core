@@ -208,7 +208,29 @@ Measurements, classification, the upgrade floor and the part contract:
    maintainer: `docs/EMBEDDING.md` footprint rows and load order,
    `docs/ARCHITECTURE.md` dependency graph (LifecycleKit no longer requires
    SignalKit), `docs/MIGRATING_FROM_ACE3.md` (no Ace3 row changes).
-9. Status: recorded 2026-11-16; code follows.
+9. Status: implemented 2026-11-18, 0.7.0, revision 19, 235 specs.
+   Measured (host Lua 5.1.5, debug information kept, the core-runtime
+   method): core 72.4 → 51.3 KB resident (allocated while loading 231.8 →
+   179.7 KB); CombatGate part 12.5 KB, Halt part 5.3 KB when embedded; per
+   instance without subscriptions 3,289 → 329 B (one warm-up, 200 kept; the
+   baseline differs from the 3,544 B above because the addon names were made
+   beforehand). The core is about 4 KB above the ≈ 47 KB expected: the shared
+   blocks (`isSecret` came with `limits`, which requires it) and the
+   revision 18 path (its signals fired with their capture records, its
+   handles, its combat queues without the part) stay resident. Choices: the
+   `limits` block needs a ceiling, so both limits take 2147483647 (any
+   practical value is still accepted, `UNBOUNDED` too); the refusal texts
+   become the block's (`; it accepts ...`, `must be an integer from 1 to
+   2147483647`) and a secret key is named `<secret>`. With the CombatGate
+   part each instance records `_combatQueueLimit` when created, so
+   "existing instances keep theirs" holds; the other combat fields are
+   created by the first queued call. Without the CombatGate part, revision
+   18's queued calls run on the next frame (a `C_Timer.NewTimer(0)`) when
+   out of combat, are closed at shutdown or halt otherwise, and are reported
+   once. "Loads with no SignalKit registered" is proved by a Registry that
+   denies SignalKit while LifecycleKit loads and runs, because EventKit up
+   to revision 22 still requires it. Other Kits' test environments load the
+   Halt part (ModuleKit's chain and secret spec, TestKit's `Phases_spec`).
 
 **Not recorded (owner decisions, priced):**
 - A cheaper phase hook for ModuleKit: one container callback receiving the

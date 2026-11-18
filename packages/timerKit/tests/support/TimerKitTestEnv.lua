@@ -11,6 +11,8 @@
 --- so the test runner puts them and their required closures on `LUA_PATH`;
 --- `LoadEventKit` and `LoadLifecycleKit` load them on top of the chain the way
 --- an addon that also embeds them would, and `Reset` unloads them again.
+--- Pausing is TimerKit's Pausing part; `LoadPausing` adds it on top of the core
+--- for the specs that pause, and `Reset` unloads it too.
 local FrameworkTestEnv = require("FrameworkTestEnv")
 
 local TimerKitTestEnv = FrameworkTestEnv.New({
@@ -24,7 +26,7 @@ TimerKitTestEnv.FailNextCreate = TimerKitTestEnv.FailNextTimerCreate
 TimerKitTestEnv.FailNextCancel = TimerKitTestEnv.FailNextTimerCancel
 
 --- The optional modules the helpers below may load, in load order.
-local OPTIONAL_MODULES = { "SignalKit", "EventKit", "LifecycleKit" }
+local OPTIONAL_MODULES = { "TimerKit-Pausing", "EventKit", "LifecycleKit" }
 
 local resetFixture = TimerKitTestEnv.Reset
 
@@ -36,14 +38,29 @@ function TimerKitTestEnv.Reset()
   end
 end
 
----Load SignalKit and EventKit after the chain `NewPackage` loaded.
+---Load TimerKit's Pausing part on top of the core a spec loaded.
+---@return table TimerKit
+function TimerKitTestEnv.LoadPausing()
+  return require("TimerKit-Pausing")
+end
+
+---Run the byte copy of revision 14 kept in `tests/fixtures/`, the revision
+---this one upgrades in place from, as an older embedded copy would load.
+---@return table TimerKit
+function TimerKitTestEnv.LoadRevision14()
+  local directory = debug.getinfo(1, "S").source:match("^@(.*[/\\])") or "./"
+  local path = directory .. "../fixtures/TimerKit-revision14.lua"
+  local chunk = assert(loadfile(path))
+  return chunk()
+end
+
+---Load EventKit after the chain `NewPackage` loaded.
 ---@return table EventKit
 function TimerKitTestEnv.LoadEventKit()
-  require("SignalKit")
   return require("EventKit")
 end
 
----Load SignalKit, EventKit and LifecycleKit after the chain `NewPackage`
+---Load EventKit and LifecycleKit after the chain `NewPackage`
 ---loaded.
 ---@return table LifecycleKit
 ---@return table EventKit
@@ -105,41 +122,7 @@ function TimerKitTestEnv.LoadRevision(revision)
   return chunk()
 end
 
---- The array slots of a revision 14 timer, by the field name revision 13 and
---- older stored them under.
-local LEGACY_FIELD_SLOTS = {
-  _id = 1,
-  _scope = 2,
-  _callback = 3,
-  _delay = 4,
-  _state = 5,
-  _native = 6,
-  _deadline = 7,
-  _repeating = 8,
-  _userData = 9,
-}
-
----Rewrite a current timer into the named-field layout revision 13 and older
----used, with the metatable those revisions gave a timer, as if an older
----embedded copy had built it. Its host callback is untouched: revisions 10 to
----13 bound it to the same `dispatch.fireStarted` and handle.
----@param TimerKit table the loaded facade
----@param timer table a timer the current revision built
----@return table timer the same table
-function TimerKitTestEnv.ToLegacyLayout(TimerKit, timer)
-  local values = {}
-  for name, slot in pairs(LEGACY_FIELD_SLOTS) do
-    values[name] = rawget(timer, slot)
-    rawset(timer, slot, nil)
-  end
-  for name, value in pairs(values) do
-    rawset(timer, name, value)
-  end
-  setmetatable(timer, rawget(rawget(TimerKit, "_state"), "timerMetatable"))
-  return timer
-end
-
----Whether `timer` is stored in the array layout of revision 14 and later.
+---Whether `timer` is stored in the nine-slot array layout.
 ---@param TimerKit table the loaded facade
 ---@param timer table
 ---@return boolean

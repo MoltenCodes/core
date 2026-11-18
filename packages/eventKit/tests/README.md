@@ -17,7 +17,7 @@ It also covers:
   and failure handling, closing (also during a dispatch, with the deferred
   sweep), caller-line errors, receiver validation, addon scopes and the
   two-step shutdown wiring;
-- the Coalescing part (revision 22): its bootstrap (the revision its file carries, the refusal without the core or the part interface, an equal or newer revision left alone, a higher one taking over live handles and timers, a core upgraded after it serving it), the core's stubs at the caller's line with the file to embed, `HasPart`, scopes closing without the part, and the upgrade from the single-file revision 21 (live handles adopted with the part, closed and reported once without it, a scope closing them, revision 21 yielding to a core-only revision 22);
+- the three parts (Units, CombatLog, Coalescing): each part's bootstrap (the revision its file carries, the refusal without the core, the Coalescing part's refusal against part interface 1 and without SignalKit, an equal or newer revision left alone, a higher one taking over unit groups, the combat-log router or live handles and timers, a core upgraded after it serving it), the core's stubs of every part member at the caller's line with the file to embed, `HasPart`, `IsCombatLogAvailable` and `maxUnitFrames` without the parts, the `units` option refused without the Units part, and a scope closing unit, combat-log, plain and coalesced members together;
 - the TimerKit timing, with no SchedulerKit loaded: the first key arming one timer, `maxKeys` refusals and counts with its default of 256, the two reused sets, keys recorded during the callback, a zero interval, a timer TimerKit cannot arm keeping the key, `Flush` inside the callback, `GetStats` in one table, a raising callback reported, a stale host callback ignored, the kept `maxKeys` wording; `Derive`'s quiet period re-armed for the remainder, the next-frame default, no clock, a timer TimerKit cannot arm raised to `Invalidate`, close cancelling; and the `lane` path through SchedulerKit with its parts refused by name;
 - `Coalesce`: the payload set, `byEvent` and `nil`-payload keying, unit events, `maxKeys`, `Flush`, scope release (also mid-dispatch), refusal without TimerKit, caller-line errors, and an allocation guard;
 - `Derive`: recompute, debounce, `delaySeconds`, `OnChange`, `equals`, `Invalidate`, raising compute and listeners, `Close` (which disconnects the change listeners) and scope release, a compute that closes its own scope, and the synchronous path without TimerKit;
@@ -52,10 +52,9 @@ It also covers:
   unchecked; the function probed once at load; and, without it, the previous
   behaviour;
 - who closes an addon scope at logout: a LifecycleKit that lists EventKit in
-  `CLOSES_ADDON_SCOPES`, an older LifecycleKit through `OnShutdown`, or
-  EventKit's own `PLAYER_LOGOUT` one-shot, with scoped logout listeners still
-  delivered, a refused registration retried, and routes given to or carried
-  from an older copy;
+  `CLOSES_ADDON_SCOPES`, or otherwise EventKit's own `PLAYER_LOGOUT` one-shot,
+  with scoped logout listeners still delivered, a refused registration
+  retried, and the one-shot carried from the previous revision;
 - listener storage: one handle per connection holding the callback itself, the
   tail dropped and compaction in place outside a dispatch, replacement during
   one, a `Once` tombstone settled later, a connect behind a tail tombstone
@@ -82,21 +81,27 @@ It also covers:
   installed after load honoured when there was none;
 - the connection receiver test by metatable identity (strings, numbers, a
   foreign table with the prototype as `__index`);
-- in-place upgrade from implementation revision 21 (the single file, in `Parts_spec.lua`), from revision 20 (every reachable
-  connection converted to the array layout in place: regular, scoped, scoped
-  one-shot, unit, combat-log, addon scope; scope links and one-shot counts
-  rebuilt; order kept; an unreachable disconnected handle still answering),
-  from implementation revisions 1, 4, 5, 6, 8, 9, 10, 11, 12,
-  14, 15 and 16 (signal-backed channels, routes and router emulated: their
-  connections delivered first and released on their own path) and the previous
-  revision, set limits and the sentinel carried to a newer revision, and the
-  refusal to downgrade a newer copy.
+- the core loading and serving `Connect` with no SignalKit registered;
+- the upgrade floor: in-place upgrade from revision 22 only, with the byte
+  copy of revision 22's files (`tests/fixtures/EventKit-revision22.lua` and
+  `EventKit-Coalescing-revision1.lua`) loaded first: regular, unit,
+  combat-log and coalesced connections kept delivering with the parts, unit
+  and combat-log connections retired on the next frame or at the first event
+  without their parts and reported once per part, retired Frames reused by a
+  Units part loaded later; a copy below the floor refused; set limits and the
+  sentinel carried to a newer revision; the refusal to downgrade a newer copy;
+- the shared conformance suite (`tests/support/KitConformance.lua`): manifest,
+  `maxUnitFrames`, receivers (`CreateScope` and `IsCombatLogAvailable`
+  exempt: neither reads an argument), secret arguments and the upgrade from
+  the previous revision, emulated and committed.
 
 ## Spec files
 
 | File | Covers |
 |---|---|
-| `Bootstrap_spec.lua` | Load order, duplicate embedding, corrupted state (including a mismatched sentinel and out-of-range limits), every in-place upgrade (the revision-20 connection conversion; older layouts emulated from the current source, the schema-9 named fields included), limits carried to a newer revision, no downgrade, connection receiver checks. |
+| `Bootstrap_spec.lua` | Load order, loading without SignalKit, duplicate embedding, corrupted state (including a mismatched sentinel and out-of-range limits), the upgrade from the previous revision and the refusal below the floor, limits carried to a newer revision, no downgrade, connection receiver checks. |
+| `Upgrade_spec.lua` | The in-place upgrade from the byte copy of revision 22's files, with and without the Units and CombatLog parts. |
+| `Conformance_spec.lua` | The shared conformance suite. |
 | `Manifest_spec.lua` | Manifest and runtime metadata agree. |
 | `Registration_spec.lua` | Lazy registration and final-listener unregistration. |
 | `Connection_spec.lua` | Connection handles: connected state and exactly-once disconnect. |
@@ -107,11 +112,11 @@ It also covers:
 | `Errors_spec.lua` | Argument, receiver and host-environment errors and their levels; refused registrations; listener isolation. |
 | `CombatLog_spec.lua` | `ConnectCombatLog`: routing, forwarding, the single client read, the wildcard, allocation, host registration beside a plain `Connect`, the refusal without a reader, isolation, scopes, errors; `IsCombatLogAvailable`. |
 | `EventValidity_spec.lua` | Unknown event names refused through `C_EventUtils.IsEventValid`, with the function present and absent. |
-| `LogoutCoverage_spec.lua` | The logout routes, subscription release, scoped `PLAYER_LOGOUT` listeners around the close, re-examination, routes across an upgrade. |
+| `LogoutCoverage_spec.lua` | The logout routes, scoped `PLAYER_LOGOUT` listeners around the close, re-examination, the one-shot carried across an upgrade. |
 | `Scope_spec.lua` | Manual and addon scopes, deferred close, `CloseAddonScopes`. |
-| `Coalesce_spec.lua` | `Coalesce`, with and without TimerKit, and with TimerKit loaded after a refused call; the part's one TimerKit scope, one lookup, the handle cost, the revision-17 upgrade, and a table option key named by its type without running its `__tostring`. |
+| `Coalesce_spec.lua` | `Coalesce`, with and without TimerKit, and with TimerKit loaded after a refused call; the part's one TimerKit scope, one lookup, the handle cost, and a table option key named by its type without running its `__tostring`. |
 | `Derive_spec.lua` | `Derive`, with and without TimerKit. |
-| `Parts_spec.lua` | The Coalescing part's bootstrap and revisions, the core's stubs and `HasPart`, the upgrade from the single-file revision 21 and the yield. |
+| `Parts_spec.lua` | The three parts' bootstrap and revisions, the core's stubs and `HasPart`, the core without its parts, a scope with every kind of member. |
 | `Timing_spec.lua` | Every TimerKit timing rule of `Coalesce` and `Derive` with no SchedulerKit loaded, and the `lane` path. |
 | `Limits_spec.lua` | `SetLimits`, `GetLimits`, `EventKit.UNBOUNDED`, the `maxUnitFrames` limit, and a table limit key named by its type without running its `__tostring`. |
 | `ListenerStorage_spec.lua` | Listener arrays in and out of a dispatch, the channel pool, handle-only allocation guards (unscoped and scoped handle bounds). |
@@ -119,14 +124,16 @@ It also covers:
 | `Reopen_spec.lua` | `Scope:Reopen`, including a close and reopen inside a dispatch. |
 | `ProtectedWalk_spec.lua` | When the listener walk is protected, the one-shot count, the depth after a raising release. |
 
-`EventKitTestEnv.LoadSourceAtRevision(revision[, coreOnly])` runs the EventKit
+`EventKitTestEnv.LoadSourceAtRevision(revision)` runs the EventKit core
 source again with only its revision changed, standing in for another embedded
-copy whose `_state` schema matches. For a revision before 22, the last of
-which was a single file, it also runs the Coalescing part and then removes the
-part interface from the state, so the copy looks like that single file.
+copy whose `_state` schema matches. `LoadRevision22("core")` and
+`LoadRevision22("coalescing")` run the byte copies of revision 22's files.
 
-`EventKitTestEnv.NewPackage()` loads the core alone; `LoadCoalescing()` adds
-the part. `EventKitTestEnv.Scheduled` is a second environment that also loads
+`EventKitTestEnv.NewPackage()` loads the core with the Units and CombatLog
+parts, which most specs use; `NewCore()` loads the core alone,
+`LoadUnitsAndCombatLog()` adds those two parts and `LoadCoalescing()` the
+third. SignalKit stays in the chain because the Coalescing part needs it;
+`NewPackageWithout("SignalKit")` loads the core without it. `EventKitTestEnv.Scheduled` is a second environment that also loads
 TimerKit, SchedulerKit with its Coalescing and Lanes parts, and EventKit's
 part; `EventKitTestEnv.Timed` loads TimerKit and the part without
 SchedulerKit (LifecycleKit is optional for all and not loaded). The part's

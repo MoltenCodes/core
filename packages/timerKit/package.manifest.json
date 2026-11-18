@@ -3,10 +3,10 @@
   "displayName": "TimerKit",
   "description": "Cancelable, scope-aware World of Warcraft timers with deterministic cleanup of addon-owned scopes.",
   "summary": "Cancelable one-shot and repeating timers with ownership scopes, and addon scopes closed at logout through LifecycleKit or EventKit when present.",
-  "version": "0.9.0",
+  "version": "0.10.0",
   "license": "MIT",
   "api": 1,
-  "revision": 14,
+  "revision": 15,
   "dependencies": {
     "registry": {
       "api": 2
@@ -18,6 +18,14 @@
     },
     "lifecycleKit": {
       "api": 1
+    }
+  },
+  "parts": {
+    "Pausing": {
+      "description": "Pause and Resume: a running timer paused and resumed later with what was left of its delay, a repeating timer back on its interval after that first fire.",
+      "revision": 1,
+      "dependencies": {},
+      "optionalDependencies": {}
     }
   }
 }

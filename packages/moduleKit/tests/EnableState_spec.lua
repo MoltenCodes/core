@@ -318,32 +318,4 @@ describe("ModuleKit intent versus fact", function()
     database:Enable()
     assert.is_true(consumer:IsEnabled())
   end)
-
-  it("derives intent for modules an earlier revision created", function()
-    local addon = ModuleKit:ForAddon("MyAddon")
-    local kept = addon:CreateModule("Kept")
-    local dropped = addon:CreateModule("Dropped")
-    kept:Enable()
-    dropped:Enable()
-    dropped:Disable()
-    for _, module in ipairs({ kept, dropped }) do
-      for _, field in ipairs({
-        "_wantedEnabled",
-        "_enableBlockedBy",
-        "_scopeOpen",
-        "_scope",
-        "scope",
-      }) do
-        rawset(module, field, nil)
-      end
-    end
-
-    rawset(rawget(ModuleKit, "_state"), "runtimeRevision", ModuleKit.REVISION - 1)
-    TestEnv.ReloadPackage()
-
-    assert.are.same({ wanted = true, actual = true }, kept:GetEnableState())
-    assert.are.same({ wanted = false, actual = false }, dropped:GetEnableState())
-    assert.is_table(kept.scope)
-    assert.is_nil(kept.scope.Timers)
-  end)
 end)

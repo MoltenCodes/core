@@ -24,17 +24,17 @@ Current packages:
 - [`compatKit`](compatKit/) — Versioned shims with a host opt-out, provider registries with a fallback cascade, and the catalogue of taint-hostile subsystems as data.
 - [`dialogKit`](dialogKit/) — Confirmation and input dialogs without StaticPopupDialogs: one frame of their own, a bounded queue, Escape through UISpecialFrames, timeouts.
 - [`editModeKit`](editModeKit/) — Addon frames in Blizzard's Edit Mode: a labelled overlay drags each frame while Edit Mode is open, its position saved per layout and put back on a layout switch.
-- [`eventKit`](eventKit/) — Lazy game-event subscriptions on SignalKit, unit-event filtering and combat-log routing by sub-event.
+- [`eventKit`](eventKit/) — Lazy game-event subscriptions with scopes and isolated listeners; unit events, combat-log routing and coalescing as optional parts.
 - [`glowKit`](glowKit/) — Glows that draw the eye to a frame, pixel lines running round its edge or a pulsing border, keyed per frame, pooled and bounded.
 - [`hookKit`](hookKit/) — Reversible, secure-first hooking of functions, methods and frame scripts in three named semantics.
 - [`interopKit`](interopKit/) — The LibStub bridge: expose Kits to LibStub consumers and adopt LibStub libraries read-only.
 - [`launcherKit`](launcherKit/) — Minimap buttons for BrokerKit objects, dragged round any minimap shape, state in LibDBIcon's saved fields, and Retail's addon compartment.
-- [`lifecycleKit`](lifecycleKit/) — Replay-aware per-addon loading, readiness and shutdown, a shared combat gate with a bounded out-of-combat queue, and a halted state.
+- [`lifecycleKit`](lifecycleKit/) — Replay-aware per-addon loading, readiness and shutdown that closes the addon's scopes in the other Kits; a combat gate and halting as parts.
 - [`localeKit`](localeKit/) — Per-addon translations, missing-key reporting and coverage, indexed format specifiers.
 - [`logKit`](logKit/) — Levelled, structured logging with lazy secret-safe formatting, a bounded journal and chat, callback and table sinks.
 - [`mediaKit`](mediaKit/) — A typed media registry with font scripts, sorted cached lists, per-consumer defaults and LibSharedMedia adoption and mirroring.
 - [`menuKit`](menuKit/) — Menus described as checked, bounded tables and shown by Blizzard's Menu API: context menus, dropdowns and removable extensions of Blizzard's own menus.
-- [`moduleKit`](moduleKit/) — Addon-scoped module lifecycle, dependency graphs, dependency injection with checked interfaces, and dependency policies.
+- [`moduleKit`](moduleKit/) — Addon-scoped module lifecycle, dependency graphs and dependency policies; injection, implements contracts and required addons as optional parts.
 - [`optionsKit`](optionsKit/) — A typed, validated, introspectable options tree bound to getters or a SettingsKit database, with no renderer.
 - [`panelKit`](panelKit/) — An OptionsKit tree in Blizzard's settings panel, as a category or subcategory, drawn by WidgetKit only while its page is shown.
 - [`poolKit`](poolKit/) — Allocation-conscious bounded object pooling with deterministic ownership and cleanup.

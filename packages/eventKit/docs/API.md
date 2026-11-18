@@ -1,8 +1,8 @@
 # EventKit API
 
-EventKit API generation 1 provides lazy World of Warcraft event subscriptions with SignalKit API 1's dispatch semantics.
+EventKit API generation 1 provides lazy World of Warcraft event subscriptions with SignalKit API 1's dispatch semantics, without needing SignalKit itself.
 
-Implementation revision: **22**. Part `Coalescing`: revision **1**.
+Implementation revision: **23**. Parts: `Units` revision **1**, `CombatLog` revision **1**, `Coalescing` revision **2**.
 
 EventKit is multi-tenant: one shared instance serves every addon in a WoW session.
 
@@ -12,40 +12,64 @@ Runtime files must be loaded in dependency order:
 
 ```text
 Registry.lua
-SignalKit.lua
 EventKit.lua
+parts/EventKit-Units.lua        (optional: ConnectUnit and OnceUnit)
+parts/EventKit-CombatLog.lua    (optional: ConnectCombatLog)
+SignalKit.lua                   (only for the Coalescing part)
 parts/EventKit-Coalescing.lua   (optional: Coalesce and Derive)
 ```
 
+The core needs Registry alone; LifecycleKit is optional and found through
+`Registry:Find` when an addon scope asks it (see [At logout](#at-logout)).
+Revisions before 23 required SignalKit; the core now uses none of it, and only
+the Coalescing part's `Derive` does, for its change listeners.
+
 ### Parts
 
-EventKit is a core and one optional part
+EventKit is a core and three optional parts
 ([ADR 0001](../../../docs/decisions/0001-kit-core-and-parts.md)). The core is
-every subscription, scope and limit. The **Coalescing** part,
-`parts/EventKit-Coalescing.lua`, adds [`Coalesce` and `Derive`](#coalescing-events);
-it loads after the core, and it needs TimerKit to time them (and SchedulerKit,
-with its Coalescing and Lanes parts, only for a `lane`). `python3 -m
-tooling.package.embeds eventKit/Coalescing` prints the lines for an
-`embeds.xml`.
+`Connect`, `Once`, scopes, connection handles, isolation, the logout routes and
+the limits: what AceEvent-3.0 gives an addon, and what most addons need.
 
-Without the part the four members stay on the facade and the scope prototype,
-so every embedded copy's surface check still accepts them, and raise at the
+| Part | File | Adds | Needs |
+|---|---|---|---|
+| `Units` | `parts/EventKit-Units.lua` | [`ConnectUnit` and `OnceUnit`](#eventkitconnectunitevent-callback-unit1--unit2), on the facade and on scopes | the core |
+| `CombatLog` | `parts/EventKit-CombatLog.lua` | [`ConnectCombatLog`](#eventkitconnectcombatlogsubevent-callback), on the facade and on scopes | the core |
+| `Coalescing` | `parts/EventKit-Coalescing.lua` | [`Coalesce` and `Derive`](#coalescing-events), on the facade and on scopes | the core and SignalKit; TimerKit to time them, SchedulerKit (with its Coalescing and Lanes parts) only for a `lane`; the `Units` part for the `units` option |
+
+Each part loads after the core. `python3 -m tooling.package.embeds
+eventKit/Units eventKit/CombatLog eventKit/Coalescing` prints the lines for an
+`embeds.xml`. `IsCombatLogAvailable` and `SetLimits{ maxUnitFrames }` stay in
+the core: the first answers for the client (Retail 12 gives addon code no
+combat-log reader, so an addon there should not have to embed the part to
+learn that), and the limit keeps `SetLimits` and `GetLimits` one shape.
+
+Without a part its members stay on the facade and the scope prototype, so
+every embedded copy's surface check still accepts them, and raise at the
 caller's line with the file to embed:
 
 ```text
-EventKit:Coalesce is in EventKit's Coalescing part, which is not loaded: add eventKit\parts\EventKit-Coalescing.lua to embeds.xml after eventKit\EventKit.lua
+EventKit:ConnectUnit is in EventKit's Units part, which is not loaded: add eventKit\parts\EventKit-Units.lua to embeds.xml after eventKit\EventKit.lua
 ```
 
-(`EventKit:Derive`, `EventKit.Scope:Coalesce` and `EventKit.Scope:Derive` the
-same way). `EventKit:HasPart(name)` answers whether a part is installed in the
-session (`EventKit:HasPart("Coalescing")`); code that uses a part optionally
-asks it, because a stub satisfies `type(EventKit.Coalesce) == "function"`. A
-name that is not a string raises `EventKit:HasPart name must be a part name
-string`.
+(`OnceUnit`, `ConnectCombatLog`, `Coalesce` and `Derive`, and the scope forms
+`EventKit.Scope:<Member>`, the same way). A `Coalesce` or `Derive` `units`
+option without the Units part raises `<Method> option "units" is in EventKit's
+Units part, which is not loaded: ...`.
 
-A part loaded without its core raises `MoltenCodes EventKit part Coalescing
-requires EventKit API 1 to be loaded first`. Two addons may embed different
-revisions of the part; the highest serves both, as for the core.
+`EventKit:HasPart(name)` answers whether a part is installed in the session
+(`EventKit:HasPart("Units")`). Code that uses a part optionally asks it,
+because a stub satisfies `type(EventKit.ConnectUnit) == "function"`. A secret
+name raises `EventKit:HasPart name must not be a secret value`, any other name
+that is not a string `EventKit:HasPart name must be a part name string`.
+
+A part loaded without its core, or over a core older than revision 23 (part
+interface 2), raises `MoltenCodes EventKit part <Part> requires EventKit API 1
+to be loaded first`; the Coalescing part loaded without SignalKit raises
+`MoltenCodes EventKit part Coalescing requires SignalKit API 1 to be loaded
+first`. Two addons may embed different revisions of a part; the highest serves
+both, as for the core, and takes over the unit groups, the combat-log router or
+the Coalesce and Derive handles in place.
 
 Portable WoW code should resolve the package through Registry:
 
@@ -57,9 +81,25 @@ EventKit does not rely on `require()` at runtime.
 
 The facade carries two read-only constants: `EventKit.API`, the API generation
 (`1`), and `EventKit.REVISION`, the implementation revision of the copy that
-is active in the session (`22` for this one). A newer embedded copy replaces
+is active in the session (`23` for this one). A newer embedded copy replaces
 `REVISION` when it upgrades the facade in place. Loading errors are listed
 under [Error messages](#error-messages).
+
+## Public surface
+
+| Member | Part | Returns |
+|---|---|---|
+| `EventKit.API`, `EventKit.REVISION` | core | `1`; the active implementation revision |
+| [`EventKit:Connect(eventName, callback[, methodName])`](#eventkitconnecteventname-callback), [`EventKit:Once(...)`](#eventkitonceeventname-callback) | core | a connection |
+| [`EventKit:ConnectUnit(eventName, callback, unit1[, unit2])`](#eventkitconnectunitevent-callback-unit1--unit2), [`EventKit:OnceUnit(...)`](#eventkitonceunitevent-callback-unit1--unit2) | Units | a connection |
+| [`EventKit:ConnectCombatLog(subEvent, callback)`](#eventkitconnectcombatlogsubevent-callback) | CombatLog | a connection |
+| [`EventKit:IsCombatLogAvailable()`](#eventkitiscombatlogavailable) | core | `boolean` |
+| [`EventKit:CreateScope()`, `EventKit:ForAddon(addonName)`, `EventKit:CloseAddonScopes(addonName)`](#owner-scopes) | core | a scope; a scope; `boolean` |
+| [`EventKit:Coalesce(...)`, `EventKit:Derive(...)`](#coalescing-events) | Coalescing | a handle |
+| [`EventKit:SetLimits(limits)`, `EventKit:GetLimits()`, `EventKit.UNBOUNDED`](#limits) | core | nothing; a fresh table; the sentinel |
+| [`EventKit:HasPart(name)`](#parts) | core | `boolean` |
+| [`EventKit.Connection`](#connection-api): `Disconnect`, `IsConnected` | core | `boolean` |
+| [`EventKit.Scope`](#scope-methods): the subscription methods above, `DisconnectAll`, `Close`, `IsClosed`, `Reopen`, `GetAddonName`, `GetActiveCount` | as the facade member | |
 
 ## `EventKit:Connect(eventName, callback)`
 
@@ -112,7 +152,7 @@ Like `Connect`, but disconnects before the first callback invocation. Recursive/
 
 ## `EventKit:ConnectUnit(eventName, callback, unit1 [, unit2])`
 
-Subscribes with WoW's `Frame:RegisterUnitEvent` filtering. At least one non-empty string unit token is required. Duplicate tokens are removed and tokens are sorted before registration, so equivalent unit sets reuse one internal registration group regardless of caller order.
+In the [Units part](#parts). Subscribes with WoW's `Frame:RegisterUnitEvent` filtering. At least one non-empty string unit token is required. Duplicate tokens are removed and tokens are sorted before registration, so equivalent unit sets reuse one internal registration group regardless of caller order.
 
 ### The two-token limit
 
@@ -150,11 +190,11 @@ client's `C_EventUtils.IsEventValid` where the client has it (see
 
 ## `EventKit:OnceUnit(eventName, callback, unit1 [, unit2])`
 
-Unit-filtered one-shot subscription with the same disconnect-before-callback guarantee as `Once`, and the same two-token limit as `ConnectUnit`.
+In the [Units part](#parts). Unit-filtered one-shot subscription with the same disconnect-before-callback guarantee as `Once`, and the same two-token limit as `ConnectUnit`.
 
 ## `EventKit:ConnectCombatLog(subEvent, callback)`
 
-Subscribes to one **combat-log sub-event** and returns an ordinary connection.
+In the [CombatLog part](#parts). Subscribes to one **combat-log sub-event** and returns an ordinary connection.
 `COMBAT_LOG_EVENT_UNFILTERED` carries no payload: the client hands the event
 out through `CombatLogGetCurrentEventInfo()`, which is only valid inside the
 handler. EventKit makes that call **once per event**, for every combat-log
@@ -255,7 +295,8 @@ Returns `true` when EventKit can read the combat log on this client, that is
 when the global `CombatLogGetCurrentEventInfo` or
 `C_CombatLog.GetCurrentEventInfo` exists, and `false` otherwise. It is exactly
 the condition under which `ConnectCombatLog` connects instead of refusing, so
-an addon that wants combat-log data on every client asks first:
+an addon that wants combat-log data on every client asks first. It is in the
+core, so the answer needs no part:
 
 ```lua
 if EventKit:IsCombatLogAvailable() then
@@ -402,17 +443,11 @@ LifecycleKit through `Registry:Find` and takes the first case that applies:
    SchedulerKit scopes, before its HookKit, CommandKit and CommKit scopes and
    its SignalKit bus. This is the case with ordering guarantees, and it
    covers an addon that never used LifecycleKit itself.
-2. **An older LifecycleKit, without that field.** EventKit asks it for
-   `LifecycleKit:ForAddon(addonName):OnShutdown(...)`, once per addon, and
-   closes the scope from that callback. This is compatibility only; every
-   LifecycleKit that knows scopes also makes the call itself, and the second
-   close answers `false`. The subscription is kept on the scope; closing the
-   scope disconnects it. If a LifecycleKit that lists EventKit replaces the
-   older one before logout, the callback leaves the call to it.
-3. **No LifecycleKit.** EventKit keeps one package-level `PLAYER_LOGOUT`
-   one-shot, connected by the first `ForAddon` that needs it, which closes
-   every addon scope neither case above covers, in addon-name order.
-4. **The host refused that registration.** Nothing is connected and
+2. **Otherwise** (no LifecycleKit, or one that does not list EventKit).
+   EventKit keeps one package-level `PLAYER_LOGOUT` one-shot, connected by the
+   first `ForAddon` that needs it, which closes every addon scope LifecycleKit
+   does not close, in addon-name order.
+3. **The host refused that registration.** Nothing is connected and
    `ForAddon` works as always; the next `ForAddon` for that addon tries again.
    Until one succeeds, call `CloseAddonScopes` yourself on `PLAYER_LOGOUT`:
 
@@ -421,6 +456,10 @@ EventKit:Once("PLAYER_LOGOUT", function()
   EventKit:CloseAddonScopes("MyAddon")
 end)
 ```
+
+Revisions before 23 also subscribed to `OnShutdown` of a LifecycleKit without
+the capability, which only its never-published revisions before 13 lacked;
+such a LifecycleKit is now covered by case 2.
 
 Every case closes the scope inside the `PLAYER_LOGOUT` dispatch, so the
 connections are swept only after that dispatch completes: a scoped
@@ -432,8 +471,8 @@ after the close cannot connect through it. Before revision 6 a close from a
 connected after it.
 
 The routing costs one field read per `ForAddon` once decided. EventKit
-allocates one closure and one LifecycleKit subscription per addon in case 2,
-and one connection for the whole package in case 3.
+allocates one connection for the whole package in case 2, and nothing per
+addon.
 
 Closing is terminal, as shutdown is. The closed scope stays the addon's
 canonical scope, so a later `ForAddon("MyAddon")` returns it and refuses new
@@ -602,8 +641,9 @@ answer cannot be tested as a boolean, so it is never read as "equal"
 counts as **one** member in `GetActiveCount()`; `DisconnectAll()` and `Close()`
 release it with everything it owns — its event registrations and its timer
 (or, for a lane, its SchedulerKit timing handle) — and closing a scope during
-a dispatch defers that, as for any connection. The core closes handles, so a
-scope releases them whether or not the part is loaded. The handle's own event
+a dispatch defers that, as for any connection. The scope sweep closes a
+handle through `state.composites.close`, which the part fills (since revision
+23; the core closed handles before). The handle's own event
 connections are internal and belong to no scope. A `Derive` whose `compute`
 closes the scope it is being created in is refused with `EventKit.Scope:Derive
 cannot connect in a closed scope` and leaves nothing registered.
@@ -684,6 +724,53 @@ EventKit created.
 Before revision 2, unit groups were never released: their Frames were retained
 for the package lifetime and `state.unitGroups` only ever grew.
 
+## Secret values
+
+On a client with secret values, comparing a secret with a value of its own
+type raises (`==`, `~=`, `<`, `<=` and `rawequal` alike), and so does using it
+as a table key or testing it as a boolean (`if x`, `x and y`, `x or y`,
+`not x`); a comparison with `nil` or with a value of another type happens
+not to raise (measured on Retail 12.1.0 b69933, see
+[`docs/EMBEDDING.md`](../../../docs/EMBEDDING.md#secret-values-retail-12x)).
+EventKit still tests every value it did not create — arguments, option and
+limit fields, event payloads, `compute` results — for absence with
+`type(value) == "nil"`, the repository rule, which never compares anything, and
+deals with a secret before it would compare one (revision 14 and later):
+
+- A secret argument or option value is refused at the caller's line:
+
+  ```text
+  <Method> eventName must not be a secret value
+  <Method> subEvent must not be a secret value
+  <Method> unit token must not be a secret value
+  <Method> events entry must not be a secret value
+  <Method> intervalSeconds must not be a secret value
+  <Method> byEvent must not be a secret value
+  <Method> delaySeconds must not be a secret value
+  EventKit:ForAddon addonName must not be a secret value
+  EventKit:CloseAddonScopes addonName must not be a secret value
+  EventKit:SetLimits limits.<name> must not be a secret value
+  <Method> methodName must not be a secret value
+  EventKit:HasPart name must not be a secret value
+  ```
+
+- A facade method called with a dot and a secret first argument is refused as
+  a call without the facade, by its type, before any comparison.
+- A `Coalesce` payload whose first argument is secret is keyed by its event
+  name, and a `Derive` value that is secret on either side counts as a change.
+  Payloads themselves are passed to listeners untouched.
+- A secret answer from a `Derive` `equals` function is never tested as a
+  boolean: it counts as a change (revision 16 and later).
+- A combat-log event whose sub-event is secret is not looked up by it: it
+  reaches the wildcard listeners only (revision 16 and later).
+- `methodName` in the method form is refused when secret, like the other
+  arguments (revision 21).
+- The client's `issecretvalue` is resolved once, when the copy loads; every
+  client flavour defines it before any addon runs. Only when it was absent at
+  load is the global read again on each check, so a probe installed later (a
+  test environment, a compatibility shim) is still honoured (revision 21; the
+  shared `isSecret` block since revision 23).
+
 ## Limits
 
 EventKit keeps one package-wide limit. It is shared by **every consumer in the
@@ -703,11 +790,14 @@ local limits = EventKit:GetLimits() -- a fresh table: { maxUnitFrames = 128 }
 `SetLimits(limits)` accepts any subset of the limits and returns nothing. It
 raises at the caller's line, before changing anything, on a non-table argument,
 an unrecognised name (`EventKit:SetLimits limits.<name> is not a recognised
-limit`; a string key is shown as written, a number or boolean as `tostring`
+limit; it accepts maxUnitFrames`; a secret key is shown as `<secret>`, a string key is shown as written, a number or boolean as `tostring`
 gives it, and any other key by its type, `limits.<table>`, so a key's
 `__tostring`, the caller's code, never runs), a value that is not an integer from 1 to the ceiling (`... must be an
-integer from 1 to 512`), and `EventKit.UNBOUNDED` (`... cannot be
-EventKit.UNBOUNDED: the client never frees a Frame`). `GetLimits()` returns a
+integer from 1 to 512`), a secret value (`... must not be a secret value`) and
+`EventKit.UNBOUNDED` (`... cannot be EventKit.UNBOUNDED: the client never
+frees a Frame`). The check is the shared `limits` block
+(`tooling/shared/lua/limits.lua`). The limit stays in the core, so it is set
+and read with or without the Units part, which enforces it. `GetLimits()` returns a
 fresh table on every call, so it allocates; read it at configuration time, not
 per event.
 
@@ -733,9 +823,8 @@ Two bounds stay fixed, because they are not retention a consumer can own:
   needs more makes more than one handle.
 
 Scopes have no connection cap: a scope's connections are its owner's own
-registrations and are released with it. The logout routing holds at most one
-LifecycleKit subscription per addon scope, released when the scope closes, and
-one `PLAYER_LOGOUT` connection for the package. Combat-log routes are released
+registrations and are released with it. The logout routing holds one
+`PLAYER_LOGOUT` connection for the package. Combat-log routes are released
 with their sub-event's last listener, as event channels are, so they carry no
 limit either (see [`ConnectCombatLog`](#eventkitconnectcombatlogsubevent-callback)).
 
@@ -772,8 +861,8 @@ every listener behind the failing one lost the event — including listeners
 belonging to completely unrelated addons.
 
 The walk over a channel's listeners runs inside a second, protected call only
-while the channel holds a one-shot listener, whose release talks to the host,
-or a signal a revision before 17 left on it (revision 21). Listener calls are
+while the channel holds a one-shot listener, whose release talks to the host.
+Listener calls are
 isolated either way, so a raising listener never reaches the walk, and the
 dispatch depth is restored on every path that can raise.
 
@@ -845,7 +934,7 @@ fake client's 104-byte registration record). The remaining difference is the
 handle, and the ordering, scope and isolation bookkeeping the contract
 promises.
 
-## Error messages
+## Error behaviour
 
 Every argument and receiver error below is raised at the caller's line, never
 inside EventKit. `<Method>` is the qualified public method, for example
@@ -867,13 +956,14 @@ listed under [Secret values](#secret-values).
 | `connection:Disconnect()`, `connection:IsConnected()` without a handle | `EventKit:Disconnect must be called on a connection handle; use connection:Disconnect()`; the same for `IsConnected` |
 | `Coalesce`, `Derive` | `<Method> events must be an event name or a non-empty array of them`; `<Method> events must contain only non-empty strings`; `<Method> accepts at most 32 distinct events`; `<Method> options must be a table`; `<Method> options contains unknown field "<field>"` (the first unknown field in sorted order; a key that is not a string, number or boolean is named by its type, `"<table>"`, and its `__tostring` never runs) |
 | `Coalesce` | `<Method> intervalSeconds must be a finite number greater than or equal to zero`; `<Method> byEvent must be a boolean`; `<Method> requires TimerKit API 1, which is not available (<reason>)`, with Registry's `Find` reason; `<Method>: SchedulerKit.Scope:Coalesce maxKeys must be a finite positive integer` (or `... must not be a secret value`), the wording SchedulerKit gave it before revision 22, kept; with a `lane`: `<Method> requires SchedulerKit API 1, which is not available (<reason>)`, `<Method> with a lane needs SchedulerKit's <Part> part, which is not loaded: add <file> to embeds.xml after schedulerKit\\SchedulerKit.lua`, and `<Method>: <SchedulerKit's refusal>` for a `maxKeys` or `lane` SchedulerKit refuses, its position removed |
-| `Coalesce`, `Derive` and their scope forms without the Coalescing part | `<Method> is in EventKit's Coalescing part, which is not loaded: add eventKit\\parts\\EventKit-Coalescing.lua to embeds.xml after eventKit\\EventKit.lua` |
-| `HasPart` | `EventKit:HasPart name must be a part name string` |
+| a member of a part that is not loaded: `ConnectUnit`, `OnceUnit` (Units), `ConnectCombatLog` (CombatLog), `Coalesce`, `Derive` (Coalescing), and their scope forms | `<Method> is in EventKit's <Part> part, which is not loaded: add eventKit\\parts\\EventKit-<Part>.lua to embeds.xml after eventKit\\EventKit.lua` |
+| the `units` option of `Coalesce` or `Derive` without the Units part | `<Method> option "units" is in EventKit's Units part, which is not loaded: add eventKit\\parts\\EventKit-Units.lua to embeds.xml after eventKit\\EventKit.lua` |
+| `HasPart` | `EventKit:HasPart name must be a part name string`; a secret name: `EventKit:HasPart name must not be a secret value` |
 | `Derive` | `<Method> compute must be a function`; `<Method> delaySeconds must be a finite number greater than or equal to zero`; `<Method> equals must be a function` |
 | a `Coalesce` or `Derive` handle method on something else | `EventKit.CoalesceHandle:<Method> must be called on an EventKit coalesce handle`; `EventKit.DeriveHandle:<Method> must be called on an EventKit derived value` |
 | `OnChange` | `EventKit.DeriveHandle:OnChange callback must be a function`; `EventKit.DeriveHandle:OnChange cannot subscribe to a closed derived value` |
 | `ForAddon`, `CloseAddonScopes` | `EventKit:ForAddon addonName must be a non-empty string`; `EventKit:CloseAddonScopes addonName must be a non-empty string`; `EventKit:CloseAddonScopes must be called on the EventKit facade; use EventKit:CloseAddonScopes(addonName)` |
-| `SetLimits`, `GetLimits` | `EventKit:SetLimits limits must be a table`; `EventKit:SetLimits limits.<name> is not a recognised limit`; `EventKit:SetLimits limits.<name> must be an integer from 1 to <ceiling>`; `EventKit:SetLimits limits.<name> cannot be EventKit.UNBOUNDED: <reason>`; `EventKit:SetLimits must be called on the EventKit facade; use EventKit:SetLimits(limits)`; `EventKit:GetLimits must be called on the EventKit facade; use EventKit:GetLimits()` |
+| `SetLimits`, `GetLimits` | `EventKit:SetLimits limits must be a table`; `EventKit:SetLimits limits.<name> is not a recognised limit; it accepts maxUnitFrames`; `EventKit:SetLimits limits.<name> must be an integer from 1 to <ceiling>`; `EventKit:SetLimits limits.<name> must not be a secret value`; `EventKit:SetLimits limits.<name> cannot be EventKit.UNBOUNDED: <reason>`; `EventKit:SetLimits must be called on the EventKit facade; use EventKit:SetLimits(limits)`; `EventKit:GetLimits must be called on the EventKit facade; use EventKit:GetLimits()` |
 
 Host-environment failures carry no position, because the caller's arguments
 did not cause them:
@@ -884,142 +974,93 @@ did not cause them:
 | `EventKit: refusing to create more than <n> unit-filter Frames; ...` | a unit subscription past `maxUnitFrames` (see [Unit-group lifetime](#unit-group-lifetime)) |
 | the host's own error object, unchanged | a `RegisterUnitEvent` that raised (the group created for it is released first) |
 
+Reported through the host error handler, never raised: a failing listener
+(see [Listener isolation](#listener-isolation)), and, once per part, the
+retirement of unit or combat-log connections revision 22 made when the part is
+not loaded (see [Embedded copies and upgrades](#embedded-copies-and-upgrades)):
+`MoltenCodes EventKit disconnected the unit-event connections an earlier
+revision made: their delivery is in EventKit's Units part, which is not
+loaded: ...` (and the same for `combat-log connections` and the CombatLog
+part).
+
 Loading `EventKit.lua` raises `MoltenCodes EventKit requires Registry API 2 to
 be loaded first`, `MoltenCodes EventKit requires a valid Registry API 2
-facade`, `MoltenCodes EventKit requires SignalKit API 1 to be loaded first`,
-`MoltenCodes EventKit requires a valid SignalKit API 1 facade`, or
-`MoltenCodes EventKit package state is corrupted or incomplete`.
+facade`, `MoltenCodes EventKit revision 23 upgrades revision 22 or newer in
+place, not revision <n>` over a copy below the [upgrade floor](#embedded-copies-and-upgrades),
+or `MoltenCodes EventKit package state is corrupted or incomplete`. The part
+files' load errors are listed under [Parts](#parts).
+
+## Performance
+
+Per event, per connection and per scope the core costs what the sections
+above say: dispatch one isolated call per listener and no allocation
+([Listener isolation](#listener-isolation)); a connection 128 or 176 bytes
+([Cost of a connection](#cost-of-a-connection)); a scope's links a few field
+writes (the *Cost* note under [Owner scopes](#owner-scopes)). The parts cost
+what their sections' *Cost* notes say; none of them adds work to a `Connect`
+listener's path.
+
+Resident memory after a full collection, measured on the shared fake client
+(Lua 5.1.5, 64-bit, debug information kept as the client keeps it, each file
+loaded in one process after Registry):
+
+| File | Revision 22 | Revision 23 |
+|---|---:|---:|
+| `EventKit.lua` (core) | 87.2 KB | 66.3 KB |
+| `parts/EventKit-Units.lua` | (in the core) | 9.2 KB |
+| `parts/EventKit-CombatLog.lua` | (in the core) | 6.9 KB |
+| `parts/EventKit-Coalescing.lua` | 37.4 KB | 40.5 KB |
+
+An addon that embeds the core alone no longer loads SignalKit (90.3 KB).
+Loading the core allocates 216.7 KB transiently (284.4 KB for revision 22),
+most of it the compiler's, freed after load. AceEvent-3.0 with
+CallbackHandler-1.0 is 17.3 KB on the same host; the difference is the
+documented guarantees (handles, scopes and their logout routes, caller-line
+argument errors, secret-value refusals, bounded limits, in-place upgrade).
+
+
 
 ## Embedded copies and upgrades
 
-Registry owns one stable EventKit table for `(eventKit, API 1)`. Compatible higher implementation revisions update that table in place. Existing connection handles resolve methods through a stable shared `Connection` method table; Frames created since revision 2 resolve their dispatcher through `_state`, and revision-1 Frames through the reserved facade fields described under *Reserved fields*. Scopes and `Coalesce`/`Derive` handles are validated by metatables kept in `_state`, and handle listeners resolve their behaviour through it, so handles created by an older copy run the newer code.
+Registry owns one stable EventKit table for `(eventKit, API 1)`. Compatible higher implementation revisions update that table in place. Existing connection handles resolve methods through a stable shared `Connection` method table; Frames resolve their dispatcher through `_state` (`dispatchRegular`, and `dispatchUnit` and `dispatchCombatLog`, which the Units and CombatLog parts fill). Scopes, connection handles and `Coalesce`/`Derive` handles are validated by metatables kept in `_state`, and handle listeners resolve their behaviour through it, so handles created by an older copy run the newer code.
 
-Revision 22 splits EventKit into a core and the Coalescing part and keeps
-`_state` at schema 10; it adds the part interface (`parts`, `helpers`,
-`partInterface`). Revision 21 was the last single file. A core of revision 22
-loading over it installs the [stubs](#parts) for `Coalesce` and `Derive`, and
-the Coalescing part, when it loads with the core, replaces them and adopts
-revision 21's live handles: they keep their SchedulerKit timing until they
-close, while handles the part builds use TimerKit. When the part is not
-loaded, the core cannot run that code: such a handle is closed the first time
-an event, its timer or its scope reaches it, and the host error handler is
-told once which file to embed. Revision 21 loaded after a core-only revision
-22 is the lower revision and yields, so its addon gets the stub's error. No
-revision of EventKit has been published, so only development copies can meet
-either case. A part keeps its own revision in `_state.parts`: the highest
-revision of the part serves every addon, and a core upgraded after the part
-loaded leaves the part's members in place and serves it through `helpers`.
+**The upgrade floor.** No revision of EventKit has been published, so revision
+23 upgrades in place only from revision 22, the revision it replaces. A copy
+older than 22 that loaded first is refused: `MoltenCodes EventKit revision 23
+upgrades revision 22 or newer in place, not revision <n>`. The adoption code
+of older revisions (named connection handles, SignalKit fan-outs, the state
+migrations of schemas 1 to 9, the `_DispatchRegular` and `_DispatchUnit`
+facade fields, revision 21's SchedulerKit-timed handles) is gone with them.
+`_state` stays at schema 10.
 
-Revision 21 moves `_state` to schema 10. Connection handles keep their fields
-in the array part under one metatable in `_state` (`connectionMetatable`).
-The copy that loads over revision 20 walks every channel's and route's
-listener array, and the scope list of every scoped connection it finds there
-and of every addon scope, and converts each connection in place: the same
-table, so a handle an addon holds keeps working, in the same order. It also
-counts each channel's live one-shot listeners into `onceCount`. Coalesce and
-Derive handles, and handles from before revision 17, keep their named fields
-and their own release paths. The secret probe is resolved once at load, with
-a per-call read of the global only when it was absent then.
+**From revision 22.** Revision 23 moves unit events and the combat log into
+the Units and CombatLog parts and adds the part interface 2: `state.dispatch`
+(`releaseUnitGroup`, `releaseRoute`), filled by those parts, and the helpers
+they call. Unit groups, their Frames and the combat-log router stay in
+`_state`, so the parts loaded with the core take over the unit and combat-log
+connections revision 22 made, and keep delivering them. When a part is not
+loaded, its connections cannot be served: they are disconnected (their
+Frames go back to the free list, the router's share of the registration is
+released) on the next frame, after every part the addon embeds has loaded, or
+by the first event that reaches them, and the host error handler is told once
+per part which file to embed. A Units part loaded later reuses those Frames.
 
-Revision 20 keeps `_state` at schema 9 and changes messages only: an
-unrecognised `SetLimits` key or `Coalesce`/`Derive` option field that is not a
-string, number or boolean is named by its type instead of passed to
-`tostring`.
+The Coalescing part's revision 2 closes its own handles (`state.composites.close`,
+which the core's scope sweep calls) and requires SignalKit itself. Handles its
+revision 1 made keep working under it. A revision 1 of the part loaded after a
+revision 23 core is served by the core's own minimal close: the handle's
+events are disconnected and it leaves its scope, and its pending timer then
+finds it closed.
 
-Revision 19 keeps `_state` at schema 9 and changes behaviour only: a unit
-group whose first registration the host refuses by raising is released, and a
-new unit group no longer records its unit list (nothing read it); a group an
-older copy built keeps its `units` field, unread.
+Revision 23 also removes the `OnShutdown` logout route (see
+[At logout](#at-logout)); an addon scope revision 22 routed that way is closed
+by the `PLAYER_LOGOUT` route instead, when that connection exists.
 
-Revision 18 keeps `_state` at schema 9. `Coalesce` handles it builds share
-one SchedulerKit scope, created in `_state` on first use, instead of one each;
-a handle an older copy built keeps its own scope, which its `Close` still
-closes.
+A part keeps its own revision in `_state.parts`: the highest revision of the
+part serves every addon, and a core upgraded after the part loaded leaves the
+part's members in place and serves it through `helpers`.
 
-Revision 17 moves `_state` to schema 9. Channels and combat-log routes keep
-their connections in a `listeners` array of their own, with a `tombstones`
-count, instead of a SignalKit signal, and a connection handle is the array's
-record: no wrapper closure and no second connection per subscription. Released
-channel records wait in `channelPool` (at most 16). A copy loading over
-revision 16 or older gives every channel and route it inherits an empty
-`listeners` array and keeps its `signal` for the connections already on it.
-Those connections are older than any the newer copy makes, so a dispatch
-delivers the signal first and connection order holds; each keeps its wrapper
-closure, its `_inner` signal connection and the release path of its revision.
-A router attached before the upgrade detaches through its signal connection.
-A channel that still carries a signal is never pooled. The dispatch depth is
-the same `dispatchDepth` counter older revisions raise, so an older copy's
-dispatch still on the stack below the upgrade prevents in-place editing too.
-
-Revision 15 keeps `_state` at schema 8 and adopts the state of revision 14
-as it is, adding `IsCombatLogAvailable` to the facade. The loading copy probes
-`C_EventUtils.IsEventValid` itself, so every event name subscribed through the
-facade from then on is checked; listeners the older copy connected keep
-delivering whatever their names.
-
-Revision 14 keeps `_state` at schema 8 and adopts the state of revision 13
-as it is. It tests values it did not create for absence with `type` and
-handles [secret values](#secret-values) before any comparison.
-
-Revision 13 keeps `_state` at schema 8. A copy loading over revision 12
-adopts the state as it is; its router, routes and listeners keep delivering,
-and the next attach resolves the client API as described under
-[`ConnectCombatLog`](#eventkitconnectcombatlogsubevent-callback).
-
-Revision 12 moved `_state` from schema 7 to schema 8, adding the combat-log
-router (`combatLog`: the router's share of the `COMBAT_LOG_EVENT_UNFILTERED`
-channel, the routes by sub-event, the wildcard route and the listener count)
-and the dispatcher its channel listener resolves through (`dispatchCombatLog`).
-A revision-12 copy loading over revision 11 or older adds both in place with
-no listener; a plain `Connect` listener the older copy made for the combat-log
-event keeps its channel, which the router shares from the first
-`ConnectCombatLog` on. Connections made before revision 12 carry no `_route`
-field, which the newer disconnect reads as "a channel". A newer copy loading
-over revision 12 keeps the router, its routes and its listeners, and the
-channel listener the older copy connected follows the newer dispatcher.
-
-Revision 11 moved `_state` from schema 6 to schema 7, adding the package's
-`PLAYER_LOGOUT` connection (`logoutConnection`) and the two handlers the
-logout routes resolve when they fire (`closeOnLogout`, `closeOnShutdown`);
-addon scopes gain `_logoutRoute` and `_logoutSubscription`. A revision-11 copy
-loading over revision 10 or older routes every carried addon scope as a first
-`ForAddon` would (see [At logout](#at-logout)); a scope a revision 11 or later
-copy already routed keeps its route, its subscription and the connection.
-
-Revision 10 moved `_state` from schema 5 to schema 6, adding the package
-sentinel (`unbounded`, published as `EventKit.UNBOUNDED`) and the shared limits
-(`limits`). A revision-10 copy loading over revisions 7 to 9 adds both in place,
-with `maxUnitFrames` at the former fixed cap of 64; Frames the older copy
-created stay counted against it. A newer copy inherits the sentinel's identity
-and the limits a consumer set.
-
-Revisions 8 and 9 kept `_state` at schema 5. A copy loading over revision 7 or
-8 adopts the state as it is; handles the older copy created close through the
-newer code from then on.
-
-Revision 7 moved `_state` from schema 4 to schema 5, adding the dispatch table
-that `Coalesce` and `Derive` listeners resolve through and the metatables their
-handles are validated by. A revision-7 copy loading over revision 6 adds them
-in place; scopes revision 6 created gain `Coalesce` and `Derive`, and its
-connections keep working.
-
-Revision 6 moved `_state` from schema 3 to schema 4, adding the dispatch depth
-and the list of scopes closed during a dispatch. A revision-6 copy loading over
-revision 5 adds them in place; scopes revision 5 created keep working and gain
-the deferred close.
-
-Revision 5 added scopes and moved `_state` from schema 2 to schema 3. A
-revision-5 copy loading over revision 2 to 4 adds the shared `Scope` prototype,
-the addon-scope map and the shared scope metatable; scope receivers are
-validated by that metatable's identity, so it lives in shared state rather than
-in the loading file. Connections made by the older revision carry no scope link
-and keep working: they are simply owned by no scope.
-
-Revision 2 changed the shape of `_state` (schema 1 to schema 2). A revision-2
-copy loading over live revision-1 state adopts that state in place: it keys the
-existing unit groups, counts the Frames revision 1 already created against the
-Frame cap, and installs the dispatch and isolation slots. Package table,
-connection method table, Frames and live subscriptions are all preserved.
+The [changelog](../CHANGELOG.md) records what each earlier revision changed.
 
 A breaking public contract change requires a new EventKit API generation.
 
@@ -1137,51 +1178,6 @@ same Frame handler. Two consequences:
 Registration itself is not protected: `RegisterEvent`/`RegisterUnitEvent` on an
 addon-created Frame is safe from any code.
 
-### Secret values
-
-On a client with secret values, comparing a secret with a value of its own
-type raises (`==`, `~=`, `<`, `<=` and `rawequal` alike), and so does using it
-as a table key or testing it as a boolean (`if x`, `x and y`, `x or y`,
-`not x`); a comparison with `nil` or with a value of another type happens
-not to raise (measured on Retail 12.1.0 b69933, see
-[`docs/EMBEDDING.md`](../../../docs/EMBEDDING.md#secret-values-retail-12x)).
-EventKit still tests every value it did not create — arguments, option and
-limit fields, event payloads, `compute` results — for absence with
-`type(value) == "nil"`, the repository rule, which never compares anything, and
-deals with a secret before it would compare one (revision 14 and later):
-
-- A secret argument or option value is refused at the caller's line:
-
-  ```text
-  <Method> eventName must not be a secret value
-  <Method> subEvent must not be a secret value
-  <Method> unit token must not be a secret value
-  <Method> events entry must not be a secret value
-  <Method> intervalSeconds must not be a secret value
-  <Method> byEvent must not be a secret value
-  <Method> delaySeconds must not be a secret value
-  EventKit:ForAddon addonName must not be a secret value
-  EventKit:CloseAddonScopes addonName must not be a secret value
-  EventKit:SetLimits limits.<name> must not be a secret value
-  <Method> methodName must not be a secret value
-  ```
-
-- A facade method called with a dot and a secret first argument is refused as
-  a call without the facade, by its type, before any comparison.
-- A `Coalesce` payload whose first argument is secret is keyed by its event
-  name, and a `Derive` value that is secret on either side counts as a change.
-  Payloads themselves are passed to listeners untouched.
-- A secret answer from a `Derive` `equals` function is never tested as a
-  boolean: it counts as a change (revision 16 and later).
-- A combat-log event whose sub-event is secret is not looked up by it: it
-  reaches the wildcard listeners only (revision 16 and later).
-- `methodName` in the method form is refused when secret, like the other
-  arguments (revision 21).
-- The client's `issecretvalue` is resolved once, when the copy loads; every
-  client flavour defines it before any addon runs. Only when it was absent at
-  load is the global read again on each check, so a probe installed later (a
-  test environment, a compatibility shim) is still honoured (revision 21).
-
 ### Reserved fields
 
 Every underscore-prefixed field on the EventKit facade is reserved package
@@ -1189,13 +1185,9 @@ storage:
 
 ```lua
 EventKit._state             -- shared runtime state
-EventKit._DispatchRegular   -- dispatcher for the shared regular-event Frame
-EventKit._DispatchUnit      -- dispatcher for unit-filter Frames
 ```
 
-They are not public API. Consumers must not read or write them, and a compatible
-revision may change their shape. `_DispatchRegular` and `_DispatchUnit` exist on
-the facade only so that Frames created by implementation revision 1 keep
-resolving the current dispatcher after an in-place upgrade; revision 2 Frames
-resolve it through `_state`, which removes a per-event type check from the hot
-path.
+It is not public API. Consumers must not read or write it, and a compatible
+revision may change its shape. Revisions before 23 also kept
+`_DispatchRegular` and `_DispatchUnit` on the facade for Frames revision 1
+made; revision 23 removes them with the upgrade floor.

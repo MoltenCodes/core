@@ -464,7 +464,26 @@ Measurements, classification, the upgrade floor and the part contract:
    `docs/COOKBOOK.md` where they use providers, `docs/EMBEDDING.md`
    footprint rows, `tooling/validation/lua_limits.json` (ModuleKit's
    `mainLocals` after the change, lower).
-9. Status: recorded 2026-11-16; code follows.
+9. Status: implemented 2026-11-18, 0.11.0, revision 24, 315 specs.
+   Measured (host Lua 5.1.5, debug information kept, `exec.lua` of the
+   diagnosis): the core 150,707 → 123,497 B resident (expected ≈ 117 KB),
+   432,153 → 359,472 B allocated while loading; Injection 16,141 B,
+   Implements 7,601 B, RequiredAddons 5,077 B resident when embedded. A
+   container beside its LifecycleKit instance 4,136 → 3,880 B (the
+   −0.8 KB of LifecycleKit's own phase lists is that record's), with it
+   7,599 → 7,343 B; a module unchanged at 933 B. Main chunk 193 → 168
+   active locals (the `lua_limits` entry removed). Choices and deviations:
+   the core is about 6 KB above the priced figure (the part stubs, the
+   dispatch defaults, and two shared blocks the record did not list,
+   `validateFacade` for the conformance receivers group and `reportError`
+   for the unserved-state report); `maxRequiredAddons` takes the shared
+   block's required ceiling, 1024, the `UNBOUNDED` refusal against
+   LifecycleKit's ceiling stays a check in `SetLimits` after the block;
+   unserved state of an absent part is reported once when it would have been
+   served (initialization, resolution, enable), not at load; the upgrade from
+   revision 23 keeps containers' subscriptions instead of re-subscribing;
+   the defensive re-test of shutdown inside a new container's phase replay
+   was removed (a new container holds no module, so it was dead code).
 
 **Not recorded (owner decisions, priced):**
 - **The module graph as a part** (dependency edges, ordering constraints,

@@ -346,19 +346,6 @@ describe("EventKit Coalesce handle cost", function()
     assert.is_true(handle:Close())
   end)
 
-  it("still closes the SchedulerKit scope of a handle an older revision built", function()
-    local SchedulerKit = require("SchedulerKit")
-    local handle = EventKit:Coalesce("UNIT_HEALTH", 0.5, function() end)
-    -- Revisions before 18 gave each handle a SchedulerKit scope of its own.
-    local ownScope = SchedulerKit:CreateScope()
-    rawset(handle, "_schedulerScope", ownScope)
-    rawset(handle, "_signal", false)
-
-    assert.is_true(handle:Close())
-    assert.is_true(ownScope:IsClosed())
-    assert.is_false(rawget(handle, "_schedulerScope"))
-  end)
-
   it("looks TimerKit up once and reuses what it found", function()
     EventKit:Coalesce("UNIT_HEALTH", 0.5, function() end):Close()
     local Registry = require("Registry")
@@ -438,42 +425,5 @@ describe("EventKit Coalesce with TimerKit loaded later", function()
     local handle = EventKit:Coalesce("UNIT_HEALTH", 0.5, function() end)
     assert.is_false(handle:IsClosed())
     assert.is_true(handle:Close())
-  end)
-end)
-
-describe("EventKit Coalesce across an upgrade", function()
-  after_each(Scheduled.Reset)
-
-  it("keeps a handle from revision 17 delivering and closing under this revision", function()
-    Scheduled.Reset()
-    Scheduled.InstallWowApi()
-    require("Registry")
-    require("SignalKit")
-    require("TimerKit")
-    local legacy = TestEnv.LoadSourceAtRevision(17)
-    local SchedulerKit = require("SchedulerKit")
-    local deliveries = 0
-    local handle = legacy:Coalesce("UNIT_HEALTH", 0.5, function()
-      deliveries = deliveries + 1
-    end)
-    -- Revision 17 gave each handle a SchedulerKit scope of its own.
-    local ownScope = SchedulerKit:CreateScope()
-    rawset(handle, "_schedulerScope", ownScope)
-
-    package.loaded["EventKit"] = nil
-    local EventKit = require("EventKit")
-    TestEnv.LoadCoalescing()
-    assert.are.equal(legacy, EventKit)
-    assert.are.equal(22, EventKit.REVISION)
-
-    Scheduled.Emit("UNIT_HEALTH", "player")
-    fireLatest()
-    assert.are.equal(1, deliveries)
-    assert.is_true(handle:Close())
-    assert.is_true(ownScope:IsClosed())
-
-    local fresh = EventKit:Coalesce("UNIT_AURA", 0.5, function() end)
-    assert.is_nil(rawget(fresh, "_schedulerScope"))
-    assert.is_true(fresh:Close())
   end)
 end)

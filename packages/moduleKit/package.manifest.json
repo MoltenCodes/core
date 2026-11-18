@@ -1,12 +1,12 @@
 {
   "name": "moduleKit",
   "displayName": "ModuleKit",
-  "description": "Addon-scoped module lifecycle, dependency graphs, and dependency injection for MoltenCodes addons.",
-  "summary": "Addon-scoped module lifecycle, dependency graphs, dependency injection with checked interfaces, and dependency policies.",
-  "version": "0.10.0",
+  "description": "Addon-scoped module lifecycle and dependency graphs for MoltenCodes addons, with dependency injection as an optional part.",
+  "summary": "Addon-scoped module lifecycle, dependency graphs and dependency policies; injection, implements contracts and required addons as optional parts.",
+  "version": "0.11.0",
   "license": "MIT",
   "api": 1,
-  "revision": 23,
+  "revision": 24,
   "dependencies": {
     "registry": {
       "api": 2
@@ -36,6 +36,33 @@
     },
     "timerKit": {
       "api": 1
+    }
+  },
+  "parts": {
+    "Injection": {
+      "description": "Dependency injection: the four provider kinds, Resolve, Inject and the inject definition field.",
+      "revision": 1
+    },
+    "Implements": {
+      "description": "implements contracts on module definitions and provider options, as method lists or SchemaKit schemas.",
+      "revision": 1,
+      "optionalDependencies": {
+        "schemaKit": {
+          "api": 1
+        }
+      }
+    },
+    "RequiredAddons": {
+      "description": "The requiresAddons definition field: modules taken down when another addon they need halts.",
+      "revision": 1,
+      "dependencies": {
+        "lifecycleKit": {
+          "api": 1,
+          "parts": [
+            "Halt"
+          ]
+        }
+      }
     }
   }
 }

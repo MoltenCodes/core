@@ -18,13 +18,19 @@
 -- without TimerKit, `Coalesce` is refused at the caller and `Derive`
 -- recomputes synchronously on every event.
 --
+-- `Derive`'s change listeners are SignalKit signals, so the part needs
+-- SignalKit API 1 (EventKit's core does not). A `units` option needs EventKit's
+-- Units part, whose helpers build unit channels; without it the option is
+-- refused at the caller with the file to embed.
+--
 -- The part needs EventKit's core loaded first (docs/decisions/
 -- 0001-kit-core-and-parts.md). It keeps its state inside the core's
 -- (`state.parts.Coalescing`, `state.compositeTimerScope`) and calls the core
 -- through `state.helpers`, read at call time, so a core upgraded after this
 -- part loaded serves it. Handles resolve their behaviour through
--- `state.composites`, so a higher revision of this part takes over live
--- handles and pending timers in place.
+-- `state.composites`, closing included (the scope sweep calls
+-- `state.composites.close`), so a higher revision of this part takes over
+-- live handles and pending timers in place.
 --
 -- Contents
 -- --------
@@ -33,7 +39,7 @@
 --   Lookups .......... TimerKit and SchedulerKit, found when first needed
 --   Arguments ........ event lists, delays, options, unit sets
 --   Timing ........... the TimerKit timer, delivery, the quiet period
---   Handles .......... building, routing events, recomputing
+--   Handles .......... building, routing events, recomputing, closing
 --   Handle methods ... the Coalesce and Derive handles
 --   Entry points ..... facade and scope methods
 --   Commit ........... members, composites entries and the part's revision
@@ -41,13 +47,14 @@
 -- Constants ------------------------------------------------------------------
 
 local PART_NAME = "Coalescing"
-local PART_REVISION = 1
+local PART_REVISION = 2
 local REQUIRED_REGISTRY_API = 2
 local CORE_PACKAGE, CORE_API = "eventKit", 1
 local REQUIRED_SIGNAL_API = 1
 -- The core interface this part reads (`state.helpers` entries, the
--- `state.composites` entries). EventKit's core publishes the number.
-local REQUIRED_PART_INTERFACE = 1
+-- `state.composites` entries). EventKit's core publishes the number;
+-- interface 2 added `unlinkFromScope` and `disconnectEventConnection`.
+local REQUIRED_PART_INTERFACE = 2
 
 -- TimerKit times every handle; SchedulerKit is asked only for a `lane`.
 -- Neither is required: both are found through `Registry:Find` when needed.
@@ -130,9 +137,12 @@ local COMPOSITE_PROTOTYPES = rawget(state, "compositePrototypes")
 local COALESCE_METATABLE = rawget(rawget(state, "compositeMetatables"), "coalesce")
 local DERIVE_METATABLE = rawget(rawget(state, "compositeMetatables"), "derive")
 
--- EventKit's core requires SignalKit, so it is loaded; `Derive` uses it for
--- `OnChange`.
-local SignalKit = Registry:Get("signalKit", REQUIRED_SIGNAL_API)
+-- `Derive` uses SignalKit for `OnChange`; the manifest lists it among the
+-- part's dependencies, so it loads before this file.
+local SignalKit = nil
+if type(rawget(Registry, "Find")) == "function" then
+  SignalKit = Registry:Find("signalKit", REQUIRED_SIGNAL_API)
+end
 if type(SignalKit) ~= "table" or type(rawget(SignalKit, "New")) ~= "function" then
   error("MoltenCodes EventKit part Coalescing requires SignalKit API 1 to be loaded first", 2)
 end
@@ -529,6 +539,81 @@ local function newCompositeListener(handle)
   end
 end
 
+---Release everything a Coalesce or Derive handle owns. Terminal, idempotent,
+---and best effort: the first failure is raised once everything was tried.
+---
+---A handle times itself in one of two ways (docs/INTERNALS.md, "Coalescing
+---handles"): a Coalesce handle with a `lane` through a SchedulerKit handle in
+---`_timing`, every other handle through a TimerKit timer in `_timer` with its
+---collected keys in `_set`. The core's scope sweep reaches this function
+---through `state.composites.close`.
+---@param handle table
+---@return boolean closed `false` when it was already closed.
+local function closeCompositeHandle(handle)
+  if handle._closed == true then
+    return false
+  end
+  handle._closed = true
+  helpers.unlinkFromScope(handle)
+
+  local firstError = nil
+  local connections = handle._connections
+  for index = 1, #connections do
+    local ok, value = pcall(helpers.disconnectEventConnection, connections[index])
+    if not ok and firstError == nil then
+      firstError = { value = value }
+    end
+    connections[index] = nil
+  end
+
+  -- A lane handle closes its timing handle in the shared SchedulerKit scope.
+  -- The closed timing handle is kept, so a closed handle still answers
+  -- `IsPending` and `GetStats`. An absent field reads as `false`.
+  local timing = handle._timing or false
+  if timing ~= false then
+    local ok, value = pcall(timing.Close, timing)
+    if not ok and firstError == nil then
+      firstError = { value = value }
+    end
+  end
+
+  -- A handle timed by TimerKit: cancel its timer and drop what it collected.
+  local timer = handle._timer or false
+  if timer ~= false then
+    handle._timer = false
+    local ok, value = pcall(function()
+      timer:SetUserData(nil)
+      timer:Cancel()
+    end)
+    if not ok and firstError == nil then
+      firstError = { value = value }
+    end
+  end
+  local set = handle._set
+  if type(set) == "table" then
+    for key in pairs(set) do
+      set[key] = nil
+    end
+    handle._keyCount = 0
+  end
+
+  -- Disconnect the `OnChange` listeners rather than only dropping the
+  -- signal, so the connections their owners hold stop reporting connected.
+  local signal = handle._signal or false
+  if signal ~= false then
+    handle._signal = false
+    local ok, value = pcall(signal.DisconnectAll, signal)
+    if not ok and firstError == nil then
+      firstError = { value = value }
+    end
+  end
+
+  if firstError ~= nil then
+    error(firstError.value, 0)
+  end
+  return true
+end
+
 ---Finish building a handle: connect its events, then join `scope`. Releases
 ---the handle and raises when a registration is refused or `scope` closed
 ---while the handle was being built.
@@ -544,7 +629,7 @@ local function attachCompositeHandle(handle, scope, list, units, key, label, lev
   -- the caller's `compute` since then. A compute that closed the scope must
   -- not leave a live handle linked into it, where no sweep would reach it.
   if scope ~= false and rawget(scope, "_closed") == true then
-    pcall(helpers.closeCompositeHandle, handle)
+    pcall(closeCompositeHandle, handle)
     error(label .. " cannot connect in a closed scope", level)
   end
 
@@ -554,7 +639,7 @@ local function attachCompositeHandle(handle, scope, list, units, key, label, lev
   local ok, failure =
     pcall(connectHandleEvents, handle, list, units, key, listener, label, level + 2)
   if not ok then
-    pcall(helpers.closeCompositeHandle, handle)
+    pcall(closeCompositeHandle, handle)
     error(failure, 0)
   end
   if scope ~= false then
@@ -608,29 +693,17 @@ end
 
 ---Mark a Derive handle's value stale.
 ---
----A handle a revision before 22 built debounces through its SchedulerKit
----handle in `_timing`. Every other one waits out `_delay` on its TimerKit
----timer, or recomputes at once when it was built without TimerKit. Each call
----restarts the quiet period by recording the time; the timer is armed once
----per burst and re-armed for the rest when it wakes early.
+---A handle waits out `_delay` on its TimerKit timer, or recomputes at once
+---when it was built without TimerKit. Each call restarts the quiet period by
+---recording the time; the timer is armed once per burst and re-armed for the
+---rest when it wakes early.
 ---@param handle table
 local function invalidateDerived(handle)
-  if rawget(handle, "_closed") == true then
+  if handle._closed == true then
     return
   end
-  local timing = rawget(handle, "_timing")
-  if timing ~= nil and timing ~= false then
-    -- A timing handle whose SchedulerKit scope was closed from outside
-    -- refuses the call; recompute now rather than going stale.
-    if timing() == true then
-      return
-    end
-    recomputeDerived(handle)
-    return
-  end
-
-  local delay = rawget(handle, "_delay")
-  if delay == false or delay == nil then
+  local delay = handle._delay
+  if delay == false then
     recomputeDerived(handle)
     return
   end
@@ -955,7 +1028,7 @@ local function coalesceClose(self)
     "EventKit.CoalesceHandle:Close",
     "coalesce handle"
   )
-  return helpers.closeCompositeHandle(self)
+  return closeCompositeHandle(self)
 end
 
 ---Whether the handle is closed.
@@ -1023,7 +1096,7 @@ end
 ---@return boolean closed `false` when it was already closed.
 local function deriveClose(self)
   validateCompositeReceiver(self, DERIVE_METATABLE, "EventKit.DeriveHandle:Close", "derived value")
-  return helpers.closeCompositeHandle(self)
+  return closeCompositeHandle(self)
 end
 
 ---Whether the handle is closed.
@@ -1126,6 +1199,7 @@ rawset(DERIVE_PROTOTYPE, "IsClosed", deriveIsClosed)
 rawset(composites, "onEvent", onCompositeEvent)
 rawset(composites, "recompute", recomputeDerived)
 rawset(composites, "wake", wakeComposite)
+rawset(composites, "close", closeCompositeHandle)
 
 rawset(parts, PART_NAME, { revision = PART_REVISION })
 

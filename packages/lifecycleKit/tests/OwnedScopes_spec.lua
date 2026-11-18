@@ -1,16 +1,13 @@
 local TestEnv = require("LifecycleKitTestEnv")
 
----The implementation revision `src/LifecycleKit.lua` carries.
-local CURRENT_REVISION = 18
-
 -- Shutdown closes what the addon owns through the other Kits' addon scopes:
 -- its TimerKit scope, its SchedulerKit scope, its EventKit scope, its HookKit
 -- scope, its CommandKit scope, its CommKit scope and its SignalKit bus, in that
 -- order. None of those Kits observes shutdown itself, so
 -- LifecycleKit performs the second half of the two-step each of them
 -- documents. TimerKit, SchedulerKit, HookKit, CommandKit and CommKit are
--- optional and found through `Registry:Find`; SignalKit is a required
--- dependency. `LoadCommKit` loads TimerKit and SchedulerKit with CommKit.
+-- optional and found through `Registry:Find`, and so is SignalKit (revision 19
+-- on). `LoadCommKit` loads TimerKit and SchedulerKit with CommKit.
 
 ---A table with one method, hooked by the specs below.
 ---@return table target
@@ -27,7 +24,9 @@ end
 describe("LifecycleKit shutdown of addon-owned scopes", function()
   local LifecycleKit, SignalKit, EventKit, HookKit, CommandKit, CommKit, TimerKit, SchedulerKit
   before_each(function()
-    LifecycleKit, _, SignalKit, EventKit, HookKit, _, CommandKit = TestEnv.NewPackage()
+    LifecycleKit, _, SignalKit, EventKit = TestEnv.NewPackage()
+    HookKit = TestEnv.Module("HookKit")
+    CommandKit = TestEnv.Module("CommandKit")
     CommKit = TestEnv.LoadCommKit()
     TimerKit = require("TimerKit")
     SchedulerKit = require("SchedulerKit")
@@ -553,99 +552,4 @@ describe("LifecycleKit shutdown without HookKit", function()
     assert.is_true(events:IsClosed())
     assert.are.same({}, TestEnv.TakeReportedErrors())
   end)
-end)
-
-describe("LifecycleKit upgrade from an older schema-3 revision", function()
-  after_each(TestEnv.Reset)
-
-  -- Revisions 7 to 12 already wrote schema 3, but each one's logout watcher
-  -- calls its own handler, and revisions 7 to 11 miss scopes later
-  -- revisions close: none closes a TimerKit or SchedulerKit scope. The
-  -- upgrade must replace that watcher, or logout would keep running the
-  -- older code. Revisions 12 and later close the same scopes as the current
-  -- one; their watchers are replaced all the same, so the running handler is
-  -- always the newest.
-  for oldRevision = 7, CURRENT_REVISION - 1 do
-    it(
-      "replaces revision " .. oldRevision .. "'s host watchers so logout closes what it owns",
-      function()
-        TestEnv.Reset()
-        TestEnv.InstallWowApi()
-        local Registry = require("Registry")
-        local SignalKit = require("SignalKit")
-        local EventKit = require("EventKit")
-        local HookKit = require("HookKit")
-        local TimerKit = require("TimerKit")
-
-        local old = Registry:Register("lifecycleKit", 1, oldRevision)
-        local noop = function() end
-        old.API = 1
-        old.REVISION = oldRevision
-        old.Instance = {}
-        old.Subscription = { Disconnect = noop, IsConnected = noop }
-        old.DeferredCall = { Cancel = noop, IsPending = noop }
-        old.ForAddon = noop
-        old.IsInCombat = noop
-        local instance = setmetatable({
-          _addonName = "CarriedOver",
-          _loaded = false,
-          _ready = false,
-          _shutdown = false,
-          _halted = false,
-          _dependencies = {},
-          _combatQueue = {},
-          _combatQueueLength = 0,
-          _combatPending = 0,
-          _combatQueueLimit = 64,
-          _draining = false,
-          _combatCaptures = {
-            combatStart = { active = false, failed = false },
-            combatEnd = { active = false, failed = false },
-          },
-          _signals = {
-            loaded = SignalKit:New(),
-            ready = SignalKit:New(),
-            shutdown = SignalKit:New(),
-            halted = SignalKit:New(),
-            dependencyHalted = SignalKit:New(),
-            combatStart = SignalKit:New(),
-            combatEnd = SignalKit:New(),
-          },
-          _phaseCaptures = {},
-        }, { __index = old.Instance })
-
-        local oldLogoutCalls = 0
-        local oldLogoutWatcher = EventKit:Once("PLAYER_LOGOUT", function()
-          oldLogoutCalls = oldLogoutCalls + 1
-        end)
-        old._state = {
-          schema = 3,
-          addons = { CarriedOver = instance },
-          instances = { instance },
-          globalWatchers = { playerLogout = oldLogoutWatcher },
-          loginSeen = false,
-          shutdownSeen = false,
-          inCombat = false,
-        }
-
-        local upgraded = require("LifecycleKit")
-        local hooks = HookKit:ForAddon("CarriedOver")
-        local timers = TimerKit:ForAddon("CarriedOver")
-        local subscription = SignalKit:ForAddon("CarriedOver"):Subscribe("Anything", noop)
-
-        assert.are.equal(old, upgraded)
-        assert.are.equal(CURRENT_REVISION, upgraded.REVISION)
-        assert.is_true(upgraded.CLOSES_ADDON_SCOPES.timerKit)
-        assert.is_false(oldLogoutWatcher:IsConnected())
-
-        TestEnv.Logout()
-
-        assert.are.equal(0, oldLogoutCalls)
-        assert.are.equal("shutdown", instance:GetState())
-        assert.is_true(hooks:IsClosed())
-        assert.is_true(timers:IsClosed())
-        assert.is_false(subscription:IsConnected())
-      end
-    )
-  end
 end)

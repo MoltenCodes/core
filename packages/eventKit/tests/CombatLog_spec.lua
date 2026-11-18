@@ -720,6 +720,7 @@ describe("EventKit combat-log routing", function()
       require("Registry")
       require("SignalKit")
       local isolated = require("EventKit")
+      TestEnv.LoadUnitsAndCombatLog()
 
       local laterCalls = 0
       isolated:ConnectCombatLog("SPELL_DAMAGE", function()

@@ -130,7 +130,7 @@ describe("LifecycleKit limits", function()
 
   it("applies a SetLimits table atomically", function()
     TestEnv.expectErrorContaining(
-      "limits.defaultCombatQueueLimit must be a positive integer",
+      "limits.defaultCombatQueueLimit must be an integer from 1 to 2147483647",
       function()
         LifecycleKit:SetLimits({ maxDependencies = 4, defaultCombatQueueLimit = 0 })
       end
@@ -146,12 +146,15 @@ describe("LifecycleKit limits", function()
     TestEnv.expectErrorContaining("LifecycleKit:SetLimits limits must be a table", function()
       LifecycleKit:SetLimits(4)
     end)
-    TestEnv.expectErrorContaining("limits.maxQueue is not a recognised limit", function()
-      LifecycleKit:SetLimits({ maxQueue = 4 })
-    end)
-    for _, invalid in ipairs({ 0, -1, 1.5, "8", math.huge, 0 / 0, {} }) do
+    TestEnv.expectErrorContaining(
+      "limits.maxQueue is not a recognised limit; it accepts maxDependencies, defaultCombatQueueLimit",
+      function()
+        LifecycleKit:SetLimits({ maxQueue = 4 })
+      end
+    )
+    for _, invalid in ipairs({ 0, -1, 1.5, "8", math.huge, 0 / 0, {}, 2147483648 }) do
       TestEnv.expectErrorContaining(
-        "LifecycleKit:SetLimits limits.maxDependencies must be a positive integer or LifecycleKit.UNBOUNDED",
+        "LifecycleKit:SetLimits limits.maxDependencies must be an integer from 1 to 2147483647",
         function()
           LifecycleKit:SetLimits({ maxDependencies = invalid })
         end
@@ -187,7 +190,8 @@ describe("LifecycleKit limits", function()
       source
         .. ":"
         .. callLine
-        .. ": LifecycleKit:SetLimits limits.<table> is not a recognised limit",
+        .. ": LifecycleKit:SetLimits limits.<table> is not a recognised limit;"
+        .. " it accepts maxDependencies, defaultCombatQueueLimit",
       message
     )
     assert.is_false(ran)
@@ -206,8 +210,8 @@ describe("LifecycleKit limits", function()
       source
         .. ":"
         .. callLine
-        .. ": LifecycleKit:SetLimits limits.maxDependencies must be a positive integer"
-        .. " or LifecycleKit.UNBOUNDED",
+        .. ": LifecycleKit:SetLimits limits.maxDependencies must be an integer"
+        .. " from 1 to 2147483647",
       message
     )
 
@@ -231,23 +235,13 @@ end)
 describe("LifecycleKit limits across an upgrade", function()
   after_each(TestEnv.Reset)
 
-  it("seeds the defaults into state an older revision wrote and keeps what was set", function()
+  it("keeps what a consumer set across a reload", function()
     local LifecycleKit = TestEnv.NewPackage()
     local life = LifecycleKit:ForAddon("MyAddon")
     LifecycleKit:SetLimits({ maxDependencies = 5 })
-    local state = rawget(LifecycleKit, "_state")
 
-    -- A revision-11 state has neither field; a same-revision reload keeps
-    -- what a consumer set.
     local reloaded = TestEnv.ReloadPackage()
     assert.are.equal(5, reloaded:GetLimits().maxDependencies)
-
-    rawset(state, "unbounded", nil)
-    rawset(state, "limits", nil)
-    reloaded = TestEnv.ReloadPackage()
-
-    assert.are.same({ maxDependencies = 16, defaultCombatQueueLimit = 64 }, reloaded:GetLimits())
-    assert.are.equal("table", type(reloaded.UNBOUNDED))
     assert.are.equal(64, life:GetCombatQueueLimit())
   end)
 end)

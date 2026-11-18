@@ -10,39 +10,69 @@
 -- principle 4b). Who makes that call is decided at the addon's first
 -- `ForAddon`, from the optional Kits found through `Registry:Find`: a
 -- LifecycleKit that lists TimerKit in `CLOSES_ADDON_SCOPES` makes it itself;
--- an older LifecycleKit is asked for an `OnShutdown` subscription; without
--- LifecycleKit one package-level EventKit `PLAYER_LOGOUT` connection makes it;
--- with neither, the addon makes it from its own logout handler.
+-- without such a LifecycleKit one package-level EventKit `PLAYER_LOGOUT`
+-- connection makes it; with neither, the addon makes it from its own logout
+-- handler.
+--
+-- This file is TimerKit's core. Pausing (`Timer:Pause`, `Resume`, `IsPaused`)
+-- is the Pausing part, `parts/TimerKit-Pausing.lua`; without it those members
+-- raise at the caller's line with the file to embed (docs/API.md, "Parts";
+-- docs/decisions/0001-kit-core-and-parts.md).
+--
+-- An in-place upgrade is supported from revision 14, the revision before this
+-- one, and no further back: no earlier revision was ever published, so the
+-- conversions of the timers and state they built are gone (docs/API.md,
+-- "Upgrading in place").
 --
 -- Contents
 -- --------
---   Constants ............. package identity and option keys
+--   Constants ............. package identity, the part layout, option keys
 --   Public types .......... LuaCATS declarations for the published surface
 --   Dependencies .......... Registry, C_Timer, the monotonic clock;
 --                           LifecycleKit and EventKit (optional)
 --   Validation ............ public-surface and shared-state validation
 --   Bootstrap ............. Registry registration and inherited state
---   In-place upgrade ...... revision-5 shutdown subscriptions released,
---                           revision-7 logout fields added
---   Generic helpers ....... error capture and argument validation
---   Timer records ......... the array layout (revision 14) and the
---                           conversion of timers older revisions built
---   Method-name callbacks . the receiver-and-method form (revision 14)
---   Timer internals ....... start, cancel, fire, restart, deadlines,
---                           pause and resume (revision 12)
+--   Generic helpers ....... error capture, the shared secret-probe and
+--                           key-naming blocks, argument validation
+--   Timer records ......... the nine array slots of a timer
+--   Method-name callbacks . the receiver-and-method form
+--   Timer internals ....... start, cancel, fire, restart, deadlines
 --   Scope internals ....... active-set bookkeeping, bulk cancel, close
 --   Logout coverage ....... who closes an addon scope at logout, decided at
 --                           the first ForAddon (LifecycleKit, EventKit, none)
 --   Timer public methods .. the handle a timer owner receives
 --   Scope public methods .. the handle a scope owner receives
 --   Package public API .... the facade published through Registry
+--   Parts ................. HasPart, the stubs of absent parts, the helpers
+--                           a part calls
 --   Commit ................ prototype/facade assignment and self-check
 
 local PACKAGE_NAME = "timerKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 14
+local IMPLEMENTATION_REVISION = 15
 local REQUIRED_REGISTRY_API = 2
 local STATE_SCHEMA = 1
+
+-- The upgrade floor: the oldest revision whose state this one takes over in
+-- place. Revisions before it were never published (docs/API.md, "Upgrading
+-- in place"); meeting one is refused at load with a message that says so.
+local OLDEST_UPGRADABLE_REVISION = 14
+
+-- The interface the core offers its parts: `state.parts`, `state.helpers` and
+-- the `state.dispatch` entries a part fills. Entries are only ever added; a
+-- core that has to change one adds a new entry and raises this number.
+local PART_INTERFACE = 1
+
+-- Each part, the file an author embeds for it, and the `Timer` members it
+-- provides. Without the part those members are stubs that name the file.
+local CORE_FILE = "timerKit\\TimerKit.lua"
+local PART_LAYOUT = {
+  {
+    name = "Pausing",
+    file = "timerKit\\parts\\TimerKit-Pausing.lua",
+    timer = { "Pause", "Resume", "IsPaused" },
+  },
+}
 
 -- LifecycleKit and EventKit are optional. Each is found through
 -- `Registry:Find` when an addon asks for its scope, only to arrange that the
@@ -52,11 +82,10 @@ local OPTIONAL_EVENT_KIT_API = 1
 local LOGOUT_EVENT = "PLAYER_LOGOUT"
 
 -- How an addon scope is closed at logout, recorded on the scope as
--- `_logoutRoute`. `false` means "not decided yet" (a scope an older revision
--- created); `LOGOUT_ROUTE_NONE` is re-examined at the next `ForAddon`, because
--- a Kit loaded later may make logout observable.
+-- `_logoutRoute`. `false` means "not decided yet"; `LOGOUT_ROUTE_NONE` is
+-- re-examined at the next `ForAddon`, because a Kit loaded later may make
+-- logout observable.
 local LOGOUT_ROUTE_LIFECYCLE = "lifecycleKit"
-local LOGOUT_ROUTE_SHUTDOWN_SUBSCRIPTION = "onShutdown"
 local LOGOUT_ROUTE_EVENT = "playerLogout"
 local LOGOUT_ROUTE_NONE = "none"
 
@@ -102,9 +131,9 @@ local TIMER_OPTION_KEYS = {
 ---@field Restart fun(self: TimerKit.Timer): boolean
 ---@field GetRemaining fun(self: TimerKit.Timer): number?
 ---@field GetDeadline fun(self: TimerKit.Timer): number?
----@field Pause fun(self: TimerKit.Timer): boolean
----@field Resume fun(self: TimerKit.Timer): boolean
----@field IsPaused fun(self: TimerKit.Timer): boolean
+---@field Pause fun(self: TimerKit.Timer): boolean Pausing part.
+---@field Resume fun(self: TimerKit.Timer): boolean Pausing part.
+---@field IsPaused fun(self: TimerKit.Timer): boolean Pausing part.
 
 ---An ownership scope for timers, closed by its owner or, for an addon scope,
 ---through `TimerKit:CloseAddonScopes`.
@@ -131,8 +160,9 @@ local TIMER_OPTION_KEYS = {
 ---@field CreateScope fun(self: TimerKit): TimerKit.Scope
 ---@field ForAddon fun(self: TimerKit, addonName: string): TimerKit.Scope
 ---@field CloseAddonScopes fun(self: TimerKit, addonName: string): boolean
+---@field HasPart fun(self: TimerKit, name: string): boolean `true` when the named part ("Pausing") is installed
 
----A timer as TimerKit stores it from revision 14: the public handle plus
+---A timer as TimerKit stores it: the public handle plus
 ---nine array slots only TimerKit reads and writes (docs/INTERNALS.md, "Timer
 ---record"). Internal functions take this type; `TimerKit.Timer` above stays
 ---the published contract.
@@ -146,22 +176,6 @@ local TIMER_OPTION_KEYS = {
 ---@field [7] number|false The deadline while running, the remainder while paused.
 ---@field [8] true? `true` on a repeating timer, `nil` on a one-shot.
 ---@field [9] any The owner's user data.
----@field _generation integer? Only on timers revision 9 or older built.
-
----A timer as revisions 13 and older stored it, by named fields. Such a timer
----is converted to `TimerKit.TimerRecord` the first time this revision meets
----it (see "Timer records").
----@class TimerKit.LegacyTimerRecord
----@field _id integer
----@field _scope TimerKit.ScopeRecord
----@field _callback TimerKit.Callback
----@field _delay number
----@field _repeating true?
----@field _state TimerKit.TimerState
----@field _native any
----@field _deadline number|false
----@field _userData any
----@field _generation integer?
 
 ---A scope as TimerKit stores it.
 ---@class TimerKit.ScopeRecord : TimerKit.Scope
@@ -170,7 +184,6 @@ local TIMER_OPTION_KEYS = {
 ---@field _activeCount integer
 ---@field _closed boolean
 ---@field _logoutRoute string|false?
----@field _logoutSubscription table|false?
 
 -- Dependencies --------------------------------------------------------------
 
@@ -272,6 +285,7 @@ local function validatePublicSurface(implementation)
     and type(rawget(implementation, "CreateScope")) == "function"
     and type(rawget(implementation, "ForAddon")) == "function"
     and type(rawget(implementation, "CloseAddonScopes")) == "function"
+    and type(rawget(implementation, "HasPart")) == "function"
     and type(rawget(Timer, "GetState")) == "function"
     and type(rawget(Timer, "GetDelay")) == "function"
     and type(rawget(Timer, "GetScope")) == "function"
@@ -299,7 +313,8 @@ local function validatePublicSurface(implementation)
     and type(rawget(Scope, "GetActiveCount")) == "function"
 end
 
----Whether `currentState` has the fields every API 1 revision shares.
+---Whether `currentState` has the fields revision 14 and this revision share,
+---the state shape an in-place upgrade starts from.
 ---@param currentState any
 ---@return boolean
 local function validateStateBase(currentState)
@@ -309,8 +324,10 @@ local function validateStateBase(currentState)
     and type(rawget(currentState, "dispatch")) == "table"
     and type(rawget(currentState, "nextTimerId")) == "number"
     and type(rawget(currentState, "runtimeRevision")) == "number"
-    and type(rawget(currentState, "timerMetatable")) == "table"
+    and type(rawget(currentState, "timerRecordMetatable")) == "table"
     and type(rawget(currentState, "scopeMetatable")) == "table"
+    and rawget(currentState, "logoutConnection") ~= nil
+    and rawget(currentState, "logoutEventScope") ~= nil
 end
 
 ---Whether `implementation` carries package state of this revision's schema.
@@ -320,9 +337,9 @@ local function validateCurrentState(implementation)
   local currentState = rawget(implementation, "_state")
   return validateStateBase(currentState)
     and type(rawget(currentState, "defaultScope")) == "table"
-    and type(rawget(currentState, "timerRecordMetatable")) == "table"
-    and rawget(currentState, "logoutConnection") ~= nil
-    and rawget(currentState, "logoutEventScope") ~= nil
+    and type(rawget(currentState, "parts")) == "table"
+    and type(rawget(currentState, "helpers")) == "table"
+    and rawget(currentState, "partInterface") == PART_INTERFACE
 end
 
 -- Bootstrap -----------------------------------------------------------------
@@ -362,10 +379,8 @@ if type(previousRevision) == "nil" then
     dispatch = {},
     nextTimerId = 0,
     runtimeRevision = 0,
-    -- Revision 14 keeps timers in array slots and gives them this metatable;
-    -- `timerMetatable` stays the mark of a timer an older revision built by
-    -- named fields, which is converted when this revision first meets it.
-    timerMetatable = {},
+    -- The metatables of every timer (nine array slots, see "Timer records")
+    -- and every scope. Shared by every revision, so handles survive upgrades.
     timerRecordMetatable = {},
     scopeMetatable = {},
     -- The one EventKit `PLAYER_LOGOUT` connection that closes addon scopes
@@ -373,73 +388,48 @@ if type(previousRevision) == "nil" then
     -- `false` until an addon needs them.
     logoutConnection = false,
     logoutEventScope = false,
+    -- The part interface: the installed parts by name (each `{ revision }`),
+    -- the core functions a part calls, read at call time so a core upgraded
+    -- after a part loaded serves it, and the interface number a part checks.
+    parts = {},
+    helpers = {},
+    partInterface = PART_INTERFACE,
   }
   rawset(TimerKit, "Timer", Timer)
   rawset(TimerKit, "Scope", Scope)
   rawset(TimerKit, "_state", state)
+elseif previousRevision < OLDEST_UPGRADABLE_REVISION then
+  error(
+    "MoltenCodes TimerKit revision "
+      .. IMPLEMENTATION_REVISION
+      .. " upgrades in place from revision "
+      .. OLDEST_UPGRADABLE_REVISION
+      .. " or later only; an addon embeds revision "
+      .. tostring(previousRevision)
+      .. ", which was never published",
+    2
+  )
 elseif type(Timer) ~= "table" or type(Scope) ~= "table" or not validateStateBase(state) then
   error("MoltenCodes TimerKit package state is corrupted or incomplete", 2)
 end
 
--- Revision 14 adds the metatable of array-layout timers without a schema
--- change; state an older revision created does not have it yet.
-if rawget(state, "timerRecordMetatable") == nil then
-  rawset(state, "timerRecordMetatable", {})
+-- Revision 15 adds the part interface without a schema change; revision 14
+-- state does not have it yet.
+if state.parts == nil then
+  state.parts = {}
 end
+if state.helpers == nil then
+  state.helpers = {}
+end
+state.partInterface = PART_INTERFACE
 
--- `TIMER_METATABLE` marks a timer in this revision's array layout, the only
--- layout the per-timer paths read. `LEGACY_TIMER_METATABLE` marks one an
--- older revision built by named fields; see "Timer records".
-local TIMER_METATABLE = rawget(state, "timerRecordMetatable")
-local LEGACY_TIMER_METATABLE = rawget(state, "timerMetatable")
-local SCOPE_METATABLE = rawget(state, "scopeMetatable")
-if type(TIMER_METATABLE) ~= "table" then
-  error("MoltenCodes TimerKit package state is corrupted or incomplete", 2)
-end
+-- `TIMER_METATABLE` marks a TimerKit timer, `SCOPE_METATABLE` a scope. Both
+-- have a method-table `__index` and nothing else, so the internal paths read
+-- and write their fields by plain indexing.
+local TIMER_METATABLE = state.timerRecordMetatable
+local SCOPE_METATABLE = state.scopeMetatable
 rawset(TIMER_METATABLE, "__index", Timer)
-rawset(LEGACY_TIMER_METATABLE, "__index", Timer)
 rawset(SCOPE_METATABLE, "__index", Scope)
-
--- In-place upgrade ----------------------------------------------------------
-
----Release the LifecycleKit shutdown subscriptions revision 5 and older held.
----
----Those revisions required LifecycleKit and subscribed every addon scope to
----its addon's shutdown. This revision knows nothing of LifecycleKit: the
----scope is closed by whoever observes the shutdown, through
----`CloseAddonScopes` (LifecycleKit does so at logout). Keeping the inherited
----subscription would close the scope twice from two places, so it is
----disconnected here and the scope stays open until that call.
----
----The release is best-effort. A subscription whose `Disconnect` is missing or
----raises is dropped all the same: its wrapper resolves `dispatch.closeScope`
----at call time, and closing an already closed scope is a no-op, so the worst
----it can do is close the scope once at shutdown, which is what it was for.
-local function releaseInheritedShutdownSubscriptions()
-  for _, scope in pairs(rawget(state, "addonScopes")) do
-    if type(scope) == "table" then
-      local subscription = rawget(scope, "_shutdownSubscription")
-      rawset(scope, "_shutdownSubscription", nil)
-      if type(subscription) == "table" and type(subscription.Disconnect) == "function" then
-        pcall(subscription.Disconnect, subscription)
-      end
-    end
-  end
-end
-
-if type(previousRevision) ~= "nil" and previousRevision < IMPLEMENTATION_REVISION then
-  releaseInheritedShutdownSubscriptions()
-end
-
--- Revision 7 adds the logout fallback without a schema change. Older state
--- has neither field; its addon scopes are given a logout route at the end of
--- the bootstrap, once the functions that decide one exist.
-if rawget(state, "logoutConnection") == nil then
-  rawset(state, "logoutConnection", false)
-end
-if rawget(state, "logoutEventScope") == nil then
-  rawset(state, "logoutEventScope", false)
-end
 
 -- Generic helpers -----------------------------------------------------------
 
@@ -478,49 +468,42 @@ end
 -- Secret values (Retail 12.0.0 and later) raise when compared, so an argument
 -- a check would compare is first asked about with the host probe, and absence
 -- is tested with `type(value) == "nil"`. A host without `issecretvalue` has no
--- secret values.
+-- secret values. The probe rule (read once at load, again per check only when
+-- it was absent then) is the shared block's.
 
--- The probe is resolved once, at load: every client flavour defines it before
--- any addon runs, so the per-call paths read an upvalue. A host that had none
--- at load (a test environment, or a compatibility shim installed later) is
--- asked again on each check through `readLateProbe`, so a probe installed
--- after load is still honoured.
--- issecretvalue is a World of Warcraft client API reachable only through the global table.
--- selene: allow(global_usage)
-local loadedIsSecretValue = rawget(_G, "issecretvalue")
-if type(loadedIsSecretValue) ~= "function" then
-  loadedIsSecretValue = nil
-end
-
----The secret-value probe for a host that had none at load, or `nil`.
----@return (fun(value: any): boolean)?
-local function readLateProbe()
-  -- issecretvalue is a World of Warcraft client API reachable only through the global table.
-  -- selene: allow(global_usage)
-  local probe = rawget(_G, "issecretvalue")
-  if type(probe) ~= "function" then
-    return nil
-  end
-  return probe
-end
-
+-- shared:begin isSecret 1
+-- Copied from tooling/shared/lua/isSecret.lua by python3 -m tooling.shared.sync; edit that file, not this copy.
 ---Whether `value` is a secret value the host forbids comparing.
----@param value any
----@return boolean
-local function isSecretValue(value)
-  local probe = loadedIsSecretValue or readLateProbe()
-  if probe == nil then
-    return false
+---@type fun(value: any): boolean
+local isSecret
+do
+  -- issecretvalue is a client API reachable only through the global table.
+  -- selene: allow(global_usage)
+  local loadedProbe = rawget(_G, "issecretvalue")
+  if type(loadedProbe) ~= "function" then
+    loadedProbe = nil
   end
-  return probe(value) and true or false
+
+  isSecret = function(value)
+    local probe = loadedProbe
+    if probe == nil then
+      -- selene: allow(global_usage)
+      probe = rawget(_G, "issecretvalue")
+      if type(probe) ~= "function" then
+        return false
+      end
+    end
+    return probe(value) == true
+  end
 end
+-- shared:end isSecret
 
 ---Refuse a secret argument before any comparison touches it.
 ---@param value any
 ---@param label string argument description, used in the argument error
 ---@param level integer stack level the failure is reported at
 local function refuseSecret(value, label, level)
-  if isSecretValue(value) then
+  if isSecret(value) then
     error(label .. " must not be a secret value", level)
   end
 end
@@ -545,7 +528,7 @@ local HUGE = math.huge
 ---@param methodName string public method name, used in the argument error
 ---@param level integer stack level the failure is reported at
 local function validateDelay(delay, repeating, methodName, level)
-  if isSecretValue(delay) then
+  if isSecret(delay) then
     error(methodName .. " delay must not be a secret value", level)
   end
   if type(delay) ~= "number" or delay ~= delay or delay == HUGE or delay == -HUGE then
@@ -561,24 +544,25 @@ local function validateDelay(delay, repeating, methodName, level)
   end
 end
 
----Name a caller's table key in a refusal without running its `__tostring`.
----`tostring` on a table or userdata runs the caller's `__tostring`, foreign
----code that may raise or answer a secret and so lose the real refusal. A
----string is shown as written, a number or boolean through `tostring` (no
----foreign code runs for those), and anything else by its type, as `<table>`.
----A key read from a Lua table cannot be a secret: storing one raises.
+-- shared:begin describeKey 1
+-- Copied from tooling/shared/lua/describeKey.lua by python3 -m tooling.shared.sync; edit that file, not this copy.
+---Name `key` for an error message without running any of the caller's code.
 ---@param key any
 ---@return string
 local function describeKey(key)
-  local keyType = type(key)
-  if keyType == "string" then
+  if isSecret(key) then
+    return "<secret>"
+  end
+  local kind = type(key)
+  if kind == "string" then
     return key
   end
-  if keyType == "number" or keyType == "boolean" then
+  if kind == "number" or kind == "boolean" then
     return tostring(key)
   end
-  return "<" .. keyType .. ">"
+  return "<" .. kind .. ">"
 end
+-- shared:end describeKey
 
 ---Validate one `New`-style option table and unpack the values it carries.
 ---@param options any
@@ -636,29 +620,23 @@ local function validateScope(scope, methodName, level)
   end
 end
 
--- Assigned in "Timer records", once the conversion it calls exists.
-local adoptLegacyTimer
-
----Refuse anything but a TimerKit timer; a timer an older revision built is
----converted to the array layout first, so the caller reads one layout.
+---Refuse anything but a TimerKit timer.
+---
+---`getmetatable` answers this metatable for a TimerKit timer only (it is
+---never handed out), so no `type` test is needed in front of it.
 ---@param timer any receiver the public method was called on
 ---@param methodName string public method name, used in the argument error
 ---@param level integer stack level the failure is reported at
 local function validateTimer(timer, methodName, level)
-  local metatable = getmetatable(timer)
-  if metatable ~= TIMER_METATABLE then
-    if metatable == LEGACY_TIMER_METATABLE then
-      adoptLegacyTimer(timer)
-      return
-    end
+  if getmetatable(timer) ~= TIMER_METATABLE then
     error(methodName .. " must be called on a TimerKit timer", level)
   end
 end
 
 -- Timer records ---------------------------------------------------------------
 --
--- From revision 14 a timer keeps its fields in nine array slots instead of
--- named fields (docs/INTERNALS.md, "Timer record"):
+-- A timer keeps its fields in nine array slots (docs/INTERNALS.md, "Timer
+-- record"):
 --
 --   [1] id        creation order within the session, for bulk cancellation
 --   [2] scope     the owning scope
@@ -672,98 +650,11 @@ end
 --   [9] userData  the owner's opaque value
 --
 -- Every timer is built by one constructor that names all nine slots (the
--- last two may be `nil`), so its array part is sized once: 200 bytes against
--- 384 for the eight-field hash revision 13 used (704 for a repeating timer),
--- and `SetUserData` never grows it. Each access names its slot in a comment.
---
--- A timer an older revision built carries named fields and the metatable
--- `timerMetatable`. It is converted in place, the same table, so a handle an
--- addon holds keeps working: the running timers of addon scopes and of the
--- package scope when this revision loads, any other the first time a public
--- method, a host callback or a bulk cancel meets it. The paths below then
--- read one layout only; the conversion check sits on the branch that refuses
--- or ignores, never on the path a current timer takes.
+-- last two may be `nil`), so its array part is sized once and `SetUserData`
+-- never grows it. Each access names its slot in a comment. The Pausing part
+-- reads and writes the same slots.
 
----The named fields revision 13 and older stored on a timer.
-local LEGACY_TIMER_FIELDS = {
-  "_id",
-  "_scope",
-  "_callback",
-  "_delay",
-  "_repeating",
-  "_state",
-  "_native",
-  "_deadline",
-  "_userData",
-}
-
----Convert a timer an older revision built to the array layout, in place.
----
----`_generation`, which only timers of revision 9 and older carry, stays a
----named field: the host callbacks those revisions created compare it.
----@param timer table a `TimerKit.LegacyTimerRecord`
----@return TimerKit.TimerRecord timer the same table
-function adoptLegacyTimer(timer)
-  local id = rawget(timer, "_id")
-  local scope = rawget(timer, "_scope")
-  local callback = rawget(timer, "_callback")
-  local delay = rawget(timer, "_delay")
-  local repeating = rawget(timer, "_repeating") == true or nil
-  local timerState = rawget(timer, "_state")
-  local native = rawget(timer, "_native")
-  local deadline = rawget(timer, "_deadline")
-  local userData = rawget(timer, "_userData")
-  if type(native) == "nil" then
-    native = false
-  end
-  if type(deadline) == "nil" then
-    -- Started by a revision that kept no deadline.
-    deadline = false
-  end
-
-  -- The named fields go first, so the rehash the slots cause counts only the
-  -- keys that stay.
-  for index = 1, #LEGACY_TIMER_FIELDS do
-    rawset(timer, LEGACY_TIMER_FIELDS[index], nil)
-  end
-  rawset(timer, 1, id)
-  rawset(timer, 2, scope)
-  rawset(timer, 3, callback)
-  rawset(timer, 4, delay)
-  rawset(timer, 5, timerState)
-  rawset(timer, 6, native)
-  rawset(timer, 7, deadline)
-  rawset(timer, 8, repeating)
-  rawset(timer, 9, userData)
-  setmetatable(timer, TIMER_METATABLE)
-  return timer --[[@as TimerKit.TimerRecord]]
-end
-
----Convert the timers older revisions left running or paused in the scopes
----TimerKit can reach: the addon scopes and the package scope. Timers of manual
----scopes are converted when they are next met.
-local function adoptReachableLegacyTimers()
-  local scopes = {}
-  for _, scope in pairs(rawget(state, "addonScopes")) do
-    scopes[#scopes + 1] = scope
-  end
-  local defaultScope = rawget(state, "defaultScope")
-  if type(defaultScope) == "table" then
-    scopes[#scopes + 1] = defaultScope
-  end
-  for index = 1, #scopes do
-    local active = rawget(scopes[index], "_active")
-    if type(active) == "table" then
-      for timer in pairs(active) do
-        if getmetatable(timer) == LEGACY_TIMER_METATABLE then
-          adoptLegacyTimer(timer)
-        end
-      end
-    end
-  end
-end
-
--- Method-name callbacks (revision 14) ---------------------------------------
+-- Method-name callbacks -----------------------------------------------------
 --
 -- `After(delay, receiver, methodName)` and `Every(interval, receiver,
 -- methodName)` are AceTimer's `ScheduleTimer("Method", delay)`. The method
@@ -808,10 +699,10 @@ local function resolveCallback(callback, methodName, label, level)
       level
     )
   end
-  if isSecretValue(callback) then
+  if isSecret(callback) then
     error(label .. " receiver must not be a secret value", level)
   end
-  if isSecretValue(methodName) then
+  if isSecret(methodName) then
     error(label .. " methodName must not be a secret value", level)
   end
   if type(methodName) ~= "string" or methodName == "" then
@@ -834,18 +725,14 @@ end
 -- Stale host callbacks. Every start creates one host handle and one callback
 -- closure that remembers it. The callback fires the timer only while the
 -- timer is running and its handle slot still holds that very handle. Cancel,
--- restart and a delivered one-shot replace the handle before anything else
--- happens, so a callback from an earlier start can never re-enter the timer,
--- even when the host's own cancellation raised. Revision 9 and older bound
--- callbacks to a per-timer `_generation` counter instead; `fireLegacyTimer`
--- keeps serving the callbacks those revisions left running. They fire only
--- while the timer is running with the generation they were created for, and
--- every start moves such a timer's counter on, so they go stale exactly when a
--- revision 9 callback would have.
+-- restart, pause and a delivered one-shot replace the handle before anything
+-- else happens, so a callback from an earlier start can never re-enter the
+-- timer, even when the host's own cancellation raised.
 --
 -- Host callbacks resolve their handler through `state.dispatch` when they
 -- run, so a callback created before an in-place upgrade runs the newer
--- revision's code.
+-- revision's code: `fireStarted` for a start, `fireResumed` (the Pausing
+-- part's) for the one-shot of a resume.
 
 ---Current monotonic wall-clock seconds, the reference every deadline uses.
 ---Only called once a deadline exists, which implies the clock does.
@@ -887,10 +774,7 @@ local function cancelTimer(timer)
 
   -- Unbind the host callback before asking the host to cancel. Even if the
   -- host cancellation itself errors, a stale callback cannot re-enter the
-  -- logical timer after this point. A callback revision 9 or older created
-  -- checks `_generation` and the state instead, so the state change makes it
-  -- stale, and `startTimer` moves the generation on before the timer can run
-  -- again.
+  -- logical timer after this point.
   local native = timer[6] --[[native]]
   timer[6] --[[native]] = false
   timer[5] --[[state]] = "cancelled"
@@ -899,34 +783,10 @@ local function cancelTimer(timer)
 
   -- The handle is trusted to have `Cancel` (docs/API.md, "Native
   -- boundary"): a handle without one raises here, after the logical
-  -- cancellation above is complete. `false` is a timer an older revision
-  -- left without a handle.
+  -- cancellation above is complete. A paused timer holds `false`.
   if native then
     native:Cancel()
   end
-  return true
-end
-
----Deliver one host callback the stale check accepted.
----@param timer TimerKit.TimerRecord
----@return boolean fired always `true`
-local function deliverTimer(timer)
-  if
-    timer[8] --[[repeating]]
-    == true
-  then
-    -- The host re-arms a ticker relative to the tick it just delivered, so
-    -- the next deadline is one interval from now, not from the first start.
-    timer[7] --[[deadline]] = deadlineAfter(timer[4] --[[delay]])
-  else
-    timer[6] --[[native]] = false
-    timer[5] --[[state]] = "completed"
-    timer[7] --[[deadline]] = false
-    detachActive(timer[2] --[[scope]], timer)
-  end
-
-  timer
-    [3] --[[callback]](timer)
   return true
 end
 
@@ -934,9 +794,8 @@ end
 ---ignoring it unless that start is still the timer's current one.
 ---
 ---This is the path of every fire, so the stale check, the delivery and the
----active-set bookkeeping are written out in one frame. A timer an older
----revision built fails the first test and is converted on that branch.
----@param timer TimerKit.TimerRecord a current timer, or one an older revision built
+---active-set bookkeeping are written out in one frame.
+---@param timer TimerKit.TimerRecord
 ---@param native table|userdata the handle the firing callback was created for
 ---@return boolean fired
 local function fireTimer(timer, native)
@@ -946,23 +805,15 @@ local function fireTimer(timer, native)
       ~= "running"
     or not rawequal(timer[6] --[[native]], native)
   then
-    if getmetatable(timer) ~= LEGACY_TIMER_METATABLE then
-      return false
-    end
-    adoptLegacyTimer(timer)
-    if
-      timer[5] --[[state]]
-        ~= "running"
-      or not rawequal(timer[6] --[[native]], native)
-    then
-      return false
-    end
+    return false
   end
 
   if
     timer[8] --[[repeating]]
     == true
   then
+    -- The host re-arms a ticker relative to the tick it just delivered, so
+    -- the next deadline is one interval from now, not from the first start.
     if nativeGetTimePreciseSec ~= nil then
       timer[7] --[[deadline]] = nativeGetTimePreciseSec() + timer[4] --[[delay]]
     end
@@ -983,30 +834,11 @@ local function fireTimer(timer, native)
   return true
 end
 
----Deliver a host callback that revision 9 or older created, bound to the
----timer's `_generation` counter at that start.
----@param timer TimerKit.TimerRecord a current timer, or one an older revision built
----@param generation integer generation the native handle was created for
----@return boolean fired
-local function fireLegacyTimer(timer, generation)
-  if getmetatable(timer) == LEGACY_TIMER_METATABLE then
-    adoptLegacyTimer(timer)
-  end
-  if
-    timer._generation ~= generation
-    or timer[5] --[[state]]
-      ~= "running"
-  then
-    return false
-  end
-  return deliverTimer(timer)
-end
-
 ---Bind a fresh host callback to `timer` and ask the host for its handle.
 ---
----The caller has checked that the timer is not running and its scope is open,
----and made older revisions' callbacks stale; `level` identifies the public
----caller so a missing host handle is reported at its line.
+---The caller has checked that the timer is not running and its scope is open;
+---`level` identifies the public caller so a missing host handle is reported at
+---its line.
 ---
 ---The host is asked first and the timer marked running only once it has
 ---answered, so a constructor that raises leaves the timer exactly as it was
@@ -1050,109 +882,6 @@ local function armTimer(timer, scope, level)
   end
 end
 
--- Pausing (revision 12) ---------------------------------------------------
---
--- A pause cancels the host handle and keeps what is left of the delay in the
--- deadline slot, which holds an instant only while the timer runs; the state
--- says which. Resuming asks the host for a one-shot of that remainder whose
--- callback goes through `fireResumed`: a one-shot timer completes as usual,
--- and a repeating one is armed again as a ticker of its interval before its
--- callback runs, so a `Cancel` inside the callback cancels that ticker.
--- docs/ROADMAP.md, "timerKit pausable timers", records why this is built on
--- `C_Timer` handles rather than an animation host.
-
----Deliver the one-shot of a resume, ignoring it unless that resume is still
----the timer's current start.
----@param timer TimerKit.TimerRecord a current timer, or one an older revision built
----@param native table|userdata the handle the firing callback was created for
----@return boolean fired
-local function fireResumedTimer(timer, native)
-  if getmetatable(timer) == LEGACY_TIMER_METATABLE then
-    adoptLegacyTimer(timer)
-  end
-  if
-    timer[5] --[[state]]
-      ~= "running"
-    or not rawequal(timer[6] --[[native]], native)
-  then
-    return false
-  end
-  if
-    timer[8] --[[repeating]]
-    ~= true
-  then
-    return deliverTimer(timer)
-  end
-  -- Back on the interval. The timer is cancelled logically first, so a host
-  -- constructor that raises leaves it cancelled rather than running without
-  -- a handle; `armTimer` puts it back in its scope's active set.
-  timer[6] --[[native]] = false
-  timer[5] --[[state]] = "cancelled"
-  timer[7] --[[deadline]] = false
-  local scope = timer[2] --[[scope]]
-  detachActive(scope, timer)
-  armTimer(timer, scope, 2)
-  timer
-    [3] --[[callback]](timer)
-  return true
-end
-
----Ask the host for a one-shot of `remaining` seconds for a paused timer and
----mark it running. Like `armTimer`, the host is asked first, so a constructor
----that raises leaves the timer paused.
----@param timer TimerKit.TimerRecord
----@param remaining number seconds left when the timer was paused
----@param level integer stack level the failure is reported at
-local function armRemainder(timer, remaining, level)
-  local native
-  local callback = function()
-    return state.dispatch.fireResumed(timer, native)
-  end
-  local handle = nativeNewTimer(remaining, callback)
-  if not handle then
-    error("MoltenCodes TimerKit host returned an invalid native timer handle", level)
-  end
-  native = handle
-  timer[6] --[[native]] = handle
-  timer[5] --[[state]] = "running"
-  timer[7] --[[deadline]] = deadlineAfter(remaining)
-end
-
----Pause a running timer, keeping what is left of its delay.
----@param timer TimerKit.TimerRecord
----@return boolean paused `false` when the timer was not running.
-local function pauseTimer(timer)
-  if
-    timer[5] --[[state]]
-    ~= "running"
-  then
-    return false
-  end
-  -- Without a clock (no deadline was kept) the full delay is left.
-  local remaining = timer[4] --[[delay]]
-  local deadline = timer[7] --[[deadline]]
-  if type(deadline) == "number" then
-    remaining = deadline - now()
-    if remaining < 0 then
-      remaining = 0
-    end
-  end
-  -- Unbind the host callback before cancelling it, as `cancelTimer` does; a
-  -- revision 9 callback is made stale by the generation.
-  local native = timer[6] --[[native]]
-  timer[6] --[[native]] = false
-  timer[5] --[[state]] = "paused"
-  timer[7] --[[deadline]] = remaining
-  local generation = timer._generation
-  if generation ~= nil then
-    timer._generation = generation + 1
-  end
-  if native then
-    native:Cancel()
-  end
-  return true
-end
-
 -- The caller has already validated `timer`; `level` identifies that caller so a
 -- closed-scope or invalid-host-handle failure still reports at its line.
 ---Start `timer` and bind a fresh host callback to the handle it creates.
@@ -1171,21 +900,13 @@ local function startTimer(timer, methodName, level)
     error(methodName .. " cannot start a timer in a closed scope", level)
   end
 
-  -- A timer revision 9 or older built also carries `_generation`, which the
-  -- callbacks those revisions created compare; moving it on makes them stale
-  -- before the timer runs again. The handle slot holds no handle while the
-  -- host constructor runs.
-  local generation = timer._generation
-  if generation ~= nil then
-    timer._generation = generation + 1
-  end
+  -- The handle slot holds no handle while the host constructor runs.
   timer[6] --[[native]] = false
-
   armTimer(timer, scope, level + 1)
   return true
 end
 
----Cancel `timer` when it is running, then start it again.
+---Cancel `timer` when it is running or paused, then start it again.
 ---@param timer TimerKit.TimerRecord
 ---@param methodName string public method name, used in the argument error
 ---@param level integer stack level the failure is reported at
@@ -1327,16 +1048,12 @@ local function createdBefore(left, right)
 end
 
 ---Return every running or paused timer of `scope`, ordered by creation, as a
----snapshot. A timer an older revision left in the scope is converted first.
----@param scope TimerKit.Scope
+---snapshot.
+---@param scope TimerKit.ScopeRecord
 ---@return TimerKit.TimerRecord[]
 local function snapshotActive(scope)
   local timers = {}
-  local active = rawget(scope, "_active")
-  for timer in pairs(active) do
-    if getmetatable(timer) == LEGACY_TIMER_METATABLE then
-      adoptLegacyTimer(timer)
-    end
+  for timer in pairs(scope._active) do
     timers[#timers + 1] = timer
   end
   table.sort(timers, createdBefore)
@@ -1345,7 +1062,7 @@ end
 
 -- Internal bulk cancellation. The caller owns validation, so scope cleanup
 -- driven by `CloseAddonScopes` does not have to fake a public call site.
----@param scope TimerKit.Scope
+---@param scope TimerKit.ScopeRecord
 ---@return integer cancelled
 local function cancelAllInScope(scope)
   local timers = snapshotActive(scope)
@@ -1370,39 +1087,21 @@ local function cancelAllInScope(scope)
   return cancelled
 end
 
----Disconnect the LifecycleKit `OnShutdown` subscription an addon scope holds,
----if any. Best-effort: the subscription only closes a scope, and closing a
----closed scope is a no-op, so one that cannot be disconnected is harmless.
----@param scope TimerKit.Scope
-local function releaseLogoutSubscription(scope)
-  local subscription = rawget(scope, "_logoutSubscription")
-  if type(subscription) ~= "table" then
-    return
-  end
-  rawset(scope, "_logoutSubscription", false)
-  local disconnectSubscription = subscription.Disconnect
-  if type(disconnectSubscription) == "function" then
-    pcall(disconnectSubscription, subscription)
-  end
-end
-
 ---Terminally close `scope` after best-effort cancellation.
 ---
 ---A timer callback may close its own scope, including through
 ---`CloseAddonScopes`; the timer that is firing is cancelled like the rest,
----which for a ticker means it does not tick again. An addon scope also lets
----go of its LifecycleKit shutdown subscription, which has nothing left to do.
----@param scope TimerKit.Scope
+---which for a ticker means it does not tick again.
+---@param scope TimerKit.ScopeRecord
 ---@return boolean closed `false` when the scope was already closed.
 local function closeScope(scope)
-  if rawget(scope, "_closed") == true then
+  if scope._closed == true then
     return false
   end
 
   -- Make the scope terminal before cleanup begins. Callback re-entry cannot
   -- schedule replacement timers while the close is in progress.
-  rawset(scope, "_closed", true)
-  releaseLogoutSubscription(scope)
+  scope._closed = true
 
   local ok, cancelError = pcall(cancelAllInScope, scope)
   raiseCaptured(captureFirstError(nil, ok, cancelError))
@@ -1411,7 +1110,7 @@ end
 
 ---Build one open scope. `addonName` is `nil` for a manually owned scope.
 ---@param addonName string|nil
----@return TimerKit.Scope
+---@return TimerKit.ScopeRecord
 local function newScope(addonName)
   return setmetatable({
     _addonName = addonName,
@@ -1432,19 +1131,19 @@ end
 --      `CloseAddonScopes` at shutdown, after the addon's shutdown callbacks.
 --      Nothing is subscribed; `LifecycleKit:ForAddon` is called once so the
 --      addon has an instance and its shutdown pass reaches this scope.
---   2. An older LifecycleKit, without that capability: one `OnShutdown`
---      subscription per addon closes the scope among the shutdown callbacks,
---      as revisions 5 and older did. The handle is kept on the scope, so
---      closing the scope disconnects it.
---   3. No LifecycleKit, but EventKit: one package-level `PLAYER_LOGOUT`
+--   3. No such LifecycleKit, but EventKit: one package-level `PLAYER_LOGOUT`
 --      connection, in an EventKit scope of TimerKit's own, closes every
---      addon scope that neither LifecycleKit route covers.
+--      addon scope route 1 does not cover.
 --   4. Neither: nothing is subscribed, and the addon calls
 --      `CloseAddonScopes` itself. This outcome is examined again at the next
 --      `ForAddon`, since a Kit loaded later can change it.
 --
--- Callbacks handed to other Kits resolve TimerKit's behaviour through
--- `state.dispatch` when they run, so a newer revision upgrades them in place.
+-- The numbers are the documented ones (docs/API.md, "At logout"). Route 2, an
+-- `OnShutdown` subscription per addon for a LifecycleKit before revision 13,
+-- is gone with the upgrade floor: no such LifecycleKit was ever published.
+-- The `PLAYER_LOGOUT` connection's callback resolves TimerKit's behaviour
+-- through `state.dispatch` when it runs, so a newer revision upgrades it in
+-- place.
 
 ---Whether `LifecycleKit` closes TimerKit's addon scopes at shutdown itself.
 ---
@@ -1457,44 +1156,14 @@ local function lifecycleClosesAddonScopes(LifecycleKit)
   return type(capabilities) == "table" and capabilities[PACKAGE_NAME] == true
 end
 
----The LifecycleKit that closes TimerKit's addon scopes itself, or `nil`.
----@return table|nil
-local function findClosingLifecycleKit()
-  local LifecycleKit = findOptionalPackage("lifecycleKit", OPTIONAL_LIFECYCLE_KIT_API)
-  if type(LifecycleKit) ~= "nil" and lifecycleClosesAddonScopes(LifecycleKit) then
-    return LifecycleKit
-  end
-  return nil
-end
-
----Close an addon scope from a LifecycleKit `OnShutdown` callback (route 2).
----
----When a LifecycleKit that closes TimerKit's scopes itself has replaced the
----older one in the meantime, it makes the call after the shutdown callbacks,
----so this one steps aside and keeps that ordering.
----@param addonName string
----@return boolean closed
-local function closeOnShutdown(addonName)
-  local scope = rawget(rawget(state, "addonScopes"), addonName)
-  if scope == nil then
-    return false
-  end
-  -- The subscription is one-shot and has fired; nothing is left to release.
-  rawset(scope, "_logoutSubscription", false)
-  if findClosingLifecycleKit() ~= nil then
-    return false
-  end
-  return closeScope(scope)
-end
-
----Close, at `PLAYER_LOGOUT`, every addon scope no LifecycleKit route covers
----(route 3), in addon-name order. Every scope is attempted; the first failure
----is re-raised afterwards, and EventKit reports it through the host error
+---Close, at `PLAYER_LOGOUT`, every addon scope route 1 does not cover (route
+---3), in addon-name order. Every scope is attempted; the first failure is
+---re-raised afterwards, and EventKit reports it through the host error
 ---handler.
 local function closeOnLogout()
-  rawset(state, "logoutConnection", false)
+  state.logoutConnection = false
 
-  local addonScopes = rawget(state, "addonScopes")
+  local addonScopes = state.addonScopes
   local names = {}
   for addonName in pairs(addonScopes) do
     names[#names + 1] = addonName
@@ -1503,9 +1172,8 @@ local function closeOnLogout()
 
   local firstError
   for index = 1, #names do
-    local scope = rawget(addonScopes, names[index])
-    local route = rawget(scope, "_logoutRoute")
-    if route ~= LOGOUT_ROUTE_LIFECYCLE and route ~= LOGOUT_ROUTE_SHUTDOWN_SUBSCRIPTION then
+    local scope = addonScopes[names[index]]
+    if scope._logoutRoute ~= LOGOUT_ROUTE_LIFECYCLE then
       local ok, closeError = pcall(closeScope, scope)
       firstError = captureFirstError(firstError, ok, closeError)
     end
@@ -1513,29 +1181,10 @@ local function closeOnLogout()
   raiseCaptured(firstError)
 end
 
----Subscribe the addon scope to an older LifecycleKit's shutdown (route 2).
----@param LifecycleKit table
----@param addonName string
----@return table|nil subscription `nil` when LifecycleKit refused
-local function subscribeToShutdown(LifecycleKit, addonName)
-  local ok, subscription = pcall(function()
-    return LifecycleKit:ForAddon(addonName):OnShutdown(function()
-      local closeForShutdown = rawget(rawget(state, "dispatch"), "closeOnShutdown")
-      if type(closeForShutdown) == "function" then
-        closeForShutdown(addonName)
-      end
-    end)
-  end)
-  if not ok or type(subscription) ~= "table" then
-    return nil
-  end
-  return subscription
-end
-
 ---Whether the package-level `PLAYER_LOGOUT` connection is live.
 ---@return boolean
 local function hasLogoutConnection()
-  local connection = rawget(state, "logoutConnection")
+  local connection = state.logoutConnection
   if type(connection) ~= "table" then
     return false
   end
@@ -1556,12 +1205,12 @@ local function ensureLogoutConnection()
   end
 
   local ok, eventScope, connection = pcall(function()
-    local ownScope = rawget(state, "logoutEventScope")
+    local ownScope = state.logoutEventScope
     if type(ownScope) ~= "table" or ownScope:IsClosed() then
       ownScope = EventKit:CreateScope()
     end
     local logoutConnection = ownScope:Once(LOGOUT_EVENT, function()
-      local handler = rawget(rawget(state, "dispatch"), "closeOnLogout")
+      local handler = state.dispatch.closeOnLogout
       if type(handler) == "function" then
         handler()
       end
@@ -1571,8 +1220,8 @@ local function ensureLogoutConnection()
   if not ok or type(connection) ~= "table" then
     return false
   end
-  rawset(state, "logoutEventScope", eventScope)
-  rawset(state, "logoutConnection", connection)
+  state.logoutEventScope = eventScope
+  state.logoutConnection = connection
   return true
 end
 
@@ -1581,38 +1230,30 @@ end
 ---Called by `ForAddon` for every scope it returns, so the common case costs one
 ---field read. Only an undecided scope, or one nobody could close before, looks
 ---for LifecycleKit and EventKit.
----@param scope TimerKit.Scope an addon scope
+---@param scope TimerKit.ScopeRecord an addon scope
 local function ensureLogoutRoute(scope)
-  local route = rawget(scope, "_logoutRoute")
-  if (route ~= false and route ~= LOGOUT_ROUTE_NONE) or rawget(scope, "_closed") == true then
+  local route = scope._logoutRoute
+  if (route ~= false and route ~= LOGOUT_ROUTE_NONE) or scope._closed == true then
     return
   end
 
   local LifecycleKit = findOptionalPackage("lifecycleKit", OPTIONAL_LIFECYCLE_KIT_API)
-  if type(LifecycleKit) ~= "nil" then
-    if lifecycleClosesAddonScopes(LifecycleKit) then
-      -- LifecycleKit closes the scopes of the addons it has an
-      -- instance for, so make sure this addon has one. Nothing is
-      -- subscribed; a refusal only leaves the addon unknown to it.
-      pcall(function()
-        LifecycleKit:ForAddon(rawget(scope, "_addonName"))
-      end)
-      rawset(scope, "_logoutRoute", LOGOUT_ROUTE_LIFECYCLE)
-      return
-    end
-    local subscription = subscribeToShutdown(LifecycleKit, rawget(scope, "_addonName"))
-    if subscription ~= nil then
-      rawset(scope, "_logoutSubscription", subscription)
-      rawset(scope, "_logoutRoute", LOGOUT_ROUTE_SHUTDOWN_SUBSCRIPTION)
-      return
-    end
+  if type(LifecycleKit) ~= "nil" and lifecycleClosesAddonScopes(LifecycleKit) then
+    -- LifecycleKit closes the scopes of the addons it has an instance for, so
+    -- make sure this addon has one. Nothing is subscribed; a refusal only
+    -- leaves the addon unknown to it.
+    pcall(function()
+      LifecycleKit:ForAddon(scope._addonName)
+    end)
+    scope._logoutRoute = LOGOUT_ROUTE_LIFECYCLE
+    return
   end
 
   if ensureLogoutConnection() then
-    rawset(scope, "_logoutRoute", LOGOUT_ROUTE_EVENT)
+    scope._logoutRoute = LOGOUT_ROUTE_EVENT
     return
   end
-  rawset(scope, "_logoutRoute", LOGOUT_ROUTE_NONE)
+  scope._logoutRoute = LOGOUT_ROUTE_NONE
 end
 
 -- Timer public methods ------------------------------------------------------
@@ -1697,8 +1338,7 @@ end
 ---@return boolean cancelled `false` when the timer was neither running nor paused.
 local function timerCancel(self)
   -- `validateTimer` and `cancelTimer`, written out: `Cancel` is the one timer
-  -- method on the start-and-cancel path. The validator runs only for a
-  -- receiver that is not a current timer, to convert an older one or raise.
+  -- method on the start-and-cancel path. The validator runs only to raise.
   if getmetatable(self) ~= TIMER_METATABLE then
     validateTimer(self, "TimerKit.Timer:Cancel", 3)
   end
@@ -1749,7 +1389,7 @@ local function timerGetDeadline(self)
   end
   local deadline = self[7] --[[deadline]]
   if type(deadline) ~= "number" then
-    -- Started by a revision that kept no deadline; see API.md.
+    -- Started on a host without `GetTimePreciseSec`; see API.md.
     return nil
   end
   return deadline
@@ -1765,7 +1405,7 @@ local function timerGetRemaining(self)
   validateTimer(self, "TimerKit.Timer:GetRemaining", 3)
   local timerState = self[5] --[[state]]
   if timerState == "paused" then
-    -- A paused timer keeps its remainder in the deadline slot; see "Pausing".
+    -- A paused timer keeps its remainder in the deadline slot (Pausing part).
     return self[7] --[[@as number]]
   end
   if timerState ~= "running" then
@@ -1780,39 +1420,6 @@ local function timerGetRemaining(self)
     return 0
   end
   return remaining
-end
-
----Pause a running timer; `Resume` starts it again with what was left.
----@param self TimerKit.TimerRecord
----@return boolean paused `false` when the timer was not running.
-local function timerPause(self)
-  validateTimer(self, "TimerKit.Timer:Pause", 3)
-  return pauseTimer(self)
-end
-
----Resume a paused timer with what was left of its delay; a repeating timer
----returns to its interval after that first fire. A paused timer's scope is
----never closed: closing a scope cancels its paused timers.
----@param self TimerKit.TimerRecord
----@return boolean resumed `false` when the timer was not paused.
-local function timerResume(self)
-  validateTimer(self, "TimerKit.Timer:Resume", 3)
-  if
-    self[5] --[[state]]
-    ~= "paused"
-  then
-    return false
-  end
-  armRemainder(self, self[7] --[[deadline]], 3)
-  return true
-end
-
----Return whether the timer is paused.
----@param self TimerKit.TimerRecord
----@return boolean paused
-local function timerIsPaused(self)
-  validateTimer(self, "TimerKit.Timer:IsPaused", 3)
-  return self[5] --[[state]] == "paused"
 end
 
 -- Scope public methods ------------------------------------------------------
@@ -1843,13 +1450,12 @@ end
 ---@param methodName string? the method's name when `callback` is a receiver
 ---@return TimerKit.Timer timer
 local function scopeAfter(self, delay, callback, methodName)
-  local probe = loadedIsSecretValue or readLateProbe()
   if
     getmetatable(self) ~= SCOPE_METATABLE
     or self._closed == true
     or type(callback) ~= "function"
     or type(delay) ~= "number"
-    or (probe ~= nil and probe(delay))
+    or isSecret(delay)
     or not (delay >= 0 and delay < HUGE)
   then
     return startTimerInScope(self, delay, callback, methodName, false, "TimerKit.Scope:After", 3)
@@ -1868,13 +1474,12 @@ end
 ---@param methodName string? the method's name when `callback` is a receiver
 ---@return TimerKit.Timer timer
 local function scopeEvery(self, interval, callback, methodName)
-  local probe = loadedIsSecretValue or readLateProbe()
   if
     getmetatable(self) ~= SCOPE_METATABLE
     or self._closed == true
     or type(callback) ~= "function"
     or type(interval) ~= "number"
-    or (probe ~= nil and probe(interval))
+    or isSecret(interval)
     or not (interval > 0 and interval < HUGE)
   then
     return startTimerInScope(self, interval, callback, methodName, true, "TimerKit.Scope:Every", 3)
@@ -1909,13 +1514,13 @@ end
 ---@return boolean reopened `false` when the scope was open.
 local function scopeReopen(self)
   validateScope(self, "TimerKit.Scope:Reopen", 3)
-  if rawget(self, "_addonName") ~= nil then
+  if self._addonName ~= nil then
     error("TimerKit.Scope:Reopen cannot reopen an addon scope", 2)
   end
-  if rawget(self, "_closed") ~= true then
+  if self._closed ~= true then
     return false
   end
-  rawset(self, "_closed", false)
+  self._closed = false
   return true
 end
 
@@ -1924,7 +1529,7 @@ end
 ---@return boolean closed
 local function scopeIsClosed(self)
   validateScope(self, "TimerKit.Scope:IsClosed", 3)
-  return rawget(self, "_closed") == true
+  return self._closed == true
 end
 
 ---Return the owning addon name, or `nil` for a manual scope.
@@ -1932,7 +1537,7 @@ end
 ---@return string? addonName
 local function scopeGetAddonName(self)
   validateScope(self, "TimerKit.Scope:GetAddonName", 3)
-  return rawget(self, "_addonName")
+  return self._addonName
 end
 
 ---Return the number of logically running or paused timers owned by this scope.
@@ -1940,7 +1545,7 @@ end
 ---@return integer activeCount
 local function scopeGetActiveCount(self)
   validateScope(self, "TimerKit.Scope:GetActiveCount", 3)
-  return rawget(self, "_activeCount")
+  return self._activeCount
 end
 
 -- Package public API --------------------------------------------------------
@@ -1948,10 +1553,10 @@ end
 ---Return TimerKit's internal manual scope, replacing it once it is closed.
 ---@return TimerKit.ScopeRecord
 local function getDefaultScope()
-  local scope = rawget(state, "defaultScope")
-  if scope == false or rawget(scope, "_closed") == true then
+  local scope = state.defaultScope
+  if scope == false or scope._closed == true then
     scope = newScope(nil)
-    rawset(state, "defaultScope", scope)
+    state.defaultScope = scope
   end
   return scope
 end
@@ -1973,11 +1578,10 @@ end
 ---@return TimerKit.Timer timer
 local function packageAfter(_, delay, callback, methodName)
   local scope = getDefaultScope()
-  local probe = loadedIsSecretValue or readLateProbe()
   if
     type(callback) ~= "function"
     or type(delay) ~= "number"
-    or (probe ~= nil and probe(delay))
+    or isSecret(delay)
     or not (delay >= 0 and delay < HUGE)
   then
     return startTimerInScope(scope, delay, callback, methodName, false, "TimerKit:After", 3)
@@ -1995,11 +1599,10 @@ end
 ---@return TimerKit.Timer timer
 local function packageEvery(_, interval, callback, methodName)
   local scope = getDefaultScope()
-  local probe = loadedIsSecretValue or readLateProbe()
   if
     type(callback) ~= "function"
     or type(interval) ~= "number"
-    or (probe ~= nil and probe(interval))
+    or isSecret(interval)
     or not (interval > 0 and interval < HUGE)
   then
     return startTimerInScope(scope, interval, callback, methodName, true, "TimerKit:Every", 3)
@@ -2026,13 +1629,12 @@ end
 local function forAddon(_, addonName)
   validateNonEmptyString(addonName, "TimerKit:ForAddon addonName", 3)
 
-  local addonScopes = rawget(state, "addonScopes")
-  local scope = rawget(addonScopes, addonName)
+  local addonScopes = state.addonScopes
+  local scope = addonScopes[addonName]
   if scope == nil then
     scope = newScope(addonName)
-    rawset(scope, "_logoutRoute", false)
-    rawset(scope, "_logoutSubscription", false)
-    rawset(addonScopes, addonName, scope)
+    scope._logoutRoute = false
+    addonScopes[addonName] = scope
   end
   ensureLogoutRoute(scope)
   return scope
@@ -2053,7 +1655,7 @@ end
 ---@param addonName string addon folder name
 ---@return boolean closed `false` when the addon has no scope or it was already closed.
 local function closeAddonScopes(self, addonName)
-  if isSecretValue(self) or self ~= TimerKit then
+  if isSecret(self) or self ~= TimerKit then
     error(
       "TimerKit:CloseAddonScopes must be called on the TimerKit facade; "
         .. "use TimerKit:CloseAddonScopes(addonName)",
@@ -2062,11 +1664,71 @@ local function closeAddonScopes(self, addonName)
   end
   validateNonEmptyString(addonName, "TimerKit:CloseAddonScopes addonName", 3)
 
-  local scope = rawget(rawget(state, "addonScopes"), addonName)
+  local scope = state.addonScopes[addonName]
   if scope == nil then
     return false
   end
   return closeScope(scope)
+end
+
+-- Parts ---------------------------------------------------------------------
+--
+-- What the core keeps for its parts, so a part loaded by any addon finds it:
+-- `state.parts` (part name to `{ revision }`), `state.helpers` (the core
+-- functions a part calls, read at call time, so a core upgraded after the part
+-- loaded serves it) and `state.partInterface`. The core reaches a part only
+-- through `state.dispatch` entries the part fills (`fireResumed`, `pause`);
+-- no host callback that needs one can exist before the part made it.
+--
+-- Every member a part provides stays on its prototype even without the part:
+-- a stub that raises at the caller's line with the file to embed. Other Kits
+-- ask `HasPart`, never `type(Timer.Pause) == "function"`, which a stub
+-- satisfies.
+
+---A member that raises, at its caller's line, that `part` is not loaded.
+---@param label string the member as its caller wrote it
+---@param part table one entry of `PART_LAYOUT`
+---@return function
+local function newPartStub(label, part)
+  -- The message is built only when the stub raises, so an addon that never
+  -- calls a missing part holds no message text for it.
+  return function()
+    error(
+      label
+        .. " is in TimerKit's "
+        .. part.name
+        .. " part, which is not loaded: add "
+        .. part.file
+        .. " to embeds.xml after "
+        .. CORE_FILE,
+      2
+    )
+  end
+end
+
+---Put a stub in place of every member of each part that is not installed. A
+---member of an installed part is the part's own and stays.
+local function installPartStubs()
+  for index = 1, #PART_LAYOUT do
+    local part = PART_LAYOUT[index]
+    if state.parts[part.name] == nil then
+      for memberIndex = 1, #part.timer do
+        local member = part.timer[memberIndex]
+        rawset(Timer, member, newPartStub("TimerKit.Timer:" .. member, part))
+      end
+    end
+  end
+end
+
+---Whether the named part is installed in this session.
+---@param _ TimerKit
+---@param name string a part name, such as `"Pausing"`
+---@return boolean installed
+local function hasPart(_, name)
+  if isSecret(name) or type(name) ~= "string" then
+    error("TimerKit:HasPart name must be a part name string", 2)
+  end
+  return type(state.parts[name]) == "table"
 end
 
 -- Commit -------------------------------------------------------------------
@@ -2084,9 +1746,7 @@ rawset(Timer, "Cancel", timerCancel)
 rawset(Timer, "Restart", timerRestart)
 rawset(Timer, "GetRemaining", timerGetRemaining)
 rawset(Timer, "GetDeadline", timerGetDeadline)
-rawset(Timer, "Pause", timerPause)
-rawset(Timer, "Resume", timerResume)
-rawset(Timer, "IsPaused", timerIsPaused)
+installPartStubs()
 
 rawset(Scope, "New", scopeNew)
 rawset(Scope, "After", scopeAfter)
@@ -2106,63 +1766,65 @@ rawset(TimerKit, "Every", packageEvery)
 rawset(TimerKit, "CreateScope", createScope)
 rawset(TimerKit, "ForAddon", forAddon)
 rawset(TimerKit, "CloseAddonScopes", closeAddonScopes)
+rawset(TimerKit, "HasPart", hasPart)
 
-local defaultScope = rawget(state, "defaultScope")
-if defaultScope == false then
-  rawset(state, "defaultScope", newScope(nil))
-elseif getmetatable(defaultScope) ~= SCOPE_METATABLE then
+if state.defaultScope == false then
+  state.defaultScope = newScope(nil)
+elseif getmetatable(state.defaultScope) ~= SCOPE_METATABLE then
   error("MoltenCodes TimerKit package state is corrupted or incomplete", 2)
 end
 
-local dispatch = rawget(state, "dispatch")
--- Revision 10 binds host callbacks to their handle and routes them through
--- `fireStarted`; `fire` stays published for the callbacks revision 9 and
--- older created, which pass the timer's generation instead. Revision 14's
--- `fireStarted` also converts a timer an older revision built.
-rawset(dispatch, "fireStarted", fireTimer)
-rawset(dispatch, "fire", fireLegacyTimer)
--- Revision 12: the one-shot a `Resume` asks the host for.
-rawset(dispatch, "fireResumed", fireResumedTimer)
--- No revision from 6 on calls `closeScope` through dispatch. It stays published
--- for the shutdown wrappers of revision 5 and older, in case one could not be
--- disconnected during the upgrade; see `releaseInheritedShutdownSubscriptions`.
-rawset(dispatch, "closeScope", closeScope)
--- The logout routes' callbacks resolve these at call time (see "Logout
--- coverage"), so connections an older revision 7+ copy made run this code.
-rawset(dispatch, "closeOnShutdown", closeOnShutdown)
-rawset(dispatch, "closeOnLogout", closeOnLogout)
-rawset(state, "runtimeRevision", IMPLEMENTATION_REVISION)
+-- The core functions the parts call, refreshed by every core revision.
+local helpers = state.helpers
+helpers.validateTimer = validateTimer
+helpers.armTimer = armTimer
+helpers.detachActive = detachActive
+helpers.fireTimer = fireTimer
+helpers.deadlineAfter = deadlineAfter
+helpers.now = now
+helpers.newOneShotHandle = nativeNewTimer
+
+local dispatch = state.dispatch
+-- Host callbacks resolve `fireStarted` when they fire, and the PLAYER_LOGOUT
+-- connection resolves `closeOnLogout`, so those an older copy made run this
+-- revision's code. `fireResumed` and `pause` belong to the Pausing part. When
+-- the part is absent after an upgrade, revision 14's own `fireResumed` stays
+-- in place for the resume one-shots that revision armed; it writes the same
+-- timer slots and arms the next tick through `fireStarted`.
+dispatch.fireStarted = fireTimer
+dispatch.closeOnLogout = closeOnLogout
+state.runtimeRevision = IMPLEMENTATION_REVISION
 
 if not validatePublicSurface(TimerKit) or not validateCurrentState(TimerKit) then
   error("MoltenCodes TimerKit package state is corrupted or incomplete", 2)
 end
 
--- Addon scopes an older revision created have no logout route yet. They are
--- given one now, in addon-name order, exactly as a first `ForAddon` would;
--- scopes whose route a revision 7+ copy already decided keep it, with any
--- subscription or connection it made.
-local function routeInheritedAddonScopes()
-  local addonScopes = rawget(state, "addonScopes")
-  local names = {}
-  for addonName, scope in pairs(addonScopes) do
-    if type(scope) == "table" and rawget(scope, "_logoutRoute") == nil then
-      names[#names + 1] = addonName
+-- The upgrade from revision 14, run once in the main chunk. Revision 14 also
+-- published `fire` (revision 9 callbacks), `closeScope` (revision 5 shutdown
+-- wrappers) and `closeOnShutdown` (route 2); none has a caller this revision
+-- can meet, so they go. An addon scope route 2 covered (a LifecycleKit before
+-- revision 13, never published) lets go of its `OnShutdown` subscription and
+-- is given a route again, as a first `ForAddon` would.
+if previousRevision ~= nil then
+  dispatch.fire = nil
+  dispatch.closeScope = nil
+  dispatch.closeOnShutdown = nil
+  local rerouted = {}
+  for addonName, scope in pairs(state.addonScopes) do
+    local subscription = scope._logoutSubscription
+    scope._logoutSubscription = nil
+    if scope._logoutRoute == "onShutdown" then
+      if type(subscription) == "table" then
+        pcall(subscription.Disconnect, subscription)
+      end
+      scope._logoutRoute = false
+      rerouted[#rerouted + 1] = addonName
     end
   end
-  table.sort(names)
-  for index = 1, #names do
-    local scope = rawget(addonScopes, names[index])
-    rawset(scope, "_logoutRoute", false)
-    rawset(scope, "_logoutSubscription", false)
-    ensureLogoutRoute(scope)
+  table.sort(rerouted)
+  for index = 1, #rerouted do
+    ensureLogoutRoute(state.addonScopes[rerouted[index]])
   end
-end
-
-if type(previousRevision) ~= "nil" and previousRevision < IMPLEMENTATION_REVISION then
-  routeInheritedAddonScopes()
-  -- Revision 14: the running and paused timers of the scopes TimerKit can
-  -- reach move to the array layout now; the rest when they are next met.
-  adoptReachableLegacyTimers()
 end
 
 return TimerKit

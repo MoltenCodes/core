@@ -26,7 +26,7 @@ loading → loaded → ready → shutdown
    └─────────┴────────┴──→ halted      (Halt; terminal for the session)
 ```
 
-An addon that cannot work declares it, and the addons that depend on it are told:
+An addon that cannot work declares it, and the addons that depend on it are told (the Halt part, `parts/LifecycleKit-Halt.lua`):
 
 ```lua
 lifecycle:OnLoaded(function(self)
@@ -42,7 +42,7 @@ consumer:OnDependencyHalted(function(self, dependencyName, reason)
 end)
 ```
 
-The combat gate keeps one lockdown state for every addon and defers protected frame work until combat ends:
+The combat gate (the CombatGate part, `parts/LifecycleKit-CombatGate.lua`) keeps one lockdown state for every addon and defers protected frame work until combat ends:
 
 ```lua
 lifecycle:WhenOutOfCombat(function(self, ran, reason)
@@ -59,7 +59,7 @@ end)
 
 `WhenOutOfCombat` runs at once out of combat; in combat it queues the call (at most 64 per addon by default, `nil, "full"` beyond; `SetCombatQueueLimit` and `LifecycleKit:SetLimits` open it, `LifecycleKit.UNBOUNDED` included) and returns a handle with `Cancel()`. `LifecycleKit:IsInCombat()` answers from the shared state.
 
-At shutdown, after the shutdown callbacks, LifecycleKit closes what the addon owns through the other Kits: its TimerKit scope (`TimerKit:ForAddon(name)`, when TimerKit is loaded), its SchedulerKit scope (`SchedulerKit:ForAddon(name)`, when SchedulerKit is loaded), its EventKit scope (`EventKit:ForAddon(name)`), its HookKit scope (`HookKit:ForAddon(name)`, when HookKit is loaded), its CommandKit scope (`CommandKit:ForAddon(name)`, when CommandKit is loaded), its CommKit scope (`CommKit:ForAddon(name)`, when CommKit is loaded) and its SignalKit bus (`SignalKit:ForAddon(name)`), in that order. Timers, jobs, connections, hooks and subscriptions made through them need no teardown code. `LifecycleKit.CLOSES_ADDON_SCOPES` is the read-only list of those packages, which they read to leave the closing to LifecycleKit; from 0.6.0 on, LifecycleKit pairs with any revision of them.
+At shutdown, after the shutdown callbacks, LifecycleKit closes what the addon owns through the other Kits: its TimerKit scope (`TimerKit:ForAddon(name)`, when TimerKit is loaded), its SchedulerKit scope (`SchedulerKit:ForAddon(name)`, when SchedulerKit is loaded), its EventKit scope (`EventKit:ForAddon(name)`), its HookKit scope (`HookKit:ForAddon(name)`, when HookKit is loaded), its CommandKit scope (`CommandKit:ForAddon(name)`, when CommandKit is loaded), its CommKit scope (`CommKit:ForAddon(name)`, when CommKit is loaded) and its SignalKit bus (`SignalKit:ForAddon(name)`, when SignalKit is loaded), in that order. Timers, jobs, connections, hooks and subscriptions made through them need no teardown code. `LifecycleKit.CLOSES_ADDON_SCOPES` is the read-only list of those packages, which they read to leave the closing to LifecycleKit; from 0.6.0 on, LifecycleKit pairs with any revision of them.
 
 `LifecycleKit:ForAddon(name)` is idempotent: every caller in the same runtime receives the same lifecycle instance for that addon name.
 
@@ -83,6 +83,20 @@ which runs on it.
 
 See [`docs/MIGRATING_FROM_ACE3.md`](../../docs/MIGRATING_FROM_ACE3.md#aceaddon-30).
 
+## Parts
+
+LifecycleKit is a core file and two optional parts. The core holds the phases,
+their subscriptions and queries, the halted-state observers (`IsHalted`,
+`GetHaltReason`, `OnHalted`) and the closing of the addon's scopes at shutdown.
+
+| Part | File | Adds |
+|---|---|---|
+| CombatGate | `lifecycleKit\parts\LifecycleKit-CombatGate.lua` | `IsInCombat`, `WhenOutOfCombat`, `OnCombatStart`, `OnCombatEnd`, the combat-queue limit, `DeferredCall` |
+| Halt | `lifecycleKit\parts\LifecycleKit-Halt.lua` | `Halt`, `DependsOn`, `OnDependencyHalted` |
+
+Without a part its members raise at the calling line and name the file to
+embed; `LifecycleKit:HasPart(name)` answers whether one is loaded.
+
 ## Embedding
 
 [`../../docs/EMBEDDING.md`](../../docs/EMBEDDING.md) is the addon author's guide:
@@ -94,14 +108,17 @@ Libs\MoltenCodes\registry\Registry.lua
 Libs\MoltenCodes\signalKit\SignalKit.lua
 Libs\MoltenCodes\eventKit\EventKit.lua
 Libs\MoltenCodes\lifecycleKit\LifecycleKit.lua
+Libs\MoltenCodes\lifecycleKit\parts\LifecycleKit-CombatGate.lua
+Libs\MoltenCodes\lifecycleKit\parts\LifecycleKit-Halt.lua
 ```
 
-Minimum footprint: Embed 4 files: Registry, SignalKit, EventKit, LifecycleKit.
+Minimum footprint: Embed 3 files: Registry, EventKit, LifecycleKit (SignalKit
+too while EventKit requires it); each part is one more line.
 
-Direct runtime dependencies: EventKit API 1, Registry API 2, SignalKit API 1.
-Every file above is required; omitting one makes this package raise at
-load. TimerKit API 1, SchedulerKit API 1, HookKit API 1, CommandKit API 1 and
-CommKit API 1 are optional: when the addon embeds them, shutdown also cancels
-the addon's scoped timers and jobs, undoes its scoped hooks, leaves its scoped
-slash commands inert and closes its addon-message scope. TimerKit and
-SchedulerKit may load before or after LifecycleKit; neither depends on it.
+Direct runtime dependencies: EventKit API 1, Registry API 2. Omitting either
+makes this package raise at load. SignalKit API 1, TimerKit API 1,
+SchedulerKit API 1, HookKit API 1, CommandKit API 1 and CommKit API 1 are
+optional: when the addon embeds them, shutdown also cancels the addon's scoped
+timers and jobs, undoes its scoped hooks, leaves its scoped slash commands
+inert, closes its addon-message scope and closes its bus. They may load before
+or after LifecycleKit; none depends on it.

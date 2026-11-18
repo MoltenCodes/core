@@ -448,8 +448,14 @@ class LibraryTocTests(unittest.TestCase):
         self.assertEqual("MoltenCodes-TimerKit", addon.name)
         self.assertEqual("MoltenCodes-TimerKit.toc", addon.file_name)
         self.assertIn("## Title: MoltenCodes-TimerKit", addon.text.splitlines())
+        # A single-Kit release carries every part of the Kit (ADR 0001).
         self.assertEqual(
-            ["registry\\Registry.lua", "timerKit\\TimerKit.lua"], toc.listed_files(addon.text)
+            [
+                "registry\\Registry.lua",
+                "timerKit\\TimerKit.lua",
+                "timerKit\\parts\\TimerKit-Pausing.lua",
+            ],
+            toc.listed_files(addon.text),
         )
 
     def test_matches_what_the_builder_writes(self):

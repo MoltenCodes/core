@@ -323,7 +323,39 @@ Measurements, classification, the upgrade floor and the part contract:
    test needs the part file in its `.toc`). Shared, for the maintainer:
    `docs/MIGRATING_FROM_ACE3.md` timer rows unchanged; `docs/EMBEDDING.md`
    footprint table rows for TimerKit and TimerKit-Pausing.
-9. Status: recorded 2026-11-16; code follows.
+9. Status: implemented 2026-11-18, 0.10.0, revision 15, 154 specs (and one
+   pending conformance case, the limits group TimerKit has none for). Part
+   `Pausing` revision 1. Measured on the host (Lua 5.1.5, 64-bit, debug
+   information kept, the `core-runtime.md` set): TimerKit core resident
+   60,180 → 49,613 B (−10.6 KB, against the ≈ 53 KB expected; 6.1× AceTimer's
+   8.1 KB), TimerKit-Pausing 2,889 B when embedded (≈ 5 KB priced), allocated
+   while loading the core 189,623 → 157,461 B. Timer bench against AceTimer-3.0
+   (3 rounds, before and after each in one run): `oneshot-create-cancel`
+   1.76× → 1.81×, `oneshot-create-fire` 1.54× → 1.55×, `repeat-tick` 0.72× →
+   0.75×, within the runs' noise; bytes per operation unchanged (576 B).
+   Choices where the record left one open, each the conservative option:
+   - The floor is enforced: over a copy older than revision 14 the core raises
+     at load (`... upgrades in place from revision 14 or later only; an addon
+     embeds revision <n>, which was never published`) rather than meeting
+     state it no longer understands with the generic "corrupted" message.
+   - The core never writes `fireResumed` or `pause`. Without the part, a resume
+     one-shot revision 14 armed before the upgrade is served by revision 14's
+     own `fireResumed` entry, which stays in the dispatch table until the part
+     replaces it (it writes the same slots and arms the next tick through the
+     new `fireStarted`); no core code is kept for it. `Timer:Pause` calls the
+     part's `dispatch.pause`.
+   - A scope revision 14 routed through route 2 has its `OnShutdown`
+     subscription disconnected and is routed again (route 1, 3 or 4) in a
+     main-chunk pass of the upgrade; a LifecycleKit without
+     `CLOSES_ADDON_SCOPES` now falls to route 3.
+   - The `After`/`Every` fast paths call the shared `isSecret` instead of
+     reading the probe local inline (the block keeps its probe inside a `do`
+     block); one Lua call more per start, not measurable in the bench above.
+   - `HasPart` is not listed in the conformance `arguments` group: its secret
+     refusal is the record's `must be a part name string`, which does not say
+     "secret". `CreateScope` is `receiverExempt` (it takes no argument).
+   - The client suite skips its pause test when `HasPart("Pausing")` is false;
+     the installed bundle loads every part, so it runs.
 
 **Not recorded (owner decisions, priced):**
 - Drop logout route 3 (TimerKit's own EventKit `PLAYER_LOGOUT` connection

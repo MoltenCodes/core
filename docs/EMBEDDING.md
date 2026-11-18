@@ -145,8 +145,8 @@ registry
 ├──→ compatKit
 ├──→ cacheKit
 ├──→ profileKit
-├──→ commandKit   (its Arguments part needs schemaKit, its Options part optionsKit)
 ├──→ schemaKit
+│       ├──→ commandKit
 │       ├──→ settingsKit   (also needs signalKit)
 │       └──→ optionsKit    (also needs signalKit)
 ├──→ localeKit
@@ -213,26 +213,32 @@ timerKit/TimerKit.lua
 commKit/CommKit.lua
 commKit/parts/CommKit-SyncSet.lua
 commKit/parts/CommKit-ChatThrottle.lua
-commandKit/CommandKit.lua
 schemaKit/SchemaKit.lua
-commandKit/parts/CommandKit-Arguments.lua
+commandKit/CommandKit.lua
 optionsKit/OptionsKit.lua
 commandKit/parts/CommandKit-Options.lua
 commandKit/parts/CommandKit-Completion.lua
 compatKit/CompatKit.lua
 dialogKit/DialogKit.lua
 editModeKit/EditModeKit.lua
+eventKit/parts/EventKit-Units.lua
+eventKit/parts/EventKit-CombatLog.lua
 eventKit/parts/EventKit-Coalescing.lua
 glowKit/GlowKit.lua
 hookKit/HookKit.lua
 interopKit/InteropKit.lua
 launcherKit/LauncherKit.lua
 lifecycleKit/LifecycleKit.lua
+lifecycleKit/parts/LifecycleKit-CombatGate.lua
+lifecycleKit/parts/LifecycleKit-Halt.lua
 localeKit/LocaleKit.lua
 logKit/LogKit.lua
 mediaKit/MediaKit.lua
 menuKit/MenuKit.lua
 moduleKit/ModuleKit.lua
+moduleKit/parts/ModuleKit-Injection.lua
+moduleKit/parts/ModuleKit-Implements.lua
+moduleKit/parts/ModuleKit-RequiredAddons.lua
 optionsKit/parts/OptionsKit-Profiles.lua
 optionsKit/parts/OptionsKit-Dynamic.lua
 widgetKit/WidgetKit.lua
@@ -256,6 +262,7 @@ schedulerKit/parts/SchedulerKit-Watch.lua
 settingsKit/SettingsKit.lua
 settingsKit/parts/SettingsKit-Namespaces.lua
 signalKit/parts/SignalKit-Coalescing.lua
+timerKit/parts/TimerKit-Pausing.lua
 toastKit/ToastKit.lua
 tooltipKit/TooltipKit.lua
 unitFrameKit/UnitFrameKit.lua
@@ -344,17 +351,18 @@ files:
 <!-- generated:footprint -->
 | Files | Kit | Alongside `registry/Registry.lua` |
 |---|---|---|
-| 2 | `addonKit`, `apiKit`, `poolKit`, `bindingKit`, `bridgeKit`, `signalKit`, `cacheKit`, `clientKit`, `timerKit`, `commandKit`, `schemaKit`, `compatKit`, `dialogKit`, `editModeKit`, `hookKit`, `interopKit`, `localeKit`, `menuKit`, `widgetKit`, `profileKit`, `rangeKit`, `unitFrameKit` | nothing |
+| 2 | `addonKit`, `apiKit`, `poolKit`, `bindingKit`, `bridgeKit`, `signalKit`, `cacheKit`, `clientKit`, `eventKit`, `timerKit`, `schemaKit`, `compatKit`, `dialogKit`, `editModeKit`, `hookKit`, `interopKit`, `localeKit`, `menuKit`, `widgetKit`, `profileKit`, `rangeKit`, `unitFrameKit` | nothing |
 | 3 | `barKit`, `codecKit`, `glowKit`, `toastKit`, `tooltipKit` | `poolKit` |
-| 3 | `brokerKit`, `eventKit`, `logKit`, `mediaKit` | `signalKit` |
+| 3 | `brokerKit`, `logKit`, `mediaKit` | `signalKit` |
+| 3 | `lifecycleKit` | `eventKit` |
 | 3 | `readinessKit`, `schedulerKit` | `timerKit` |
+| 3 | `commandKit` | `schemaKit` |
 | 4 | `launcherKit` | `signalKit`, `brokerKit` |
-| 4 | `lifecycleKit` | `signalKit`, `eventKit` |
+| 4 | `moduleKit` | `eventKit`, `lifecycleKit` |
 | 4 | `optionsKit`, `settingsKit` | `schemaKit`, `signalKit` |
-| 5 | `moduleKit` | `signalKit`, `eventKit`, `lifecycleKit` |
-| 6 | `commKit` | `signalKit`, `eventKit`, `poolKit`, `timerKit` |
+| 6 | `commKit` | `eventKit`, `poolKit`, `signalKit`, `timerKit` |
+| 6 | `testKit` (development only) | `eventKit`, `lifecycleKit`, `timerKit`, `schedulerKit` |
 | 6 | `panelKit` | `schemaKit`, `signalKit`, `optionsKit`, `widgetKit` |
-| 7 | `testKit` (development only) | `signalKit`, `eventKit`, `lifecycleKit`, `timerKit`, `schedulerKit` |
 
 Each Kit counts as one file here. `apiKit` also carries 5 further core files under `apiKit/flavours/`.
 <!-- /generated:footprint -->
@@ -378,10 +386,16 @@ part loads after its Kit's core and brings in what it needs:
 | `codecKit/Compression` | `codecKit/parts/CodecKit-Compression.lua` | Raw DEFLATE compression and inflation: Compress, Decompress, compress = "deflate" on the encoders and compressed frames on decode, natively through C_EncodingUtil.CompressString where the client has it. | nothing |
 | `commKit/SyncSet` | `commKit/parts/CommKit-SyncSet.lua` | scope:SyncSet: named fields synchronised with peers by content hash, answering only with the fields that differ. | `codecKit` |
 | `commKit/ChatThrottle` | `commKit/parts/CommKit-ChatThrottle.lua` | scope:SendChat and Battle.net game data (scope:SendBattleNet, scope:RegisterBattleNet) through the shared bandwidth budget, the senders ChatThrottleLib throttles beside addon messages. | nothing |
-| `commandKit/Arguments` | `commandKit/parts/CommandKit-Arguments.lua` | Schema-checked command arguments: SchemaKit schemas per position or one array, coercion of the typed words, generated usage and refusals. | `schemaKit` |
-| `commandKit/Options` | `commandKit/parts/CommandKit-Options.lua` | Drive an OptionsKit tree from a slash command: the get, set, reset, list and exec verbs and AceConfigCmd's path syntax. | `schemaKit`, `signalKit`, `optionsKit`, `commandKit/Arguments` |
+| `commandKit/Options` | `commandKit/parts/CommandKit-Options.lua` | Drive an OptionsKit tree from a slash command: the get, set, reset, list and exec verbs and AceConfigCmd's path syntax. | `signalKit`, `optionsKit` |
 | `commandKit/Completion` | `commandKit/parts/CommandKit-Completion.lua` | Tab completion in chat edit boxes: the scopes' own commands and AceTab-style completion providers. | nothing |
-| `eventKit/Coalescing` | `eventKit/parts/EventKit-Coalescing.lua` | Coalesce and Derive: events collected into one callback per interval, and values recomputed after a quiet period, timed by TimerKit (a lane by SchedulerKit). | nothing |
+| `eventKit/Units` | `eventKit/parts/EventKit-Units.lua` | ConnectUnit and OnceUnit: events filtered to one or two unit tokens on a bounded set of unit-filter Frames. | nothing |
+| `eventKit/CombatLog` | `eventKit/parts/EventKit-CombatLog.lua` | ConnectCombatLog: the combat log read once per event and routed by sub-event. | nothing |
+| `eventKit/Coalescing` | `eventKit/parts/EventKit-Coalescing.lua` | Coalesce and Derive: events collected into one callback per interval, and values recomputed after a quiet period, timed by TimerKit (a lane by SchedulerKit). | `signalKit` |
+| `lifecycleKit/CombatGate` | `lifecycleKit/parts/LifecycleKit-CombatGate.lua` | The combat gate: one shared lockdown state, a bounded per-addon queue of calls that wait for the end of combat, and the combat notices. | nothing |
+| `lifecycleKit/Halt` | `lifecycleKit/parts/LifecycleKit-Halt.lua` | Halting: Halt, DependsOn and OnDependencyHalted, which tell the addons that declared a halted one. | nothing |
+| `moduleKit/Injection` | `moduleKit/parts/ModuleKit-Injection.lua` | Dependency injection: the four provider kinds, Resolve, Inject and the inject definition field. | nothing |
+| `moduleKit/Implements` | `moduleKit/parts/ModuleKit-Implements.lua` | implements contracts on module definitions and provider options, as method lists or SchemaKit schemas. | nothing |
+| `moduleKit/RequiredAddons` | `moduleKit/parts/ModuleKit-RequiredAddons.lua` | The requiresAddons definition field: modules taken down when another addon they need halts. | `lifecycleKit/Halt` |
 | `optionsKit/Profiles` | `optionsKit/parts/OptionsKit-Profiles.lua` | OptionsKit:ProfileOptions: the ready-made group over a SettingsKit database's profiles, with the per-specialization choices. | nothing |
 | `optionsKit/Dynamic` | `optionsKit/parts/OptionsKit-Dynamic.lua` | Trees that change shape after Define: builder functions, tree:NotifyChange(), tree:Replace and tree:Remove. | nothing |
 | `schedulerKit/Coalescing` | `schedulerKit/parts/SchedulerKit-Coalescing.lua` | Debounce and Coalesce handles on the facade and on scopes, with the coalescing family's shared clock, member links and protected delivery. | nothing |
@@ -389,6 +403,7 @@ part loads after its Kit's core and brings in what it needs:
 | `schedulerKit/Watch` | `schedulerKit/parts/SchedulerKit-Watch.lua` | Watch: poll a predicate on a shared per-interval ticker and call back when its result changes. | `schedulerKit/Coalescing` |
 | `settingsKit/Namespaces` | `settingsKit/parts/SettingsKit-Namespaces.lua` | db:RegisterNamespace and db:GetNamespace: child databases with their own schema over the saved variable's namespaces section, in AceDB's layout, following the parent's profile. | nothing |
 | `signalKit/Coalescing` | `signalKit/parts/SignalKit-Coalescing.lua` | Bucketed bus messages: collect a burst of publishes and deliver it once per interval. | `timerKit`, `schedulerKit`, `schedulerKit/Coalescing` |
+| `timerKit/Pausing` | `timerKit/parts/TimerKit-Pausing.lua` | Pause and Resume: a running timer paused and resumed later with what was left of its delay, a repeating timer back on its interval after that first fire. | nothing |
 | `widgetKit/Containers` | `widgetKit/parts/WidgetKit-Containers.lua` | The container types Frame (a movable, resizable window), Group and ScrollFrame. | nothing |
 | `widgetKit/Text` | `widgetKit/parts/WidgetKit-Text.lua` | The display types Label, Heading and Spacer. | nothing |
 | `widgetKit/Button` | `widgetKit/parts/WidgetKit-Button.lua` | The Button type, key capture included. | nothing |
@@ -493,6 +508,7 @@ by the example and are listed so the file is a complete template.
     <Script file="Libs\MoltenCodes\optionsKit\OptionsKit.lua" />
     <Script file="Libs\MoltenCodes\commandKit\parts\CommandKit-Options.lua" /> <!-- BindOptions, which Commands.lua uses -->
     <Script file="Libs\MoltenCodes\compatKit\CompatKit.lua" /> <!-- optional here -->
+    <Script file="Libs\MoltenCodes\eventKit\parts\EventKit-Units.lua" /> <!-- unit events: the units option of Core.lua's Coalesce, SettingsKit's spec profiles -->
     <Script file="Libs\MoltenCodes\eventKit\parts\EventKit-Coalescing.lua" /> <!-- Coalesce, which Core.lua uses; TimerKit times it -->
     <Script file="Libs\MoltenCodes\hookKit\HookKit.lua" /> <!-- module scope hooks -->
     <Script file="Libs\MoltenCodes\interopKit\InteropKit.lua" /> <!-- optional here -->
@@ -501,6 +517,7 @@ by the example and are listed so the file is a complete template.
     <Script file="Libs\MoltenCodes\logKit\LogKit.lua" /> <!-- optional here -->
     <Script file="Libs\MoltenCodes\mediaKit\MediaKit.lua" /> <!-- optional here -->
     <Script file="Libs\MoltenCodes\moduleKit\ModuleKit.lua" />
+    <Script file="Libs\MoltenCodes\moduleKit\parts\ModuleKit-Injection.lua" /> <!-- ProvideSingleton, ProvideValue, Resolve and inject, which the addon files use -->
     <Script file="Libs\MoltenCodes\optionsKit\parts\OptionsKit-Profiles.lua" /> <!-- ProfileOptions, which Options.lua uses -->
     <Script file="Libs\MoltenCodes\profileKit\ProfileKit.lua" /> <!-- optional here -->
     <Script file="Libs\MoltenCodes\readinessKit\ReadinessKit.lua" />
@@ -799,7 +816,7 @@ actually touch, which is deliberately small:
 | `localeKit` | nothing but Lua 5.1 | `GetLocale` (client locale `enUS`), `geterrorhandler` (missing-key reports fall back to `print`), `issecretvalue` (`Format` and missing-key reads treat nothing as secret) |
 | `settingsKit` | SchemaKit's and SignalKit's surfaces | `UnitName` and `GetRealmName` (`db.char`, and `db.realm` without `GetRealmName`, unavailable), `UnitClass` (`db.class` unavailable), `UnitFactionGroup` (`db.faction` unavailable); an unavailable scope raises at the reader; `issecretvalue` (nothing treated as secret), `geterrorhandler` (`print`), EventKit API 1 through `Registry:Find` (no compaction at `PLAYER_LOGOUT`; call `db:Compact()`; no automatic spec-profile switching; call `db:ApplySpecProfile()`), `C_SpecializationInfo`, `GetNumTalentGroups`, `WOW_PROJECT_ID` (no spec index: spec-profile assignments are kept and nothing switches) |
 | `optionsKit` | SchemaKit's and SignalKit's surfaces | `issecretvalue` (looked up at every call; absent: nothing is treated as secret), SettingsKit API 1 through `Registry:Find` (`Define` with `options.db` and `ProfileOptions` raise; `get`/`set` options unaffected); `UnitName` / `GetRealmName` (`ProfileOptions` then offers no per-character profile choice); SettingsKit revision 11 or later (`ProfileOptions` then carries no spec-profile selects); `UnitClass` / `GetSpecializationInfoForClassID` (spec selects labelled by index) |
-| `commandKit` | `SlashCmdList` (`Register` and `BindOptions` raise at the caller); the Arguments part needs SchemaKit's surface | `SLASH_<key><n>`, `SecureCmdList`, `ChatTypeInfo`, `EMOTE<n>_CMD<m>` and `MAXEMOTEINDEX` (the taken check finds nothing), `DEFAULT_CHAT_FRAME` (`print`), `ChatEdit_CustomTabPressed` (`EnableCompletion` returns `false`), `ChatEdit_GetActiveWindow`, `geterrorhandler` (`print`), `issecretvalue`, OptionsKit API 1 (`BindOptions` raises), LocaleKit API 1 (`Printf` uses `string.format`); LifecycleKit and EventKit API 1 through `Registry:Find` decide who closes an addon scope at logout (with neither, call `CommandKit:CloseAddonScopes` on `PLAYER_LOGOUT`) |
+| `commandKit` | SchemaKit's surface; `SlashCmdList` (`Register` and `BindOptions` raise at the caller) | `SLASH_<key><n>`, `SecureCmdList`, `ChatTypeInfo`, `EMOTE<n>_CMD<m>` and `MAXEMOTEINDEX` (the taken check finds nothing), `DEFAULT_CHAT_FRAME` (`print`), `ChatEdit_CustomTabPressed` (`EnableCompletion` returns `false`), `ChatEdit_GetActiveWindow`, `geterrorhandler` (`print`), ClientKit API 1 / `issecretvalue`, OptionsKit API 1 (`BindOptions` raises), LocaleKit API 1 (`Printf` uses `string.format`); LifecycleKit and EventKit API 1 through `Registry:Find` decide who closes an addon scope at logout (with neither, call `CommandKit:CloseAddonScopes` on `PLAYER_LOGOUT`) |
 | `codecKit` | PoolKit's surface | SchedulerKit API 1 through `Registry:Find` (`EncodeAsync` and `DecodeAsync` raise at the caller), `issecretvalue` (looked up at every call; absent: nothing is treated as secret), `C_EncodingUtil.CompressString` and `Enum.CompressionMethod`/`Enum.CompressionLevel`, read by the Compression part (looked up at every call; absent: every input is compressed in Lua; documented on every supported client); the Compression part itself (absent: compressing raises at the caller naming `codecKit\parts\CodecKit-Compression.lua`, and a compressed frame decodes to `false, "compressionUnavailable"`) |
 | `interopKit` | nothing but Lua 5.1 | `LibStub` (every call returns `"absent"`), `issecretvalue` (nothing treated as secret) |
 | `bridgeKit` | nothing but Lua 5.1 | OptionsKit API 1 through `Registry:Find` (`DefineAceConfig` raises at the caller; `ConvertAceConfig` still returns a plain tree), SchemaKit API 1 (the AceDB importer raises at the caller), SettingsKit API 1 (its profile-name limit; 64 bytes without it), CommKit API 1 with raw addon messages (`OpenAceComm` raises at the caller without it), `Ambiguate` (absent: senders are passed unchanged), `GetTime` (absent: streams never expire, still bounded by `maxAceSpoolBytes`), `issecretvalue` (looked up at every call; absent: nothing is treated as secret) |
@@ -1524,12 +1541,9 @@ You passed something other than the addon folder name. Use the `...` vararg:
 
 ### `MoltenCodes <Kit> requires SchemaKit API 1 to be loaded first`
 
-SettingsKit, OptionsKit and CommandKit's Arguments part validate through
-SchemaKit and load after it. Put `schemaKit/SchemaKit.lua` before them in
-`embeds.xml`; the release artifact's `loadOrder` already does. CommandKit's
-core needs no SchemaKit; a command spec with `arguments` registered without
-the Arguments part raises at the caller naming
-`commandKit\parts\CommandKit-Arguments.lua`.
+SettingsKit, OptionsKit and CommandKit validate through SchemaKit and load
+after it. Put `schemaKit/SchemaKit.lua` before them in `embeds.xml`; the
+release artifact's `loadOrder` already does.
 
 ### `Coalesce` is refused, or `EncodeAsync` / `RenderOptions` / `BindOptions` raise "not loaded"
 

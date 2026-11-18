@@ -432,26 +432,3 @@ describe("ModuleKit conveniences and secret values", function()
     assert.is_false(addon:HasModule("Hidden"))
   end)
 end)
-
-describe("ModuleKit in-place upgrade from revision 22", function()
-  after_each(TestEnv.Reset)
-
-  it("keeps an older copy's containers and modules and adds the conveniences", function()
-    TestEnv.LoadDependencies()
-    local previous = TestEnv.LoadRevision(22)
-    local addon = previous:ForAddon("MyAddon")
-    local module = addon:CreateModule("Bags")
-    -- What revision 22 left: no prototype layers.
-    rawset(rawget(previous, "_state"), "prototypeLayers", nil)
-
-    local upgraded = require("ModuleKit")
-
-    assert.are.equal(previous, upgraded)
-    assert.are.equal(23, upgraded.REVISION)
-    assert.are.equal(addon, upgraded:FindAddon("MyAddon"))
-    assert.is_true(module:SetEnabledState(false))
-    assert.is_true(addon:GetDefaultModuleState())
-    local prototyped = addon:CreateModule("Shared", { prototype = { kind = "shared" } })
-    assert.are.equal("shared", prototyped.kind)
-  end)
-end)

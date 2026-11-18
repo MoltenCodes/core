@@ -236,6 +236,7 @@ describe("TimerKit method-name callbacks", function()
 
   it("keeps the method-name callback across Restart, Pause and Resume", function()
     local TimerKit = TestEnv.NewPackage()
+    TestEnv.LoadPausing()
     local receiver = newReceiver()
     local timer = TimerKit:After(2, receiver, "Tick")
 

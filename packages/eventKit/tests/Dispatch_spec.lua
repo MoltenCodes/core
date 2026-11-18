@@ -124,20 +124,20 @@ describe("EventKit dispatch", function()
   end)
 
   it("resolves the dispatcher through shared state on every event", function()
-    -- Frames created by implementation revision 1 resolve dispatch through
-    -- the reserved facade fields instead. Both must keep pointing at the
-    -- current dispatchers so an in-place upgrade keeps existing Frames alive.
+    -- Frames call the dispatchers in shared state, so a newer revision that
+    -- replaces them serves the Frames an older one created. The reserved
+    -- facade fields revision 1's Frames read are gone with the upgrade floor.
     assert.are.equal("function", type(EventKit._state.dispatchRegular))
     assert.are.equal("function", type(EventKit._state.dispatchUnit))
-    assert.are.equal(EventKit._state.dispatchRegular, EventKit._DispatchRegular)
-    assert.are.equal(EventKit._state.dispatchUnit, EventKit._DispatchUnit)
+    assert.is_nil(rawget(EventKit, "_DispatchRegular"))
+    assert.is_nil(rawget(EventKit, "_DispatchUnit"))
 
     local calls = 0
     EventKit:Connect("CUSTOM_EVENT", function()
       calls = calls + 1
     end)
 
-    EventKit._DispatchRegular(EventKit, "CUSTOM_EVENT")
+    EventKit._state.dispatchRegular(EventKit, "CUSTOM_EVENT")
 
     assert.are.equal(1, calls)
   end)

@@ -40,6 +40,8 @@ describe("LifecycleKit event scopes", function()
     rawset(_G, "CombatLogGetCurrentEventInfo", function()
       return 1, subEvent
     end)
+    -- ConnectCombatLog is in EventKit's CombatLog part.
+    require("EventKit-CombatLog")
     local life = LifecycleKit:ForAddon("MyAddon")
     local scope = EventKit:ForAddon("MyAddon")
     local calls = 0

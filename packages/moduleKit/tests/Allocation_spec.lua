@@ -103,3 +103,55 @@ describe("ModuleKit allocation #allocation", function()
     end)
   end)
 end)
+
+-- A container carries only what every container needs. Providers and the
+-- resolution stack are the Injection part's and appear on first use; the
+-- catch-up queue appears when a module first waits on a running pass.
+describe("ModuleKit lazy container tables", function()
+  after_each(TestEnv.Reset)
+
+  it("creates no provider table, resolution stack or catch-up queue with a container", function()
+    local ModuleKit = TestEnv.NewPackage()
+    local addon = ModuleKit:ForAddon("MyAddon")
+    addon:CreateModule("UI")
+
+    assert.is_nil(rawget(addon, "_providers"))
+    assert.is_nil(rawget(addon, "_resolutionStack"))
+    assert.is_nil(rawget(addon, "_pendingCatchUp"))
+  end)
+
+  it(
+    "creates the provider table on the first provider and the stack on the first factory run",
+    function()
+      local ModuleKit = TestEnv.NewPackage()
+      local addon = ModuleKit:ForAddon("MyAddon")
+
+      addon:ProvideValue("Settings", { scale = 1 })
+      assert.is_table(rawget(addon, "_providers"))
+      assert.are.same({ scale = 1 }, addon:Resolve("Settings"))
+      assert.is_nil(rawget(addon, "_resolutionStack"))
+
+      addon:ProvideSingleton("Database", function()
+        return {}
+      end)
+      addon:Resolve("Database")
+      assert.are.same({}, rawget(addon, "_resolutionStack"))
+    end
+  )
+
+  it("creates the catch-up queue when a module created during a pass waits for it", function()
+    local ModuleKit = TestEnv.NewPackage()
+    local addon = ModuleKit:ForAddon("MyAddon")
+    local late
+    addon:CreateModule("Creator", {
+      onInitialize = function()
+        late = addon:CreateModule("Late", { onInitialize = function() end })
+      end,
+    })
+
+    TestEnv.LoadAddon("MyAddon")
+
+    assert.are.same({}, rawget(addon, "_pendingCatchUp"))
+    assert.are.equal("initialized", late:GetState())
+  end)
+end)

@@ -5,6 +5,11 @@
 --- What stays here is this package's own module load order, and a second
 --- environment for the specs that need the Coalescing part and its timers.
 ---
+--- `NewPackage` loads the core with the Units and CombatLog parts, which most
+--- specs use; `NewCore` loads the core alone. SignalKit stays in the chain
+--- because the Coalescing part needs it; the core does not, which
+--- `NewPackageWithout("SignalKit")` shows.
+---
 --- `Coalesce` and `Derive` are EventKit's Coalescing part
 --- (`EventKit-Coalescing`), timed by TimerKit; a `lane` uses SchedulerKit's
 --- `Coalesce`. Both Kits are optional: the part finds them through
@@ -40,6 +45,7 @@ local EventKitTestEnv = FrameworkTestEnv.New({
 
 local resetFixture = EventKitTestEnv.Reset
 local installWowApi = EventKitTestEnv.InstallWowApi
+local newCorePackage = EventKitTestEnv.NewPackage
 
 -- Lua 5.1 publishes unpack as a global; newer interpreters move it onto table.
 -- selene: allow(global_usage)
@@ -117,6 +123,8 @@ end
 
 -- Part modules no environment's chain lists, unloaded by every reset.
 local PART_MODULES = {
+  "EventKit-Units",
+  "EventKit-CombatLog",
   "EventKit-Coalescing",
   "SchedulerKit-Coalescing",
   "SchedulerKit-Lanes",
@@ -134,6 +142,31 @@ end
 ---@return table EventKit
 function EventKitTestEnv.LoadCoalescing()
   return require("EventKit-Coalescing")
+end
+
+---Load EventKit's Units and CombatLog parts on top of the core a spec loaded.
+---@return table EventKit
+function EventKitTestEnv.LoadUnitsAndCombatLog()
+  require("EventKit-Units")
+  return require("EventKit-CombatLog")
+end
+
+---Load Registry, SignalKit and EventKit's core alone, without any part.
+---@return table EventKit
+---@return table Registry
+---@return table SignalKit
+function EventKitTestEnv.NewCore()
+  return newCorePackage()
+end
+
+---Load Registry, SignalKit, EventKit and its Units and CombatLog parts.
+---@return table EventKit
+---@return table Registry
+---@return table SignalKit
+function EventKitTestEnv.NewPackage()
+  local EventKit, Registry, SignalKit = newCorePackage()
+  EventKitTestEnv.LoadUnitsAndCombatLog()
+  return EventKit, Registry, SignalKit
 end
 
 ---Load SchedulerKit's Coalescing and Lanes parts when this tree has them. A
@@ -185,6 +218,7 @@ function EventKitTestEnv.NewPackageKnowingEvents(names)
   local Registry = require("Registry")
   local SignalKit = require("SignalKit")
   local EventKit = require("EventKit")
+  EventKitTestEnv.LoadUnitsAndCombatLog()
   EventKitTestEnv.LoadCoalescing()
   return EventKit, Registry, SignalKit
 end
@@ -247,6 +281,7 @@ function Scheduled.NewEventKit()
   local SchedulerKit, _, _, EventKit = Scheduled.NewPackage()
   unloadParts()
   EventKitTestEnv.LoadSchedulerLaneParts()
+  EventKitTestEnv.LoadUnitsAndCombatLog()
   EventKitTestEnv.LoadCoalescing()
   return EventKit, SchedulerKit
 end
@@ -266,6 +301,7 @@ function Scheduled.NewEventKitKnowingEvents(names)
   require("TimerKit")
   local SchedulerKit = require("SchedulerKit")
   EventKitTestEnv.LoadSchedulerLaneParts()
+  EventKitTestEnv.LoadUnitsAndCombatLog()
   EventKitTestEnv.LoadCoalescing()
   return EventKit, SchedulerKit
 end
@@ -292,6 +328,7 @@ end
 function Timed.NewEventKit()
   local TimerKit, _, _, EventKit = Timed.NewPackage()
   unloadParts()
+  EventKitTestEnv.LoadUnitsAndCombatLog()
   EventKitTestEnv.LoadCoalescing()
   return EventKit, TimerKit
 end
@@ -319,17 +356,11 @@ end
 ---Run the EventKit source once more as a copy carrying `revision`, the way a
 ---second addon embedding a different copy would. The copy is the current
 ---source with only `IMPLEMENTATION_REVISION` changed, so it stands in for an
----older or newer revision whose `_state` schema matches this one.
----
----Revisions before 22 were one file with `Coalesce` and `Derive` in it. For
----such a revision the Coalescing part's source runs right after the copy, and
----the part interface is then removed from the state, so the copy looks like
----the single-file revision it stands in for: its members work, and no part is
----recorded. `coreOnly` skips the part, for a copy of revision 22 or later.
+---older or newer revision whose `_state` schema matches this one. Only the
+---core runs; the parts a spec needs it loads itself.
 ---@param revision integer
----@param coreOnly boolean? load only the core, as a split revision without the part
 ---@return table EventKit the facade the copy returned
-function EventKitTestEnv.LoadSourceAtRevision(revision, coreOnly)
+function EventKitTestEnv.LoadSourceAtRevision(revision)
   local source, path = readModuleSource("EventKit")
 
   local patched, count = source:gsub(
@@ -341,21 +372,27 @@ function EventKitTestEnv.LoadSourceAtRevision(revision, coreOnly)
     error("EventKitTestEnv found no IMPLEMENTATION_REVISION in " .. path, 2)
   end
   local chunk = assert(loadstring(patched, "@" .. path))
-  local facade = chunk()
-  if coreOnly == true or revision >= 22 then
-    return facade
-  end
-  local copyState = rawget(facade, "_state")
-  if rawget(facade, "REVISION") ~= revision or type(copyState) ~= "table" then
-    -- Another revision owns the package; this copy yielded.
-    return facade
-  end
-  local partSource, partPath = readModuleSource("EventKit-Coalescing")
-  assert(loadstring(partSource, "@" .. partPath))()
-  rawset(copyState, "parts", nil)
-  rawset(copyState, "helpers", nil)
-  rawset(copyState, "partInterface", nil)
-  return facade
+  return chunk()
+end
+
+-- Byte copies of the files revision 22 shipped: the core, with unit events
+-- and the combat log in it, and the Coalescing part's revision 1. The upgrade
+-- specs load them first, as an addon embedding that release would.
+local SUPPORT_DIRECTORY = debug.getinfo(1, "S").source:match("^@(.*[/\\])") or "./"
+local FIXTURES = {
+  core = SUPPORT_DIRECTORY .. "../fixtures/EventKit-revision22.lua",
+  coalescing = SUPPORT_DIRECTORY .. "../fixtures/EventKit-Coalescing-revision1.lua",
+}
+
+---Run one revision-22 fixture file.
+---@param name string `"core"` or `"coalescing"`
+---@return table EventKit the facade the file returned
+function EventKitTestEnv.LoadRevision22(name)
+  local path = FIXTURES[name]
+  local file = assert(io.open(path, "rb"))
+  local source = file:read("*a")
+  file:close()
+  return assert(loadstring(source, "@" .. path))()
 end
 
 return EventKitTestEnv

@@ -10,6 +10,10 @@ on Mists of Pandaria Classic, and nothing else from the MoltenCodes framework
 enabled in the client. The lines below are Retail's;
 [Per flavour](#per-flavour) gives the two Classic clients.
 
+The bundle the install builds carries every part of LifecycleKit, so the
+`combatGate`, `combatDeferral`, `dependencies`, `errors` and `secrets` tests,
+which use the CombatGate and Halt parts (0.7.0 on), find them loaded.
+
 Run it out of combat, solo, outside any instance (a capital city is ideal). No
 test of the default run needs combat, a group or an instance, and none waits:
 a normal run finishes within a second or two. The one combat test runs in a

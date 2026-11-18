@@ -1,62 +1,70 @@
 -- MoltenCodes LifecycleKit
 --
--- Per-addon lifecycle coordination built on MoltenCodes EventKit and SignalKit.
--- LifecycleKit keeps WoW event details at the boundary and exposes replay-aware,
--- one-shot phase subscriptions for addon code.
+-- Per-addon lifecycle coordination built on MoltenCodes EventKit. LifecycleKit
+-- keeps WoW event details at the boundary and exposes replay-aware, one-shot
+-- phase subscriptions for addon code, and closes the other Kits' addon scopes
+-- when an addon shuts down.
 --
--- Beside the four phases it owns two package-wide concerns every addon meets:
--- the combat gate (one shared lockdown state and a bounded per-addon "run when
--- out of combat" queue) and the halted state, in which an addon declares itself
--- non-functional and the addons that depend on it are told.
+-- This file is the core every user of LifecycleKit needs: the phases (loaded,
+-- ready, shutdown), their subscriptions and queries, the observers of the
+-- halted state (`IsHalted`, `GetHaltReason`, `OnHalted`) and the shutdown of
+-- addon scopes. Two optional parts add the rest (docs/decisions/
+-- 0001-kit-core-and-parts.md):
+--
+--   * `parts/LifecycleKit-CombatGate.lua`: the shared lockdown state, the
+--     bounded "run when out of combat" queue and the combat notices;
+--   * `parts/LifecycleKit-Halt.lua`: `Halt`, `DependsOn` and
+--     `OnDependencyHalted`.
+--
+-- Without a part its members stay on the facade and the prototypes as stubs
+-- that raise at the caller's line with the file to embed.
 --
 -- Contents
 -- --------
---   Constants ............. package identity, state schema, default bounds
+--   Constants ............. package identity, state schema, default bounds,
+--                           the parts and their members
 --   Public types .......... LuaCATS classes and aliases for the public surface
---   Dependencies .......... Registry, SignalKit, EventKit; TimerKit,
+--   Dependencies .......... Registry, EventKit; SignalKit, TimerKit,
 --                           SchedulerKit, HookKit, CommandKit and CommKit
 --                           (optional)
+--   Shared helpers ........ isSecret, describeKey, limits (tooling/shared/lua)
 --   Public-surface validation  facade shape accepted from other copies
---   Bootstrap ............. Registry registration, prototypes, package state,
---                           the combat-lockdown probe the state is seeded from
+--   Bootstrap ............. Registry registration, prototypes, package state
+--   In-place upgrade ...... schema 3 (revision 18) to 4
 --   Host-state probes ..... addon load state, login
---   In-place upgrade ...... schema 2 to 3, retired fields, stale watchers
---   Subscription .......... the handle every subscription method returns
---   Signal dispatch ....... the error-capture protocol and callback wrappers
---   Combat queue .......... bounded FIFO of deferred calls, drain and close
---   Phase machinery ....... loaded, ready, shutdown and halted transitions
---   Combat state .......... the shared lockdown flag and its announcements
+--   Subscription .......... subscription records and their handle methods
+--   Delivery .............. the per-instance subscriber lists, and revision
+--                           18's signals on an inherited instance
+--   Phase machinery ....... loaded, ready and shutdown transitions, the
+--                           closing of addon scopes
 --   Shared event coordination  the package-wide host watchers
 --   Instance creation ..... ForAddon's slow path
---   Public instance API ... queries, subscriptions, combat gate, halting
---   Public package API .... ForAddon, IsInCombat, SetLimits, GetLimits
+--   Public instance API ... queries and phase subscriptions
+--   Public package API .... ForAddon, HasPart, SetLimits, GetLimits
+--   Parts ................. stubs, the interface the parts read, an inherited
+--                           combat queue without its part
 --   Commit ................ prototype/facade assignment, the
 --                           CLOSES_ADDON_SCOPES capability and self-check
 
 local PACKAGE_NAME = "lifecycleKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 18
+local IMPLEMENTATION_REVISION = 19
 local REQUIRED_REGISTRY_API = 2
-local REQUIRED_SIGNAL_API = 1
 local REQUIRED_EVENT_KIT_API = 1
--- TimerKit, SchedulerKit, HookKit, CommandKit and CommKit are optional: each is
--- found through `Registry:Find` at shutdown, so an addon that embeds none of
--- them shuts down exactly as before. TimerKit and SchedulerKit do not depend on
--- LifecycleKit; LifecycleKit calls into them (design constitution, 4b).
-local OPTIONAL_TIMER_KIT_API = 1
-local OPTIONAL_SCHEDULER_KIT_API = 1
-local OPTIONAL_HOOK_KIT_API = 1
-local OPTIONAL_COMMAND_KIT_API = 1
-local OPTIONAL_COMM_KIT_API = 1
+-- SignalKit, TimerKit, SchedulerKit, HookKit, CommandKit and CommKit are
+-- optional: each is found through `Registry:Find` at shutdown (SignalKit also
+-- to serve an instance revision 18 made), so an addon that embeds none of them
+-- shuts down exactly as before. None of them depends on LifecycleKit;
+-- LifecycleKit calls into them (design constitution, 4b).
+local OPTIONAL_KIT_API = 1
 
 -- The package ids whose addon scopes (for SignalKit, the addon bus) shutdown
--- closes, in `closeAddonOwnedScopes` order. Published read-only as
+-- closes, in this order, which is also the first-error precedence (see
+-- `closeAddonOwnedScopes`). Published read-only as
 -- `LifecycleKit.CLOSES_ADDON_SCOPES`: a scope-owning Kit reads it to decide
 -- whether LifecycleKit covers its addon scopes at logout or whether it has to
--- arrange that itself. An older revision without the field closes none of
--- them as far as such a reader is concerned. Every revision from 13 on
--- publishes the same set; a revision that stops closing one of them has to
--- drop it from this list.
+-- arrange that itself. Every revision from 13 on publishes the same set; a
+-- revision that stops closing one of them has to drop it from this list.
 local CLOSED_ADDON_SCOPE_PACKAGES = {
   "timerKit",
   "schedulerKit",
@@ -67,30 +75,57 @@ local CLOSED_ADDON_SCOPE_PACKAGES = {
   "signalKit",
 }
 
--- Schema 3 added the combat state (`inCombat`) and the creation-ordered
--- instance list (`instances`). Schema 2 state is migrated in place.
-local STATE_SCHEMA = 3
-local PREVIOUS_STATE_SCHEMA = 2
+-- The method each package closes an addon's scopes with, when it is not
+-- `CloseAddonScopes`.
+local CLOSING_METHODS = { signalKit = "CloseAddonBus" }
+
+-- Schema 4 replaced the per-instance SignalKit signals with subscriber lists
+-- and added the part interface. Schema 3 (revision 18) is migrated in place;
+-- older state is refused (the upgrade floor, docs/API.md).
+local STATE_SCHEMA = 4
+local PREVIOUS_STATE_SCHEMA = 3
+
+-- The interface the parts read: `state.helpers`, `state.dispatch`,
+-- `state.parts`. A part refuses to load against a core whose number is lower
+-- than the one it was written for.
+local PART_INTERFACE = 1
 
 -- How many deferred calls one addon may have waiting for the end of combat,
--- unless changed. `SetLimits{ defaultCombatQueueLimit = ... }` changes the
--- value new instances start with; an addon changes its own with
--- `SetCombatQueueLimit`. Both accept `LifecycleKit.UNBOUNDED`: the queue holds
--- that addon's own callbacks and nothing else's (design constitution, 4a).
+-- unless changed (CombatGate part). How many other addons one addon may declare
+-- with `DependsOn`, unless changed (Halt part). Both limits stay in the core's
+-- table, so `SetLimits`/`GetLimits` keep one shape with or without the parts.
 local DEFAULT_COMBAT_QUEUE_LIMIT = 64
-
--- How many other addons one addon may declare with `DependsOn`, unless changed
--- through `SetLimits{ maxDependencies = ... }`, which also accepts
--- `LifecycleKit.UNBOUNDED`: the list is the declaring addon's own.
 local DEFAULT_MAX_DEPENDENCIES = 16
 
--- Names `SetLimits` recognises, in the order `GetLimits` reads them.
-local LIMIT_NAMES = { "maxDependencies", "defaultCombatQueueLimit" }
+-- The largest value `SetLimits` accepts for either limit. Both lists belong to
+-- one addon and accept `UNBOUNDED`, so the ceiling only refuses a mistaken
+-- number; it is the largest 32-bit signed integer.
+local LIMIT_CEILING = 2147483647
 
--- The combat queue of an `UNBOUNDED` addon is compacted once its array holds
--- this many slots and at least twice as many as are still pending, so
--- reclaiming cancelled slots stays amortised constant time per call.
-local UNBOUNDED_COMPACTION_FLOOR = DEFAULT_COMBAT_QUEUE_LIMIT
+-- The phases whose subscriptions are spent by their one delivery.
+local ONE_SHOT_KEYS = { loaded = true, ready = true, shutdown = true, halted = true }
+
+-- The parts, and the members each provides, by the table they sit on.
+local PART_LAYOUT = {
+  {
+    name = "CombatGate",
+    facade = { "IsInCombat" },
+    instance = {
+      "WhenOutOfCombat",
+      "OnCombatStart",
+      "OnCombatEnd",
+      "SetCombatQueueLimit",
+      "GetCombatQueueLimit",
+    },
+    deferredCall = { "Cancel", "IsPending" },
+  },
+  {
+    name = "Halt",
+    facade = {},
+    instance = { "Halt", "DependsOn", "OnDependencyHalted" },
+    deferredCall = {},
+  },
+}
 
 -- Public types --------------------------------------------------------------
 --
@@ -112,14 +147,14 @@ local UNBOUNDED_COMPACTION_FLOOR = DEFAULT_COMBAT_QUEUE_LIMIT
 ---A callback invoked once when the addon halts.
 ---@alias LifecycleKit.HaltedCallback fun(instance: LifecycleKit.Instance, reason: string)
 
----A callback invoked each time a declared dependency halts.
+---A callback invoked each time a declared dependency halts (Halt part).
 ---@alias LifecycleKit.DependencyHaltedCallback fun(instance: LifecycleKit.Instance, dependencyName: string, reason: string)
 
----A callback invoked on every combat start or combat end.
+---A callback invoked on every combat start or combat end (CombatGate part).
 ---@alias LifecycleKit.CombatCallback fun(instance: LifecycleKit.Instance)
 
 ---A deferred call: `ran` is `true` when it ran out of combat, and `false` with
----a reason when the queue was closed before it could run.
+---a reason when the queue was closed before it could run (CombatGate part).
 ---@alias LifecycleKit.DeferredCallback fun(instance: LifecycleKit.Instance, ran: boolean, reason: "shutdown"|"halted"|nil)
 
 ---An error object wrapped so that `nil` and `false` stay representable.
@@ -139,14 +174,14 @@ local UNBOUNDED_COMPACTION_FLOOR = DEFAULT_COMBAT_QUEUE_LIMIT
 ---@field OnReady fun(self: LifecycleKit.Instance, callback: LifecycleKit.PhaseCallback): LifecycleKit.Subscription
 ---@field OnShutdown fun(self: LifecycleKit.Instance, callback: LifecycleKit.PhaseCallback): LifecycleKit.Subscription
 ---@field OnHalted fun(self: LifecycleKit.Instance, callback: LifecycleKit.HaltedCallback): LifecycleKit.Subscription
----@field Halt fun(self: LifecycleKit.Instance, reason: string): boolean
----@field DependsOn fun(self: LifecycleKit.Instance, addonName: string): boolean|nil, string|nil
----@field OnDependencyHalted fun(self: LifecycleKit.Instance, callback: LifecycleKit.DependencyHaltedCallback): LifecycleKit.Subscription
----@field WhenOutOfCombat fun(self: LifecycleKit.Instance, callback: LifecycleKit.DeferredCallback): LifecycleKit.DeferredCall|nil, string|nil
----@field OnCombatStart fun(self: LifecycleKit.Instance, callback: LifecycleKit.CombatCallback): LifecycleKit.Subscription
----@field OnCombatEnd fun(self: LifecycleKit.Instance, callback: LifecycleKit.CombatCallback): LifecycleKit.Subscription
----@field SetCombatQueueLimit fun(self: LifecycleKit.Instance, limit: integer|table)
----@field GetCombatQueueLimit fun(self: LifecycleKit.Instance): integer|table
+---@field Halt fun(self: LifecycleKit.Instance, reason: string): boolean Halt part.
+---@field DependsOn fun(self: LifecycleKit.Instance, addonName: string): boolean|nil, string|nil Halt part.
+---@field OnDependencyHalted fun(self: LifecycleKit.Instance, callback: LifecycleKit.DependencyHaltedCallback): LifecycleKit.Subscription Halt part.
+---@field WhenOutOfCombat fun(self: LifecycleKit.Instance, callback: LifecycleKit.DeferredCallback): LifecycleKit.DeferredCall|nil, string|nil CombatGate part.
+---@field OnCombatStart fun(self: LifecycleKit.Instance, callback: LifecycleKit.CombatCallback): LifecycleKit.Subscription CombatGate part.
+---@field OnCombatEnd fun(self: LifecycleKit.Instance, callback: LifecycleKit.CombatCallback): LifecycleKit.Subscription CombatGate part.
+---@field SetCombatQueueLimit fun(self: LifecycleKit.Instance, limit: integer|table) CombatGate part.
+---@field GetCombatQueueLimit fun(self: LifecycleKit.Instance): integer|table CombatGate part.
 
 ---A subscription handle: one-shot for phases, repeating for combat and
 ---dependency notifications.
@@ -154,7 +189,7 @@ local UNBOUNDED_COMPACTION_FLOOR = DEFAULT_COMBAT_QUEUE_LIMIT
 ---@field Disconnect fun(self: LifecycleKit.Subscription): boolean
 ---@field IsConnected fun(self: LifecycleKit.Subscription): boolean
 
----A call waiting in an addon's combat queue.
+---A call waiting in an addon's combat queue (CombatGate part).
 ---@class LifecycleKit.DeferredCall
 ---@field Cancel fun(self: LifecycleKit.DeferredCall): boolean
 ---@field IsPending fun(self: LifecycleKit.DeferredCall): boolean
@@ -167,7 +202,8 @@ local UNBOUNDED_COMPACTION_FLOOR = DEFAULT_COMBAT_QUEUE_LIMIT
 ---@field Subscription LifecycleKit.Subscription Shared subscription prototype.
 ---@field DeferredCall LifecycleKit.DeferredCall Shared deferred-call prototype.
 ---@field ForAddon fun(self: LifecycleKit, addonName: string): LifecycleKit.Instance
----@field IsInCombat fun(self: LifecycleKit): boolean
+---@field IsInCombat fun(self: LifecycleKit): boolean CombatGate part.
+---@field HasPart fun(self: LifecycleKit, name: string): boolean Whether the named part (`"CombatGate"`, `"Halt"`) is installed.
 ---@field UNBOUNDED table Sentinel a limit takes to be lifted.
 ---@field SetLimits fun(self: LifecycleKit, limits: table)
 ---@field GetLimits fun(self: LifecycleKit): LifecycleKit.Limits
@@ -176,8 +212,8 @@ local UNBOUNDED_COMPACTION_FLOOR = DEFAULT_COMBAT_QUEUE_LIMIT
 ---The package-wide limits. `SetLimits` accepts any subset; `GetLimits` returns
 ---a fresh copy of all of them.
 ---@class LifecycleKit.Limits
----@field maxDependencies integer|table Addons one addon may declare with `DependsOn`: a positive integer or `LifecycleKit.UNBOUNDED`; default `16`.
----@field defaultCombatQueueLimit integer|table The combat-queue limit new instances start with: a positive integer or `LifecycleKit.UNBOUNDED`; default `64`.
+---@field maxDependencies integer|table Addons one addon may declare with `DependsOn`: an integer from 1 to 2147483647 or `LifecycleKit.UNBOUNDED`; default `16`.
+---@field defaultCombatQueueLimit integer|table The combat-queue limit new instances start with: an integer from 1 to 2147483647 or `LifecycleKit.UNBOUNDED`; default `64`.
 
 -- Dependencies --------------------------------------------------------------
 
@@ -201,27 +237,6 @@ local bootstrapPackage = rawget(Registry, "Bootstrap")
 local getPackage = rawget(Registry, "Get")
 if type(bootstrapPackage) ~= "function" or type(getPackage) ~= "function" then
   error("MoltenCodes LifecycleKit requires a valid Registry API 2 facade", 2)
-end
-
-local SignalKit, signalRevision = getPackage(Registry, "signalKit", REQUIRED_SIGNAL_API)
-if type(SignalKit) == "nil" then
-  error("MoltenCodes LifecycleKit requires SignalKit API 1 to be loaded first", 2)
-end
-local SignalKitConnection = type(SignalKit) == "table" and rawget(SignalKit, "Connection") or nil
-if
-  type(SignalKit) ~= "table"
-  or type(signalRevision) ~= "number"
-  or rawget(SignalKit, "API") ~= REQUIRED_SIGNAL_API
-  or rawget(SignalKit, "REVISION") ~= signalRevision
-  or type(rawget(SignalKit, "New")) ~= "function"
-  or type(rawget(SignalKit, "Once")) ~= "function"
-  or type(rawget(SignalKit, "Fire")) ~= "function"
-  or type(rawget(SignalKit, "DisconnectAll")) ~= "function"
-  or type(SignalKitConnection) ~= "table"
-  or type(rawget(SignalKitConnection, "Disconnect")) ~= "function"
-  or type(rawget(SignalKitConnection, "IsConnected")) ~= "function"
-then
-  error("MoltenCodes LifecycleKit requires a valid SignalKit API 1 facade", 2)
 end
 
 local EventKit, eventKitRevision = getPackage(Registry, "eventKit", REQUIRED_EVENT_KIT_API)
@@ -248,23 +263,185 @@ end
 ---`nil` for a missing package, so it is a correct fallback. The method is read
 ---on every call because an embedded Registry upgrade replaces it in place.
 ---@param packageName string
----@param api integer
 ---@return table|nil implementation `nil` when the package is not loaded
-local function findOptionalPackage(packageName, api)
+local function findOptionalPackage(packageName)
   local find = rawget(Registry, "Find")
   if type(find) ~= "function" then
     find = getPackage
   end
-  local implementation = find(Registry, packageName, api)
+  local implementation = find(Registry, packageName, OPTIONAL_KIT_API)
   if type(implementation) ~= "table" then
     return nil
   end
   return implementation
 end
 
+-- Shared helpers --------------------------------------------------------------
+
+-- shared:begin isSecret 1
+-- Copied from tooling/shared/lua/isSecret.lua by python3 -m tooling.shared.sync; edit that file, not this copy.
+---Whether `value` is a secret value the host forbids comparing.
+---@type fun(value: any): boolean
+local isSecret
+do
+  -- issecretvalue is a client API reachable only through the global table.
+  -- selene: allow(global_usage)
+  local loadedProbe = rawget(_G, "issecretvalue")
+  if type(loadedProbe) ~= "function" then
+    loadedProbe = nil
+  end
+
+  isSecret = function(value)
+    local probe = loadedProbe
+    if probe == nil then
+      -- selene: allow(global_usage)
+      probe = rawget(_G, "issecretvalue")
+      if type(probe) ~= "function" then
+        return false
+      end
+    end
+    return probe(value) == true
+  end
+end
+-- shared:end isSecret
+
+-- shared:begin describeKey 1
+-- Copied from tooling/shared/lua/describeKey.lua by python3 -m tooling.shared.sync; edit that file, not this copy.
+---Name `key` for an error message without running any of the caller's code.
+---@param key any
+---@return string
+local function describeKey(key)
+  if isSecret(key) then
+    return "<secret>"
+  end
+  local kind = type(key)
+  if kind == "string" then
+    return key
+  end
+  if kind == "number" or kind == "boolean" then
+    return tostring(key)
+  end
+  return "<" .. kind .. ">"
+end
+-- shared:end describeKey
+
+---Raise at `level` when `value` is secret, naming `label`.
+---
+---On a client with secret values, comparing a secret with a value of its own
+---type, or using it as a key, raises inside LifecycleKit instead of at the
+---caller. Values LifecycleKit did not create are tested for absence with
+---`type(value) == "nil"`, the repository rule, and a secret is refused first.
+---@param value any
+---@param label string qualified argument name, used in the argument error
+---@param level integer stack level the failure is reported at
+local function refuseSecret(value, label, level)
+  if isSecret(value) then
+    error(label .. " must not be a secret value", level)
+  end
+end
+
+-- The limits block reads `UNBOUNDED` and `LIMIT_RULES`. The sentinel lives in
+-- the package state so every revision publishes the same table; it is
+-- assigned in the bootstrap below, before any limit is validated.
+---@type table
+local UNBOUNDED
+local LIMIT_RULES = {
+  { name = "maxDependencies", ceiling = LIMIT_CEILING, unbounded = true },
+  { name = "defaultCombatQueueLimit", ceiling = LIMIT_CEILING, unbounded = true },
+}
+
+-- shared:begin limits 1 __FACADE__=LifecycleKit
+-- Copied from tooling/shared/lua/limits.lua by python3 -m tooling.shared.sync; edit that file, not this copy.
+---Check a whole `SetLimits` update; raises at `level`.
+---@type fun(limits: any, level: integer)
+local validateLimitUpdate
+---Write the names an update gives into `target`.
+---@type fun(target: table, limits: table)
+local applyLimitUpdate
+---A fresh table of every limit in `source`.
+---@type fun(source: table): table
+local copyLimits
+do
+  local rulesByName = {}
+  local names = {}
+  for index = 1, #LIMIT_RULES do
+    local rule = LIMIT_RULES[index]
+    rulesByName[rule.name] = rule
+    names[index] = rule.name
+  end
+  local accepted = table.concat(names, ", ")
+
+  local function validateValue(rule, value, level)
+    local where = "LifecycleKit:SetLimits limits." .. rule.name
+    if isSecret(value) then
+      error(where .. " must not be a secret value", level)
+    end
+    if value == UNBOUNDED and UNBOUNDED ~= nil then
+      if rule.unbounded then
+        return
+      end
+      local reason = rule.unboundedReason and (": " .. rule.unboundedReason) or ""
+      error(where .. " cannot be LifecycleKit.UNBOUNDED" .. reason, level)
+    end
+    local minimum = rule.minimum or 1
+    local integer = rule.integer ~= false
+    if
+      type(value) ~= "number"
+      or value ~= value
+      or value < minimum
+      or value > rule.ceiling
+      or (integer and value % 1 ~= 0)
+    then
+      local kind = integer and "an integer" or "a number"
+      local range = " from " .. minimum .. " to " .. rule.ceiling
+      error(where .. " must be " .. kind .. range, level)
+    end
+    if rule.check then
+      rule.check(value, level + 1)
+    end
+  end
+
+  validateLimitUpdate = function(limits, level)
+    if isSecret(limits) or type(limits) ~= "table" then
+      error("LifecycleKit:SetLimits limits must be a table", level)
+    end
+    local key = next(limits)
+    while type(key) ~= "nil" do
+      local rule = type(key) == "string" and rulesByName[key] or nil
+      if rule == nil then
+        local named = "LifecycleKit:SetLimits limits." .. describeKey(key)
+        error(named .. " is not a recognised limit; it accepts " .. accepted, level)
+      end
+      validateValue(rule, rawget(limits, key), level + 1)
+      key = next(limits, key)
+    end
+  end
+
+  applyLimitUpdate = function(target, limits)
+    for index = 1, #LIMIT_RULES do
+      local name = LIMIT_RULES[index].name
+      local value = rawget(limits, name)
+      if type(value) ~= "nil" then
+        rawset(target, name, value)
+      end
+    end
+  end
+
+  copyLimits = function(source)
+    local copy = {}
+    for index = 1, #LIMIT_RULES do
+      local name = LIMIT_RULES[index].name
+      copy[name] = rawget(source, name)
+    end
+    return copy
+  end
+end
+-- shared:end limits
+
 -- Public-surface validation --------------------------------------------------
 
--- Every method a compatible copy must publish on the instance prototype.
+-- Every method a compatible copy must publish on the instance prototype. The
+-- members of a part count too: without the part they are stubs.
 local INSTANCE_METHODS = {
   "GetAddonName",
   "GetState",
@@ -330,131 +507,29 @@ local function validatePublicSurface(implementation)
     and type(rawget(DeferredCall, "IsPending")) == "function"
 end
 
----Whether the client reports `value` as secret; always `false` elsewhere.
----
----On a client with secret values, comparing a secret with a value of its own
----type, or using it as a key, raises inside LifecycleKit instead of at the
----caller. Values LifecycleKit did not create are tested for absence with
----`type(value) == "nil"`, the repository rule, and a secret is refused first.
----
----The probe is resolved once, when this file loads: every client defines it
----before any addon runs. When it was absent at load (a test host, or a shim
----installed later), each call reads the global again and accepts it only as a
----function, so a probe installed after load is still honoured.
----@type fun(value: any): boolean
-local isSecret
-do
-  -- issecretvalue is a World of Warcraft client API reachable only through the global table.
-  -- selene: allow(global_usage)
-  local loadedIsSecretValue = rawget(_G, "issecretvalue")
-  if type(loadedIsSecretValue) ~= "function" then
-    loadedIsSecretValue = nil
-  end
-
-  function isSecret(value)
-    local probe = loadedIsSecretValue
-    if probe == nil then
-      -- selene: allow(global_usage)
-      probe = rawget(_G, "issecretvalue")
-      if type(probe) ~= "function" then
-        return false
-      end
-    end
-    return probe(value) == true
-  end
-end
-
----Name a caller's table key in a refusal without running its `__tostring`.
----A secret is named by a placeholder, because converting or concatenating it
----raises; a string is shown as written and a number or boolean through
----`tostring`, which runs no foreign code for those types; anything else is
----named by its type, `<table>`, because a table's or userdata's `__tostring`
----is the caller's code, which could raise or answer a secret and so lose the
----real refusal.
----@param key any a table key, which can never be `nil`
----@return string
-local function describeKey(key)
-  if isSecret(key) then
-    return "<secret value>"
-  end
-  local kind = type(key)
-  if kind == "string" then
-    return key
-  end
-  if kind == "number" or kind == "boolean" then
-    return tostring(key)
-  end
-  return "<" .. kind .. ">"
-end
-
----Raise at `level` when `value` is secret, naming `label`.
----@param value any
----@param label string qualified argument name, used in the argument error
----@param level integer stack level the failure is reported at
-local function refuseSecret(value, label, level)
-  if isSecret(value) then
-    error(label .. " must not be a secret value", level)
-  end
-end
-
----Whether `value` is a positive integer or the `UNBOUNDED` sentinel `sentinel`.
----@param value any
----@param sentinel table
+---Whether `currentState` carries package state of this revision's schema.
+---@param currentState any
 ---@return boolean
-local function isLimitValue(value, sentinel)
-  if value == sentinel then
-    return true
-  end
-  return type(value) == "number"
-    and value >= 1
-    and value ~= math.huge
-    and math.floor(value) == value
-end
-
----Whether `currentState` carries the `UNBOUNDED` sentinel and a valid set of
----package-wide limits (added in revision 12 without a schema change).
----@param currentState table
----@return boolean
-local function validateLimitState(currentState)
-  local sentinel = rawget(currentState, "unbounded")
-  local limits = rawget(currentState, "limits")
-  if type(sentinel) ~= "table" or type(limits) ~= "table" then
+local function validateCurrentState(currentState)
+  if type(currentState) ~= "table" then
     return false
   end
-  for index = 1, #LIMIT_NAMES do
-    if not isLimitValue(rawget(limits, LIMIT_NAMES[index]), sentinel) then
-      return false
-    end
-  end
-  return true
-end
-
----Whether `currentState` carries the addon-scope capability set and its
----read-only view (added in revision 13 without a schema change).
----@param currentState table
----@return boolean
-local function validateCapabilityState(currentState)
-  local capabilities = rawget(currentState, "addonScopeCapabilities")
-  return type(capabilities) == "table"
-    and type(rawget(capabilities, "entries")) == "table"
-    and type(rawget(capabilities, "view")) == "table"
-end
-
----Whether `implementation` carries package state of this revision's schema.
----@param implementation table
----@return boolean
-local function validateCurrentState(implementation)
-  local currentState = rawget(implementation, "_state")
-  return type(currentState) == "table"
-    and validateLimitState(currentState)
-    and validateCapabilityState(currentState)
-    and rawget(currentState, "schema") == STATE_SCHEMA
-    and type(rawget(currentState, "addons")) == "table"
-    and type(rawget(currentState, "instances")) == "table"
-    and type(rawget(currentState, "globalWatchers")) == "table"
-    and type(rawget(currentState, "loginSeen")) == "boolean"
-    and type(rawget(currentState, "shutdownSeen")) == "boolean"
-    and type(rawget(currentState, "inCombat")) == "boolean"
+  local capabilities = currentState.addonScopeCapabilities
+  return currentState.schema == STATE_SCHEMA
+    and type(currentState.addons) == "table"
+    and type(currentState.instances) == "table"
+    and type(currentState.globalWatchers) == "table"
+    and type(currentState.loginSeen) == "boolean"
+    and type(currentState.shutdownSeen) == "boolean"
+    and type(currentState.unbounded) == "table"
+    and type(currentState.limits) == "table"
+    and type(currentState.dispatchDepth) == "number"
+    and type(currentState.parts) == "table"
+    and type(currentState.helpers) == "table"
+    and type(currentState.dispatch) == "table"
+    and type(capabilities) == "table"
+    and type(capabilities.entries) == "table"
+    and type(capabilities.view) == "table"
 end
 
 -- Bootstrap -----------------------------------------------------------------
@@ -499,94 +574,9 @@ local DeferredCall = rawget(LifecycleKit, "DeferredCall")
 
 local state = rawget(LifecycleKit, "_state")
 
--- Whether this copy upgrades state an older revision created. Revision 6 and
--- earlier wrote schema 2, which `migrateState` below brings to schema 3.
+-- Whether this copy takes over state an older revision created.
 local upgradesOlderRevision = type(previousRevision) ~= "nil"
   and previousRevision < IMPLEMENTATION_REVISION
-
----Report whether the host says combat lockdown is active.
----
----Declared before the package state because a first bootstrap seeds the
----shared combat flag from it.
----@return boolean
-local function isHostInCombatLockdown()
-  -- InCombatLockdown is a World of Warcraft client API reachable only through the global table.
-  -- selene: allow(global_usage)
-  local probe = rawget(_G, "InCombatLockdown")
-  return type(probe) == "function" and probe() == true
-end
-
-if type(previousRevision) == "nil" then
-  if Instance ~= nil or Subscription ~= nil or DeferredCall ~= nil or state ~= nil then
-    error("MoltenCodes LifecycleKit package state is corrupted or incomplete", 2)
-  end
-
-  Instance = {}
-  Subscription = {}
-  DeferredCall = {}
-  state = {
-    schema = STATE_SCHEMA,
-    -- addonName -> instance, for lookup by name.
-    addons = {},
-    -- Every instance, in creation order for instances this revision
-    -- created (an upgrade appends inherited ones in name order): the
-    -- allocation-free iteration order of the combat announcements, which
-    -- run on every combat.
-    instances = {},
-    globalWatchers = {},
-    loginSeen = false,
-    shutdownSeen = false,
-    -- The one lockdown state every addon shares. The host may load an
-    -- addon mid-combat, so it starts from the host's own answer.
-    inCombat = isHostInCombatLockdown(),
-    -- `LifecycleKit.UNBOUNDED`. It lives in the state so that every
-    -- revision publishes the same table and a comparison against it keeps
-    -- working across an upgrade.
-    unbounded = {},
-    -- The package-wide limits `SetLimits` writes; a newer copy inherits
-    -- what a consumer set.
-    limits = {
-      maxDependencies = DEFAULT_MAX_DEPENDENCIES,
-      defaultCombatQueueLimit = DEFAULT_COMBAT_QUEUE_LIMIT,
-    },
-  }
-
-  rawset(LifecycleKit, "Instance", Instance)
-  rawset(LifecycleKit, "Subscription", Subscription)
-  rawset(LifecycleKit, "DeferredCall", DeferredCall)
-  rawset(LifecycleKit, "_state", state)
-else
-  -- An embedded copy is reusing state another copy created. The prototype
-  -- for deferred calls is new in revision 7, so only an upgrade may lack it.
-  if DeferredCall == nil and upgradesOlderRevision then
-    DeferredCall = {}
-    rawset(LifecycleKit, "DeferredCall", DeferredCall)
-  end
-  if
-    type(Instance) ~= "table"
-    or type(Subscription) ~= "table"
-    or type(DeferredCall) ~= "table"
-    or type(state) ~= "table"
-  then
-    error("MoltenCodes LifecycleKit package state is corrupted or incomplete", 2)
-  end
-end
-
--- Revision 12 added the `UNBOUNDED` sentinel and the package-wide limits
--- without changing the schema. State an older revision wrote is seeded with
--- the defaults those revisions enforced as constants, so behaviour carries
--- over unchanged until a consumer calls `SetLimits`.
-if rawget(state, "unbounded") == nil then
-  rawset(state, "unbounded", {})
-end
-if rawget(state, "limits") == nil then
-  rawset(state, "limits", {
-    maxDependencies = DEFAULT_MAX_DEPENDENCIES,
-    defaultCombatQueueLimit = DEFAULT_COMBAT_QUEUE_LIMIT,
-  })
-end
-local UNBOUNDED = rawget(state, "unbounded")
-local sharedLimits = rawget(state, "limits")
 
 ---Refuse every write to `LifecycleKit.CLOSES_ADDON_SCOPES`.
 ---
@@ -603,32 +593,143 @@ local function refuseCapabilityWrite(_, key)
   )
 end
 
--- Revision 13 publishes `CLOSES_ADDON_SCOPES` without a schema change. The
--- entries and the read-only view over them live in the state, so every
--- revision from 13 on hands out the same table and a reader that kept it
--- across an upgrade still reads the current set. The entries are rewritten on
--- every bootstrap, so they always describe the copy that is running.
-if rawget(state, "addonScopeCapabilities") == nil then
-  local entries = {}
-  rawset(state, "addonScopeCapabilities", {
-    entries = entries,
-    view = setmetatable({}, {
-      __index = entries,
-      __newindex = refuseCapabilityWrite,
-      __metatable = false,
-    }),
-  })
+---Add what schema 4 holds beyond schema 3: the part interface and the depth
+---of the deliveries in progress. Used for a fresh state and for revision 18's.
+---@param target table
+local function addSchemaFourFields(target)
+  -- Part name -> `{ revision = n }` of each installed part.
+  target.parts = {}
+  -- The core functions a part calls, read at call time (see "Parts").
+  target.helpers = {}
+  -- The core's calls into a part, filled by the part; the core's defaults
+  -- stand in while it is not loaded.
+  target.dispatch = {}
+  -- How many deliveries are running. A subscription disconnected meanwhile
+  -- is only marked, so the running loop's indices stay valid.
+  target.dispatchDepth = 0
+  target.schema = STATE_SCHEMA
 end
-local addonScopeCapabilities = rawget(state, "addonScopeCapabilities")
-local CLOSES_ADDON_SCOPES = rawget(addonScopeCapabilities, "view")
+
+if type(previousRevision) == "nil" then
+  if Instance ~= nil or Subscription ~= nil or DeferredCall ~= nil or state ~= nil then
+    error("MoltenCodes LifecycleKit package state is corrupted or incomplete", 2)
+  end
+
+  Instance = {}
+  Subscription = {}
+  DeferredCall = {}
+  local entries = {}
+  state = {
+    -- addonName -> instance, for lookup by name.
+    addons = {},
+    -- Every instance, in creation order for instances this revision created:
+    -- the allocation-free iteration order of the notices to every addon.
+    instances = {},
+    globalWatchers = {},
+    loginSeen = false,
+    shutdownSeen = false,
+    -- `LifecycleKit.UNBOUNDED`. It lives in the state so that every revision
+    -- publishes the same table and a comparison against it keeps working
+    -- across an upgrade.
+    unbounded = {},
+    -- The package-wide limits `SetLimits` writes; a newer copy inherits what a
+    -- consumer set.
+    limits = {
+      maxDependencies = DEFAULT_MAX_DEPENDENCIES,
+      defaultCombatQueueLimit = DEFAULT_COMBAT_QUEUE_LIMIT,
+    },
+    -- The entries of `CLOSES_ADDON_SCOPES` and the read-only view over them.
+    -- Every revision from 13 on hands out the same view, so a reader that kept
+    -- it across an upgrade still reads the current set.
+    addonScopeCapabilities = {
+      entries = entries,
+      view = setmetatable({}, {
+        __index = entries,
+        __newindex = refuseCapabilityWrite,
+        __metatable = false,
+      }),
+    },
+  }
+  addSchemaFourFields(state)
+
+  rawset(LifecycleKit, "Instance", Instance)
+  rawset(LifecycleKit, "Subscription", Subscription)
+  rawset(LifecycleKit, "DeferredCall", DeferredCall)
+  rawset(LifecycleKit, "_state", state)
+elseif
+  type(Instance) ~= "table"
+  or type(Subscription) ~= "table"
+  or type(DeferredCall) ~= "table"
+  or type(state) ~= "table"
+then
+  error("MoltenCodes LifecycleKit package state is corrupted or incomplete", 2)
+end
 
 local INSTANCE_METATABLE = { __index = Instance }
 local SUBSCRIPTION_METATABLE = { __index = Subscription }
-local DEFERRED_CALL_METATABLE = { __index = DeferredCall }
 
--- The repeating notices. Unlike the phases, an instance has a signal for one
--- of them only once something subscribed to it (see `installGateFields`).
-local REPEATING_SIGNALS = { "dependencyHalted", "combatStart", "combatEnd" }
+-- In-place upgrade ----------------------------------------------------------
+--
+-- The upgrade floor: only revision 18's state (schema 3) is taken over; schema
+-- 2 and the per-revision fills of revisions 7 to 15 are gone, since no revision
+-- before 19 was ever published. A same-schema copy of an older revision (a
+-- reload, or a test copy under a lower number) only has its watchers replaced.
+
+---Disconnect every shared host watcher an older revision installed.
+---
+---A watcher calls the handler of the revision that connected it, so leaving
+---an older one in place would keep running that revision's phase machinery.
+---The bootstrap tail installs this revision's watchers again (and the
+---CombatGate part its own) and reconciles any phase that passed in between.
+local function disconnectInheritedWatchers()
+  local watchers = state.globalWatchers
+  if type(watchers) ~= "table" then
+    return
+  end
+  for key, connection in pairs(watchers) do
+    watchers[key] = nil
+    if type(connection) == "table" and type(connection.Disconnect) == "function" then
+      connection:Disconnect()
+    end
+  end
+end
+
+---Bring revision 18's schema 3 to schema 4.
+---
+---Revision 18's instances keep their SignalKit signals (`_signals`), the
+---capture records their listeners write into (`_phaseCaptures`), and their
+---combat queues and dependency lists, whose fields the parts read unchanged.
+---Their reusable combat capture records are released: nothing fires a combat
+---signal with them any more (see "Delivery").
+local function migrateState()
+  if not upgradesOlderRevision then
+    return
+  end
+  if state.schema == PREVIOUS_STATE_SCHEMA and type(state.addons) == "table" then
+    for _, instance in pairs(state.addons) do
+      if type(instance) == "table" then
+        instance._combatCaptures = nil
+      end
+    end
+    addSchemaFourFields(state)
+  end
+  if state.schema == STATE_SCHEMA then
+    disconnectInheritedWatchers()
+  end
+end
+
+migrateState()
+
+if not validateCurrentState(state) then
+  error("MoltenCodes LifecycleKit package state is corrupted or incomplete", 2)
+end
+
+UNBOUNDED = state.unbounded
+local sharedLimits = state.limits
+local addonScopeCapabilities = state.addonScopeCapabilities
+local CLOSES_ADDON_SCOPES = addonScopeCapabilities.view
+local helpers = state.helpers
+local dispatch = state.dispatch
 
 -- Host-state probes ---------------------------------------------------------
 
@@ -649,8 +750,6 @@ local function isAddonFinishedLoading(addonName)
     return finished == true
   end
 
-  -- Legacy IsAddOnLoaded exposes loading and finished states separately.
-  -- Only the second return confirms that ADDON_LOADED already completed.
   -- Legacy IsAddOnLoaded is a World of Warcraft client global kept for older clients.
   -- selene: allow(global_usage)
   local legacy = rawget(_G, "IsAddOnLoaded")
@@ -671,171 +770,86 @@ local function isPlayerLoggedIn()
   return type(probe) == "function" and probe() == true
 end
 
--- In-place upgrade ----------------------------------------------------------
-
----Give `instance` the per-instance fields revision 7 introduced.
----
----Used for a new instance and for every instance an older revision hands
----over, so both carry exactly the same shape.
----@param instance table
-local function installGateFields(instance)
-  local signals = rawget(instance, "_signals")
-  if type(signals) ~= "table" then
-    error("MoltenCodes LifecycleKit instance state is corrupted or incomplete", 2)
-  end
-
-  rawset(signals, "halted", SignalKit:New())
-  -- The repeating notices (`dependencyHalted`, `combatStart`, `combatEnd`)
-  -- get their signal from their first subscriber (`subscribeRepeating`):
-  -- most addons subscribe to none of them, and firing a signal that was
-  -- never created delivers to nobody, exactly as an empty one would.
-
-  rawset(instance, "_halted", false)
-  rawset(instance, "_dependencies", {})
-  -- The combat queue is an array of deferred-call handles reused across
-  -- combats. `_combatQueueLength` is its end index, `_combatPending` the
-  -- number of slots still waiting; cancelled slots stay in place until the
-  -- next compaction so cancelling never allocates or shifts.
-  rawset(instance, "_combatQueue", {})
-  rawset(instance, "_combatQueueLength", 0)
-  rawset(instance, "_combatPending", 0)
-  rawset(instance, "_combatQueueLimit", rawget(sharedLimits, "defaultCombatQueueLimit"))
-  rawset(instance, "_draining", false)
-  -- One reusable capture record per combat signal keeps the per-combat
-  -- announcements free of allocation.
-  rawset(instance, "_combatCaptures", {
-    combatStart = { active = false, failed = false },
-    combatEnd = { active = false, failed = false },
-  })
-end
-
----Return every instance in `addons`, ordered by addon name.
----@param addons table<string, table>
----@return table[]
-local function sortedInstances(addons)
-  local names = {}
-  for addonName in pairs(addons) do
-    names[#names + 1] = addonName
-  end
-  table.sort(names)
-
-  local ordered = {}
-  for index = 1, #names do
-    local instance = rawget(addons, names[index])
-    if type(instance) ~= "table" then
-      error("MoltenCodes LifecycleKit package state is corrupted or incomplete", 2)
-    end
-    ordered[index] = instance
-  end
-  return ordered
-end
-
----Disconnect every shared host watcher an older revision installed.
----
----A watcher calls the handler of the revision that connected it, so leaving
----an older one in place would keep running that revision's phase machinery,
----which knows nothing of halting or of the combat queue. The bootstrap tail
----installs this revision's watchers again and reconciles any one-shot phase
----that passed in between.
-local function disconnectInheritedWatchers()
-  local watchers = rawget(state, "globalWatchers")
-  if type(watchers) ~= "table" then
-    return
-  end
-
-  for key, connection in pairs(watchers) do
-    rawset(watchers, key, nil)
-    if type(connection) == "table" and type(connection.Disconnect) == "function" then
-      connection:Disconnect()
-    end
-  end
-end
-
----Bring state an older compatible revision created to this revision's shape.
----
----Every older revision's shared host watchers are replaced, because a watcher
----keeps calling the handler of the revision that connected it: revision 7's
----logout handler, for one, closes no HookKit scope and no SignalKit bus,
----revision 8's closes no CommandKit scope, revision 9's no CommKit scope, and
----no revision before 12 closes a TimerKit or SchedulerKit scope. Revision
----10's and 11's watchers are replaced for the same reason, so the running
----handlers are always the newest copy's. The bootstrap tail installs this
----revision's watchers again and reconciles any one-shot phase that passed in
----between. Revisions 7 to 15 already wrote schema 3, so that is all their
----state needs.
----
----Schema 2 (revisions 4 to 6) lacks the combat flag, the instance list and
----every per-instance field of the combat gate and the halted state. Revision 3
----also kept a second, redundant phase-error slot (`_phaseErrors`) beside
----`_phaseCaptures`; it is released here rather than retained for the session.
----
----Pending phase subscriptions created by the older revision stay valid: their
----wrappers report a callback failure through `_phaseCaptures`, whose record
----shape is unchanged.
-local function migrateState()
-  if not upgradesOlderRevision then
-    return
-  end
-  if rawget(state, "schema") == STATE_SCHEMA then
-    disconnectInheritedWatchers()
-    return
-  end
-  if
-    rawget(state, "schema") ~= PREVIOUS_STATE_SCHEMA or type(rawget(state, "addons")) ~= "table"
-  then
-    -- Left for `validateCurrentState` to reject with the standard message.
-    return
-  end
-
-  local instances = sortedInstances(rawget(state, "addons"))
-  for index = 1, #instances do
-    local instance = instances[index]
-    rawset(instance, "_phaseErrors", nil)
-    installGateFields(instance)
-  end
-
-  disconnectInheritedWatchers()
-
-  rawset(state, "instances", instances)
-  rawset(state, "inCombat", isHostInCombatLockdown())
-  rawset(state, "schema", STATE_SCHEMA)
-end
-
-migrateState()
-
-if not validateCurrentState(LifecycleKit) then
-  error("MoltenCodes LifecycleKit package state is corrupted or incomplete", 2)
-end
-
 -- Subscription --------------------------------------------------------------
+--
+-- A subscription is its own record in its instance's list for one phase or
+-- notice (`instance._lists[key]`, created with the first subscription), the
+-- connection model EventKit uses. While connected it holds `_callback`,
+-- `_instance` and `_key`; disconnecting drops all three, so a spent
+-- subscription retains nothing.
+--
+-- A subscription revision 18 made instead wraps a SignalKit connection
+-- (`_inner`), which this revision still answers for.
+
+---@param value any
+---@return LifecycleKit.ErrorRecord
+local function newErrorRecord(value)
+  return { value = value }
+end
+
+---Re-raise a captured error unchanged, or return when there was none.
+---@param errorRecord LifecycleKit.ErrorRecord|nil
+local function raisePhaseError(errorRecord)
+  if errorRecord ~= nil then
+    error(errorRecord.value, 0)
+  end
+end
 
 ---Return a subscription handle that is already spent.
 ---@return LifecycleKit.Subscription
 local function newDisconnectedSubscription()
-  return setmetatable({
-    _connected = false,
-    _inner = nil,
-  }, SUBSCRIPTION_METATABLE)
+  return setmetatable({ _connected = false }, SUBSCRIPTION_METATABLE)
 end
 
 ---Report whether this subscription is still pending delivery.
 ---@param self LifecycleKit.Subscription
 ---@return boolean
 local function isSubscriptionConnected(self)
-  if rawget(self, "_connected") ~= true then
+  if self._connected ~= true then
     return false
   end
 
-  local inner = rawget(self, "_inner")
-  if inner == nil or inner:IsConnected() ~= true then
-    -- SignalKit may disconnect the inner listener as part of terminal
+  local inner = self._inner
+  if inner ~= nil and inner:IsConnected() ~= true then
+    -- SignalKit may disconnect a revision 18 listener as part of terminal
     -- cleanup. Keep the public LifecycleKit subscription in sync.
-    rawset(self, "_connected", false)
-    rawset(self, "_inner", nil)
+    self._connected = false
+    self._inner = nil
     return false
   end
 
   return true
+end
+
+---Take a record out of its list now, when no delivery is iterating lists.
+---@param instance table
+---@param key string
+---@param record table
+local function removeFromList(instance, key, record)
+  local lists = instance._lists
+  local list = lists and lists[key]
+  if list == nil then
+    return
+  end
+  for index = #list, 1, -1 do
+    if list[index] == record then
+      table.remove(list, index)
+      return
+    end
+  end
+end
+
+---Mark a record disconnected and release what it held.
+---@param record table
+local function releaseRecord(record)
+  local instance, key = record._instance, record._key
+  record._connected = false
+  record._callback = nil
+  record._instance = nil
+  record._key = nil
+  if instance ~= nil and state.dispatchDepth == 0 then
+    removeFromList(instance, key, record)
+  end
 end
 
 ---Cancel a pending subscription.
@@ -846,251 +860,177 @@ local function disconnectSubscription(self)
     return false
   end
 
-  local inner = rawget(self, "_inner")
-  rawset(self, "_connected", false)
-  rawset(self, "_inner", nil)
-  inner:Disconnect()
+  local inner = self._inner
+  if inner ~= nil then
+    self._connected = false
+    self._inner = nil
+    inner:Disconnect()
+    return true
+  end
+  releaseRecord(self)
   return true
 end
 
--- Signal dispatch -------------------------------------------------------------
+---Append a connected subscription record to `instance`'s list for `key`.
+---@param instance table
+---@param key string
+---@param callback function
+---@return LifecycleKit.Subscription
+local function addSubscription(instance, key, callback)
+  local lists = instance._lists
+  if lists == nil then
+    lists = {}
+    instance._lists = lists
+  end
+  local list = lists[key]
+  if list == nil then
+    list = {}
+    lists[key] = list
+  elseif state.dispatchDepth == 0 then
+    -- Records disconnected during a delivery stay until here, the next
+    -- subscription to the same list outside a delivery.
+    for index = #list, 1, -1 do
+      if list[index]._connected ~= true then
+        table.remove(list, index)
+      end
+    end
+  end
+  local record = setmetatable({
+    _connected = true,
+    _callback = callback,
+    _instance = instance,
+    _key = key,
+  }, SUBSCRIPTION_METATABLE)
+  list[#list + 1] = record
+  return record
+end
+
+---Disconnect every subscription in `instance`'s list for `key`, and revision
+---18's listeners on its signal of the same name.
+---@param instance table
+---@param key string
+local function disconnectList(instance, key)
+  local lists = instance._lists
+  local list = lists and lists[key]
+  if list ~= nil then
+    lists[key] = nil
+    for index = 1, #list do
+      local record = list[index]
+      record._connected = false
+      record._callback = nil
+      record._instance = nil
+      record._key = nil
+    end
+  end
+
+  local signals = instance._signals
+  local signal = signals and signals[key]
+  if signal ~= nil then
+    local SignalKit = findOptionalPackage("signalKit")
+    if SignalKit ~= nil then
+      SignalKit.DisconnectAll(signal)
+    end
+  end
+end
+
+-- Delivery --------------------------------------------------------------------
 --
 -- Every notification LifecycleKit delivers — a phase, a halt, a combat change,
--- a halted dependency — goes through one error-capture protocol. While a
--- signal fires, `_phaseCaptures[signalKey]` holds a capture record; each
--- subscriber wrapper records the first callback failure into it and returns,
--- so dispatch continues and one failing subscriber cannot starve the rest. The
--- caller re-raises the captured error once its own state is committed.
+-- a halted dependency — goes through `deliver`: each subscriber runs protected,
+-- in subscription order, and the first failure is returned as an error record
+-- once every subscriber had its delivery. The caller re-raises it after its
+-- own state is committed.
+--
+-- A one-shot list is detached before its first callback runs, so each record
+-- is delivered once; anything subscribing meanwhile finds the phase reached
+-- and is replayed. A repeating list is iterated up to the length it had when
+-- the delivery began, so a subscription made during it waits for the next
+-- one, and a record disconnected during it is skipped at once.
 
----@param value any
----@return LifecycleKit.ErrorRecord
-local function newErrorRecord(value)
-  return { value = value }
-end
-
----Return the per-signal error-capture map of `instance`, creating it on demand.
----@param instance LifecycleKit.Instance
----@return table<string, table>
-local function getPhaseCaptures(instance)
-  local captures = rawget(instance, "_phaseCaptures")
-  if captures == nil then
-    captures = {}
-    rawset(instance, "_phaseCaptures", captures)
-  elseif type(captures) ~= "table" then
-    error("MoltenCodes LifecycleKit instance state is corrupted or incomplete", 2)
-  end
-  return captures
-end
-
----Fire one of `instance`'s signals under the capture protocol.
+---Fire revision 18's signal `key` on an instance that revision made.
 ---
----The capture that was installed for `signalKey` before this call is restored
----afterwards, so a nested dispatch of the same signal records into its own
----record and hands the outer one back intact.
----@param instance LifecycleKit.Instance
----@param signalKey string
----@param capture table capture record to install for the duration of the fire
----@param first any second argument delivered to subscribers
----@param second any third argument delivered to subscribers
----@return LifecycleKit.ErrorRecord|nil errorRecord first captured error, wrapped so that `nil` and `false` stay representable
-local function fireSignal(instance, signalKey, capture, first, second)
-  local signal = rawget(rawget(instance, "_signals"), signalKey)
-  if signal == nil then
-    -- A repeating notice nobody ever subscribed to (see `installGateFields`).
+---Revision 18's listeners record the first callback failure into
+---`instance._phaseCaptures[key]` while that record is active, so this installs
+---one for the fire and restores the enclosing one afterwards. SignalKit is
+---loaded, since revision 18 required it.
+---@param instance table
+---@param signal table
+---@param key string
+---@param first any
+---@param second any
+---@return LifecycleKit.ErrorRecord|nil
+local function fireInheritedSignal(instance, signal, key, first, second)
+  local SignalKit = findOptionalPackage("signalKit")
+  if SignalKit == nil then
     return nil
   end
-  local captures = getPhaseCaptures(instance)
-  local enclosing = rawget(captures, signalKey)
+  local captures = instance._phaseCaptures
+  if type(captures) ~= "table" then
+    captures = {}
+    instance._phaseCaptures = captures
+  end
+  local enclosing = captures[key]
+  local capture = { active = true, failed = false }
+  captures[key] = capture
 
-  rawset(capture, "active", true)
-  rawset(capture, "failed", false)
-  rawset(capture, "value", nil)
-  rawset(captures, signalKey, capture)
+  local ok, signalError = pcall(SignalKit.Fire, signal, instance, first, second)
 
-  local ok, signalError = pcall(rawget(SignalKit, "Fire"), signal, instance, first, second)
-
-  rawset(capture, "active", false)
-  rawset(captures, signalKey, enclosing)
-
+  capture.active = false
+  captures[key] = enclosing
   if not ok then
     return newErrorRecord(signalError)
   end
-  if rawget(capture, "failed") == true then
-    local value = rawget(capture, "value")
-    rawset(capture, "value", nil)
-    return newErrorRecord(value)
+  if capture.failed == true then
+    return newErrorRecord(capture.value)
   end
   return nil
 end
 
----Fire a one-shot or rare signal with a fresh capture record.
----@param instance LifecycleKit.Instance
----@param signalKey string
----@param first any
----@param second any
----@return LifecycleKit.ErrorRecord|nil
-local function firePhase(instance, signalKey, first, second)
-  return fireSignal(instance, signalKey, { active = false, failed = false }, first, second)
-end
-
----Fire a combat signal with the instance's reusable capture record.
----
----A combat signal fires on every combat, so it must not allocate. Only a
----nested dispatch of the same signal, whose record is still active, falls back
----to a fresh one.
----@param instance LifecycleKit.Instance
----@param signalKey "combatStart"|"combatEnd"
----@return LifecycleKit.ErrorRecord|nil
-local function fireCombatSignal(instance, signalKey)
-  local capture = rawget(rawget(instance, "_combatCaptures"), signalKey)
-  if rawget(capture, "active") == true then
-    capture = { active = false, failed = false }
-  end
-  return fireSignal(instance, signalKey, capture, nil, nil)
-end
-
----Record a subscriber failure into the active capture for `signalKey`.
----@param instance LifecycleKit.Instance
----@param signalKey string
----@param message any the original Lua error object
-local function recordCallbackFailure(instance, signalKey, message)
-  local capture = rawget(getPhaseCaptures(instance), signalKey)
-  if type(capture) == "table" and rawget(capture, "active") == true then
-    if rawget(capture, "failed") ~= true then
-      -- Preserve the first callback failure, including false or nil
-      -- error objects, while keeping dispatch alive for every subscriber
-      -- of this signal.
-      rawset(capture, "failed", true)
-      rawset(capture, "value", message)
-    end
-    return
-  end
-
-  -- The wrapper should only run inside `fireSignal`. If the internal signal
-  -- is fired outside that guard, do not silently swallow the failure.
-  error(message, 0)
-end
-
----Build the SignalKit listener that delivers to one subscriber.
----@param subscription LifecycleKit.Subscription
----@param signalKey string
----@param callback function
----@param once boolean whether the subscription is spent by its first delivery
----@return fun(instance: LifecycleKit.Instance, first: any, second: any)
-local function newListener(subscription, signalKey, callback, once)
-  return function(instance, first, second)
-    if once then
-      rawset(subscription, "_connected", false)
-      rawset(subscription, "_inner", nil)
-    end
-
-    local ok, message = pcall(callback, instance, first, second)
-    if not ok then
-      recordCallbackFailure(instance, signalKey, message)
-    end
-  end
-end
-
----Re-raise a captured error unchanged, or return when there was none.
----@param errorRecord LifecycleKit.ErrorRecord|nil
-local function raisePhaseError(errorRecord)
-  if errorRecord ~= nil then
-    error(rawget(errorRecord, "value"), 0)
-  end
-end
-
--- Combat queue --------------------------------------------------------------
-
----Pack the still-pending deferred calls to the front of the queue.
----
----Runs in place: spent and cancelled slots are dropped, the pending ones keep
----their FIFO order, and the array itself is reused.
----@param instance LifecycleKit.Instance
-local function compactCombatQueue(instance)
-  local queue = rawget(instance, "_combatQueue")
-  local length = rawget(instance, "_combatQueueLength")
-  local written = 0
-
-  for index = 1, length do
-    local handle = rawget(queue, index)
-    if handle ~= nil and rawget(handle, "_pending") == true then
-      written = written + 1
-      rawset(queue, written, handle)
-    end
-  end
-  for index = written + 1, length do
-    rawset(queue, index, nil)
-  end
-
-  rawset(instance, "_combatQueueLength", written)
-end
-
----Take `handle` out of the pending set and return the callback it carried.
----@param instance LifecycleKit.Instance
----@param handle LifecycleKit.DeferredCall
----@return function callback
-local function claimDeferredCall(instance, handle)
-  local callback = rawget(handle, "_callback")
-  rawset(handle, "_pending", false)
-  rawset(handle, "_callback", nil)
-  rawset(handle, "_instance", nil)
-  rawset(instance, "_combatPending", rawget(instance, "_combatPending") - 1)
-  return callback
-end
-
----Deliver every pending deferred call of `instance`, oldest first.
----
----Each call runs protected; the first failure is returned once the rest have
----run, which is the phase machinery's first-error policy.
----
----`stopWhenInCombat` is a defensive guard. The client never delivers
----`PLAYER_REGEN_DISABLED` synchronously inside another handler, so a real
----drain is never interrupted. Should a host ever do so, the remaining calls
----stay queued for the next combat end rather than running protected work in
----combat.
----@param instance LifecycleKit.Instance
----@param ran boolean `true` for an out-of-combat run, `false` for a closed queue
----@param reason "shutdown"|"halted"|nil why a closed queue did not run the calls
----@param stopWhenInCombat boolean
----@return LifecycleKit.ErrorRecord|nil
-local function drainCombatQueue(instance, ran, reason, stopWhenInCombat)
-  if rawget(instance, "_combatPending") == 0 and rawget(instance, "_combatQueueLength") == 0 then
-    return nil
-  end
-
-  local queue = rawget(instance, "_combatQueue")
+---Deliver `key` to every subscriber of `instance`.
+---@param instance table
+---@param key string a phase, `"halted"`, or a notice
+---@param first any second argument delivered to subscribers
+---@param second any third argument delivered to subscribers
+---@return LifecycleKit.ErrorRecord|nil firstError
+local function deliver(instance, key, first, second)
   local firstError = nil
-  local index = 1
 
-  rawset(instance, "_draining", true)
-  while index <= rawget(instance, "_combatQueueLength") do
-    if stopWhenInCombat and rawget(state, "inCombat") == true then
-      break
-    end
+  local signals = instance._signals
+  local signal = signals and signals[key]
+  if signal ~= nil then
+    firstError = fireInheritedSignal(instance, signal, key, first, second)
+  end
 
-    local handle = rawget(queue, index)
-    rawset(queue, index, nil)
-    if handle ~= nil and rawget(handle, "_pending") == true then
-      local callback = claimDeferredCall(instance, handle)
-      local ok, message = pcall(callback, instance, ran, reason)
+  local lists = instance._lists
+  local list = lists and lists[key]
+  if list == nil then
+    return firstError
+  end
+  local oneShot = ONE_SHOT_KEYS[key] == true
+  if oneShot then
+    lists[key] = nil
+  end
+
+  state.dispatchDepth = state.dispatchDepth + 1
+  local count = #list
+  for index = 1, count do
+    local record = list[index]
+    local callback = record._callback
+    if record._connected == true and callback ~= nil then
+      if oneShot then
+        record._connected = false
+        record._callback = nil
+        record._instance = nil
+        record._key = nil
+      end
+      local ok, message = pcall(callback, instance, first, second)
       if not ok and firstError == nil then
         firstError = newErrorRecord(message)
       end
     end
-    index = index + 1
   end
-  rawset(instance, "_draining", false)
-
-  compactCombatQueue(instance)
+  state.dispatchDepth = state.dispatchDepth - 1
   return firstError
-end
-
----Close the combat queue for good, telling each pending call why it never ran.
----@param instance LifecycleKit.Instance
----@param reason "shutdown"|"halted"
----@return LifecycleKit.ErrorRecord|nil
-local function closeCombatQueue(instance, reason)
-  return drainCombatQueue(instance, false, reason, false)
 end
 
 -- Phase machinery -----------------------------------------------------------
@@ -1099,34 +1039,34 @@ end
 ---@param instance LifecycleKit.Instance
 ---@return boolean
 local function isTerminal(instance)
-  return rawget(instance, "_shutdown") == true or rawget(instance, "_halted") == true
+  return instance._shutdown == true or instance._halted == true
 end
 
 ---Enter the `ready` phase unless an earlier transition already made it impossible.
 ---@param instance LifecycleKit.Instance
 ---@return LifecycleKit.ErrorRecord|nil
 local function markReady(instance)
-  if rawget(instance, "_ready") == true or isTerminal(instance) then
+  if instance._ready == true or isTerminal(instance) then
     return nil
   end
 
-  rawset(instance, "_ready", true)
-  return firePhase(instance, "ready")
+  instance._ready = true
+  return deliver(instance, "ready")
 end
 
 ---Enter the `loaded` phase, continuing straight into `ready` when applicable.
 ---@param instance LifecycleKit.Instance
 ---@return LifecycleKit.ErrorRecord|nil
 local function markLoaded(instance)
-  if rawget(instance, "_loaded") == true or isTerminal(instance) then
+  if instance._loaded == true or isTerminal(instance) then
     return nil
   end
 
-  rawset(instance, "_loaded", true)
+  instance._loaded = true
 
-  local firstError = firePhase(instance, "loaded")
-  if rawget(state, "loginSeen") == true or isPlayerLoggedIn() then
-    rawset(state, "loginSeen", true)
+  local firstError = deliver(instance, "loaded")
+  if state.loginSeen == true or isPlayerLoggedIn() then
+    state.loginSeen = true
     local readyError = markReady(instance)
     if firstError == nil then
       firstError = readyError
@@ -1136,169 +1076,24 @@ local function markLoaded(instance)
   return firstError
 end
 
----Close the addon's canonical TimerKit scope, cancelling every timer it owns.
+---Close one Kit's scopes of the addon `instance` names.
 ---
----TimerKit does not depend on LifecycleKit and never observes shutdown, so
----this is the second half of the two-step `TimerKit:ForAddon` documents. A
----TimerKit revision older than 0.5.0 has no `CloseAddonScopes`; it closes its
----addon scopes itself from a shutdown subscription, among the shutdown
----callbacks, so there is nothing to do here. Without TimerKit there is nothing
----to close either; `false` (the addon never had a scope) is a normal result.
----A failure is returned as an error record for the first-error policy.
+---The Kit is found through `Registry:Find` (EventKit too, so one loop serves
+---all seven). Without it, or with a revision that lacks the closing method,
+---there is nothing to close; `false` (the addon never had a scope, or a Kit
+---that closed it itself) is a normal result. A failure is returned as an
+---error record for the first-error policy.
 ---@param instance LifecycleKit.Instance
+---@param packageId string
 ---@return LifecycleKit.ErrorRecord|nil
-local function closeAddonTimerScopes(instance)
-  local TimerKit = findOptionalPackage("timerKit", OPTIONAL_TIMER_KIT_API)
-  local closeAddonScopes = TimerKit ~= nil and rawget(TimerKit, "CloseAddonScopes") or nil
-  if type(closeAddonScopes) ~= "function" then
+local function closeAddonScopesOf(instance, packageId)
+  local kit = findOptionalPackage(packageId)
+  local close = kit ~= nil and rawget(kit, CLOSING_METHODS[packageId] or "CloseAddonScopes") or nil
+  if type(close) ~= "function" then
     return nil
   end
 
-  local ok, closeError = pcall(closeAddonScopes, TimerKit, rawget(instance, "_addonName"))
-  if not ok then
-    return newErrorRecord(closeError)
-  end
-  return nil
-end
-
----Close the addon's canonical SchedulerKit scope: its jobs are cancelled, its
----coalescing handles closed and its delay timers released.
----
----SchedulerKit does not depend on LifecycleKit either, so this is the second
----half of the two-step `SchedulerKit:ForAddon` documents. A SchedulerKit
----revision older than 0.6.0 has no `CloseAddonScopes` and closes its addon
----scopes itself; without SchedulerKit there is nothing to close. A failure is
----returned as an error record for the first-error policy.
----@param instance LifecycleKit.Instance
----@return LifecycleKit.ErrorRecord|nil
-local function closeAddonSchedulerScopes(instance)
-  local SchedulerKit = findOptionalPackage("schedulerKit", OPTIONAL_SCHEDULER_KIT_API)
-  local closeAddonScopes = SchedulerKit ~= nil and rawget(SchedulerKit, "CloseAddonScopes") or nil
-  if type(closeAddonScopes) ~= "function" then
-    return nil
-  end
-
-  local ok, closeError = pcall(closeAddonScopes, SchedulerKit, rawget(instance, "_addonName"))
-  if not ok then
-    return newErrorRecord(closeError)
-  end
-  return nil
-end
-
----Close the addon's canonical EventKit scope once its shutdown phase has run.
----
----EventKit cannot observe addon shutdown itself because it sits below
----LifecycleKit in the dependency order, so this is the other half of the
----two-step `EventKit:ForAddon` documents. Shutdown callbacks run first: they may
----still need their event connections. An EventKit revision older than the one
----that introduced scopes has no `CloseAddonScopes`, and then there is nothing
----to close. A failure while disconnecting is reported like a phase error so the
----shutdown still completes for every other addon.
----@param instance LifecycleKit.Instance
----@return LifecycleKit.ErrorRecord|nil
-local function closeAddonEventScope(instance)
-  local closeAddonScopes = rawget(EventKit, "CloseAddonScopes")
-  if type(closeAddonScopes) ~= "function" then
-    return nil
-  end
-
-  local ok, closeError = pcall(closeAddonScopes, EventKit, rawget(instance, "_addonName"))
-  if not ok then
-    return newErrorRecord(closeError)
-  end
-  return nil
-end
-
----Close the addon's canonical HookKit scope, undoing every hook it holds.
----
----HookKit is an optional dependency and has no lifecycle of its own, so this
----is the second half of the two-step `HookKit:ForAddon` documents. Without
----HookKit, or with a revision that has no `CloseAddonScopes`, there is nothing
----to close. A failure is returned as an error record for the first-error
----policy, like `closeAddonEventScope`.
----@param instance LifecycleKit.Instance
----@return LifecycleKit.ErrorRecord|nil
-local function closeAddonHookScopes(instance)
-  local HookKit = findOptionalPackage("hookKit", OPTIONAL_HOOK_KIT_API)
-  local closeAddonScopes = HookKit ~= nil and rawget(HookKit, "CloseAddonScopes") or nil
-  if type(closeAddonScopes) ~= "function" then
-    return nil
-  end
-
-  local ok, closeError = pcall(closeAddonScopes, HookKit, rawget(instance, "_addonName"))
-  if not ok then
-    return newErrorRecord(closeError)
-  end
-  return nil
-end
-
----Close the addon's canonical CommandKit scope, leaving its slash commands inert.
----
----CommandKit is an optional dependency and has no lifecycle of its own, so this
----is the second half of the two-step `CommandKit:ForAddon` documents. Without
----CommandKit, or with a revision that has no `CloseAddonScopes`, there is
----nothing to close; `false` (the addon never had a scope) is a normal result.
----A failure is returned as an error record for the first-error policy.
----@param instance LifecycleKit.Instance
----@return LifecycleKit.ErrorRecord|nil
-local function closeAddonCommandScopes(instance)
-  local CommandKit = findOptionalPackage("commandKit", OPTIONAL_COMMAND_KIT_API)
-  local closeAddonScopes = CommandKit ~= nil and rawget(CommandKit, "CloseAddonScopes") or nil
-  if type(closeAddonScopes) ~= "function" then
-    return nil
-  end
-
-  local ok, closeError = pcall(closeAddonScopes, CommandKit, rawget(instance, "_addonName"))
-  if not ok then
-    return newErrorRecord(closeError)
-  end
-  return nil
-end
-
----Close the addon's canonical CommKit scope: its pending sends are cancelled,
----its SyncSets closed and its prefix registrations disconnected.
----
----CommKit does not depend on LifecycleKit; it learns from
----`CLOSES_ADDON_SCOPES` that this step exists and subscribes nothing of its
----own, so this call is what closes the scope, at its place in the shutdown
----order. A CommKit revision that closed the scope itself answers `false`
----here, a normal result.
----Without CommKit, or with a revision that has no `CloseAddonScopes`, there is
----nothing to close. A failure is returned as an error record for the
----first-error policy.
----@param instance LifecycleKit.Instance
----@return LifecycleKit.ErrorRecord|nil
-local function closeAddonCommScopes(instance)
-  local CommKit = findOptionalPackage("commKit", OPTIONAL_COMM_KIT_API)
-  local closeAddonScopes = CommKit ~= nil and rawget(CommKit, "CloseAddonScopes") or nil
-  if type(closeAddonScopes) ~= "function" then
-    return nil
-  end
-
-  local ok, closeError = pcall(closeAddonScopes, CommKit, rawget(instance, "_addonName"))
-  if not ok then
-    return newErrorRecord(closeError)
-  end
-  return nil
-end
-
----Close the addon's SignalKit bus, disconnecting every subscription on it.
----
----SignalKit is a required dependency, and Registry keeps its facade identity
----across compatible upgrades, so the facade captured at load time is asked
----directly rather than looked up again. A SignalKit revision older than the
----one that introduced buses has no `CloseAddonBus`; then there is nothing to
----close. `CloseAddonBus` answers `false` for an addon that never asked for a
----bus, which is a normal result, not a failure.
----@param instance LifecycleKit.Instance
----@return LifecycleKit.ErrorRecord|nil
-local function closeAddonBus(instance)
-  local closeBus = rawget(SignalKit, "CloseAddonBus")
-  if type(closeBus) ~= "function" then
-    return nil
-  end
-
-  local ok, closeError = pcall(closeBus, SignalKit, rawget(instance, "_addonName"))
+  local ok, closeError = pcall(close, kit, instance._addonName)
   if not ok then
     return newErrorRecord(closeError)
   end
@@ -1307,7 +1102,8 @@ end
 
 ---Release everything the addon owns through the other Kits' addon scopes.
 ---
----The order is deliberate, and it is also the first-error precedence:
+---The order of `CLOSED_ADDON_SCOPE_PACKAGES` is deliberate, and it is also the
+---first-error precedence:
 ---
 ---1. the TimerKit scope and
 ---2. the SchedulerKit scope first, so no timer fires and no job runs into
@@ -1326,62 +1122,51 @@ end
 ---@param instance LifecycleKit.Instance
 ---@return LifecycleKit.ErrorRecord|nil firstError
 local function closeAddonOwnedScopes(instance)
-  local timerError = closeAddonTimerScopes(instance)
-  local schedulerError = closeAddonSchedulerScopes(instance)
-  local eventError = closeAddonEventScope(instance)
-  local hookError = closeAddonHookScopes(instance)
-  local commandError = closeAddonCommandScopes(instance)
-  local commError = closeAddonCommScopes(instance)
-  local busError = closeAddonBus(instance)
-  return timerError
-    or schedulerError
-    or eventError
-    or hookError
-    or commandError
-    or commError
-    or busError
+  local firstError = nil
+  for index = 1, #CLOSED_ADDON_SCOPE_PACKAGES do
+    local closeError = closeAddonScopesOf(instance, CLOSED_ADDON_SCOPE_PACKAGES[index])
+    if firstError == nil then
+      firstError = closeError
+    end
+  end
+  return firstError
 end
 
----Drop every pending listener of the signals a terminal state makes unreachable.
+-- The lists a terminal state makes unreachable, besides the unreached phases.
+local NOTICE_KEYS = { "dependencyHalted", "combatStart", "combatEnd" }
+
+---Drop every pending subscription a terminal state makes unreachable.
 ---
 ---Called on shutdown and on halt. The phases already reached keep nothing
----pending (their listeners were one-shot), so only the unreached ones and the
----repeating notifications are cleared. The signal named by `keepKey` is the
----terminal phase itself, which still has to fire.
+---pending (their subscriptions were one-shot), so only the unreached ones and
+---the repeating notices are cleared. The list named by `keepKey` is the
+---terminal phase itself, which still has to be delivered.
 ---@param instance LifecycleKit.Instance
 ---@param keepKey "shutdown"|"halted"
-local function disconnectUnreachableSignals(instance, keepKey)
-  local disconnectAll = rawget(SignalKit, "DisconnectAll")
-  local signals = rawget(instance, "_signals")
-
-  if rawget(instance, "_loaded") ~= true then
-    disconnectAll(rawget(signals, "loaded"))
+local function disconnectUnreachable(instance, keepKey)
+  if instance._loaded ~= true then
+    disconnectList(instance, "loaded")
   end
-  if rawget(instance, "_ready") ~= true then
-    disconnectAll(rawget(signals, "ready"))
+  if instance._ready ~= true then
+    disconnectList(instance, "ready")
   end
   if keepKey ~= "shutdown" then
-    disconnectAll(rawget(signals, "shutdown"))
+    disconnectList(instance, "shutdown")
   end
   if keepKey ~= "halted" then
-    disconnectAll(rawget(signals, "halted"))
+    disconnectList(instance, "halted")
   end
-  -- The repeating notices exist only once something subscribed to them.
-  for index = 1, #REPEATING_SIGNALS do
-    local signal = rawget(signals, REPEATING_SIGNALS[index])
-    if signal ~= nil then
-      disconnectAll(signal)
-    end
+  for index = 1, #NOTICE_KEYS do
+    disconnectList(instance, NOTICE_KEYS[index])
   end
 end
 
 ---Enter the terminal `shutdown` phase and release unreachable subscriptions.
 ---
 ---Order, and therefore first-error precedence: the combat queue is closed
----(each pending call learns it will never run), then the shutdown callbacks
----run, then the addon's TimerKit scope, SchedulerKit scope, EventKit scope,
----HookKit scope, CommandKit scope, CommKit scope and SignalKit bus are closed,
----in that order (see `closeAddonOwnedScopes`).
+---(CombatGate part; each pending call learns it will never run), then the
+---shutdown callbacks run, then the addon's scopes are closed in
+---`closeAddonOwnedScopes` order.
 ---
 ---A halted addon never reaches `shutdown`: halted is terminal. Its scopes and
 ---its bus are still closed at logout so they end with the session like
@@ -1389,194 +1174,53 @@ end
 ---@param instance LifecycleKit.Instance
 ---@return LifecycleKit.ErrorRecord|nil
 local function markShutdown(instance)
-  if rawget(instance, "_shutdown") == true then
+  if instance._shutdown == true then
     return nil
   end
-  if rawget(instance, "_halted") == true then
+  if instance._halted == true then
     return closeAddonOwnedScopes(instance)
   end
 
-  rawset(instance, "_shutdown", true)
+  instance._shutdown = true
 
   -- Once shutdown is reached, anything not yet delivered can no longer
-  -- occur. Drop those pending SignalKit listeners so callback closures do
-  -- not remain retained behind subscriptions that can never fire.
-  disconnectUnreachableSignals(instance, "shutdown")
+  -- occur. Drop those subscriptions so callback closures do not remain
+  -- retained behind subscriptions that can never fire.
+  disconnectUnreachable(instance, "shutdown")
 
-  local queueError = closeCombatQueue(instance, "shutdown")
-  local phaseError = firePhase(instance, "shutdown")
+  local queueError = dispatch.closeCombatQueue(instance, "shutdown")
+  local phaseError = deliver(instance, "shutdown")
   local scopeError = closeAddonOwnedScopes(instance)
   return queueError or phaseError or scopeError
 end
 
----Whether `instance` declared `addonName` with `DependsOn`.
----@param instance LifecycleKit.Instance
----@param addonName string
----@return boolean
-local function dependsOnAddon(instance, addonName)
-  local dependencies = rawget(instance, "_dependencies")
-  for index = 1, #dependencies do
-    if rawget(dependencies, index) == addonName then
-      return true
-    end
-  end
-  return false
-end
-
----Tell every live addon that declared `halted` as a dependency.
----@param halted LifecycleKit.Instance
----@param reason string
----@return LifecycleKit.ErrorRecord|nil
-local function announceHalt(halted, reason)
-  local instances = rawget(state, "instances")
-  local count = #instances
-  local addonName = rawget(halted, "_addonName")
-  local firstError = nil
-
-  for index = 1, count do
-    local dependent = rawget(instances, index)
-    if
-      dependent ~= halted
-      and not isTerminal(dependent)
-      and dependsOnAddon(dependent, addonName)
-    then
-      local notifyError = firePhase(dependent, "dependencyHalted", addonName, reason)
-      if firstError == nil then
-        firstError = notifyError
-      end
-    end
-  end
-
-  return firstError
-end
-
--- Combat state ----------------------------------------------------------------
-
----Whether `instance` receives `OnCombatStart` / `OnCombatEnd` notifications.
----
----Only an addon that has reached `loaded` is told. This costs nothing: an
----addon's files run and its `ADDON_LOADED` follows in one synchronous load, so
----no `PLAYER_REGEN_*` event can arrive in between, and the rule only keeps
----notices away from lifecycle instances created for addons that have not
----loaded yet. Their subscriptions stay connected and start receiving once the
----addon has loaded. A load-on-demand addon loaded mid-combat therefore sees
----`OnCombatEnd` without a matching `OnCombatStart`; it should read
----`IsInCombat()` in `OnLoaded`. Terminal addons have no combat subscriptions
----left.
----@param instance LifecycleKit.Instance
----@return boolean
-local function receivesCombatNotices(instance)
-  return rawget(instance, "_loaded") == true and not isTerminal(instance)
-end
-
----Deliver `OnCombatStart` to every eligible addon, in `state.instances` order.
----@return LifecycleKit.ErrorRecord|nil
-local function announceCombatStart()
-  local instances = rawget(state, "instances")
-  local count = #instances
-  local firstError = nil
-
-  for index = 1, count do
-    local instance = rawget(instances, index)
-    if receivesCombatNotices(instance) then
-      local noticeError = fireCombatSignal(instance, "combatStart")
-      if firstError == nil then
-        firstError = noticeError
-      end
-    end
-  end
-
-  return firstError
-end
-
----Drain every addon's combat queue and, after a real flip, announce the end.
----
----Per addon, in `state.instances` order: the queued calls run first, then its
----`OnCombatEnd` subscribers.
----@param announce boolean whether the shared state flipped and `OnCombatEnd` is due
----@return LifecycleKit.ErrorRecord|nil
-local function finishCombat(announce)
-  local instances = rawget(state, "instances")
-  local count = #instances
-  local firstError = nil
-
-  for index = 1, count do
-    local instance = rawget(instances, index)
-    if not isTerminal(instance) then
-      local queueError = drainCombatQueue(instance, true, nil, true)
-      if firstError == nil then
-        firstError = queueError
-      end
-      if announce and receivesCombatNotices(instance) then
-        local noticeError = fireCombatSignal(instance, "combatEnd")
-        if firstError == nil then
-          firstError = noticeError
-        end
-      end
-    end
-  end
-
-  return firstError
-end
-
----Move the shared combat flag to `inCombat` and run what the change implies.
----@param inCombat boolean
----@return LifecycleKit.ErrorRecord|nil
-local function setCombatState(inCombat)
-  local wasInCombat = rawget(state, "inCombat") == true
-  rawset(state, "inCombat", inCombat)
-
-  if inCombat then
-    if wasInCombat then
-      return nil
-    end
-    return announceCombatStart()
-  end
-
-  -- A queue can hold calls only while in combat, so a redundant end still
-  -- drains safely; `OnCombatEnd` is announced only for a real flip.
-  return finishCombat(wasInCombat)
-end
-
----Bring the shared flag in line with the host after a moment it may have
----changed unobserved (a login, or combat watchers that were missing).
----@return LifecycleKit.ErrorRecord|nil
-local function reconcileCombatState()
-  local hostInCombat = isHostInCombatLockdown()
-  if hostInCombat == (rawget(state, "inCombat") == true) then
-    return nil
-  end
-  return setCombatState(hostInCombat)
-end
-
 -- Shared event coordination -------------------------------------------------
-
----Forget a shared watcher that has already delivered its one-shot event.
----@param key "addonLoaded"|"playerLogin"|"playerLogout"
-local function clearGlobalWatcher(key)
-  local watchers = rawget(state, "globalWatchers")
-  rawset(watchers, key, nil)
-end
-
----Cancel a shared watcher that can no longer deliver anything useful.
----@param key "addonLoaded"|"playerLogin"|"playerLogout"|"combatStart"|"combatEnd"
-local function disconnectGlobalWatcher(key)
-  local watchers = rawget(state, "globalWatchers")
-  local connection = rawget(watchers, key)
-  if connection ~= nil then
-    rawset(watchers, key, nil)
-    connection:Disconnect()
-  end
-end
 
 ---`ADDON_LOADED` handler shared by every addon LifecycleKit tracks.
 ---@param _ string event name
 ---@param addonName string
 local function onAddonLoaded(_, addonName)
-  local instance = rawget(rawget(state, "addons"), addonName)
+  local instance = state.addons[addonName]
   if instance ~= nil then
     raisePhaseError(markLoaded(instance))
   end
+end
+
+---Return every instance in `addons`, ordered by addon name.
+---@param addons table<string, table>
+---@return table[]
+local function sortedInstances(addons)
+  local names = {}
+  for addonName in pairs(addons) do
+    names[#names + 1] = addonName
+  end
+  table.sort(names)
+
+  local ordered = {}
+  for index = 1, #names do
+    ordered[index] = addons[names[index]]
+  end
+  return ordered
 end
 
 ---Run `callback` for every instance, by addon name, keeping the first error only.
@@ -1586,7 +1230,7 @@ end
 ---@param callback fun(instance: LifecycleKit.Instance): LifecycleKit.ErrorRecord|nil
 ---@return LifecycleKit.ErrorRecord|nil firstError first captured error, or `nil`
 local function runForAllAddons(callback)
-  local ordered = sortedInstances(rawget(state, "addons"))
+  local ordered = sortedInstances(state.addons)
   local firstError = nil
 
   for index = 1, #ordered do
@@ -1604,125 +1248,96 @@ local function runForAllAddons(callback)
   return firstError
 end
 
----`PLAYER_LOGIN` handler: promote every loaded instance to `ready`.
----
----The host may have entered combat before login (a `/reload` in combat), so
----the combat flag is re-read from the host first, before any `OnReady`
----callback (and the module `OnEnable` hooks ModuleKit runs from it) can ask
----`IsInCombat()` and be told the state from load time.
-local function onPlayerLogin()
-  rawset(state, "loginSeen", true)
-  clearGlobalWatcher("playerLogin")
-
-  local combatError = reconcileCombatState()
-
-  local readyError = runForAllAddons(function(instance)
-    if rawget(instance, "_loaded") == true then
+---Promote every loaded instance to `ready`.
+---@return LifecycleKit.ErrorRecord|nil
+local function readyLoadedAddons()
+  return runForAllAddons(function(instance)
+    if instance._loaded == true then
       return markReady(instance)
     end
     return nil
   end)
+end
 
+---`PLAYER_LOGIN` handler: promote every loaded instance to `ready`.
+---
+---The host may have entered combat before login (a `/reload` in combat), so
+---the CombatGate part re-reads the combat flag from the host first, before
+---any `OnReady` callback (and the module `OnEnable` hooks ModuleKit runs from
+---it) can ask `IsInCombat()` and be told the state from load time.
+local function onPlayerLogin()
+  state.loginSeen = true
+  state.globalWatchers.playerLogin = nil
+
+  local combatError = dispatch.reconcileCombat()
+  local readyError = readyLoadedAddons()
   raisePhaseError(combatError or readyError)
 end
 
----`PLAYER_LOGOUT` handler: drive every instance into `shutdown`.
+---`PLAYER_LOGOUT` handler: stop every other watcher and drive every instance
+---into `shutdown`.
 local function onPlayerLogout()
-  rawset(state, "shutdownSeen", true)
-  clearGlobalWatcher("playerLogout")
-  disconnectGlobalWatcher("playerLogin")
-  disconnectGlobalWatcher("addonLoaded")
-  disconnectGlobalWatcher("combatStart")
-  disconnectGlobalWatcher("combatEnd")
+  state.shutdownSeen = true
+  local watchers = state.globalWatchers
+  watchers.playerLogout = nil
+  for key, connection in pairs(watchers) do
+    watchers[key] = nil
+    connection:Disconnect()
+  end
 
-  local firstError = runForAllAddons(function(instance)
-    return markShutdown(instance)
-  end)
-
-  raisePhaseError(firstError)
-end
-
----`PLAYER_REGEN_DISABLED` handler: the player entered combat.
----
----The host raises this event just before lockdown begins, so the flag flips
----here, one step ahead of `InCombatLockdown()`: from this point protected work
----must be deferred.
-local function onRegenDisabled()
-  raisePhaseError(setCombatState(true))
-end
-
----`PLAYER_REGEN_ENABLED` handler: combat ended and lockdown has lifted.
-local function onRegenEnabled()
-  raisePhaseError(setCombatState(false))
+  raisePhaseError(runForAllAddons(markShutdown))
 end
 
 ---Install the shared host watchers.
 ---
----`ADDON_LOADED`, `PLAYER_LOGIN` and `PLAYER_LOGOUT` drive the phases;
----`PLAYER_REGEN_DISABLED` and `PLAYER_REGEN_ENABLED` drive the combat flag.
+---`ADDON_LOADED`, `PLAYER_LOGIN` and `PLAYER_LOGOUT` drive the phases; the
+---CombatGate part adds its own two to the same table when it is loaded.
 ---
 ---Idempotent: only missing watchers are created, and a partial failure rolls
 ---back the watchers this call created before re-raising. Once `PLAYER_LOGOUT`
 ---has been observed no watcher is installed at all, because every remaining
 ---transition is already decided and instances created afterwards go straight
 ---to `shutdown`.
----@return boolean combatWatchersCreated whether this call installed the combat watchers
+---@return LifecycleKit.ErrorRecord|nil combatError what reconciling the combat state raised
 local function ensureGlobalWatchers()
-  if rawget(state, "shutdownSeen") == true then
-    return false
+  if state.shutdownSeen == true then
+    return nil
   end
 
-  local watchers = rawget(state, "globalWatchers")
+  local watchers = state.globalWatchers
   local created = {}
-  local combatWatchersCreated = false
-
-  ---@param key string
-  ---@param connection table
-  local function remember(key, connection)
-    rawset(watchers, key, connection)
-    created[#created + 1] = { key = key, connection = connection }
-  end
 
   local ok, message = pcall(function()
-    if rawget(watchers, "addonLoaded") == nil then
-      remember("addonLoaded", EventKit:Connect("ADDON_LOADED", onAddonLoaded))
+    if watchers.addonLoaded == nil then
+      watchers.addonLoaded = EventKit:Connect("ADDON_LOADED", onAddonLoaded)
+      created[#created + 1] = "addonLoaded"
     end
 
-    if rawget(state, "loginSeen") ~= true then
+    if state.loginSeen ~= true then
       if isPlayerLoggedIn() then
-        rawset(state, "loginSeen", true)
-      elseif rawget(watchers, "playerLogin") == nil then
-        remember("playerLogin", EventKit:Once("PLAYER_LOGIN", onPlayerLogin))
+        state.loginSeen = true
+      elseif watchers.playerLogin == nil then
+        watchers.playerLogin = EventKit:Once("PLAYER_LOGIN", onPlayerLogin)
+        created[#created + 1] = "playerLogin"
       end
     end
 
-    if rawget(watchers, "playerLogout") == nil then
-      remember("playerLogout", EventKit:Once("PLAYER_LOGOUT", onPlayerLogout))
-    end
-
-    if rawget(watchers, "combatStart") == nil then
-      remember("combatStart", EventKit:Connect("PLAYER_REGEN_DISABLED", onRegenDisabled))
-      combatWatchersCreated = true
-    end
-    if rawget(watchers, "combatEnd") == nil then
-      remember("combatEnd", EventKit:Connect("PLAYER_REGEN_ENABLED", onRegenEnabled))
-      combatWatchersCreated = true
+    if watchers.playerLogout == nil then
+      watchers.playerLogout = EventKit:Once("PLAYER_LOGOUT", onPlayerLogout)
+      created[#created + 1] = "playerLogout"
     end
   end)
 
-  if ok then
-    return combatWatchersCreated
-  end
-
-  for index = #created, 1, -1 do
-    local item = created[index]
-    if rawget(watchers, item.key) == item.connection then
-      rawset(watchers, item.key, nil)
+  if not ok then
+    for index = #created, 1, -1 do
+      local connection = watchers[created[index]]
+      watchers[created[index]] = nil
+      connection:Disconnect()
     end
-    item.connection:Disconnect()
+    error(message, 0)
   end
 
-  error(message, 0)
+  return dispatch.ensureCombatWatchers()
 end
 
 -- Instance creation ---------------------------------------------------------
@@ -1731,39 +1346,33 @@ end
 ---@param addonName string
 ---@return LifecycleKit.Instance
 local function createInstance(addonName)
-  if ensureGlobalWatchers() then
-    -- Combat may have started or ended while nobody was watching.
-    raisePhaseError(reconcileCombatState())
-  end
+  -- Combat may have started or ended while nobody was watching.
+  raisePhaseError(ensureGlobalWatchers())
 
   -- Probe before publishing the instance into shared package state so a host
   -- API error cannot leave a half-constructed cached object behind.
   local alreadyLoaded = isAddonFinishedLoading(addonName)
 
+  -- Lists and the parts' fields are created on first use, so an instance
+  -- nobody subscribes to holds its name and its four phase flags only.
   local instance = setmetatable({
     _addonName = addonName,
     _loaded = false,
     _ready = false,
     _shutdown = false,
-    _signals = {
-      loaded = SignalKit:New(),
-      ready = SignalKit:New(),
-      shutdown = SignalKit:New(),
-    },
-    _phaseCaptures = {},
+    _halted = false,
   }, INSTANCE_METATABLE)
-  installGateFields(instance)
+  dispatch.instanceCreated(instance)
 
-  local addons = rawget(state, "addons")
-  local instances = rawget(state, "instances")
-  rawset(addons, addonName, instance)
-  rawset(instances, #instances + 1, instance)
+  local instances = state.instances
+  state.addons[addonName] = instance
+  instances[#instances + 1] = instance
 
   if alreadyLoaded then
     raisePhaseError(markLoaded(instance))
   end
 
-  if rawget(state, "shutdownSeen") == true then
+  if state.shutdownSeen == true then
     raisePhaseError(markShutdown(instance))
   end
 
@@ -1776,7 +1385,7 @@ end
 ---@param self LifecycleKit.Instance
 ---@return string addonName
 local function getAddonName(self)
-  return rawget(self, "_addonName")
+  return self._addonName
 end
 
 ---Return the lifecycle state this instance is in.
@@ -1786,16 +1395,16 @@ end
 ---@param self LifecycleKit.Instance
 ---@return LifecycleKit.State
 local function getState(self)
-  if rawget(self, "_halted") == true then
+  if self._halted == true then
     return "halted"
   end
-  if rawget(self, "_shutdown") == true then
+  if self._shutdown == true then
     return "shutdown"
   end
-  if rawget(self, "_ready") == true then
+  if self._ready == true then
     return "ready"
   end
-  if rawget(self, "_loaded") == true then
+  if self._loaded == true then
     return "loaded"
   end
   return "loading"
@@ -1805,35 +1414,38 @@ end
 ---@param self LifecycleKit.Instance
 ---@return boolean
 local function isLoaded(self)
-  return rawget(self, "_loaded") == true
+  return self._loaded == true
 end
 
 ---Report whether the `ready` phase itself was reached.
 ---@param self LifecycleKit.Instance
 ---@return boolean
 local function isReady(self)
-  return rawget(self, "_ready") == true
+  return self._ready == true
 end
 
 ---Report whether the `shutdown` phase itself was reached.
 ---@param self LifecycleKit.Instance
 ---@return boolean
 local function isShutdown(self)
-  return rawget(self, "_shutdown") == true
+  return self._shutdown == true
 end
 
 ---Report whether the addon halted.
+---
+---Answered by the core: a halt can come from any addon that embeds the Halt
+---part, and without it nothing halts, so `false` is then exact.
 ---@param self LifecycleKit.Instance
 ---@return boolean
 local function isHalted(self)
-  return rawget(self, "_halted") == true
+  return self._halted == true
 end
 
 ---Return the reason given to `Halt`, or `nil` while the addon is not halted.
 ---@param self LifecycleKit.Instance
 ---@return string|nil reason
 local function getHaltReason(self)
-  return rawget(self, "_haltReason")
+  return self._haltReason
 end
 
 ---Shared implementation of the one-shot phase subscriptions.
@@ -1869,51 +1481,28 @@ local function subscribePhase(self, phaseKey, reached, callback, methodName, rep
 
   -- A terminal state makes every phase other than itself unreachable:
   -- shutdown rules out loaded, ready and halted; halted rules out all four.
-  if rawget(self, "_halted") == true then
+  if self._halted == true then
     return newDisconnectedSubscription()
   end
-  if phaseKey ~= "shutdown" and rawget(self, "_shutdown") == true then
+  if phaseKey ~= "shutdown" and self._shutdown == true then
     return newDisconnectedSubscription()
   end
 
-  local subscription = setmetatable({
-    _connected = true,
-    _inner = nil,
-  }, SUBSCRIPTION_METATABLE)
-
-  local signal = rawget(rawget(self, "_signals"), phaseKey)
-  local inner = signal:Once(newListener(subscription, phaseKey, callback, true))
-  rawset(subscription, "_inner", inner)
-  return subscription
+  return addSubscription(self, phaseKey, callback)
 end
 
----Shared implementation of the repeating subscriptions.
+---Shared implementation of the repeating subscriptions the parts offer.
 ---
 ---Callers validate `callback` themselves, at their own level.
 ---@param self LifecycleKit.Instance
----@param signalKey "dependencyHalted"|"combatStart"|"combatEnd"
+---@param key "dependencyHalted"|"combatStart"|"combatEnd"
 ---@param callback function
 ---@return LifecycleKit.Subscription
-local function subscribeRepeating(self, signalKey, callback)
+local function subscribeRepeating(self, key, callback)
   if isTerminal(self) then
     return newDisconnectedSubscription()
   end
-
-  local subscription = setmetatable({
-    _connected = true,
-    _inner = nil,
-  }, SUBSCRIPTION_METATABLE)
-
-  -- The first subscriber creates the signal; see `installGateFields`.
-  local signals = rawget(self, "_signals")
-  local signal = rawget(signals, signalKey)
-  if signal == nil then
-    signal = SignalKit:New()
-    rawset(signals, signalKey, signal)
-  end
-  local inner = signal:Connect(newListener(subscription, signalKey, callback, false))
-  rawset(subscription, "_inner", inner)
-  return subscription
+  return addSubscription(self, key, callback)
 end
 
 ---Subscribe to the `loaded` phase, replaying it if it already occurred.
@@ -1926,8 +1515,7 @@ end
 ---@param callback LifecycleKit.PhaseCallback
 ---@return LifecycleKit.Subscription subscription
 local function onLoaded(self, callback)
-  local subscription =
-    subscribePhase(self, "loaded", rawget(self, "_loaded") == true, callback, "OnLoaded")
+  local subscription = subscribePhase(self, "loaded", self._loaded == true, callback, "OnLoaded")
   return subscription
 end
 
@@ -1937,8 +1525,7 @@ end
 ---@return LifecycleKit.Subscription subscription
 local function onReady(self, callback)
   -- Not a tail call, for the reason documented on `onLoaded`.
-  local subscription =
-    subscribePhase(self, "ready", rawget(self, "_ready") == true, callback, "OnReady")
+  local subscription = subscribePhase(self, "ready", self._ready == true, callback, "OnReady")
   return subscription
 end
 
@@ -1949,283 +1536,22 @@ end
 local function onShutdown(self, callback)
   -- Not a tail call, for the reason documented on `onLoaded`.
   local subscription =
-    subscribePhase(self, "shutdown", rawget(self, "_shutdown") == true, callback, "OnShutdown")
+    subscribePhase(self, "shutdown", self._shutdown == true, callback, "OnShutdown")
   return subscription
 end
 
 ---Subscribe to the addon halting, replaying it if the addon already halted.
+---
+---In the core because TestKit and ModuleKit subscribe unconditionally: without
+---the Halt part nothing halts, and the subscription simply never fires.
 ---@param self LifecycleKit.Instance
 ---@param callback LifecycleKit.HaltedCallback
 ---@return LifecycleKit.Subscription subscription
 local function onHalted(self, callback)
   -- Not a tail call, for the reason documented on `onLoaded`.
-  local subscription = subscribePhase(
-    self,
-    "halted",
-    rawget(self, "_halted") == true,
-    callback,
-    "OnHalted",
-    rawget(self, "_haltReason")
-  )
+  local subscription =
+    subscribePhase(self, "halted", self._halted == true, callback, "OnHalted", self._haltReason)
   return subscription
-end
-
----Declare this addon non-functional for the rest of the session.
----
----Every phase not yet reached becomes unreachable and its pending callbacks
----are disconnected, the combat queue is closed with `(instance, false,
----"halted")`, the `OnHalted` subscribers run, and then every addon that
----declared this one with `DependsOn` receives `OnDependencyHalted`. Halted is
----terminal: there is no resume in API 1.
----@param self LifecycleKit.Instance
----@param reason string why the addon cannot work, for dependents and diagnostics
----@return boolean halted `true` for the call that halted; `false` when already halted or shut down
-local function halt(self, reason)
-  refuseSecret(reason, "LifecycleKit.Instance:Halt reason", 3)
-  if type(reason) ~= "string" or reason == "" then
-    error("LifecycleKit.Instance:Halt reason must be a non-empty string", 2)
-  end
-  if isTerminal(self) then
-    return false
-  end
-
-  rawset(self, "_halted", true)
-  rawset(self, "_haltReason", reason)
-  disconnectUnreachableSignals(self, "halted")
-
-  local queueError = closeCombatQueue(self, "halted")
-  local haltedError = firePhase(self, "halted", reason)
-  -- Nothing may subscribe after the halt, and the one-shot listeners just
-  -- ran, so the signal holds nothing that could ever fire again.
-  rawget(SignalKit, "DisconnectAll")(rawget(rawget(self, "_signals"), "halted"))
-  local announceError = announceHalt(self, reason)
-
-  raisePhaseError(queueError or haltedError or announceError)
-  return true
-end
-
----Record that this addon cannot work without `addonName`.
----
----When `addonName` halts, this addon's `OnDependencyHalted` subscribers are
----told. If it has already halted, they are told at once.
----@param self LifecycleKit.Instance
----@param addonName string the dependency's folder name, exactly as installed
----@return boolean|nil recorded `true` when newly recorded, `false` when already recorded, `nil` when refused
----@return string|nil reason `"full"`, `"halted"` or `"shutdown"` when refused
-local function dependsOn(self, addonName)
-  refuseSecret(addonName, "LifecycleKit.Instance:DependsOn addonName", 3)
-  if type(addonName) ~= "string" or addonName == "" then
-    error("LifecycleKit.Instance:DependsOn addonName must be a non-empty string", 2)
-  end
-  if addonName == rawget(self, "_addonName") then
-    error("LifecycleKit.Instance:DependsOn addonName must name another addon", 2)
-  end
-  if rawget(self, "_halted") == true then
-    return nil, "halted"
-  end
-  if rawget(self, "_shutdown") == true then
-    return nil, "shutdown"
-  end
-  if dependsOnAddon(self, addonName) then
-    return false
-  end
-
-  local dependencies = rawget(self, "_dependencies")
-  local maxDependencies = rawget(sharedLimits, "maxDependencies")
-  if maxDependencies ~= UNBOUNDED and #dependencies >= maxDependencies then
-    return nil, "full"
-  end
-  rawset(dependencies, #dependencies + 1, addonName)
-
-  local dependency = rawget(rawget(state, "addons"), addonName)
-  if dependency ~= nil and rawget(dependency, "_halted") == true then
-    raisePhaseError(
-      firePhase(self, "dependencyHalted", addonName, rawget(dependency, "_haltReason"))
-    )
-  end
-  return true
-end
-
----Subscribe to every halt of a declared dependency.
----
----Dependencies that halted before this call are replayed at once, so the order
----of `DependsOn` and `OnDependencyHalted` does not matter: each subscriber
----hears of each halted dependency exactly once.
----@param self LifecycleKit.Instance
----@param callback LifecycleKit.DependencyHaltedCallback
----@return LifecycleKit.Subscription subscription
-local function onDependencyHalted(self, callback)
-  if type(callback) ~= "function" then
-    error("LifecycleKit.Instance:OnDependencyHalted callback must be a function", 2)
-  end
-
-  local subscription = subscribeRepeating(self, "dependencyHalted", callback)
-  if not isSubscriptionConnected(subscription) then
-    return subscription
-  end
-
-  local addons = rawget(state, "addons")
-  local dependencies = rawget(self, "_dependencies")
-  local firstError = nil
-  for index = 1, #dependencies do
-    -- A replayed callback may end its own subscription, typically by
-    -- halting this addon in response, which disconnects it like a
-    -- dispatch would. A disconnected subscription hears nothing more.
-    if not isSubscriptionConnected(subscription) then
-      break
-    end
-    local dependencyName = rawget(dependencies, index)
-    local dependency = rawget(addons, dependencyName)
-    if dependency ~= nil and rawget(dependency, "_halted") == true then
-      local ok, message = pcall(callback, self, dependencyName, rawget(dependency, "_haltReason"))
-      if not ok and firstError == nil then
-        firstError = newErrorRecord(message)
-      end
-    end
-  end
-
-  -- A failing replay leaves the subscription connected, exactly as a
-  -- failing dispatch would: later halts are still delivered to it.
-  raisePhaseError(firstError)
-  return subscription
-end
-
--- A deferred call handed back when the callback already ran: it is never
--- pending, and sharing it keeps the out-of-combat path free of allocation.
-local SPENT_DEFERRED_CALL = setmetatable({ _pending = false }, DEFERRED_CALL_METATABLE)
-
----Run `callback` now when out of combat, otherwise once combat ends.
----
----Out of combat the callback runs synchronously as `callback(instance, true)`
----and any error it raises leaves this call unchanged. In combat it is queued,
----first in first out, and runs on the next `PLAYER_REGEN_ENABLED`. Closing the
----queue (shutdown or halt) calls each pending callback with `(instance,
----false, reason)` instead.
----@param self LifecycleKit.Instance
----@param callback LifecycleKit.DeferredCallback
----@return LifecycleKit.DeferredCall|nil call a handle to cancel the call, or `nil` when refused
----@return string|nil reason `"full"`, `"halted"` or `"shutdown"` when refused
-local function whenOutOfCombat(self, callback)
-  if type(callback) ~= "function" then
-    error("LifecycleKit.Instance:WhenOutOfCombat callback must be a function", 2)
-  end
-  if rawget(self, "_halted") == true then
-    return nil, "halted"
-  end
-  if rawget(self, "_shutdown") == true then
-    return nil, "shutdown"
-  end
-
-  if rawget(state, "inCombat") ~= true then
-    callback(self, true)
-    return SPENT_DEFERRED_CALL
-  end
-
-  local limit = rawget(self, "_combatQueueLimit")
-  local pending = rawget(self, "_combatPending")
-  local compactAt = limit
-  if limit == UNBOUNDED then
-    compactAt = math.max(UNBOUNDED_COMPACTION_FLOOR, 2 * pending)
-  elseif pending >= limit then
-    return nil, "full"
-  end
-
-  -- Cancelled slots are only reclaimed here, so outside a drain the array
-  -- never grows past the limit (for an `UNBOUNDED` queue, past twice the
-  -- pending count). A drain in progress owns the indices, so it is left
-  -- alone; that only happens when a host enters combat inside a drain (see
-  -- `drainCombatQueue`), and the drain compacts when it stops.
-  if rawget(self, "_combatQueueLength") >= compactAt and rawget(self, "_draining") ~= true then
-    compactCombatQueue(self)
-  end
-
-  local handle = setmetatable({
-    _instance = self,
-    _callback = callback,
-    _pending = true,
-  }, DEFERRED_CALL_METATABLE)
-
-  local length = rawget(self, "_combatQueueLength") + 1
-  rawset(rawget(self, "_combatQueue"), length, handle)
-  rawset(self, "_combatQueueLength", length)
-  rawset(self, "_combatPending", rawget(self, "_combatPending") + 1)
-  return handle
-end
-
----Subscribe to every combat start, delivered once the shared flag is `true`.
----@param self LifecycleKit.Instance
----@param callback LifecycleKit.CombatCallback
----@return LifecycleKit.Subscription subscription
-local function onCombatStart(self, callback)
-  if type(callback) ~= "function" then
-    error("LifecycleKit.Instance:OnCombatStart callback must be a function", 2)
-  end
-  return subscribeRepeating(self, "combatStart", callback)
-end
-
----Subscribe to every combat end, delivered after this addon's queue drained.
----@param self LifecycleKit.Instance
----@param callback LifecycleKit.CombatCallback
----@return LifecycleKit.Subscription subscription
-local function onCombatEnd(self, callback)
-  if type(callback) ~= "function" then
-    error("LifecycleKit.Instance:OnCombatEnd callback must be a function", 2)
-  end
-  return subscribeRepeating(self, "combatEnd", callback)
-end
-
----Set how many deferred calls this addon may have waiting at once.
----
----Lowering the limit below the number already waiting drops nothing; new calls
----are refused until the queue is below the new limit. `LifecycleKit.UNBOUNDED`
----lifts the limit: the queue holds only this addon's own callbacks.
----@param self LifecycleKit.Instance
----@param limit integer|table a positive integer or `LifecycleKit.UNBOUNDED`
-local function setCombatQueueLimit(self, limit)
-  refuseSecret(limit, "LifecycleKit.Instance:SetCombatQueueLimit limit", 3)
-  if not isLimitValue(limit, UNBOUNDED) then
-    error(
-      "LifecycleKit.Instance:SetCombatQueueLimit limit must be a positive integer"
-        .. " or LifecycleKit.UNBOUNDED",
-      2
-    )
-  end
-  rawset(self, "_combatQueueLimit", limit)
-end
-
----Return how many deferred calls this addon may have waiting at once, or
----`LifecycleKit.UNBOUNDED`.
----@param self LifecycleKit.Instance
----@return integer|table limit
-local function getCombatQueueLimit(self)
-  return rawget(self, "_combatQueueLimit")
-end
-
----Cancel a deferred call that is still waiting.
----
----Only flags the slot, so cancelling never allocates or shifts the queue.
----@param self LifecycleKit.DeferredCall
----@return boolean cancelled `true` only for the call that cancelled a pending call
-local function cancelDeferredCall(self)
-  if rawget(self, "_pending") ~= true then
-    return false
-  end
-
-  local instance = rawget(self, "_instance")
-  rawset(self, "_pending", false)
-  rawset(self, "_callback", nil)
-  rawset(self, "_instance", nil)
-  if instance ~= nil then
-    rawset(instance, "_combatPending", rawget(instance, "_combatPending") - 1)
-  end
-  return true
-end
-
----Report whether the deferred call is still waiting for combat to end.
----@param self LifecycleKit.DeferredCall
----@return boolean
-local function isDeferredCallPending(self)
-  return rawget(self, "_pending") == true
 end
 
 -- Public package API --------------------------------------------------------
@@ -2247,8 +1573,7 @@ local function forAddon(_, addonName)
     error("LifecycleKit:ForAddon addonName must be a non-empty string", 2)
   end
 
-  local addons = rawget(state, "addons")
-  local existingInstance = rawget(addons, addonName)
+  local existingInstance = state.addons[addonName]
   if existingInstance ~= nil then
     return existingInstance
   end
@@ -2256,47 +1581,31 @@ local function forAddon(_, addonName)
   return createInstance(addonName)
 end
 
----Report whether the player is in combat, by the one shared lockdown state.
----
----The state follows `PLAYER_REGEN_DISABLED` / `PLAYER_REGEN_ENABLED` once the
----shared watchers are installed (by the first `ForAddon`). Before that, and
----after logout, nothing watches the events, so the host is asked directly.
+---Whether the named part is installed in this session.
 ---@param _ LifecycleKit
----@return boolean
-local function isInCombat(_)
-  local watchers = rawget(state, "globalWatchers")
-  if rawget(watchers, "combatStart") ~= nil and rawget(watchers, "combatEnd") ~= nil then
-    return rawget(state, "inCombat") == true
+---@param name string `"CombatGate"` or `"Halt"`
+---@return boolean installed
+local function hasPart(_, name)
+  if isSecret(name) or type(name) ~= "string" then
+    error("LifecycleKit:HasPart name must be a part name string", 2)
   end
-  return isHostInCombatLockdown()
+  return type(state.parts[name]) == "table"
 end
 
----Validate a whole `SetLimits` table before any of it is applied, so a
----refused call changes nothing.
----@param limits any
----@param level integer stack level the failures are reported at
-local function validateLimitUpdate(limits, level)
-  if type(limits) ~= "table" then
-    error("LifecycleKit:SetLimits limits must be a table", level)
-  end
-  local key = next(limits)
-  while type(key) ~= "nil" do
-    if key ~= "maxDependencies" and key ~= "defaultCombatQueueLimit" then
-      error(
-        "LifecycleKit:SetLimits limits." .. describeKey(key) .. " is not a recognised limit",
-        level
-      )
-    end
-    refuseSecret(rawget(limits, key), "LifecycleKit:SetLimits limits." .. key, level + 1)
-    if not isLimitValue(rawget(limits, key), UNBOUNDED) then
-      error(
-        "LifecycleKit:SetLimits limits."
-          .. key
-          .. " must be a positive integer or LifecycleKit.UNBOUNDED",
-        level
-      )
-    end
-    key = next(limits, key)
+---Raise unless `self` is the facade, naming `methodName`.
+---@param self any
+---@param methodName string
+---@param usage string the call as it should be written
+local function refuseOtherReceiver(self, methodName, usage)
+  -- The type test comes first: a dot call can hand a secret in as `self`.
+  if type(self) ~= "table" or self ~= LifecycleKit then
+    error(
+      "LifecycleKit:"
+        .. methodName
+        .. " must be called on the LifecycleKit facade; use LifecycleKit:"
+        .. usage,
+      3
+    )
   end
 end
 
@@ -2312,48 +1621,186 @@ end
 ---@param self LifecycleKit
 ---@param limits table any subset of `LifecycleKit.Limits`
 local function setLimits(self, limits)
-  -- The type test comes first: a dot call can hand a secret in as `self`.
-  if type(self) ~= "table" or self ~= LifecycleKit then
-    error(
-      "LifecycleKit:SetLimits must be called on the LifecycleKit facade; "
-        .. "use LifecycleKit:SetLimits(limits)",
-      2
-    )
-  end
+  refuseOtherReceiver(self, "SetLimits", "SetLimits(limits)")
   validateLimitUpdate(limits, 3)
-  for index = 1, #LIMIT_NAMES do
-    local name = LIMIT_NAMES[index]
-    local value = rawget(limits, name)
-    if type(value) ~= "nil" then
-      rawset(sharedLimits, name, value)
-    end
-  end
+  applyLimitUpdate(sharedLimits, limits)
 end
 
 ---Return a fresh copy of the package-wide limits. Allocates one table.
 ---@param self LifecycleKit
 ---@return LifecycleKit.Limits
 local function getLimits(self)
-  if type(self) ~= "table" or self ~= LifecycleKit then
+  refuseOtherReceiver(self, "GetLimits", "GetLimits()")
+  return copyLimits(sharedLimits)
+end
+
+-- Parts -----------------------------------------------------------------------
+--
+-- What the core keeps for its parts, so a part loaded by any addon finds it:
+-- `state.parts` (part name to its revision), `state.helpers` (the core
+-- functions a part calls, read at call time, so an upgraded core serves an
+-- older part) and `state.dispatch` (the core's calls into a part; the
+-- defaults below stand in while it is not loaded, and are exact then, because
+-- no combat queue or notice can exist without its part).
+--
+-- Every member a part provides stays on the facade and the prototypes even
+-- without its part: a stub that raises at the caller's line with the file to
+-- embed. Other Kits ask `HasPart`, never `type(member) == "function"`.
+
+---A member that raises, at its caller's line, that `partName` is not loaded.
+---@param label string the member as its caller wrote it
+---@param partName string
+---@return function
+local function newPartStub(label, partName)
+  -- The message is built only when the stub raises, so an addon that never
+  -- calls a missing part holds no message text for it.
+  return function()
     error(
-      "LifecycleKit:GetLimits must be called on the LifecycleKit facade; "
-        .. "use LifecycleKit:GetLimits()",
+      label
+        .. " is in LifecycleKit's "
+        .. partName
+        .. " part, which is not loaded: add lifecycleKit\\parts\\LifecycleKit-"
+        .. partName
+        .. ".lua to embeds.xml after lifecycleKit\\LifecycleKit.lua",
       2
     )
   end
-  return {
-    maxDependencies = rawget(sharedLimits, "maxDependencies"),
-    defaultCombatQueueLimit = rawget(sharedLimits, "defaultCombatQueueLimit"),
-  }
 end
+
+---Put the stubs of every part that is not installed in place.
+local function installPartStubs()
+  for index = 1, #PART_LAYOUT do
+    local part = PART_LAYOUT[index]
+    if type(state.parts[part.name]) ~= "table" then
+      for _, name in ipairs(part.facade) do
+        rawset(LifecycleKit, name, newPartStub("LifecycleKit:" .. name, part.name))
+      end
+      for _, name in ipairs(part.instance) do
+        rawset(Instance, name, newPartStub("LifecycleKit.Instance:" .. name, part.name))
+      end
+      for _, name in ipairs(part.deferredCall) do
+        rawset(DeferredCall, name, newPartStub("LifecycleKit.DeferredCall:" .. name, part.name))
+      end
+    end
+  end
+end
+
+---Hand a diagnostic to the host error handler, best-effort.
+---@param value any
+local function reportError(value)
+  -- geterrorhandler is the World of Warcraft client error sink, published as a global.
+  -- selene: allow(global_usage)
+  local getErrorHandler = rawget(_G, "geterrorhandler")
+  local ok, handler = pcall(getErrorHandler)
+  if not ok or type(handler) ~= "function" then
+    return
+  end
+  pcall(handler, value)
+end
+
+---Run or refuse the calls still waiting in an instance's combat queue that
+---revision 18 made, without the CombatGate part.
+---
+---Each pending call is called protected with `(instance, ran, reason)`, oldest
+---first; the first failure is returned once all ran. Without the part this is
+---also the default `closeCombatQueue`: shutdown and halt close an inherited
+---queue exactly as revision 18 did.
+---@param instance table
+---@param ran boolean
+---@param reason "shutdown"|"halted"|nil
+---@return LifecycleKit.ErrorRecord|nil
+local function runInheritedQueue(instance, ran, reason)
+  local queue = instance._combatQueue
+  if type(queue) ~= "table" or instance._combatPending == 0 then
+    return nil
+  end
+  local firstError = nil
+  for index = 1, instance._combatQueueLength or #queue do
+    local handle = queue[index]
+    queue[index] = nil
+    if handle ~= nil and handle._pending == true then
+      local callback = handle._callback
+      handle._pending = false
+      handle._callback = nil
+      handle._instance = nil
+      local ok, message = pcall(callback, instance, ran, reason)
+      if not ok and firstError == nil then
+        firstError = newErrorRecord(message)
+      end
+    end
+  end
+  instance._combatQueueLength = 0
+  instance._combatPending = 0
+  return firstError
+end
+
+---After taking over revision 18's state: when the CombatGate part is still
+---not loaded, run the calls its queues hold while out of combat (or leave
+---them for shutdown to close), and say once which file to embed.
+local function settleInheritedQueues()
+  if type(state.parts.CombatGate) == "table" then
+    return
+  end
+  local pending = 0
+  for index = 1, #state.instances do
+    local instance = state.instances[index]
+    if type(instance._combatPending) == "number" and instance._combatPending > 0 then
+      pending = pending + instance._combatPending
+      -- InCombatLockdown is a World of Warcraft client API reachable only through the global table.
+      -- selene: allow(global_usage)
+      local inCombat = rawget(_G, "InCombatLockdown")
+      if not (type(inCombat) == "function" and inCombat() == true) and not isTerminal(instance) then
+        local runError = runInheritedQueue(instance, true, nil)
+        if runError ~= nil then
+          reportError(runError.value)
+        end
+      end
+    end
+  end
+  if pending > 0 then
+    reportError(
+      "MoltenCodes LifecycleKit revision "
+        .. IMPLEMENTATION_REVISION
+        .. " took over "
+        .. pending
+        .. " calls waiting for the end of combat without its CombatGate part: they ran"
+        .. " now when out of combat, or are closed at shutdown. Embed"
+        .. " lifecycleKit\\parts\\LifecycleKit-CombatGate.lua after lifecycleKit\\LifecycleKit.lua"
+    )
+  end
+end
+
+-- The defaults stand in until a part fills its entries; an installed part
+-- keeps its own across a core reload.
+if type(state.parts.CombatGate) ~= "table" then
+  dispatch.ensureCombatWatchers = function()
+    return nil
+  end
+  dispatch.reconcileCombat = function()
+    return nil
+  end
+  dispatch.instanceCreated = function() end
+  dispatch.closeCombatQueue = function(instance, reason)
+    return runInheritedQueue(instance, false, reason)
+  end
+end
+
+helpers.isSecret = isSecret
+helpers.refuseSecret = refuseSecret
+helpers.newErrorRecord = newErrorRecord
+helpers.raisePhaseError = raisePhaseError
+helpers.newDisconnectedSubscription = newDisconnectedSubscription
+helpers.isSubscriptionConnected = isSubscriptionConnected
+helpers.subscribeRepeating = subscribeRepeating
+helpers.deliver = deliver
+helpers.isTerminal = isTerminal
+helpers.disconnectUnreachable = disconnectUnreachable
+helpers.disconnectList = disconnectList
 
 -- Commit --------------------------------------------------------------------
 
 rawset(Subscription, "Disconnect", disconnectSubscription)
 rawset(Subscription, "IsConnected", isSubscriptionConnected)
-
-rawset(DeferredCall, "Cancel", cancelDeferredCall)
-rawset(DeferredCall, "IsPending", isDeferredCallPending)
 
 rawset(Instance, "GetAddonName", getAddonName)
 rawset(Instance, "GetState", getState)
@@ -2366,72 +1813,66 @@ rawset(Instance, "OnLoaded", onLoaded)
 rawset(Instance, "OnReady", onReady)
 rawset(Instance, "OnShutdown", onShutdown)
 rawset(Instance, "OnHalted", onHalted)
-rawset(Instance, "Halt", halt)
-rawset(Instance, "DependsOn", dependsOn)
-rawset(Instance, "OnDependencyHalted", onDependencyHalted)
-rawset(Instance, "WhenOutOfCombat", whenOutOfCombat)
-rawset(Instance, "OnCombatStart", onCombatStart)
-rawset(Instance, "OnCombatEnd", onCombatEnd)
-rawset(Instance, "SetCombatQueueLimit", setCombatQueueLimit)
-rawset(Instance, "GetCombatQueueLimit", getCombatQueueLimit)
 
 rawset(LifecycleKit, "API", API_GENERATION)
 rawset(LifecycleKit, "REVISION", IMPLEMENTATION_REVISION)
 rawset(LifecycleKit, "ForAddon", forAddon)
-rawset(LifecycleKit, "IsInCombat", isInCombat)
+rawset(LifecycleKit, "HasPart", hasPart)
 rawset(LifecycleKit, "UNBOUNDED", UNBOUNDED)
 rawset(LifecycleKit, "SetLimits", setLimits)
 rawset(LifecycleKit, "GetLimits", getLimits)
+installPartStubs()
+state.partInterface = PART_INTERFACE
 
 -- The capability set is rewritten in place so it names exactly what this
 -- copy's `closeAddonOwnedScopes` closes.
-local capabilityEntries = rawget(addonScopeCapabilities, "entries")
+local capabilityEntries = addonScopeCapabilities.entries
 for packageId in pairs(capabilityEntries) do
-  rawset(capabilityEntries, packageId, nil)
+  capabilityEntries[packageId] = nil
 end
 for index = 1, #CLOSED_ADDON_SCOPE_PACKAGES do
-  rawset(capabilityEntries, CLOSED_ADDON_SCOPE_PACKAGES[index], true)
+  capabilityEntries[CLOSED_ADDON_SCOPE_PACKAGES[index]] = true
 end
 rawset(LifecycleKit, "CLOSES_ADDON_SCOPES", CLOSES_ADDON_SCOPES)
 
-if
-  not validatePublicSurface(LifecycleKit)
-  or not validateCurrentState(LifecycleKit)
-  or rawget(LifecycleKit, "UNBOUNDED") ~= UNBOUNDED
-  or rawget(LifecycleKit, "CLOSES_ADDON_SCOPES") ~= CLOSES_ADDON_SCOPES
-then
+if not validatePublicSurface(LifecycleKit) then
   error("MoltenCodes LifecycleKit package state is corrupted or incomplete", 2)
 end
 
 -- Re-establish shared watchers for every live compatible state. Besides normal
 -- upgrades, this makes same-revision bootstrap idempotent after a prior host
--- registration failure. Reconcile globally observable state for all compatible
--- prior revisions: a missing watcher may have allowed PLAYER_LOGIN,
--- PLAYER_LOGOUT or a combat change to pass before a later embedded copy
--- repaired the bootstrap.
-if type(previousRevision) ~= "nil" and next(rawget(state, "addons")) ~= nil then
-  ensureGlobalWatchers()
+-- registration failure. Reconcile globally observable state: a missing watcher
+-- may have allowed PLAYER_LOGIN, PLAYER_LOGOUT or a combat change to pass
+-- before a later embedded copy repaired the bootstrap.
+if type(previousRevision) ~= "nil" and next(state.addons) ~= nil then
+  local watcherError = ensureGlobalWatchers()
 
   local firstError
-  if rawget(state, "shutdownSeen") == true then
-    firstError = runForAllAddons(function(instance)
-      return markShutdown(instance)
-    end)
+  if state.shutdownSeen == true then
+    firstError = runForAllAddons(markShutdown)
   else
     -- Same order as `onPlayerLogin`: the combat flag is reconciled before any
     -- `OnReady` callback can read it, and always, even when a ready callback
     -- raises. A combat failure is re-raised ahead of a ready failure.
-    local combatError = reconcileCombatState()
+    local combatError = watcherError or dispatch.reconcileCombat()
     local readyError
-    if rawget(state, "loginSeen") == true then
-      readyError = runForAllAddons(function(instance)
-        if rawget(instance, "_loaded") == true then
-          return markReady(instance)
-        end
-        return nil
-      end)
+    if state.loginSeen == true then
+      readyError = readyLoadedAddons()
     end
     firstError = combatError or readyError
+  end
+
+  -- Revision 18's combat queues wait for the CombatGate part, which an addon
+  -- embedding it loads right after this file; what is still missing on the
+  -- next frame is settled then.
+  if upgradesOlderRevision then
+    -- C_Timer is a World of Warcraft client API reachable only through the global table.
+    -- selene: allow(global_usage)
+    local timers = rawget(_G, "C_Timer")
+    local newTimer = type(timers) == "table" and rawget(timers, "NewTimer") or nil
+    if type(newTimer) == "function" then
+      pcall(newTimer, 0, settleInheritedQueues)
+    end
   end
 
   raisePhaseError(firstError)

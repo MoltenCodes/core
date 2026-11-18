@@ -2,6 +2,23 @@
 
 TimerKit API generation **1** provides cancelable one-shot/repeating timers and explicit ownership scopes over World of Warcraft's native timer facilities.
 
+## Loading
+
+Load Registry API 2, then `timerKit\TimerKit.lua`, the core. An addon that
+pauses timers adds the Pausing part after it:
+
+```xml
+<Script file="registry\Registry.lua"/>
+<Script file="timerKit\TimerKit.lua"/>
+<Script file="timerKit\parts\TimerKit-Pausing.lua"/> <!-- only to pause timers -->
+```
+
+`python3 -m tooling.package.embeds` writes these lines for any selection of
+Kits and parts. TimerKit requires nothing else. LifecycleKit API 1 and
+EventKit API 1 are optional: TimerKit finds them through `Registry:Find` at
+an addon's first `ForAddon`, only to arrange that the addon's scope is closed
+at logout (see [At logout](#at-logout)).
+
 ## Public surface
 
 Package facade:
@@ -9,11 +26,12 @@ Package facade:
 | Method | Purpose |
 |---|---|
 | `New(options)` | Create an idle timer in TimerKit's internal manual scope. |
-| `After(delay, callback)` / `After(delay, receiver, methodName)` | Create and immediately start a one-shot timer. The method-name form is revision 14; see [Method-name callbacks](#method-name-callbacks). |
+| `After(delay, callback)` / `After(delay, receiver, methodName)` | Create and immediately start a one-shot timer. The method-name form: see [Method-name callbacks](#method-name-callbacks). |
 | `Every(interval, callback)` / `Every(interval, receiver, methodName)` | Create and immediately start a repeating timer. |
 | `CreateScope()` | Create a manually owned timer scope. |
 | `ForAddon(addonName)` | Return the canonical scope for an addon, creating it on demand. |
 | `CloseAddonScopes(addonName)` | Close that addon's scope; returns `false` when it has none or it was already closed. |
+| `HasPart(name)` | `true` when the named part (`"Pausing"`) is installed; see [Parts](#parts). |
 
 Timer handles:
 
@@ -32,9 +50,9 @@ Timer handles:
 | `Restart()` | Cancel if necessary and start again; the earlier start's native callback is ignored. |
 | `GetRemaining()` | Seconds until the next fire while running, the seconds kept while paused; `nil` otherwise. |
 | `GetDeadline()` | Monotonic instant of the next fire while running; `nil` otherwise. |
-| `Pause()` | Pause a running timer, keeping what is left of its delay; return `false` if it is not running. Revision 12. |
-| `Resume()` | Resume a paused timer for what was left; return `false` if it is not paused. Revision 12. |
-| `IsPaused()` | Return whether the timer is paused. Revision 12. |
+| `Pause()` | Pause a running timer, keeping what is left of its delay; return `false` if it is not running. [Pausing part](#pausing). |
+| `Resume()` | Resume a paused timer for what was left; return `false` if it is not paused. [Pausing part](#pausing). |
+| `IsPaused()` | Return whether the timer is paused. [Pausing part](#pausing). |
 
 Scopes:
 
@@ -45,7 +63,7 @@ Scopes:
 | `Every(interval, callback)` / `Every(interval, receiver, methodName)` | Start a repeating timer in this scope. |
 | `CancelAll()` | Cancel every active timer and keep the scope reusable. |
 | `Close()` | Terminally close the scope after best-effort cancellation. |
-| `Reopen()` | Reopen a closed manual scope; `false` when it was open; raises on an addon scope. Revision 14; see [Reopening a manual scope](#reopening-a-manual-scope). |
+| `Reopen()` | Reopen a closed manual scope; `false` when it was open; raises on an addon scope. See [Reopening a manual scope](#reopening-a-manual-scope). |
 | `IsClosed()` | Return whether the scope is terminally closed. |
 | `GetAddonName()` | Return the owning addon name, or `nil` for manual scopes. |
 | `GetActiveCount()` | Return the number of logically running or paused timers. |
@@ -79,7 +97,7 @@ Timer callbacks receive the **logical TimerKit timer handle**, not the native `C
 
 ## Method-name callbacks
 
-From revision 14, `After` and `Every`, on scopes and on the facade, also take
+`After` and `Every`, on scopes and on the facade, also take
 a receiver table and the name of one of its methods, the counterpart of
 AceTimer's `self:ScheduleTimer("Method", delay)`:
 
@@ -109,8 +127,8 @@ timers:Every(5, Poller, "Refresh")
   timer keeps ticking (see [Repeating callback errors](#repeating-callback-errors)).
 - **Arguments.** The method receives the receiver and the timer. AceTimer's
   extra argument has no counterpart; attach it with `SetUserData`.
-- **Everything else is a timer.** `Restart`, `Pause`, `Resume`, `Cancel`,
-  scopes and limits behave exactly as for a closure callback; `Restart` keeps
+- **Everything else is a timer.** `Restart`, `Pause`, `Resume` (Pausing
+  part), `Cancel` and scopes behave exactly as for a closure callback; `Restart` keeps
   calling the same receiver and method name.
 - **Cost.** The form wraps the lookup in one closure per timer (136 bytes on
   a 64-bit Lua 5.1) that becomes the timer's callback, so the start, cancel
@@ -146,14 +164,13 @@ The contract is deliberately small:
 - exactly **one** value per timer; a second `SetUserData` replaces the first;
 - the value is stored **by reference**. TimerKit never reads, copies, compares,
   or serializes it, and attaching a value allocates nothing: every timer's
-  record has a slot for it from the start (revision 14 gives one-shot and
-  repeating timers the same nine-slot record);
+  record has a slot for it from the start (one-shot and repeating timers
+  share the same nine-slot record);
 - `SetUserData(nil)` detaches the value;
 - user data survives `Cancel()`, `Start()`, and `Restart()`. TimerKit never
   clears it, so an owner that attaches a large object is responsible for
   detaching it when the timer is no longer interesting;
-- `GetUserData()` returns `nil` for a timer that has never been given one,
-  including timers created by an older embedded TimerKit revision.
+- `GetUserData()` returns `nil` for a timer that has never been given one.
 
 This is the supported way for another package to carry state on a timer.
 Writing private fields onto a TimerKit timer handle is not supported: it is
@@ -170,7 +187,7 @@ timer:GetDeadline()  -- GetTimePreciseSec() at start + 30
 
 - `GetRemaining()` returns the seconds until the timer fires next as a number
   while the timer is `running`, the seconds it kept while `paused` (see
-  [Pausing](#pausing)), and `nil` in every other state — `idle`, `completed`
+  [Pausing](#pausing), a part), and `nil` in every other state — `idle`, `completed`
   and `cancelled`. It never returns `0` to mean "not running", so a caller can
   tell "about to fire" from "will not fire"; a paused timer the host was late
   to deliver keeps `0`.
@@ -196,14 +213,6 @@ a negative number.
 
 Nothing is computed on the dispatch path beyond one clock read per repeating
 tick, and TimerKit never schedules from these values.
-
-### Timers started by an older revision
-
-Revisions before 4 kept no deadline. A timer such a revision started keeps
-running after an in-place upgrade, but TimerKit cannot know when it will fire,
-so `GetRemaining()` and `GetDeadline()` return `nil` for it until its next
-`Start()`/`Restart()` or, for a repeating timer, its next tick. Pausing such a
-timer keeps its full delay, as on a host without the clock.
 
 ### Without `GetTimePreciseSec`
 
@@ -266,31 +275,15 @@ idle ──Start──> running ──fire──> completed
 
 Repeating timers remain `running` after each callback until cancelled or restarted.
 
-From revision 12, `Pause` takes a running timer to `paused` and `Resume` takes it back to `running`; `Cancel` and `Restart` work from `paused` as from `running`. See "Pausing".
+With the Pausing part, `Pause` takes a running timer to `paused` and `Resume` takes it back to `running`; `Cancel` and `Restart` work from `paused` as from `running`. See "Pausing".
 
 `Cancel()` and `Start()` are idempotent with respect to an already-satisfied state: cancelling a timer that is neither running nor paused, and starting one that is running or paused, return `false` rather than creating duplicate native work.
-
-## Pausing
-
-```lua
-local cooldown = TimerKit:After(30, onReady)
-cooldown:Pause()           -- true; cooldown:GetRemaining() keeps, say, 12.5
-cooldown:Resume()          -- true; fires 12.5 seconds from now
-```
-
-- `Pause()` cancels the host handle and keeps the seconds left until the next fire: the deadline minus `GetTimePreciseSec()`, never below 0, or the full delay on a host without the clock. A late host's remainder is 0. While paused, `GetRemaining()` answers those seconds, `GetDeadline()` `nil`, `IsPending()` `false` and `GetState()` `"paused"`.
-- `Resume()` asks the host for a one-shot of the kept seconds. A one-shot timer completes when it fires. A repeating timer runs its callback then and is armed again as a ticker of its interval just before that callback, so a `Cancel` inside it cancels the ticker. A host constructor that raises leaves the timer paused, or, for that re-arm of a repeating timer, cancelled.
-- A paused timer stays in its scope: `GetActiveCount()` counts it, `CancelAll()` and `Close()` cancel it. `Resume()` on a timer a closed scope cancelled answers `false`.
-- `Start()` on a paused timer answers `false`; `Restart()` cancels it and starts its full delay.
-- A paused timer holds no host handle, and a callback of the handle it held is ignored.
-
-This is built on `C_Timer` handles, not on an animation host, so TimerKit keeps no frame and does no work per frame (docs/ROADMAP.md, "timerKit pausable timers").
 
 ## Stale callback protection
 
 Every start or restart binds the timer to the native handle that start created, and the native callback of a start fires the timer only while the timer is running and still bound to that handle. Cancellation unbinds the handle **before** TimerKit asks it to cancel, and a restart binds the new one.
 
-This means an already-queued or otherwise stale native callback cannot execute user code after a logical cancel/restart, even if native cancellation fails. It relies only on what `C_Timer` already promises: each `NewTimer`/`NewTicker` call returns its own handle. Revision 9 and older bound each start to a per-timer generation counter instead; the callbacks those revisions left running keep that check after an in-place upgrade, as [`INTERNALS.md`](INTERNALS.md#stale-host-callbacks) describes.
+This means an already-queued or otherwise stale native callback cannot execute user code after a logical cancel/restart, even if native cancellation fails. It relies only on what `C_Timer` already promises: each `NewTimer`/`NewTicker` call returns its own handle.
 
 For one-shot timers, TimerKit marks the logical timer `completed` and removes it from its active scope before invoking user code. A callback can therefore safely call `Restart()` on itself.
 
@@ -317,7 +310,7 @@ Bulk cleanup runs in deterministic timer-creation order. If native cancellation 
 
 ### Reopening a manual scope
 
-From revision 14, `scope:Reopen()` makes a closed manual scope usable again
+`scope:Reopen()` makes a closed manual scope usable again
 and answers `true`; on an open scope it answers `false` and changes nothing.
 The reopened scope is empty and behaves like a new one. Timers its close
 cancelled stay cancelled; `Start()` or `Restart()` runs them in the scope
@@ -347,11 +340,10 @@ Who takes the second step is arranged by TimerKit itself whenever the framework 
 
 ### At logout
 
-**An addon scope closes at logout whenever LifecycleKit or EventKit is loaded, and otherwise by your own call**, whatever revisions of them are paired with this one. The first `ForAddon(addonName)` for an addon looks for the optional Kits through `Registry:Find` and takes the first case that applies:
+**An addon scope closes at logout whenever LifecycleKit or EventKit is loaded, and otherwise by your own call**, whatever revisions of them are paired with this one. The first `ForAddon(addonName)` for an addon looks for the optional Kits through `Registry:Find` and takes the first case that applies. The cases keep their numbers; case 2, an `OnShutdown` subscription per addon for a LifecycleKit before 0.6.0, went with revision 15's upgrade floor (no such LifecycleKit was ever published), and such a LifecycleKit now falls to case 3:
 
 1. **LifecycleKit lists `"timerKit"` in `LifecycleKit.CLOSES_ADDON_SCOPES`** (LifecycleKit 0.6.0 and later). TimerKit subscribes nothing and makes sure the addon is known to LifecycleKit (it calls `LifecycleKit:ForAddon(addonName)` once): LifecycleKit calls `CloseAddonScopes` when the addon reaches `shutdown`, after its shutdown callbacks have run and before it closes the addon's SchedulerKit, EventKit, HookKit, CommandKit and CommKit scopes and its SignalKit bus, so no timer fires into a listener that is being torn down. This is the case with ordering guarantees, and it covers an addon that never used LifecycleKit itself.
-2. **An older LifecycleKit, without that field.** TimerKit asks it for `LifecycleKit:ForAddon(addonName):OnShutdown(...)`, once per addon, and closes the scope from that callback, among the addon's shutdown callbacks, as TimerKit 0.4.x did. This is compatibility only: LifecycleKit is found through `Registry:Find` and never becomes a dependency. The subscription is kept on the scope; closing the scope (`CloseAddonScopes` or `Scope:Close()`) disconnects it. If a LifecycleKit that lists TimerKit replaces the older one before logout, the callback leaves the call to it.
-3. **No LifecycleKit, but EventKit.** TimerKit keeps one package-level `PLAYER_LOGOUT` one-shot, in an EventKit scope of its own, created by the first `ForAddon` that needs it. At logout it closes every addon scope that neither case above covers, in addon-name order; a failure does not stop the others and reaches the host error handler through EventKit. EventKit runs `PLAYER_LOGOUT` listeners in connection order, so the scope closes when this listener runs: after any listener connected before the addon's first `ForAddon`, before any connected after it. Use LifecycleKit when the addon's own logout code must run while its timers are live.
+3. **No such LifecycleKit, but EventKit.** TimerKit keeps one package-level `PLAYER_LOGOUT` one-shot, in an EventKit scope of its own, created by the first `ForAddon` that needs it. At logout it closes every addon scope case 1 does not cover, in addon-name order; a failure does not stop the others and reaches the host error handler through EventKit. EventKit runs `PLAYER_LOGOUT` listeners in connection order, so the scope closes when this listener runs: after any listener connected before the addon's first `ForAddon`, before any connected after it. Use LifecycleKit when the addon's own logout code must run while its timers are live.
 4. **Neither.** Nothing is subscribed and `ForAddon` works as always. Call `CloseAddonScopes` yourself on `PLAYER_LOGOUT`, for example from a frame of your own:
 
 ```lua
@@ -364,7 +356,7 @@ end)
 
 The decision is made once per addon, except for case 4, which the next `ForAddon` for that addon examines again, because a Kit loaded after the first call (an addon later in the load order embedding EventKit, say) can make logout observable. A LifecycleKit 0.5.0 or later that loads after case 4 was chosen closes the scope anyway once the addon asks it for an instance, because it calls `CloseAddonScopes` for every addon it knows. Closing the scope twice is harmless: the second call answers `false`.
 
-The routing costs one field read per `ForAddon` once decided. TimerKit allocates one closure and one LifecycleKit subscription per addon in case 2, and one EventKit scope and connection for the whole package in case 3.
+The routing costs one field read per `ForAddon` once decided. TimerKit allocates one EventKit scope and connection for the whole package in case 3, and nothing per addon.
 
 `CloseAddonScopes(addonName)`:
 
@@ -378,7 +370,7 @@ Closing is terminal: the closed scope stays the canonical addon scope, so a late
 
 Manual scopes and TimerKit's package-level convenience scope are never closed by `CloseAddonScopes`.
 
-Revision 5 and older required LifecycleKit and subscribed each addon scope to its addon's shutdown themselves. An embedded copy of this revision that upgrades one of them in place disconnects those subscriptions and then routes the carried scopes as described under [At logout](#at-logout); they stay open and canonical until they are closed. Revision 6 decided no route: its scopes are routed the same way when revision 7 upgrades it. A scope a revision 7 or later copy already routed keeps its route, its `OnShutdown` subscription and the package's `PLAYER_LOGOUT` connection, whose callbacks resolve the running revision's code when they fire. With a LifecycleKit older than 0.5.0 (which does not know `CloseAddonScopes`), case 2 closes the scope.
+A scope revision 14 already routed keeps its route and the package's `PLAYER_LOGOUT` connection, whose callback resolves the running revision's code when it fires. A scope revision 14 routed through case 2 lets go of its `OnShutdown` subscription when revision 15 takes over and is routed again as a first `ForAddon` would.
 
 ## Package-level convenience timers
 
@@ -392,7 +384,93 @@ These methods use an internal manual scope. They are intentionally **not addon-o
 
 If the internal convenience scope is explicitly reached through `timer:GetScope()` and closed, the next package-level timer operation creates a fresh internal scope rather than permanently disabling the facade.
 
-## Errors
+## Parts
+
+TimerKit is a core file and one optional part
+([ADR 0001](../../../docs/decisions/0001-kit-core-and-parts.md)). An addon
+embeds the core and only the parts it uses.
+
+| Part | File | Adds |
+|---|---|---|
+| `Pausing` | `timerKit\parts\TimerKit-Pausing.lua` | `Timer:Pause`, `Timer:Resume`, `Timer:IsPaused` |
+
+- `TimerKit:HasPart(name)` answers `true` when the named part is installed in
+  the session (by any addon), `false` otherwise. A name that is not a string,
+  or a secret value, raises `TimerKit:HasPart name must be a part name string`
+  at the caller's line. Other Kits ask `HasPart`, never
+  `type(TimerKit.Timer.Pause) == "function"`: the member is always there.
+- Without the part, each of its members raises at the caller's line, for
+  example `TimerKit.Timer:Pause is in TimerKit's Pausing part, which is not
+  loaded: add timerKit\parts\TimerKit-Pausing.lua to embeds.xml after
+  timerKit\TimerKit.lua`.
+- The part keeps nothing of its own: it reads and writes the timer's slots and
+  fills two `state.dispatch` entries, so the highest revision of the core and
+  of the part each serves every addon, and a core loaded after the part keeps
+  the part's members.
+- The core keeps the `"paused"` state wherever it already handles it
+  (`Cancel`, `Restart`, `CancelAll`, `Close`, `GetState`, `GetRemaining`,
+  `GetDeadline`, `IsPending`, `Start`), so a paused timer an upgrade inherits
+  without the part stays paused, answers `GetRemaining`, and can be cancelled;
+  only `Resume` needs the part.
+
+### Pausing
+
+The Pausing part, `timerKit\parts\TimerKit-Pausing.lua`. Without it,
+`Pause`, `Resume` and `IsPaused` raise at the caller's line (see
+[Parts](#parts)); everything else on this page works without it, `"paused"`
+included wherever a paused timer can be met.
+
+```lua
+local cooldown = TimerKit:After(30, onReady)
+cooldown:Pause()           -- true; cooldown:GetRemaining() keeps, say, 12.5
+cooldown:Resume()          -- true; fires 12.5 seconds from now
+```
+
+- `Pause()` cancels the host handle and keeps the seconds left until the next fire: the deadline minus `GetTimePreciseSec()`, never below 0, or the full delay on a host without the clock. A late host's remainder is 0. While paused, `GetRemaining()` answers those seconds, `GetDeadline()` `nil`, `IsPending()` `false` and `GetState()` `"paused"`.
+- `Resume()` asks the host for a one-shot of the kept seconds. A one-shot timer completes when it fires. A repeating timer runs its callback then and is armed again as a ticker of its interval just before that callback, so a `Cancel` inside it cancels the ticker. A host constructor that raises leaves the timer paused, or, for that re-arm of a repeating timer, cancelled.
+- A paused timer stays in its scope: `GetActiveCount()` counts it, `CancelAll()` and `Close()` cancel it. `Resume()` on a timer a closed scope cancelled answers `false`.
+- `Start()` on a paused timer answers `false`; `Restart()` cancels it and starts its full delay.
+- A paused timer holds no host handle, and a callback of the handle it held is ignored.
+
+This is built on `C_Timer` handles, not on an animation host, so TimerKit keeps no frame and does no work per frame (`docs/records/timerKit.md`, "timerKit pausable timers").
+
+## Secret values
+
+A secret value (Retail 12.0.0 and later) raises when it is compared, so every
+argument TimerKit compares or tests is asked about first, at the caller's
+line: the delay or interval of `New`, `After` and `Every`, `repeating`, the
+receiver and method name of the method-name form, the addon name of
+`ForAddon` and `CloseAddonScopes`, the receiver of `CloseAddonScopes`, and the
+name of `HasPart`. An absent option is recognised by its type, never by
+comparing it with `nil`. The value given to `Timer:SetUserData` is stored and
+never compared, so it may be secret. Receivers of timer and scope methods are
+refused by their metatable alone, which no secret value has.
+
+TimerKit reads `issecretvalue` once, when it loads; on a host that had none
+then, it asks for the global again at each check, so a probe installed later
+is honoured (the shared `isSecret` block, `docs/TOOLING.md`, "Shared helper
+blocks"). A host without `issecretvalue` has no secret values. A table key
+named in a refusal is described without running its `__tostring` (the shared
+`describeKey` block).
+
+## Limits
+
+TimerKit has no limits to open, so it has no `SetLimits` and no `UNBOUNDED`
+(design constitution, principle 4a). What it retains is the consumer's own and
+grows only with the consumer's calls:
+
+- a scope holds the timers that are running or paused in it, and releases each
+  one when it completes or is cancelled; idle and completed timers are not
+  retained;
+- the addon-scope map holds one scope per name passed to `ForAddon`, and
+  `CloseAddonScopes` records nothing for a name that never had one;
+- the logout routing holds one EventKit connection for the package;
+- the internal convenience scope behind `TimerKit:New` / `After` / `Every` is one scope,
+  replaced only when it is closed.
+
+The host bounds the number of native timers, not TimerKit.
+
+## Error behaviour
 
 `<method>` below is the public name of the method called, such as
 `TimerKit:After`, `TimerKit.Scope:New` or `TimerKit.Timer:Restart`. Every
@@ -426,15 +504,9 @@ message in the first table is raised at the caller's line (see
 | `TimerKit:ForAddon addonName must be a non-empty string` | `ForAddon` |
 | `TimerKit:CloseAddonScopes addonName must be a non-empty string` | `CloseAddonScopes` |
 | `TimerKit:CloseAddonScopes must be called on the TimerKit facade; use TimerKit:CloseAddonScopes(addonName)` | `CloseAddonScopes` with another receiver |
-| `MoltenCodes TimerKit host returned an invalid native timer handle` | a start or `Resume()` whose `C_Timer` constructor returned `nil` or `false` instead of a handle; the timer is left in the state it had |
-
-A secret value (Retail 12.0.0 and later) raises when it is compared, so the
-secret refusals above run before any other check of that argument. An absent
-option is recognised by its type, never by comparing it with `nil`. A host
-without `issecretvalue` has no secret values. TimerKit reads `issecretvalue` once,
-when it loads; on a host that had none then, it asks for the global again at
-each check, so a probe installed later is honoured (revision 14). The value given to
-`Timer:SetUserData` is stored and never compared, so it may be secret.
+| `TimerKit:HasPart name must be a part name string` | `HasPart` with a name that is not a string, or a secret value |
+| `TimerKit.Timer:<member> is in TimerKit's <Part> part, which is not loaded: add timerKit\parts\TimerKit-<Part>.lua to embeds.xml after timerKit\TimerKit.lua` | a member of a part the session has not loaded (`Pause`, `Resume`, `IsPaused`) |
+| `MoltenCodes TimerKit host returned an invalid native timer handle` | a start, or a `Resume()` (Pausing part), whose `C_Timer` constructor returned `nil` or `false` instead of a handle; the timer is left in the state it had |
 
 Host and internal failures carry no added position:
 
@@ -443,23 +515,28 @@ Host and internal failures carry no added position:
 | the host's own error object, unchanged | a start or `Resume()` whose `C_Timer` constructor raised (the timer is left in the state it had), and the first native `Cancel` failure of `Cancel()`, `Restart()`, `Pause()`, `CancelAll()`, `Close()` and `CloseAddonScopes`; inside the host callback of a resumed repeating timer, a ticker constructor that raises (the timer is left cancelled) |
 | Lua's own error for calling a missing method, such as `attempt to call method 'Cancel' (a nil value)` | a cancellation of a timer whose host handle has no `Cancel` method; TimerKit trusts the handle (see [Native boundary](#native-boundary)), and the timer is already logically cancelled when it raises |
 | `TimerKit timer receiver has no method "<name>"` | the callback of a method-name timer whose method is gone when it fires (see [Method-name callbacks](#method-name-callbacks)) |
-| Lua's own error for indexing or calling a missing value | a native callback revision 14 or later created that finds the shared dispatch table damaged (earlier revisions raised `MoltenCodes TimerKit runtime dispatch is corrupted`, which callbacks they created still do) |
+| Lua's own error for indexing or calling a missing value | a native callback that finds the shared dispatch table damaged |
 
 Loading raises `MoltenCodes TimerKit requires Registry API 2 to be loaded
 first`, `MoltenCodes TimerKit requires a valid Registry API 2 facade`,
-`MoltenCodes TimerKit requires C_Timer.NewTimer and C_Timer.NewTicker`, or
-`MoltenCodes TimerKit package state is corrupted or incomplete`.
+`MoltenCodes TimerKit requires C_Timer.NewTimer and C_Timer.NewTicker`,
+`MoltenCodes TimerKit package state is corrupted or incomplete`, or, over an
+embedded copy older than the upgrade floor, `MoltenCodes TimerKit revision 15
+upgrades in place from revision 14 or later only; an addon embeds revision
+<n>, which was never published`. The Pausing part raises `MoltenCodes TimerKit
+part Pausing requires TimerKit API 1 to be loaded first` when it loads before
+the core.
 
-## Cost
+## Performance
 
 - Every getter, `SetUserData`, `IsPending`, `IsCancelled` and
   `GetActiveCount` is a receiver check and a field read; none allocates.
 - `New`, `After` and `Every` allocate the timer handle: one table of nine
   array slots, sized once for every field it will hold, `SetUserData`
   included: 208 bytes for a one-shot or a repeating timer on a 64-bit Lua 5.1,
-  measured (revision 13 used 384 and 704 bytes). A pending one-shot timer,
-  with its callback closure, the test host's handle and its scope entry,
-  holds 936 bytes there, against 1,112 before revision 14. Every start
+  measured (eight named fields would take 384 and 704 bytes). A pending
+  one-shot timer, with its callback closure, the test host's handle and its
+  scope entry, holds 936 bytes there. Every start
   (`Start`, `Restart`, `After`, `Every`) allocates one callback closure (about 140
   bytes) and whatever the host allocates for its native handle, and reads
   `GetTimePreciseSec` once when the client has it. The host constructor is
@@ -469,8 +546,9 @@ first`, `MoltenCodes TimerKit requires a valid Registry API 2 facade`,
   condition and start the timer in one more frame; only a call that fails a
   test, or a method-name call, runs the validators. `Cancel()` is one frame.
 - `Cancel()` allocates nothing beyond what the host's `Cancel` does, and calls
-  it directly on the stored handle; `Pause()` likewise, plus one clock read.
-- `Resume()` allocates one callback closure and the host's one-shot handle and
+  it directly on the stored handle; `Pause()` (Pausing part) likewise, plus
+  one clock read.
+- `Resume()` (Pausing part) allocates one callback closure and the host's one-shot handle and
   reads the clock once. When a resumed repeating timer fires, it allocates one
   more closure and the host's ticker handle, as a start does.
 - A delivered repeating tick allocates nothing and reads the clock once; a
@@ -480,6 +558,22 @@ first`, `MoltenCodes TimerKit requires a valid Registry API 2 facade`,
   in them.
 - `ForAddon` is one table lookup once the addon's logout route is decided; see
   [At logout](#at-logout) for what deciding it costs.
+
+### Resident size
+
+Measured on the host (Lua 5.1.5, 64-bit, debug information kept as the
+client keeps it), resident after a full collection, loaded with Registry,
+SignalKit, EventKit and LifecycleKit:
+
+| File | Revision 14 | Revision 15 |
+|---|---:|---:|
+| `TimerKit.lua` | 60.2 KB | 49.6 KB |
+| `parts/TimerKit-Pausing.lua`, when embedded | (in the core) | 2.9 KB |
+
+AceTimer-3.0 measures 8.1 KB the same way. What the core keeps beyond it buys
+TimerKit's documented guarantees: timer handles, ownership scopes and their
+logout routes, argument errors at the caller's line, secret-value refusals,
+and in-place upgrade.
 
 ### Measured in the client
 
@@ -495,25 +589,6 @@ Measured on 2026-09-24 in the Retail 12.1.0 (build 69933) client:
 - `Start` costs about 194 bytes of Lua heap beyond what the client's own
   `C_Timer.NewTimer` followed by `Cancel` costs; the list above says what a
   start allocates.
-
-## Limits
-
-TimerKit has no limits to open, so it has no `SetLimits` and no `UNBOUNDED`
-(design constitution, principle 4a). What it retains is the consumer's own and
-grows only with the consumer's calls:
-
-- a scope holds the timers that are running or paused in it, and releases each
-  one when it completes or is cancelled; idle and completed timers are not
-  retained;
-- the addon-scope map holds one scope per name passed to `ForAddon`, and
-  `CloseAddonScopes` records nothing for a name that never had one;
-- the logout routing holds at most one LifecycleKit subscription per addon
-  scope (released when the scope closes) and one EventKit connection for the
-  package;
-- the internal convenience scope behind `TimerKit:New` / `After` / `Every` is one scope,
-  replaced only when it is closed.
-
-The host bounds the number of native timers, not TimerKit.
 
 ## Native boundary
 
@@ -540,12 +615,18 @@ What a host that breaks this promise now sees:
 
 Revision 10 and older raised `MoltenCodes TimerKit host returned an invalid native timer handle` at the start for a handle without `Cancel`, and `MoltenCodes TimerKit native timer handle is invalid` at a cancellation whose handle had lost it.
 
-LifecycleKit API 1 and EventKit API 1 are optional. TimerKit finds them through `Registry:Find` (an older Registry's `Get` is the equivalent fallback) only for the logout closing described under [At logout](#at-logout): inside `ForAddon`, to arrange it; during an in-place upgrade, to arrange it for the addon scopes an older revision created without a route; and at shutdown, where the `OnShutdown` callback of route 2 asks whether a LifecycleKit that closes TimerKit's scopes itself has replaced the older one. Nothing else reads them.
+LifecycleKit API 1 and EventKit API 1 are optional. TimerKit finds them through `Registry:Find` (an older Registry's `Get` is the equivalent fallback) only for the logout closing described under [At logout](#at-logout): inside `ForAddon`, to arrange it, and once during the upgrade from revision 14 for a scope that revision routed through case 2. Nothing else reads them.
 
 The native boundary is intentionally narrow so TimerKit behavior can be tested with a deterministic adapter outside the game client.
 
-## Embedded copies
+## Embedded copies and upgrades
 
-TimerKit is registered as `timerKit`, API generation `1`, through Registry API 2. The package facade, Timer prototype, Scope prototype, and metatables are shared-state compatible so future compatible revisions can preserve existing logical object identity.
+TimerKit is registered as `timerKit`, API generation `1`, through Registry API 2. The package facade, Timer prototype, Scope prototype, and metatables are shared-state compatible so future compatible revisions can preserve existing logical object identity. When two addons embed different revisions, the highest wins and upgrades the shared state in place; the same holds for each part, by its own revision.
 
-Native callbacks route through a shared runtime dispatch table instead of permanently closing over one implementation revision. This provides the foundation for compatible live revision upgrades without replacing running logical timer objects.
+Native callbacks route through a shared runtime dispatch table instead of permanently closing over one implementation revision, so a running timer's callback runs the newest revision's code when it fires.
+
+### Upgrading in place
+
+Revision 15 takes over the state of revision 14 in place, its upgrade floor: every timer, scope, addon scope, logout route and user value revision 14 made keeps working, running and repeating timers fire through the new code, and a timer revision 14 paused stays paused. Without the Pausing part, such a timer answers `GetRemaining` and can be cancelled or restarted, and `Resume` raises the part's message; a resume revision 14 already armed still fires, through revision 14's own entry in the dispatch table, which the part replaces when it loads.
+
+No revision before 14 was ever published, so revision 15 does not convert what they built (named-field timers, generation-bound callbacks, shutdown subscriptions, state without the logout fields). Loading revision 15 over one of them raises `MoltenCodes TimerKit revision 15 upgrades in place from revision 14 or later only; an addon embeds revision <n>, which was never published`. An older copy loaded after a newer one is ignored, as Registry decides for every Kit.
