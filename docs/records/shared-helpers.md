@@ -283,6 +283,13 @@ Each of these ten Kits carries the same three copies with the same bodies
    `## Upgrades` → `## Embedded copies and upgrades`, `## Error behaviour`,
    order).
 9. Status: implemented 2026-11-18, 0.6.1, revision 9, 357 specs (20 `isSecretValue` call sites on 19 lines, not 19).
+   Integration (2026-11-18): OptionsKit 0.9.0 moved the presentation and
+   handler fields into its Presentation and Handlers parts. BridgeKit asks
+   `OptionsKit:GetFields` and carries only what the loaded OptionsKit takes,
+   so its manifest does not name the parts (it works with either, and an
+   addon that converts no AceConfig table needs neither); the docs say which
+   parts carry the fields, the carry specs load them, and one spec converts
+   over the core alone: 358 specs.
 
 **brokerKit: shared `isSecret`, `validateFacade`; `limits` opted out** — a change to facade `BrokerKit`
 

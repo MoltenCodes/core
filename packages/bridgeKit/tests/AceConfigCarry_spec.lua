@@ -347,3 +347,24 @@ describe("BridgeKit carries AceConfig fields over to OptionsKit", function()
     assert.is_nil(rawget(tree, "_builder"))
   end)
 end)
+
+describe("BridgeKit over an OptionsKit without its Presentation and Handlers parts", function()
+  after_each(function()
+    Env.Reset()
+  end)
+
+  it(
+    "drops the presentation fields the loaded OptionsKit does not take, and reports them",
+    function()
+      local BridgeKit = Env.NewPackageWithOptionsKit(true)
+      local conversion = BridgeKit:ConvertAceConfig("MyAddon", {
+        type = "group",
+        args = {
+          a = stored("toggle", "a", {}, { width = "full" }),
+        },
+      })
+      assert.is_nil(conversion.tree.args.a.width)
+      assert.are.equal("dropped (presentation)", noted(conversion.report, "a", "width"))
+    end
+  )
+end)

@@ -52,7 +52,7 @@ recipes in [`docs/MIGRATING_FROM_ACE3.md`](../../docs/MIGRATING_FROM_ACE3.md).
 | `AceSerializer:Deserialize(text)` | `BridgeKit:AceDeserialize(text)` → `true, ...` or `false, reason` |
 | `AceConfig:RegisterOptionsTable(appName, options)` | `BridgeKit:DefineAceConfig(appName, options[, { db = db }])` → OptionsKit tree and report |
 | `AceConfigRegistry:NotifyChange(appName)` after editing the table | `tree:NotifyChange()` on the tree `DefineAceConfig` returned, with OptionsKit's Dynamic part loaded |
-| `width`, `confirm`, `image`, `dialogHidden` and AceConfig's other presentation fields | carried over when the registered OptionsKit accepts them (revision 14 and later), reported dropped before |
+| `width`, `confirm`, `image`, `dialogHidden` and AceConfig's other presentation fields | carried over when the registered OptionsKit accepts them (revision 14 and later, with its Presentation and Handlers parts loaded since 0.9.0), reported dropped otherwise |
 | `db:RegisterNamespace(name, defaults)` data already saved | copied as it is by `ImportAceDB` when SettingsKit is revision 15 or later; read with `db:RegisterNamespace(name, schema)` |
 | `AceDB:New("MyAddonDB", defaults)` with data already saved | `BridgeKit:ImportAceDB(...)` into a new saved variable, or `BridgeKit:AceDBMigration(plan)` as a SettingsKit migration step |
 | `AceComm:RegisterComm(prefix, handler)` / `SendCommMessage` | `BridgeKit:OpenAceComm(scope, prefix, callback)` / `channel:Send(request)` |

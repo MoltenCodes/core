@@ -21,23 +21,46 @@ function BridgeKitTestEnv.AceSerializerFixtures()
   return dofile(FIXTURE_PATH)
 end
 
+--- OptionsKit's modules a spec may load, cleared before each load: the Kit,
+--- what it requires (SignalKit, SchemaKit and its Rules part) and the parts
+--- whose fields a conversion carries (Presentation, Handlers).
+local OPTIONSKIT_MODULES = {
+  "SignalKit",
+  "SchemaKit",
+  "SchemaKit-Rules",
+  "OptionsKit",
+  "OptionsKit-Presentation",
+  "OptionsKit-Handlers",
+}
+
 ---Load Registry, OptionsKit with what it requires, and BridgeKit, for the
 ---specs that define a converted tree. The test runner puts OptionsKit, an
 ---optional dependency, on the path.
+---
+---OptionsKit's Presentation and Handlers parts are loaded too, as an addon
+---that wants AceConfig's presentation fields and handlers carried embeds them:
+---BridgeKit carries a field only when `OptionsKit:GetFields` says the loaded
+---OptionsKit takes it. `withoutParts` leaves them out.
+---@param withoutParts boolean? load OptionsKit's core alone
 ---@return table BridgeKit
 ---@return table OptionsKit
-function BridgeKitTestEnv.NewPackageWithOptionsKit()
+function BridgeKitTestEnv.NewPackageWithOptionsKit(withoutParts)
   BridgeKitTestEnv.Reset()
   -- `Reset` unloads this package's own module chain; OptionsKit's goes too,
   -- so every spec gets fresh copies registered with a fresh Registry.
-  for _, name in ipairs({ "SignalKit", "SchemaKit", "OptionsKit" }) do
+  for _, name in ipairs(OPTIONSKIT_MODULES) do
     package.loaded[name] = nil
   end
   BridgeKitTestEnv.InstallWowApi()
   require("Registry")
   require("SignalKit")
   require("SchemaKit")
+  require("SchemaKit-Rules")
   local OptionsKit = require("OptionsKit")
+  if not withoutParts then
+    require("OptionsKit-Presentation")
+    require("OptionsKit-Handlers")
+  end
   local BridgeKit = require("BridgeKit")
   return BridgeKit, OptionsKit
 end
@@ -121,9 +144,10 @@ end
 ---@return table SchemaKit
 function BridgeKitTestEnv.NewPackageWithSettingsKit()
   BridgeKitTestEnv.Reset()
-  for _, name in ipairs({ "SignalKit", "SchemaKit", "SettingsKit", "OptionsKit" }) do
+  for _, name in ipairs(OPTIONSKIT_MODULES) do
     package.loaded[name] = nil
   end
+  package.loaded.SettingsKit = nil
   BridgeKitTestEnv.InstallWowApi()
   BridgeKitTestEnv.SetPlayer()
   require("Registry")

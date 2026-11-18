@@ -228,7 +228,7 @@ Ace's own message,
 A `color` or `multiselect` getter allocates a table per `Get`, where
 OptionsKit's own getters allocate nothing; an options screen is no hot path.
 
-**Fields carried over (revision 8).** With an OptionsKit that publishes `GetFields` (revision 14 and later), the conversion asks it once per kind and carries over every field the registered OptionsKit lists for that kind, in OptionsKit's form; with an older OptionsKit, or none, every rule below applies as before.
+**Fields carried over (revision 8).** With an OptionsKit that publishes `GetFields` (revision 14 and later), the conversion asks it once per kind and carries over every field the registered OptionsKit lists for that kind, in OptionsKit's form; with an older OptionsKit, or none, every rule below applies as before. Since OptionsKit 0.9.0 the presentation fields and the handler fields are OptionsKit's Presentation and Handlers parts (`optionsKit\parts\OptionsKit-Presentation.lua`, `optionsKit\parts\OptionsKit-Handlers.lua`), and `GetFields` lists only what the loaded parts take: embed those parts to have the fields carried, or they are reported `dropped (presentation)` as with an OptionsKit before revision 14. BridgeKit's manifest does not name the parts, because it works with either and an addon that converts no AceConfig table needs neither.
 
 | Ace field | Carried as | Reported |
 |---|---|---|
