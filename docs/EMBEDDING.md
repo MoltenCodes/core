@@ -248,6 +248,8 @@ panelKit/PanelKit.lua
 profileKit/ProfileKit.lua
 rangeKit/RangeKit.lua
 readinessKit/ReadinessKit.lua
+registry/parts/Registry-Handover.lua
+registry/parts/Registry-Diagnostics.lua
 schedulerKit/SchedulerKit.lua
 schedulerKit/parts/SchedulerKit-Coalescing.lua
 schedulerKit/parts/SchedulerKit-Lanes.lua
@@ -383,6 +385,8 @@ part loads after its Kit's core and brings in what it needs:
 | `eventKit/Coalescing` | `eventKit/parts/EventKit-Coalescing.lua` | Coalesce and Derive: events collected into one callback per interval, and values recomputed after a quiet period, timed by TimerKit (a lane by SchedulerKit). | nothing |
 | `optionsKit/Profiles` | `optionsKit/parts/OptionsKit-Profiles.lua` | OptionsKit:ProfileOptions: the ready-made group over a SettingsKit database's profiles, with the per-specialization choices. | nothing |
 | `optionsKit/Dynamic` | `optionsKit/parts/OptionsKit-Dynamic.lua` | Trees that change shape after Define: builder functions, tree:NotifyChange(), tree:Replace and tree:Remove. | nothing |
+| `registry/Handover` | `registry/parts/Registry-Handover.lua` | Retire hooks, migration steps and sealed facades for a revision that replaces an older one. | nothing |
+| `registry/Diagnostics` | `registry/parts/Registry-Diagnostics.lua` | Registry:GetInfo and Registry:Packages, the read-only views of every registration. | nothing |
 | `schedulerKit/Coalescing` | `schedulerKit/parts/SchedulerKit-Coalescing.lua` | Debounce and Coalesce handles on the facade and on scopes, with the coalescing family's shared clock, member links and protected delivery. | nothing |
 | `schedulerKit/Lanes` | `schedulerKit/parts/SchedulerKit-Lanes.lua` | Named lanes that ration a resource: in-flight and interval limits, retries with backoff, and Debounce or Coalesce delivery through a lane. | `schedulerKit/Coalescing` |
 | `schedulerKit/Watch` | `schedulerKit/parts/SchedulerKit-Watch.lua` | Watch: poll a predicate on a shared per-interval ticker and call back when its result changes. | `schedulerKit/Coalescing` |

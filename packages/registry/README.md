@@ -61,6 +61,14 @@ Registry has no runtime package dependencies.
 
 `Get()` and `Find()` perform table lookups only and allocate nothing. `GetInfo()` intentionally allocates a metadata snapshot so callers cannot mutate Registry-owned metadata, and `Packages()` allocates a sorted listing for diagnostics. Retirement, migration and sealing run at load time only.
 
+Registry is a core and two optional parts (revision 17 and later): `Handover`
+holds retire hooks, migration steps, sealed facades and `OnRetire`;
+`Diagnostics` holds `GetInfo` and `Packages`. No Kit needs either, so the core
+is what every addon loads: 26.5 KB resident with debug information kept
+(revision 16, one file: 32.3 KB; LibStub: 2.6 KB), measured as `docs/API.md`
+*Performance* describes. The core's budget is at most 600 code lines,
+counted by `tests/Budget_spec.lua`.
+
 ## Moving from LibStub
 
 | LibStub | Registry |
@@ -68,8 +76,8 @@ Registry has no runtime package dependencies.
 | `LibStub:NewLibrary(major, minor)`: the library table and the previous minor, or `nil` when an equal or newer minor is loaded | `Registry:Register(packageName, api, revision)`: the same contract, keyed by a package name and an API generation instead of a major string; `Registry:Bootstrap(request)` adds state validation, retirement and migrations |
 | `LibStub("Name")`, `LibStub:GetLibrary("Name")`: raises when the library is missing | `Registry:Get(packageName, api)`: `nil` when nothing is registered, never raises for a missing package |
 | `LibStub:GetLibrary("Name", true)`: the silent lookup | `Registry:Find(packageName, api)`: `nil` and a reason (`absent`, `generation_mismatch`, `retired`) |
-| `LibStub.minors[major]` | the second return of `Get` or `Find`, or `Registry:GetInfo(packageName, api).revision` |
-| `LibStub:IterateLibraries()` | `Registry:Packages()`, a sorted diagnostic listing |
+| `LibStub.minors[major]` | the second return of `Get` or `Find`, or `Registry:GetInfo(packageName, api).revision` (`Diagnostics` part) |
+| `LibStub:IterateLibraries()` | `Registry:Packages()`, a sorted diagnostic listing (`Diagnostics` part) |
 | a new major string (`"MyLib-2.0"`) for a breaking change | a new API generation: `Registry:Register("myKit", 2, revision)` |
 
 Code that must still reach a Kit through LibStub, or adopt a LibStub library,
@@ -90,9 +98,13 @@ troubleshooting. This package's load order inside a consuming addon is:
 
 ```toc
 Libs\MoltenCodes\registry\Registry.lua
+Libs\MoltenCodes\registry\parts\Registry-Handover.lua      # only for retire, migrations, sealFacade, OnRetire
+Libs\MoltenCodes\registry\parts\Registry-Diagnostics.lua   # only for GetInfo, Packages
 ```
 
-Minimum footprint: embed 1 file: `registry/Registry.lua`.
+Minimum footprint: embed 1 file: `registry/Registry.lua`. A part loads after
+the core; without it, each of its members raises at the caller's line naming
+the file to add, and `Registry:HasPart(name)` answers `false`.
 
 No runtime dependencies. Registry is the bootstrap layer, so it is the
 first MoltenCodes file every addon loads.

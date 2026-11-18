@@ -8,11 +8,20 @@
 -- Every API generation owns a private bootstrap state and publishes itself at
 -- `MoltenCodes.Registries[<generation>]`; `MoltenCodes.Registry` aliases the newest.
 --
--- Line budget: 1000 lines, comments included. Registry sits at the bottom of
--- every dependency chain and is loaded by every addon that embeds a Kit, so it
--- stays small and boring. A change that would push this file past the budget
--- moves behaviour into a package of its own (as the LibStub bridge did: it is
--- `interopKit`) or first shrinks what is here.
+-- Budget: at most 600 code lines (lines that are neither blank nor comments)
+-- and at most 24 KB resident with debug information kept. Registry sits at the
+-- bottom of every dependency chain and is loaded by every addon that embeds a
+-- Kit, so it holds what every Kit needs and stays small and boring. Comments
+-- cost nothing resident and are not counted; `tests/Budget_spec.lua` counts
+-- the code lines. A change that would break the budget moves behaviour into a
+-- part or a package of its own (as the LibStub bridge did: it is `interopKit`)
+-- or first shrinks what is here.
+--
+-- This file is the core (docs/decisions/0001-kit-core-and-parts.md). Two
+-- parts load after it and hold what only some packages use: `Handover`
+-- (`parts/Registry-Handover.lua`: `request.retire`, `request.migrations`,
+-- `request.sealFacade` and `OnRetire`) and `Diagnostics`
+-- (`parts/Registry-Diagnostics.lua`: `GetInfo` and `Packages`).
 --
 -- Contents
 --
@@ -21,9 +30,9 @@
 --   Package-state access ..... Reading entries without trusting their shape, and
 --                              the lookup fast path.
 --   Public types ............. LuaCATS declarations for the facade.
---   Lookup ................... Register, Get, GetInfo, Find, Packages.
---   Retirement and migration . OnRetire, the outgoing hand-over, the migration
---                              runner, and the sealed-facade metatable.
+--   Lookup ................... Register, Get, Find.
+--   Parts .................... HasPart, the members of a part that is not
+--                              loaded, and the helpers parts call.
 --   Bootstrap ................ The reconciliation every Kit calls.
 --   Commit ................... Installing the methods and the facade self-check.
 --   Public namespace ......... `MoltenCodes.Registries[n]` and the alias.
@@ -44,7 +53,7 @@ local PUBLIC_ALIAS_KEY = "Registry"
 
 local STATE_SCHEMA = 1
 local API_GENERATION = 2
-local IMPLEMENTATION_REVISION = 16
+local IMPLEMENTATION_REVISION = 17
 
 -- Lua 5.1 doubles represent consecutive integers exactly only up to 2^53; past it
 -- distinct values compare equal, and a revision such as `1e300` would become one
@@ -63,6 +72,21 @@ local FIND_GENERATION_MISMATCH = "generation_mismatch"
 -- is asked to hand over until the incoming copy's migrations have all run.
 local STATUS_ACTIVE = "active"
 local STATUS_RETIRED = "retired"
+
+-- The one message every accessor raises for malformed package state, and the
+-- one `Bootstrap` raises, after the request's label, for a malformed copy.
+local CORRUPTED = "Registry: package state is corrupted"
+local INCOMPLETE = " package state is corrupted or incomplete"
+
+-- The parts (docs/decisions/0001-kit-core-and-parts.md) and the members each
+-- provides on the facade. A member whose part is not loaded stays on the
+-- facade as a stub naming the file to embed, so the facade self-check of every
+-- older copy keeps accepting it.
+local PART_MEMBERS = {
+  OnRetire = "Handover",
+  GetInfo = "Diagnostics",
+  Packages = "Diagnostics",
+}
 
 -- Validation ---------------------------------------------------------------
 
@@ -96,26 +120,16 @@ local function passes(hook, value)
   return not isSecret(verdict) and verdict and true or false
 end
 
----Whether `value` is an exact integer greater than zero and within range. `nan`
----fails the `% 1` comparison and infinity fails the bound, with no special case.
+---Whether `value` is an exact integer from `minimum` up to 2^53. `nan` fails the
+---`% 1` comparison and infinity fails the bound, with no special case.
 ---@param value any
+---@param minimum 0|1
 ---@return boolean
-local function isPositiveInteger(value)
+local function isBoundedInteger(value, minimum)
   return type(value) == "number"
     and not isSecret(value)
     and value % 1 == 0
-    and value > 0
-    and value <= MAXIMUM_INTEGER
-end
-
----Whether `value` is an exact integer of zero or more and within range.
----@param value any
----@return boolean
-local function isNonNegativeInteger(value)
-  return type(value) == "number"
-    and not isSecret(value)
-    and value % 1 == 0
-    and value >= 0
+    and value >= minimum
     and value <= MAXIMUM_INTEGER
 end
 
@@ -136,7 +150,7 @@ end
 ---@param methodName string
 ---@param fieldName "api"|"revision"
 local function validatePositiveInteger(value, methodName, fieldName)
-  if not isPositiveInteger(value) then
+  if not isBoundedInteger(value, 1) then
     local problem = " must be a positive integer up to " .. MAXIMUM_INTEGER_TEXT
     error("Registry:" .. methodName .. " " .. fieldName .. problem, 3)
   end
@@ -177,10 +191,21 @@ if stateApi ~= API_GENERATION then
   error("Registry: API generation is incompatible", 0)
 end
 if
-  not isNonNegativeInteger(stateRevision)
+  not isBoundedInteger(stateRevision, 0)
   or type(entries) ~= "table"
   or type(facade) ~= "table"
 then
+  error("Registry: bootstrap state is corrupted", 0)
+end
+
+-- Revision 17 adds `parts` (part name to `{ revision, methods, ... }`) and
+-- `helpers` (the core functions a part calls). The state `schema` stays 1:
+-- every older copy refuses any other schema, and never reads these fields.
+local parts = rawget(state, "parts")
+if type(parts) == "nil" then
+  parts = {}
+  rawset(state, "parts", parts)
+elseif type(parts) ~= "table" then
   error("Registry: bootstrap state is corrupted", 0)
 end
 
@@ -189,7 +214,8 @@ end
 -- An entry is `{ revision, implementation }`. Revisions 7 and 8 add optional fields that older
 -- entries simply lack: `status`, `retire` (the selected copy's hand-over hook), `migratedThrough`
 -- (the revision whose layout the state is in), `migrating` and `pendingState` (an unfinished
--- migration run and the state it had reached) and `seal` (the sealed-facade metatable).
+-- migration run and the state it had reached) and `seal` (the sealed-facade metatable). The core
+-- keeps `status` and `migratedThrough`; the Handover part owns the others.
 --
 -- Corrupted state found while serving a public call is raised at that call's caller, like an
 -- argument error. The accessors therefore take the stack level the public method needs, counted
@@ -201,7 +227,7 @@ end
 local function getPackageEntries(packageName, level)
   local packageEntries = rawget(entries, packageName)
   if packageEntries ~= nil and type(packageEntries) ~= "table" then
-    error("Registry: package state is corrupted", level)
+    error(CORRUPTED, level)
   end
   return packageEntries
 end
@@ -217,10 +243,10 @@ local function getEntry(packageEntries, api, level)
   end
   if
     type(entry) ~= "table"
-    or not isPositiveInteger(rawget(entry, "revision"))
+    or not isBoundedInteger(rawget(entry, "revision"), 1)
     or type(rawget(entry, "implementation")) ~= "table"
   then
-    error("Registry: package state is corrupted", level)
+    error(CORRUPTED, level)
   end
   return entry
 end
@@ -329,6 +355,7 @@ end
 ---@field Packages fun(self: Registry): Registry.PackageRow[]
 ---@field OnRetire fun(self: Registry, packageName: string, api: integer, retire: fun(implementation: table, incomingRevision: integer): any)
 ---@field Bootstrap fun(self: Registry, request: Registry.BootstrapRequest): table|nil, integer|nil, table|nil, any
+---@field HasPart fun(self: Registry, name: string): boolean Whether the named part (`"Handover"`, `"Diagnostics"`) is loaded.
 
 ---@type Registry
 local Registry = facade
@@ -399,7 +426,7 @@ local function register(_, packageName, api, revision, ...)
     )
   end
   local entry, validArguments, implementation, currentRevision = lookUp(packageName, api)
-  if entry ~= nil and isPositiveInteger(revision) then
+  if entry ~= nil and isBoundedInteger(revision, 1) then
     -- A hit returns both fields; the casts say so to the type checker.
     local current = currentRevision --[[@as integer]]
     return selectRevision(entry, implementation --[[@as table]], current, revision)
@@ -436,25 +463,6 @@ local function get(_, packageName, api)
   return rawget(entry, "implementation"), rawget(entry, "revision")
 end
 
----Returns a freshly allocated metadata snapshot for one registration.
----@param packageName string
----@param api integer
----@return Registry.PackageInfo|nil
-local function getInfo(_, packageName, api)
-  validatePackageName(packageName, "GetInfo")
-  validatePositiveInteger(api, "GetInfo", "api")
-  local entry = findEntry(packageName, api, 4)
-  if entry == nil then
-    return nil
-  end
-  return {
-    package = packageName,
-    api = api,
-    revision = rawget(entry, "revision"),
-    implementation = rawget(entry, "implementation"),
-  }
-end
-
 ---Silent lookup for an optional dependency. Never raises for a package that is not there; raises
 ---at the caller only for malformed arguments. Allocation-free, so it is safe on any path.
 ---@param packageName string
@@ -484,241 +492,89 @@ local function find(_, packageName, api)
   return implementation, revision
 end
 
----Order two `Packages` rows by package name, then API generation.
----@param left Registry.PackageRow
----@param right Registry.PackageRow
----@return boolean
-local function packageRowBefore(left, right)
-  if left.package ~= right.package then
-    return left.package < right.package
-  end
-  return left.api < right.api
-end
-
----Diagnostic enumeration of every registration, sorted by package then API.
----
----Allocates a fresh array of fresh rows on every call by design; it is meant for consoles and
----options pages, never for a hot path. Malformed private state raises the same corruption error
----`Get` raises, at the caller, instead of being listed as data or failing inside `table.sort`.
----@return Registry.PackageRow[]
-local function packages()
-  local rows = {}
-  for packageName in next, entries do
-    if type(packageName) ~= "string" then
-      error("Registry: package state is corrupted", 2)
-    end
-    local packageEntries = getPackageEntries(packageName, 3) --[[@as table]]
-    for api in next, packageEntries do
-      if not isPositiveInteger(api) then
-        error("Registry: package state is corrupted", 2)
-      end
-      local entry = getEntry(packageEntries, api, 3) --[[@as table]]
-      rows[#rows + 1] = {
-        package = packageName,
-        api = api,
-        revision = rawget(entry, "revision"),
-        status = rawget(entry, "status") or STATUS_ACTIVE,
-      }
-    end
-  end
-  table.sort(rows, packageRowBefore)
-  return rows
-end
-
--- Retirement and migration -------------------------------------------------
+-- Parts -------------------------------------------------------------------
 --
--- When a newer revision replaces an older one, the outgoing copy may hand its
--- state over (its `retire` hook) and the incoming copy runs the migration steps
--- between the two revisions, each exactly once, in ascending order. The shared
--- facade and the Kit's prototype tables keep their identity throughout, so the
--- outgoing copy's entry points already resolve to the incoming methods.
+-- A part records itself in `parts.<Part>` with its revision and its facade
+-- methods, and calls the core through `state.helpers`, read at call time so a
+-- core upgraded after the part loaded serves it. The commit below installs a
+-- stub for every member and then the methods of every installed part, so
+-- whichever loaded first, the part serves.
 
----Registers the retire hook of the currently selected revision.
----
----`Registry:Bootstrap` does this from `request.retire`; this method is for a
----package that only knows what to hand over once its file has finished.
----@param packageName string
----@param api integer
----@param retire fun(implementation: table, incomingRevision: integer): any
-local function onRetire(_, packageName, api, retire)
-  validatePackageName(packageName, "OnRetire")
-  validatePositiveInteger(api, "OnRetire", "api")
-  if type(retire) ~= "function" then
-    error("Registry:OnRetire retire must be a function", 2)
-  end
-  local entry = findEntry(packageName, api, 4)
-  if entry == nil then
-    error('Registry:OnRetire package "' .. packageName .. '" is not registered', 2)
-  end
-  rawset(entry, "retire", retire)
-end
-
----Hand a failure to the host error handler, or print it outside the client.
----@param message string
-local function reportFailure(message)
-  -- geterrorhandler is a World of Warcraft client API reachable only through the global table.
-  local getErrorHandler = rawget(globals, "geterrorhandler")
+-- shared:begin reportError 1
+-- Copied from tooling/shared/lua/reportError.lua by python3 -m tooling.shared.sync; edit that file, not this copy.
+---Report `failure` through the host error handler, or print it.
+---@param failure any
+local function reportError(failure)
+  -- geterrorhandler is a client API reachable only through the global table.
+  -- selene: allow(global_usage)
+  local getErrorHandler = rawget(_G, "geterrorhandler")
   if type(getErrorHandler) == "function" then
     local handler = getErrorHandler()
-    if type(handler) == "function" then
-      handler(message)
+    if type(handler) == "function" and pcall(handler, failure) then
       return
     end
   end
-  print(message)
+  print(failure)
+end
+-- shared:end reportError
+
+---The message a member of `partName` raises while that part is not loaded.
+---@param member string the member as its caller wrote it
+---@param partName string
+---@return string
+local function missingPart(member, partName)
+  return member
+    .. " is in Registry's "
+    .. partName
+    .. " part, which is not loaded: add registry\\parts\\Registry-"
+    .. partName
+    .. ".lua to embeds.xml after registry\\Registry.lua"
 end
 
----Mark the entry retired and ask the outgoing copy for its state, once. A failing
----hook is reported and the upgrade continues from no hand-over, not a half-drained one.
+---A facade method that raises at its caller, naming the part to embed. The
+---message is built when it raises, so no stub keeps a long string resident.
+---@param member string the facade member
+---@return function
+local function newPartStub(member)
+  return function()
+    error(missingPart("Registry:" .. member, PART_MEMBERS[member]), 2)
+  end
+end
+
+---Whether the named part is loaded in this session: `"Handover"` or
+---`"Diagnostics"`. Code that uses a part only when it is there asks this; every
+---member stays on the facade whether its part is loaded or not.
+---@param name string
+---@return boolean
+local function hasPart(_, name)
+  if type(name) ~= "string" or isSecret(name) then
+    error("Registry:HasPart name must be a string", 2)
+  end
+  return type(rawget(parts, name)) == "table"
+end
+
+---Report, once per entry, hand-over state an older revision left that only the
+---Handover part can run: a retire hook, an unfinished migration run or a seal.
+---It is left as it is, so the part finds it when it loads.
 ---@param entry table
----@param implementation table
----@param incomingRevision integer
 ---@param label string
----@return any handover
-local function retireOutgoing(entry, implementation, incomingRevision, label)
-  if rawget(entry, "migrating") == true then
-    -- The copy that retired already handed over; its state waits in
-    -- `pendingState` for the migration run to be resumed.
-    return nil
+local function reportStrandedHandover(entry, label)
+  if
+    rawget(entry, "handoverReported") == true
+    or (
+      type(rawget(entry, "retire")) == "nil"
+      and rawget(entry, "migrating") ~= true
+      and type(rawget(entry, "seal")) == "nil"
+    )
+  then
+    return
   end
-  local retire = rawget(entry, "retire")
-  rawset(entry, "retire", nil)
-  rawset(entry, "status", STATUS_RETIRED)
-  if type(retire) ~= "function" then
-    return nil
-  end
-  local ok, handover = pcall(retire, implementation, incomingRevision)
-  if ok then
-    return handover
-  end
-  reportFailure(label .. " retire hook failed: " .. tostring(handover))
-  return nil
-end
-
----The migration steps in `(fromRevision, toRevision]`, ascending.
----@param migrations table
----@param fromRevision integer
----@param toRevision integer
----@return integer[]|nil steps
----@return string|nil problem
-local function selectMigrationSteps(migrations, fromRevision, toRevision)
-  local steps = {}
-  for step, migrate in next, migrations do
-    if not isPositiveInteger(step) or type(migrate) ~= "function" then
-      return nil, "request.migrations must map positive revisions to functions"
-    end
-    if step > fromRevision and step <= toRevision then
-      steps[#steps + 1] = step
-    end
-  end
-  table.sort(steps)
-  return steps, nil
-end
-
----Run every migration step this entry has not run yet.
----
----`migratedThrough` is what makes each step run exactly once: a copy that
----resumes over state an earlier copy of the same revision already migrated
----starts after the last recorded step, not after the inherited revision.
----While a run is unfinished (`migrating`), the next copy starts after the last
----step that completed and receives the state that step produced
----(`pendingState`), so a failed step is retried rather than skipped.
----@param entry table
----@param migrations table|nil
----@param inheritedRevision integer
----@param revision integer
----@param handover any
----@param implementation table
----@return boolean ok
----@return any stateOrProblem the migrated state, or the failure message
-local function runMigrations(
-  entry,
-  migrations,
-  inheritedRevision,
-  revision,
-  handover,
-  implementation
-)
-  local fromRevision = inheritedRevision
-  local migratedThrough = rawget(entry, "migratedThrough")
-  local migratedState = handover
-  if rawget(entry, "migrating") == true and isNonNegativeInteger(migratedThrough) then
-    -- An earlier copy's run stopped at a failing step. The state is in the
-    -- layout of the last step that completed, whatever revision this copy
-    -- inherited, and carries on from where that run left it.
-    fromRevision = migratedThrough
-    migratedState = rawget(entry, "pendingState")
-  else
-    if isNonNegativeInteger(migratedThrough) and migratedThrough > fromRevision then
-      fromRevision = migratedThrough
-    end
-    rawset(entry, "migrating", true)
-    rawset(entry, "migratedThrough", fromRevision)
-    rawset(entry, "pendingState", migratedState)
-  end
-  if type(migrations) ~= "nil" then
-    local steps, problem = selectMigrationSteps(migrations, fromRevision, revision)
-    if steps == nil then
-      return false, problem
-    end
-    for index = 1, #steps do
-      local step = steps[index]
-      local ok, result = pcall(rawget(migrations, step), migratedState, implementation)
-      if not ok then
-        return false, "migration to revision " .. step .. " failed: " .. tostring(result)
-      end
-      if type(result) ~= "nil" then
-        migratedState = result
-      end
-      rawset(entry, "migratedThrough", step)
-      rawset(entry, "pendingState", migratedState)
-    end
-  end
-  if fromRevision < revision then
-    rawset(entry, "migratedThrough", revision)
-  end
-  rawset(entry, "migrating", nil)
-  rawset(entry, "pendingState", nil)
-  rawset(entry, "status", STATUS_ACTIVE)
-  return true, migratedState
-end
-
----Install, keep or remove the sealed-facade metatable, as the request asks.
----
----Lua 5.1 has no metamethod for assignments to fields that already exist, so a
----seal refuses *new* fields only; see `docs/API.md`. A newer revision that does
----not ask for the seal removes the one Registry installed, because the newer
----revision owns the facade's policy. Each seal carries its sealer's label.
----@param entry table
----@param implementation table
----@param wanted boolean
----@param label string
----@return boolean ok `false` when the facade carries a metatable Registry did not install
-local function applySeal(entry, implementation, wanted, label)
-  local seal = rawget(entry, "seal")
-  local current = getmetatable(implementation)
-  if not wanted then
-    if seal ~= nil and current == seal then
-      setmetatable(implementation, nil)
-    end
-    return true
-  end
-  if current ~= nil and current ~= seal then
-    return false
-  end
-
-  local refusal = '" cannot be added from outside the package'
-  seal = {
-    __newindex = function(_, key)
-      -- Named by type, never `tostring`: a table's `__tostring` is foreign code.
-      local kind = isSecret(key) and "secret" or type(key)
-      local shown = (kind == "string" or kind == "number" or kind == "boolean") and tostring(key)
-      error(label .. ' facade is sealed; field "' .. (shown or ("<" .. kind .. ">")) .. refusal, 2)
-    end,
-  }
-  rawset(entry, "seal", seal)
-  setmetatable(implementation, seal)
-  return true
+  rawset(entry, "handoverReported", true)
+  reportError(
+    label
+      .. " inherited a retire hook, a migration run or a seal; "
+      .. missingPart("running it", "Handover")
+  )
 end
 
 -- Bootstrap ---------------------------------------------------------------
@@ -739,8 +595,9 @@ end
 ---does not own, so the order lives here once rather than in every package.
 ---
 ---`validateState`, `resume`, `retire`, `migrations` and `sealFacade` are optional;
----`docs/API.md` documents each and the decision table. Registry never calls this
----itself: its own bootstrap runs before the facade exists.
+---`docs/API.md` documents each and the decision table. The last three need the
+---Handover part. Registry never calls this itself: its own bootstrap runs
+---before the facade exists.
 ---@param request Registry.BootstrapRequest
 ---@return table|nil implementation the table to initialize; `nil`: return `selected` unchanged
 ---@return integer|nil previousRevision the inherited revision, as `Register` reports it
@@ -774,15 +631,19 @@ local function bootstrap(_, request)
   validateOptionalField(retire, "retire", "function")
   validateOptionalField(migrations, "migrations", "table")
   validateOptionalField(sealFacade, "sealFacade", "boolean")
-
-  -- Level 3 points at the package file that called `Registry:Bootstrap`: level 1
-  -- is `refuse` itself and level 2 is `bootstrap`.
-  local function refuse(reason)
-    error(label .. " " .. reason, 3)
+  local handoverPart = rawget(parts, "Handover")
+  if handoverPart == nil then
+    local field = (type(retire) ~= "nil" and "retire")
+      or (type(migrations) ~= "nil" and "migrations")
+      or (sealFacade == true and "sealFacade")
+    if field then
+      error(missingPart("Registry:Bootstrap request." .. field, "Handover"), 2)
+    end
   end
 
-  ---Finish handing `implementation` to the caller: run the migration steps it
-  ---has not run yet, record its retire hook, and apply the seal it asked for.
+  ---Finish handing `implementation` to the caller. The Handover part runs the
+  ---migration steps not run yet, records the retire hook and applies the seal
+  ---asked for; without it only the bookkeeping is done.
   ---@param implementation table
   ---@param inheritedRevision integer|nil
   ---@param handover any
@@ -791,32 +652,21 @@ local function bootstrap(_, request)
     -- `register` or the existing-copy lookup just proved the entry exists.
     -- Level 5: one frame deeper than `bootstrap`, which calls this.
     local entry = findEntry(packageName, api, 5) --[[@as table]]
-    local migratedState = nil
-    if inheritedRevision == nil then
-      -- Nothing was inherited, so no step runs; the table is still validated,
-      -- so a malformed one fails on every load, not only on the first upgrade.
-      if
-        type(migrations) ~= "nil" and selectMigrationSteps(migrations, revision, revision) == nil
-      then
-        error(label .. " request.migrations must map positive revisions to functions", 3)
+    if handoverPart == nil then
+      -- The bookkeeping a migration run leaves when it has no step to run; an
+      -- unfinished run an older revision left waits for the part.
+      if rawget(entry, "migrating") ~= true then
+        rawset(entry, "migratedThrough", revision)
       end
-      rawset(entry, "migratedThrough", revision)
       rawset(entry, "status", STATUS_ACTIVE)
-    else
-      local ok, result =
-        runMigrations(entry, migrations, inheritedRevision, revision, handover, implementation)
-      if not ok then
-        error(label .. " " .. result, 3)
-      end
-      migratedState = result
+      return nil
     end
-    if type(retire) ~= "nil" then
-      rawset(entry, "retire", retire)
+    local ok, result =
+      handoverPart.adopt(entry, implementation, inheritedRevision, handover, request)
+    if not ok then
+      error(label .. " " .. result, 3)
     end
-    if not applySeal(entry, implementation, sealFacade == true, label) then
-      error(label .. " cannot seal a facade that already carries a metatable", 3)
-    end
-    return migratedState
+    return result
   end
 
   -- The entry is read directly rather than through `get`, so corruption is
@@ -827,7 +677,7 @@ local function bootstrap(_, request)
     existing = rawget(existingEntry, "implementation")
     existingRevision = rawget(existingEntry, "revision")
     if rawget(existing, "API") ~= api then
-      refuse("package state is corrupted or incomplete")
+      error(label .. INCOMPLETE, 2)
     end
 
     -- The facade publishes its revision only once it has committed the
@@ -835,14 +685,14 @@ local function bootstrap(_, request)
     -- the revision Registry accepted cannot be trusted at all.
     local facadeRevision = rawget(existing, "REVISION")
     if type(facadeRevision) ~= "number" or facadeRevision > existingRevision then
-      refuse("package state is corrupted or incomplete")
+      error(label .. INCOMPLETE, 2)
     end
     if existingRevision > revision then
       -- A newer compatible embedded revision owns its own private
       -- state schema. Older copies validate the stable API surface
       -- and must not reinterpret state they do not understand.
       if facadeRevision ~= existingRevision or not passes(validateSurface, existing) then
-        refuse("package state is corrupted or incomplete")
+        error(label .. INCOMPLETE, 2)
       end
       return nil, nil, existing
     end
@@ -852,7 +702,7 @@ local function bootstrap(_, request)
     -- caller validates whatever it inherits before it reuses it.
     if existingRevision == revision then
       if not passes(validateSurface, existing) then
-        refuse("package state is corrupted or incomplete")
+        error(label .. INCOMPLETE, 2)
       end
 
       -- A secret verdict cannot be compared, so it counts as "not complete".
@@ -864,7 +714,7 @@ local function bootstrap(_, request)
       if type(resume) ~= "nil" then
         local inherited = resume(existing, complete)
         if type(inherited) ~= "nil" then
-          if not isNonNegativeInteger(inherited) then
+          if not isBoundedInteger(inherited, 0) then
             error("Registry:Bootstrap request.resume must return a revision", 2)
           end
           return existing, inherited, existing, adopt(existing, inherited, nil)
@@ -872,7 +722,7 @@ local function bootstrap(_, request)
         return nil, nil, existing
       end
       if not complete then
-        refuse("package state is corrupted or incomplete")
+        error(label .. INCOMPLETE, 2)
       end
       return nil, nil, existing
     end
@@ -882,7 +732,11 @@ local function bootstrap(_, request)
   -- registers, so the hook still sees the state it owns.
   local handover = nil
   if existingEntry ~= nil then
-    handover = retireOutgoing(existingEntry, existing, revision, label)
+    if handoverPart == nil then
+      reportStrandedHandover(existingEntry, label)
+    else
+      handover = handoverPart.retireOutgoing(existingEntry, existing, revision, label)
+    end
   end
   local implementation, previousRevision = registerEntry(packageName, api, revision, 4)
   if implementation == nil then
@@ -890,7 +744,7 @@ local function bootstrap(_, request)
     return nil, nil, existing
   end
   if previousRevision ~= existingRevision then
-    refuse("Registry state changed unexpectedly during bootstrap")
+    error(label .. " Registry state changed unexpectedly during bootstrap", 2)
   end
   return implementation,
     previousRevision,
@@ -905,11 +759,32 @@ end
 if stateRevision < IMPLEMENTATION_REVISION then
   rawset(Registry, "Register", register)
   rawset(Registry, "Get", get)
-  rawset(Registry, "GetInfo", getInfo)
   rawset(Registry, "Find", find)
-  rawset(Registry, "Packages", packages)
-  rawset(Registry, "OnRetire", onRetire)
   rawset(Registry, "Bootstrap", bootstrap)
+  rawset(Registry, "HasPart", hasPart)
+  for member in next, PART_MEMBERS do
+    rawset(Registry, member, newPartStub(member))
+  end
+  -- A part loaded before this core keeps serving: its methods replace the stubs.
+  for _, part in next, parts do
+    local methods = type(part) == "table" and rawget(part, "methods") or nil
+    if type(methods) == "table" then
+      for member, method in next, methods do
+        rawset(Registry, member, method)
+      end
+    end
+  end
+  -- What the parts call, read by them at call time.
+  rawset(state, "helpers", {
+    corrupted = CORRUPTED,
+    isBoundedInteger = isBoundedInteger,
+    validatePackageName = validatePackageName,
+    validatePositiveInteger = validatePositiveInteger,
+    getPackageEntries = getPackageEntries,
+    getEntry = getEntry,
+    findEntry = findEntry,
+    missingPart = missingPart,
+  })
   rawset(Registry, "API", API_GENERATION)
   rawset(Registry, "REVISION", IMPLEMENTATION_REVISION)
   rawset(state, "registryRevision", IMPLEMENTATION_REVISION)
@@ -920,7 +795,7 @@ end
 -- makes corrupted or incompatible state fail now, not as a later nil call.
 if
   rawget(Registry, "API") ~= API_GENERATION
-  or not isPositiveInteger(rawget(Registry, "REVISION"))
+  or not isBoundedInteger(rawget(Registry, "REVISION"), 1)
   or rawget(Registry, "REVISION") ~= stateRevision
   or type(rawget(Registry, "Register")) ~= "function"
   or type(rawget(Registry, "Get")) ~= "function"
@@ -929,6 +804,7 @@ if
   or type(rawget(Registry, "Packages")) ~= "function"
   or type(rawget(Registry, "OnRetire")) ~= "function"
   or type(rawget(Registry, "Bootstrap")) ~= "function"
+  or type(rawget(Registry, "HasPart")) ~= "function"
 then
   error("Registry: facade is corrupted or incompatible", 0)
 end
@@ -973,7 +849,7 @@ else
   if type(aliased) == "table" then
     aliasedApi = rawget(aliased, "API")
   end
-  if not isPositiveInteger(aliasedApi) then
+  if not isBoundedInteger(aliasedApi, 1) then
     error("Registry: MoltenCodes.Registry is owned by an incompatible value", 0)
   end
   if aliasedApi == API_GENERATION then

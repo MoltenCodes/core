@@ -19,7 +19,10 @@ The Registry suite covers:
 - silent lookup (`Find`) and the diagnostic listing (`Packages`);
 - retirement hand-over, per-revision migrations and their exactly-once record;
 - sealed facades;
-- the lookup fast path and its upgrades.
+- the lookup fast path and its upgrades;
+- the core without its parts, the parts' bootstrap and the upgrade from the
+  revision 16 whole file;
+- the core's code-line budget.
 
 Spec files:
 
@@ -40,6 +43,13 @@ Spec files:
 | `SecretValues_spec.lua` | secret arguments, request fields and hook results refused or handed over without a comparison; the probe resolved at load kept, and a probe installed after load honoured |
 | `RegistryTestEnv_spec.lua` | the test environment's own reset and isolation |
 | `Manifest_spec.lua` | runtime API and revision against `package.manifest.json` |
+| `Parts_spec.lua` | the `Handover` and `Diagnostics` parts: stubs and request-field refusals at the caller without them, `HasPart`, either load order, a later core over installed parts, a part without its core, part revisions, the upgrade from revision 16 (entries kept, an inherited retire hook reported once, or run with the part) |
+| `Budget_spec.lua` | the core at or under 600 code lines |
+| `Conformance_spec.lua` | the shared conformance suite's `manifest` group (the other groups do not fit; the file says why) |
+
+`RegistryTestEnv` loads the core and both parts; `RegistryTestEnv.Core` loads
+the core alone. `fixtures/Registry-revision16.lua` is the revision 16 file,
+the last one without parts, kept verbatim for the upgrade specs.
 
 Test helpers belong under `support/` and are not public package API.
 

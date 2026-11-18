@@ -2,7 +2,7 @@ local TestEnv = require("RegistryTestEnv")
 
 --- The implementation revision `src/Registry.lua` carries; `Manifest_spec.lua`
 --- pins the same number against `package.manifest.json`.
-local CURRENT_REVISION = 16
+local CURRENT_REVISION = 17
 
 describe("Registry bootstrap", function()
   before_each(TestEnv.Reset)
@@ -214,6 +214,7 @@ describe("Registry bootstrap", function()
       Packages = function() end,
       OnRetire = function() end,
       Bootstrap = bootstrapPackage,
+      HasPart = function() end,
     }
 
     -- Registry's bootstrap handshake happens through the global table, so this spec sets it up there directly.

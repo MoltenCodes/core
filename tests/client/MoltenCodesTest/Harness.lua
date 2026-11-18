@@ -341,7 +341,8 @@ end
 ---Each row is what `Registry:Packages()` reports plus `facadeRevision`, the
 ---`REVISION` constant of the table Registry hands out, and `expectedRevision`
 ---from Expected.lua, so a reader of the saved file can spot a newer copy that
----another addon embeds without running anything.
+---another addon embeds without running anything. Empty when Registry's
+---Diagnostics part is not loaded.
 ---@return table[]
 local function describeLoadedPackages()
   local expectedById = {}
@@ -350,6 +351,12 @@ local function describeLoadedPackages()
   end
 
   local rows = {}
+  -- `Packages` is Registry's Diagnostics part (Registry revision 17 and
+  -- later). The installed bundle carries every part; a host that loads the
+  -- Registry core alone, as the harness's own specs do, lists nothing.
+  if not Registry:HasPart("Diagnostics") then
+    return rows
+  end
   for _, row in ipairs(Registry:Packages()) do
     local implementation = Registry:Find(row.package, row.api)
     local facadeRevision = nil

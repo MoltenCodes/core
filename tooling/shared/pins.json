@@ -3,8 +3,8 @@
   "optOuts": [
     {
       "package": "registry",
-      "helpers": ["isSecret", "reportError", "describeKey", "validateFacade", "limits"],
-      "reason": "Registry's 1000-line budget cannot take the marker lines, and it reports nothing these helpers report."
+      "helpers": ["isSecret"],
+      "reason": "Registry's lookup fast path reads the load-time issecretvalue probe directly, once for both arguments; the shared block keeps the probe inside its do block, so converting would add two calls to every Get and Find."
     },
     {
       "package": "commandKit",

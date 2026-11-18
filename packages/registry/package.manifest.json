@@ -3,9 +3,19 @@
   "displayName": "Registry",
   "description": "A deterministic runtime registry for modular World of Warcraft libraries.",
   "summary": "Zero-dependency shared package registration, discovery and in-place revision upgrades.",
-  "version": "0.6.11",
+  "version": "0.7.0",
   "license": "MIT",
   "api": 2,
-  "revision": 16,
-  "dependencies": {}
+  "revision": 17,
+  "dependencies": {},
+  "parts": {
+    "Handover": {
+      "description": "Retire hooks, migration steps and sealed facades for a revision that replaces an older one.",
+      "revision": 1
+    },
+    "Diagnostics": {
+      "description": "Registry:GetInfo and Registry:Packages, the read-only views of every registration.",
+      "revision": 1
+    }
+  }
 }
