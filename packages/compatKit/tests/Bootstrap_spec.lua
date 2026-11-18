@@ -16,7 +16,7 @@ describe("CompatKit bootstrap", function()
     local registered, revision = Registry:Get("compatKit", 1)
     assert.are.equal(CompatKit, registered)
     assert.are.equal(1, CompatKit.API)
-    assert.are.equal(4, CompatKit.REVISION)
+    assert.are.equal(5, CompatKit.REVISION)
     assert.are.equal(CompatKit.REVISION, revision)
   end)
 

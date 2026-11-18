@@ -41,7 +41,7 @@
 
 local PACKAGE_NAME = "compatKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 4
+local IMPLEMENTATION_REVISION = 5
 local REQUIRED_REGISTRY_API = 2
 local STATE_SCHEMA = 1
 
@@ -513,25 +513,41 @@ local UNBOUNDED = rawget(state, "unbounded")
 
 -- Host facilities ------------------------------------------------------------
 
----Whether `value` is a secret value (Retail 12.x). `issecretvalue` is looked
----up at every call, so a probe that appears after load is used at once.
----@param value any
----@return boolean
-local function isSecret(value)
-  local probe = readGlobal("issecretvalue")
-  return type(probe) == "function" and probe(value) == true
-end
+-- shared:begin isSecret 1
+-- Copied from tooling/shared/lua/isSecret.lua by python3 -m tooling.shared.sync; edit that file, not this copy.
+---Whether `value` is a secret value the host forbids comparing.
+---@type fun(value: any): boolean
+local isSecret
+do
+  -- issecretvalue is a client API reachable only through the global table.
+  -- selene: allow(global_usage)
+  local loadedProbe = rawget(_G, "issecretvalue")
+  if type(loadedProbe) ~= "function" then
+    loadedProbe = nil
+  end
 
----Hand a failure from a shim or a probe to the host error handler.
----
----The failure is passed on unchanged: it may be a secret string built from a
----secret value, and CompatKit never inspects it. Outside a client there is no
----handler, and printing is what the client's default handler does; a handler
----that itself raises (an error-display addon with a bug) falls back to the
----same print, so reporting one failure can never become a second one.
+  isSecret = function(value)
+    local probe = loadedProbe
+    if probe == nil then
+      -- selene: allow(global_usage)
+      probe = rawget(_G, "issecretvalue")
+      if type(probe) ~= "function" then
+        return false
+      end
+    end
+    return probe(value) == true
+  end
+end
+-- shared:end isSecret
+
+-- shared:begin reportError 1
+-- Copied from tooling/shared/lua/reportError.lua by python3 -m tooling.shared.sync; edit that file, not this copy.
+---Report `failure` through the host error handler, or print it.
 ---@param failure any
 local function reportError(failure)
-  local getErrorHandler = readGlobal("geterrorhandler")
+  -- geterrorhandler is a client API reachable only through the global table.
+  -- selene: allow(global_usage)
+  local getErrorHandler = rawget(_G, "geterrorhandler")
   if type(getErrorHandler) == "function" then
     local handler = getErrorHandler()
     if type(handler) == "function" and pcall(handler, failure) then
@@ -540,6 +556,7 @@ local function reportError(failure)
   end
   print(failure)
 end
+-- shared:end reportError
 
 ---Find an optional Kit through `Registry:Find`, or `nil` when it is not
 ---registered. Called at call time, never at load, so load order is free.
@@ -605,16 +622,19 @@ local function validatePriority(value, label, level)
   end
 end
 
----Refuse a receiver that is not the facade.
----@param receiver any
----@param label string public method name
----@param level integer
+-- shared:begin validateFacade 1 __FACADE__=CompatKit
+-- Copied from tooling/shared/lua/validateFacade.lua by python3 -m tooling.shared.sync; edit that file, not this copy.
+---Raise at `level` unless `receiver` is the CompatKit facade.
+---@param receiver any the table the method was called on
+---@param label string qualified method name, used in the argument error
+---@param level integer stack level the failure is reported at
 local function validateFacade(receiver, label, level)
-  -- `type` first: a secret receiver is never a table, and only a table is compared.
   if type(receiver) ~= "table" or receiver ~= CompatKit then
-    error(label .. " must be called on the CompatKit facade; use " .. label .. "(...)", level)
+    local hint = "; use " .. label .. "(...)"
+    error(label .. " must be called on the CompatKit facade" .. hint, level)
   end
 end
+-- shared:end validateFacade
 
 ---Refuse a receiver that is not a provider registry.
 ---@param receiver any
@@ -1464,24 +1484,25 @@ local function validateLimitValue(name, value, level)
   end
 end
 
----Name a caller's table key in a refusal without running its `__tostring`:
----a string as written, a number or boolean through `tostring` (no foreign
----code runs for those), anything else by its type (`<table>`). Converting a
----table or userdata key would run the caller's `__tostring`, foreign code
----that may raise and lose the refusal or, on Retail, answer a secret. The
----caller has refused a secret key already.
+-- shared:begin describeKey 1
+-- Copied from tooling/shared/lua/describeKey.lua by python3 -m tooling.shared.sync; edit that file, not this copy.
+---Name `key` for an error message without running any of the caller's code.
 ---@param key any
 ---@return string
 local function describeKey(key)
-  local keyType = type(key)
-  if keyType == "string" then
+  if isSecret(key) then
+    return "<secret>"
+  end
+  local kind = type(key)
+  if kind == "string" then
     return key
   end
-  if keyType == "number" or keyType == "boolean" then
+  if kind == "number" or kind == "boolean" then
     return tostring(key)
   end
-  return "<" .. keyType .. ">"
+  return "<" .. kind .. ">"
 end
+-- shared:end describeKey
 
 ---Refuse a `SetLimits` argument before any limit changes, so a call with one
 ---bad entry leaves every limit as it was.
