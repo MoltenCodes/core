@@ -84,3 +84,22 @@ A parent pool's `_children` holds five maps keyed by child: `first` (keyed by pa
 ## Deferred release
 
 A parked object is `PARKED` in `_active`, counted in `_parkedCount` rather than `_activeCount`, and mapped to its animation group in the pool's `_parked`. The shared state maps each group to its pending pool and object (`deferredPool`, `deferredObject`) and remembers every group PoolKit ever hooked in the weak-keyed `hookedGroups`, so a group is hooked once however often its Frame is reused. The hook is one shared function that calls `state.dispatch.animationFinished`, so a newer revision replaces the behaviour behind hooks an older revision installed. The routine that takes an object out of the parked state clears every mapping before the release runs, so a failure during the release cannot leave a stale mapping behind.
+
+## Core and parts (revision 12)
+
+The core keeps one truthiness test per optional mechanism on the paths it
+changes: `_children` and `_attachedTo` in `releaseActive`, a `PARKED` status
+in `Release`, `_waitingCount` in `releaseActive`, `Acquire`, `Close` and
+`SetMaxCreated`, `_parkedCount` in `Close`, and `_generation ~= _baseGeneration`
+in `releaseActive` and `createObject`. Only when a test passes does it ask
+`mechanism(partName)` for the part's hooks in `_state.parts`. A pool reaches
+those states only through its part, so a session without the part never
+calls it; the one exception is a pool revision 11 or older built, for which
+the core builds fallbacks (`fullPools`) that take the safe exact path.
+
+Parts read the core's functions from `_state.helpers` at call time, so a core
+upgraded after a part loaded serves it, and the core's commit reinstalls every
+loaded part's methods over its stubs. Hot fields of a sparse pool that are
+absent are read through the pool metatable's `__index`, the `Pool` prototype,
+which holds no `_` field, so they read `nil`; `rawget` is kept off the hot
+paths as before.

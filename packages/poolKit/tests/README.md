@@ -30,8 +30,10 @@ They also cover the contracts a caller is most likely to get wrong:
 | `Bootstrap_spec.lua` | Duplicate loads, newer-revision refusal, in-place upgrades from revisions 1, 3, 5, 7 and 8 and from the previous revision (which then names a table option field by its type), sentinel drift. |
 | `SecretValues_spec.lua` | Secret options and pool-method arguments refused at the caller's line on the `mainline` host; ordinary and absent ones still accepted. |
 | `Manifest_spec.lua` | Manifest API and revision agree with the runtime. |
+| `Parts_spec.lua` | The four parts: stubs and constructor-option refusals at the caller without them, neutral getters, `Acquire(onAvailable)` answering `queueFull` without a queue, sparse pools of at most 16 fields, `HasPart`, either load order, a part without its core, part revisions, a later core over installed parts, and the upgrade from revision 11 with a queue, a parked object, a child and a raised generation, with the parts (everything adopted) and without them (each reported once, the safe exact path), a full and a sparse pool side by side. |
+| `Conformance_spec.lua` | The shared conformance suite's `manifest`, `receivers`, `arguments` and `upgrade` groups (`limits` does not apply). |
 
-`support/PoolKitTestEnv.lua` builds the environment on the shared fixture and adds an animation-group stand-in (`NewAnimationGroup`) and `LoadRevision`, which loads this source as an earlier revision of the same state schema.
+`support/PoolKitTestEnv.lua` builds the environment on the shared fixture, loading the core and its four parts (`PoolKitTestEnv.Core` loads the core alone), and adds an animation-group stand-in (`NewAnimationGroup`), `LoadParts`, a `ReloadPackage` that reloads the core and then its parts, and `LoadRevision`, which loads an earlier revision: the whole-file fixture `fixtures/PoolKit-revision11.lua` up to revision 11, the core in `src/` after it.
 
 PoolKit is pure Lua, so the host error handler used by the leak-warning specs is installed explicitly by the spec rather than by default.
 

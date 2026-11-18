@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.5.0 — 2026-11-18
+
+- Plain-pool core. `PoolKit.lua` keeps what every pool in the repository uses (bounds, the creation cap, strict diagnostics, `maxActiveWarning`, the re-entrancy guard) and four new parts (ADR 0001), revision 1 each, hold the optional mechanisms:
+  - `Waiting` (`src/parts/PoolKit-Waiting.lua`): `maxActive`, `maxWaiting`, queued `Acquire(onAvailable)`, `CancelWaiting`.
+  - `Children` (`src/parts/PoolKit-Children.lua`): `AttachChild`, `DetachChild` and the cascade.
+  - `Deferred` (`src/parts/PoolKit-Deferred.lua`): `ReleaseAfter`.
+  - `Generations` (`src/parts/PoolKit-Generations.lua`): the `generation` option and `SetGeneration`.
+- Every member stays on `PoolKit.Pool`, so every older copy's surface check still accepts it. Without its part a mutator raises at the caller's line: `PoolKit.Pool:AttachChild is in PoolKit's Children part, which is not loaded: add poolKit\parts\PoolKit-Children.lua to embeds.xml after poolKit\PoolKit.lua`; a constructor option the same way (`PoolKit:New maxActive is in PoolKit's Waiting part, ...`). The getters of an absent part answer the neutral value (`GetWaitingCount` and `GetParkedCount` `0`, `GetGeneration` `1`), and `Acquire(onAvailable)` at capacity answers `nil, "queueFull"`: without the `Waiting` part a pool has no queue. A part without its core raises `MoltenCodes PoolKit part <Part> requires PoolKit API 1 to be loaded first`.
+- New: `PoolKit:HasPart(name)`. `New` and `NewTablePool` now check their receiver: `PoolKit.New(options)` with a dot raises `PoolKit:New must be called on the PoolKit facade; use PoolKit:New(...)` rather than "options must be a table".
+- Sparse pools: a new pool carries only the fields in use (twelve always, plus the options given; at most 16 for every combination the repository's Kits use, so one 16-slot hash part), a part's fields appear only when its part sets them, and strict pools share one weak metatable for `_released`. Every path reads an optional field by truthiness, so pools revision 11 built (with `false` and `0`) are read as they are and none is converted.
+- The constructor options are one rule list and one walker; every refusal keeps its text and its precedence. The seven count and state getters are built from one function.
+- The pool upgrade for revisions 1 to 3 exists only in a session where such a revision loaded (`_state.legacyPools`, sticky); elsewhere its code is freed after load.
+- The shared helper blocks `isSecret` (call sites renamed from `isSecretValue`; a probe installed after load is now honoured on a host that had none at load), `describeKey` and `validateFacade`.
+- Upgrade from revision 11: the state gains `parts`, `helpers`, `partInterface` and the shared weak metatable; every pool and object is kept. A pool revision 11 left in a mechanism's state (a queue, a parked object, children, a raised generation) in a session without that part is reported once per part through `geterrorhandler()`, and the core takes the safe exact path: waiting requests fail with `"closed"`, a parked object is released at once, children are detached without cascading, and no stale object is retained. With the part loaded everything is adopted as it is.
+- Resident, measured on host Lua 5.1.5 with the 2026-11-15 diagnosis method: 82,413 B → 62,240 B for the core (allocated while loading 221,616 B → 189,184 B); the parts hold 7,441 B (`Waiting`), 8,835 B (`Children`), 8,920 B (`Deferred`) and 4,284 B (`Generations`) when loaded.
+- Implementation revision 12. Specs: 124 → 157 (`Parts_spec.lua`, `Conformance_spec.lua`); the test environment loads the four parts, `PoolKitTestEnv.Core` the core alone, `LoadRevision` up to 11 loads `tests/fixtures/PoolKit-revision11.lua` (the revision 11 file, verbatim), and `ReloadPackage` reloads the core and then its parts. `SecretValues_spec.lua` loads the parts after the core.
+
 ## 0.4.9 — 2026-11-15
 
 - Fixed: `New` and `NewTablePool` named an unknown option field by passing the caller's key to `tostring`. `tostring` on a table or userdata runs its `__tostring`, foreign code that could raise (or answer a secret on Retail) inside PoolKit, so the caller saw that error instead of the real refusal. A string key is still shown as written and a number or boolean through `tostring`, which runs no foreign code, so `unknown field "aaa"` is unchanged; any other key is named by its type: `PoolKit:New options contains unknown field "<table>"`. Documented in `docs/API.md`.

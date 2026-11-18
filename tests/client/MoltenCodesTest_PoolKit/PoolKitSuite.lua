@@ -549,6 +549,15 @@ facade:Test("the installed PoolKit carries the revision of the committed manifes
   ctx:Fail("Expected.lua does not list poolKit")
 end)
 
+facade:Test("PoolKit:HasPart answers true for the four parts the bundle carries", function(ctx)
+  -- The installed bundle carries every part of every Kit, so a part method's
+  -- missing-part error cannot be seen here; the Busted specs prove it.
+  for _, part in ipairs({ "Waiting", "Children", "Deferred", "Generations" }) do
+    ctx:Expect(PoolKit:HasPart(part)):ToBe(true)
+  end
+  ctx:Expect(PoolKit:HasPart("NoSuchPart")):ToBe(false)
+end)
+
 -- poolKit.frames ------------------------------------------------------------------------------
 
 local frames = newSuite("frames")

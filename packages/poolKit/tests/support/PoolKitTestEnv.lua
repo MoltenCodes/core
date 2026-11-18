@@ -2,16 +2,57 @@
 ---
 --- The World of Warcraft stubs, the `package.loaded` bookkeeping and the error
 --- capture live in the shared `FrameworkTestEnv` fixture at `tests/support/`.
---- What stays here is this package's own module load order.
+--- What stays here is this package's own module load order: the core and
+--- its four parts by default, so every mechanism serves, and the core alone in
+--- `PoolKitTestEnv.Core`, as an addon that embeds only `poolKit\PoolKit.lua`
+--- loads it.
 local FrameworkTestEnv = require("FrameworkTestEnv")
 
+--- The parts, in manifest order.
+local PARTS = { "PoolKit-Waiting", "PoolKit-Children", "PoolKit-Deferred", "PoolKit-Generations" }
+
 local PoolKitTestEnv = FrameworkTestEnv.New({
-  modules = { "Registry", "PoolKit" },
+  modules = {
+    "Registry",
+    "PoolKit",
+    PARTS[1],
+    PARTS[2],
+    PARTS[3],
+    PARTS[4],
+  },
   -- PoolKit is pure Lua and stays silent without a host error sink, so its
   -- specs install `geterrorhandler` explicitly through
   -- `InstallHostErrorHandler` rather than having it installed for them.
   wowApi = false,
 })
+
+PoolKitTestEnv.PARTS = PARTS
+
+--- The core without its parts.
+PoolKitTestEnv.Core = FrameworkTestEnv.New({
+  modules = { "Registry", "PoolKit" },
+  wowApi = false,
+})
+
+--- Load every part after the core, as an addon that embeds them does.
+---@return table PoolKit
+function PoolKitTestEnv.LoadParts()
+  local PoolKit = nil
+  for index = 1, #PARTS do
+    package.loaded[PARTS[index]] = nil
+    PoolKit = require(PARTS[index])
+  end
+  return PoolKit
+end
+
+--- Load the core again over whatever state is already published, then its
+--- parts, as a later addon embedding the core and every part does.
+---@return table PoolKit
+function PoolKitTestEnv.ReloadPackage()
+  package.loaded["PoolKit"] = nil
+  require("PoolKit")
+  return PoolKitTestEnv.LoadParts()
+end
 
 --- Diagnostics PoolKit handed to the host error handler, in order.
 ---@return any[]
@@ -60,15 +101,34 @@ function PoolKitTestEnv.NewAnimationGroup()
   return group
 end
 
----Load `PoolKit.lua` from `package.path` with its `IMPLEMENTATION_REVISION`
----patched to `revision`, and run it as that revision would load.
+-- Revision 11 is the last whole file, every mechanism included; it is kept
+-- verbatim as `fixtures/PoolKit-revision11.lua`.
+local LAST_WHOLE_REVISION = 11
+local SUPPORT_DIRECTORY = debug.getinfo(1, "S").source:match("^@(.*[/\\])") or "./"
+local WHOLE_FIXTURE = SUPPORT_DIRECTORY .. "../fixtures/PoolKit-revision11.lua"
+
+---Load PoolKit with its `IMPLEMENTATION_REVISION` patched to `revision`, and
+---run it as that revision would load: up to revision 11 the whole-file
+---fixture (every mechanism, no parts), after it the core from `package.path`.
 ---
----This stands in for an older embedded copy whose private state has the same
----schema as the current one, which is what an in-place upgrade between
----neighbouring revisions of the same schema inherits.
+---This stands in for an older embedded copy, which is what an in-place
+---upgrade inherits.
 ---@param revision integer
 ---@return table PoolKit
 function PoolKitTestEnv.LoadRevision(revision)
+  if revision <= LAST_WHOLE_REVISION then
+    local file = assert(io.open(WHOLE_FIXTURE, "r"))
+    local text = file:read("*a")
+    file:close()
+    local patched, replacements = text:gsub(
+      "local IMPLEMENTATION_REVISION = %d+",
+      "local IMPLEMENTATION_REVISION = " .. revision
+    )
+    if replacements ~= 1 then
+      error("PoolKitTestEnv.LoadRevision could not find IMPLEMENTATION_REVISION", 2)
+    end
+    return assert(loadstring(patched, "@" .. WHOLE_FIXTURE))()
+  end
   -- Lua 5.1 has no `package.searchpath`, so walk the path templates the way
   -- `require` does.
   local path = nil

@@ -23,15 +23,16 @@ local function create()
   return {}
 end
 
----Load Registry and PoolKit on the `mainline` host, whose `issecretvalue`
----reports the values `NewSecretValue` returns.
+---Load Registry, PoolKit and its parts on the `mainline` host, whose
+---`issecretvalue` reports the values `NewSecretValue` returns.
 ---@return table PoolKit
 local function loadOnSecretHost()
   Env.Reset()
   Env.SetWowProfile("mainline")
   Env.InstallWowApi()
   require("Registry")
-  return require("PoolKit")
+  require("PoolKit")
+  return Env.LoadParts()
 end
 
 describe("PoolKit and secret values", function()
