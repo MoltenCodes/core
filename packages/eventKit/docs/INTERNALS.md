@@ -15,8 +15,7 @@ A channel is one event name's host registration and the connections behind it:
 | `tombstones` | Disconnected handles still in `listeners`. |
 | `count` | Live connections sharing the registration, the combat-log router included. |
 | `channels` | The map the channel is in: `state.regularChannels` or its group's `channels`. |
-| `group` | The unit group, or `false` for a regular event (`nil` on a channel from before revision 17). |
-| `signal` | Only on a channel from before revision 17 (see *Upgrades*). |
+| `group` | The unit group, or `false` for a regular event. |
 
 A combat-log route has `subEvent`, `listeners`, `tombstones` and `count` with the
 same meanings. Both are delivered by one walk, `deliverListeners`.
@@ -71,8 +70,7 @@ layout of revisions 17 to 20 filled a four- or eight-node hash part (224 and
 even `nil` to a missing key inserts the key, which can grow the table.
 
 Coalesce and Derive handles keep their scope links by name (`_scope`,
-`_scopePrevious`, `_scopeNext`), and so do handles from before revision 17
-(`_inner`, see *Upgrades*). `linkToScope`, `unlinkFromScope` and
+`_scopePrevious`, `_scopeNext`). `linkToScope`, `unlinkFromScope` and
 `scopeOfMember` test slot 2 to pick the layout of each member and of its
 neighbours. Neither metatable has `__newindex`, so the links are written with
 plain indexing.
@@ -80,7 +78,7 @@ plain indexing.
 ## One-shot count and the protected walk
 
 `fireChannel` runs `deliverListeners` under `pcall` only while
-`channel.signal` exists or `channel.onceCount` is above zero. `onceCount` is
+`channel.onceCount` is above zero. `onceCount` is
 created by the first `Once` on a channel, raised by every one-shot connect,
 lowered by every one-shot disconnect (its own delivery included) and reset to
 zero when the record is pooled. The other ways the walk could raise are a bug
@@ -91,8 +89,7 @@ propagates a listener's error.
 
 When a channel's last connection goes, `releaseChannel` removes it from its map,
 unregisters the event and hands the record to `poolChannel`, which keeps it in
-`state.channelPool` when no dispatch is running, it carries no `signal`, its
-array is empty and the pool holds fewer than 16 records. A pooled record has
+`state.channelPool` when no dispatch is running, its array is empty and the pool holds fewer than 16 records. A pooled record has
 `false` in `eventName`, `frame`, `channels` and `group`, so it keeps nothing
 alive. `newChannel` takes the newest pooled record before building a new one.
 The connect-and-disconnect of an event's only listener therefore reuses one
@@ -105,7 +102,8 @@ twice cannot unregister the event of whichever channel reuses it.
 
 ## Dispatch path
 
-`OnEvent` → `state.dispatchRegular` (or `dispatchUnit`) → `fireChannel` →
+`OnEvent` → `state.dispatchRegular` (or `dispatchUnit`, filled by the Units
+part) → `fireChannel` →
 `deliverListeners` → `state.isolate(callback, eventName, ...)` per live listener.
 The dispatcher and the isolation function are read through `state` so a newer
 revision replaces them for Frames and channels that already exist. The path
@@ -113,35 +111,66 @@ reads EventKit's own tables with plain indexing, a VM instruction, instead of
 `rawget`, a C call; receivers from outside are still tested with `type` and
 `rawget` first.
 
-The combat-log router is an ordinary connection on the
-`COMBAT_LOG_EVENT_UNFILTERED` channel whose callback reads the client once and
-walks the matching route, then the wildcard route, with `deliverListeners`.
+The combat-log router (CombatLog part) is an ordinary connection on the
+`COMBAT_LOG_EVENT_UNFILTERED` channel whose callback resolves
+`state.dispatchCombatLog`, which reads the client once and walks the matching
+route, then the wildcard route, with the core's `deliverListeners`.
+
+## The parts and what the core keeps for them
+
+The core keeps every piece of state a part fills, so a part loaded by any
+addon, or a higher revision of it, finds and takes it over:
+
+- unit groups (`unitGroups`), the Frame free list (`unitFrames`) and the
+  creation count (`unitFrameCount`), bounded by `limits.maxUnitFrames`;
+- the combat-log router (`combatLog`: `channel`, `inner`, `readEventInfo`,
+  `routes`, `anyRoute`, `listenerCount`);
+- the Coalesce and Derive metatables and method tables.
+
+The core reaches a part only through entries the part fills:
+
+| Entry | Filled by | Called when | Default while the part is absent |
+|---|---|---|---|
+| `state.dispatchUnit` | Units | a unit group's Frame receives an event | nothing (no group exists) |
+| `state.dispatch.releaseUnitGroup` | Units | `releaseChannel` released a unit group's last channel | nothing |
+| `state.dispatchCombatLog` | CombatLog | the router's connection receives the event | nothing (no router exists) |
+| `state.dispatch.releaseRoute` | CombatLog | a route connection disconnects (after `dropListener`) | nothing |
+| `state.composites.close` | Coalescing | the scope sweep reaches a handle | `closeCompositeEvents`: disconnect the handle's events and unlink it (for a part revision 1 loaded after this core) |
+| `state.composites.onEvent`, `recompute`, `wake` | Coalescing | a handle's listener or timer fires | not set: no handle exists |
+
+and `state.helpers`, overwritten by every core revision that loads: the
+validators, `bindMethod`, the Frame boundary (`requireFrameMethod`,
+`createEventFrame`), `newChannel`, `createRegularChannel`, `connectToChannel`,
+`disconnectEventConnection`, `deliverListeners`, `fireChannel`,
+`findCombatLogReader`, the scope links, `reportListenerError` and
+`missingPartMessage`; `normalizeUnits` and `createUnitChannel` are the Units
+part's, which the Coalescing part's `units` option calls (stubs raising the
+missing-part message without it). The defaults and the members' stubs are
+installed only while their part is absent, so a core that upgrades after a
+part leaves it alone.
+
+An upgrade from revision 22 that finds unit groups or a router installs, in a
+block only that upgrade runs, the retirement of what an absent part cannot
+serve: `state.dispatchUnit` and `state.dispatchCombatLog` become
+`retireUnservedObjects`, and a `C_Timer.NewTimer(0, ...)` runs it on the next
+frame. It checks `HasPart` at run time, so a part loaded right after the core
+keeps everything. Retiring marks each connection disconnected and unlinks it,
+unregisters the unit events, returns the Frames to the free list (a Units part
+loaded later reuses them), disconnects the router's own connection and reports
+once per part (`retiredReported`). A fresh load never instantiates any of it,
+so its prototypes are freed with the main chunk.
 
 ## Coalescing handles and the part
 
 `Coalesce` and `Derive` live in `src/parts/EventKit-Coalescing.lua`. The core
-keeps what it needs whether or not the part is loaded:
-
-- the shared metatables and method tables (`compositeMetatables`,
-  `compositePrototypes`), created by the core so a part another addon loads
-  finds them;
-- `closeCompositeHandle`, because a scope sweep releases handles: it
-  disconnects the handle's event connections, unlinks it from its scope,
-  closes a SchedulerKit timing handle or scope when one is present, cancels a
-  TimerKit timer when one is present and empties the collected set, and
-  disconnects `OnChange` listeners. `state.composites.close` is always the
-  core's;
-- the part interface: `_state.parts` (part name to `{ revision = n }`),
-  `_state.helpers` (the core functions the part calls: validation, channels,
-  scope links, `closeCompositeHandle`, error reporting), overwritten by every
-  core revision that loads, and `_state.partInterface` (1);
-- the stubs for the four part members, installed only while
-  `parts.Coalescing` is absent, so a core that upgrades after the part loaded
-  leaves the part's members alone;
-- while the part is absent, `composites.onEvent`, `recompute` and `wake` are
-  `closeUnservedComposite`: a handle an earlier single-file revision built is
-  closed the first time one of them reaches it, and the first such close is
-  reported once (`unservedCompositeReported`).
+creates the shared metatables and method tables (`compositeMetatables`,
+`compositePrototypes`) so a part another addon loads finds them. Since part
+revision 2 the part owns `closeCompositeHandle`, published as
+`state.composites.close`: it disconnects the handle's event connections,
+unlinks it from its scope, closes a lane handle's SchedulerKit timing, cancels
+a TimerKit timer and empties the collected set, and disconnects `OnChange`
+listeners. `helpers.closeCompositeHandle` stays, delegating to
+`state.composites.close`, for a part revision 1 that calls it.
 
 A handle times itself one of two ways, told apart by `_timing`:
 
@@ -160,8 +189,7 @@ A handle times itself one of two ways, told apart by `_timing`:
   higher part revision serves timers armed before it loaded.
 - **SchedulerKit** (`_timing` holds a SchedulerKit handle): a handle with a
   `lane`, timed by SchedulerKit's `Coalesce` in one shared SchedulerKit scope
-  (`_state.coalesceSchedulerScope`), or a handle a revision before 22 built.
-  Every method forwards to `_timing`, as before.
+  (`_state.coalesceSchedulerScope`). Every method forwards to `_timing`.
 
 The per-event path (`onCompositeEvent`) records the key itself, inline. The
 TimerKit lookup remembers the facade the first successful `Registry:Find`
@@ -171,65 +199,26 @@ so parts loaded later are seen.
 
 ## Upgrades
 
-Revision 22 keeps schema 10 and adds `parts`, `helpers` and `partInterface`
-to any state that lacks them. The commit installs the stubs and the
-`closeUnservedComposite` entries only while `parts.Coalescing` is absent; the
-part, loading next, replaces them and adopts revision 21's handles, which keep
-their SchedulerKit `_timing`. `closeCompositeHandle` releases both timing
-kinds, so a scope closes every handle whichever revision built it.
+Revision 23 upgrades in place from revision 22 only (the upgrade floor; no
+revision was ever published). The bootstrap refuses a copy below it, refuses
+state that is not schema 10, and adds `state.dispatch` to revision 22's state;
+nothing else changes layout. Revision 22's unit groups and router are served
+by the parts or retired (see *The parts and what the core keeps for them*).
+Its addon scopes keep `_logoutRoute`; a `_logoutSubscription` field it left
+is never read again.
 
-Revision 21 moves the state to schema 10 and adds `connectionMetatable`. The
-schema-9 branch of the bootstrap converts every connection of revisions 17 to
-20 it can reach: the listener arrays of every regular channel, unit-group
-channel, combat-log route and the wildcard route, the scope list of every
-scoped connection found there (walked before any member changes layout,
-reading each member's next link in its own layout), and the list of every
-addon scope. A converted handle loses its named fields, gains slots 1 to 4
-(and 5 to 7 when it had scope links) and the shared metatable; it is the same
-table. Each fan-out with live one-shots gets `onceCount`. A disconnected
-handle no array held keeps its named fields and its old metatable;
-`disconnect` and `isConnected` recognise it by `_connected` and answer
-`false`. A live handle with named fields can only be one from before revision
-17, which `disconnectNamedHandle` releases through `_inner`. A state that
-already holds a `connectionMetatable` keeps it. Scope `Reopen` hands a scope
-still waiting for the deferred sweep over to a closed carrier scope that
-takes its place in `pendingScopes`, re-pointing each member's scope link.
+Older layouts are documented in the changelog. What the floor removed: the
+schema 1 to 9 migrations, the named connection layout of revisions 17 to 20
+(`disconnectNamedHandle`, `isNamedConnectionHandle`), the signal fan-outs and
+`_inner` handles of revisions before 17, the `_DispatchRegular` and
+`_DispatchUnit` facade fields of revision 1, the logout routing of addon
+scopes revisions before 11 created, and revision 21's SchedulerKit-timed
+`Derive` handles and per-handle SchedulerKit scopes in the Coalescing part.
 
-Revision 20 changes no state schema. `describeKey` names an unrecognised
-`SetLimits` key or option field without calling `tostring` on a table,
-function, userdata or thread key, whose `__tostring` would be the caller's
-code running inside EventKit's refusal.
+Scope `Reopen` hands a scope still waiting for the deferred sweep over to a
+closed carrier scope that takes its place in `pendingScopes`, re-pointing each
+member's scope link.
 
-Revision 19 changes no state schema. A unit group it creates no longer
-records its unit list (`units`), which nothing read; a group an older copy
-built keeps the field, and nothing reads it there either. `createUnitChannel`
-calls the host's `RegisterUnitEvent` under `pcall`, so a group created only for
-a registration the host refused, by raising or by returning `false`, is
-released before the error reaches the caller.
-
-Revision 18 changes no state schema. `_state.coalesceSchedulerScope` is
-created on first use, and a `Coalesce` handle an older revision built keeps its
-own SchedulerKit scope in `_schedulerScope`, which `closeCompositeHandle` still
-closes (closing the scope closes the timing handle in it).
-
-Revision 17 moved `_state` to schema 9 (the `listeners` arrays, `tombstones`
-counts and `channelPool`). Revisions before it fanned every channel and route
-out through a SignalKit signal, with a wrapper closure per connection that
-isolated the callback, and gave each handle its signal connection in `_inner`.
-
-A copy loading over them gives every channel and route an empty `listeners`
-array and keeps the `signal`. `deliverListeners` fires that signal before
-walking `listeners`: the connections on it were all made before the upgrade,
-so connection order holds. A handle with `_inner` is released by
-`disconnectLegacyConnection`, the older revisions' path (`inner:Disconnect()`
-and the release of its channel or route). An older `Once` wrapper calls the
-older copy's own release function; it touches only fields both layouts share
-(`count`, `eventName`, `channels`, `frame`, `group`). A router attached by an
-older copy holds a SignalKit connection in `combatLog.inner`; detaching tests
-whether `inner` is an EventKit handle on the channel and otherwise disconnects
-it and releases its share of the channel. A channel with a `signal` is never
-pooled.
-
-Older revisions raise the same `dispatchDepth` around their dispatches, so an
-older copy's dispatch still on the stack below an upgrade keeps the newer copy
-from editing arrays in place, and a legacy walk never runs over `listeners`.
+Older revisions raise the same `dispatchDepth` around their dispatches, so
+revision 22's dispatch still on the stack below an upgrade keeps the newer
+copy from editing arrays in place.

@@ -6,9 +6,9 @@
     "library": [
       "../../../meta",
       "../../registry/src",
-      "../../signalKit/src",
       "../../eventKit/src",
       "../../poolKit/src",
+      "../../signalKit/src",
       "../../timerKit/src",
       "../../codecKit/src"
     ],

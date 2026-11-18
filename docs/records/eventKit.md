@@ -403,7 +403,41 @@ Measurements, classification, the upgrade floor and the part contract:
    SignalKit), `docs/MIGRATING_FROM_ACE3.md` (unit events and the combat log
    name their parts), the example addon's `embeds.xml` if it uses unit
    events.
-9. Status: recorded 2026-11-16; code follows.
+9. Status: implemented 2026-11-18, 0.12.0, revision 23, 320 specs (Units
+   and CombatLog parts revision 1, Coalescing part revision 2, part
+   interface 2). Measured (shared fake client, Lua 5.1.5, debug information
+   kept, after Registry): the core 87.2 → 66.3 KB resident alone (63.9 KB
+   with the parts loaded, whose stubs it then frees), allocated while loading
+   284.4 → 216.7 KB; EventKit-Units 9.2 KB, EventKit-CombatLog 6.9 KB,
+   EventKit-Coalescing 37.4 → 40.5 KB. Choices where the record left one
+   open: the retirement of revision 22's unit and combat-log connections
+   when a part is absent runs on the next frame (`C_Timer.NewTimer(0)`) or at
+   the first event that reaches them, not synchronously at the core's load,
+   because the part an addon embeds loads right after the core; that code
+   runs only in such an upgrade, so a fresh load keeps none of it resident
+   (measured: 4.6 KB). The `isSecret` block is converted too, because the
+   `describeKey` and `limits` blocks require it (same probe rule as the
+   hand-written copy). The Coalescing part's `units` option needs the Units
+   part (helper stubs raise the missing-part message). A Coalescing part
+   revision 1 loaded after this core is served by a minimal core close
+   (events disconnected, scope left). The Coalescing part also drops revision
+   21's SchedulerKit-timed `Derive` handles and per-handle SchedulerKit
+   scopes (floor). Message changes: the shared `limits` wording (`; it
+   accepts maxUnitFrames`, a secret limit value refused as secret) and a
+   secret `HasPart` name (`must not be a secret value`, which the
+   conformance suite requires); `CreateScope` and `IsCombatLogAvailable` are
+   `receiverExempt` in the conformance suite (neither reads an argument).
+   Changes other owners must make (not made here): SettingsKit's spec
+   listener asks `EventKit:HasPart("Units")` and its manifest's optional
+   `eventKit` contract names `"parts": ["Units"]`, and its suite loads
+   `EventKit-Units` (25 specs need it); cacheKit's and readinessKit's test
+   environments and specs stop requiring SignalKit, which is no longer on
+   their `LUA_PATH`; lifecycleKit's `EventScopes_spec.lua` combat-log case
+   loads `EventKit-CombatLog`. Done here because the gates need them:
+   `examples/embeds.xml` and its quote in `docs/EMBEDDING.md` gain the Units
+   part, the generated blocks of `docs/EMBEDDING.md` and the package indexes,
+   and the `src/.luarc.json` library order of commKit, lifecycleKit,
+   moduleKit and testKit.
 
 **Not recorded (owner decisions, priced):**
 - Drop EventKit's own `PLAYER_LOGOUT` route for addon scopes when no

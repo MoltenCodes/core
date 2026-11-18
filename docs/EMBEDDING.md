@@ -221,6 +221,8 @@ commandKit/parts/CommandKit-Completion.lua
 compatKit/CompatKit.lua
 dialogKit/DialogKit.lua
 editModeKit/EditModeKit.lua
+eventKit/parts/EventKit-Units.lua
+eventKit/parts/EventKit-CombatLog.lua
 eventKit/parts/EventKit-Coalescing.lua
 glowKit/GlowKit.lua
 hookKit/HookKit.lua
@@ -346,18 +348,18 @@ files:
 <!-- generated:footprint -->
 | Files | Kit | Alongside `registry/Registry.lua` |
 |---|---|---|
-| 2 | `addonKit`, `apiKit`, `poolKit`, `bindingKit`, `bridgeKit`, `signalKit`, `cacheKit`, `clientKit`, `timerKit`, `schemaKit`, `compatKit`, `dialogKit`, `editModeKit`, `hookKit`, `interopKit`, `localeKit`, `menuKit`, `widgetKit`, `profileKit`, `rangeKit`, `unitFrameKit` | nothing |
+| 2 | `addonKit`, `apiKit`, `poolKit`, `bindingKit`, `bridgeKit`, `signalKit`, `cacheKit`, `clientKit`, `eventKit`, `timerKit`, `schemaKit`, `compatKit`, `dialogKit`, `editModeKit`, `hookKit`, `interopKit`, `localeKit`, `menuKit`, `widgetKit`, `profileKit`, `rangeKit`, `unitFrameKit` | nothing |
 | 3 | `barKit`, `codecKit`, `glowKit`, `toastKit`, `tooltipKit` | `poolKit` |
-| 3 | `brokerKit`, `eventKit`, `logKit`, `mediaKit` | `signalKit` |
+| 3 | `brokerKit`, `logKit`, `mediaKit` | `signalKit` |
 | 3 | `readinessKit`, `schedulerKit` | `timerKit` |
 | 3 | `commandKit` | `schemaKit` |
 | 4 | `launcherKit` | `signalKit`, `brokerKit` |
-| 4 | `lifecycleKit` | `signalKit`, `eventKit` |
+| 4 | `lifecycleKit` | `eventKit`, `signalKit` |
 | 4 | `optionsKit`, `settingsKit` | `schemaKit`, `signalKit` |
-| 5 | `moduleKit` | `signalKit`, `eventKit`, `lifecycleKit` |
-| 6 | `commKit` | `signalKit`, `eventKit`, `poolKit`, `timerKit` |
+| 5 | `moduleKit` | `eventKit`, `signalKit`, `lifecycleKit` |
+| 6 | `commKit` | `eventKit`, `poolKit`, `signalKit`, `timerKit` |
 | 6 | `panelKit` | `schemaKit`, `signalKit`, `optionsKit`, `widgetKit` |
-| 7 | `testKit` (development only) | `signalKit`, `eventKit`, `lifecycleKit`, `timerKit`, `schedulerKit` |
+| 7 | `testKit` (development only) | `eventKit`, `signalKit`, `lifecycleKit`, `timerKit`, `schedulerKit` |
 
 Each Kit counts as one file here. `apiKit` also carries 5 further core files under `apiKit/flavours/`.
 <!-- /generated:footprint -->
@@ -383,7 +385,9 @@ part loads after its Kit's core and brings in what it needs:
 | `commKit/ChatThrottle` | `commKit/parts/CommKit-ChatThrottle.lua` | scope:SendChat and Battle.net game data (scope:SendBattleNet, scope:RegisterBattleNet) through the shared bandwidth budget, the senders ChatThrottleLib throttles beside addon messages. | nothing |
 | `commandKit/Options` | `commandKit/parts/CommandKit-Options.lua` | Drive an OptionsKit tree from a slash command: the get, set, reset, list and exec verbs and AceConfigCmd's path syntax. | `signalKit`, `optionsKit` |
 | `commandKit/Completion` | `commandKit/parts/CommandKit-Completion.lua` | Tab completion in chat edit boxes: the scopes' own commands and AceTab-style completion providers. | nothing |
-| `eventKit/Coalescing` | `eventKit/parts/EventKit-Coalescing.lua` | Coalesce and Derive: events collected into one callback per interval, and values recomputed after a quiet period, timed by TimerKit (a lane by SchedulerKit). | nothing |
+| `eventKit/Units` | `eventKit/parts/EventKit-Units.lua` | ConnectUnit and OnceUnit: events filtered to one or two unit tokens on a bounded set of unit-filter Frames. | nothing |
+| `eventKit/CombatLog` | `eventKit/parts/EventKit-CombatLog.lua` | ConnectCombatLog: the combat log read once per event and routed by sub-event. | nothing |
+| `eventKit/Coalescing` | `eventKit/parts/EventKit-Coalescing.lua` | Coalesce and Derive: events collected into one callback per interval, and values recomputed after a quiet period, timed by TimerKit (a lane by SchedulerKit). | `signalKit` |
 | `lifecycleKit/CombatGate` | `lifecycleKit/parts/LifecycleKit-CombatGate.lua` | The combat gate: one shared lockdown state, a bounded per-addon queue of calls that wait for the end of combat, and the combat notices. | nothing |
 | `lifecycleKit/Halt` | `lifecycleKit/parts/LifecycleKit-Halt.lua` | Halting: Halt, DependsOn and OnDependencyHalted, which tell the addons that declared a halted one. | nothing |
 | `optionsKit/Profiles` | `optionsKit/parts/OptionsKit-Profiles.lua` | OptionsKit:ProfileOptions: the ready-made group over a SettingsKit database's profiles, with the per-specialization choices. | nothing |
@@ -498,6 +502,7 @@ by the example and are listed so the file is a complete template.
     <Script file="Libs\MoltenCodes\optionsKit\OptionsKit.lua" />
     <Script file="Libs\MoltenCodes\commandKit\parts\CommandKit-Options.lua" /> <!-- BindOptions, which Commands.lua uses -->
     <Script file="Libs\MoltenCodes\compatKit\CompatKit.lua" /> <!-- optional here -->
+    <Script file="Libs\MoltenCodes\eventKit\parts\EventKit-Units.lua" /> <!-- unit events: the units option of Core.lua's Coalesce, SettingsKit's spec profiles -->
     <Script file="Libs\MoltenCodes\eventKit\parts\EventKit-Coalescing.lua" /> <!-- Coalesce, which Core.lua uses; TimerKit times it -->
     <Script file="Libs\MoltenCodes\hookKit\HookKit.lua" /> <!-- module scope hooks -->
     <Script file="Libs\MoltenCodes\interopKit\InteropKit.lua" /> <!-- optional here -->

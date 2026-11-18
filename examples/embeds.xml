@@ -38,6 +38,7 @@
     <Script file="Libs\MoltenCodes\optionsKit\OptionsKit.lua" />
     <Script file="Libs\MoltenCodes\commandKit\parts\CommandKit-Options.lua" /> <!-- BindOptions, which Commands.lua uses -->
     <Script file="Libs\MoltenCodes\compatKit\CompatKit.lua" /> <!-- optional here -->
+    <Script file="Libs\MoltenCodes\eventKit\parts\EventKit-Units.lua" /> <!-- unit events: the units option of Core.lua's Coalesce, SettingsKit's spec profiles -->
     <Script file="Libs\MoltenCodes\eventKit\parts\EventKit-Coalescing.lua" /> <!-- Coalesce, which Core.lua uses; TimerKit times it -->
     <Script file="Libs\MoltenCodes\hookKit\HookKit.lua" /> <!-- module scope hooks -->
     <Script file="Libs\MoltenCodes\interopKit\InteropKit.lua" /> <!-- optional here -->

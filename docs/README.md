@@ -64,7 +64,7 @@ Current package entry points:
 - [`CompatKit`](../packages/compatKit/README.md) — Versioned shims with a host opt-out, provider registries with a fallback cascade, and the catalogue of taint-hostile subsystems as data.
 - [`DialogKit`](../packages/dialogKit/README.md) — Confirmation and input dialogs without StaticPopupDialogs: one frame of their own, a bounded queue, Escape through UISpecialFrames, timeouts.
 - [`EditModeKit`](../packages/editModeKit/README.md) — Addon frames in Blizzard's Edit Mode: a labelled overlay drags each frame while Edit Mode is open, its position saved per layout and put back on a layout switch.
-- [`EventKit`](../packages/eventKit/README.md) — Lazy game-event subscriptions on SignalKit, unit-event filtering and combat-log routing by sub-event.
+- [`EventKit`](../packages/eventKit/README.md) — Lazy game-event subscriptions with scopes and isolated listeners; unit events, combat-log routing and coalescing as optional parts.
 - [`GlowKit`](../packages/glowKit/README.md) — Glows that draw the eye to a frame, pixel lines running round its edge or a pulsing border, keyed per frame, pooled and bounded.
 - [`HookKit`](../packages/hookKit/README.md) — Reversible, secure-first hooking of functions, methods and frame scripts in three named semantics.
 - [`InteropKit`](../packages/interopKit/README.md) — The LibStub bridge: expose Kits to LibStub consumers and adopt LibStub libraries read-only.

@@ -1,18 +1,15 @@
 {
   "name": "eventKit",
   "displayName": "EventKit",
-  "description": "A lazy World of Warcraft event bridge built on MoltenCodes SignalKit.",
-  "summary": "Lazy game-event subscriptions on SignalKit, unit-event filtering and combat-log routing by sub-event.",
-  "version": "0.11.0",
+  "description": "A lazy World of Warcraft event bridge with ownership scopes and isolated listeners.",
+  "summary": "Lazy game-event subscriptions with scopes and isolated listeners; unit events, combat-log routing and coalescing as optional parts.",
+  "version": "0.12.0",
   "license": "MIT",
   "api": 1,
-  "revision": 22,
+  "revision": 23,
   "dependencies": {
     "registry": {
       "api": 2
-    },
-    "signalKit": {
-      "api": 1
     }
   },
   "optionalDependencies": {
@@ -21,10 +18,26 @@
     }
   },
   "parts": {
-    "Coalescing": {
-      "description": "Coalesce and Derive: events collected into one callback per interval, and values recomputed after a quiet period, timed by TimerKit (a lane by SchedulerKit).",
+    "Units": {
+      "description": "ConnectUnit and OnceUnit: events filtered to one or two unit tokens on a bounded set of unit-filter Frames.",
       "revision": 1,
       "dependencies": {},
+      "optionalDependencies": {}
+    },
+    "CombatLog": {
+      "description": "ConnectCombatLog: the combat log read once per event and routed by sub-event.",
+      "revision": 1,
+      "dependencies": {},
+      "optionalDependencies": {}
+    },
+    "Coalescing": {
+      "description": "Coalesce and Derive: events collected into one callback per interval, and values recomputed after a quiet period, timed by TimerKit (a lane by SchedulerKit).",
+      "revision": 2,
+      "dependencies": {
+        "signalKit": {
+          "api": 1
+        }
+      },
       "optionalDependencies": {
         "schedulerKit": {
           "api": 1,

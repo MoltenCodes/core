@@ -6,8 +6,8 @@
     "library": [
       "../../../meta",
       "../../registry/src",
-      "../../signalKit/src",
-      "../../eventKit/src"
+      "../../eventKit/src",
+      "../../signalKit/src"
     ],
     "checkThirdParty": false
   },

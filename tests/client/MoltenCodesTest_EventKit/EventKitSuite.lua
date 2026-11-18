@@ -563,6 +563,17 @@ facade:Test("the installed EventKit carries the revision of the committed manife
   ctx:Fail("Expected.lua does not list eventKit")
 end)
 
+facade:Test(
+  "the standalone bundle installs the Units, CombatLog and Coalescing parts",
+  function(ctx)
+    -- The MoltenCodes addon embeds every part; the unit, combat-log and
+    -- coalesce tests below rely on the first two.
+    ctx:Expect(EventKit:HasPart("Units")):ToBe(true)
+    ctx:Expect(EventKit:HasPart("CombatLog")):ToBe(true)
+    ctx:Expect(EventKit:HasPart("Coalescing")):ToBe(true)
+  end
+)
+
 -- eventKit.dispatch -------------------------------------------------------------------------
 
 local dispatch = newSuite("dispatch")
