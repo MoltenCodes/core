@@ -28,8 +28,8 @@ EditModeKit does not rely on `require()` at runtime.
 | `CreateFrame`, `UIParent`, `EventRegistry` | `Register` | `Register` raises at the caller: `EditModeKit:Register needs the client's CreateFrame, UIParent and EventRegistry, which this host does not have`. |
 | `EditModeManagerFrame` | the active layout's name; whether Edit Mode is already open when EditModeKit first listens | The layout is named `"default"`; Edit Mode counts as closed until `EditMode.Enter`. |
 | `InCombatLockdown` | moves of protected frames | Every move happens at once. |
-| `issecretvalue` | every check, every value the client answers | Nothing is treated as secret. |
-| `geterrorhandler` | storage failures | They are printed. |
+| `issecretvalue` | every check, every value the client answers; read once at load, and again on each check only when it was absent at load | Nothing is treated as secret. |
+| `geterrorhandler` | storage failures | The failure is printed, also when the handler itself raises. |
 
 Edit Mode, the `EventRegistry` events `EditMode.Enter` and `EditMode.Exit`, `EditModeManagerFrame` and `EDIT_MODE_LAYOUTS_UPDATED` exist on Retail, Mists of Pandaria Classic and Classic Era.
 
@@ -112,6 +112,8 @@ Every message, raised at the caller's line. `<method>` is the public name called
 Storage failures are reported, not raised; see "Storage failures".
 
 Loading raises `MoltenCodes EditModeKit requires Registry API 2 to be loaded first`, `MoltenCodes EditModeKit requires a valid Registry API 2 facade` or `MoltenCodes EditModeKit package state is corrupted or incomplete`.
+
+A host error handler that itself raises does not turn a reported failure into a second error raised into the client: the failure is printed instead, as on a host without a handler (implementation revision 3).
 
 ## Performance
 
