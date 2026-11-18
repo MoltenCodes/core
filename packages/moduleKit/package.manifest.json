@@ -57,7 +57,10 @@
       "revision": 1,
       "dependencies": {
         "lifecycleKit": {
-          "api": 1
+          "api": 1,
+          "parts": [
+            "Halt"
+          ]
         }
       }
     }

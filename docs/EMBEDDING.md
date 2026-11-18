@@ -395,7 +395,7 @@ part loads after its Kit's core and brings in what it needs:
 | `lifecycleKit/Halt` | `lifecycleKit/parts/LifecycleKit-Halt.lua` | Halting: Halt, DependsOn and OnDependencyHalted, which tell the addons that declared a halted one. | nothing |
 | `moduleKit/Injection` | `moduleKit/parts/ModuleKit-Injection.lua` | Dependency injection: the four provider kinds, Resolve, Inject and the inject definition field. | nothing |
 | `moduleKit/Implements` | `moduleKit/parts/ModuleKit-Implements.lua` | implements contracts on module definitions and provider options, as method lists or SchemaKit schemas. | nothing |
-| `moduleKit/RequiredAddons` | `moduleKit/parts/ModuleKit-RequiredAddons.lua` | The requiresAddons definition field: modules taken down when another addon they need halts. | nothing |
+| `moduleKit/RequiredAddons` | `moduleKit/parts/ModuleKit-RequiredAddons.lua` | The requiresAddons definition field: modules taken down when another addon they need halts. | `lifecycleKit/Halt` |
 | `optionsKit/Profiles` | `optionsKit/parts/OptionsKit-Profiles.lua` | OptionsKit:ProfileOptions: the ready-made group over a SettingsKit database's profiles, with the per-specialization choices. | nothing |
 | `optionsKit/Dynamic` | `optionsKit/parts/OptionsKit-Dynamic.lua` | Trees that change shape after Define: builder functions, tree:NotifyChange(), tree:Replace and tree:Remove. | nothing |
 | `schedulerKit/Coalescing` | `schedulerKit/parts/SchedulerKit-Coalescing.lua` | Debounce and Coalesce handles on the facade and on scopes, with the coalescing family's shared clock, member links and protected delivery. | nothing |
