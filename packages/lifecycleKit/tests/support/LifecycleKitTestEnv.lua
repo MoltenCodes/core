@@ -43,6 +43,10 @@ if commandKitRequiresSchemaKit() then
   MODULES[#MODULES + 1] = "SchemaKit"
 end
 MODULES[#MODULES + 1] = "CommandKit"
+-- SignalKit's Bus part: the shutdown specs subscribe on an addon's bus
+-- (`SignalKit:ForAddon`) to see LifecycleKit close it. LifecycleKit itself
+-- calls only `CloseAddonBus`, which SignalKit's core keeps.
+MODULES[#MODULES + 1] = "SignalKit-Bus"
 MODULES[#MODULES + 1] = "LifecycleKit"
 
 local LifecycleKitTestEnv = FrameworkTestEnv.New({ modules = MODULES })
@@ -241,6 +245,7 @@ function LifecycleKitTestEnv.NewPackageWithoutHookKit()
   LifecycleKitTestEnv.InstallWowApi()
   local Registry = require("Registry")
   local SignalKit = require("SignalKit")
+  require("SignalKit-Bus")
   local EventKit = require("EventKit")
   local LifecycleKit = require("LifecycleKit")
   LifecycleKitTestEnv.LoadParts()
