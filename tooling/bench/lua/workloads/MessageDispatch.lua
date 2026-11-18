@@ -21,7 +21,8 @@ local TOPIC = "BENCH_PROFILE_CHANGED"
 ---@param host table
 ---@return table adapter, table[] libraries
 local function kitAdapter(host)
-  local loaded = host.RequireAll({ "Registry", "SignalKit" })
+  -- Buses are in SignalKit's Bus part from revision 13.
+  local loaded = host.RequireAll({ "Registry", "SignalKit", "SignalKit-Bus" })
   local SignalKit = loaded[2]
   local bus = SignalKit:Bus("BenchBus", { openTopics = true })
   local adapter = {}

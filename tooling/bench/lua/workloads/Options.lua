@@ -223,6 +223,9 @@ local function kitAdapter(host)
     "CommandKit-Arguments",
     -- `BindOptions` is in CommandKit's Options part.
     "CommandKit-Options",
+    -- The tree's `pattern` options are compiled by SchemaKit's Rules part
+    -- from revision 7; listed last so the positions above stay as they are.
+    "SchemaKit-Rules",
   })
   local SchemaKit, SettingsKit, OptionsKit, CommandKit = loaded[4], loaded[5], loaded[6], loaded[8]
   local scope = CommandKit:CreateScope()
