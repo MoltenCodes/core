@@ -11,15 +11,15 @@
     "registry": {
       "api": 2
     },
-    "schemaKit": {
-      "api": 1
-    },
     "signalKit": {
       "api": 1
     }
   },
   "optionalDependencies": {
     "eventKit": {
+      "api": 1
+    },
+    "schemaKit": {
       "api": 1
     }
   },
@@ -29,6 +29,16 @@
       "revision": 1,
       "dependencies": {},
       "optionalDependencies": {}
+    },
+    "Defaults": {
+      "description": "SettingsKit:Open and db:RegisterNamespace from plain AceDB-style defaults: the write rules inferred from each default, checked without SchemaKit.",
+      "revision": 1,
+      "dependencies": {},
+      "optionalDependencies": {
+        "schemaKit": {
+          "api": 1
+        }
+      }
     },
     "SpecProfiles": {
       "description": "Profiles assigned per specialization or talent group: SettingsKit:GetSpecIndex, db:SetSpecProfile, db:GetSpecProfile and db:ApplySpecProfile, switched by itself on spec changes while EventKit is embedded.",

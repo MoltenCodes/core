@@ -1,6 +1,23 @@
 # SettingsKit
 
-SettingsKit gives World of Warcraft addons their saved variables done once: a database opened over the addon's `## SavedVariables` table, with scopes, defaults that are never written back, writes validated against a SchemaKit schema at the writer's line, profiles, change signals and versioned migrations.
+SettingsKit gives World of Warcraft addons their saved variables done once: a database opened over the addon's `## SavedVariables` table, with scopes, defaults that are never written back, writes validated at the writer's line, profiles, change signals and versioned migrations.
+
+The shortest form takes AceDB-style defaults (with the Defaults part, no SchemaKit needed); the write rules are inferred from each default:
+
+```lua
+local SettingsKit = MoltenCodes.Registries[2]:Get("settingsKit", 1)
+
+lifecycle:OnLoaded(function()
+  local db = SettingsKit:Open("MyAddonDB", {
+    global = { firstRun = true },
+    profile = { scale = 1, anchor = "CENTER", auras = { ["*"] = { shown = true } } },
+  })
+  db.profile.scale = 1.25   -- a number, as the default is
+  db.profile.scale = "big"  -- raises here: "expected number, found string"
+end)
+```
+
+A SchemaKit schema says more (ranges, choices, integers) and works without the Defaults part:
 
 ```lua
 local Registry = MoltenCodes.Registries[2]
@@ -39,8 +56,10 @@ What each piece promises:
 - **Writes are validated where they happen.** `db.profile.scale = 7` raises at that line with SchemaKit's failure text, and nothing is stored. A secret value is refused the same way: saved variables never hold one.
 - **Scopes.** `db.global`, `db.char`, `db.realm`, `db.class`, `db.faction` and `db.profile`, keyed from `UnitNameUnmodified` (else `UnitName`), `GetRealmName`, `UnitClass` and `UnitFactionGroup` read once at `Open`; `SettingsKit:GetCharacterKey()` answers the character key. AceDB-3.0's other four, `db.race`, `db.factionrealm`, `db.factionrealmregion` and `db.locale`, with AceDB's keys, cost nothing unless the schema declares them.
 - **Profiles.** `SetProfile`, `GetProfiles` (sorted), `CopyProfile`, `ResetProfile`, `DeleteProfile`, `ResetDatabase`, with a signal for each change, and AceDB-3.0's other callbacks: `OnNewProfile`, `OnProfileShutdown` (before a switch), `OnDatabaseShutdown` (at logout, before compaction) and `OnDatabaseReset`. `db:IsNewProfile()` says whether this session created the current profile, so an addon learns its first profile is new.
+- **Plain defaults or schemas.** With the optional `settingsKit\parts\SettingsKit-Defaults.lua`, a scope may be a plain defaults table as AceDB-3.0 takes them; a SchemaKit node inside one (a range, a choice) is kept as written. SchemaKit is only needed for scopes given as schemas.
+- **Pay for what you use.** The core is 185 KB resident; the Defaults (21 KB), SpecProfiles (15 KB) and Namespaces (29 KB) parts are loaded only by the addons that use them, and `SettingsKit:HasPart(name)` asks without raising.
 - **Namespaces.** With the optional `settingsKit\parts\SettingsKit-Namespaces.lua`, `db:RegisterNamespace(name, schema)` gives a module its own database over `MyAddonDB.namespaces[name]`, in AceDB-3.0's namespace layout, following the parent's profile: every profile operation of the parent reaches every namespace.
-- **Spec profiles.** `db:SetSpecProfile(index, name)` assigns a profile to a specialization (Retail, Mists of Pandaria Classic) or a talent group (Classic Era, Season of Discovery, Hardcore), and the database switches to it when the player changes specialization, while EventKit is embedded; `db:ApplySpecProfile()` does it by hand. See *Spec profiles* in the API.
+- **Spec profiles.** With the optional `settingsKit\parts\SettingsKit-SpecProfiles.lua`, `db:SetSpecProfile(index, name)` assigns a profile to a specialization (Retail, Mists of Pandaria Classic) or a talent group (Classic Era, Season of Discovery, Hardcore), and the database switches to it when the player changes specialization, while EventKit is embedded; `db:ApplySpecProfile()` does it by hand. See *Spec profiles* in the API.
 - **Change notifications.** `db:OnChange(scope, callback)` returns a SignalKit connection called after every validated write.
 - **Versioned migrations.** `options.migrations[n]` runs once, in ascending order, from the stored version to `options.version`, each on a copy of the saved table that replaces it only when the step returns, so a failing step leaves nothing half-applied and is retried on untouched data.
 - **Newer data is read-only.** A saved table a newer version of the addon wrote (stored version above `options.version`) opens read-only: reads work, every write raises at the writer's line, and `db:IsReadOnly()` says so. `allowNewerData = true` opts in to writing it.
@@ -78,7 +97,7 @@ Existing AceDB data is imported by BridgeKit (`ImportAceDB`, `AceDBMigration`); 
 
 | LibDualSpec-1.0 | SettingsKit |
 |---|---|
-| `LibDualSpec:EnhanceDatabase(db, "MyAddon")` | Nothing: every database has spec profiles. |
+| `LibDualSpec:EnhanceDatabase(db, "MyAddon")` | Embed `settingsKit\parts\SettingsKit-SpecProfiles.lua`: every database then has spec profiles. |
 | `db:SetDualSpecProfile(name, spec)` | `db:SetSpecProfile(spec, name)` |
 | `db:GetDualSpecProfile(spec)` | `db:GetSpecProfile(spec)` (`nil` when nothing is assigned) |
 | `db:SetDualSpecEnabled(enabled)`, `db:IsDualSpecEnabled()` | No flag: assigning a profile enables switching for that index; clearing it (`db:SetSpecProfile(spec, nil)`) disables it. |
@@ -97,21 +116,25 @@ troubleshooting. This package's load order inside a consuming addon is:
 ```toc
 Libs\MoltenCodes\registry\Registry.lua
 Libs\MoltenCodes\signalKit\SignalKit.lua
-Libs\MoltenCodes\schemaKit\SchemaKit.lua
 Libs\MoltenCodes\settingsKit\SettingsKit.lua
+Libs\MoltenCodes\settingsKit\parts\SettingsKit-Defaults.lua
 ```
 
-Minimum footprint: embed 4 files: `registry/Registry.lua`, `signalKit/SignalKit.lua`, `schemaKit/SchemaKit.lua`, `settingsKit/SettingsKit.lua`.
+Minimum footprint: embed 3 files: `registry/Registry.lua`, `signalKit/SignalKit.lua`, `settingsKit/SettingsKit.lua`.
 
-Optional part, after the core: `settingsKit/parts/SettingsKit-Namespaces.lua`
-for `db:RegisterNamespace` and `db:GetNamespace`. Without it those two
-methods raise a message naming the file to add.
+Optional parts, after the core (`python3 -m tooling.package.embeds settingsKit/Defaults` writes the list):
+`settingsKit/parts/SettingsKit-Defaults.lua` for plain defaults,
+`settingsKit/parts/SettingsKit-SpecProfiles.lua` for spec profiles and
+`settingsKit/parts/SettingsKit-Namespaces.lua` for `db:RegisterNamespace` and
+`db:GetNamespace`. Without a part its members raise a message naming the file
+to add. Scopes given as SchemaKit schemas need `schemaKit/SchemaKit.lua`
+before SettingsKit.
 
-Direct runtime dependencies: Registry API 2, SchemaKit API 1, SignalKit API 1.
-Every file above is required; omitting one makes this package raise at
-load.
+Direct runtime dependencies: Registry API 2, SignalKit API 1. Both are
+required; omitting one makes this package raise at load.
 
-Optional: EventKit API 1, found with `Registry:Find` when a database is opened,
+Optional: SchemaKit API 1, found with `Registry:Find` when a scope is a
+SchemaKit schema. Optional: EventKit API 1, found with `Registry:Find` when a database is opened,
 to compact it on `PLAYER_LOGOUT` and to switch spec profiles on the spec
 events. Without it, call `db:Compact()` yourself at logout and
 `db:ApplySpecProfile()` after a specialization change. Load EventKit before your addon opens its database if you want the

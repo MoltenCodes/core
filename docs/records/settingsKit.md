@@ -870,7 +870,28 @@ Moved from `docs/ROADMAP.md` (Package O — memory, performance and ease of use 
    client suite `EXPECTED.md`. Outside the package, the maintainer's:
    EMBEDDING.md database-only row (no SchemaKit), MIGRATING_FROM_ACE3.md
    AceDB rows, and AddonKit's Database part (report).
-9. Status: recorded 2026-11-16; code follows.
+9. Status: implemented 2026-11-18, 0.7.0, revision 16, 420 specs (with
+   records 2 and 3). Measured on host Lua 5.1.5 (64-bit, debug information
+   kept, resident after a full collection): Registry, SignalKit, SettingsKit
+   and the Defaults part without SchemaKit hold 320.8 KB, the same set with
+   SchemaKit instead of the part 388.4 KB (this harness; the record's 395.2 KB
+   was measured with another); the Defaults part 20.9 KB; the bench-shaped
+   defaults plus the first `Open` 27,047 B (the schema form: 49,881 B at
+   revision 15, 40,121 B at revision 16). Choices left open, taken
+   conservatively: any table without SchemaKit's metatable tag is plain
+   defaults (as AddonKit treats it); a scope that is not a table keeps the
+   existing refusal ("must be a SchemaKit schema node or sealed schema")
+   rather than a new defaults message; the refusals read
+   `<label> defaults <path> <AddonKit's reason>`, the array hint naming
+   `SchemaKit.array{ of = ... }`; a SchemaKit leaf is checked by its own
+   sealed `Check` from depth 1, so a table-valued leaf nested near
+   `maxDepth` is held to the leaf's own depth; the checker builds paths with
+   SettingsKit's `pathKeyLimit`, SchemaKit's when equal (both 32 by
+   default). Not done: the client suite case (a plain database opened in
+   `OnInitialize` without SchemaKit) is not written; the client bundle always
+   carries SchemaKit, so it could not show "without". Outside this package
+   (reported): AddonKit's Database part can pass its defaults to `Open` and
+   name `["Defaults"]`.
 
 ---
 
@@ -955,7 +976,20 @@ Moved from `docs/ROADMAP.md` (Package O — memory, performance and ease of use 
    CHANGELOG 0.7.0, `tests/README.md`, client suite. Outside: EMBEDDING.md
    and MIGRATING_FROM_ACE3.md LibDualSpec rows (the maintainer's),
    OptionsKit-Profiles manifest and `HasPart` test (its owner's).
-9. Status: recorded 2026-11-16; code follows.
+9. Status: implemented 2026-11-18, 0.7.0, revision 16, 420 specs (with
+   records 1 and 3). Measured: the part 15,333 B resident. The part decides
+   unit events with `EventKit:HasPart("Units")`, and for an EventKit before
+   revision 23 (unit events in its core, `HasPart` not knowing `"Units"`)
+   with the `ConnectUnit` member, so it is right before and after the
+   EventKit Units split; the manifest's optional `eventKit` contract does not
+   yet name `"parts": ["Units"]` because this branch's EventKit has no such
+   part (validation would refuse it): the integrator adds it with EventKit's
+   change. Only revision 15 (proved with its byte copy) has its members kept
+   on an upgrade; revisions 11 to 14 get the stubs. The core keeps setting
+   `state.specListenerConnected` and the revision 10 catch-up flag
+   (`specProfilesCatchUp`), which the part consumes. Outside (reported):
+   OptionsKit-Profiles names the part and asks `HasPart` (done by the
+   optionsKit owner in this branch).
 
 ---
 
@@ -1054,7 +1088,21 @@ Moved from `docs/ROADMAP.md` (Package O — memory, performance and ease of use 
    `docs/INTERNALS.md` (plan layout 3, the depth rule, `OPTION_RULES`, the
    shared blocks), CHANGELOG 0.7.0, `tests/README.md`; the API.md section
    skeleton of `docs/CONTRIBUTING.md`.
-9. Status: recorded 2026-11-16; code follows.
+9. Status: implemented 2026-11-18, 0.7.0, revision 16, 420 specs (with
+   records 1 and 2). Measured (SchemaKit loaded): core 192,145 B → 185,076 B
+   for all three records, against the 174 KB estimated; the shared blocks
+   and the part interface (stubs, `HasPart`, kept members, helpers) cost
+   more than budgeted. 2c (`OPTION_RULES`) not taken: with the four option
+   readers stubbed out completely the core measured 3,058 B smaller, so a
+   rule table and its reader could not save the required 2 KB. Main-chunk
+   locals stay at 193 (the SchemaKit lookup moved into a block). The limits
+   block's messages are the shared ones; a secret limit key is now named
+   `limits.<secret>` in the unknown-name refusal (the key cannot exist on a
+   client). `Open`'s `savedVariable` and profile names are asked about
+   secrecy before their type, so KitConformance's secret arguments (tables
+   in the host) are refused as secret; a client secret is a string, so no
+   client sees a difference. KitConformance's dependency group runs with a
+   protected `NewPackageWithout`, since SignalKit itself needs Registry.
 
 ---
 

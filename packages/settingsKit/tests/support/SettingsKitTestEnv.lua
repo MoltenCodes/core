@@ -234,6 +234,7 @@ local baseNewPackage = SettingsKitTestEnv.NewPackage
 local PART_MODULES = {
   "SettingsKit-Namespaces",
   "SettingsKit-SpecProfiles",
+  "SettingsKit-Defaults",
   "SchemaKit-Rules",
   "SchemaKit-Apply",
 }
@@ -301,6 +302,13 @@ function SettingsKitTestEnv.NewCore()
   loadSchemaKitParts()
   SettingsKitTestEnv.SetPlayer()
   return SettingsKit, Registry, SignalKit, EventKit, SchemaKit
+end
+
+---Load the Defaults part after the core, as an addon that embeds it does.
+---@return table SettingsKit
+function SettingsKitTestEnv.LoadDefaults()
+  package.loaded["SettingsKit-Defaults"] = nil
+  return require("SettingsKit-Defaults")
 end
 
 ---Load the SpecProfiles part after the core, as an addon that embeds it does.
