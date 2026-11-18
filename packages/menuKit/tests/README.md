@@ -13,8 +13,12 @@ The MenuKit suite covers:
 
 `support/MenuKitTestEnv.lua` provides a stand-in for Blizzard_Menu (`InstallMenu`): descriptions that record what was added and can be clicked, `MenuUtil.CreateContextMenu`, dropdown buttons with `SetupMenu` (`NewDropdown`), `Menu.ModifyMenu` with handles, calling a new callback at once with the last menu filled under its tag as Blizzard does, and tagged menus opened as Blizzard opens them (`OpenTagged`), and `Menu.GetManager():CloseMenus()`; the secret probe, `TakeReportedValues` and `LoadRevision`. `Reset` removes `MenuUtil` and `Menu`.
 
+The shared helper specs load the Kit with the secret probe already installed (through `package.preload`), raise from the host error handler, and load the committed revision 2 file (`fixtures/MenuKit-revision2.lua`) before the current one.
+
 | Spec | Covers |
 |---|---|
+| `SharedHelpers_spec.lua` | the shared `isSecret`, `reportError` and `validateFacade` blocks, the upgrade from revision 2 |
+| `Conformance_spec.lua` | the repository conformance suite (`tests/support/KitConformance.lua`) |
 | `Menus_spec.lua` | building, callbacks, dynamic menus, failures, `CloseMenus` |
 | `Entries_spec.lua` | the entry checks and argument checks |
 | `Extensions_spec.lua` | `ExtendMenu`, `Remove`, `IsActive`, `maxExtensions` |
