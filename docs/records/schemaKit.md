@@ -193,7 +193,7 @@ Moved from `docs/ROADMAP.md` (Package O — memory, performance and ease of use 
    dispatch entries, why the checker keeps every kind), CHANGELOG 0.3.0,
    `tests/README.md`. Outside, the maintainer's: EMBEDDING.md footprints,
    OptionsKit and CommandKit manifests (their owners').
-9. Status: implemented 2026-11-18, 0.3.0, revision 7, 161 specs (one
+9. Status: implemented 2026-11-18, 0.3.0, revision 7, 163 specs (one
    pending). Measured on host Lua 5.1.5 (64-bit, debug information kept,
    resident bytes after a full collection, each file loaded after Registry):
    core 85,445 B → 78,698 B (−7.9%); Rules part 7,798 B; Apply part 6,845 B.

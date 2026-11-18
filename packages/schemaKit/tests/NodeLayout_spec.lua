@@ -89,10 +89,14 @@ describe("SchemaKit compiled node layout", function()
     require("Registry")
     local previous = TestEnv.LoadRevision(5)
     local S = previous
+    -- The spec holds this proxy: `state.nodes` is weak-keyed, so a proxy
+    -- only a parent's compiled node refers to may leave the table at any
+    -- collection (coverage runs allocate enough to trigger one).
+    local optionalWithFalseDefault = S.optional(S.boolean(), false)
     local point = S.table({
       fields = {
         x = S.number({ min = 0 }),
-        y = S.optional(S.boolean(), false),
+        y = optionalWithFalseDefault,
         tag = S.optional(S.string({ pattern = "^%a+$" })),
         kind = S.enum({ "a", "b" }),
       },
@@ -138,14 +142,16 @@ describe("SchemaKit compiled node layout", function()
     end
 
     -- The declared `false` default survives, and the schema still checks,
-    -- fails, applies and describes as before.
-    local optionalNode = nil
-    for _, node in next, nodes do
-      if node.kind == "optional" and node.hasDefault == true then
-        optionalNode = node
-      end
-    end
+    -- fails, applies and describes as before, also after a full collection
+    -- has cleared the entries of proxies nobody holds.
+    collectgarbage("collect")
+    local optionalNode = nodes[optionalWithFalseDefault]
+    assert.are.equal("optional", optionalNode.kind)
+    assert.is_true(optionalNode.hasDefault)
     assert.is_false(optionalNode.default)
+    -- Fields are kept in sorted order (kind, tag, x, y): the parent's child
+    -- reference and the proxy's entry point at the same rebuilt copy.
+    assert.are.equal(optionalNode, newPoint.fieldNodes[4])
     assert.is_true(schema:Check({ { x = 1, kind = "b" } }))
     local _, again = schema:Check({ { x = -1, kind = "a" } })
     assert.are.equal(failure, again)

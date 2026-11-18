@@ -25,7 +25,7 @@ SchemaKit is pure Lua, so `support/SchemaKitTestEnv.lua` builds its environment 
 |---|---|
 | `Builders_spec.lua` | every builder's accept, reject and spec-error cases, composition |
 | `Failures_spec.lua` | failure fields, paths, key rendering, failure-table reuse |
-| `Apply_spec.lua` | defaults filled into a copy |
+| `Apply_spec.lua` | defaults filled into a copy; failures with `Check`'s rule; the part run twice |
 | `Sealed_spec.lua` | immutability, forged receivers, re-sealing, `Seal` options |
 | `Bounds_spec.lua` | depth, array, map and closed-table bounds |
 | `Limits_spec.lua` | `SetLimits`, `GetLimits`, `UNBOUNDED`, ceilings, limits across upgrades |

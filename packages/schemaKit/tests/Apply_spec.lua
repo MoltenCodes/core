@@ -146,4 +146,31 @@ describe("SchemaKit Apply", function()
     assert.is_false(okHoles)
     assert.are.equal("sequence", holesFailure.rule)
   end)
+
+  it("fails a map over its max or a non-table array or map with the same rule as Check", function()
+    local map = S:Seal(S.map({ keys = S.string(), values = S.number(), max = 1 }))
+    local okMap, mapFailure = map:Apply({ a = 1, b = 2 })
+    assert.is_false(okMap)
+    assert.are.same(select(2, map:Check({ a = 1, b = 2 })), mapFailure)
+    assert.are.equal("max", mapFailure.rule)
+
+    local array = S:Seal(S.array({ of = S.number() }))
+    local okArray, arrayFailure = array:Apply("not a table")
+    assert.is_false(okArray)
+    assert.are.same(
+      { path = "", rule = "type", expected = "array", found = "string" },
+      arrayFailure
+    )
+
+    local okMapType, mapTypeFailure = map:Apply(7)
+    assert.is_false(okMapType)
+    assert.are.equal("type", mapTypeFailure.rule)
+    assert.are.equal("number", mapTypeFailure.found)
+  end)
+
+  it("keeps an installed Apply when the Apply part file runs again", function()
+    local apply = S:Seal(S.number()).Apply
+    TestEnv.LoadPart("Apply")
+    assert.are.equal(apply, S:Seal(S.number()).Apply)
+  end)
 end)
