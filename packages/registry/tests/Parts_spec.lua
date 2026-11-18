@@ -94,6 +94,27 @@ local function loadPartAtRevision(part, revision)
   return assert(loadstring(patched, "@" .. path))()
 end
 
+---Run `action` with the global `print` captured, and return what it printed.
+---Registry reports through the host error handler and prints only when there
+---is none or it raises (the shared `reportError` block).
+---@param action fun()
+---@return string[] printed
+local function capturePrint(action)
+  -- `print` is the host's last-resort sink, reachable only through the global table.
+  -- selene: allow(global_usage)
+  local savedPrint = rawget(_G, "print")
+  local printed = {}
+  -- selene: allow(global_usage)
+  rawset(_G, "print", function(value)
+    printed[#printed + 1] = value
+  end)
+  local ok, failure = pcall(action)
+  -- selene: allow(global_usage)
+  rawset(_G, "print", savedPrint)
+  assert(ok, failure)
+  return printed
+end
+
 describe("Registry parts", function()
   after_each(function()
     TestEnv.Reset()
@@ -315,6 +336,23 @@ describe("Registry parts", function()
         assert.is_truthy(message:find("MoltenCodes DemoKit", 1, true), message)
       end
     )
+
+    it("prints the pending retire hook report when the host has no error handler", function()
+      TestEnv.Reset()
+      local previous = loadRevision16()
+      loadCopy(previous, 1, {
+        retire = function() end,
+      })
+
+      local printed = capturePrint(function()
+        local Registry = TestEnv.Reload()
+        loadCopy(Registry, 2)
+        loadCopy(Registry, 3)
+      end)
+      assert.are.equal(1, #printed)
+      assert.is_truthy(printed[1]:find(missing("running it", "Handover"), 1, true), printed[1])
+      assert.is_truthy(printed[1]:find("MoltenCodes DemoKit", 1, true), printed[1])
+    end)
 
     it("runs the pending retire hook when the Handover part is loaded", function()
       TestEnv.Reset()

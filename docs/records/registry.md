@@ -73,7 +73,7 @@ Moved from `docs/ROADMAP.md` (Package O — memory, performance and ease of use 
 
 **Minimal core (2026-11-16)**
 
-Status: implemented 2026-11-18, 0.7.0, revision 17, 166 specs (see item 9).
+Status: implemented 2026-11-18, 0.7.0, revision 17, 168 specs (see item 9).
 
 Measured on host Lua 5.1.5 (64-bit), debug information kept as the client keeps
 it, on the shared fake client, with the string table pre-grown (the method of
@@ -252,7 +252,7 @@ opt-out because Registry has neither.
    `docs/ARCHITECTURE.md` (the Registry paragraph and the line-budget
    sentences in the interopKit and addonKit paragraphs), `docs/EMBEDDING.md`
    footprint table.
-9. Status: implemented 2026-11-18, 0.7.0, revision 17, 166 specs. Core 495
+9. Status: implemented 2026-11-18, 0.7.0, revision 17, 168 specs. Core 495
    code lines (budget 600, `tests/Budget_spec.lua`). Measured with the
    diagnosis harness (host Lua 5.1.5, debug kept, fake client, string table
    pre-grown): core resident 32,349 B → 26,455 B (-18%), transient while

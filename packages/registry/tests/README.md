@@ -37,13 +37,13 @@ Spec files:
 | `Generations_spec.lua` | API-generation coexistence, alias ownership in both load orders, generation-private bootstrap state |
 | `Bootstrap_spec.lua` | `Registry:Bootstrap`: fresh tables, inherited revisions, yielding to newer copies, resume hooks and their return values, argument and refusal errors at the package's `Bootstrap` call |
 | `Find_spec.lua` | `Find` (absent, different generation, retired-unfinished, argument errors, no allocation, `Get` included) and `Packages` snapshots |
-| `Retirement_spec.lua` | retire hooks and `OnRetire`, per-revision migrations run exactly once, failed steps, the in-place upgrade from the previous Registry revision |
+| `Retirement_spec.lua` | retire hooks and `OnRetire`, per-revision migrations run exactly once, failed steps, a failing hook's report printed when the host error handler raises, the in-place upgrade from the previous Registry revision |
 | `Seal_spec.lua` | sealed facades: refused writes at the writer's line, a table or secret field named without running its `__tostring`, the new message after an upgrade from the previous Registry revision, `rawset` upgrades, removal, foreign metatables |
 | `FastPath_spec.lua` | the lookup fast path of `Register`, `Get` and `Find`: hits equal to the full path, argument, secret and corruption refusals at the caller, no allocation, in-place upgrades from revisions 1, 2 and the previous one, an older copy loading afterwards |
 | `SecretValues_spec.lua` | secret arguments, request fields and hook results refused or handed over without a comparison; the probe resolved at load kept, and a probe installed after load honoured |
 | `RegistryTestEnv_spec.lua` | the test environment's own reset and isolation |
 | `Manifest_spec.lua` | runtime API and revision against `package.manifest.json` |
-| `Parts_spec.lua` | the `Handover` and `Diagnostics` parts: stubs and request-field refusals at the caller without them, `HasPart`, either load order, a later core over installed parts, a part without its core, part revisions, the upgrade from revision 16 (entries kept, an inherited retire hook reported once, or run with the part) |
+| `Parts_spec.lua` | the `Handover` and `Diagnostics` parts: stubs and request-field refusals at the caller without them, `HasPart`, either load order, a later core over installed parts, a part without its core, part revisions, the upgrade from revision 16 (entries kept, an inherited retire hook reported once, printed without a host error handler, or run with the part) |
 | `Budget_spec.lua` | the core at or under 600 code lines |
 | `Conformance_spec.lua` | the shared conformance suite's `manifest` group (the other groups do not fit; the file says why) |
 

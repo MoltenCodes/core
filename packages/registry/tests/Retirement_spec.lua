@@ -163,6 +163,38 @@ describe("Registry retirement and migration", function()
     assert.are.equal(2, select(2, Registry:Find("demoKit", 1)))
   end)
 
+  it("prints a failing retire hook's report when the host error handler raises", function()
+    local Registry = TestEnv.NewRegistry()
+    -- The host error handler is a client API reachable only through the global table.
+    -- selene: allow(global_usage)
+    rawset(_G, "geterrorhandler", function()
+      return function()
+        error("handler failed", 0)
+      end
+    end)
+    loadCopy(Registry, 1, {
+      retire = function()
+        error("drain failed")
+      end,
+    })
+    -- selene: allow(global_usage)
+    local savedPrint = rawget(_G, "print")
+    local printed = {}
+    -- selene: allow(global_usage)
+    rawset(_G, "print", function(value)
+      printed[#printed + 1] = value
+    end)
+    local ok, implementation = pcall(loadCopy, Registry, 2)
+    -- selene: allow(global_usage)
+    rawset(_G, "print", savedPrint)
+
+    assert.is_true(ok, implementation)
+    assert.is_table(implementation)
+    assert.are.equal(1, #printed)
+    assert.is_not_nil(string.find(printed[1], "MoltenCodes DemoKit retire hook failed", 1, true))
+    assert.are.equal(2, select(2, Registry:Find("demoKit", 1)))
+  end)
+
   it("refuses at the caller when a migration step fails, and keeps the entry retired", function()
     local Registry = TestEnv.NewRegistry()
     loadCopy(Registry, 1)
