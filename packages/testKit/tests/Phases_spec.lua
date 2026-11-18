@@ -8,6 +8,10 @@ describe("TestKit phase gating", function()
     local loaded = { TestEnv.NewPackage() }
     TestKit = loaded[1]
     LifecycleKit = loaded[5]
+    -- Halting is a LifecycleKit part from its revision 19 on; the specs below
+    -- halt an addon, so the part loads on top of the chain each time.
+    package.loaded["LifecycleKit-Halt"] = nil
+    require("LifecycleKit-Halt")
     finished = {}
     TestKit:OnFinished(function(report)
       finished[#finished + 1] = report

@@ -20,6 +20,8 @@ local ModuleKitTestEnv = FrameworkTestEnv.New({
     "SignalKit",
     "EventKit",
     "LifecycleKit",
+    -- Halting is a LifecycleKit part from its revision 19 on.
+    "LifecycleKit-Halt",
     "HookKit",
     "SchemaKit",
     "CommandKit",
