@@ -1280,10 +1280,14 @@ class ApiSectionTests(unittest.TestCase):
         self.assertEqual([], module.api_section_problems(text))
 
     def test_warning_mode_reports_without_failing(self):
+        # Runs over the real repository, so it cannot name a Kit that must be
+        # flagged: any Kit may be brought into line. What it pins is that the
+        # warning mode returns its findings instead of raising, and that a Kit
+        # whose API.md follows the skeleton is not reported. The problems a
+        # non-conforming API.md produces are covered by the text cases above.
         manifests, _ = validate_manifests.load_manifests()
         warnings = module.repository_warnings(manifests)
         flagged = {item.split("/")[1] for item in (w.split("packages", 1)[1] for w in warnings)}
-        self.assertIn("clientKit", flagged)
         self.assertNotIn("glowKit", flagged)
 
 
