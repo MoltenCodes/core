@@ -19,6 +19,9 @@
     "commandKit": {
       "api": 1
     },
+    "schemaKit": {
+      "api": 1
+    },
     "settingsKit": {
       "api": 1
     }

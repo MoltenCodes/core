@@ -38,6 +38,7 @@ raises `MoltenCodes LogKit requires Registry API 2 to be loaded first` (or
 | `C_AddOns.DoesAddOnExist` | `/log <addon> <level>` for a name that has no logger | Any name is accepted, as before revision 4. A call that raises, or an answer that is not a plain boolean, counts the same. |
 | CommandKit API 1, through `Registry:Find` | `RegisterCommand` | `false, "absent"`. |
 | SettingsKit API 1, through `Registry:Find` | `BindLevels` | Raises at the caller. |
+| SchemaKit API 1, not looked up by LogKit | `BindLevels` | `BindLevels` needs a database whose `global.logLevels` is declared with SchemaKit schemas (below); SettingsKit no longer requires SchemaKit, so an addon that binds levels embeds it. |
 | SignalKit's `maxJournalArguments` | every delivered message (one journal firing of four values) | Must stay at least 4 (SignalKit's default is 8); below it every firing is refused, reported through the error handler, and the message still reaches the sinks. |
 
 ## Public surface
