@@ -197,6 +197,9 @@ describe("SettingsKit SpecProfiles part", function()
       require("Registry")
       require("SignalKit")
       require("EventKit")
+      -- Revision 15 asks for ConnectUnit at load, which EventKit keeps in its
+      -- Units part since revision 23, so the old file finds it as an addon embeds it.
+      require("EventKit-Units")
       S = require("SchemaKit")
       local previous = TestEnv.LoadRevision(15)
       TestEnv.SetPlayer()
