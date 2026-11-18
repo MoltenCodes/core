@@ -21,7 +21,7 @@ if not ok then
   -- scale   max   number <= 2   larger number
 end
 
-local applied, settings = BarSettings:Apply(saved) -- a copy with the defaults filled in
+local applied, settings = BarSettings:Apply(saved) -- a copy with the defaults filled in (Apply part)
 
 function MyBar:Configure(options)
   BarSettings:Assert(options, "MyBar:Configure options", 2)
@@ -38,6 +38,7 @@ What each piece promises:
 - **`schema:Apply(value)`** returns `true` and a copy with every declared default filled in, or `false` and the failure. It allocates, by design.
 - **`schema:Describe()`** returns a fresh plain table describing the schema, for documentation and options screens.
 - **Small schemas.** A compiled node holds only the fields its kind uses (revision 6): a 4-field schema holds about 4.7 KB, a third of what revision 5 held.
+- **Pay for what you use.** The core (78.7 KB resident) holds every builder but `custom` and `oneOf`, and checks every kind. Two optional parts add the rest: `Rules` (string patterns, `S.custom`, `S.oneOf`; 7.8 KB) and `Apply` (`schema:Apply`; 6.8 KB). Without a part its members raise at your line, naming the file to add; `SchemaKit:HasPart(name)` asks without raising.
 - **Bounded, opened on purpose.** `SchemaKit:SetLimits{}` raises the depth (ceiling 64), path-key and default array limits, lowers the pattern-capture limit (32, Lua's own ceiling), and `SchemaKit.UNBOUNDED` lifts the default array bound, and `SchemaKit:GetLimit(name)` reads one limit without allocating; see *Limits* in the API.
 - **Bounded.** A checked value may nest at most 16 tables by default (the `maxDepth` limit; rule `"depth"`); an array holds at most its `max` elements (1024 unless you say otherwise) and a map at most its required `max` entries (rule `"max"`). Oversized input is refused after `max + 1` steps, so a hostile message cannot make validation unbounded.
 - **Secret values** (Retail 12.x) are refused with rule `"secret"` before anything else touches them, whenever the client has `issecretvalue`.
@@ -53,13 +54,15 @@ troubleshooting. This package's load order inside a consuming addon is:
 ```toc
 Libs\MoltenCodes\registry\Registry.lua
 Libs\MoltenCodes\schemaKit\SchemaKit.lua
+Libs\MoltenCodes\schemaKit\parts\SchemaKit-Rules.lua
+Libs\MoltenCodes\schemaKit\parts\SchemaKit-Apply.lua
 ```
 
-Minimum footprint: embed 2 files: `registry/Registry.lua`, `schemaKit/SchemaKit.lua`.
+Minimum footprint: embed 2 files: `registry/Registry.lua`, `schemaKit/SchemaKit.lua`. Add `schemaKit/parts/SchemaKit-Rules.lua` for string patterns, `S.custom` and `S.oneOf`, and `schemaKit/parts/SchemaKit-Apply.lua` for `schema:Apply`; `python3 -m tooling.package.embeds schemaKit/Rules schemaKit/Apply` writes the list.
 
 Direct runtime dependencies: Registry API 2.
-Every file above is required; omitting one makes this package raise at
-load.
+The core files are required; omitting one makes this package raise at
+load. The parts are optional.
 
 SchemaKit has no optional dependencies. The one host facility it reads,
 `issecretvalue`, is looked up at every check; on a client without it nothing is

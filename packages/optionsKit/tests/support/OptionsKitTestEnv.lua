@@ -19,11 +19,49 @@ local OptionsKitTestEnv = FrameworkTestEnv.New({
     "Registry",
     "SignalKit",
     "SchemaKit",
+    "SchemaKit-Rules",
     "OptionsKit",
+    "OptionsKit-Presentation",
+    "OptionsKit-Handlers",
+    "OptionsKit-Bind",
     "OptionsKit-Profiles",
     "OptionsKit-Dynamic",
   },
 })
+
+--- OptionsKit's parts, in the order `NewPackage` loads them after the core.
+OptionsKitTestEnv.PART_MODULES = {
+  "OptionsKit-Presentation",
+  "OptionsKit-Handlers",
+  "OptionsKit-Bind",
+  "OptionsKit-Profiles",
+  "OptionsKit-Dynamic",
+}
+
+---Load SettingsKit and its SpecProfiles part, which the Profiles part's spec
+---selects need (SettingsKit 0.7.0 moved spec profiles into that part), as an
+---addon embedding both does.
+---@return table SettingsKit
+function OptionsKitTestEnv.RequireSettingsKit()
+  -- Run both files again: `Reset` does not unload SettingsKit, which is not
+  -- in the module chain, so a cached module would be a facade an earlier
+  -- spec's Registry held. A second run in one spec yields to the copy it
+  -- loaded first.
+  package.loaded["SettingsKit"] = nil
+  package.loaded["SettingsKit-SpecProfiles"] = nil
+  local SettingsKit = require("SettingsKit")
+  require("SettingsKit-SpecProfiles")
+  return SettingsKit
+end
+
+---Load one OptionsKit part after the core, as an addon that embeds it does.
+---@param partName string `"Presentation"`, `"Handlers"`, `"Bind"`, `"Profiles"` or `"Dynamic"`
+---@return table OptionsKit
+function OptionsKitTestEnv.LoadPart(partName)
+  local moduleName = "OptionsKit-" .. partName
+  package.loaded[moduleName] = nil
+  return require(moduleName)
+end
 
 --- The scopes a SettingsKit database exposes.
 local SCOPES = { "global", "char", "realm", "class", "faction", "profile" }
@@ -84,6 +122,7 @@ function OptionsKitTestEnv.NewCorePackage()
   local Registry = require("Registry")
   require("SignalKit")
   require("SchemaKit")
+  require("SchemaKit-Rules")
   return require("OptionsKit"), Registry
 end
 
@@ -124,28 +163,42 @@ function OptionsKitTestEnv.AllocatedKilobytes(workload)
   return after - before
 end
 
----Load the OptionsKit source again as a copy carrying `revision`, the way a
----newer embedded copy loads over an older one in the client. A revision
----older than 15 stands in for a single-file copy, so the Profiles part loads
----with it.
----@param revision integer
----@return table OptionsKit
-function OptionsKitTestEnv.LoadRevision(revision)
+-- The last single-file core revision, kept verbatim as a fixture, so an
+-- "older copy" in the upgrade specs is the whole file an addon of that time
+-- embedded (presentation fields, method names and binds inside).
+local SUPPORT_DIRECTORY = debug.getinfo(1, "S").source:match("^@(.*[/\\])") or "./"
+local REVISION_15_FIXTURE = SUPPORT_DIRECTORY .. "../fixtures/OptionsKit-revision15.lua"
+
+---Find the core file on `package.path`, as `require` would.
+---@return string path
+local function findCoreSource()
   -- Lua 5.1 has no `package.searchpath`, so walk the path templates the way
   -- `require` does.
-  local path = nil
   for template in package.path:gmatch("[^;]+") do
     local candidate = template:gsub("%?", "OptionsKit")
     local file = io.open(candidate, "r")
     if file ~= nil then
       file:close()
-      path = candidate
-      break
+      return candidate
     end
   end
-  if path == nil then
-    error("OptionsKitTestEnv.LoadRevision could not find OptionsKit.lua on package.path", 2)
+  error("OptionsKitTestEnv.LoadRevision could not find OptionsKit.lua on package.path", 3)
+end
+
+---Load the OptionsKit source again as a copy carrying `revision`, the way a
+---newer embedded copy loads over an older one in the client. A revision up to
+---15 is loaded from the revision 15 fixture, the last single-file core; a
+---later one from the core in `src/`. A revision older than 15 stands in for
+---a copy that also held `ProfileOptions`, so the Profiles part loads with it.
+---SchemaKit's Rules part, which OptionsKit's manifest names, is loaded first
+---when it is not.
+---@param revision integer
+---@return table OptionsKit
+function OptionsKitTestEnv.LoadRevision(revision)
+  if package.loaded["SchemaKit"] ~= nil and package.loaded["SchemaKit-Rules"] == nil then
+    require("SchemaKit-Rules")
   end
+  local path = revision <= 15 and REVISION_15_FIXTURE or findCoreSource()
 
   local file = assert(io.open(path, "r"))
   local text = file:read("*a")

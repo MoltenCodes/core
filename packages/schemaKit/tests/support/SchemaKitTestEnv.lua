@@ -9,12 +9,74 @@
 --- SchemaKit is pure Lua and depends on Registry alone, so the environment
 --- installs no World of Warcraft API; the one host facility SchemaKit reads,
 --- `issecretvalue`, is installed by the specs that need it.
+---
+--- `NewPackage` loads the core and both parts (`SchemaKit-Rules`,
+--- `SchemaKit-Apply`), the whole surface most specs describe; `NewCore` loads
+--- the core alone, as an addon that embeds no part does, and `LoadPart` adds
+--- one part on top.
 local FrameworkTestEnv = require("FrameworkTestEnv")
 
 local SchemaKitTestEnv = FrameworkTestEnv.New({
   modules = { "Registry", "SchemaKit" },
   wowApi = false,
 })
+
+--- The part modules, in the order an addon embedding both loads them.
+local PART_MODULES = { "SchemaKit-Rules", "SchemaKit-Apply" }
+
+local SUPPORT_DIRECTORY = debug.getinfo(1, "S").source:match("^@(.*[/\\])") or "./"
+
+-- The last single-file revision, kept verbatim so an "older copy" in the
+-- upgrade specs is the whole file an addon of that time embedded.
+local REVISION_6_FIXTURE = SUPPORT_DIRECTORY .. "../fixtures/SchemaKit-revision6.lua"
+
+local baseReset = SchemaKitTestEnv.Reset
+local baseNewPackage = SchemaKitTestEnv.NewPackage
+
+---Clear the fixture's modules and the part modules.
+function SchemaKitTestEnv.Reset()
+  baseReset()
+  for index = 1, #PART_MODULES do
+    package.loaded[PART_MODULES[index]] = nil
+  end
+end
+
+---Load Registry, the SchemaKit core and both parts.
+---@return table SchemaKit, table Registry
+function SchemaKitTestEnv.NewPackage()
+  local SchemaKit, Registry = baseNewPackage()
+  for index = 1, #PART_MODULES do
+    require(PART_MODULES[index])
+  end
+  return SchemaKit, Registry
+end
+
+---Load Registry and the SchemaKit core without any part.
+---@return table SchemaKit, table Registry
+function SchemaKitTestEnv.NewCore()
+  return baseNewPackage()
+end
+
+---Load one part (`"Rules"` or `"Apply"`) after the core, as an addon that
+---embeds it does. The part's module is run again even when it was loaded.
+---@param partName string
+---@return any result what the part file returns
+function SchemaKitTestEnv.LoadPart(partName)
+  local moduleName = "SchemaKit-" .. partName
+  package.loaded[moduleName] = nil
+  return require(moduleName)
+end
+
+---Run the revision 6 fixture, the last single-file SchemaKit, as an addon of
+---that time embedding it does.
+---@return table SchemaKit
+function SchemaKitTestEnv.LoadRevision6()
+  local file = assert(io.open(REVISION_6_FIXTURE, "r"))
+  local text = file:read("*a")
+  file:close()
+  local chunk = assert(loadstring(text, "@" .. REVISION_6_FIXTURE))
+  return chunk()
+end
 
 ---Install an `issecretvalue` stub that reports every value in `secrets` as
 ---secret, and return a function that counts how often it was asked.
@@ -74,20 +136,26 @@ function SchemaKitTestEnv.AllocatedKilobytes(workload)
 end
 
 ---Load the SchemaKit source again as a copy carrying `revision`, the way a
----newer embedded copy loads over an older one in the client.
+---newer embedded copy loads over an older one in the client. A revision up to
+---6 is loaded from the revision 6 fixture (every builder and `Apply` in one
+---file, no parts); a later one from the core in `src/`.
 ---@param revision integer
 ---@return table SchemaKit
 function SchemaKitTestEnv.LoadRevision(revision)
   -- Lua 5.1 has no `package.searchpath`, so walk the path templates the way
   -- `require` does.
   local path = nil
-  for template in package.path:gmatch("[^;]+") do
-    local candidate = template:gsub("%?", "SchemaKit")
-    local file = io.open(candidate, "r")
-    if file ~= nil then
-      file:close()
-      path = candidate
-      break
+  if revision <= 6 then
+    path = REVISION_6_FIXTURE
+  else
+    for template in package.path:gmatch("[^;]+") do
+      local candidate = template:gsub("%?", "SchemaKit")
+      local file = io.open(candidate, "r")
+      if file ~= nil then
+        file:close()
+        path = candidate
+        break
+      end
     end
   end
   if path == nil then

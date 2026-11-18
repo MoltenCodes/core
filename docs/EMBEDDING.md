@@ -216,6 +216,7 @@ commKit/parts/CommKit-ChatThrottle.lua
 commandKit/CommandKit.lua
 schemaKit/SchemaKit.lua
 commandKit/parts/CommandKit-Arguments.lua
+schemaKit/parts/SchemaKit-Rules.lua
 optionsKit/OptionsKit.lua
 commandKit/parts/CommandKit-Options.lua
 commandKit/parts/CommandKit-Completion.lua
@@ -240,6 +241,9 @@ moduleKit/ModuleKit.lua
 moduleKit/parts/ModuleKit-Injection.lua
 moduleKit/parts/ModuleKit-Implements.lua
 moduleKit/parts/ModuleKit-RequiredAddons.lua
+optionsKit/parts/OptionsKit-Presentation.lua
+optionsKit/parts/OptionsKit-Handlers.lua
+optionsKit/parts/OptionsKit-Bind.lua
 optionsKit/parts/OptionsKit-Profiles.lua
 optionsKit/parts/OptionsKit-Dynamic.lua
 widgetKit/WidgetKit.lua
@@ -260,8 +264,11 @@ schedulerKit/SchedulerKit.lua
 schedulerKit/parts/SchedulerKit-Coalescing.lua
 schedulerKit/parts/SchedulerKit-Lanes.lua
 schedulerKit/parts/SchedulerKit-Watch.lua
+schemaKit/parts/SchemaKit-Apply.lua
 settingsKit/SettingsKit.lua
 settingsKit/parts/SettingsKit-Namespaces.lua
+settingsKit/parts/SettingsKit-Defaults.lua
+settingsKit/parts/SettingsKit-SpecProfiles.lua
 signalKit/parts/SignalKit-Coalescing.lua
 timerKit/parts/TimerKit-Pausing.lua
 toastKit/ToastKit.lua
@@ -354,12 +361,12 @@ files:
 |---|---|---|
 | 2 | `addonKit`, `apiKit`, `poolKit`, `bindingKit`, `bridgeKit`, `signalKit`, `cacheKit`, `clientKit`, `eventKit`, `timerKit`, `commandKit`, `schemaKit`, `compatKit`, `dialogKit`, `editModeKit`, `hookKit`, `interopKit`, `localeKit`, `menuKit`, `widgetKit`, `profileKit`, `rangeKit`, `unitFrameKit` | nothing |
 | 3 | `barKit`, `codecKit`, `glowKit`, `toastKit`, `tooltipKit` | `poolKit` |
-| 3 | `brokerKit`, `logKit`, `mediaKit` | `signalKit` |
+| 3 | `brokerKit`, `logKit`, `mediaKit`, `settingsKit` | `signalKit` |
 | 3 | `lifecycleKit` | `eventKit` |
 | 3 | `readinessKit`, `schedulerKit` | `timerKit` |
 | 4 | `launcherKit` | `signalKit`, `brokerKit` |
 | 4 | `moduleKit` | `eventKit`, `lifecycleKit` |
-| 4 | `optionsKit`, `settingsKit` | `schemaKit`, `signalKit` |
+| 4 | `optionsKit` | `schemaKit`, `signalKit` |
 | 6 | `commKit` | `eventKit`, `poolKit`, `signalKit`, `timerKit` |
 | 6 | `testKit` (development only) | `eventKit`, `lifecycleKit`, `timerKit`, `schedulerKit` |
 | 6 | `panelKit` | `schemaKit`, `signalKit`, `optionsKit`, `widgetKit` |
@@ -387,7 +394,7 @@ part loads after its Kit's core and brings in what it needs:
 | `commKit/SyncSet` | `commKit/parts/CommKit-SyncSet.lua` | scope:SyncSet: named fields synchronised with peers by content hash, answering only with the fields that differ. | `codecKit` |
 | `commKit/ChatThrottle` | `commKit/parts/CommKit-ChatThrottle.lua` | scope:SendChat and Battle.net game data (scope:SendBattleNet, scope:RegisterBattleNet) through the shared bandwidth budget, the senders ChatThrottleLib throttles beside addon messages. | nothing |
 | `commandKit/Arguments` | `commandKit/parts/CommandKit-Arguments.lua` | Schema-checked command arguments: SchemaKit schemas per position or one array, coercion of the typed words, generated usage and refusals. | `schemaKit` |
-| `commandKit/Options` | `commandKit/parts/CommandKit-Options.lua` | Drive an OptionsKit tree from a slash command: the get, set, reset, list and exec verbs and AceConfigCmd's path syntax. | `schemaKit`, `signalKit`, `optionsKit`, `commandKit/Arguments` |
+| `commandKit/Options` | `commandKit/parts/CommandKit-Options.lua` | Drive an OptionsKit tree from a slash command: the get, set, reset, list and exec verbs and AceConfigCmd's path syntax. | `schemaKit`, `schemaKit/Rules`, `signalKit`, `optionsKit`, `commandKit/Arguments` |
 | `commandKit/Completion` | `commandKit/parts/CommandKit-Completion.lua` | Tab completion in chat edit boxes: the scopes' own commands and AceTab-style completion providers. | nothing |
 | `eventKit/Units` | `eventKit/parts/EventKit-Units.lua` | ConnectUnit and OnceUnit: events filtered to one or two unit tokens on a bounded set of unit-filter Frames. | nothing |
 | `eventKit/CombatLog` | `eventKit/parts/EventKit-CombatLog.lua` | ConnectCombatLog: the combat log read once per event and routed by sub-event. | nothing |
@@ -397,12 +404,19 @@ part loads after its Kit's core and brings in what it needs:
 | `moduleKit/Injection` | `moduleKit/parts/ModuleKit-Injection.lua` | Dependency injection: the four provider kinds, Resolve, Inject and the inject definition field. | nothing |
 | `moduleKit/Implements` | `moduleKit/parts/ModuleKit-Implements.lua` | implements contracts on module definitions and provider options, as method lists or SchemaKit schemas. | nothing |
 | `moduleKit/RequiredAddons` | `moduleKit/parts/ModuleKit-RequiredAddons.lua` | The requiresAddons definition field: modules taken down when another addon they need halts. | `lifecycleKit/Halt` |
+| `optionsKit/Presentation` | `optionsKit/parts/OptionsKit-Presentation.lua` | AceConfig's presentation fields: widths, icons, images, controls, styles, function names and orders, sorting functions and the per-interface hidden and inline flags. | nothing |
+| `optionsKit/Handlers` | `optionsKit/parts/OptionsKit-Handlers.lua` | AceConfig's ways of wiring a tree: a handler and method names, accessors declared on groups and inherited, and plugins. | nothing |
+| `optionsKit/Bind` | `optionsKit/parts/OptionsKit-Bind.lua` | bind = "profile.path" and ns: binds: options read and written through a SettingsKit database passed as options.db. | nothing |
 | `optionsKit/Profiles` | `optionsKit/parts/OptionsKit-Profiles.lua` | OptionsKit:ProfileOptions: the ready-made group over a SettingsKit database's profiles, with the per-specialization choices. | nothing |
 | `optionsKit/Dynamic` | `optionsKit/parts/OptionsKit-Dynamic.lua` | Trees that change shape after Define: builder functions, tree:NotifyChange(), tree:Replace and tree:Remove. | nothing |
 | `schedulerKit/Coalescing` | `schedulerKit/parts/SchedulerKit-Coalescing.lua` | Debounce and Coalesce handles on the facade and on scopes, with the coalescing family's shared clock, member links and protected delivery. | nothing |
 | `schedulerKit/Lanes` | `schedulerKit/parts/SchedulerKit-Lanes.lua` | Named lanes that ration a resource: in-flight and interval limits, retries with backoff, and Debounce or Coalesce delivery through a lane. | `schedulerKit/Coalescing` |
 | `schedulerKit/Watch` | `schedulerKit/parts/SchedulerKit-Watch.lua` | Watch: poll a predicate on a shared per-interval ticker and call back when its result changes. | `schedulerKit/Coalescing` |
+| `schemaKit/Rules` | `schemaKit/parts/SchemaKit-Rules.lua` | The builders whose rules need more than a type and bounds: string patterns (validated when built), SchemaKit.custom and SchemaKit.oneOf. | nothing |
+| `schemaKit/Apply` | `schemaKit/parts/SchemaKit-Apply.lua` | schema:Apply: a checked copy of a value with every declared default filled in. | nothing |
 | `settingsKit/Namespaces` | `settingsKit/parts/SettingsKit-Namespaces.lua` | db:RegisterNamespace and db:GetNamespace: child databases with their own schema over the saved variable's namespaces section, in AceDB's layout, following the parent's profile. | nothing |
+| `settingsKit/Defaults` | `settingsKit/parts/SettingsKit-Defaults.lua` | SettingsKit:Open and db:RegisterNamespace from plain AceDB-style defaults: the write rules inferred from each default, checked without SchemaKit. | nothing |
+| `settingsKit/SpecProfiles` | `settingsKit/parts/SettingsKit-SpecProfiles.lua` | Profiles assigned per specialization or talent group: SettingsKit:GetSpecIndex, db:SetSpecProfile, db:GetSpecProfile and db:ApplySpecProfile, switched by itself on spec changes while EventKit is embedded. | nothing |
 | `signalKit/Coalescing` | `signalKit/parts/SignalKit-Coalescing.lua` | Bucketed bus messages: collect a burst of publishes and deliver it once per interval. | `timerKit`, `schedulerKit`, `schedulerKit/Coalescing` |
 | `timerKit/Pausing` | `timerKit/parts/TimerKit-Pausing.lua` | Pause and Resume: a running timer paused and resumed later with what was left of its delay, a repeating timer back on its interval after that first fire. | nothing |
 | `widgetKit/Containers` | `widgetKit/parts/WidgetKit-Containers.lua` | The container types Frame (a movable, resizable window), Group and ScrollFrame. | nothing |
@@ -507,6 +521,7 @@ by the example and are listed so the file is a complete template.
     <Script file="Libs\MoltenCodes\commandKit\CommandKit.lua" />
     <Script file="Libs\MoltenCodes\schemaKit\SchemaKit.lua" />
     <Script file="Libs\MoltenCodes\commandKit\parts\CommandKit-Arguments.lua" /> <!-- argument schemas; the Options part needs it -->
+    <Script file="Libs\MoltenCodes\schemaKit\parts\SchemaKit-Rules.lua" /> <!-- OptionsKit needs it -->
     <Script file="Libs\MoltenCodes\optionsKit\OptionsKit.lua" />
     <Script file="Libs\MoltenCodes\commandKit\parts\CommandKit-Options.lua" /> <!-- BindOptions, which Commands.lua uses -->
     <Script file="Libs\MoltenCodes\compatKit\CompatKit.lua" /> <!-- optional here -->
@@ -520,10 +535,12 @@ by the example and are listed so the file is a complete template.
     <Script file="Libs\MoltenCodes\mediaKit\MediaKit.lua" /> <!-- optional here -->
     <Script file="Libs\MoltenCodes\moduleKit\ModuleKit.lua" />
     <Script file="Libs\MoltenCodes\moduleKit\parts\ModuleKit-Injection.lua" /> <!-- ProvideSingleton, ProvideValue, Resolve and inject, which the addon files use -->
+    <Script file="Libs\MoltenCodes\optionsKit\parts\OptionsKit-Bind.lua" /> <!-- bind = "profile.path", which Options.lua uses -->
     <Script file="Libs\MoltenCodes\optionsKit\parts\OptionsKit-Profiles.lua" /> <!-- ProfileOptions, which Options.lua uses -->
     <Script file="Libs\MoltenCodes\profileKit\ProfileKit.lua" /> <!-- optional here -->
     <Script file="Libs\MoltenCodes\readinessKit\ReadinessKit.lua" />
     <Script file="Libs\MoltenCodes\schedulerKit\SchedulerKit.lua" /> <!-- optional here: CommKit uses it when present -->
+    <Script file="Libs\MoltenCodes\schemaKit\parts\SchemaKit-Apply.lua" /> <!-- CommandKit's Arguments part fills argument defaults with it -->
     <Script file="Libs\MoltenCodes\settingsKit\SettingsKit.lua" />
     <Script file="Libs\MoltenCodes\widgetKit\WidgetKit.lua" />
     <Script file="Libs\MoltenCodes\widgetKit\parts\WidgetKit-Containers.lua" /> <!-- the Frame window Window.lua creates -->

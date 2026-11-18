@@ -582,6 +582,8 @@ describe("SettingsKit spec profiles", function()
       TestEnv.GetGlobal("OtherDB").specProfiles = { ["Tester - Silvermoon"] = { "Healing" } }
 
       local upgraded = TestEnv.ReloadPackage()
+      -- Spec profiles are a part from revision 16 on: this session embeds it.
+      TestEnv.LoadSpecProfiles()
       assert.are.equal(previous, upgraded)
       assert.is_true(upgraded.REVISION > 10)
       assert.are.equal(db, upgraded:Open("MyAddonDB"))

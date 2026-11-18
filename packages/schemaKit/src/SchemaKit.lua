@@ -7,8 +7,16 @@
 -- contains the offending value.
 --
 -- SchemaKit is pure Lua. The one host facility it reads is `issecretvalue`
--- (Retail 12.x), looked up at every check so a probe installed later is seen;
--- without it nothing is secret.
+-- (Retail 12.x): the checker looks it up at every check, so a probe installed
+-- later is seen; the argument checks use the shared probe rule (read at load,
+-- read again per call only when it was absent at load). Without it nothing is
+-- secret.
+--
+-- This file is the core (docs/decisions/0001-kit-core-and-parts.md). Two
+-- optional parts hold the builders only some schemas need:
+-- `SchemaKit-Rules.lua` (string patterns, `custom`, `oneOf`) and
+-- `SchemaKit-Apply.lua` (`schema:Apply`). The checker keeps every kind, so a
+-- schema built while a part was loaded checks the same without it.
 --
 -- Contents
 -- --------
@@ -21,12 +29,13 @@
 --   Formatting ............ numbers, literals and path segments for messages
 --   Failure recording ..... the per-schema record, rules, the path stack
 --   Checking .............. the compiled checker, one function per kind
---   Applying defaults ..... the copy that fills declared defaults
+--   Plain copies .......... declared defaults, copied and bounded
 --   Describing ............ the plain description for documentation and UIs
 --   Argument checks ....... specs, children, bounds and receivers
 --   Builders .............. the functions that create schema nodes
---   Schema methods ........ Check, Assert, Apply, Describe
+--   Schema methods ........ Check, Assert, Describe
 --   Package public API .... Seal, SetLimits, GetLimits, GetLimit
+--   Parts ................. the part interface, stubs, kept members, HasPart
 --   Node layout upgrade ... rebuilding layout 1 nodes as layout 2
 --   Commit ................ prototype/facade assignment and self-check
 --
@@ -36,7 +45,7 @@
 
 local PACKAGE_NAME = "schemaKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 6
+local IMPLEMENTATION_REVISION = 7
 local REQUIRED_REGISTRY_API = 2
 local STATE_SCHEMA = 1
 
@@ -143,11 +152,6 @@ local ARRAY_SPEC_KEYS = { of = true, min = true, max = true }
 local MAP_SPEC_KEYS = { keys = true, values = true, max = true }
 local SEAL_OPTION_KEYS = { freshFailures = true }
 
--- Lua 5.1's `string.find` treats a pattern without one of these characters as
--- plain text, and never interprets it. The class is the `SPECIALS` string of
--- `lstrlib.c` written as a Lua pattern.
-local PATTERN_SPECIALS = "[%^%$%*%+%?%.%(%[%%%-]"
-
 -- The published surface, listed once so the public-surface predicate reads as
 -- a checklist instead of a long boolean expression.
 local FACADE_FUNCTIONS = {
@@ -166,6 +170,7 @@ local FACADE_FUNCTIONS = {
   "SetLimits",
   "GetLimits",
   "GetLimit",
+  "HasPart",
 }
 local SCHEMA_METHODS = { "Check", "Assert", "Apply", "Describe" }
 
@@ -183,7 +188,7 @@ local HUGE = math.huge
 ---@class SchemaKit.StringSpec
 ---@field min integer? Fewest characters (bytes). At least `0`.
 ---@field max integer? Most characters (bytes). At least `min`.
----@field pattern string? A Lua pattern the string must contain; anchor it with `^` and `$` to match the whole string.
+---@field pattern string? A Lua pattern the string must contain; anchor it with `^` and `$` to match the whole string. Needs the Rules part.
 ---@field oneOf string[]? The only strings accepted.
 
 ---Spec accepted by `SchemaKit.number`.
@@ -263,7 +268,7 @@ local HUGE = math.huge
 ---@class SchemaKit.Schema
 ---@field Check fun(self: SchemaKit.Schema, value: any): boolean, SchemaKit.Failure?
 ---@field Assert fun(self: SchemaKit.Schema, value: any, argumentName: string?, level: integer?): any
----@field Apply fun(self: SchemaKit.Schema, value: any): boolean, any
+---@field Apply fun(self: SchemaKit.Schema, value: any): boolean, any In the Apply part.
 ---@field Describe fun(self: SchemaKit.Schema): SchemaKit.Description
 
 ---The SchemaKit package facade published through Registry. Builders are
@@ -283,12 +288,14 @@ local HUGE = math.huge
 ---@field array fun(spec: SchemaKit.ArraySpec): SchemaKit.Node
 ---@field map fun(spec: SchemaKit.MapSpec): SchemaKit.Node
 ---@field optional fun(schema: SchemaKit.Node|SchemaKit.Schema, default: any?): SchemaKit.Node
----@field oneOf fun(alternatives: (SchemaKit.Node|SchemaKit.Schema)[]): SchemaKit.Node
+---@field oneOf fun(alternatives: (SchemaKit.Node|SchemaKit.Schema)[]): SchemaKit.Node In the Rules part.
 ---@field any fun(): SchemaKit.Node
----@field custom fun(check: fun(value: any): boolean, description: string): SchemaKit.Node
+---@field custom fun(check: fun(value: any): boolean, description: string): SchemaKit.Node In the Rules part.
 ---@field Seal fun(self: SchemaKit, node: SchemaKit.Node|SchemaKit.Schema, options: SchemaKit.SealOptions?): SchemaKit.Schema
 ---@field SetLimits fun(self: SchemaKit, limits: SchemaKit.Limits)
 ---@field GetLimits fun(self: SchemaKit): SchemaKit.Limits
+---@field GetLimit fun(self: SchemaKit, name: string): integer|table
+---@field HasPart fun(self: SchemaKit, partName: string): boolean Whether the named part (`"Rules"`, `"Apply"`) is loaded.
 
 ---The limits every consumer in the session shares. `SetLimits` accepts any
 ---subset; `GetLimits` returns all four in a fresh table.
@@ -376,17 +383,36 @@ local function currentSecretProbe()
   return nil
 end
 
----Whether the host marks `value` secret; always `false` on a client without
----secret values. Builders, `Seal` and `Assert` ask it about a caller's flag,
----bound, literal, pattern, description, name or level before testing,
----comparing or doing arithmetic on it, each of which raises on a secret
----inside SchemaKit.
----@param value any
----@return boolean
-local function isSecretValue(value)
-  local probe = currentSecretProbe()
-  return probe ~= nil and probe(value) == true
+-- Builders, `Seal` and `Assert` ask `isSecret` about a caller's flag, bound,
+-- literal, pattern, description, name or level before testing, comparing or
+-- doing arithmetic on it, each of which raises on a secret inside SchemaKit.
+-- The checker passes `currentSecretProbe()` along instead, one read per check.
+-- shared:begin isSecret 1
+-- Copied from tooling/shared/lua/isSecret.lua by python3 -m tooling.shared.sync; edit that file, not this copy.
+---Whether `value` is a secret value the host forbids comparing.
+---@type fun(value: any): boolean
+local isSecret
+do
+  -- issecretvalue is a client API reachable only through the global table.
+  -- selene: allow(global_usage)
+  local loadedProbe = rawget(_G, "issecretvalue")
+  if type(loadedProbe) ~= "function" then
+    loadedProbe = nil
+  end
+
+  isSecret = function(value)
+    local probe = loadedProbe
+    if probe == nil then
+      -- selene: allow(global_usage)
+      probe = rawget(_G, "issecretvalue")
+      if type(probe) ~= "function" then
+        return false
+      end
+    end
+    return probe(value) == true
+  end
 end
+-- shared:end isSecret
 
 -- Validation -----------------------------------------------------------------
 
@@ -443,6 +469,9 @@ end
 local function validateCurrentState(implementation)
   local currentState = rawget(implementation, "_state")
   return validateStateBase(currentState)
+    and type(rawget(currentState, "parts")) == "table"
+    and type(rawget(currentState, "dispatch")) == "table"
+    and type(rawget(currentState, "helpers")) == "table"
     and rawget(implementation, "UNBOUNDED") == rawget(currentState, "unbounded")
 end
 
@@ -512,6 +541,18 @@ local schemaRecords = rawget(state, "records")
 local UNBOUNDED = rawget(state, "unbounded")
 local sharedLimits = rawget(state, "limits")
 
+-- The part interface (see "Parts" below). `parts` and `dispatch` are kept
+-- across upgrades: a part's entries outlive the core revision that was loaded
+-- when the part installed them. Revision 6 and older had neither.
+if type(rawget(state, "parts")) ~= "table" then
+  rawset(state, "parts", {})
+end
+if type(rawget(state, "dispatch")) ~= "table" then
+  rawset(state, "dispatch", {})
+end
+local installedParts = rawget(state, "parts")
+local dispatch = rawget(state, "dispatch")
+
 -- Limits ---------------------------------------------------------------------
 --
 -- `state.limits` is the one copy every revision reads. The checker, the
@@ -522,7 +563,6 @@ local sharedLimits = rawget(state, "limits")
 local maxDepth = MAX_DEPTH
 local expectedDepth = ""
 local pathKeyLimit = PATH_KEY_LIMIT
-local maxPatternCaptures = MAX_PATTERN_CAPTURES
 -- `math.huge` while `defaultArrayMax` is `SchemaKit.UNBOUNDED`.
 local defaultArrayMax = DEFAULT_ARRAY_MAX
 
@@ -531,7 +571,6 @@ local function loadLimits()
   maxDepth = rawget(sharedLimits, "maxDepth")
   expectedDepth = "at most " .. maxDepth .. " nested tables"
   pathKeyLimit = rawget(sharedLimits, "pathKeyLimit")
-  maxPatternCaptures = rawget(sharedLimits, "maxPatternCaptures")
   local arrayMax = rawget(sharedLimits, "defaultArrayMax")
   if type(arrayMax) == "number" then
     defaultArrayMax = arrayMax
@@ -829,9 +868,9 @@ end
 ---@param node SchemaKit.CompiledNode
 ---@param value any
 ---@param depth integer
----@param isSecret (fun(value: any): boolean)?
+---@param secretProbe (fun(value: any): boolean)?
 ---@return boolean
-local function checkTable(record, node, value, depth, isSecret)
+local function checkTable(record, node, value, depth, secretProbe)
   if type(value) ~= "table" then
     return fail(record, RULE_TYPE, node.expected, type(value))
   end
@@ -845,7 +884,7 @@ local function checkTable(record, node, value, depth, isSecret)
   local nodes = node.fieldNodes --[[@as SchemaKit.CompiledNode[] ]]
   for index = 1, #names do
     local name = names[index]
-    if not checkNode(record, nodes[index], rawget(value, name), depth + 1, isSecret) then
+    if not checkNode(record, nodes[index], rawget(value, name), depth + 1, secretProbe) then
       return pushSegment(record, name)
     end
   end
@@ -868,9 +907,9 @@ end
 ---@param node SchemaKit.CompiledNode
 ---@param value any
 ---@param depth integer
----@param isSecret (fun(value: any): boolean)?
+---@param secretProbe (fun(value: any): boolean)?
 ---@return boolean
-local function checkArray(record, node, value, depth, isSecret)
+local function checkArray(record, node, value, depth, secretProbe)
   if type(value) ~= "table" then
     return fail(record, RULE_TYPE, node.expected, type(value))
   end
@@ -910,7 +949,7 @@ local function checkArray(record, node, value, depth, isSecret)
     if type(element) == "nil" then
       return fail(record, RULE_SEQUENCE, EXPECTED_SEQUENCE, FOUND_SEQUENCE)
     end
-    if not checkNode(record, elementNode, element, depth + 1, isSecret) then
+    if not checkNode(record, elementNode, element, depth + 1, secretProbe) then
       return pushSegment(record, index)
     end
   end
@@ -921,9 +960,9 @@ end
 ---@param node SchemaKit.CompiledNode
 ---@param value any
 ---@param depth integer
----@param isSecret (fun(value: any): boolean)?
+---@param secretProbe (fun(value: any): boolean)?
 ---@return boolean
-local function checkMap(record, node, value, depth, isSecret)
+local function checkMap(record, node, value, depth, secretProbe)
   if type(value) ~= "table" then
     return fail(record, RULE_TYPE, node.expected, type(value))
   end
@@ -945,13 +984,13 @@ local function checkMap(record, node, value, depth, isSecret)
         node.foundMax --[[@as string]]
       )
     end
-    if not checkNode(record, keyNode, key, depth + 1, isSecret) then
+    if not checkNode(record, keyNode, key, depth + 1, secretProbe) then
       -- Only on failure: say that the key, not its value, is wrong.
       local failure = record.failure
       failure.expected = "key " .. failure.expected
       return pushSegment(record, key)
     end
-    if not checkNode(record, valueNode, entry, depth + 1, isSecret) then
+    if not checkNode(record, valueNode, entry, depth + 1, secretProbe) then
       return pushSegment(record, key)
     end
   end
@@ -962,13 +1001,13 @@ end
 ---@param node SchemaKit.CompiledNode
 ---@param value any
 ---@param depth integer
----@param isSecret (fun(value: any): boolean)?
+---@param secretProbe (fun(value: any): boolean)?
 ---@return boolean
-local function checkOneOf(record, node, value, depth, isSecret)
+local function checkOneOf(record, node, value, depth, secretProbe)
   local alternatives = node.alternatives --[[@as SchemaKit.CompiledNode[] ]]
   local saved = record.segmentCount
   for index = 1, #alternatives do
-    if checkNode(record, alternatives[index], value, depth, isSecret) then
+    if checkNode(record, alternatives[index], value, depth, secretProbe) then
       return true
     end
     -- The alternative's own path is not the answer; the oneOf is.
@@ -982,12 +1021,12 @@ end
 ---@param node SchemaKit.CompiledNode
 ---@param value any
 ---@param depth integer how many tables deep `value` is if it is a table
----@param isSecret (fun(value: any): boolean)?
+---@param secretProbe (fun(value: any): boolean)?
 ---@return boolean
-checkNode = function(record, node, value, depth, isSecret)
+checkNode = function(record, node, value, depth, secretProbe)
   -- First, before any comparison: comparing a secret, testing a secret
   -- boolean or using a secret as a key raises in the client.
-  if isSecret ~= nil and isSecret(value) then
+  if secretProbe ~= nil and secretProbe(value) then
     return fail(record, RULE_SECRET, node.expected, FOUND_SECRET)
   end
 
@@ -1015,19 +1054,19 @@ checkNode = function(record, node, value, depth, isSecret)
   elseif kind == KIND_ENUM then
     return checkEnum(record, node, value)
   elseif kind == KIND_TABLE then
-    return checkTable(record, node, value, depth, isSecret)
+    return checkTable(record, node, value, depth, secretProbe)
   elseif kind == KIND_ARRAY then
-    return checkArray(record, node, value, depth, isSecret)
+    return checkArray(record, node, value, depth, secretProbe)
   elseif kind == KIND_MAP then
-    return checkMap(record, node, value, depth, isSecret)
+    return checkMap(record, node, value, depth, secretProbe)
   elseif kind == KIND_ONE_OF then
-    return checkOneOf(record, node, value, depth, isSecret)
+    return checkOneOf(record, node, value, depth, secretProbe)
   elseif kind == KIND_CUSTOM then
     local check = node.check --[[@as function]]
     local accepted = check(value)
     -- A secret answer cannot be tested without raising here, so it
     -- rejects the value like a falsy answer does.
-    if isSecret ~= nil and isSecret(accepted) then
+    if secretProbe ~= nil and secretProbe(accepted) then
       return fail(record, RULE_CUSTOM, node.expected, type(value))
     end
     if accepted then
@@ -1042,26 +1081,21 @@ end
 ---Run a whole check from the top of `record`'s schema.
 ---@param record SchemaKit.Record
 ---@param value any
----@param isSecret (fun(value: any): boolean)?
+---@param secretProbe (fun(value: any): boolean)?
 ---@return boolean ok
 ---@return SchemaKit.Failure? failure
-local function runCheck(record, value, isSecret)
+local function runCheck(record, value, secretProbe)
   restoreSegments(record, 0)
-  if checkNode(record, record.root, value, 1, isSecret) then
+  if checkNode(record, record.root, value, 1, secretProbe) then
     return true
   end
   return false, finishFailure(record)
 end
 
--- Applying defaults ----------------------------------------------------------
+-- Plain copies -----------------------------------------------------------------
 --
--- `Apply` is two passes over the same schema. The first builds a copy and
--- fills every declared default where the value is `nil`; it is tolerant and
--- simply keeps a value it cannot copy (wrong type, too deep, too large, a
--- secret), because the second pass, an ordinary check of the copy, reports
--- that value with the same rule and path `Check` would.
-
-local copyNode
+-- A declared default is stored and described as a plain copy. `Apply` (the
+-- Apply part) fills those copies in; `optional` bounds them when built.
 
 ---Deep-copy a plain value: tables are copied, everything else is shared.
 ---Only called on defaults, which the `optional` builder bounded.
@@ -1096,165 +1130,6 @@ local function plainDepthWithin(value, depth)
     end
   end
   return true
-end
-
----Count `value`'s entries, stopping at `limit + 1`.
----@param value table
----@param limit integer
----@return integer
-local function countEntries(value, limit)
-  local count = 0
-  for _ in next, value do
-    count = count + 1
-    if count > limit then
-      return count
-    end
-  end
-  return count
-end
-
----@param record SchemaKit.Record
----@param node SchemaKit.CompiledNode
----@param value any
----@param depth integer
----@param isSecret (fun(value: any): boolean)?
----@return any
-local function copyTable(record, node, value, depth, isSecret)
-  if type(value) ~= "table" or depth > maxDepth then
-    return value
-  end
-
-  local result = {}
-  local names = node.fieldNames --[[@as string[] ]]
-  local nodes = node.fieldNodes --[[@as SchemaKit.CompiledNode[] ]]
-  for index = 1, #names do
-    local name = names[index]
-    result[name] = copyNode(record, nodes[index], rawget(value, name), depth + 1, isSecret)
-  end
-
-  -- Undeclared fields of an open table are kept as they are, unchecked and
-  -- shared. A closed table with one is kept whole, for the check to refuse.
-  local fieldSet = node.fieldSet --[[@as table]]
-  for key, entry in next, value do
-    if fieldSet[key] == nil then
-      if not node.open then
-        return value
-      end
-      result[key] = entry
-    end
-  end
-  return result
-end
-
----@param record SchemaKit.Record
----@param node SchemaKit.CompiledNode
----@param value any
----@param depth integer
----@param isSecret (fun(value: any): boolean)?
----@return any
-local function copyArray(record, node, value, depth, isSecret)
-  if type(value) ~= "table" or depth > maxDepth then
-    return value
-  end
-  local count = countEntries(value, node.max --[[@as integer]])
-  if count > node.max then
-    return value
-  end
-
-  local result = {}
-  local elementNode = node.of --[[@as SchemaKit.CompiledNode]]
-  for index = 1, count do
-    local element = rawget(value, index)
-    if type(element) == "nil" then
-      return value
-    end
-    result[index] = copyNode(record, elementNode, element, depth + 1, isSecret)
-  end
-  return result
-end
-
----@param record SchemaKit.Record
----@param node SchemaKit.CompiledNode
----@param value any
----@param depth integer
----@param isSecret (fun(value: any): boolean)?
----@return any
-local function copyMap(record, node, value, depth, isSecret)
-  if type(value) ~= "table" or depth > maxDepth then
-    return value
-  end
-  if
-    countEntries(value, node.max --[[@as integer]]) > node.max
-  then
-    return value
-  end
-
-  local result = {}
-  local valueNode = node.values --[[@as SchemaKit.CompiledNode]]
-  for key, entry in next, value do
-    result[key] = copyNode(record, valueNode, entry, depth + 1, isSecret)
-  end
-  return result
-end
-
----@param record SchemaKit.Record
----@param node SchemaKit.CompiledNode
----@param value any
----@param depth integer
----@param isSecret (fun(value: any): boolean)?
----@return any
-local function copyOneOf(record, node, value, depth, isSecret)
-  -- The first alternative whose filled copy checks is the one applied.
-  local alternatives = node.alternatives --[[@as SchemaKit.CompiledNode[] ]]
-  local saved = record.segmentCount
-  for index = 1, #alternatives do
-    local alternative = alternatives[index]
-    local copied = copyNode(record, alternative, value, depth, isSecret)
-    local accepted = checkNode(record, alternative, copied, depth, isSecret)
-    restoreSegments(record, saved)
-    if accepted then
-      return copied
-    end
-  end
-  return value
-end
-
----Copy `value` as `node` describes it, filling defaults where it is `nil`.
----@param record SchemaKit.Record
----@param node SchemaKit.CompiledNode
----@param value any
----@param depth integer
----@param isSecret (fun(value: any): boolean)?
----@return any
-copyNode = function(record, node, value, depth, isSecret)
-  if isSecret ~= nil and isSecret(value) then
-    return value
-  end
-
-  local kind = node.kind
-  if kind == KIND_OPTIONAL then
-    if type(value) == "nil" then
-      if not node.hasDefault then
-        return nil
-      end
-      -- The default goes through the inner schema like any value, so
-      -- the defaults declared inside it are filled in too.
-      value = copyPlain(node.default)
-    end
-    node = node.inner --[[@as SchemaKit.CompiledNode]]
-    kind = node.kind
-  end
-
-  if kind == KIND_TABLE then
-    return copyTable(record, node, value, depth, isSecret)
-  elseif kind == KIND_ARRAY then
-    return copyArray(record, node, value, depth, isSecret)
-  elseif kind == KIND_MAP then
-    return copyMap(record, node, value, depth, isSecret)
-  elseif kind == KIND_ONE_OF then
-    return copyOneOf(record, node, value, depth, isSecret)
-  end
-  return value
 end
 
 -- Describing -----------------------------------------------------------------
@@ -1394,7 +1269,7 @@ end
 ---@return boolean
 local function isNonNegativeInteger(value)
   return type(value) == "number"
-    and not isSecretValue(value)
+    and not isSecret(value)
     and value == value
     and value >= 0
     and value ~= HUGE
@@ -1507,7 +1382,7 @@ local function compileLiterals(list, length, label, level)
     -- which compare it and use it as a key.
     if
       (valueType ~= "string" and valueType ~= "number" and valueType ~= "boolean")
-      or isSecretValue(value)
+      or isSecret(value)
     then
       error(label .. " values must be strings, numbers or booleans", level)
     end
@@ -1522,136 +1397,6 @@ local function compileLiterals(list, length, label, level)
     rendered = rendered .. (index == 1 and "" or ", ") .. formatLiteral(value)
   end
   return set, copy, "one of " .. rendered
-end
-
----Return the index just past the single-character class that starts at
----`index` (`x`, `%x` or a `[...]` set), or `nil` when the class is malformed.
----Mirrors `classEnd` in Lua 5.1's `lstrlib.c`, including a `]` or `%]` right
----after `[` or `[^` being a member of the set rather than its end.
----@param pattern string
----@param index integer
----@param length integer
----@return integer?
-local function patternClassEnd(pattern, index, length)
-  local character = sub(pattern, index, index)
-  index = index + 1
-  if character == "%" then
-    if index > length then
-      return nil
-    end
-    return index + 1
-  elseif character == "[" then
-    if sub(pattern, index, index) == "^" then
-      index = index + 1
-    end
-    repeat
-      if index > length then
-        return nil
-      end
-      local member = sub(pattern, index, index)
-      index = index + 1
-      if member == "%" and index <= length then
-        index = index + 1
-      end
-    until sub(pattern, index, index) == "]"
-    return index + 1
-  end
-  return index
-end
-
----Whether `string.find` can use `pattern` on every subject without raising.
----
----Lua 5.1 reports a malformed pattern only when matching reaches the broken
----part, so a pattern such as `"a["` finds nothing in `""` without complaint
----and raises on `"ab"`. Trying the pattern once when the node is built is
----therefore not enough: `Check` would raise from inside SchemaKit on the
----first string that gets that far. This walks the whole pattern the way the
----matcher would and refuses every construct the matcher raises on: a trailing
----`%`, an unclosed `[`, `%b` without two characters, `%f` without a set, a
----back-reference to a capture that is not closed, an unbalanced `(` or `)`,
----and more captures than the `maxPatternCaptures` limit (at most 32, the
----matcher's own ceiling).
----@param pattern string
----@return boolean
-local function isValidPattern(pattern)
-  -- The matcher stops at the first NUL byte, so nothing after it matters.
-  local nulIndex = find(pattern, "\0", 1, true)
-  if type(nulIndex) ~= "nil" then
-    pattern = sub(pattern, 1, nulIndex - 1)
-  end
-  if type(find(pattern, PATTERN_SPECIALS)) == "nil" then
-    return true
-  end
-
-  local length = #pattern
-  local index = 1
-  if sub(pattern, 1, 1) == "^" then
-    index = 2
-  end
-  local captureCount = 0
-  local openCaptures = {}
-  local openCount = 0
-  local closedCaptures = {}
-  while index <= length do
-    local character = sub(pattern, index, index)
-    local following = sub(pattern, index + 1, index + 1)
-    if character == "(" then
-      captureCount = captureCount + 1
-      if captureCount > maxPatternCaptures then
-        return false
-      end
-      if following == ")" then
-        -- A position capture is complete at once.
-        closedCaptures[captureCount] = true
-        index = index + 2
-      else
-        openCount = openCount + 1
-        openCaptures[openCount] = captureCount
-        index = index + 1
-      end
-    elseif character == ")" then
-      if openCount == 0 then
-        return false
-      end
-      closedCaptures[openCaptures[openCount]] = true
-      openCount = openCount - 1
-      index = index + 1
-    elseif character == "$" and index == length then
-      index = index + 1
-    elseif character == "%" and following == "b" then
-      if index + 3 > length then
-        return false
-      end
-      index = index + 4
-    elseif character == "%" and following == "f" then
-      index = index + 2
-      if sub(pattern, index, index) ~= "[" then
-        return false
-      end
-      local classEnd = patternClassEnd(pattern, index, length)
-      if classEnd == nil then
-        return false
-      end
-      index = classEnd
-    elseif character == "%" and type(find(following, "^%d$")) ~= "nil" then
-      local captureIndex = byte(following) - 48
-      if closedCaptures[captureIndex] ~= true then
-        return false
-      end
-      index = index + 2
-    else
-      local classEnd = patternClassEnd(pattern, index, length)
-      if classEnd == nil then
-        return false
-      end
-      index = classEnd
-      local quantifier = sub(pattern, index, index)
-      if quantifier == "*" or quantifier == "+" or quantifier == "-" or quantifier == "?" then
-        index = index + 1
-      end
-    end
-  end
-  return openCount == 0
 end
 
 -- Builders -------------------------------------------------------------------
@@ -1685,14 +1430,9 @@ local function buildString(spec)
 
   local pattern = rawget(spec, "pattern")
   if type(pattern) ~= "nil" then
-    if type(pattern) ~= "string" or isSecretValue(pattern) or pattern == "" then
-      error("SchemaKit.string pattern must be a non-empty string", 2)
-    end
-    if not isValidPattern(pattern) then
-      error("SchemaKit.string pattern is not a valid Lua pattern", 2)
-    end
-    node.pattern = pattern
-    node.expectedPattern = "string matching " .. quote(pattern)
+    -- The Rules part validates and compiles the pattern; without it the
+    -- default entry raises the not-loaded message at the caller's line.
+    dispatch.compilePattern(node, pattern, 3)
   end
 
   local oneOf = rawget(spec, "oneOf")
@@ -1723,7 +1463,7 @@ local function buildNumber(spec)
   validateSpecKeys(spec, NUMBER_SPEC_KEYS, "SchemaKit.number", 3)
 
   local integer = rawget(spec, "integer")
-  if type(integer) ~= "nil" and (type(integer) ~= "boolean" or isSecretValue(integer)) then
+  if type(integer) ~= "nil" and (type(integer) ~= "boolean" or isSecret(integer)) then
     error("SchemaKit.number integer must be a boolean", 2)
   end
   -- Stored only when set, so a plain number node keeps to its three fields.
@@ -1735,10 +1475,10 @@ local function buildNumber(spec)
 
   local min, max = rawget(spec, "min"), rawget(spec, "max")
   -- `issecretvalue` first: the NaN test compares the bound with itself.
-  if type(min) ~= "nil" and (type(min) ~= "number" or isSecretValue(min) or min ~= min) then
+  if type(min) ~= "nil" and (type(min) ~= "number" or isSecret(min) or min ~= min) then
     error("SchemaKit.number min must be a number", 2)
   end
-  if type(max) ~= "nil" and (type(max) ~= "number" or isSecretValue(max) or max ~= max) then
+  if type(max) ~= "nil" and (type(max) ~= "number" or isSecret(max) or max ~= max) then
     error("SchemaKit.number max must be a number", 2)
   end
   if type(min) ~= "nil" and type(max) ~= "nil" and min > max then
@@ -1795,7 +1535,7 @@ local function buildTable(spec)
     error("SchemaKit.table fields must be a table of schema nodes by name", 2)
   end
   local open = rawget(spec, "open")
-  if type(open) ~= "nil" and (type(open) ~= "boolean" or isSecretValue(open)) then
+  if type(open) ~= "nil" and (type(open) ~= "boolean" or isSecret(open)) then
     error("SchemaKit.table open must be a boolean", 2)
   end
 
@@ -1919,29 +1659,6 @@ local function buildOptional(schema, default)
   return publishNode(node)
 end
 
----Describe a value that matches at least one of `alternatives`, tried in order.
----@param alternatives (SchemaKit.Node|SchemaKit.Schema)[]
----@return SchemaKit.Node
-local function buildOneOf(alternatives)
-  refuseColonCall(alternatives, "SchemaKit.oneOf", 3)
-  local length = validateList(alternatives, "SchemaKit.oneOf alternatives", 3)
-  local compiled = {}
-  local expected = ""
-  for index = 1, length do
-    local alternative =
-      resolveChild(alternatives[index], "SchemaKit.oneOf alternatives[" .. index .. "]", 3)
-    if alternative.kind == KIND_OPTIONAL then
-      error("SchemaKit.oneOf alternatives must not be optional; wrap the oneOf instead", 2)
-    end
-    compiled[index] = alternative
-    expected = expected .. (index == 1 and "" or " or ") .. alternative.expected
-  end
-
-  local node = newCompiledNode(KIND_ONE_OF, expected)
-  node.alternatives = compiled
-  return publishNode(node)
-end
-
 ---Describe any value except `nil`.
 ---@return SchemaKit.Node
 local function buildAny(...)
@@ -1951,24 +1668,6 @@ local function buildAny(...)
     error("SchemaKit.any takes no arguments", 2)
   end
   return publishNode(newCompiledNode(KIND_ANY, EXPECTED_ANY))
-end
-
----Describe a value accepted by `check`, which returns a truthy value for an
----acceptable one. `description` is what a failure reports as expected.
----@param check fun(value: any): boolean
----@param description string
----@return SchemaKit.Node
-local function buildCustom(check, description)
-  refuseColonCall(check, "SchemaKit.custom", 3)
-  if type(check) ~= "function" then
-    error("SchemaKit.custom check must be a function", 2)
-  end
-  if type(description) ~= "string" or isSecretValue(description) or description == "" then
-    error("SchemaKit.custom description must be a non-empty string", 2)
-  end
-  local node = newCompiledNode(KIND_CUSTOM, description)
-  node.check = check
-  return publishNode(node)
 end
 
 -- Schema methods -------------------------------------------------------------
@@ -2012,7 +1711,7 @@ local function schemaAssert(self, value, argumentName, level)
   local record = recordOf(self, "SchemaKit.Schema:Assert", 3)
   if type(argumentName) == "nil" then
     argumentName = "value"
-  elseif type(argumentName) ~= "string" or isSecretValue(argumentName) or argumentName == "" then
+  elseif type(argumentName) ~= "string" or isSecret(argumentName) or argumentName == "" then
     error("SchemaKit.Schema:Assert argumentName must be a non-empty string", 2)
   end
   if type(level) == "nil" then
@@ -2026,23 +1725,6 @@ local function schemaAssert(self, value, argumentName, level)
     return value
   end
   error(formatFailure(argumentName, failure --[[@as SchemaKit.Failure]]), level + 1)
-end
-
----Return `true` and a copy of `value` with every declared default filled in,
----or `false` and the failure when the filled copy does not check. Allocates.
----@param self SchemaKit.Schema
----@param value any
----@return boolean ok
----@return any copyOrFailure
-local function schemaApply(self, value)
-  local record = recordOf(self, "SchemaKit.Schema:Apply", 3)
-  local isSecret = currentSecretProbe()
-  local copied = copyNode(record, record.root, value, 1, isSecret)
-  local ok, failure = runCheck(record, copied, isSecret)
-  if ok then
-    return true, copied
-  end
-  return false, failure
 end
 
 ---Return a fresh plain description of the schema. Allocates.
@@ -2091,7 +1773,7 @@ local function packageSeal(facade, node, options)
       error('SchemaKit:Seal options contains unknown field "' .. firstUnknown .. '"', 2)
     end
     local fresh = rawget(options, "freshFailures")
-    if type(fresh) ~= "nil" and (type(fresh) ~= "boolean" or isSecretValue(fresh)) then
+    if type(fresh) ~= "nil" and (type(fresh) ~= "boolean" or isSecret(fresh)) then
       error("SchemaKit:Seal freshFailures must be a boolean", 2)
     end
     freshFailures = fresh == true
@@ -2102,24 +1784,27 @@ local function packageSeal(facade, node, options)
   return schema
 end
 
----Name a caller's table key in a refusal without running its `__tostring`.
----
----`tostring` on a table or userdata runs the key's `__tostring`, foreign code
----that can raise or answer a secret and so replace the real refusal. A string
----is shown as written and a number or boolean through `tostring`, which runs
----no foreign code for them; anything else is named by its type, as `<table>`.
----@param key any a table key, which `next` never returns as `nil`
+-- `describeKey` names a caller's table key in a refusal without running its
+-- `__tostring`, which is foreign code that could raise or answer a secret.
+-- shared:begin describeKey 1
+-- Copied from tooling/shared/lua/describeKey.lua by python3 -m tooling.shared.sync; edit that file, not this copy.
+---Name `key` for an error message without running any of the caller's code.
+---@param key any
 ---@return string
 local function describeKey(key)
-  local keyType = type(key)
-  if keyType == "string" then
+  if isSecret(key) then
+    return "<secret>"
+  end
+  local kind = type(key)
+  if kind == "string" then
     return key
   end
-  if keyType == "number" or keyType == "boolean" then
+  if kind == "number" or kind == "boolean" then
     return tostring(key)
   end
-  return "<" .. keyType .. ">"
+  return "<" .. kind .. ">"
 end
+-- shared:end describeKey
 
 ---Refuse a `SetLimits` argument before anything is written, so a refused
 ---call changes no limit.
@@ -2129,7 +1814,7 @@ local function validateLimitUpdate(limits, level)
   if type(limits) ~= "table" then
     error("SchemaKit:SetLimits limits must be a table", level)
   end
-  local isSecret = currentSecretProbe()
+  local secretProbe = currentSecretProbe()
   for key, value in next, limits do
     if type(key) ~= "string" or rawget(sharedLimits, key) == nil then
       error(
@@ -2140,7 +1825,7 @@ local function validateLimitUpdate(limits, level)
     local ceiling = LIMIT_CEILINGS[key]
     -- The secret check runs before the value meets the sentinel or a
     -- number; a secret is refused like any other invalid value.
-    local secret = isSecret ~= nil and isSecret(value) == true
+    local secret = secretProbe ~= nil and secretProbe(value) == true
     if not secret and value == UNBOUNDED then
       if ceiling ~= nil then
         error(
@@ -2202,8 +1887,7 @@ local function packageGetLimit(facade, name)
   if not rawequal(facade, SchemaKit) then
     error("SchemaKit:GetLimit is called with a colon, not a dot", 2)
   end
-  local isSecret = currentSecretProbe()
-  if isSecret ~= nil and isSecret(name) == true then
+  if isSecret(name) then
     error("SchemaKit:GetLimit name must not be a secret value", 2)
   end
   local value = type(name) == "string" and rawget(sharedLimits, name) or nil
@@ -2231,6 +1915,137 @@ local function packageGetLimits(facade)
     defaultArrayMax = rawget(sharedLimits, "defaultArrayMax"),
   }
 end
+
+-- Parts ----------------------------------------------------------------------
+--
+-- Revision 7 moves the builders only some schemas need into two part files
+-- (docs/decisions/0001-kit-core-and-parts.md): `SchemaKit-Rules.lua` (string
+-- patterns, `custom`, `oneOf`) and `SchemaKit-Apply.lua` (`schema:Apply`).
+-- The core publishes in its state what a part needs and nothing else:
+--
+--   parts          part name to `{ revision = n }`, written by each part;
+--   dispatch       entries a part installs and no core revision overwrites:
+--                  `compilePattern(node, pattern, level)` from Rules;
+--   helpers        the core functions a part calls, read through this table
+--                  at call time and rewritten by every core revision, so a
+--                  newer core loaded after a part serves it;
+--   legacyMembers  the members a revision 6 copy installed, kept while the
+--                  part that replaces them is absent (see below).
+--
+-- A member a part provides stays on the facade or the `Schema` prototype
+-- while the part is absent, as a stub that raises at the caller's line with
+-- the file to add, so the public-surface check of every other copy still
+-- accepts the facade. A part's members are never replaced once it installed
+-- them.
+--
+-- Revision 6 was the last single-file revision. An addon that embeds it may
+-- share a session with one embedding revision 7 without the parts; revision
+-- 6's `string`, `custom`, `oneOf` and `Schema.Apply` are then kept instead of
+-- the stubs. They build layout 2 nodes into the shared `state.nodes`, which
+-- this checker reads unchanged, and read the same layout in `Apply`. The part
+-- that replaces them drops them when it loads (`helpers.adoptPart`). The
+-- reverse order cannot be served: revision 7 loaded first and a revision 6
+-- copy after it, the older copy yields, and its pattern, custom, oneOf and
+-- Apply calls raise the not-loaded message until some addon embeds the parts.
+
+-- The part machinery shares one table, so the main chunk gains one local.
+-- Only what runs after load lives in it; installing the members is inline
+-- code of the main chunk (see "Commit"), freed once the file has run.
+local Parts = {}
+
+---The error a member of a part that is not loaded raises.
+---@param label string the member as a caller wrote it
+---@param partName string `"Rules"` or `"Apply"`
+---@return string
+function Parts.missingMessage(label, partName)
+  return label
+    .. " is in SchemaKit's "
+    .. partName
+    .. " part, which is not loaded: add schemaKit\\parts\\SchemaKit-"
+    .. partName
+    .. ".lua"
+end
+
+---Stub of `SchemaKit.custom` while the Rules part is absent.
+function Parts.customStub()
+  error(Parts.missingMessage("SchemaKit.custom", "Rules"), 2)
+end
+
+---Stub of `SchemaKit.oneOf` while the Rules part is absent.
+function Parts.oneOfStub()
+  error(Parts.missingMessage("SchemaKit.oneOf", "Rules"), 2)
+end
+
+---Stub of `Schema:Apply` while the Apply part is absent. The receiver is
+---checked first, so a dot call is named as it always was.
+---@param self any
+function Parts.applyStub(self)
+  recordOf(self, "SchemaKit.Schema:Apply", 3)
+  error(Parts.missingMessage("SchemaKit.Schema:Apply", "Apply"), 2)
+end
+
+---Default `dispatch.compilePattern` while the Rules part is absent.
+---@param _ table the string node being built
+---@param _ any the pattern
+---@param level integer stack level the failure is reported at
+function Parts.compilePatternStub(_, _, level)
+  error(Parts.missingMessage("SchemaKit.string pattern", "Rules"), level)
+end
+
+---Called by a part once its members are installed: drop the revision 6
+---members it replaces, and give the facade the core's `string` back when the
+---Rules part takes over patterns.
+---@param partName string
+function Parts.adoptPart(partName)
+  local legacy = rawget(state, "legacyMembers")
+  if partName == "Rules" then
+    rawset(SchemaKit, "string", buildString)
+    if type(legacy) == "table" then
+      legacy.string, legacy.custom, legacy.oneOf = nil, nil, nil
+    end
+  elseif type(legacy) == "table" then
+    legacy.Apply = nil
+  end
+  if type(legacy) == "table" and next(legacy) == nil then
+    rawset(state, "legacyMembers", nil)
+  end
+end
+
+---Whether the named part (`"Rules"`, `"Apply"`) is loaded. An unknown name
+---answers `false`.
+---@param facade SchemaKit
+---@param partName string
+---@return boolean
+function Parts.hasPart(facade, partName)
+  if not rawequal(facade, SchemaKit) then
+    error("SchemaKit:HasPart is called with a colon, not a dot", 2)
+  end
+  if isSecret(partName) then
+    error("SchemaKit:HasPart partName must not be a secret value", 2)
+  end
+  if type(partName) ~= "string" then
+    error("SchemaKit:HasPart partName must be a string", 2)
+  end
+  return rawget(installedParts, partName) ~= nil
+end
+
+-- What the parts call, rewritten by every core revision.
+rawset(state, "helpers", {
+  isSecret = isSecret,
+  currentSecretProbe = currentSecretProbe,
+  refuseColonCall = refuseColonCall,
+  validateList = validateList,
+  resolveChild = resolveChild,
+  newCompiledNode = newCompiledNode,
+  publishNode = publishNode,
+  quote = quote,
+  recordOf = recordOf,
+  checkNode = checkNode,
+  runCheck = runCheck,
+  restoreSegments = restoreSegments,
+  copyPlain = copyPlain,
+  adoptPart = Parts.adoptPart,
+})
 
 -- Node layout upgrade --------------------------------------------------------
 --
@@ -2322,7 +2137,6 @@ rawset(SCHEMA_METATABLE, "__metatable", "SchemaKit.Schema")
 
 rawset(Schema, "Check", schemaCheck)
 rawset(Schema, "Assert", schemaAssert)
-rawset(Schema, "Apply", schemaApply)
 rawset(Schema, "Describe", schemaDescribe)
 
 rawset(SchemaKit, "API", API_GENERATION)
@@ -2330,7 +2144,6 @@ rawset(SchemaKit, "REVISION", IMPLEMENTATION_REVISION)
 rawset(SchemaKit, "MAX_DEPTH", MAX_DEPTH)
 rawset(SchemaKit, "DEFAULT_ARRAY_MAX", DEFAULT_ARRAY_MAX)
 rawset(SchemaKit, "UNBOUNDED", UNBOUNDED)
-rawset(SchemaKit, "string", buildString)
 rawset(SchemaKit, "number", buildNumber)
 rawset(SchemaKit, "boolean", buildBoolean)
 rawset(SchemaKit, "enum", buildEnum)
@@ -2338,13 +2151,38 @@ rawset(SchemaKit, "table", buildTable)
 rawset(SchemaKit, "array", buildArray)
 rawset(SchemaKit, "map", buildMap)
 rawset(SchemaKit, "optional", buildOptional)
-rawset(SchemaKit, "oneOf", buildOneOf)
 rawset(SchemaKit, "any", buildAny)
-rawset(SchemaKit, "custom", buildCustom)
 rawset(SchemaKit, "Seal", packageSeal)
 rawset(SchemaKit, "SetLimits", packageSetLimits)
 rawset(SchemaKit, "GetLimits", packageGetLimits)
 rawset(SchemaKit, "GetLimit", packageGetLimit)
+rawset(SchemaKit, "HasPart", Parts.hasPart)
+
+-- Every member whose part is not loaded: the member a revision 6 copy left,
+-- or the stub. A loaded part's members stay as it installed them. `string`
+-- is the core's own builder unless revision 6's is kept for its patterns.
+do
+  if previousRevision == 6 then
+    rawset(state, "legacyMembers", {
+      string = rawget(SchemaKit, "string"),
+      custom = rawget(SchemaKit, "custom"),
+      oneOf = rawget(SchemaKit, "oneOf"),
+      Apply = rawget(Schema, "Apply"),
+    })
+  end
+  local legacy = rawget(state, "legacyMembers") or {}
+  if rawget(installedParts, "Rules") == nil then
+    rawset(SchemaKit, "string", legacy.string or buildString)
+    rawset(SchemaKit, "custom", legacy.custom or Parts.customStub)
+    rawset(SchemaKit, "oneOf", legacy.oneOf or Parts.oneOfStub)
+    rawset(dispatch, "compilePattern", Parts.compilePatternStub)
+  else
+    rawset(SchemaKit, "string", buildString)
+  end
+  if rawget(installedParts, "Apply") == nil then
+    rawset(Schema, "Apply", legacy.Apply or Parts.applyStub)
+  end
+end
 rawset(state, "runtimeRevision", IMPLEMENTATION_REVISION)
 
 if not validatePublicSurface(SchemaKit) or not validateCurrentState(SchemaKit) then

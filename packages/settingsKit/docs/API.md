@@ -2,7 +2,7 @@
 
 SettingsKit API generation **1** opens a database over an addon's saved variable: scoped views whose reads fall back to schema defaults and whose writes are validated at the writer's line, profiles (also switched by specialization), change signals, versioned migrations and compaction.
 
-Implementation revision: **15**. Part `Namespaces`: revision **1**.
+Implementation revision: **16**. Parts `Namespaces`, `SpecProfiles` and `Defaults`: revision **1** each.
 
 ## Loading
 
@@ -11,9 +11,22 @@ Runtime files must be loaded in dependency order:
 ```text
 Registry.lua
 SignalKit.lua
-SchemaKit.lua
+SchemaKit.lua               (only for scopes given as SchemaKit schemas)
 SettingsKit.lua
+parts/SettingsKit-Defaults.lua      (optional: plain AceDB-style defaults)
+parts/SettingsKit-SpecProfiles.lua  (optional: spec profiles)
+parts/SettingsKit-Namespaces.lua    (optional: namespaces)
 ```
+
+SettingsKit's core (revision 16) needs Registry and SignalKit. SchemaKit is optional: it is found through `Registry:Find("schemaKit", 1)` when a scope is a SchemaKit schema, so a database-only addon with plain defaults embeds Registry, SignalKit, SettingsKit and `SettingsKit-Defaults.lua`, and one with SchemaKit schemas embeds SchemaKit as before. Three optional parts ([ADR 0001](../../../docs/decisions/0001-kit-core-and-parts.md)) load after the core; `python3 -m tooling.package.embeds settingsKit/Defaults` writes the list:
+
+| Part | File | Adds |
+|---|---|---|
+| `Defaults` | `parts/SettingsKit-Defaults.lua` | `Open` and `RegisterNamespace` from plain defaults (see [Plain defaults](#plain-defaults)) |
+| `SpecProfiles` | `parts/SettingsKit-SpecProfiles.lua` | [spec profiles](#spec-profiles): `GetSpecIndex`, `SetSpecProfile`, `GetSpecProfile`, `ApplySpecProfile` |
+| `Namespaces` | `parts/SettingsKit-Namespaces.lua` | [namespaces](#namespaces): `RegisterNamespace`, `GetNamespace` |
+
+A member of a part that is not loaded stays on the facade or the database prototype and raises at the caller's line with the file to add, for example `SettingsKit:GetSpecIndex is in SettingsKit's SpecProfiles part, which is not loaded: add settingsKit\parts\SettingsKit-SpecProfiles.lua`; a plain defaults scope without the Defaults part raises `SettingsKit:Open plain defaults are in SettingsKit's Defaults part, which is not loaded: add settingsKit\parts\SettingsKit-Defaults.lua`. `SettingsKit:HasPart(name)` answers whether a part is loaded without raising. A part loaded before the core raises `MoltenCodes SettingsKit part <Part> requires SettingsKit API 1 to be loaded first`.
 
 Portable WoW code resolves the package through Registry:
 
@@ -21,14 +34,7 @@ Portable WoW code resolves the package through Registry:
 local SettingsKit = MoltenCodes.Registries[2]:Get("settingsKit", 1)
 ```
 
-The optional [Namespaces](#namespaces) part loads after the core, when the addon uses `db:RegisterNamespace`:
-
-```text
-SettingsKit.lua
-parts/SettingsKit-Namespaces.lua
-```
-
-SettingsKit does not rely on `require()` at runtime. Loading it without one of its dependencies raises `MoltenCodes SettingsKit requires Registry API 2 to be loaded first` (or `SchemaKit API 1`, `SignalKit API 1`).
+SettingsKit does not rely on `require()` at runtime. Loading it without one of its dependencies raises `MoltenCodes SettingsKit requires Registry API 2 to be loaded first` (or `SignalKit API 1`).
 
 ### Host facilities
 
@@ -41,9 +47,9 @@ SettingsKit does not rely on `require()` at runtime. Loading it without one of i
 | `GetCurrentRegion()`, `GetCurrentRegionName()` | revision 15, only for a schema declaring `factionrealmregion`: the region, as AceDB-3.0 names it (`US`, `KR`, `EU`, `TW`, `CN` by `GetCurrentRegion()`, else `GetCurrentRegionName()`, else `TR`) | `TR`. `GetCurrentRegionName` is documented only on Retail and is read only where the client has it. |
 | `GetLocale()` | revision 15, only for a schema declaring `locale`: the key is its answer in lower case | The `locale` scope is unavailable. |
 | `issecretvalue` | every validated write through a view, the key of `Getter`, `Validate`, `Compact`, profile names, namespace names, `missingOk` options, the scope keys | Nothing is treated as secret, which is correct on clients without secret values. Read at every call. Reads are not probed (revision 14): the client refuses a secret key before any metamethod runs (see [Error behaviour](#error-behaviour)). |
-| `geterrorhandler` | reporting a logout compaction that failed | Falls back to `print`. |
+| `geterrorhandler` | reporting a logout compaction that failed | Falls back to `print`, as it does when the handler itself raises (revision 16, the shared `reportError` block). |
 | EventKit API 1 | compaction on `PLAYER_LOGOUT`; switching [spec profiles](#spec-profiles) on the spec events | `db:Compact()` and `db:ApplySpecProfile()` are the addon's to call. |
-| `C_SpecializationInfo`, `UnitClass`, `GetNumTalentGroups`, `WOW_PROJECT_ID` | [spec profiles](#spec-profiles): the current specialization or talent group | No spec index: assignments are kept, nothing switches. |
+| `C_SpecializationInfo`, `UnitClass`, `GetNumTalentGroups`, `WOW_PROJECT_ID` | [spec profiles](#spec-profiles) (the SpecProfiles part): the current specialization or talent group | No spec index: assignments are kept, nothing switches. |
 
 The character key takes the name from `UnitNameUnmodified("player")` (revision 14), which no name-changing effect alters (`UnitName` reports a changed name under effects such as Lifegiving Seed, warcraft.wiki.gg `API_UnitName`), as AceDB-3.0 keys characters; when the client has no `UnitNameUnmodified` or its answer is not usable, `UnitName("player")` gives it, as before. Both answer alike outside such effects, so saved data keeps its key. Both are documented in `Blizzard_APIDocumentationGenerated/UnitDocumentation.lua` on the `live`, `classic` and `classic_era` branches of Gethe/wow-ui-source.
 
@@ -60,7 +66,8 @@ Package facade:
 | `Open(savedVariable, schema?, options?)` | Open (or return the open) database over a saved variable. |
 | `SetLimits(limits)` | Change any subset of the shared limits (see [Limits](#limits)). |
 | `GetLimits()` | A fresh table of the shared limits. |
-| `GetSpecIndex()` | The current spec index, the number of indexes and their kind (see [Spec profiles](#spec-profiles)). |
+| `GetSpecIndex()` | The current spec index, the number of indexes and their kind (see [Spec profiles](#spec-profiles)). SpecProfiles part. |
+| `HasPart(name)` | Revision 16: whether the part `"Defaults"`, `"SpecProfiles"` or `"Namespaces"` is loaded; `false` for any other name. |
 | `GetCharacterKey()` | Revision 14: this character's key in `char`, `profileKeys` and `specProfiles` (`"<name> - <realm>"`), the one `Open` uses now, or `nil` while the client cannot name the character. For an importer that must key data the way SettingsKit reads it. |
 | `UNBOUNDED` | Sentinel `maxScannedEntries` accepts to lift the scan bound. |
 | `DEFAULT_PROFILE` | `"Default"`, the shared profile's name. |
@@ -196,7 +203,7 @@ profile.anchor = "LEFT"          -- raises at this line:
 
 `savedVariable` is the global name from the TOC's `## SavedVariables` line, an identifier. When the global is `nil`, `Open` creates it as `{}`; when it holds anything but a table, `Open` refuses at your line. **Call `Open` in the addon's loaded phase** (`lifecycle:OnLoaded`, or your own `ADDON_LOADED` for your addon): before it, the client has not loaded the saved table yet, and it will replace the one `Open` created.
 
-`schema` maps scope names (`global`, `char`, `realm`, `class`, `faction`, `profile`, and from revision 15 `race`, `factionrealm`, `factionrealmregion`, `locale`) to SchemaKit `table` nodes or sealed schemas. Each scope is optional, at least one is required, and an unknown scope name is refused. SettingsKit seals its own copy of each (sealing a sealed schema gives a new one with its own failure table), so a write never overwrites the failure of a check you run with the same schema. Databases opened with the same schema node or sealed schema share that seal and its compiled plan, which is built by the first of them and reused while SchemaKit's `maxDepth` and revision stay the same (revision 6). Two rules apply:
+`schema` maps scope names (`global`, `char`, `realm`, `class`, `faction`, `profile`, and from revision 15 `race`, `factionrealm`, `factionrealmregion`, `locale`) to SchemaKit `table` nodes or sealed schemas, or, with the Defaults part (revision 16), to plain AceDB-style defaults tables (see [Plain defaults](#plain-defaults)); a database may mix both. Each scope is optional, at least one is required, and an unknown scope name is refused. SettingsKit seals its own copy of each (sealing a sealed schema gives a new one with its own failure table), so a write never overwrites the failure of a check you run with the same schema. Databases opened with the same schema node or sealed schema share that seal and its compiled plan, which is built by the first of them and reused while SchemaKit's `maxDepth` and revision stay the same (revision 6). Two rules apply:
 
 - a scope schema must be a `SchemaKit.table`;
 - **every field of every record read through a view is `optional`** — the scope's own fields, the fields of nested `table` fields, and the fields of records that are the values of a `map`. A saved variable starts empty and fills in one write at a time, so a required field could never be satisfied. `Open` refuses one with its path: `SettingsKit:Open schema.profile.frame.x must be optional: a saved variable starts empty`.
@@ -226,6 +233,36 @@ Opening a name that is already open returns the same database. `schema` may then
 6. Picks the profile: the character's recorded choice when it names a usable profile, otherwise the default profile. In a writable database the profile gets an empty table when it has none.
 7. Builds the views and, when EventKit is registered, joins the logout compaction.
 8. When this character has [spec profiles](#spec-profiles), connects the shared spec listener (with EventKit) and switches to the profile assigned to the current spec index, if there is one.
+
+### Plain defaults
+
+With the Defaults part loaded (revision 16), a scope may be a plain table of defaults, as AceDB-3.0 takes them. Any table without SchemaKit's metatable tag is one. The write rules are inferred from each default, exactly as AddonKit's `MC:Database` infers a SchemaKit schema, so a database opened either way accepts and refuses the same writes with the same messages:
+
+```lua
+local db = SettingsKit:Open("MyAddonDB", {
+  profile = {
+    enabled = true,                       -- an optional boolean
+    scale = 1,                            -- an optional number (1.5 is accepted)
+    font = "Friz Quadrata TT",            -- an optional string of at most 4096 characters
+    frame = { x = 0, y = 0 },             -- a closed record of those fields
+    seen = {},                            -- a free-form bag
+    units = { ["*"] = { shown = true } }, -- a keyed section whose entries read the wildcard
+    order = { 1, 2, 3 },                  -- an array of numbers
+    level = SchemaKit.optional(SchemaKit.number({ min = 1, max = 10 }), 5), -- a SchemaKit leaf
+  },
+})
+```
+
+| Default | Rule |
+|---|---|
+| `true`, `1`, `"text"` | an optional boolean, number (not integer) or string of at most `max(4096, #default)` characters |
+| `{ a = ..., b = ... }` | a closed record of those fields |
+| `{}` | a free-form bag: string keys of at most 256 characters or number keys, at most 1024 entries, values unchecked (the secret scan and `maxScannedEntries` still apply) |
+| `{ ["*"] = d }` | a keyed section of at most 1024 entries, keys as the bag's, whose entries read `d` |
+| `{ 1, 2, 3 }` | an array of one primitive type of at most `max(1024, #default)` elements |
+| a SchemaKit node or sealed schema | kept as written and made optional; its subtree is checked by its own `Check`, the path prefixed. Only such a leaf needs SchemaKit. |
+
+`Open` refuses at your line, naming the path: `SettingsKit:Open defaults profile.x uses ["**"], which has no SettingsKit form; ...`, `... puts ["*"] beside named keys, ...`, `... has a number key; record keys are non-empty strings ...`, `... is a list of mixed or table values; write its schema node inline (SchemaKit.array{ of = ... })`, `... is a function; a default is a boolean, number, string, table or schema node` and `... nest deeper than 16 tables` (SchemaKit's `maxDepth` when it is loaded). A scope that is not a table is refused as before: `SettingsKit:Open schema.profile must be a SchemaKit schema node or sealed schema`. A scope given as `{ ["*"] = d }` is refused, as an inferred map is: `SettingsKit:Open schema.profile must be a SchemaKit.table schema`. Not supported, as with `MC:Database`: AceDB's `["**"]`, `RegisterDefaults` (rules are fixed at `Open`), integer numbers and enums inferred from values (write a range or a choice as a leaf). Databases and namespaces opened with the same defaults table share one compiled plan.
 
 ## The saved table
 
@@ -429,7 +466,7 @@ Empties the saved variable in place, stamps `options.version` again when the dat
 
 ## Spec profiles
 
-Revision 11, what LibDualSpec-1.0 gives AceDB-3.0 databases. A character assigns a profile to a **spec index**; when the index changes, the database switches to that profile with its own `SetProfile`, so `db.profile`, getters and `OnProfileChanged` follow as for any switch.
+Revision 11, what LibDualSpec-1.0 gives AceDB-3.0 databases. From revision 16 they are the SpecProfiles part (`parts/SettingsKit-SpecProfiles.lua`); without it `GetSpecIndex`, `SetSpecProfile`, `GetSpecProfile` and `ApplySpecProfile` raise the not-loaded message, `Open` applies no assignment, and the core still keeps the `specProfiles` section right: it is created and checked, `ResetDatabase` empties it and `DeleteProfile` forgets the assignments that name the deleted profile. With an EventKit whose unit events are its Units part (EventKit revision 23 and later), switching by itself also needs that part (`EventKit:HasPart("Units")`). A character assigns a profile to a **spec index**; when the index changes, the database switches to that profile with its own `SetProfile`, so `db.profile`, getters and `OnProfileChanged` follow as for any switch.
 
 ```lua
 db:SetSpecProfile(1, "Healing")  -- the first specialization (Retail), or the first talent group (Classic Era)
@@ -625,7 +662,7 @@ SettingsKit:SetLimits({ maxProfileNameLength = 128 })
 local limits = SettingsKit:GetLimits() -- a fresh table: { maxProfileNameLength = 128, pathKeyLimit = 32 }
 ```
 
-`SetLimits` accepts any subset and raises at the caller, before changing anything, on a secret key or value (`SettingsKit:SetLimits limits must not have a secret key`, `SettingsKit:SetLimits limits.pathKeyLimit must not be a secret value`, asked before the key indexes anything or the value is compared), on an unknown name (`SettingsKit:SetLimits limits.maxDepth is not a recognised limit`; a key that is not a string, number or boolean is named by its type, `limits.<table>`, so its `__tostring` never runs), on `SettingsKit.UNBOUNDED` (naming the reason) or on a value outside the range: `SettingsKit:SetLimits limits.pathKeyLimit must be an integer from 1 to 1024`. **The limits are shared by every consumer in the session**: every embedded copy and every addon's databases use one set. A library should rely on the defaults; an addon that raises a limit raises it for everybody. A changed `pathKeyLimit` applies to paths rendered afterwards; the paths of views built earlier keep their rendering.
+`SetLimits` accepts any subset and raises at the caller, before changing anything, on a secret value (`SettingsKit:SetLimits limits.pathKeyLimit must not be a secret value`, asked before the key indexes anything or the value is compared), on an unknown name (`SettingsKit:SetLimits limits.maxDepth is not a recognised limit; it accepts maxProfileNameLength, pathKeyLimit`, revision 16; a secret key, which no client can store, is named `limits.<secret>`; a key that is not a string, number or boolean is named by its type, `limits.<table>`, so its `__tostring` never runs), on `SettingsKit.UNBOUNDED` (naming the reason) or on a value outside the range: `SettingsKit:SetLimits limits.pathKeyLimit must be an integer from 1 to 1024`. **The limits are shared by every consumer in the session**: every embedded copy and every addon's databases use one set. A library should rely on the defaults; an addon that raises a limit raises it for everybody. A changed `pathKeyLimit` applies to paths rendered afterwards; the paths of views built earlier keep their rendering.
 
 `SettingsKit.UNBOUNDED` and the shared limits live in the package state, so every embedded copy publishes the same sentinel and an in-place upgrade keeps the limits a consumer set.
 
@@ -638,7 +675,7 @@ Where a value can come from outside SettingsKit (an argument, an option, a saved
 - `SettingsKit:Open options.version must not be a secret value`
 - `SettingsKit:Open options.maxScannedEntries must not be a secret value`
 - `SettingsKit:Open options.migrations must not have a secret key`
-- `SettingsKit:SetLimits limits must not have a secret key`
+- `SettingsKit:SetLimits limits must not have a secret key` (revisions up to 15; from revision 16 such a key is named `limits.<secret>` in the unknown-name refusal)
 - `SettingsKit:SetLimits limits.<name> must not be a secret value`
 - `SettingsKit.Database:OnChange scope must not be a secret value` and `SettingsKit.Database:Validate scope must not be a secret value`, asked before the scope name indexes the database's scopes (revision 4 and later)
 - `SettingsKit databases cannot be read with a secret key`, raised at the reading line by `db[key]` before the key indexes the method table (revisions 4 to 13; removed in revision 14, see below)
@@ -656,6 +693,16 @@ Revision 7 adds these refusals, each at the caller's line:
 - `SettingsKit.Database:Resync must be called on a SettingsKit database` and `SettingsKit.Database:Getter must be called on a SettingsKit database`
 - `SettingsKit.Database:Getter key must not be a secret value`, asked before the key is compared or used, and `SettingsKit.Database:Getter key must not be nil or NaN`
 - `SettingsKit.Database:Getter scope must not be a secret value`, `SettingsKit.Database:Getter scope must name a declared, available scope` and `SettingsKit.Database:Getter source must be a scope name or a view of this database`
+
+Revision 16 adds these refusals, each at the caller's line:
+
+- `SettingsKit:HasPart must be called on the SettingsKit facade; use SettingsKit:HasPart(...)`, `SettingsKit:HasPart partName must not be a secret value`, `SettingsKit:HasPart partName must be a string`
+- `<member> is in SettingsKit's <Part> part, which is not loaded: add settingsKit\parts\SettingsKit-<Part>.lua`, for `SettingsKit:GetSpecIndex` and `SettingsKit.Database:SetSpecProfile`, `GetSpecProfile`, `ApplySpecProfile` (SpecProfiles), and `RegisterNamespace`, `GetNamespace` (Namespaces)
+- `SettingsKit:Open plain defaults are in SettingsKit's Defaults part, which is not loaded: add settingsKit\parts\SettingsKit-Defaults.lua` (and `SettingsKit.Database:RegisterNamespace plain defaults ...`)
+- the plain-defaults refusals listed under [Plain defaults](#plain-defaults)
+- `SetLimits`: the unknown-name refusal names the accepted limits (`...; it accepts maxProfileNameLength, pathKeyLimit`)
+
+A host error handler that raises while a logout compaction failure is reported no longer propagates: the failure is printed (the shared `reportError` block). `Open`'s `savedVariable` and every profile name are asked `issecretvalue` before their type is tested, so a secret is named as secret whatever its type.
 
 Revision 11 adds these refusals, each at the caller's line:
 
@@ -699,7 +746,9 @@ A secret stored `version` in the saved table is refused as `SettingsKit:Open MyA
 | The revision 15 scopes | Nothing unless declared: their keys are read and their sections created only for a schema that declares them. |
 | A pending migration step | One deep copy of the saved table and one walk of the result, once per step with a function, only while the stored version is behind (see [Migrations](#migrations)). |
 
-Defaults are compiled once at `Open` from `schema:Describe()`; nothing on the read path consults SchemaKit.
+Defaults are compiled once at `Open` from `schema:Describe()` (or, for plain defaults, from the description the Defaults part builds); nothing on the read path consults SchemaKit. Plans hold only the fields they use, and fast checks only the bounds a field declares (plan layout 3, revision 16).
+
+Resident memory (host Lua 5.1.5, 64-bit, debug information kept, measured 2026-11-18 after a full collection, SchemaKit loaded): the core 185.1 KB (revision 15: 192.1 KB), the Defaults part 20.9 KB, the SpecProfiles part 15.3 KB, the Namespaces part 29.4 KB. Registry, SignalKit, SettingsKit and the Defaults part, a database-only set without SchemaKit, hold 320.8 KB where the same set with SchemaKit held 388.4 KB. The bench-shaped schema plus its first `Open` takes 40.1 KB (revision 15: 49.9 KB); the same defaults as a plain table 27.0 KB.
 
 ## Deviations from the planned contract
 
@@ -741,5 +790,7 @@ Revision 12 fixes two faults of spec profiles. A database whose character's assi
 Nothing survives `/reload` except the saved variable itself: open the database again in the loaded phase.
 
 Revision 14 changes four documented behaviours, recorded in `docs/ROADMAP.md` package O, "settingsKit read-through views": views read through chained tables, so an open database's saved tables carry SettingsKit's metatable and read their defaults (see [The saved table](#the-saved-table)); a read with a secret key raises the client's own error instead of SettingsKit's (core decision 19b); views are built by their first use; and the `char` key comes from `UnitNameUnmodified("player")`. It adds `SettingsKit:GetCharacterKey()`. An in-place upgrade from an earlier revision gives every live view its own metatable and chain (the shared view metatable is SettingsKit's, so its protection is lifted for the swap and put back), moves every keyed section's entry cache to the shared entry-cache metatable, and keeps every database, view, listener and getter; a database an older revision opened builds its profile view at once from then on, because a getter that revision made expects one. An upgrade from revision 14 on gives every view's metatable the newer file's functions and rebinds its chain.
+
+Revision 16 moves spec profiles into the SpecProfiles part and adds the Defaults part and `HasPart`; SchemaKit becomes optional. An in-place upgrade from revision 15 keeps every database, view and plan: plans revision 15 compiled (layout 2, `false` fields) stay on their databases and are read by the same truthiness tests, new plans are layout 3. With the SpecProfiles part absent, revision 15's `GetSpecIndex`, `SetSpecProfile`, `GetSpecProfile`, `ApplySpecProfile` and its `onSpecEvent` and `onDatabaseOpened` entries are kept instead of the stubs, so an addon that embedded revision 15 keeps switching; the part replaces them when it loads. The reverse order cannot be served: with revision 16 loaded first, a revision 15 copy loaded after it yields, and that addon's spec calls raise the not-loaded message until some addon embeds the part. The depth probes revisions 6 to 15 built for a SchemaKit older than revision 6 are gone: without `SchemaKit:GetLimit` a nested write takes the full check, where SchemaKit enforces its own depth.
 
 Revision 15 adds the four AceDB-3.0 scopes, the lifecycle signals, `IsNewProfile`, `missingOk`, the `maxNamespaces` option and the hooks of the [Namespaces](#namespaces) part, and changes one documented behaviour: `CopyProfile` and `DeleteProfile` return a boolean. An in-place upgrade from revision 14 adds the shared tables these use; databases revision 14 opened gain every new method through the prototype, keep their listeners and getters, and answer `IsNewProfile() == false` for the profile their `Open` created. The part keeps no copy of core functions and its namespaces share the prototype and metatable, so a later core revision loaded in place keeps cascading to namespaces registered before it; a copy of the part whose revision is not higher than the loaded one returns at once.

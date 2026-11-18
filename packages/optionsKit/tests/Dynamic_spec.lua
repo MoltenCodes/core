@@ -359,10 +359,11 @@ describe("OptionsKit dynamic trees", function()
     require("Registry")
     require("SignalKit")
     require("SchemaKit")
+    require("SchemaKit-Rules")
     OptionsKit = require("OptionsKit")
     require("OptionsKit-Profiles")
     require("OptionsKit-Dynamic")
-    local SettingsKit = require("SettingsKit")
+    local SettingsKit = TestEnv.RequireSettingsKit()
     local S = require("SchemaKit")
     local db = SettingsKit:Open("DynamicProfilesDB", {
       profile = S.table({ fields = { scale = S.optional(S.number(), 1) } }),

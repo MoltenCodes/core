@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.3.0 — 2026-11-18
+
+The heavy builders out of the core (roadmap package P, "schemaKit Rules and Apply parts", core decision 20). API generation 1; additive for an addon that embeds both parts.
+
+- Changed: string patterns, `SchemaKit.custom` and `SchemaKit.oneOf` moved to the new optional part `Rules` (`src/parts/SchemaKit-Rules.lua`), and `schema:Apply` to the new optional part `Apply` (`src/parts/SchemaKit-Apply.lua`), each part revision 1. Without a part its members stay on the facade and the `Schema` prototype and raise at the caller's line: `SchemaKit.custom is in SchemaKit's Rules part, which is not loaded: add schemaKit\parts\SchemaKit-Rules.lua`, the same for `SchemaKit.oneOf` and `SchemaKit.string pattern`, and `SchemaKit.Schema:Apply is in SchemaKit's Apply part, which is not loaded: add schemaKit\parts\SchemaKit-Apply.lua`. The checker stays whole in the core, so nodes built with a part check the same without it.
+- Added: `SchemaKit:HasPart(name)`, whether a part is loaded, without raising for an unknown name; it refuses a dot call, a secret name and a non-string at the caller's line.
+- Changed: the builders', `GetLimit`'s and `HasPart`'s secret checks use the shared probe block (`tooling/shared/lua/isSecret.lua`): a probe present at load is kept, one absent at load is read again on each call; `Check`, `Assert`, `Apply` and `SetLimits` still read the global once per call. A `SetLimits` key that is a secret is named `<secret>` (the shared `describeKey` block); a secret cannot be a table key on a client, so no client sees it. The limits loop keeps its own messages (`tooling/shared/pins.json` opts it out of the shared `limits` block).
+- Resident memory, host Lua 5.1.5, debug information kept, 2026-11-18: core 85.4 KB → 78.7 KB; Rules part 7.8 KB; Apply part 6.8 KB.
+- Implementation revision 7. An in-place upgrade from revision 6 with a part absent keeps revision 6's `string`, `custom`, `oneOf` and `Schema.Apply` (they build and read node layout 2, which revision 7 checks unchanged) until the part loads; revision 6 loaded after revision 7 yields, and its addon meets the stubs until some addon embeds the parts (documented under *Embedded copies and upgrades*). `tests/fixtures/SchemaKit-revision6.lua` is a byte copy of revision 6 for these specs.
+- Specs: 139 → 161 (one pending). `Parts_spec.lua` (eleven: the stubs at the caller's line, the core alone, `HasPart`, installing, a newer core checking part-built nodes, loading without the core, a part run twice, the upgrade from revision 6 with and without the parts, the reverse-order limit), `Manifest_spec.lua` (the parts), `Conformance_spec.lua` (KitConformance; `limits` pending because `defaultArrayMax` has no ceiling).
+
 ## 0.2.0 — 2026-11-15
 
 Smaller schemas and a non-allocating limit read (roadmap package O, "schemaKit sparse compiled nodes and GetLimit", core decision 18). API generation 1, additive.

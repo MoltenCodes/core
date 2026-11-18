@@ -36,6 +36,7 @@
     <Script file="Libs\MoltenCodes\commandKit\CommandKit.lua" />
     <Script file="Libs\MoltenCodes\schemaKit\SchemaKit.lua" />
     <Script file="Libs\MoltenCodes\commandKit\parts\CommandKit-Arguments.lua" /> <!-- argument schemas; the Options part needs it -->
+    <Script file="Libs\MoltenCodes\schemaKit\parts\SchemaKit-Rules.lua" /> <!-- OptionsKit needs it -->
     <Script file="Libs\MoltenCodes\optionsKit\OptionsKit.lua" />
     <Script file="Libs\MoltenCodes\commandKit\parts\CommandKit-Options.lua" /> <!-- BindOptions, which Commands.lua uses -->
     <Script file="Libs\MoltenCodes\compatKit\CompatKit.lua" /> <!-- optional here -->
@@ -49,10 +50,12 @@
     <Script file="Libs\MoltenCodes\mediaKit\MediaKit.lua" /> <!-- optional here -->
     <Script file="Libs\MoltenCodes\moduleKit\ModuleKit.lua" />
     <Script file="Libs\MoltenCodes\moduleKit\parts\ModuleKit-Injection.lua" /> <!-- ProvideSingleton, ProvideValue, Resolve and inject, which the addon files use -->
+    <Script file="Libs\MoltenCodes\optionsKit\parts\OptionsKit-Bind.lua" /> <!-- bind = "profile.path", which Options.lua uses -->
     <Script file="Libs\MoltenCodes\optionsKit\parts\OptionsKit-Profiles.lua" /> <!-- ProfileOptions, which Options.lua uses -->
     <Script file="Libs\MoltenCodes\profileKit\ProfileKit.lua" /> <!-- optional here -->
     <Script file="Libs\MoltenCodes\readinessKit\ReadinessKit.lua" />
     <Script file="Libs\MoltenCodes\schedulerKit\SchedulerKit.lua" /> <!-- optional here: CommKit uses it when present -->
+    <Script file="Libs\MoltenCodes\schemaKit\parts\SchemaKit-Apply.lua" /> <!-- CommandKit's Arguments part fills argument defaults with it -->
     <Script file="Libs\MoltenCodes\settingsKit\SettingsKit.lua" />
     <Script file="Libs\MoltenCodes\widgetKit\WidgetKit.lua" />
     <Script file="Libs\MoltenCodes\widgetKit\parts\WidgetKit-Containers.lua" /> <!-- the Frame window Window.lua creates -->

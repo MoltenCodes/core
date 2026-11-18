@@ -27,6 +27,13 @@
 --- profiles listen for specialization changes through `ConnectUnit`, which is
 --- in EventKit's Units part (EventKit revision 23 and later), so the chain
 --- loads that part after the core, as an addon using spec profiles embeds it.
+---
+--- `NewPackage` loads the core with the SpecProfiles part, and SchemaKit with
+--- its Rules and Apply parts (the specs build patterns and `custom` nodes),
+--- the surface most specs describe. `NewCore` loads the core without any
+--- SettingsKit part; `LoadNamespaces` and `LoadSpecProfiles` add one.
+--- `LoadRevision(n)` takes revision 15 and older from the byte copy
+--- `fixtures/SettingsKit-revision15.lua`, the last single-file revision.
 local FrameworkTestEnv = require("FrameworkTestEnv")
 
 local SettingsKitTestEnv = FrameworkTestEnv.New({
@@ -226,6 +233,28 @@ end
 local baseReset = SettingsKitTestEnv.Reset
 local baseNewPackage = SettingsKitTestEnv.NewPackage
 
+--- Every part module a spec may load, cleared by `Reset`.
+local PART_MODULES = {
+  "SettingsKit-Namespaces",
+  "SettingsKit-SpecProfiles",
+  "SettingsKit-Defaults",
+  "SchemaKit-Rules",
+  "SchemaKit-Apply",
+}
+
+local SUPPORT_DIRECTORY = debug.getinfo(1, "S").source:match("^@(.*[/\\])") or "./"
+
+-- The last single-file revision, kept verbatim so an "older copy" in the
+-- upgrade specs is the whole file an addon of that time embedded.
+local REVISION_15_FIXTURE = SUPPORT_DIRECTORY .. "../fixtures/SettingsKit-revision15.lua"
+
+---Load SchemaKit's Rules and Apply parts, for the specs that build patterns,
+---`custom` and `oneOf` nodes or apply defaults.
+local function loadSchemaKitParts()
+  require("SchemaKit-Rules")
+  require("SchemaKit-Apply")
+end
+
 ---Clear the fixture, then the globals only this environment installs.
 ---
 ---`SettingsKit:Open` creates a missing saved variable, so the names of every
@@ -242,7 +271,9 @@ function SettingsKitTestEnv.Reset()
   end
 
   baseReset()
-  package.loaded["SettingsKit-Namespaces"] = nil
+  for index = 1, #PART_MODULES do
+    package.loaded[PART_MODULES[index]] = nil
+  end
   for index = 1, #IDENTITY_GLOBALS do
     setGlobal(IDENTITY_GLOBALS[index], nil)
   end
@@ -255,12 +286,39 @@ function SettingsKitTestEnv.Reset()
   end
 end
 
----Load the module chain and install the default player identity.
+---Load the module chain with the SpecProfiles part and SchemaKit's parts,
+---and install the default player identity.
 ---@return table SettingsKit, table Registry, table SignalKit, table EventKit, table SchemaKit
 function SettingsKitTestEnv.NewPackage()
   local SettingsKit, Registry, SignalKit, EventKit, _, SchemaKit = baseNewPackage()
+  loadSchemaKitParts()
+  require("SettingsKit-SpecProfiles")
   SettingsKitTestEnv.SetPlayer()
   return SettingsKit, Registry, SignalKit, EventKit, SchemaKit
+end
+
+---Load the module chain without any SettingsKit part, as an addon that
+---embeds the core alone does; SchemaKit's parts are loaded.
+---@return table SettingsKit, table Registry, table SignalKit, table EventKit, table SchemaKit
+function SettingsKitTestEnv.NewCore()
+  local SettingsKit, Registry, SignalKit, EventKit, _, SchemaKit = baseNewPackage()
+  loadSchemaKitParts()
+  SettingsKitTestEnv.SetPlayer()
+  return SettingsKit, Registry, SignalKit, EventKit, SchemaKit
+end
+
+---Load the Defaults part after the core, as an addon that embeds it does.
+---@return table SettingsKit
+function SettingsKitTestEnv.LoadDefaults()
+  package.loaded["SettingsKit-Defaults"] = nil
+  return require("SettingsKit-Defaults")
+end
+
+---Load the SpecProfiles part after the core, as an addon that embeds it does.
+---@return table SettingsKit
+function SettingsKitTestEnv.LoadSpecProfiles()
+  package.loaded["SettingsKit-SpecProfiles"] = nil
+  return require("SettingsKit-SpecProfiles")
 end
 
 ---Load the Namespaces part after the core, as an addon that embeds it does.
@@ -279,6 +337,8 @@ function SettingsKitTestEnv.NewPackageWithoutEventKit()
   require("SignalKit")
   local SchemaKit = require("SchemaKit")
   local SettingsKit = require("SettingsKit")
+  loadSchemaKitParts()
+  require("SettingsKit-SpecProfiles")
   SettingsKitTestEnv.SetPlayer()
   return SettingsKit, Registry, SchemaKit
 end
@@ -298,20 +358,26 @@ function SettingsKitTestEnv.AllocatedKilobytes(workload)
 end
 
 ---Load the SettingsKit source again as a copy carrying `revision`, the way a
----newer embedded copy loads over an older one in the client.
+---newer embedded copy loads over an older one in the client. A revision up to
+---15 is loaded from the revision 15 fixture (spec profiles in the core, no
+---SpecProfiles part); a later one from the core in `src/`.
 ---@param revision integer
 ---@return table SettingsKit
 function SettingsKitTestEnv.LoadRevision(revision)
   -- Lua 5.1 has no `package.searchpath`, so walk the path templates the way
   -- `require` does.
   local path = nil
-  for template in package.path:gmatch("[^;]+") do
-    local candidate = template:gsub("%?", "SettingsKit")
-    local file = io.open(candidate, "r")
-    if file ~= nil then
-      file:close()
-      path = candidate
-      break
+  if revision <= 15 then
+    path = REVISION_15_FIXTURE
+  else
+    for template in package.path:gmatch("[^;]+") do
+      local candidate = template:gsub("%?", "SettingsKit")
+      local file = io.open(candidate, "r")
+      if file ~= nil then
+        file:close()
+        path = candidate
+        break
+      end
     end
   end
   if path == nil then

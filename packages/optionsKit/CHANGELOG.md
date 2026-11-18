@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.9.0 — 2026-11-18
+
+A minimal core (roadmap package P, "optionsKit minimal core: AceConfig presentation, handlers and SettingsKit binds become parts; profile links join the Profiles part; the shared secret probe", core decision 20). API generation 1.
+
+- Changed: three new optional parts, each part revision 1. **Presentation** (`parts/OptionsKit-Presentation.lua`): `width`, `relWidth`, `descStyle`, `icon`, `iconCoords`, `image`, `imageCoords`, `imageWidth`, `imageHeight`, `tooltipHyperlink`, `dialogControl`, `control`, `itemControl`, `style`, the function forms of `name`, `order` and `fontSize`, `sorting` functions and the per-interface flags. **Handlers** (`parts/OptionsKit-Handlers.lua`): `handler`, method names, a group's inherited `get`, `set`, `validate` and `func`, `plugins`. **Bind** (`parts/OptionsKit-Bind.lua`): `bind` and `ns:` binds. Without a part, `Define` refuses its fields at the caller's line and names the file: `OptionsKit:Define tree.args.general.args.scale.width needs OptionsKit's Presentation part: add optionsKit\parts\OptionsKit-Presentation.lua to embeds.xml (or rebuild it with python3 -m tooling.package.embeds)`; a function name or order (`... .name is a function, which needs ...`) and a method name (`... .get is a method name ("Get"), which needs OptionsKit's Handlers part: ...`) likewise. `IsHidden`, `Describe` and `DescribeOption` still take an interface without Presentation and answer the plain `hidden` and `inline`.
+- Changed: the Profiles part goes to revision 2 and holds the links that connect a group to its tree (`collectProfileLink`, `attachProfileLink`, `attachLinks`); its manifest names SettingsKit's SpecProfiles part, and the spec selects are offered only when `SettingsKit:HasPart("SpecProfiles")` answers `true` (SettingsKit 0.7.0 keeps raising stubs for the spec members without that part).
+- Changed: `GetFields(kind)` reports only the fields and forms of the loaded parts; `IsPartLoaded` knows the three new names.
+- Changed: OptionsKit's manifest names SchemaKit's Rules part (`"schemaKit": { "api": 1, "parts": ["Rules"] }`); an input `pattern` and a select or multiselect over a values function are refused at `Define`, naming `schemaKit\parts\SchemaKit-Rules.lua`, when SchemaKit 0.3.0 runs without it.
+- Changed: the secret probe is the shared `isSecret` block (`tooling/shared/lua/isSecret.lua`): a probe present at load is kept, one absent at load is read again on each call.
+- Resident memory, host Lua 5.1.5, debug information kept, 2026-11-18: core 158.7 KB → 134.1 KB; Presentation 30.1 KB, Handlers 8.2 KB, Bind 10.9 KB; Profiles 36.4 KB → 41.2 KB; Dynamic 17.4 KB.
+- Implementation revision 16; tree and record layouts unchanged. An in-place upgrade from revision 15 captures revision 15's `Define` and tree methods while a part is absent and routes only the branches that need it (bound options, trees using presentation fields, a `Define` using a part's field); once Presentation, Handlers and Bind are loaded, revision 16 serves throughout. `tests/fixtures/OptionsKit-revision15.lua` and `tests/fixtures/OptionsKit-Profiles-revision1.lua` are byte copies for these specs.
+- Specs: 270 → 297 (one pending). `MinimalCore_spec.lua` (eleven) and `Conformance_spec.lua` (KitConformance; `limits` pending, OptionsKit has no `SetLimits`; `GetTrees` exempt from the receiver group).
+
 ## 0.8.0 — 2026-11-15
 
 AceConfig's option fields on the model side and trees that change shape (roadmap package O, "optionsKit option fields, model side" and "optionsKit dynamic trees"; ADRs 0001 and 0003). Revisions 14 and 15 of those two records ship together: revision 14 was never released on its own.

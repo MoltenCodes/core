@@ -50,6 +50,11 @@
       "package": "testKit",
       "helpers": ["limits"],
       "reason": "The shared limits block requires the isSecret block TestKit opts out of, and its six limits have no ceilings; see also D1 in docs/records/shared-helpers.md."
+    },
+    {
+      "package": "schemaKit",
+      "helpers": ["limits"],
+      "reason": "SchemaKit's limits loop keeps its own messages and its uncapped defaultArrayMax; the shared limits block requires a ceiling per limit and measured larger. Deferred by the schemaKit Rules and Apply parts record."
     }
   ]
 }

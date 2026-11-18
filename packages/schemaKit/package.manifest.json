@@ -3,13 +3,27 @@
   "displayName": "SchemaKit",
   "description": "Sealed value schemas with structured, secret-safe failures for World of Warcraft addons: one validation core for arguments, saved variables, options and received messages.",
   "summary": "Sealed value schemas with structured, secret-safe failures: one validation core for arguments, saved variables, options and messages.",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "license": "MIT",
   "api": 1,
-  "revision": 6,
+  "revision": 7,
   "dependencies": {
     "registry": {
       "api": 2
+    }
+  },
+  "parts": {
+    "Rules": {
+      "description": "The builders whose rules need more than a type and bounds: string patterns (validated when built), SchemaKit.custom and SchemaKit.oneOf.",
+      "revision": 1,
+      "dependencies": {},
+      "optionalDependencies": {}
+    },
+    "Apply": {
+      "description": "schema:Apply: a checked copy of a value with every declared default filled in.",
+      "revision": 1,
+      "dependencies": {},
+      "optionalDependencies": {}
     }
   }
 }

@@ -7,12 +7,11 @@
 --
 --   reads      fall back to the schema's defaults, including wildcard defaults
 --              for keyed sections, without writing them into the saved table;
---   writes     are checked against the field's SchemaKit schema at the
+--   writes     are checked against the field's SchemaKit schema (or, with the
+--              Defaults part, the rules inferred from plain defaults) at the
 --              writer's line, refuse secret values, then fire `OnChange`;
 --   profiles   one current profile per character, with copy, reset, delete
---              and change signals, and spec profiles: a profile assigned to
---              each specialization (or talent group), switched to by itself
---              when the player changes it, while EventKit is embedded;
+--              and change signals; spec profiles are the SpecProfiles part;
 --   versions   `options.migrations` run once each, in ascending order, from
 --              the stored version to `options.version`, each on a copy of
 --              the saved table that replaces it only when the step returns;
@@ -21,16 +20,21 @@
 --   Compact    removes every value still equal to its default, on demand and
 --              on `PLAYER_LOGOUT` when EventKit is embedded.
 --
--- SettingsKit requires Registry API 2, SchemaKit API 1 and SignalKit API 1.
--- EventKit API 1 is optional: it is found through `Registry:Find` when a
--- database is opened, and without it `db:Compact()` and
--- `db:ApplySpecProfile()` are the addon's to call.
+-- SettingsKit requires Registry API 2 and SignalKit API 1. SchemaKit API 1 is
+-- optional (revision 16): it is found through `Registry:Find` when a scope is
+-- a SchemaKit schema. EventKit API 1 is optional: it is found when a database
+-- is opened, and without it `db:Compact()` is the addon's to call.
+--
+-- This file is the core (docs/decisions/0001-kit-core-and-parts.md). Three
+-- optional parts load after it: `SettingsKit-Defaults.lua` (plain defaults),
+-- `SettingsKit-SpecProfiles.lua` (spec profiles) and
+-- `SettingsKit-Namespaces.lua` (namespaces).
 --
 -- Contents
 -- --------
 --   Constants ............. identity, bounds, scope names, method lists
 --   Public types .......... LuaCATS declarations for the published surface
---   Dependencies .......... Registry, SchemaKit, SignalKit, host readers
+--   Dependencies .......... Registry, SignalKit, SchemaKit when found, host readers
 --   Validation ............ public-surface and shared-state predicates
 --   Bootstrap ............. Registry registration and inherited state
 --   Host facilities ....... the secret-value probe and the error sink
@@ -43,9 +47,8 @@
 --   Saved table ........... layout, migrations, profile selection
 --   Database methods ...... the handle `Open` returns
 --   Package public API .... the facade published through Registry
---   Spec profiles ......... profiles assigned per specialization or talent group
 --   Upgrades .............. repairs of state an older revision built
---   Commit ................ prototype/facade assignment and self-check
+--   Commit ................ prototype/facade assignment, part stubs, helpers
 --
 -- Layout and invariants are described in `docs/INTERNALS.md`.
 
@@ -53,11 +56,14 @@
 
 local PACKAGE_NAME = "settingsKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 15
+local IMPLEMENTATION_REVISION = 16
 local REQUIRED_REGISTRY_API = 2
-local REQUIRED_SCHEMAKIT_API = 1
 local REQUIRED_SIGNALKIT_API = 1
 local OPTIONAL_EVENTKIT_API = 1
+
+-- How many nested tables a value may have when no SchemaKit answers its
+-- `maxDepth` limit: SchemaKit's own default (`SchemaKit.MAX_DEPTH`).
+local DEFAULT_MAX_DEPTH = 16
 local STATE_SCHEMA = 1
 
 -- Every database, view node and plan carries the layout it was built with, so
@@ -70,7 +76,10 @@ local STATE_SCHEMA = 1
 -- and kept each node to at most 16 fields: `db`, `scope`, `dead` and
 -- `sectionKey` only on a scope root, no `displayPath`, `sectionName` or
 -- `probeSet`, and a keyed section's entry cache in `children`. Plan layout 2
--- (revision 6) added `ownKinds`, `fastChecks` and `defaultKind`. Database
+-- (revision 6) added `ownKinds`, `fastChecks` and `defaultKind`; plan layout
+-- 3 (revision 16) holds only the fields a plan uses, absent instead of
+-- `false`, and its fast checks only the bounds a field declares; every
+-- reader tests them for truth, so it reads layout 2 and layout 3 alike. Database
 -- layout 4 (revision 7) added `_generation`; node layout 3 (revision 7) added
 -- the resolved-table cache (`cache`, `generation`) and, to stay within 16
 -- fields, dropped `kind` (a record node is the one with `kinds`), `depth`
@@ -80,7 +89,7 @@ local STATE_SCHEMA = 1
 -- each view reads through a metatable of its own (see "Read-through chains").
 local DATABASE_SCHEMA = 4
 local NODE_SCHEMA = 4
-local PLAN_SCHEMA = 2
+local PLAN_SCHEMA = 3
 
 -- The profile every character shares unless the addon asks otherwise.
 local DEFAULT_PROFILE_NAME = "Default"
@@ -106,22 +115,23 @@ local DEFAULT_PATH_KEY_LIMIT = 32
 local DEFAULT_MAX_SCANNED_ENTRIES = 65536
 
 -- The shared limits `SetLimits` changes, in the order they are documented,
--- with the range each accepts. Neither accepts `SettingsKit.UNBOUNDED`: both
--- bound text the client renders, not the consumer's own data.
-local LIMIT_NAMES = { "maxProfileNameLength", "pathKeyLimit" }
-local LIMIT_MINIMUMS = {
-  -- A character profile is named "Name - Realm"; a smaller bound could
-  -- refuse the profile `defaultProfile = "char"` creates.
-  maxProfileNameLength = MAX_PROFILE_NAME_LENGTH,
-  pathKeyLimit = 1,
-}
-local LIMIT_CEILINGS = {
-  maxProfileNameLength = 1024,
-  pathKeyLimit = 1024,
-}
-local UNBOUNDED_REFUSALS = {
-  maxProfileNameLength = "profile names are typed by players and shown in option screens and dropdowns",
-  pathKeyLimit = "paths show keys other players can send, and every message must stay short and printable",
+-- with the range each accepts, for the shared limits block (see "Package
+-- public API"). Neither accepts `SettingsKit.UNBOUNDED`: both bound text the
+-- client renders, not the consumer's own data. A character profile is named
+-- "Name - Realm"; a smaller `maxProfileNameLength` could refuse the profile
+-- `defaultProfile = "char"` creates.
+local LIMIT_RULES = {
+  {
+    name = "maxProfileNameLength",
+    minimum = MAX_PROFILE_NAME_LENGTH,
+    ceiling = 1024,
+    unboundedReason = "profile names are typed by players and shown in option screens and dropdowns",
+  },
+  {
+    name = "pathKeyLimit",
+    ceiling = 1024,
+    unboundedReason = "paths show keys other players can send, and every message must stay short and printable",
+  },
 }
 
 -- The scopes a schema may declare and what the code needs to know about each,
@@ -213,7 +223,8 @@ local OPTION_KEYS = {
 local KIND_RECORD = "record"
 local KIND_MAP = "map"
 
-local FACADE_METHODS = { "Open", "SetLimits", "GetLimits", "GetSpecIndex", "GetCharacterKey" }
+local FACADE_METHODS =
+  { "Open", "SetLimits", "GetLimits", "GetSpecIndex", "GetCharacterKey", "HasPart" }
 
 -- The field that marks a metatable SettingsKit gave a saved table (revision
 -- 14): a saved table reachable from an open database reads through to its
@@ -397,17 +408,17 @@ local WEAK_KEYS = { __mode = "k" }
 
 ---What `Open` compiles once per scope from `schema:Describe()`. Private.
 ---@class SettingsKit.Plan
----@field layout integer Plan layout number (`2`); plans revision 5 compiled have none.
----@field proxied "record"|"map"|false Whether reads of this value go through a view, and which kind.
----@field fieldNames string[]|false Record: declared field names, sorted.
----@field fields table<string, SettingsKit.Plan>|false Record: the plan of each field.
----@field ownDefaults table|false Record: every field default, filled.
----@field ownKinds table<string, integer>|false Record: how each field reads with `ownDefaults` (`READ_*`).
----@field fastChecks table<string, table>|false Record: the write fast path's check of each simple scalar field.
+---@field layout integer Plan layout number (`3`; `2` for plans revisions 6 to 15 compiled); plans revision 5 compiled have none.
+---@field proxied "record"|"map"|false Whether reads of this value go through a view, and which kind (`false` when not).
+---@field fieldNames string[]? Record: declared field names, sorted.
+---@field fields table<string, SettingsKit.Plan>? Record: the plan of each field.
+---@field ownDefaults table? Record: every field default, filled.
+---@field ownKinds table<string, integer>? Record: how each field reads with `ownDefaults` (`READ_*`).
+---@field fastChecks table<string, table>? Record: the write fast path's check of each simple scalar field.
 ---@field defaultKind integer How a read of the declared default answers: `READ_NIL`, `READ_COPY` or `READ_DEFAULT`.
----@field values SettingsKit.Plan|false Map: the plan of every value.
----@field max integer|false Map: the most entries it may hold.
----@field keyKind string|false Map: the SchemaKit kind of its keys, for converting a dotted path segment.
+---@field values SettingsKit.Plan? Map: the plan of every value.
+---@field max integer? Map: the most entries it may hold.
+---@field keyKind string? Map: the SchemaKit kind of its keys, for converting a dotted path segment.
 ---@field default any The declared default, filled; for a map's values, the wildcard default.
 
 -- Dependencies ---------------------------------------------------------------
@@ -444,20 +455,47 @@ if type(bootstrapPackage) ~= "function" or type(rawget(Registry, "Get")) ~= "fun
   error("MoltenCodes SettingsKit requires a valid Registry API 2 facade", 2)
 end
 
--- SchemaKit compiles, checks and describes every scope schema.
-local SchemaKit = rawget(Registry, "Get")(Registry, "schemaKit", REQUIRED_SCHEMAKIT_API)
+-- SchemaKit compiles, checks and describes every scope given as a SchemaKit
+-- schema. It is optional (revision 16): a database opened from plain defaults
+-- needs none (the Defaults part checks those). It is found through
+-- `Registry:Find` when first needed, not at load, so this file loads without
+-- it; the facade is kept once found, since Registry hands out one facade per
+-- package and API generation for the whole session. The cache and the
+-- generation live in a block: the main chunk is near Lua 5.1's 200 locals.
+---SchemaKit API 1's facade, or `nil` while no addon has loaded it.
+---@type fun(): table|nil
+local findSchemaKit
 do
-  local SchemaPrototype = type(SchemaKit) == "table" and rawget(SchemaKit, "Schema") or nil
-  if
-    type(SchemaKit) ~= "table"
-    or rawget(SchemaKit, "API") ~= REQUIRED_SCHEMAKIT_API
-    or type(rawget(SchemaKit, "Seal")) ~= "function"
-    or type(rawget(SchemaKit, "MAX_DEPTH")) ~= "number"
-    or type(SchemaPrototype) ~= "table"
-    or type(rawget(SchemaPrototype, "Check")) ~= "function"
-    or type(rawget(SchemaPrototype, "Describe")) ~= "function"
-  then
-    error("MoltenCodes SettingsKit requires SchemaKit API 1 to be loaded first", 2)
+  local REQUIRED_SCHEMAKIT_API = 1
+  local SchemaKit = nil
+
+  findSchemaKit = function()
+    if SchemaKit ~= nil then
+      return SchemaKit
+    end
+    -- `Find` answers `nil` for a package nobody registered. A Registry facade
+    -- without it (a test double) is asked through `Get`, which raises then.
+    local find = rawget(Registry, "Find")
+    local found = nil
+    if type(find) == "function" then
+      found = find(Registry, "schemaKit", REQUIRED_SCHEMAKIT_API)
+    else
+      local get = rawget(Registry, "Get")
+      local ok, result = pcall(get, Registry, "schemaKit", REQUIRED_SCHEMAKIT_API)
+      found = ok and result or nil
+    end
+    local prototype = type(found) == "table" and rawget(found, "Schema") or nil
+    if
+      type(found) == "table"
+      and rawget(found, "API") == REQUIRED_SCHEMAKIT_API
+      and type(rawget(found, "Seal")) == "function"
+      and type(prototype) == "table"
+      and type(rawget(prototype, "Check")) == "function"
+      and type(rawget(prototype, "Describe")) == "function"
+    then
+      SchemaKit = found
+    end
+    return SchemaKit
   end
 end
 
@@ -476,20 +514,17 @@ end
 ---starts rather than once at load. Every scan, comparison and depth test in
 ---this file stops there, and views are built to the depth in force when the
 ---database is opened. Read through `SchemaKit:GetLimit` (SchemaKit revision
----6), which allocates nothing; an older SchemaKit answers through `GetLimits`,
----which allocates one table, and one without either has only the fixed
----`MAX_DEPTH`.
+---6), which allocates nothing. Without SchemaKit, or with one older than
+---revision 6, it is SettingsKit's own `DEFAULT_MAX_DEPTH`, SchemaKit's
+---default (revision 16).
 ---@return integer
 local function readMaxDepth()
-  local getLimit = rawget(SchemaKit, "GetLimit")
+  local schemaKit = findSchemaKit()
+  local getLimit = schemaKit and rawget(schemaKit, "GetLimit")
   if type(getLimit) == "function" then
-    return getLimit(SchemaKit, "maxDepth")
+    return getLimit(schemaKit, "maxDepth")
   end
-  local getLimits = rawget(SchemaKit, "GetLimits")
-  if type(getLimits) == "function" then
-    return getLimits(SchemaKit).maxDepth
-  end
-  return rawget(SchemaKit, "MAX_DEPTH")
+  return DEFAULT_MAX_DEPTH
 end
 
 ---Read a host global without triggering a metatable, or `nil`.
@@ -726,33 +761,72 @@ local function readIsSecret()
   return nil
 end
 
----Whether `value` is a secret value.
----@param value any
----@return boolean
-local function isSecret(value)
-  -- issecretvalue is a World of Warcraft client API reachable only through the global table.
+-- shared:begin isSecret 1
+-- Copied from tooling/shared/lua/isSecret.lua by python3 -m tooling.shared.sync; edit that file, not this copy.
+---Whether `value` is a secret value the host forbids comparing.
+---@type fun(value: any): boolean
+local isSecret
+do
+  -- issecretvalue is a client API reachable only through the global table.
   -- selene: allow(global_usage)
-  local probe = rawget(_G, "issecretvalue")
-  return type(probe) == "function" and probe(value) == true
-end
+  local loadedProbe = rawget(_G, "issecretvalue")
+  if type(loadedProbe) ~= "function" then
+    loadedProbe = nil
+  end
 
----Hand a failure nobody called for (a logout compaction) to the host error
----handler.
----@param message any
-local function reportError(message)
-  local getErrorHandler = readGlobal("geterrorhandler")
+  isSecret = function(value)
+    local probe = loadedProbe
+    if probe == nil then
+      -- selene: allow(global_usage)
+      probe = rawget(_G, "issecretvalue")
+      if type(probe) ~= "function" then
+        return false
+      end
+    end
+    return probe(value) == true
+  end
+end
+-- shared:end isSecret
+
+-- `reportError` hands a failure nobody called for (a logout compaction) to
+-- the host error handler, and prints it when the handler is missing or raises.
+-- shared:begin reportError 1
+-- Copied from tooling/shared/lua/reportError.lua by python3 -m tooling.shared.sync; edit that file, not this copy.
+---Report `failure` through the host error handler, or print it.
+---@param failure any
+local function reportError(failure)
+  -- geterrorhandler is a client API reachable only through the global table.
+  -- selene: allow(global_usage)
+  local getErrorHandler = rawget(_G, "geterrorhandler")
   if type(getErrorHandler) == "function" then
     local handler = getErrorHandler()
-    if type(handler) == "function" then
-      handler(message)
+    if type(handler) == "function" and pcall(handler, failure) then
       return
     end
   end
-
-  -- Outside a WoW client there is no error handler to report through.
-  -- Printing is what the client's own default handler does.
-  print(message)
+  print(failure)
 end
+-- shared:end reportError
+
+-- shared:begin describeKey 1
+-- Copied from tooling/shared/lua/describeKey.lua by python3 -m tooling.shared.sync; edit that file, not this copy.
+---Name `key` for an error message without running any of the caller's code.
+---@param key any
+---@return string
+local function describeKey(key)
+  if isSecret(key) then
+    return "<secret>"
+  end
+  local kind = type(key)
+  if kind == "string" then
+    return key
+  end
+  if kind == "number" or kind == "boolean" then
+    return tostring(key)
+  end
+  return "<" .. kind .. ">"
+end
+-- shared:end describeKey
 
 -- Argument checks ------------------------------------------------------------
 --
@@ -796,11 +870,13 @@ end
 ---@param label string argument description, used in the argument error
 ---@param level integer stack level the failure is reported at
 local function validateProfileName(value, label, level)
-  if type(value) ~= "string" then
-    error(label .. " must be a non-empty string", level)
-  end
+  -- The probe first: a secret is a string on the client, and is named as
+  -- secret whatever its type in a host that marks other values.
   if isSecret(value) then
     error(label .. " must not be a secret value", level)
+  end
+  if type(value) ~= "string" then
+    error(label .. " must be a non-empty string", level)
   end
   if not value:find("%S") then
     error(label .. " must contain a character other than whitespace", level)
@@ -814,11 +890,11 @@ end
 ---@param value any
 ---@param level integer stack level the failure is reported at
 local function validateSavedVariableName(value, level)
-  if type(value) ~= "string" then
-    error("SettingsKit:Open savedVariable must be the name of a saved variable", level)
-  end
   if isSecret(value) then
     error("SettingsKit:Open savedVariable must not be a secret value", level)
+  end
+  if type(value) ~= "string" then
+    error("SettingsKit:Open savedVariable must be the name of a saved variable", level)
   end
   if not value:find("^[%a_][%w_]*$") then
     error("SettingsKit:Open savedVariable must be the name of a saved variable", level)
@@ -1007,10 +1083,22 @@ local function validateSchemaTable(schema, level, label)
     if type(node) ~= "nil" then
       local name = type(node) == "table" and getmetatable(node) or nil
       if name ~= "SchemaKit.Node" and name ~= "SchemaKit.Schema" then
-        error(
-          label .. " schema." .. scopeName .. " must be a SchemaKit schema node or sealed schema",
-          level
-        )
+        -- Any other table is plain defaults (revision 16), which the
+        -- Defaults part reads; it checks them when the scope is compiled.
+        if type(node) ~= "table" or rawget(rawget(state, "parts"), "Defaults") == nil then
+          if type(node) == "table" then
+            error(
+              label
+                .. " plain defaults are in SettingsKit's Defaults part, which is not loaded:"
+                .. " add settingsKit\\parts\\SettingsKit-Defaults.lua",
+              level
+            )
+          end
+          error(
+            label .. " schema." .. scopeName .. " must be a SchemaKit schema node or sealed schema",
+            level
+          )
+        end
       end
       declared = declared + 1
       if declared == total then
@@ -1411,7 +1499,7 @@ end
 ---@return integer kind
 local function readKindFor(fieldPlan, default)
   local defaultType = type(default)
-  if fieldPlan.proxied ~= false then
+  if fieldPlan.proxied then
     if defaultType ~= "nil" then
       return READ_VIEW
     end
@@ -1487,11 +1575,20 @@ local function compileFastCheck(description)
     end
   end
 
-  ---@type table|false
-  local valueSet = false
+  -- Only the bounds the field declares are set (plan layout 3): an absent
+  -- bound reads as fast as a `false` one and costs no hash slot.
+  local check = {
+    kind = kind,
+    min = description.min,
+    max = description.max,
+    pattern = description.pattern,
+  }
+  if description.integer == true then
+    check.integer = true
+  end
   local list = description.oneOf or description.values
   if type(list) == "table" then
-    valueSet = {}
+    local valueSet = {}
     for index = 1, #list do
       local literal = list[index]
       if isSecret(literal) or literal ~= literal then
@@ -1499,15 +1596,9 @@ local function compileFastCheck(description)
       end
       valueSet[literal] = true
     end
+    check.valueSet = valueSet
   end
-  return {
-    kind = kind,
-    min = description.min or false,
-    max = description.max or false,
-    integer = description.integer == true,
-    pattern = description.pattern or false,
-    valueSet = valueSet,
-  }
+  return check
 end
 
 ---Compile a description into a plan.
@@ -1522,18 +1613,12 @@ end
 ---@param maxDepth integer SchemaKit's `maxDepth` when the database was opened
 ---@return SettingsKit.Plan|nil plan, string|nil refusal
 local function compilePlan(description, depth, label, maxDepth)
+  -- Layout 3: only the fields this plan uses are set (a record's or a keyed
+  -- section's are added below); `proxied` stays, `false` for a plain value.
   ---@type SettingsKit.Plan
   local plan = {
     layout = PLAN_SCHEMA,
     proxied = false,
-    fieldNames = false,
-    fields = false,
-    ownDefaults = false,
-    ownKinds = false,
-    fastChecks = false,
-    values = false,
-    max = false,
-    keyKind = false,
     default = fillDefaults(description, nil, depth, maxDepth),
     defaultKind = READ_NIL,
   }
@@ -1574,7 +1659,7 @@ local function compilePlan(description, depth, label, maxDepth)
     plan.proxied = KIND_MAP
     plan.values = valuesPlan
     plan.max = description.max
-    plan.keyKind = description.keys and description.keys.kind or false
+    plan.keyKind = description.keys and description.keys.kind or nil
   end
   return plan
 end
@@ -1600,17 +1685,28 @@ local compiledScopes = setmetatable({}, WEAK_KEYS)
 ---@param label string the method the schema was passed to, for messages
 ---@return SchemaKit.Schema sealed, SettingsKit.Plan plan
 local function compileScope(node, scopeName, maxDepth, level, label)
-  local schemaRevision = rawget(SchemaKit, "REVISION")
+  local schemaKit = findSchemaKit()
+  local schemaRevision = schemaKit and rawget(schemaKit, "REVISION")
   local cached = compiledScopes[node]
   if cached ~= nil and cached.maxDepth == maxDepth and cached.schemaRevision == schemaRevision then
     return cached.sealed, cached.plan
   end
 
-  -- Sealing a sealed schema returns a new one with its own failure table,
-  -- so a consumer checking with the same schema can never see its failure
-  -- overwritten by a write here.
-  local sealed = SchemaKit:Seal(node)
-  local description = sealed:Describe()
+  local sealed, description
+  local tag = getmetatable(node)
+  if tag ~= "SchemaKit.Node" and tag ~= "SchemaKit.Schema" then
+    -- Plain defaults: the Defaults part answers the description
+    -- `schema:Describe()` would give for the schema they stand for, and a
+    -- checker that takes the sealed schema's place (`Check` only).
+    sealed, description = dispatch.compileDefaults(node, scopeName, level + 1, label)
+  else
+    -- Sealing a sealed schema returns a new one with its own failure table,
+    -- so a consumer checking with the same schema can never see its failure
+    -- overwritten by a write here.
+    ---@cast schemaKit -nil
+    sealed = schemaKit:Seal(node)
+    description = sealed:Describe()
+  end
   if description.kind ~= "table" then
     error(label .. " schema." .. scopeName .. " must be a SchemaKit.table schema", level)
   end
@@ -1851,61 +1947,35 @@ local function extendPathKeys(parent, key)
   return pathKeys
 end
 
--- The write fast path (`checkWrite`) skips SchemaKit's check of the whole
--- probe chain, but that check also refuses any chain nested deeper than
--- SchemaKit's `maxDepth`, which `SchemaKit:SetLimits` may lower at any time.
--- SchemaKit revision 6 answers it without allocating (`GetLimit`), which is
--- what `depthAllows` reads. With an older SchemaKit, whose `GetLimits`
--- allocates, `depthProbes[depth]` holds a sealed chain of `depth` nested
--- closed tables with one optional field each, and a Kit-owned value of
--- exactly that shape: checking it passes exactly when a probe chain of
--- `depth` tables would pass SchemaKit's depth rule. Built once per depth and
--- session, when the first view of that depth is built; never written after.
-local depthProbes = {}
-
----Build the depth probe of `depth` unless it exists or SchemaKit answers the
----limit itself. Depth 1 needs none: the smallest `maxDepth` SchemaKit accepts
----is 1.
----@param depth integer
-local function ensureDepthProbe(depth)
-  if
-    depth < 2
-    or depthProbes[depth] ~= nil
-    or type(rawget(SchemaKit, "GetLimit")) == "function"
-  then
-    return
-  end
-  local buildTable = rawget(SchemaKit, "table")
-  local buildOptional = rawget(SchemaKit, "optional")
-  local node = buildTable({ fields = {} })
-  local value = {}
-  for _ = 2, depth do
-    node = buildTable({ fields = { inner = buildOptional(node) } })
-    value = { inner = value }
-  end
-  depthProbes[depth] = { schema = SchemaKit:Seal(node), value = value }
-end
+-- The write fast path (`checkWrite`) skips the full check of the whole probe
+-- chain, but that check also refuses any chain nested deeper than SchemaKit's
+-- `maxDepth`, which `SchemaKit:SetLimits` may lower at any time. SchemaKit
+-- revision 6 answers it without allocating (`GetLimit`), which is what
+-- `depthAllows` reads. With an older SchemaKit the answer is "not known" and
+-- the write takes the full check, where SchemaKit enforces its own depth
+-- (revision 16 dropped the sealed depth probes revisions 6 to 15 built for
+-- it). Without SchemaKit (plain defaults) the bound is `DEFAULT_MAX_DEPTH`.
 
 ---Whether the probe chain of a view is within SchemaKit's `maxDepth` now.
 ---The chain holds one table per view from the scope root down, one more than
 ---the view's `pathKeys`; a scope root has none, and its chain of one table
----always passes. `false` when no probe of that depth was built, so the
----caller runs the full check instead.
+---always passes. `false` when SchemaKit cannot answer without allocating, so
+---the caller runs the full check instead.
 ---@param pathKeys any[]|nil the view's `pathKeys`
 ---@return boolean
 local function depthAllows(pathKeys)
   if pathKeys == nil then
     return true
   end
-  local getLimit = rawget(SchemaKit, "GetLimit")
-  if type(getLimit) == "function" then
-    return #pathKeys + 1 <= getLimit(SchemaKit, "maxDepth")
+  local schemaKit = findSchemaKit()
+  if schemaKit == nil then
+    return #pathKeys + 1 <= DEFAULT_MAX_DEPTH
   end
-  local probe = depthProbes[#pathKeys + 1]
-  if probe == nil then
+  local getLimit = rawget(schemaKit, "GetLimit")
+  if type(getLimit) ~= "function" then
     return false
   end
-  return probe.schema:Check(probe.value) == true
+  return #pathKeys + 1 <= getLimit(schemaKit, "maxDepth")
 end
 
 -- Pending views ---------------------------------------------------------------
@@ -1960,7 +2030,7 @@ function Chain.attachView(node, proxy, current)
     local fieldNames = plan.fieldNames --[[@as string[] ]]
     for index = 1, #fieldNames do
       local name = fieldNames[index]
-      if plan.fields[name].proxied ~= false then
+      if plan.fields[name].proxied then
         children[name] = Chain.pendingChild(node)
       end
     end
@@ -1993,7 +2063,6 @@ function Chain.newChildNode(parent, key, plan)
   local path = joinRelative(parent.path, formatKey(key))
   local pathKeys = extendPathKeys(parent, key)
   if plan.proxied == KIND_RECORD then
-    ensureDepthProbe(#pathKeys + 1)
     return {
       layout = NODE_SCHEMA,
       plan = plan,
@@ -2027,7 +2096,7 @@ function Chain.newChildNode(parent, key, plan)
     probeKey = NO_PROBE_KEY,
     children = false,
     ownEntries = ownEntriesOf(defaults),
-    valuesProxied = plan.values.proxied ~= false,
+    valuesProxied = plan.values.proxied and true or false,
     cache = false,
     generation = NEVER_RESOLVED,
   }
@@ -2420,20 +2489,20 @@ local function passesFastCheck(check, value, valueType)
       return false
     end
     local min, max = check.min, check.max
-    return (min == false or value >= min) and (max == false or value <= max)
+    return (not min or value >= min) and (not max or value <= max)
   elseif kind == "string" then
     if valueType ~= "string" then
       return false
     end
     local valueSet = check.valueSet
-    if valueSet ~= false and valueSet[value] == nil then
+    if valueSet and valueSet[value] == nil then
       return false
     end
     local length = #value
     local min, max, pattern = check.min, check.max, check.pattern
-    return (min == false or length >= min)
-      and (max == false or length <= max)
-      and (pattern == false or type(string.find(value, pattern)) ~= "nil")
+    return (not min or length >= min)
+      and (not max or length <= max)
+      and (not pattern or type(string.find(value, pattern)) ~= "nil")
   elseif kind == "boolean" then
     return valueType == "boolean"
   end
@@ -3314,7 +3383,7 @@ end
 ---@param maxDepth integer SchemaKit's `maxDepth` when the compaction started
 ---@return integer removed
 compactValue = function(plan, container, key, value, default, isSecretValue, maxDepth)
-  if plan.proxied ~= false and type(value) == "table" then
+  if plan.proxied and type(value) == "table" then
     local removed
     if plan.proxied == KIND_RECORD then
       local childDefaults = default
@@ -3940,9 +4009,29 @@ end
 -- is the addon's own, so `SettingsKit.UNBOUNDED` lifts it.
 DatabaseHelpers.DEFAULT_MAX_NAMESPACES = 256
 
--- The method names the Namespaces part publishes, for the message a read of
--- one raises while the part is not loaded (decision 0001, point 5).
-DatabaseHelpers.PART_METHODS = { RegisterNamespace = "Namespaces", GetNamespace = "Namespaces" }
+-- The method names the Namespaces and SpecProfiles parts publish, for the
+-- message a read or call of one raises while its part is not loaded
+-- (decision 0001, point 5).
+DatabaseHelpers.PART_METHODS = {
+  RegisterNamespace = "Namespaces",
+  GetNamespace = "Namespaces",
+  SetSpecProfile = "SpecProfiles",
+  GetSpecProfile = "SpecProfiles",
+  ApplySpecProfile = "SpecProfiles",
+}
+
+---The error a member of a part that is not loaded raises.
+---@param label string the member as a caller wrote it
+---@param partName string
+---@return string
+function DatabaseHelpers.partMissingMessage(label, partName)
+  return label
+    .. " is in SettingsKit's "
+    .. partName
+    .. " part, which is not loaded: add settingsKit\\parts\\SettingsKit-"
+    .. partName
+    .. ".lua"
+end
 
 -- The fields the `options` of `CopyProfile`, `DeleteProfile` and
 -- `GetNamespace` accept.
@@ -3983,6 +4072,31 @@ function DatabaseHelpers.refuseNamespace(db, methodName, level)
         .. rawget(parent, "_name"),
       level
     )
+  end
+end
+
+---Forget every spec-profile assignment naming `name`, for `DeleteProfile`.
+---The `specProfiles` section belongs to the core's layout, so a session that
+---does not load the SpecProfiles part still keeps it consistent.
+---@param raw table the saved table
+---@param name string
+function DatabaseHelpers.forgetSpecProfiles(raw, name)
+  local section = rawget(raw, "specProfiles")
+  if type(section) ~= "table" then
+    return
+  end
+  for character, entry in next, section do
+    if type(entry) == "table" then
+      for index, profile in next, entry do
+        -- A saved value is asked about secrecy before it is compared.
+        if not isSecret(profile) and profile == name then
+          rawset(entry, index, nil)
+        end
+      end
+      if next(entry) == nil then
+        rawset(section, character, nil)
+      end
+    end
   end
 end
 
@@ -4302,7 +4416,7 @@ local function databaseDeleteProfile(self, name, options)
       rawset(profileKeys, character, nil)
     end
   end
-  dispatch.forgetSpecProfiles(raw, name)
+  DatabaseHelpers.forgetSpecProfiles(raw, name)
   bumpGeneration(db)
   detachProfileView(db, name)
   Chain.rebindDatabase(db)
@@ -4486,7 +4600,7 @@ local function descendPath(node, key)
   local child = nil
   if node.kinds ~= nil then
     child = node.children[key]
-  elseif node.plan.values.proxied ~= false then
+  elseif node.plan.values.proxied then
     child = entryView(node, key)
   end
   if child == nil then
@@ -4704,16 +4818,7 @@ local function databaseIndex(db, key)
   local part = DatabaseHelpers.PART_METHODS[key]
   if part ~= nil then
     -- databaseIndex <- the reading line
-    error(
-      "SettingsKit.Database:"
-        .. key
-        .. " is in SettingsKit's "
-        .. part
-        .. " part, which is not loaded: add settingsKit\\parts\\SettingsKit-"
-        .. part
-        .. ".lua",
-      2
-    )
+    error(DatabaseHelpers.partMissingMessage("SettingsKit.Database:" .. key, part), 2)
   end
   if Scopes.set[key] == true then
     local scope = rawget(rawget(db, "_scopes"), key)
@@ -4805,14 +4910,19 @@ local function buildScopes(schema, keys, level, label)
   return scopes
 end
 
----@param receiver any
----@param label string qualified public method name, used in the argument error
+-- shared:begin validateFacade 1 __FACADE__=SettingsKit
+-- Copied from tooling/shared/lua/validateFacade.lua by python3 -m tooling.shared.sync; edit that file, not this copy.
+---Raise at `level` unless `receiver` is the SettingsKit facade.
+---@param receiver any the table the method was called on
+---@param label string qualified method name, used in the argument error
 ---@param level integer stack level the failure is reported at
 local function validateFacade(receiver, label, level)
-  if receiver ~= SettingsKit then
-    error(label .. " must be called on the SettingsKit facade; use " .. label .. "(...)", level)
+  if type(receiver) ~= "table" or receiver ~= SettingsKit then
+    local hint = "; use " .. label .. "(...)"
+    error(label .. " must be called on the SettingsKit facade" .. hint, level)
   end
 end
+-- shared:end validateFacade
 
 ---Open the database over the saved variable `savedVariable`.
 ---
@@ -4946,63 +5056,96 @@ local function open(self, savedVariable, schema, options)
   dispatch.onDatabaseOpened(db)
   return db --[[@as SettingsKit.Database]]
 end
-
----Refuse a limit update before anything changes: a secret key or value, an
----unknown name, `SettingsKit.UNBOUNDED` (with the reason) or a value outside
----the range. A secret is refused before it indexes a table or is compared,
----because either raises.
----@param limits any
----@param level integer stack level the failures are reported at
-local function validateLimitUpdate(limits, level)
-  if type(limits) ~= "table" then
-    error("SettingsKit:SetLimits limits must be a table", level)
+-- `validateLimitUpdate`, `applyLimitUpdate` and `copyLimits` over
+-- `LIMIT_RULES` (revision 16): a whole update is checked before anything is
+-- written, so a refused call changes no limit.
+-- shared:begin limits 1 __FACADE__=SettingsKit
+-- Copied from tooling/shared/lua/limits.lua by python3 -m tooling.shared.sync; edit that file, not this copy.
+---Check a whole `SetLimits` update; raises at `level`.
+---@type fun(limits: any, level: integer)
+local validateLimitUpdate
+---Write the names an update gives into `target`.
+---@type fun(target: table, limits: table)
+local applyLimitUpdate
+---A fresh table of every limit in `source`.
+---@type fun(source: table): table
+local copyLimits
+do
+  local rulesByName = {}
+  local names = {}
+  for index = 1, #LIMIT_RULES do
+    local rule = LIMIT_RULES[index]
+    rulesByName[rule.name] = rule
+    names[index] = rule.name
   end
-  local key = next(limits)
-  while type(key) ~= "nil" do
-    if isSecret(key) then
-      error("SettingsKit:SetLimits limits must not have a secret key", level)
-    end
-    if type(key) ~= "string" or LIMIT_CEILINGS[key] == nil then
-      -- A string, number or boolean is shown as itself; anything else is
-      -- named by its type, because `tostring` on a table or userdata runs its
-      -- `__tostring`, foreign code that can raise or answer a secret and so
-      -- replace this refusal. Inline, as the main chunk is near 200 locals.
-      local kind = type(key)
-      local shown = "<" .. kind .. ">"
-      if kind == "string" or kind == "number" or kind == "boolean" then
-        shown = tostring(key)
-      end
-      error("SettingsKit:SetLimits limits." .. shown .. " is not a recognised limit", level)
-    end
-    local value = rawget(limits, key)
+  local accepted = table.concat(names, ", ")
+
+  local function validateValue(rule, value, level)
+    local where = "SettingsKit:SetLimits limits." .. rule.name
     if isSecret(value) then
-      error("SettingsKit:SetLimits limits." .. key .. " must not be a secret value", level)
+      error(where .. " must not be a secret value", level)
     end
-    if value == UNBOUNDED then
-      error(
-        "SettingsKit:SetLimits limits."
-          .. key
-          .. " cannot be SettingsKit.UNBOUNDED: "
-          .. UNBOUNDED_REFUSALS[key],
-        level
-      )
+    if value == UNBOUNDED and UNBOUNDED ~= nil then
+      if rule.unbounded then
+        return
+      end
+      local reason = rule.unboundedReason and (": " .. rule.unboundedReason) or ""
+      error(where .. " cannot be SettingsKit.UNBOUNDED" .. reason, level)
     end
-    local minimum = LIMIT_MINIMUMS[key]
-    local ceiling = LIMIT_CEILINGS[key]
-    if not isIntegerAtLeast(value, minimum) or value > ceiling then
-      error(
-        "SettingsKit:SetLimits limits."
-          .. key
-          .. " must be an integer from "
-          .. minimum
-          .. " to "
-          .. ceiling,
-        level
-      )
+    local minimum = rule.minimum or 1
+    local integer = rule.integer ~= false
+    if
+      type(value) ~= "number"
+      or value ~= value
+      or value < minimum
+      or value > rule.ceiling
+      or (integer and value % 1 ~= 0)
+    then
+      local kind = integer and "an integer" or "a number"
+      local range = " from " .. minimum .. " to " .. rule.ceiling
+      error(where .. " must be " .. kind .. range, level)
     end
-    key = next(limits, key)
+    if rule.check then
+      rule.check(value, level + 1)
+    end
+  end
+
+  validateLimitUpdate = function(limits, level)
+    if isSecret(limits) or type(limits) ~= "table" then
+      error("SettingsKit:SetLimits limits must be a table", level)
+    end
+    local key = next(limits)
+    while type(key) ~= "nil" do
+      local rule = type(key) == "string" and rulesByName[key] or nil
+      if rule == nil then
+        local named = "SettingsKit:SetLimits limits." .. describeKey(key)
+        error(named .. " is not a recognised limit; it accepts " .. accepted, level)
+      end
+      validateValue(rule, rawget(limits, key), level + 1)
+      key = next(limits, key)
+    end
+  end
+
+  applyLimitUpdate = function(target, limits)
+    for index = 1, #LIMIT_RULES do
+      local name = LIMIT_RULES[index].name
+      local value = rawget(limits, name)
+      if type(value) ~= "nil" then
+        rawset(target, name, value)
+      end
+    end
+  end
+
+  copyLimits = function(source)
+    local copy = {}
+    for index = 1, #LIMIT_RULES do
+      local name = LIMIT_RULES[index].name
+      copy[name] = rawget(source, name)
+    end
+    return copy
   end
 end
+-- shared:end limits
 
 ---Change any subset of the shared limits. Affects every consumer in the
 ---session; nothing changes when any value is refused.
@@ -5011,13 +5154,7 @@ end
 local function setLimits(self, limits)
   validateFacade(self, "SettingsKit:SetLimits", 3)
   validateLimitUpdate(limits, 3)
-  for index = 1, #LIMIT_NAMES do
-    local name = LIMIT_NAMES[index]
-    local value = rawget(limits, name)
-    if type(value) ~= "nil" then
-      rawset(sharedLimits, name, value)
-    end
-  end
+  applyLimitUpdate(sharedLimits, limits)
 end
 
 ---Return a fresh copy of the shared limits.
@@ -5025,452 +5162,7 @@ end
 ---@return SettingsKit.Limits
 local function getLimits(self)
   validateFacade(self, "SettingsKit:GetLimits", 3)
-  return {
-    maxProfileNameLength = rawget(sharedLimits, "maxProfileNameLength"),
-    pathKeyLimit = rawget(sharedLimits, "pathKeyLimit"),
-  }
-end
-
--- Spec profiles --------------------------------------------------------------
---
--- A character assigns a profile to a *spec index*; when the index changes, the
--- database switches to that profile through its own `SetProfile`. The index is
--- the specialization on clients that have them (Retail, Mists of Pandaria
--- Classic) and the active talent group elsewhere (Classic Era, Season of
--- Discovery, Hardcore, Burning Crusade Classic), where dual talent
--- specialization is the switching mechanism. The research behind the client
--- facts is recorded in `docs/ROADMAP.md`, "settingsKit spec profiles".
---
--- Everything lives inside `installSpecProfiles`, a function of its own, so its
--- helpers do not count against the main chunk's 200 locals. It publishes the
--- facade and database methods and the dispatch entries `Open`,
--- `DeleteProfile` and the shared event listener call.
-do
-  local function installSpecProfiles()
-    -- The highest spec index an assignment may name. No class has more than
-    -- four specializations and no client more than two talent groups; eight
-    -- leaves room without letting a typo create a large saved table.
-    local MAX_SPEC_INDEX = 8
-
-    -- `WOW_PROJECT_ID` values whose clients key by specialization, compared
-    -- as literals as ClientKit does (a missing `WOW_PROJECT_*` constant would
-    -- otherwise match `nil`): 1 is Retail, 19 is Mists of Pandaria Classic.
-    -- Every other client, and a host without the constant, keys by talent
-    -- group, which every client answers.
-    local SPECIALIZATION_PROJECTS = { [1] = true, [19] = true }
-
-    local KIND_SPECIALIZATION = "specialization"
-    local KIND_TALENT_GROUP = "talentGroup"
-
-    -- The events after which the index may have changed. `PLAYER_ENTERING_WORLD`
-    -- catches up when the client had no specialization data yet at `Open`;
-    -- `PLAYER_LEVEL_CHANGED` covers Retail's starter specialization becoming a
-    -- real one. All four are documented on Retail, Mists of Pandaria Classic
-    -- and Classic Era.
-    local PLAIN_EVENTS =
-      { "PLAYER_ENTERING_WORLD", "ACTIVE_TALENT_GROUP_CHANGED", "PLAYER_LEVEL_CHANGED" }
-    local UNIT_EVENT = "PLAYER_SPECIALIZATION_CHANGED"
-
-    ---A client answer usable as a spec index or count: a non-secret whole
-    ---number of at least `minimum`, else `nil`.
-    ---@param value any
-    ---@param minimum integer
-    ---@return integer|nil
-    local function usableNumber(value, minimum)
-      if isSecret(value) or not isIntegerAtLeast(value, minimum) then
-        return nil
-      end
-      return value
-    end
-
-    ---The class's specialization count, from the class ID `UnitClass` answers.
-    ---@param specializationInfo table
-    ---@return integer
-    local function readSpecializationCount(specializationInfo)
-      local countFor = rawget(specializationInfo, "GetNumSpecializationsForClassID")
-      local unitClass = readGlobal("UnitClass")
-      if type(countFor) ~= "function" or type(unitClass) ~= "function" then
-        return 0
-      end
-      local classID = usableNumber((select(3, unitClass("player"))), 1)
-      if classID == nil then
-        return 0
-      end
-      return usableNumber(countFor(classID), 0) or 0
-    end
-
-    ---The current specialization index and the class's count.
-    ---@param specializationInfo table
-    ---@return integer|nil index, integer count
-    local function readSpecialization(specializationInfo)
-      local count = readSpecializationCount(specializationInfo)
-      local getSpecialization = rawget(specializationInfo, "GetSpecialization")
-      if type(getSpecialization) ~= "function" then
-        return nil, count
-      end
-      local index = usableNumber(getSpecialization(), 1)
-      -- An index above the class's count is Retail's starter specialization,
-      -- which no player chose and no assignment names.
-      if index == nil or index > count then
-        return nil, count
-      end
-      return index, count
-    end
-
-    ---The active talent group and the number of groups the character has.
-    ---@param specializationInfo table
-    ---@return integer|nil index, integer count
-    local function readTalentGroup(specializationInfo)
-      local getActiveSpecGroup = rawget(specializationInfo, "GetActiveSpecGroup")
-      if type(getActiveSpecGroup) ~= "function" then
-        return nil, 0
-      end
-      local index = usableNumber(getActiveSpecGroup(), 1)
-      -- `GetNumTalentGroups` is not in the generated documentation; Blizzard's
-      -- Classic talent frame calls it. Without it, the active group is the
-      -- only one known.
-      local count = nil
-      local getNumTalentGroups = readGlobal("GetNumTalentGroups")
-      if type(getNumTalentGroups) == "function" then
-        count = usableNumber(getNumTalentGroups(), 0)
-      end
-      count = count or index or 0
-      if index == nil or index > MAX_SPEC_INDEX then
-        return nil, count
-      end
-      if count < index then
-        count = index
-      end
-      return index, count
-    end
-
-    ---Which kind of index this client keys by.
-    ---@return "specialization"|"talentGroup"
-    local function readKind()
-      local projectId = readGlobal("WOW_PROJECT_ID")
-      if type(projectId) == "number" and SPECIALIZATION_PROJECTS[projectId] == true then
-        return KIND_SPECIALIZATION
-      end
-      return KIND_TALENT_GROUP
-    end
-
-    ---The current spec index, the number of indexes and their kind. The index
-    ---is `nil` while the client has no specialization data or the player has
-    ---no specialization.
-    ---@return integer|nil index, integer count, "specialization"|"talentGroup" kind
-    local function readSpecIndex()
-      local kind = readKind()
-      local specializationInfo = readGlobal("C_SpecializationInfo")
-      if type(specializationInfo) ~= "table" then
-        return nil, 0, kind
-      end
-      local isInitialized = rawget(specializationInfo, "IsInitialized")
-      if type(isInitialized) == "function" then
-        local initialized = isInitialized()
-        if isSecret(initialized) or initialized ~= true then
-          return nil, 0, kind
-        end
-      end
-      local index, count
-      if kind == KIND_SPECIALIZATION then
-        index, count = readSpecialization(specializationInfo)
-      else
-        index, count = readTalentGroup(specializationInfo)
-      end
-      return index, count, kind
-    end
-
-    ---Refuse anything but a spec index an assignment may name.
-    ---@param value any
-    ---@param methodName string
-    ---@param level integer stack level the failure is reported at
-    local function validateSpecIndex(value, methodName, level)
-      if isSecret(value) then
-        error(methodName .. " index must not be a secret value", level)
-      end
-      if not isIntegerAtLeast(value, 1) or value > MAX_SPEC_INDEX then
-        error(methodName .. " index must be an integer from 1 to " .. MAX_SPEC_INDEX, level)
-      end
-    end
-
-    ---This character's assignments, or `nil` when it has none (or the saved
-    ---entry is corrupted).
-    ---@param db table
-    ---@return table|nil
-    local function readAssignments(db)
-      local charKey = rawget(db, "_charKey")
-      local section = rawget(rawget(db, "_raw"), "specProfiles")
-      if charKey == false or type(section) ~= "table" then
-        return nil
-      end
-      local entry = rawget(section, charKey)
-      if type(entry) ~= "table" then
-        return nil
-      end
-      return entry
-    end
-
-    ---The profile this character assigned to `index`, or `nil`. A stored
-    ---value that is not a usable profile name is ignored.
-    ---@param db table
-    ---@param index integer
-    ---@return string|nil
-    local function readAssignment(db, index)
-      local entry = readAssignments(db)
-      if entry == nil then
-        return nil
-      end
-      local name = rawget(entry, index)
-      if not isStoredProfileName(name) then
-        return nil
-      end
-      return name
-    end
-
-    ---Switch `db` to the profile assigned to `index`, remembering the index
-    ---as applied. A read-only database never switches.
-    ---@param db table
-    ---@param index integer|nil
-    ---@return boolean switched
-    local function applyIndex(db, index)
-      if index == nil or rawget(db, "_readOnly") == true then
-        return false
-      end
-      rawset(db, "_specIndex", index)
-      local name = readAssignment(db, index)
-      if name == nil or name == rawget(db, "_profile") then
-        return false
-      end
-      rawget(Database, "SetProfile")(db, name)
-      return true
-    end
-
-    ---The one listener every database shares, connected to the spec events.
-    ---It calls through the dispatch table, so an upgrade replaces it.
-    local function specListener()
-      local onSpecEvent = rawget(dispatch, "onSpecEvent")
-      onSpecEvent()
-    end
-
-    ---Connect the shared listener the first time a database needs it, when
-    ---EventKit is embedded. Without EventKit the addon calls
-    ---`db:ApplySpecProfile()` itself.
-    local function connectSpecListener()
-      if rawget(state, "specListenerConnected") == true then
-        return
-      end
-      local findPackage = rawget(Registry, "Find")
-      if type(findPackage) ~= "function" then
-        return
-      end
-      local EventKit = findPackage(Registry, "eventKit", OPTIONAL_EVENTKIT_API)
-      if
-        type(EventKit) ~= "table"
-        or type(rawget(EventKit, "Connect")) ~= "function"
-        or type(rawget(EventKit, "ConnectUnit")) ~= "function"
-      then
-        return
-      end
-      for index = 1, #PLAIN_EVENTS do
-        EventKit:Connect(PLAIN_EVENTS[index], specListener)
-      end
-      EventKit:ConnectUnit(UNIT_EVENT, specListener, "player")
-      rawset(state, "specListenerConnected", true)
-    end
-
-    ---After a spec event: apply the current index to every open database whose
-    ---character has an assignment, unless that database already applied it,
-    ---so an event that changes nothing never undoes a manual `SetProfile`.
-    ---A database whose character has no assignment (any more) still records
-    ---the index: one it kept from before its last assignment was cleared
-    ---would otherwise match the index the character comes back to, and an
-    ---assignment made meanwhile would never apply (revision 12).
-    ---
-    ---The switches run profile listeners, which may open databases; adding a
-    ---key to `databases` while `next` walks it is undefined in Lua 5.1 (a
-    ---rehash makes the walk skip databases, or raise). So the walk only
-    ---collects the databases to switch, into an array allocated when there is
-    ---at least one, and the switches run afterwards over that array, each
-    ---checked again, since an earlier switch's listener may have changed it.
-    ---A database opened meanwhile applied its assignment at `Open`.
-    local function onSpecEvent()
-      local index = readSpecIndex()
-      if index == nil then
-        return
-      end
-      ---@type table[]|nil
-      local pending = nil
-      local pendingCount = 0
-      for _, db in next, databases do
-        if rawget(db, "_specIndex") ~= index then
-          if readAssignments(db) ~= nil then
-            pending = pending or {}
-            pendingCount = pendingCount + 1
-            pending[pendingCount] = db
-          else
-            -- A field of the database, not a key of `databases`.
-            rawset(db, "_specIndex", index)
-          end
-        end
-      end
-      if pending == nil then
-        return
-      end
-      for position = 1, pendingCount do
-        local db = pending[position]
-        if rawget(db, "_specIndex") ~= index and readAssignments(db) ~= nil then
-          applyIndex(db, index)
-        end
-      end
-    end
-
-    ---Called by `Open`: a character with assignments gets the listener and
-    ---its assignment for the current index at once.
-    ---@param db table
-    local function onDatabaseOpened(db)
-      if readAssignments(db) == nil then
-        return
-      end
-      connectSpecListener()
-      applyIndex(db, (readSpecIndex()))
-    end
-
-    ---Called by `DeleteProfile`: forget every assignment naming `name`.
-    ---@param raw table the saved table
-    ---@param name string
-    local function forgetSpecProfiles(raw, name)
-      local section = rawget(raw, "specProfiles")
-      if type(section) ~= "table" then
-        return
-      end
-      for character, entry in next, section do
-        if type(entry) == "table" then
-          for index, profile in next, entry do
-            -- A saved value is asked about secrecy before it is compared.
-            if not isSecret(profile) and profile == name then
-              rawset(entry, index, nil)
-            end
-          end
-          if next(entry) == nil then
-            rawset(section, character, nil)
-          end
-        end
-      end
-    end
-
-    ---@param self SettingsKit
-    ---@return integer|nil index, integer count, "specialization"|"talentGroup" kind
-    local function getSpecIndex(self)
-      validateFacade(self, "SettingsKit:GetSpecIndex", 3)
-      return readSpecIndex()
-    end
-
-    ---Assign profile `name` to spec index `index` for this character, or
-    ---clear the assignment with `nil`, and apply it at once when `index` is
-    ---the current one.
-    ---@param self SettingsKit.Database
-    ---@param index integer
-    ---@param name string|nil
-    ---@return boolean recorded `false` when the character key is unavailable
-    local function databaseSetSpecProfile(self, index, name)
-      validateDatabase(self, "SettingsKit.Database:SetSpecProfile", 3)
-      DatabaseHelpers.refuseNamespace(self, "SettingsKit.Database:SetSpecProfile", 3)
-      refuseReadOnly(self, "SettingsKit.Database:SetSpecProfile", 3)
-      validateSpecIndex(index, "SettingsKit.Database:SetSpecProfile", 3)
-      if type(name) ~= "nil" then
-        validateProfileName(name, "SettingsKit.Database:SetSpecProfile name", 3)
-      end
-
-      local db = self --[[@as table]]
-      local charKey = rawget(db, "_charKey")
-      if charKey == false then
-        return false
-      end
-      local raw = rawget(db, "_raw")
-      local section = rawget(raw, "specProfiles")
-      if type(section) == "nil" then
-        -- A database an older revision opened has no section yet.
-        section = {}
-        rawset(raw, "specProfiles", section)
-      elseif type(section) ~= "table" then
-        error(
-          "SettingsKit.Database:SetSpecProfile "
-            .. rawget(db, "_name")
-            .. ".specProfiles must be a table",
-          2
-        )
-      end
-
-      local entry = rawget(section, charKey)
-      if type(name) == "nil" then
-        if type(entry) == "table" then
-          rawset(entry, index, nil)
-          if next(entry) == nil then
-            rawset(section, charKey, nil)
-          end
-        end
-        return true
-      end
-      if type(entry) ~= "table" then
-        -- A corrupted entry is replaced, as a corrupted profile choice is.
-        entry = {}
-        rawset(section, charKey, entry)
-      end
-      rawset(entry, index, name)
-
-      connectSpecListener()
-      local current = readSpecIndex()
-      if current == index then
-        applyIndex(db, index)
-      end
-      return true
-    end
-
-    ---@param self SettingsKit.Database
-    ---@param index integer
-    ---@return string|nil name the profile assigned to `index` for this character
-    local function databaseGetSpecProfile(self, index)
-      validateDatabase(self, "SettingsKit.Database:GetSpecProfile", 3)
-      validateSpecIndex(index, "SettingsKit.Database:GetSpecProfile", 3)
-      -- A namespace's profile follows its parent's assignments.
-      return readAssignment(rawget(self, "_parent") or self --[[@as table]], index)
-    end
-
-    ---Switch to the profile assigned to the current spec index, for an addon
-    ---without EventKit or one that wants to apply it at a moment of its own.
-    ---@param self SettingsKit.Database
-    ---@return boolean switched
-    local function databaseApplySpecProfile(self)
-      validateDatabase(self, "SettingsKit.Database:ApplySpecProfile", 3)
-      DatabaseHelpers.refuseNamespace(self, "SettingsKit.Database:ApplySpecProfile", 3)
-      return applyIndex(self --[[@as table]], (readSpecIndex()))
-    end
-
-    rawset(SettingsKit, "GetSpecIndex", getSpecIndex)
-    rawset(Database, "SetSpecProfile", databaseSetSpecProfile)
-    rawset(Database, "GetSpecProfile", databaseGetSpecProfile)
-    rawset(Database, "ApplySpecProfile", databaseApplySpecProfile)
-    rawset(dispatch, "onSpecEvent", onSpecEvent)
-    rawset(dispatch, "onDatabaseOpened", onDatabaseOpened)
-    rawset(dispatch, "forgetSpecProfiles", forgetSpecProfiles)
-
-    -- Revision 11 added the flag; state an older revision built gets it.
-    if type(rawget(state, "specListenerConnected")) ~= "boolean" then
-      rawset(state, "specListenerConnected", false)
-    end
-    -- A database a revision without spec profiles (10 or earlier) opened over
-    -- a saved table a newer copy wrote in an earlier session may already hold
-    -- assignments. A database revision 11 or later opened applied its
-    -- assignment at `Open` and follows the events since; applying it again
-    -- here would undo a manual `SetProfile` whenever a newer copy loads in
-    -- the middle of the session (revision 12).
-    if previousRevision ~= nil and previousRevision < 11 then
-      for _, db in next, databases do
-        onDatabaseOpened(db)
-      end
-    end
-  end
-  installSpecProfiles()
+  return copyLimits(sharedLimits)
 end
 
 -- Upgrades -------------------------------------------------------------------
@@ -5636,9 +5328,6 @@ if previousRevision ~= nil and previousRevision < 6 then
     end
     if isRecord then
       node.kinds = readKindsOf(plan, node.defaults)
-      if parent ~= false then
-        ensureDepthProbe(node.depth)
-      end
       node.entries = nil
     else
       -- Layout 1 kept a keyed section's entry cache in `entries`.
@@ -5758,24 +5447,6 @@ if previousRevision ~= nil then
   upgradeChains()
 end
 
--- The depth probes the write fast path reads (`depthAllows`) live in this
--- file, so a newer copy starts without them. Views built from now on build
--- theirs; every live view below a scope root gets its probe here, after
--- every upgrade, so nested views an older revision built keep the fast path.
-if previousRevision ~= nil then
-  ---Build the depth probe of every live record view below a scope root. A
-  ---function of its own so its loop variables do not count against the main
-  ---chunk's 200 locals.
-  local function ensureLiveDepthProbes()
-    for _, node in next, views do
-      if node.parent ~= false and node.kinds ~= nil then
-        ensureDepthProbe(#node.pathKeys + 1)
-      end
-    end
-  end
-  ensureLiveDepthProbes()
-end
-
 -- Commit ---------------------------------------------------------------------
 
 rawset(Database, "GetProfile", databaseGetProfile)
@@ -5892,9 +5563,84 @@ rawset(SettingsKit, "GetCharacterKey", function(self)
   return key
 end)
 
+---Whether the named part (`"Namespaces"`, `"SpecProfiles"`, `"Defaults"`) is
+---loaded, so another Kit can ask without raising. An unknown name answers
+---`false`.
+---@param self SettingsKit
+---@param partName string
+---@return boolean
+rawset(SettingsKit, "HasPart", function(self, partName)
+  validateFacade(self, "SettingsKit:HasPart", 3)
+  if isSecret(partName) then
+    error("SettingsKit:HasPart partName must not be a secret value", 2)
+  end
+  if type(partName) ~= "string" then
+    error("SettingsKit:HasPart partName must be a string", 2)
+  end
+  return rawget(rawget(state, "parts"), partName) ~= nil
+end)
+
 rawset(dispatch, "compactOnLogout", compactOnLogout)
 rawset(dispatch, "compactAllOnLogout", compactAllOnLogout)
 rawset(dispatch, "readView", viewIndex)
+
+-- Spec profiles live in the SpecProfiles part (revision 16). The core keeps
+-- the `specProfiles` section consistent without it (`createLayout`,
+-- `ResetDatabase`, `DatabaseHelpers.forgetSpecProfiles`) and calls the part
+-- through `dispatch.onDatabaseOpened` (at `Open`) and `dispatch.onSpecEvent`
+-- (the shared listener an earlier revision may have connected). A member
+-- of the part is never replaced once the part installed it. Otherwise, after
+-- an upgrade from revision 15, the last revision with spec profiles inside,
+-- revision 15's members and entries are kept: they read only saved tables and
+-- database fields and switch through `rawget(Database, "SetProfile")`, so they
+-- run against this revision's databases. Without either, the members are
+-- stubs that raise at the caller's line and the entries do nothing.
+-- Inline code of the main chunk, freed once the file has run.
+do
+  local SPEC_PROFILES = "SpecProfiles"
+  if previousRevision == 15 and rawget(rawget(state, "parts"), SPEC_PROFILES) == nil then
+    rawset(state, "legacySpecProfiles", {
+      GetSpecIndex = rawget(SettingsKit, "GetSpecIndex"),
+      SetSpecProfile = rawget(Database, "SetSpecProfile"),
+      GetSpecProfile = rawget(Database, "GetSpecProfile"),
+      ApplySpecProfile = rawget(Database, "ApplySpecProfile"),
+      onSpecEvent = rawget(dispatch, "onSpecEvent"),
+      onDatabaseOpened = rawget(dispatch, "onDatabaseOpened"),
+    })
+  end
+  -- A revision 10 or older opened its databases without spec profiles, over
+  -- saved tables that may already hold assignments a newer copy wrote in an
+  -- earlier session; the part applies them once when it loads.
+  if previousRevision ~= nil and previousRevision < 11 then
+    rawset(state, "specProfilesCatchUp", true)
+  end
+  -- Revision 11 added the flag; state an older revision built gets it.
+  if type(rawget(state, "specListenerConnected")) ~= "boolean" then
+    rawset(state, "specListenerConnected", false)
+  end
+  -- Revision 15's entry, which no other revision reads any more.
+  rawset(dispatch, "forgetSpecProfiles", nil)
+
+  if rawget(rawget(state, "parts"), SPEC_PROFILES) == nil then
+    local kept = rawget(state, "legacySpecProfiles") or {}
+    local function databaseStub(methodName)
+      local label = "SettingsKit.Database:" .. methodName
+      return kept[methodName]
+        or function()
+          error(DatabaseHelpers.partMissingMessage(label, SPEC_PROFILES), 2)
+        end
+    end
+    rawset(SettingsKit, "GetSpecIndex", kept.GetSpecIndex or function(self)
+      validateFacade(self, "SettingsKit:GetSpecIndex", 3)
+      error(DatabaseHelpers.partMissingMessage("SettingsKit:GetSpecIndex", SPEC_PROFILES), 2)
+    end)
+    rawset(Database, "SetSpecProfile", databaseStub("SetSpecProfile"))
+    rawset(Database, "GetSpecProfile", databaseStub("GetSpecProfile"))
+    rawset(Database, "ApplySpecProfile", databaseStub("ApplySpecProfile"))
+    rawset(dispatch, "onSpecEvent", kept.onSpecEvent or function() end)
+    rawset(dispatch, "onDatabaseOpened", kept.onDatabaseOpened or function() end)
+  end
+end
 
 -- The core functions the parts call (`state.helpers`). Replaced by every
 -- revision, read by a part at call time.
@@ -5925,6 +5671,31 @@ do
   helpers.compactDatabase = compactDatabase
   helpers.fireProfileSignal = fireProfileSignal
   helpers.noteCreatedProfile = DatabaseHelpers.noteCreatedProfile
+  helpers.readGlobal = readGlobal
+  helpers.isIntegerAtLeast = isIntegerAtLeast
+  helpers.isStoredProfileName = isStoredProfileName
+  helpers.validateFacade = validateFacade
+  helpers.validateProfileName = validateProfileName
+  helpers.refuseNamespace = DatabaseHelpers.refuseNamespace
+  helpers.refuseReadOnly = refuseReadOnly
+  helpers.findSchemaKit = findSchemaKit
+  helpers.joinRelative = joinRelative
+end
+
+-- Plain defaults are the Defaults part's (revision 16): `compileScope` hands
+-- a plain scope table to `dispatch.compileDefaults`, which the part installs
+-- and no core revision overwrites. `validateSchemaTable` refuses a plain scope
+-- before this entry is reached while the part is absent; the default raises
+-- the same message, for a caller that reaches it another way.
+if rawget(rawget(state, "parts"), "Defaults") == nil then
+  rawset(dispatch, "compileDefaults", function(_, _, level, label)
+    error(
+      label
+        .. " plain defaults are in SettingsKit's Defaults part, which is not loaded:"
+        .. " add settingsKit\\parts\\SettingsKit-Defaults.lua",
+      level
+    )
+  end)
 end
 rawset(state, "runtimeRevision", IMPLEMENTATION_REVISION)
 

@@ -78,7 +78,7 @@ end
 local function openDatabase(client, options)
   local OptionsKit = TestEnv.NewPackage()
   installClient(client)
-  local SettingsKit = require("SettingsKit")
+  local SettingsKit = TestEnv.RequireSettingsKit()
   local S = require("SchemaKit")
   local db = SettingsKit:Open(SAVED_VARIABLE, {
     profile = S.table({ fields = { scale = S.optional(S.number(), 1) } }),

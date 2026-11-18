@@ -193,7 +193,28 @@ Moved from `docs/ROADMAP.md` (Package O — memory, performance and ease of use 
    dispatch entries, why the checker keeps every kind), CHANGELOG 0.3.0,
    `tests/README.md`. Outside, the maintainer's: EMBEDDING.md footprints,
    OptionsKit and CommandKit manifests (their owners').
-9. Status: recorded 2026-11-16; code follows.
+9. Status: implemented 2026-11-18, 0.3.0, revision 7, 161 specs (one
+   pending). Measured on host Lua 5.1.5 (64-bit, debug information kept,
+   resident bytes after a full collection, each file loaded after Registry):
+   core 85,445 B → 78,698 B (−7.9%); Rules part 7,798 B; Apply part 6,845 B.
+   The core shrank by 6.7 KB rather than the 10 KB estimated: the part
+   interface (four stubs, `HasPart`, `adoptPart`, the helpers table, about
+   2.5 KB) and the shared `isSecret` and `describeKey` blocks cost more than
+   the 1.4 KB budgeted; installing the members runs as main-chunk code and is
+   freed after load. Choices the record left open, taken conservatively:
+   only revision 6 (the last single-file revision, proved with its byte copy)
+   has its members kept on an upgrade, an older copy gets the stubs; the
+   argument checks take the shared `isSecret` block while the checker keeps
+   its per-check `currentSecretProbe` read; `HasPart` refuses a secret name
+   with "must not be a secret value" so KitConformance's arguments group can
+   cover it; the `limits` loop is opted out in `tooling/shared/pins.json`
+   ("deferred"). KitConformance's `limits` group stays pending:
+   `defaultArrayMax` has no ceiling, which the group requires for every
+   limit. Outside this package (reported, not changed): CommandKit's
+   manifest must name `["Apply"]`; ModuleKit's `Implements_spec.lua` builds
+   `SchemaKit.custom` and its test environment must load the Rules part;
+   AddonKit's Database part calls `SchemaKit.oneOf` (Rules) until it moves
+   to SettingsKit's Defaults part.
 
 ---
 

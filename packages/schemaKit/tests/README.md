@@ -15,9 +15,11 @@ The SchemaKit suite covers:
 - limits: the defaults in a fresh table, `GetLimit` for each limit and after `SetLimits` without allocating and its refusals at the caller's line (dot call, a number, an unknown name, a secret), partial updates, `maxDepth` up to its ceiling of 64, a lowered `maxPatternCaptures`, `pathKeyLimit` in failure paths, `defaultArrayMax` read when a node is built, `UNBOUNDED` lifting the default array bound and refused (with its reason, at the caller's line) by the other three, values past a ceiling and invalid values refused without changing anything, a table key named by its type without running its `__tostring`, dot calls, and the limits and the sentinel kept across an in-place upgrade;
 - compiled node layout 2 (revision 6, `NodeLayout_spec.lua`): nodes holding only the fields their kind uses, `Describe` unchanged, and the upgrade from revision 5 rebuilding layout 1 nodes as sparse ones with every reference re-pointed and a `false` default kept;
 - the three cookbook schemas from `docs/API.md`, run as written;
-- manifest/runtime API and revision consistency, and the dependency list.
+- the parts (revision 7, `Parts_spec.lua`): without the Rules part `custom`, `oneOf` and a `string` pattern raise the not-loaded message at the caller's line, and without the Apply part `Apply` does after its receiver check; the core alone builds and checks every other kind; `HasPart` and its refusals; a part's members installed when it loads and kept when its file runs again or a newer core loads; nodes built with the parts checked by a newer core; a part loaded without the core refused; the upgrade from revision 6 (the byte copy `fixtures/SchemaKit-revision6.lua`) keeping revision 6's builders and `Apply` while the parts are absent and handing over when they load; and the documented limit of a revision 6 copy loaded after revision 7;
+- manifest/runtime API and revision consistency, the dependency list and the parts' revisions;
+- the shared conformance suite (`Conformance_spec.lua`, `tests/support/KitConformance.lua`): manifest, receivers, the secret `GetLimit` and `HasPart` names, and the in-place upgrade seeding a sealed schema; `limits` stays pending because `defaultArrayMax` has no ceiling.
 
-SchemaKit is pure Lua, so `support/SchemaKitTestEnv.lua` builds its environment with `wowApi = false` and installs the `issecretvalue` stub only in the specs that need it.
+SchemaKit is pure Lua, so `support/SchemaKitTestEnv.lua` builds its environment with `wowApi = false` and installs the `issecretvalue` stub only in the specs that need it. Its `NewPackage` loads the core and both parts; `NewCore` the core alone; `LoadPart(name)` one part; `LoadRevision(n)` takes revision 6 and older from the fixture.
 
 | Spec | Covers |
 |---|---|
@@ -34,4 +36,6 @@ SchemaKit is pure Lua, so `support/SchemaKitTestEnv.lua` builds its environment 
 | `Cookbook_spec.lua` | the `docs/API.md` cookbook, run as written |
 | `ErrorLevels_spec.lua` | errors reported at the caller's line |
 | `Bootstrap_spec.lua` | publication, duplicate loads, upgrades |
-| `Manifest_spec.lua` | manifest and runtime metadata |
+| `Manifest_spec.lua` | manifest and runtime metadata, the parts |
+| `Parts_spec.lua` | the Rules and Apply parts, stubs, `HasPart`, the upgrade from revision 6 |
+| `Conformance_spec.lua` | the shared Kit conformance suite |

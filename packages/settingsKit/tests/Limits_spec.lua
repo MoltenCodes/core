@@ -248,7 +248,7 @@ describe("SettingsKit limits", function()
     local cases = {
       {
         { [TestEnv.NewSecret()] = 100 },
-        "SettingsKit:SetLimits limits must not have a secret key",
+        "SettingsKit:SetLimits limits.<secret> is not a recognised limit; it accepts maxProfileNameLength, pathKeyLimit",
       },
       {
         { pathKeyLimit = TestEnv.NewSecret() },
@@ -285,7 +285,10 @@ describe("SettingsKit limits", function()
         { maxProfileNameLength = 100.5 },
         "SettingsKit:SetLimits limits.maxProfileNameLength must be an integer from 64 to 1024",
       },
-      { { maxDepth = 8 }, "SettingsKit:SetLimits limits.maxDepth is not a recognised limit" },
+      {
+        { maxDepth = 8 },
+        "SettingsKit:SetLimits limits.maxDepth is not a recognised limit; it accepts maxProfileNameLength, pathKeyLimit",
+      },
     }
     for index = 1, #cases do
       local line
@@ -331,7 +334,8 @@ describe("SettingsKit limits", function()
     end)
     assertReportedAt(
       line,
-      "SettingsKit:SetLimits limits.<table> is not a recognised limit",
+      "SettingsKit:SetLimits limits.<table> is not a recognised limit;"
+        .. " it accepts maxProfileNameLength, pathKeyLimit",
       ok,
       value
     )

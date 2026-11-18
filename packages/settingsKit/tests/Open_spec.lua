@@ -135,6 +135,14 @@ describe("SettingsKit:Open", function()
     TestEnv.expectErrorContaining(
       "schema.profile must be a SchemaKit schema node or sealed schema",
       function()
+        SettingsKit:Open("MyAddonDB", { profile = 5 })
+      end
+    )
+    -- A plain table is plain defaults, which need the Defaults part.
+    TestEnv.expectErrorContaining(
+      "SettingsKit:Open plain defaults are in SettingsKit's Defaults part, which is not loaded:"
+        .. " add settingsKit\\parts\\SettingsKit-Defaults.lua",
+      function()
         SettingsKit:Open("MyAddonDB", { profile = {} })
       end
     )

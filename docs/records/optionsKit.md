@@ -962,4 +962,35 @@ a full collection. KB is 1000 bytes. Ace3 is the pinned bench copy
    table needs Presentation and Handlers loaded or the fields are not
    carried (its manifest may name the parts in its `optionsKit` contract).
 
-9. Status: recorded 2026-11-16; code follows.
+9. Status: implemented 2026-11-18, 0.9.0, revision 16, 297 specs (one
+   pending). Measured on host Lua 5.1.5 (64-bit, debug information kept,
+   resident bytes after a full collection, each file after its
+   dependencies): core 158,714 B → 134,087 B (−15.5%); Presentation
+   30,068 B, Handlers 8,171 B, Bind 10,922 B; Profiles 36,445 B → 41,164 B
+   (part revision 2); Dynamic 17,412 B. The core stays above the 103 KB
+   estimated: what remains is the "every tree" group of point 2 (about
+   62 KB of prototypes plus the data tables), and the revision 15 routing
+   costs about 7 KB (`Legacy.specNeedsAbsentPart`, the routed branches, the
+   `Bound` defaults); the scan of revision 15 trees runs as main-chunk code
+   and is freed. Choices the record left open, taken conservatively: the
+   core keeps `detachProfileLink` (small) so `Undefine` frees a link any
+   revision attached with or without Profiles revision 2; a Profiles
+   revision 1 part (or a single-file `ProfileOptions`) with a revision 16
+   core builds groups that define and work but are not linked to the tree
+   (documented limit); routing of `Describe`, `DescribeOption` and
+   `IsHidden(path, interface)` applies to trees marked at the upgrade (or
+   defined through revision 15) as using a part; `Bound.database` and
+   `Bound.text` stay core (the record moved `bindDatabaseOf`/`bindTextOf`;
+   `IsDisabled` and `Describe` need them for any bound record); a method-name
+   `order` needs Handlers and Presentation; `GetTrees` is exempt from
+   KitConformance's receiver group (it reads no receiver) and `limits`
+   stays pending (no `SetLimits`); the conformance spec loads its chain
+   tolerantly in `NewPackageWithout`, since KitConformance loads the rest of
+   a multi-Kit chain unprotected; the Rules part is checked with
+   `SchemaKit:HasPart` before a pattern or values function, raising at the
+   `Define` caller. A routed `Define` reports its own refusals at a line
+   inside OptionsKit (no tail call is possible without losing the line).
+   Outside this package (reported, not changed): WidgetKit, BridgeKit,
+   CommandKit and AddonKit test environments and fixtures must load the
+   parts their trees use (Bind; BridgeKit Presentation and Handlers) and
+   SchemaKit's Rules part; the client suite `EXPECTED.md` and `.toc`.
