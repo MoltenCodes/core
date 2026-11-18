@@ -402,6 +402,79 @@ describe("OptionsKit minimal core", function()
       )
     end)
 
+    it(
+      "hands to revision 15 a Define needing an absent part only below a plugin or in a function name",
+      function()
+        local current = upgradeWithTree()
+        TestEnv.LoadPart("Handlers")
+        local plugged = current:Define("Plugged", {
+          type = "group",
+          args = {},
+          plugins = {
+            extra = {
+              half = { type = "toggle", name = "Half", width = "half", get = getter, set = setter },
+            },
+          },
+        })
+        assert.are.equal("half", plugged:Describe().children[1].width)
+        local named = current:Define(
+          "Named",
+          treeWith({
+            type = "toggle",
+            name = function()
+              return "Dynamic"
+            end,
+            get = getter,
+            set = setter,
+          })
+        )
+        assert.are.equal("Dynamic", named:Describe().children[1].name)
+        local trees = current._state.legacyMembers.revision15.trees
+        assert.is_true(trees[plugged])
+        assert.is_true(trees[named])
+      end
+    )
+
+    it(
+      "keeps a revision 15 tree whose only part field is a presentation hint, and not a plain one",
+      function()
+        TestEnv.Reset()
+        TestEnv.InstallWowApi()
+        require("Registry")
+        require("SignalKit")
+        require("SchemaKit")
+        require("SchemaKit-Rules")
+        local previous = TestEnv.LoadRevision(15)
+        local wide = previous:Define(
+          "Wide",
+          treeWith({
+            type = "toggle",
+            name = "Wide",
+            width = "double",
+            get = getter,
+            set = setter,
+          })
+        )
+        local plain = previous:Define(
+          "Plain",
+          treeWith({
+            type = "toggle",
+            name = "Plain",
+            order = 2,
+            get = getter,
+            set = setter,
+          })
+        )
+        local current = require("OptionsKit")
+        local trees = current._state.legacyMembers.revision15.trees
+        assert.is_true(trees[wide])
+        assert.is_nil(trees[plain])
+        assert.are.equal("double", wide:Describe().children[1].width)
+        assert.are.equal(2, plain:Describe().children[1].order)
+        assert.is_true(plain:Get("option"))
+      end
+    )
+
     it("answers the same once the parts load, and drops revision 15", function()
       local current, tree, db, before = upgradeWithTree()
       TestEnv.LoadPart("Presentation")

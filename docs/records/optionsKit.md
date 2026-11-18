@@ -962,7 +962,7 @@ a full collection. KB is 1000 bytes. Ace3 is the pinned bench copy
    table needs Presentation and Handlers loaded or the fields are not
    carried (its manifest may name the parts in its `optionsKit` contract).
 
-9. Status: implemented 2026-11-18, 0.9.0, revision 16, 297 specs (one
+9. Status: implemented 2026-11-18, 0.9.0, revision 16, 308 specs (one
    pending). Measured on host Lua 5.1.5 (64-bit, debug information kept,
    resident bytes after a full collection, each file after its
    dependencies): core 158,714 B → 134,087 B (−15.5%); Presentation

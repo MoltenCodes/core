@@ -76,34 +76,100 @@ describe("OptionsKit parts", function()
     end
   )
 
-  it("lets an equal or older part revision yield to the installed one", function()
-    local OptionsKit = TestEnv.NewCorePackage()
-    require("OptionsKit-Profiles")
-    local record = rawget(rawget(OptionsKit, "_state"), "parts").Profiles
-    package.loaded["OptionsKit-Profiles"] = nil
-    assert.are.equal(OptionsKit, require("OptionsKit-Profiles"))
-    assert.are.equal(record, rawget(rawget(OptionsKit, "_state"), "parts").Profiles)
-  end)
+  for _, partName in ipairs({ "Presentation", "Handlers", "Bind", "Profiles", "Dynamic" }) do
+    it("lets an equal " .. partName .. " revision yield to the installed one", function()
+      local OptionsKit = TestEnv.NewCorePackage()
+      TestEnv.LoadPart(partName)
+      local record = rawget(rawget(OptionsKit, "_state"), "parts")[partName]
+      assert.is_table(record)
+      assert.are.equal(OptionsKit, TestEnv.LoadPart(partName))
+      assert.are.equal(record, rawget(rawget(OptionsKit, "_state"), "parts")[partName])
+    end)
 
-  it("refuses to load a part without its core", function()
-    TestEnv.Reset()
-    TestEnv.InstallWowApi()
-    require("Registry")
-    TestEnv.expectErrorContaining(
-      "MoltenCodes OptionsKit part Dynamic requires OptionsKit API 1 to be loaded first",
-      function()
-        require("OptionsKit-Dynamic")
+    it("refuses to load the " .. partName .. " part without its core", function()
+      TestEnv.Reset()
+      TestEnv.InstallWowApi()
+      require("Registry")
+      local moduleName = "OptionsKit-" .. partName
+      package.loaded[moduleName] = nil
+      TestEnv.expectErrorContaining(
+        "MoltenCodes OptionsKit part "
+          .. partName
+          .. " requires OptionsKit API 1 to be loaded first",
+        function()
+          require(moduleName)
+        end
+      )
+      package.loaded[moduleName] = nil
+    end)
+  end
+
+  it(
+    "refuses at Define what needs SchemaKit's Rules part when SchemaKit runs without it",
+    function()
+      TestEnv.Reset()
+      TestEnv.InstallWowApi()
+      require("Registry")
+      require("SignalKit")
+      local SchemaKit = require("SchemaKit")
+      local OptionsKit = require("OptionsKit")
+      assert.is_false(SchemaKit:HasPart("Rules"))
+      local rulesFile = " needs SchemaKit's Rules part: add schemaKit\\parts\\SchemaKit-Rules.lua"
+        .. PART_MESSAGE_TAIL
+      TestEnv.expectErrorContaining(
+        "OptionsKit:Define tree.args.name.pattern" .. rulesFile,
+        function()
+          OptionsKit:Define("Patterned", {
+            type = "group",
+            args = {
+              name = {
+                type = "input",
+                name = "Name",
+                pattern = "^%a+$",
+                get = getter,
+                set = setter,
+              },
+            },
+          })
+        end
+      )
+      for _, kind in ipairs({ "select", "multiselect" }) do
+        TestEnv.expectErrorContaining(
+          "OptionsKit:Define tree.args.choice.values" .. rulesFile,
+          function()
+            OptionsKit:Define("Chosen" .. kind, {
+              type = "group",
+              args = {
+                choice = {
+                  type = kind,
+                  name = "Choice",
+                  values = function()
+                    return { a = "A" }
+                  end,
+                  get = getter,
+                  set = setter,
+                },
+              },
+            })
+          end
+        )
       end
-    )
-    package.loaded["OptionsKit-Dynamic"] = nil
-    TestEnv.expectErrorContaining(
-      "MoltenCodes OptionsKit part Profiles requires OptionsKit API 1 to be loaded first",
-      function()
-        require("OptionsKit-Profiles")
-      end
-    )
-    package.loaded["OptionsKit-Profiles"] = nil
-  end)
+      -- A values table needs no Rules part: its keys build an enum.
+      local tree = OptionsKit:Define("Listed", {
+        type = "group",
+        args = {
+          choice = {
+            type = "select",
+            name = "Choice",
+            values = { a = "A" },
+            get = getter,
+            set = setter,
+          },
+        },
+      })
+      assert.is_true(tree:Validate("choice", "a"))
+    end
+  )
 
   it("keeps the ProfileOptions of a single-file revision when no addon loads the part", function()
     TestEnv.Reset()
