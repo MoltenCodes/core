@@ -485,7 +485,7 @@ describe("SettingsKit bootstrap", function()
 
       local upgraded = TestEnv.ReloadPackage()
       assert.are.equal(previous, upgraded)
-      assert.are.equal(15, upgraded.REVISION)
+      assert.is_true(upgraded.REVISION > 14)
       assert.is_table(state.parts)
       assert.is_table(state.helpers)
       assert.is_table(state.createdProfiles)

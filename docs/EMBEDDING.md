@@ -256,6 +256,7 @@ schemaKit/parts/SchemaKit-Rules.lua
 schemaKit/parts/SchemaKit-Apply.lua
 settingsKit/SettingsKit.lua
 settingsKit/parts/SettingsKit-Namespaces.lua
+settingsKit/parts/SettingsKit-SpecProfiles.lua
 signalKit/parts/SignalKit-Coalescing.lua
 toastKit/ToastKit.lua
 tooltipKit/TooltipKit.lua
@@ -391,6 +392,7 @@ part loads after its Kit's core and brings in what it needs:
 | `schemaKit/Rules` | `schemaKit/parts/SchemaKit-Rules.lua` | The builders whose rules need more than a type and bounds: string patterns (validated when built), SchemaKit.custom and SchemaKit.oneOf. | nothing |
 | `schemaKit/Apply` | `schemaKit/parts/SchemaKit-Apply.lua` | schema:Apply: a checked copy of a value with every declared default filled in. | nothing |
 | `settingsKit/Namespaces` | `settingsKit/parts/SettingsKit-Namespaces.lua` | db:RegisterNamespace and db:GetNamespace: child databases with their own schema over the saved variable's namespaces section, in AceDB's layout, following the parent's profile. | nothing |
+| `settingsKit/SpecProfiles` | `settingsKit/parts/SettingsKit-SpecProfiles.lua` | Profiles assigned per specialization or talent group: SettingsKit:GetSpecIndex, db:SetSpecProfile, db:GetSpecProfile and db:ApplySpecProfile, switched by itself on spec changes while EventKit is embedded. | nothing |
 | `signalKit/Coalescing` | `signalKit/parts/SignalKit-Coalescing.lua` | Bucketed bus messages: collect a burst of publishes and deliver it once per interval. | `timerKit`, `schedulerKit`, `schedulerKit/Coalescing` |
 | `widgetKit/Containers` | `widgetKit/parts/WidgetKit-Containers.lua` | The container types Frame (a movable, resizable window), Group and ScrollFrame. | nothing |
 | `widgetKit/Text` | `widgetKit/parts/WidgetKit-Text.lua` | The display types Label, Heading and Spacer. | nothing |

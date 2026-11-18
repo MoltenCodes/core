@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.7.0 — 2026-11-18
+
+A smaller core: spec profiles and plain defaults become parts, plans are sparse, and the hand-written helpers take their shared blocks (roadmap package P, "settingsKit SpecProfiles part", "settingsKit Defaults part" and "settingsKit core trims", core decision 20). API generation 1.
+
+- Changed: spec profiles moved to the new part `parts/SettingsKit-SpecProfiles.lua` (part revision 1; EventKit optional): `SettingsKit:GetSpecIndex`, `db:SetSpecProfile`, `db:GetSpecProfile`, `db:ApplySpecProfile` and the switch on spec events. Without the part the four members stay on the facade and the database prototype and raise at the caller's line: `SettingsKit:GetSpecIndex is in SettingsKit's SpecProfiles part, which is not loaded: add settingsKit\parts\SettingsKit-SpecProfiles.lua` (and `SettingsKit.Database:SetSpecProfile`, `GetSpecProfile`, `ApplySpecProfile`). The core keeps the `specProfiles` section: it is created and checked as before, `ResetDatabase` empties it and `DeleteProfile` forgets the assignments naming the deleted profile, with or without the part. `Open` applies a character's assignment only while the part is loaded. With an EventKit from revision 23 (unit events in its Units part), the part connects its listener only when `EventKit:HasPart("Units")`; an older EventKit is asked for `ConnectUnit`.
+- Added: `SettingsKit:HasPart(name)`, whether a part is loaded, without raising for an unknown name; it refuses a dot call, a secret name and a non-string at the caller's line.
+
 ## 0.6.0 — 2026-11-15
 
 AceDB-3.0's namespaces, its four other scopes and its other database callbacks (roadmap package O, "settingsKit AceDB scopes, profile lifecycle signals, `missingOk`, and the core side of namespaces" and "settingsKit Namespaces part"). API generation 1, additive.

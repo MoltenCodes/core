@@ -3,10 +3,10 @@
   "displayName": "SettingsKit",
   "description": "Saved variables for World of Warcraft addons: scoped databases with schema-validated writes, defaults that are never written back, profiles and versioned migrations.",
   "summary": "Saved variables with scopes, schema-validated writes, defaults never written back, profiles and versioned migrations.",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "license": "MIT",
   "api": 1,
-  "revision": 15,
+  "revision": 16,
   "dependencies": {
     "registry": {
       "api": 2
@@ -29,6 +29,16 @@
       "revision": 1,
       "dependencies": {},
       "optionalDependencies": {}
+    },
+    "SpecProfiles": {
+      "description": "Profiles assigned per specialization or talent group: SettingsKit:GetSpecIndex, db:SetSpecProfile, db:GetSpecProfile and db:ApplySpecProfile, switched by itself on spec changes while EventKit is embedded.",
+      "revision": 1,
+      "dependencies": {},
+      "optionalDependencies": {
+        "eventKit": {
+          "api": 1
+        }
+      }
     }
   }
 }
