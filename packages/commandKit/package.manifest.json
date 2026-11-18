@@ -29,7 +29,10 @@
       "revision": 1,
       "dependencies": {
         "schemaKit": {
-          "api": 1
+          "api": 1,
+          "parts": [
+            "Apply"
+          ]
         }
       }
     },

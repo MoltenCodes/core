@@ -14,7 +14,7 @@ plain words embeds the core alone, without SchemaKit:
 | File | Holds | Needs |
 |---|---|---|
 | `CommandKit.lua` | registration, parsing, dispatch, sub-commands and usage, sinks, the prefix, `Dispatch`, `Reopen` | Registry API 2 |
-| `parts/CommandKit-Arguments.lua` | a spec's `arguments`: SchemaKit schemas, coercion of the typed words, generated usage words and refusals | the core, SchemaKit API 1 |
+| `parts/CommandKit-Arguments.lua` | a spec's `arguments`: SchemaKit schemas, coercion of the typed words, generated usage words and refusals | the core, SchemaKit API 1 with its Apply part |
 | `parts/CommandKit-Options.lua` | `BindOptions` and `GetBoundTree`: the command line over an OptionsKit tree | the core, OptionsKit API 1, the Arguments part |
 | `parts/CommandKit-Completion.lua` | `EnableCompletion`, `DisableCompletion` and the completion providers | the core |
 
@@ -24,6 +24,7 @@ Runtime files must be loaded in dependency order:
 Registry.lua
 CommandKit.lua
 SchemaKit.lua                        (with the Arguments part)
+SchemaKit-Apply.lua                  (with the Arguments part)
 parts/CommandKit-Arguments.lua       (optional; the Options part needs it)
 OptionsKit.lua                       (with the Options part)
 parts/CommandKit-Options.lua         (optional)
@@ -71,6 +72,7 @@ CommandKit does not rely on `require()` at runtime. Loaded without Registry API 
 | `ChatEdit_GetActiveWindow` | completion, when the client passes no edit box | That Tab press is not completed. |
 | `geterrorhandler` | handler and completion failures | Falls back to `print`. |
 | SchemaKit API 1 | the Arguments part, at load | The part raises at load; the core does not need it. |
+| SchemaKit's Apply part | the Arguments part, when a left-out position has a declared default | the dispatch raises SchemaKit's not-loaded message for `schema:Apply` and the handler does not run; the manifest names the part (`"parts": ["Apply"]`), so the generated `embeds.xml` carries it. |
 | OptionsKit API 1, through `Registry:Find` | `BindOptions` (Options part) | `BindOptions` raises at the caller. |
 | LocaleKit API 1, through `Registry:Find` | `context:Printf`, `scope:Printf` | `string.format`, without indexed specifiers. |
 | `issecretvalue` | every secret check. Read once at load and kept when it is a function; read again on each check only when it was absent at load (the shared `isSecret` block, revision 12). Revisions 10 and 11 asked ClientKit's `IsSecret` first, which asks the same probe. | Nothing is secret. |

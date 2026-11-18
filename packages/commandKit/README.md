@@ -77,6 +77,7 @@ troubleshooting. This package's load order inside a consuming addon is:
 Libs\MoltenCodes\registry\Registry.lua
 Libs\MoltenCodes\commandKit\CommandKit.lua
 Libs\MoltenCodes\schemaKit\SchemaKit.lua                       # with the Arguments part
+Libs\MoltenCodes\schemaKit\parts\SchemaKit-Apply.lua          # with the Arguments part
 Libs\MoltenCodes\commandKit\parts\CommandKit-Arguments.lua    # only with argument schemas or BindOptions
 Libs\MoltenCodes\signalKit\SignalKit.lua                       # with the Options part
 Libs\MoltenCodes\optionsKit\OptionsKit.lua                     # with the Options part
@@ -93,13 +94,14 @@ Resident sizes on host Lua 5.1.5 (64-bit, debug information kept, measured
 | File | Adds | Needs | Resident |
 |---|---|---|---:|
 | `CommandKit.lua` | registration, parsing, dispatch, sub-commands and usage, sinks | Registry | 113.3 KB |
-| `parts/CommandKit-Arguments.lua` | `arguments` schemas: coercion, usage words, refusals | SchemaKit | 12.1 KB |
+| `parts/CommandKit-Arguments.lua` | `arguments` schemas: coercion, usage words, refusals | SchemaKit with its Apply part | 12.1 KB |
 | `parts/CommandKit-Options.lua` | `BindOptions`, `GetBoundTree` | OptionsKit, the Arguments part | 40.2 KB |
 | `parts/CommandKit-Completion.lua` | tab completion and completion providers | nothing more | 19.3 KB |
 
 Direct runtime dependency of the core: Registry API 2; omitting it makes this
 package raise at load. The Arguments part needs SchemaKit API 1 and raises at
-load without it.
+load without it; it fills a position's declared default with `schema:Apply`,
+which is SchemaKit's Apply part (`schemaKit\parts\SchemaKit-Apply.lua`).
 
 Optional, each found with `Registry:Find` when it is used, so they may load in
 any order:

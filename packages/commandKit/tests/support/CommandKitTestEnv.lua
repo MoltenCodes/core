@@ -44,6 +44,9 @@ local CommandKitTestEnv = FrameworkTestEnv.New({
     "Registry",
     "SignalKit",
     "SchemaKit",
+    -- The Arguments part fills a position's declared default with
+    -- `schema:Apply`, which is SchemaKit's Apply part.
+    "SchemaKit-Apply",
     "OptionsKit",
     "OptionsKit-Bind",
     "CommandKit",
@@ -184,7 +187,8 @@ function CommandKitTestEnv.NewPackageWithoutParts()
   return CommandKit, Registry, SignalKit, SchemaKit, OptionsKit
 end
 
----As `NewPackageWithoutParts`, then CommandKit's three parts, Arguments,
+---As `NewPackageWithoutParts`, then SchemaKit's Apply part (which the
+---Arguments part fills defaults with) and CommandKit's three parts, Arguments,
 ---Options and Completion, as an addon that embeds the whole Kit does.
 ---@return table CommandKit
 ---@return table Registry
@@ -194,6 +198,7 @@ end
 function CommandKitTestEnv.NewPackage()
   local CommandKit, Registry, SignalKit, SchemaKit, OptionsKit =
     CommandKitTestEnv.NewPackageWithoutParts()
+  require("SchemaKit-Apply")
   require("CommandKit-Arguments")
   require("CommandKit-Options")
   require("CommandKit-Completion")

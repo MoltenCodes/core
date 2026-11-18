@@ -575,6 +575,9 @@ a full collection. KB is 1000 bytes. Ace3 is the pinned bench copy
 
 9. Status: implemented 2026-11-18, 0.4.0, revision 12, 242 specs (Arguments
    part revision 1, Options part revision 2, Completion part revision 1).
+   Integration (2026-11-18): the Arguments part's manifest dependency names
+   SchemaKit's `["Apply"]` part (its default filling calls `schema:Apply`), as
+   the schemaKit record reports; the test environment loads `SchemaKit-Apply`.
 
    Measured 2026-11-18 on host Lua 5.1.5 (64-bit), debug information kept,
    each file loaded after its dependencies in one process on the shared fake
