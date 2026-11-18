@@ -7,7 +7,6 @@
       "../../../meta",
       "../../registry/src",
       "../../eventKit/src",
-      "../../signalKit/src",
       "../../lifecycleKit/src",
       "../../timerKit/src",
       "../../schedulerKit/src"

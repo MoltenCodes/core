@@ -354,15 +354,15 @@ files:
 | 2 | `addonKit`, `apiKit`, `poolKit`, `bindingKit`, `bridgeKit`, `signalKit`, `cacheKit`, `clientKit`, `eventKit`, `timerKit`, `schemaKit`, `compatKit`, `dialogKit`, `editModeKit`, `hookKit`, `interopKit`, `localeKit`, `menuKit`, `widgetKit`, `profileKit`, `rangeKit`, `unitFrameKit` | nothing |
 | 3 | `barKit`, `codecKit`, `glowKit`, `toastKit`, `tooltipKit` | `poolKit` |
 | 3 | `brokerKit`, `logKit`, `mediaKit` | `signalKit` |
+| 3 | `lifecycleKit` | `eventKit` |
 | 3 | `readinessKit`, `schedulerKit` | `timerKit` |
 | 3 | `commandKit` | `schemaKit` |
 | 4 | `launcherKit` | `signalKit`, `brokerKit` |
-| 4 | `lifecycleKit` | `eventKit`, `signalKit` |
+| 4 | `moduleKit` | `eventKit`, `lifecycleKit` |
 | 4 | `optionsKit`, `settingsKit` | `schemaKit`, `signalKit` |
-| 5 | `moduleKit` | `eventKit`, `signalKit`, `lifecycleKit` |
 | 6 | `commKit` | `eventKit`, `poolKit`, `signalKit`, `timerKit` |
+| 6 | `testKit` (development only) | `eventKit`, `lifecycleKit`, `timerKit`, `schedulerKit` |
 | 6 | `panelKit` | `schemaKit`, `signalKit`, `optionsKit`, `widgetKit` |
-| 7 | `testKit` (development only) | `eventKit`, `signalKit`, `lifecycleKit`, `timerKit`, `schedulerKit` |
 
 Each Kit counts as one file here. `apiKit` also carries 5 further core files under `apiKit/flavours/`.
 <!-- /generated:footprint -->
