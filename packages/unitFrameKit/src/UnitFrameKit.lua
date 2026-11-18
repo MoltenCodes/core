@@ -20,8 +20,9 @@
 --
 -- UnitFrameKit requires Registry API 2. It reads at call time `CreateFrame`,
 -- `EnumerateFrames`, `UnitIsUnit`, `UnitExists`, `C_NamePlate`,
--- `issecretvalue` and `geterrorhandler`, and each frame's
--- `CanBeAccessedInContext` (Retail) where the frame has it.
+-- `geterrorhandler`, and each frame's `CanBeAccessedInContext` (Retail)
+-- where the frame has it. `issecretvalue` is read once at load (again on each
+-- check only when the host had none at load).
 --
 -- Contents
 -- --------
@@ -44,7 +45,7 @@
 
 local PACKAGE_NAME = "unitFrameKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 2
+local IMPLEMENTATION_REVISION = 3
 local REQUIRED_REGISTRY_API = 2
 local STATE_SCHEMA = 1
 
@@ -411,29 +412,50 @@ local sharedLimits = rawget(state, "limits")
 
 -- Host facilities ------------------------------------------------------------
 
----Whether `value` is a secret value (Retail 12.x). `issecretvalue` is looked
----up at every call, so a probe that appears after load is used at once.
----@param value any
----@return boolean
-local function isSecret(value)
-  local probe = readGlobal("issecretvalue")
-  return type(probe) == "function" and probe(value) == true
-end
+-- shared:begin isSecret 1
+-- Copied from tooling/shared/lua/isSecret.lua by python3 -m tooling.shared.sync; edit that file, not this copy.
+---Whether `value` is a secret value the host forbids comparing.
+---@type fun(value: any): boolean
+local isSecret
+do
+  -- issecretvalue is a client API reachable only through the global table.
+  -- selene: allow(global_usage)
+  local loadedProbe = rawget(_G, "issecretvalue")
+  if type(loadedProbe) ~= "function" then
+    loadedProbe = nil
+  end
 
----Hand `failure` to the host error handler without raising. Outside a client
----it is printed, as the client's own default handler would.
+  isSecret = function(value)
+    local probe = loadedProbe
+    if probe == nil then
+      -- selene: allow(global_usage)
+      probe = rawget(_G, "issecretvalue")
+      if type(probe) ~= "function" then
+        return false
+      end
+    end
+    return probe(value) == true
+  end
+end
+-- shared:end isSecret
+
+-- shared:begin reportError 1
+-- Copied from tooling/shared/lua/reportError.lua by python3 -m tooling.shared.sync; edit that file, not this copy.
+---Report `failure` through the host error handler, or print it.
 ---@param failure any
 local function reportError(failure)
-  local getErrorHandler = readGlobal("geterrorhandler")
+  -- geterrorhandler is a client API reachable only through the global table.
+  -- selene: allow(global_usage)
+  local getErrorHandler = rawget(_G, "geterrorhandler")
   if type(getErrorHandler) == "function" then
     local handler = getErrorHandler()
-    if type(handler) == "function" then
-      handler(failure)
+    if type(handler) == "function" and pcall(handler, failure) then
       return
     end
   end
   print(failure)
 end
+-- shared:end reportError
 
 ---A non-empty string the client answered, or `nil` for a secret or anything else.
 ---@param value any
@@ -480,15 +502,19 @@ end
 -- that receives it*, so every further hop towards `error` adds exactly one.
 -- Secrets are checked first, because comparing one raises.
 
+-- shared:begin validateFacade 1 __FACADE__=UnitFrameKit
+-- Copied from tooling/shared/lua/validateFacade.lua by python3 -m tooling.shared.sync; edit that file, not this copy.
+---Raise at `level` unless `receiver` is the UnitFrameKit facade.
 ---@param receiver any the table the method was called on
----@param label string public method name, used in the argument error
+---@param label string qualified method name, used in the argument error
 ---@param level integer stack level the failure is reported at
 local function validateFacade(receiver, label, level)
-  -- `type` first: a secret receiver is never a table, and only a table is compared.
   if type(receiver) ~= "table" or receiver ~= UnitFrameKit then
-    error(label .. " must be called on the UnitFrameKit facade; use " .. label .. "(...)", level)
+    local hint = "; use " .. label .. "(...)"
+    error(label .. " must be called on the UnitFrameKit facade" .. hint, level)
   end
 end
+-- shared:end validateFacade
 
 ---@param unit any
 ---@param label string

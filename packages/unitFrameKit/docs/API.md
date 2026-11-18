@@ -31,8 +31,8 @@ UnitFrameKit does not rely on `require()` at runtime.
 | `UnitExists` | queries: a unit that does not exist answers nothing without looking | Every query looks. |
 | `C_NamePlate.GetNamePlateForUnit` | `GetNamePlate` | `GetNamePlate` answers `nil`. |
 | `frame:CanBeAccessedInContext()` (Retail) | whether a frame may be read at all | The frame is read when it is not forbidden (`IsForbidden`). |
-| `issecretvalue` | every check, every value the client answers | Nothing is treated as secret. |
-| `geterrorhandler` | listener failures, a failed scan, the `maxFrames` report | They are printed. |
+| `issecretvalue` | every check, every value the client answers; read once at load, and again on each check only when it was absent at load | Nothing is treated as secret. |
+| `geterrorhandler` | listener failures, a failed scan, the `maxFrames` report | The failure is printed, also when the handler itself raises. |
 
 `EnumerateFrames`, `UnitIsUnit`, `UnitExists`, `C_NamePlate.GetNamePlateForUnit` and the frame methods UnitFrameKit reads (`IsForbidden`, `GetObjectType`, `GetAttribute`, `IsVisible`, `GetName`, `GetParent`, `GetParentKey`) exist on Retail, Mists of Pandaria Classic and Classic Era. `CanBeAccessedInContext` is in the Retail documentation only (`SimpleFrameScriptObjectAPIDocumentation.lua`: "Returns whether the current Lua execution context has permission to access this object", false "when execution is tainted and the object is forbidden or enforcing access restrictions"); UnitFrameKit asks it when the frame has it. `EnumerateFrames` is not in the captured API documentation; warcraft.wiki.gg (`API_EnumerateFrames`) lists it for every game type, and UnitFrameKit checks for it at every scan.
 
@@ -191,6 +191,8 @@ Argument errors raise at the caller's line. A secret value is refused with the s
 | `UnitFrameKit.Connection:Disconnect must be called on a UnitFrameKit connection; use connection:Disconnect(...)` (and `IsConnected`) | A connection method on anything but a connection handle. |
 
 At load, `MoltenCodes UnitFrameKit requires Registry API 2 to be loaded first`, `MoltenCodes UnitFrameKit requires a valid Registry API 2 facade` and `MoltenCodes UnitFrameKit package state is corrupted or incomplete` raise at the loading file. What the client calls (events, `OnUpdate`) never raises: a scan that fails, a listener's error and the `maxFrames` report go to `geterrorhandler()`.
+
+A host error handler that itself raises does not turn a reported failure into a second error raised into the client: the failure is printed instead, as on a host without a handler (implementation revision 3).
 
 ## Performance
 
