@@ -15,7 +15,6 @@ local KitConformance = require("KitConformance")
 local Environment = FrameworkTestEnv.New({
   modules = {
     "Registry",
-    "SignalKit",
     "EventKit",
     "LifecycleKit",
     "TimerKit",

@@ -24,7 +24,6 @@ local function loadDependencies()
   TestEnv.InstallWowApi()
   for _, moduleName in ipairs({
     "Registry",
-    "SignalKit",
     "EventKit",
     "LifecycleKit",
     "TimerKit",
