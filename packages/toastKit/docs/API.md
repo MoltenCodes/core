@@ -27,8 +27,8 @@ ToastKit does not rely on `require()` at runtime.
 | Facility | Used by | Without it |
 |---|---|---|
 | `CreateFrame`, `UIParent` | `Show` | `Show` raises at the caller: `ToastKit:Show needs the client's CreateFrame and UIParent, which this host does not have`. |
-| `issecretvalue` | every check | Nothing is treated as secret. |
-| `geterrorhandler` | an `onClick` that raises | The failure is printed. |
+| `issecretvalue` | every check; read once at load, and again on each check only when it was absent at load | Nothing is treated as secret. |
+| `geterrorhandler` | an `onClick` that raises | The failure is printed. A handler that itself raises is not propagated either: the failure is printed instead. |
 
 A toast counts its own time from the `elapsed` its `OnUpdate` receives, so ToastKit needs no clock.
 
@@ -85,6 +85,8 @@ A secret `title` or `text` is refused unless `allowSecret` is `true`; every othe
 Raising `maxVisible` shows waiting toasts at once; lowering a limit keeps every toast and applies to the next. The limits are shared by every addon in the session.
 
 ## Error behaviour
+
+A failure of a toast's `onClick` goes to the host error handler (`geterrorhandler()`), called under `pcall`. When the client has no handler, or the handler itself raises (an error-display addon with a bug), the failure is printed instead, so reporting it never raises into the client's script call (revision 2; earlier revisions let a raising handler's error through).
 
 Argument errors raise at the caller's line: `ToastKit:Show options.duration must be a number above 0`; methods called on anything but a toast raise `ToastKit.Toast:Dismiss must be called on a ToastKit toast; use toast:Dismiss(...)`. What the client calls (the frames' updates and clicks) never raises.
 
