@@ -13,8 +13,12 @@ The RangeKit suite covers:
 
 `support/RangeKitTestEnv.lua` provides a small world the client calls answer from: the player's class (`SetClass`), a spellbook (`Learn`, `Forget`, `DefineSpell` for a spell's reach or a fixed answer), units at a distance with a relation (`PlaceUnit`, `RemoveUnit`), combat (`SetCombat`), a count of range checks (`CheckCount`), `Sources` (a kind's checker sources), the secret probe, `LoadRevision` and `NewPackageAtRevision` (a fresh world with the working file loaded as an older revision).
 
+The shared helper specs load the Kit with the secret probe already installed (through `package.preload`), raise from the host error handler, and load the committed revision 2 file (`fixtures/RangeKit-revision2.lua`) before the current one.
+
 | Spec | Covers |
 |---|---|
+| `SharedHelpers_spec.lua` | the shared `isSecret`, `reportError` and `validateFacade` blocks, the upgrade from revision 2 |
+| `Conformance_spec.lua` | the repository conformance suite (`tests/support/KitConformance.lua`) |
 | `Range_spec.lua` | lists, estimates, the combat rule, rebuilds, listeners, a host lacking calls |
 | `Arguments_spec.lua` | argument and receiver errors at the caller's line |
 | `SecretValues_spec.lua` | secret arguments refused, secret client answers ignored |

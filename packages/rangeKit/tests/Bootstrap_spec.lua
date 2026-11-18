@@ -81,7 +81,7 @@ describe("RangeKit bootstrap", function()
 
     local upgraded = TestEnv.ReloadPackage()
     assert.are.equal(RangeKit, upgraded)
-    assert.are.equal(2, upgraded.REVISION)
+    assert.are.equal(3, upgraded.REVISION)
     assert.are.equal(state, upgraded._state)
     assert.are.equal(eventFrame, rawget(upgraded._state, "eventFrame"))
 
