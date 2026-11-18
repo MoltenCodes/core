@@ -27,7 +27,7 @@
 
 local PACKAGE_NAME = "apiKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 6
+local IMPLEMENTATION_REVISION = 7
 local REQUIRED_REGISTRY_API = 2
 local STATE_SCHEMA = 1
 
@@ -269,19 +269,40 @@ local function buildNamespaceRoot()
   return root, apis
 end
 
----Name a caller's table key in a refusal without running its `__tostring`.
----Converting a table or userdata key runs that metamethod, foreign code that
----can raise or answer a secret and so replace the refusal it was meant to
----describe. A secret is named by a placeholder before anything else is asked
----of it: whether the client hands `__newindex` a secret key at all is not
----documented, so the check is defensive. A string is shown as written and a
----number or boolean through `tostring`, which runs no foreign code for them;
----anything else is named by its type in angle brackets, such as `<table>`.
+-- shared:begin isSecret 1
+-- Copied from tooling/shared/lua/isSecret.lua by python3 -m tooling.shared.sync; edit that file, not this copy.
+---Whether `value` is a secret value the host forbids comparing.
+---@type fun(value: any): boolean
+local isSecret
+do
+  -- issecretvalue is a client API reachable only through the global table.
+  -- selene: allow(global_usage)
+  local loadedProbe = rawget(_G, "issecretvalue")
+  if type(loadedProbe) ~= "function" then
+    loadedProbe = nil
+  end
+
+  isSecret = function(value)
+    local probe = loadedProbe
+    if probe == nil then
+      -- selene: allow(global_usage)
+      probe = rawget(_G, "issecretvalue")
+      if type(probe) ~= "function" then
+        return false
+      end
+    end
+    return probe(value) == true
+  end
+end
+-- shared:end isSecret
+
+-- shared:begin describeKey 1
+-- Copied from tooling/shared/lua/describeKey.lua by python3 -m tooling.shared.sync; edit that file, not this copy.
+---Name `key` for an error message without running any of the caller's code.
 ---@param key any
 ---@return string
 local function describeKey(key)
-  local probe = readGlobal("issecretvalue")
-  if type(probe) == "function" and probe(key) == true then
+  if isSecret(key) then
     return "<secret>"
   end
   local kind = type(key)
@@ -293,6 +314,7 @@ local function describeKey(key)
   end
   return "<" .. kind .. ">"
 end
+-- shared:end describeKey
 
 ---Refuse every write to `ApiKit.SUPPORTED_FLAVORS`.
 ---@param _ table
@@ -406,21 +428,9 @@ local function validateReceiver(self, methodName)
   end
 end
 
----Whether `value` is a secret value (Retail 12.x). `issecretvalue` is looked
----up at call time; a client without it has no secret values.
----
----A secret compared with a value of its own type, used in arithmetic or used
----as a table key raises at that line (measured on Retail 12.1.0 b69933), so
----the arguments that meet one of those are asked about first.
----@param value any
----@return boolean
-local function isSecret(value)
-  local probe = readGlobal("issecretvalue")
-  return type(probe) == "function" and probe(value) == true
-end
-
 ---Refuse a secret argument at the caller's level, before it is compared, used
----in arithmetic or used as a table key. The message names the argument and
+---in arithmetic or used as a table key: each of those raises at that line on a
+---secret (measured on Retail 12.1.0 b69933). The message names the argument and
 ---never formats the value in, because a message built from a secret is secret.
 ---@param value any
 ---@param methodName string

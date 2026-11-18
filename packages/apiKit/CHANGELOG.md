@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.4 — 2026-11-18
+
+- `isSecret` and `describeKey` are now the shared helper blocks (`tooling/shared/lua/`, kept in step by `python3 -m tooling.shared.sync`); `isSecret` now comes before `describeKey`, which asks it. The secret check takes the probe rule: `issecretvalue` is read once at load and asked directly, about 50 ns less per check on the host; only a host that had no probe at load reads the global again on each check. A probe that replaces the one present at load is no longer asked. Refusal messages are unchanged; a secret key of a `SUPPORTED_FLAVORS` write is still named `<secret>`.
+- `docs/API.md` follows the repository skeleton: a new *Loading* section, *Errors* renamed *Error behaviour* and placed after *Limits*, *Load cost* renamed *Performance*, *Embedded identity and upgrades* renamed *Embedded copies and upgrades*.
+- Implementation revision 7; an embedded revision 6 is upgraded in place, registered flavours kept.
+- New specs: `SharedHelpers_spec.lua` (the probe rule, the `<secret>` key, the upgrade over the committed revision 6 file in `tests/fixtures/ApiKit-revision6.lua`) and `Conformance_spec.lua` (the repository's conformance suite; its limits group is pending, ApiKit has no `SetLimits`).
+
 ## 0.2.3 — 2026-11-15
 
 - Packaging: the standalone `MoltenCodes` addon's `.toc` (and every `.toc` the builder, `tooling.release.library_toc` and `tooling.package.embeds --toc` write) ends each flavour file line with `[AllowLoadGameType ...]`: Retail, Ptr and Beta `standard`, ClassicMop `mists`, ClassicEra `vanilla`. A client compiles only the flavour files of its own game type instead of all five (2.27 MB of source). Measured on host Lua 5.1, compile only: all five files 11.4 ms and 6,401 KB allocated, Retail with Ptr and Beta 7.8 ms and 4,264 KB, one Classic file 1.8 ms and 1,560 KB. Held memory is unchanged: the installers of the other flavours were already discarded.
