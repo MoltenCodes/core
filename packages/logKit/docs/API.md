@@ -31,7 +31,7 @@ raises `MoltenCodes LogKit requires Registry API 2 to be loaded first` (or
 | Facility | Used by | Without it |
 |---|---|---|
 | `GetTimePreciseSec` | the `time` of every record and journal entry | `time` is `false`. Bound once at load. |
-| `issecretvalue` | every consumer-supplied value, read at call time | Nothing is secret, which is correct on clients without secret values. |
+| `issecretvalue` | every consumer-supplied value; the argument checks resolve it once at load, and read it again at each check only on a host that had none at load; staging a message's format arguments reads it once per message | Nothing is secret, which is correct on clients without secret values. |
 | `geterrorhandler` | a failing sink, a bad format string, a refused journal firing, a refused persisted write | Falls back to `print`, also when the handler itself raises. |
 | `DEFAULT_CHAT_FRAME` | `ChatSink()` without a frame, read per line | Output goes to `print`. |
 | `SlashCmdList` | `RegisterCommand` | `false, "unavailable"`. |
@@ -398,6 +398,22 @@ second `BindLevels(db)` replaces the binding and restores again.
 Call `BindLevels` in the addon's loaded phase, after `SettingsKit:Open`, like
 every saved-variable access.
 
+## Secret values
+
+LogKit asks `issecretvalue` before it compares, tests, formats or stores a
+value a caller or the saved variables supply (see *Loading* for when the probe
+is read):
+
+- a secret addon name, level, message or `SetLimits` key or value is refused
+  at the caller's line with `... must not be a secret value` (see
+  [Error behaviour](#error-behaviour)); a disabled call never looks at its
+  message, so it never refuses one;
+- a secret format argument is replaced by `SECRET_PLACEHOLDER` (`"<secret>"`)
+  before the message is formatted, so no record or sink receives a secret;
+- a secret addon name or level word typed at `/log` prints the usage and
+  changes nothing, and a secret level name in a `BindLevels` database is
+  skipped when the binding restores.
+
 ## Limits
 
 | Limit | Default | How to open | UNBOUNDED allowed? |
@@ -415,7 +431,7 @@ local limits = LogKit:GetLimits() -- a fresh table; allocates
 `SetLimits` accepts any subset and returns nothing. It raises at the caller's
 line, **before changing anything**, when `limits` is not a table, names an
 unknown limit, has a secret key or value, or gives a value outside the rules
-above (see [Errors](#errors)).
+above (see [Error behaviour](#error-behaviour)).
 `GetLimits` returns a new table on every call, with `LogKit.UNBOUNDED` itself
 for a lifted limit.
 
@@ -448,7 +464,7 @@ is under the limit again. `maxMessageLength` applies to the next message.
 | `"unavailable"` | `RegisterCommand` | The host has no `SlashCmdList`. |
 | `"taken"`, `"emote"`, `"full"` | `RegisterCommand` | CommandKit refused `/log`: another command, chat type or emote holds it, or LogKit's scope is full. |
 
-## Errors
+## Error behaviour
 
 Argument errors are raised at the caller's line and never format a value that
 may be secret. Absence of a value LogKit did not create (an argument, a limits
@@ -487,7 +503,7 @@ sink (its error value unchanged), a bad format string, a journal firing
 SignalKit refuses because its `maxJournalArguments` was lowered below 4 (the
 message still reaches the sinks), and a refused persisted write.
 
-## Cost
+## Performance
 
 | Path | Cost |
 |---|---|

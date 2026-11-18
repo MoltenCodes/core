@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.3 — 2026-11-18
+
+- Documentation and tests only; implementation revision 8 is unchanged. `docs/API.md` follows the repository skeleton: new *Loading*, *Secret values* and *Performance* sections, *Errors* renamed *Error behaviour* and placed after *Limits*, *Embedded identity and upgrades* renamed *Embedded copies and upgrades*. ClientKit carries no copy of the shared helper blocks (docs/records/shared-helpers.md): its probe, value descriptions and deprecation reporter are its own contract.
+- New spec: `Conformance_spec.lua` (the repository's conformance suite).
+
 ## 0.3.2 — 2026-11-15
 
 - Fixed: an error message described a caller's value with `tostring`, so a table with a `__tostring` metamethod given as a `SetLimits` key or written to a manifest snapshot ran the caller's code inside ClientKit, which could raise its own error or answer a secret. A string is still quoted and a number, boolean or `nil` shown as written; anything else is named by its type: `ClientKit:SetLimits does not know limit <table>`, `ClientKit manifest for "MyAddon" is read-only; field <table> cannot be written`. `Taint_spec.lua` ("ClientKit value descriptions") holds the regression specs, each with a `__tostring` that records that it ran and raises.

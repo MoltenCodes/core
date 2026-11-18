@@ -192,7 +192,7 @@ found by running each Kit's specs after its conversion.
 8. Docs: CHANGELOG `## 0.2.1`, `docs/API.md` Error behaviour (the handler
    fallback) and the skeleton fixes the validator asks for (`## Cost` →
    `## Performance`, a `## Secret values` section), tests/README.
-9. Status: recorded 2026-11-16; code follows.
+9. Status: implemented 2026-11-18, 0.2.1, revision 3, 93 specs.
 
 **apiKit: shared `isSecret`, `describeKey`** — a change to facade `ApiKit`
 
@@ -212,7 +212,7 @@ found by running each Kit's specs after its conversion.
 8. Docs: CHANGELOG `## 0.2.4`; API.md skeleton (`## Errors` → `## Error
    behaviour`, `## Embedded identity and upgrades` → `## Embedded copies and
    upgrades`, `## Loading` and `## Performance` sections, the section order).
-9. Status: recorded 2026-11-16; code follows.
+9. Status: implemented 2026-11-18, 0.2.4, revision 7, 95 specs.
 
 **barKit, bindingKit, editModeKit, launcherKit, menuKit, panelKit, rangeKit, toastKit, tooltipKit, unitFrameKit: shared `isSecret`, `reportError`, `validateFacade`** — one record per facade, identical in shape
 
@@ -249,7 +249,7 @@ Each of these ten Kits carries the same three copies with the same bodies
    `arguments`, `upgrade`).
 8. Docs: CHANGELOG patch heading, API.md Error behaviour (the handler
    fallback), tests/README.
-9. Status: recorded 2026-11-16; code follows.
+9. Status: implemented 2026-11-18: barKit 0.1.2, revision 3, 47 specs; bindingKit 0.1.2, revision 3, 36 specs; editModeKit 0.1.2, revision 3, 45 specs; launcherKit 0.1.2, revision 3, 55 specs; menuKit 0.1.2, revision 3, 61 specs; panelKit 0.1.3, revision 3, 68 specs; rangeKit 0.1.2, revision 3, 56 specs; toastKit 0.1.2, revision 2, 37 specs; tooltipKit 0.1.2, revision 3, 60 specs; unitFrameKit 0.1.2, revision 3, 81 specs.
 
 **bridgeKit: shared `isSecret`, `validateFacade`; `limits` opted out** — a change to facade `BridgeKit`
 
@@ -276,7 +276,7 @@ Each of these ten Kits carries the same three copies with the same bodies
 8. Docs: CHANGELOG `## 0.6.1`; API.md skeleton (`## Cost` → `## Performance`,
    `## Upgrades` → `## Embedded copies and upgrades`, `## Error behaviour`,
    order).
-9. Status: recorded 2026-11-16; code follows.
+9. Status: implemented 2026-11-18, 0.6.1, revision 9, 357 specs (20 `isSecretValue` call sites on 19 lines, not 19).
 
 **brokerKit: shared `isSecret`, `validateFacade`; `limits` opted out** — a change to facade `BrokerKit`
 
@@ -292,7 +292,7 @@ Each of these ten Kits carries the same three copies with the same bodies
 6. Locals 104 unchanged; `readGlobal` keeps a caller. About +160 B.
 7. Specs: probe rule; upgrade from revision 3. KitConformance opt-in.
 8. Docs: CHANGELOG `## 0.1.7`, tests/README.
-9. Status: recorded 2026-11-16; code follows.
+9. Status: implemented 2026-11-18, 0.1.7, revision 4, 146 specs.
 
 **cacheKit: shared `isSecret`, `validateFacade`, `describeKey`; `limits` opted out** — a change to facade `CacheKit`
 
@@ -317,7 +317,7 @@ Each of these ten Kits carries the same three copies with the same bodies
    upgrade from revision 7. KitConformance opt-in.
 8. Docs: CHANGELOG `## 0.3.0`; API.md Error behaviour (the message) and the
    section order the validator asks for.
-9. Status: recorded 2026-11-16; code follows.
+9. Status: implemented 2026-11-18, 0.3.0, revision 8, 193 specs.
 
 **compatKit: shared `isSecret`, `reportError`, `validateFacade`, `describeKey`; `limits` opted out** — a change to facade `CompatKit`
 
@@ -334,7 +334,7 @@ Each of these ten Kits carries the same three copies with the same bodies
 7. Specs: probe rule; upgrade from revision 4. KitConformance opt-in.
 8. Docs: CHANGELOG `## 0.1.8`; API.md skeleton (`## Errors`, `## Cost`
    renames).
-9. Status: recorded 2026-11-16; code follows.
+9. Status: implemented 2026-11-18, 0.1.8, revision 5, 143 specs.
 
 **dialogKit: shared `isSecret`, `reportError`, `validateFacade`** — a change to facade `DialogKit`
 
@@ -352,7 +352,7 @@ Each of these ten Kits carries the same three copies with the same bodies
    secret receiver still raises the facade message; upgrade from revision 2.
    KitConformance opt-in.
 8. Docs: CHANGELOG `## 0.1.2`, API.md Error behaviour.
-9. Status: recorded 2026-11-16; code follows.
+9. Status: implemented 2026-11-18, 0.1.2, revision 3, 46 specs.
 
 **glowKit: shared `isSecret`, `validateFacade`** — a change to facade `GlowKit`
 
@@ -367,7 +367,7 @@ Each of these ten Kits carries the same three copies with the same bodies
 7. Specs: probe rule; upgrade from revision 1. KitConformance opt-in (its
    header already uses glowKit as the example).
 8. Docs: CHANGELOG `## 0.1.2`, tests/README.
-9. Status: recorded 2026-11-16; code follows.
+9. Status: implemented 2026-11-18, 0.1.2, revision 2, 35 specs.
 
 **hookKit: shared `reportError`, `isSecret`, `validateFacade`; the opt-out goes** — a change to facade `HookKit`
 
@@ -400,7 +400,7 @@ Each of these ten Kits carries the same three copies with the same bodies
 8. Docs: CHANGELOG `## 0.4.1`; API.md Error behaviour, and the skeleton the
    validator asks for (`## Cost`, `## Upgrades` renames, `## Secret values`,
    `## Error behaviour`, the taint-model section placed after `## Loading`).
-9. Status: recorded 2026-11-16; code follows.
+9. Status: implemented 2026-11-18, 0.4.1, revision 9, 163 specs.
 
 **interopKit: shared `isSecret`** — a change to facade `InteropKit`
 
@@ -417,7 +417,7 @@ Each of these ten Kits carries the same three copies with the same bodies
    revision 3. KitConformance opt-in.
 8. Docs: CHANGELOG `## 0.1.4`; API.md skeleton (renames, `## Loading`,
    `## Performance`, order).
-9. Status: recorded 2026-11-16; code follows.
+9. Status: implemented 2026-11-18, 0.1.4, revision 4, 74 specs.
 
 **logKit: shared `isSecret`, `reportError`, `validateFacade`, `describeKey`; `limits` opted out** — a change to facade `LogKit`
 
@@ -433,7 +433,7 @@ Each of these ten Kits carries the same three copies with the same bodies
 7. Specs: probe rule; upgrade from revision 5. KitConformance opt-in.
 8. Docs: CHANGELOG `## 0.2.3`; API.md skeleton (`## Errors`, `## Cost`
    renames, `## Secret values`).
-9. Status: recorded 2026-11-16; code follows.
+9. Status: implemented 2026-11-18, 0.2.3, revision 6, 173 specs.
 
 **mediaKit: shared `isSecret`, `describeKey`, `validateFacade`; `limits` opted out** — a change to facade `MediaKit`
 
@@ -454,7 +454,7 @@ Each of these ten Kits carries the same three copies with the same bodies
    which compare without raising); it is asserted to raise the facade message.
    KitConformance opt-in.
 8. Docs: CHANGELOG `## 0.1.7`, tests/README.
-9. Status: recorded 2026-11-16; code follows.
+9. Status: implemented 2026-11-18, 0.1.7, revision 6, 139 specs (`AdoptLibSharedMedia`, `MirrorToLibSharedMedia` and `IsFileDataID` ignore their receiver; KitConformance lists them in `receiverExempt`, a separate fix with its own revision).
 
 **readinessKit: shared `isSecret`, `reportError`, `describeKey`** — a change to facade `ReadinessKit`
 
@@ -475,7 +475,7 @@ Each of these ten Kits carries the same three copies with the same bodies
    secret (failing first); upgrade from revision 5. KitConformance opt-in
    (no `SetLimits`: the `limits` group stays pending).
 8. Docs: CHANGELOG `## 0.1.9`; API.md `## Secret values` section.
-9. Status: recorded 2026-11-16; code follows.
+9. Status: implemented 2026-11-18, 0.1.9, revision 6, 116 specs.
 
 **testKit: shared `reportError`, `validateFacade`; `isSecret` and `limits` opted out; `describeKey` renamed** — a change to facade `TestKit`
 
@@ -509,7 +509,7 @@ Each of these ten Kits carries the same three copies with the same bodies
    (failing first); `ToEqual` path messages unchanged after the rename;
    upgrade from revision 5. KitConformance opt-in.
 8. Docs: CHANGELOG `## 0.2.0`; API.md `## Secret values` section.
-9. Status: recorded 2026-11-16; code follows.
+9. Status: implemented 2026-11-18, 0.2.0, revision 6, 126 specs.
 
 **profileKit: shared `validateFacade`; `describeKey` and `limits` opted out** — a change to facade `ProfileKit`, equivalent for every input
 
@@ -537,7 +537,7 @@ Each of these ten Kits carries the same three copies with the same bodies
 8. Docs: CHANGELOG `## 0.1.7` ("Documentation and tooling only:
    implementation revision 4 is unchanged" in the house wording); API.md
    skeleton (`## Errors`, `## Cost`, `## Upgrades` renames, order).
-9. Status: recorded 2026-11-16; code follows.
+9. Status: implemented 2026-11-18, 0.1.7, revision 4, 91 specs (`Enable`, `Disable`, `IsEnabled`, `Report` and `Reset` ignore their receiver; listed in `receiverExempt`, a separate fix with its own revision).
 
 **clientKit, localeKit, and the conformance and API.md work across all 27** — no helper change in clientKit or localeKit
 
@@ -577,7 +577,7 @@ Each of these ten Kits carries the same three copies with the same bodies
    (41 warnings, measured with `tooling.validation.validate_repository`
    2026-11-16). For clientKit and localeKit this is documentation only: a
    patch version each, revision unchanged.
-9. Status: recorded 2026-11-16; code follows.
+9. Status: implemented 2026-11-18: clientKit 0.3.3, revision 8 unchanged, 196 specs; localeKit 0.1.8, revision 5 unchanged, 133 specs. Every one of the 27 opts in to KitConformance; pending groups name their reason in each `tests/Conformance_spec.lua`.
 
 ---
 
@@ -585,3 +585,29 @@ Resulting migration list for these 27 packages: 67 copies become blocks, 10
 leave the list by `optOuts` (8 `limits`, testKit `isSecret`, profileKit
 `describeKey`), 1 by the rename (testKit `describeKey`); 0 remain. One
 existing opt-out goes (hookKit `validateFacade`).
+
+---
+
+**Status note (2026-11-18).** Implemented on the records above. Measured on
+host Lua 5.1.5 (64-bit, debug information kept), each side loaded twice and
+only the second load counted, so every constant was interned beforehand:
+
+- `isSecret`, per-call form against the shared block, 5 000 000 checks with a
+  probe present at load, loop overhead (9.6 ns) subtracted: 66.0 ns → 16.9 ns
+  per check, confirming C1's 78 ns → 28 ns (which included the loop).
+- `limits` (D1), each Kit's own limits functions and tables against
+  `LIMIT_RULES` plus the `limits` block (plus `describeKey` where the Kit does
+  not carry it): brokerKit 2 646 B → 5 366 B (+2 720 B), cacheKit 2 150 B →
+  4 494 B (+2 344 B), bridgeKit 5 918 B → 8 566 B (+2 648 B). The block is
+  2.3 to 2.7 KB larger, so D1's opt-outs stand; `pins.json` quotes these
+  figures instead of the earlier "1.3 to 2.6 KB".
+
+`python3 -m tooling.shared.sync --list` names no copy in the 27 packages; 42
+remain in the other 14 Kits, outside this record. Departures: interopKit's
+`Registry:HasPart("Diagnostics")` change and the localeKit conversion found in
+the unfinished earlier work were left out (the registry record and D5). Open
+choices taken conservatively: a conformance group whose existing refusal text
+does not meet the suite (no "secret" in a type-first refusal, an unknown-limit
+message without the key, a limit without a ceiling) stays pending with its
+reason instead of a text change; addonKit's test environment marks a secret
+in the probe found at load as well (the "Specs and test environments" rule).

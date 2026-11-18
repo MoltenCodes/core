@@ -42,7 +42,7 @@
 
 local PACKAGE_NAME = "logKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 5
+local IMPLEMENTATION_REVISION = 6
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_SIGNALKIT_API = 1
 local OPTIONAL_COMMANDKIT_API = 1
@@ -305,39 +305,50 @@ local function readClock()
   return nativeGetTimePreciseSec()
 end
 
----Whether `value` is a secret value, asking the host's `issecretvalue` at
----call time. Clients without secret values publish no probe, and nothing is
----secret there.
----@param value any
----@return boolean
-local function isSecret(value)
-  local probe = readGlobal("issecretvalue")
-  return type(probe) == "function" and probe(value) == true
-end
+-- shared:begin isSecret 1
+-- Copied from tooling/shared/lua/isSecret.lua by python3 -m tooling.shared.sync; edit that file, not this copy.
+---Whether `value` is a secret value the host forbids comparing.
+---@type fun(value: any): boolean
+local isSecret
+do
+  -- issecretvalue is a client API reachable only through the global table.
+  -- selene: allow(global_usage)
+  local loadedProbe = rawget(_G, "issecretvalue")
+  if type(loadedProbe) ~= "function" then
+    loadedProbe = nil
+  end
 
----Hand a failure nobody called for (a failing sink, a format error) to the
----host error handler.
----
----The failure is passed on unchanged: a sink's error value may be secret, and
----LogKit never inspects it.
+  isSecret = function(value)
+    local probe = loadedProbe
+    if probe == nil then
+      -- selene: allow(global_usage)
+      probe = rawget(_G, "issecretvalue")
+      if type(probe) ~= "function" then
+        return false
+      end
+    end
+    return probe(value) == true
+  end
+end
+-- shared:end isSecret
+
+-- shared:begin reportError 1
+-- Copied from tooling/shared/lua/reportError.lua by python3 -m tooling.shared.sync; edit that file, not this copy.
+---Report `failure` through the host error handler, or print it.
 ---@param failure any
 local function reportError(failure)
-  local getErrorHandler = readGlobal("geterrorhandler")
+  -- geterrorhandler is a client API reachable only through the global table.
+  -- selene: allow(global_usage)
+  local getErrorHandler = rawget(_G, "geterrorhandler")
   if type(getErrorHandler) == "function" then
     local handler = getErrorHandler()
-    -- The handler is another addon's code. One that raises must not turn
-    -- a report into a failure of the logging caller, so it runs under
-    -- `pcall` and the report falls through to `print`.
     if type(handler) == "function" and pcall(handler, failure) then
       return
     end
   end
-
-  -- Outside a WoW client there is no error handler to report through.
-  -- Printing is what the client's own default handler does, and staying
-  -- silent would turn a sink bug into an invisible one.
   print(failure)
 end
+-- shared:end reportError
 
 ---Find an optional package through `Registry:Find`, or `nil` and the reason.
 ---@param packageName string
@@ -639,15 +650,19 @@ rawset(CHAT_SINK_METATABLE, "__index", CHAT_SINK_PROTOTYPE)
 -- the line that called the public method, never a line inside LogKit. `level`
 -- is the value `error` needs inside the function that receives it.
 
+-- shared:begin validateFacade 1 __FACADE__=LogKit
+-- Copied from tooling/shared/lua/validateFacade.lua by python3 -m tooling.shared.sync; edit that file, not this copy.
+---Raise at `level` unless `receiver` is the LogKit facade.
 ---@param receiver any the table the method was called on
----@param label string public method name, used in the argument error
+---@param label string qualified method name, used in the argument error
 ---@param level integer stack level the failure is reported at
 local function validateFacade(receiver, label, level)
-  -- `type` first: a secret receiver is never a table, and only a table is compared.
   if type(receiver) ~= "table" or receiver ~= LogKit then
-    error(label .. " must be called on the LogKit facade; use " .. label .. "(...)", level)
+    local hint = "; use " .. label .. "(...)"
+    error(label .. " must be called on the LogKit facade" .. hint, level)
   end
 end
+-- shared:end validateFacade
 
 ---@param logger any receiver the logger method was called on
 ---@param methodName string public method name, used in the argument error
@@ -1213,15 +1228,15 @@ end
 
 -- Limits ---------------------------------------------------------------------------
 
----Name a caller's table key in a refusal without running its `__tostring`.
----Converting a table or userdata key runs that metamethod, foreign code that
----can raise or answer a secret and so replace the refusal it was meant to
----describe. A string is shown as written and a number or boolean through
----`tostring`, which runs no foreign code for them; anything else is named by
----its type in angle brackets, such as `<table>`.
----@param key any a key `next` read from a table, already checked not secret
+-- shared:begin describeKey 1
+-- Copied from tooling/shared/lua/describeKey.lua by python3 -m tooling.shared.sync; edit that file, not this copy.
+---Name `key` for an error message without running any of the caller's code.
+---@param key any
 ---@return string
 local function describeKey(key)
+  if isSecret(key) then
+    return "<secret>"
+  end
   local kind = type(key)
   if kind == "string" then
     return key
@@ -1231,6 +1246,7 @@ local function describeKey(key)
   end
   return "<" .. kind .. ">"
 end
+-- shared:end describeKey
 
 ---Refuse a `SetLimits` argument before any limit changes, so a call with one
 ---bad entry leaves every limit as it was. A secret key or value is refused

@@ -80,7 +80,7 @@ describe("UnitFrameKit bootstrap", function()
 
     local upgraded = TestEnv.ReloadPackage()
     assert.are.equal(UnitFrameKit, upgraded)
-    assert.are.equal(2, upgraded.REVISION)
+    assert.are.equal(3, upgraded.REVISION)
     assert.are.equal(state, upgraded._state)
     assert.is_true(connection:IsConnected())
     -- Revision 2 changed no state field: the cache and the listener carry

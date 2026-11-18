@@ -50,4 +50,5 @@ the clock calls `ProfileKitTestEnv.NewPackageWithoutProfilingClock()`, because
 | `ErrorLevels_spec.lua` | argument errors reported at the caller's line |
 | `SecretValues_spec.lua` | a secret limit value, a secret receiver and a secret section name refused at the caller's line |
 | `Bootstrap_spec.lua` | publication, duplicate loads, upgrades, corrupted state |
+| `Conformance_spec.lua` | the repository conformance suite (`tests/support/KitConformance.lua`) on a mainline-profile environment: manifest, receivers and upgrade; its limits and arguments groups are pending and five receiverless methods are exempt, with the reasons in the spec |
 | `Manifest_spec.lua` | manifest and runtime `API` / `REVISION` agreement, declared dependencies |

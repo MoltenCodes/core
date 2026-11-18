@@ -188,7 +188,7 @@ describe("ApiKit bootstrap", function()
       local upgraded = TestEnv.requireAfterFailedLoad("ApiKit")
 
       assert.are.equal(old, upgraded)
-      assert.are.equal(6, upgraded.REVISION)
+      assert.are.equal(7, upgraded.REVISION)
       assert.are.equal(state, upgraded._state)
       assert.are.same({ "12.1.0", 69933 }, { upgraded:GetMetadataBuild("retail") })
       assert.is_false(upgraded:RegisterFlavor("retail", function()

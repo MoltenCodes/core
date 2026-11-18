@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.0 — 2026-11-18
+
+- Changed: a facade method called with a dot raises `<method> must be called on the TestKit facade; use <method>(...)`; the hint is new, and a non-table receiver is told apart with `type` before it is compared. `validateFacade` is now the shared helper block (`tooling/shared/lua/validateFacade.lua`, kept in step by `python3 -m tooling.shared.sync`).
+- Fixed: an `OnFinished` callback's failure was handed to the host error handler unprotected, so an error handler that itself raised (an error-display addon with a bug) raised out of the run. `reportError` is now the shared helper block: the handler is called through `pcall`, and the failure is printed when it is missing or raises.
+- TestKit keeps its own `isSecret`, which reads `issecretvalue` at every call so a test can replace it with `ctx:Replace`, and its own limits loop (`tooling/shared/pins.json` opts both out). The path-segment helper of `ToEqual` messages is renamed `describePathSegment`; the messages are unchanged.
+- `docs/API.md` gains a *Secret values* section.
+- Implementation revision 6; an embedded revision 5 is upgraded in place, suites, limits and `OnFinished` callbacks kept.
+- New specs: `SharedHelpers_spec.lua` (a raising error handler during `OnFinished` reporting, the facade message, the upgrade over the committed revision 5 file in `tests/fixtures/TestKit-revision5.lua`) and `Conformance_spec.lua` (the repository's conformance suite; its limits and arguments groups are pending, see the spec). `ErrorLevels_spec.lua` expects the facade hint.
+
 ## 0.1.9 — 2026-11-15
 
 - Documentation: the facade table in `docs/API.md` ("Public surface") did not list `API` and `REVISION`; it now gives them as `1`, `5`. The context table's `WaitUntil` row now says that a secret boolean answer fails the test, as the method's own section does.

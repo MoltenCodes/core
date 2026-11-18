@@ -4,11 +4,18 @@ InteropKit API generation **1** is the bridge between the MoltenCodes Registry
 and LibStub: it exposes Kits to LibStub consumers and adopts LibStub libraries
 as read-only foreign entries.
 
-Implementation revision: **3**.
+Implementation revision: **4**.
 
 ```lua
 local InteropKit = MoltenCodes.Registries[2]:Get("interopKit", 1)
 ```
+
+## Loading
+
+Load `Registry.lua` first, then `InteropKit.lua`; InteropKit has no parts and
+no other dependency. LibStub is looked up at call time, so it may load before
+or after InteropKit. `issecretvalue` is read once at load; a host without it
+at load reads the global again on each check.
 
 ## Public surface
 
@@ -30,7 +37,7 @@ meant for a per-frame path, and none needs tearing down.
 ## Results and reasons
 
 A refusal is a result, never an error. Errors are reserved for malformed
-arguments (see [Errors](#errors)).
+arguments (see [Error behaviour](#error-behaviour)).
 
 | Reason | Returned by | Meaning |
 |---|---|---|
@@ -136,13 +143,19 @@ On a client with secret values, a `packageName`, `api` or `major` that
 `issecretvalue` reports secret, including a package name inside
 `ExposeAll`'s `options.except`, is refused at the caller before it is compared,
 matched or formatted. Absence of an optional argument is tested with `type`, so
-not even a comparison with `nil` runs first:
+not even a comparison with `nil` runs first. The probe is the
+`issecretvalue` InteropKit found at load; a host that had none at load is
+asked again on each check, so a probe installed later is honoured:
 
 ```text
 MyAddon/Core.lua:12: InteropKit:AdoptFromLibStub major must not be a secret value
 ```
 
-## Errors
+## Limits
+
+InteropKit has no limits to open, so it has no `SetLimits` and no `UNBOUNDED`. The one table it retains is the adoption record, one entry per LibStub major passed to `AdoptFromLibStub`, and a major is recorded only when LibStub already holds that library; adopting it again overwrites the same entry. The record therefore never outgrows the libraries loaded into the client. `ExposeToLibStub` and `ExposeAll` write into LibStub's own tables, bounded by the Kits Registry holds.
+
+## Error behaviour
 
 Argument errors name the method and the parameter and point at the caller's
 line:
@@ -165,11 +178,15 @@ Bootstrap failures raise at the line that loaded the file:
 | `MoltenCodes InteropKit requires a valid Registry API 2 facade` | The published Registry lacks `Bootstrap`, `Find` or `Packages`. |
 | `MoltenCodes InteropKit package state is corrupted or incomplete` | The shared package state was modified from outside. |
 
-## Limits
+## Performance
 
-InteropKit has no limits to open, so it has no `SetLimits` and no `UNBOUNDED`. The one table it retains is the adoption record, one entry per LibStub major passed to `AdoptFromLibStub`, and a major is recorded only when LibStub already holds that library; adopting it again overwrites the same entry. The record therefore never outgrows the libraries loaded into the client. `ExposeToLibStub` and `ExposeAll` write into LibStub's own tables, bounded by the Kits Registry holds.
+Nothing runs per frame. `Find` is allocation-free and inlines its argument
+check for the common valid call. `ExposeAll` reads `Registry:Packages()` once
+and builds one LibStub major name per Kit it exposes. Every other argument
+check asks the `issecretvalue` read at load (revision 4), with no global
+lookup.
 
-## Embedded identity and upgrades
+## Embedded copies and upgrades
 
 InteropKit bootstraps through `Registry:Bootstrap` like every Kit (see
 [`docs/ARCHITECTURE.md`](../../../docs/ARCHITECTURE.md#how-a-kit-bootstraps)).
@@ -178,7 +195,7 @@ identity across compatible revisions: a newer copy rewrites the facade methods
 in place and reuses the records, so adoptions made through an older copy stay
 readable through `Find`. An older copy loading after a newer one yields to it.
 Exposures live in LibStub, not in InteropKit's state, and are unaffected by an
-InteropKit upgrade. Revisions 2 and 3 keep the revision 1 state as it is and
+InteropKit upgrade. Revisions 2, 3 and 4 keep the revision 1 state as it is and
 replace the methods only.
 
 `_state` is private; its layout is not part of the contract.

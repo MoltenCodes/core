@@ -12,9 +12,49 @@
       "reason": "CommandKit asks ClientKit's secret probe first, which the shared probe does not do; its owner decides when that changes."
     },
     {
-      "package": "hookKit",
-      "helpers": ["validateFacade"],
-      "reason": "HookKit compares the receiver with rawequal; its owner decides whether to take the shared type-first form."
+      "package": "bridgeKit",
+      "helpers": ["limits"],
+      "reason": "The shared limits block measured 2.3 to 2.7 KB more resident than this Kit's own loop (host Lua 5.1.5, 2026-11-18) and changes its refusals; kept until a leaner revision of the block (docs/records/shared-helpers.md, D1)."
+    },
+    {
+      "package": "brokerKit",
+      "helpers": ["limits"],
+      "reason": "The shared limits block measured 2.3 to 2.7 KB more resident than this Kit's own loop (host Lua 5.1.5, 2026-11-18) and changes its refusals; kept until a leaner revision of the block (docs/records/shared-helpers.md, D1)."
+    },
+    {
+      "package": "cacheKit",
+      "helpers": ["limits"],
+      "reason": "The shared limits block measured 2.3 to 2.7 KB more resident than this Kit's own loop (host Lua 5.1.5, 2026-11-18) and changes its refusals; kept until a leaner revision of the block (docs/records/shared-helpers.md, D1)."
+    },
+    {
+      "package": "compatKit",
+      "helpers": ["limits"],
+      "reason": "The shared limits block measured 2.3 to 2.7 KB more resident than this Kit's own loop (host Lua 5.1.5, 2026-11-18) and changes its refusals; kept until a leaner revision of the block (docs/records/shared-helpers.md, D1)."
+    },
+    {
+      "package": "logKit",
+      "helpers": ["limits"],
+      "reason": "The shared limits block measured 2.3 to 2.7 KB more resident than this Kit's own loop (host Lua 5.1.5, 2026-11-18) and changes its refusals; kept until a leaner revision of the block (docs/records/shared-helpers.md, D1)."
+    },
+    {
+      "package": "mediaKit",
+      "helpers": ["limits"],
+      "reason": "The shared limits block measured 2.3 to 2.7 KB more resident than this Kit's own loop (host Lua 5.1.5, 2026-11-18) and changes its refusals; kept until a leaner revision of the block (docs/records/shared-helpers.md, D1)."
+    },
+    {
+      "package": "profileKit",
+      "helpers": ["describeKey", "limits"],
+      "reason": "ProfileKit's probe is bound at load for the disabled Measure; the shared describeKey needs an isSecret block, and the shared limits block measured 2.3 to 2.7 KB more resident than this Kit's loop (docs/records/shared-helpers.md, D1 and D4)."
+    },
+    {
+      "package": "testKit",
+      "helpers": ["isSecret"],
+      "reason": "TestKit reads the host probes at call time so a test can replace issecretvalue with ctx:Replace; the shared probe is kept from load (docs/records/shared-helpers.md, D2)."
+    },
+    {
+      "package": "testKit",
+      "helpers": ["limits"],
+      "reason": "The shared limits block requires the isSecret block TestKit opts out of, and its six limits have no ceilings; see also D1 in docs/records/shared-helpers.md."
     }
   ]
 }

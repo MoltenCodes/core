@@ -29,8 +29,8 @@ runtime.
 
 | Facility | Used by | Without it |
 |---|---|---|
-| `issecretvalue` | every argument check | Nothing is treated as secret. |
-| `geterrorhandler` | the report of a foreign `MoltenCodes.For` | The report is printed. |
+| `issecretvalue` | every argument check; read once at load, and again on each check only when it was absent at load | Nothing is treated as secret. |
+| `geterrorhandler` | the report of a foreign `MoltenCodes.For` | The report is printed, also when the handler itself raises. |
 
 AddonKit calls no other client function, creates no frame, registers no event
 and runs nothing per frame. The Kits it calls read their own host facilities.
@@ -430,6 +430,15 @@ session: when LauncherKit refuses after BrokerKit created it, the object stays.
 `{ hide = false, lock = false, minimapPos = 225 }`: a fresh table for each
 addon, made on its first read, so one addon editing it never changes another's.
 
+## Secret values
+
+Every argument, key, limit and receiver is checked with `issecretvalue` before
+it is compared or used as a table key, and a secret is refused at the caller
+with a message that says so (`MoltenCodes:For addonName must not be a secret
+value`). The probe is read once at load; a host that had none at load is
+asked again on each check, so a probe installed later is honoured, while one
+that replaces the probe present at load is not (revision 3).
+
 ## Limits
 
 | Limit | Default | Range | Meaning |
@@ -456,9 +465,14 @@ another Kit that AddonKit calls is raised again at that line with the Kit's
 own message, AddonKit's position removed. An error object that is not a string
 is raised again as it is.
 
-Secret values are refused before they are compared or used as a table key.
+What AddonKit reports instead of raising (a foreign `MoltenCodes.For` left
+alone) goes to the host error handler (`geterrorhandler()`), called under
+`pcall`. When the host has no handler, or the handler itself raises (an
+error-display addon with a bug), the report is printed instead, so it never
+raises into the loading file (revision 3; earlier revisions let a raising
+handler's error through).
 
-## Cost
+## Performance
 
 | Operation | Cost |
 |---|---|
@@ -480,7 +494,10 @@ through the state), the namespace entry (one function for the session) and
 the parts. A part keeps its own revision in the state; a part file of an equal
 or lower revision than the one installed loads as a no-op. Revision 2 adds the
 three module-default methods to `_state.methods`, so facades made by revision
-1 gain them through the shared metatable. See
+1 gain them through the shared metatable. Revision 3 changes no state field:
+it replaces the secret check, the error report and the facade check with the
+shared helper blocks, and its upgrade over revision 2 keeps every facade and
+limit. See
 [`INTERNALS.md`](INTERNALS.md).
 
 ## Dependencies

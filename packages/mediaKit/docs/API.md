@@ -29,7 +29,7 @@ MediaKit reads three host globals, each at call time rather than at load (the bu
 | Facility | Used by | Without it |
 |---|---|---|
 | `GetLocale` | font filtering in `Fetch`, `Has`, `List` and `Defaults:Get`; the built-in fonts at load | The client writes Latin. An unknown locale is treated the same way. |
-| `issecretvalue` | every argument check | Nothing is treated as secret. |
+| `issecretvalue` | every argument check; resolved once at load, and read again at each check only on a host that had none at load | Nothing is treated as secret. |
 | `LibStub` | `AdoptLibSharedMedia`, `MirrorToLibSharedMedia` | Both return `false, "absent"`. |
 
 `LibStub` is read with `rawget(_G, "LibStub")`, and LibSharedMedia with `LibStub:GetLibrary("LibSharedMedia-3.0", true)`. MediaKit does not use the `interopKit` bridge: it needs a LibStub library's methods, not a Registry entry for it.
@@ -244,7 +244,7 @@ With both directions on, nothing bounces:
 
 ## Secret values
 
-On Retail 12.x the client hands tainted code secret values that raise when compared or used as table keys. MediaKit asks `issecretvalue` about a type, name, data or script name before any comparison and refuses a secret one at the caller (`MediaKit:Register name must not be a secret value`, and for a default's name `MediaKit.Defaults:Set name must not be a secret value`); the absence of an optional argument, option or LibSharedMedia entry is tested with `type`, never by comparing with `nil`; `IsFileDataID` answers `false` for a secret, and adoption skips secret LibSharedMedia entries. A secret `options.anyScript` is refused at the caller before it is tested (`MediaKit:Fetch anyScript must not be a secret value`, likewise for `Has` and `List`), because a secret boolean passes the type check and raises in any comparison or boolean test. Values read from LibSharedMedia are never compared or tested when secret: a secret answer from its `Register` counts as "not mirrored" (it is not added to the count `MirrorToLibSharedMedia` returns and nothing is reported), and a secret `LOCALE_BIT_*` field is replaced by its long-standing default value. `issecretvalue` is looked up at every call; without it nothing is secret. See [`docs/EMBEDDING.md`](../../../docs/EMBEDDING.md#secret-values-retail-12x).
+On Retail 12.x the client hands tainted code secret values that raise when compared or used as table keys. MediaKit asks `issecretvalue` about a type, name, data or script name before any comparison and refuses a secret one at the caller (`MediaKit:Register name must not be a secret value`, and for a default's name `MediaKit.Defaults:Set name must not be a secret value`); the absence of an optional argument, option or LibSharedMedia entry is tested with `type`, never by comparing with `nil`; `IsFileDataID` answers `false` for a secret, and adoption skips secret LibSharedMedia entries. A secret `options.anyScript` is refused at the caller before it is tested (`MediaKit:Fetch anyScript must not be a secret value`, likewise for `Has` and `List`), because a secret boolean passes the type check and raises in any comparison or boolean test. Values read from LibSharedMedia are never compared or tested when secret: a secret answer from its `Register` counts as "not mirrored" (it is not added to the count `MirrorToLibSharedMedia` returns and nothing is reported), and a secret `LOCALE_BIT_*` field is replaced by its long-standing default value. `issecretvalue` is read once at load and asked directly; a host that had none at load is asked again at each check, so a probe installed later is honoured, while one that replaces the probe present at load is not (revision 6). Without it nothing is secret. See [`docs/EMBEDDING.md`](../../../docs/EMBEDDING.md#secret-values-retail-12x).
 
 ## Limits
 
@@ -291,7 +291,7 @@ Argument failures report the line that called the public method, never a line in
 
 ## Embedded copies and upgrades
 
-Several addons may embed MediaKit; Registry selects the newest compatible revision and every copy shares one facade. An upgrade happens in place: entries, cached lists, signals and their connections, defaults objects, the limits a consumer set, the `UNBOUNDED` sentinel, and the LibSharedMedia adoption, subscription and mirroring all survive. The callback LibSharedMedia holds dispatches through package state, so a newer revision replaces its behaviour without subscribing again. Built-ins are registered by the first copy only. Revisions 2 to 5 keep the revision 1 state as it is and replace the methods only.
+Several addons may embed MediaKit; Registry selects the newest compatible revision and every copy shares one facade. An upgrade happens in place: entries, cached lists, signals and their connections, defaults objects, the limits a consumer set, the `UNBOUNDED` sentinel, and the LibSharedMedia adoption, subscription and mirroring all survive. The callback LibSharedMedia holds dispatches through package state, so a newer revision replaces its behaviour without subscribing again. Built-ins are registered by the first copy only. Revisions 2 to 6 keep the revision 1 state as it is and replace the methods only.
 
 Nothing survives `/reload`: packs register again.
 

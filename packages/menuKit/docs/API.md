@@ -28,8 +28,8 @@ MenuKit reads these host globals at call time, never at load:
 | Facility | Used by | Without it |
 |---|---|---|
 | `MenuUtil.CreateContextMenu`, `Menu.ModifyMenu`, `Menu.GetManager` | every method but `SetLimits` and `GetLimits` | The method raises at the caller: `MenuKit:OpenContextMenu needs the client's Menu API (Blizzard_Menu), which this host does not have`. |
-| `issecretvalue` | every check | Nothing is treated as secret. |
-| `geterrorhandler` | callbacks and menu functions that raise, a menu function's result that fails the check | The failure is printed. |
+| `issecretvalue` | every check; read once at load, and again on each check only when it was absent at load | Nothing is treated as secret. |
+| `geterrorhandler` | callbacks and menu functions that raise, a menu function's result that fails the check | The failure is printed, also when the handler itself raises. |
 
 Retail, Mists of Pandaria Classic and Classic Era ship `Blizzard_Menu` (branches `live`, `classic` and `classic_era` of Blizzard's interface source, read 2026-11-15). The files differ in small ways: Retail alone has `MenuUtil.CreateHighlightButton` and, on element descriptions, `HasResponder`, `SetCheckbox` and `EnumerateElementDescriptions`. MenuKit uses none of these, and every function it calls (`MenuUtil.CreateContextMenu`, `Menu.ModifyMenu`, `Menu.GetManager():CloseMenus()`, `DropdownButton:SetupMenu`, and the description methods `CreateButton`, `CreateCheckbox`, `CreateRadio`, `CreateTitle`, `CreateDivider`, `CreateSpacer`, `SetEnabled` and `SetTooltip`) has the same code on all three.
 
@@ -128,6 +128,8 @@ Every text, tooltip, kind, field name, entry, menu, owner, dropdown, tag, limit 
 ## Error behaviour
 
 Argument errors raise at the caller's line. Facade methods called without the facade raise `MenuKit:OpenContextMenu must be called on the MenuKit facade; use MenuKit:OpenContextMenu(...)`; extension methods called on anything else raise `MenuKit.Extension:Remove must be called on a MenuKit extension; use extension:Remove(...)`. What Blizzard calls is reported through `geterrorhandler`, as above.
+
+A host error handler that itself raises does not turn a reported failure into a second error raised into the client: the failure is printed instead, as on a host without a handler (implementation revision 3).
 
 ## Performance
 

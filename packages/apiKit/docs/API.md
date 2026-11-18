@@ -12,6 +12,15 @@ describes it per flavour, and the rules that name it are in
 local ApiKit = MoltenCodes.Registries[2]:Get("apiKit", 1)
 ```
 
+## Loading
+
+Load `Registry.lua`, then `ApiKit.lua`, then the generated flavour files
+(`flavours/*.lua`); a flavour file loaded before ApiKit raises (see [Error
+behaviour](#error-behaviour)). ApiKit reads the client identity
+(`WOW_PROJECT_ID`, `IsTestBuild`, `IsBetaBuild`) once at load and
+`issecretvalue` once at load; a host that had no `issecretvalue` then reads
+the global again on each check.
+
 ## Public surface
 
 | Member | Returns | Purpose |
@@ -105,7 +114,36 @@ taint rules in [`EMBEDDING.md`](../../../docs/EMBEDDING.md#taint). Calling the
 raw API remains valid at all times; the wrapper adds discoverability, naming
 and types, never a layer.
 
-## Errors
+## Secret values
+
+On Retail 12.x a secret compared with a value of its own type, used in
+arithmetic or used as a table key raises at that line (measured on Retail
+12.1.0 b69933; see [`EMBEDDING.md`](../../../docs/EMBEDDING.md#secret-values-retail-12x)).
+ApiKit asks the host's `issecretvalue` about the two
+arguments that meet one of those operations, and refuses a secret one at the
+caller's line before it is used:
+
+- `flavor` of `RegisterFlavor` and `GetMetadataBuild`, which is used as a key
+  of the flavour table;
+- `info.build` of `RegisterFlavor`, whose integer test is arithmetic.
+
+The message names the argument and never formats the value in. A refused
+registration records nothing and runs no installer. `info.version` is only
+stored and handed back by `GetMetadataBuild`, which the client allows, so a
+secret version is accepted. A client without `issecretvalue` has no secret
+values and refuses nothing. The probe is the `issecretvalue` found at load
+(revision 7); a host that had none at load is asked again on each check, so
+a probe installed later is honoured.
+
+## Limits
+
+ApiKit has no limits to open, so it has no `SetLimits` and no `UNBOUNDED`
+(design constitution, principle 4a). What it retains is fixed at load: the
+five namespace tables, the installed flavour's bindings (one table per
+Blizzard namespace, one entry per function) and the `info` of each registered
+flavour. Nothing grows with use.
+
+## Error behaviour
 
 Argument and receiver failures are raised at the caller's line:
 
@@ -129,34 +167,7 @@ file raises `MoltenCodes ApiKit (<Flavour> bindings) requires Registry API 2
 to be loaded first`, `... requires a valid Registry API 2 facade` or `...
 requires ApiKit API 1 to be loaded first` when it loads out of order.
 
-## Secret values
-
-On Retail 12.x a secret compared with a value of its own type, used in
-arithmetic or used as a table key raises at that line (measured on Retail
-12.1.0 b69933; see [`EMBEDDING.md`](../../../docs/EMBEDDING.md#secret-values-retail-12x)).
-ApiKit asks the host's `issecretvalue`, looked up at call time, about the two
-arguments that meet one of those operations, and refuses a secret one at the
-caller's line before it is used:
-
-- `flavor` of `RegisterFlavor` and `GetMetadataBuild`, which is used as a key
-  of the flavour table;
-- `info.build` of `RegisterFlavor`, whose integer test is arithmetic.
-
-The message names the argument and never formats the value in. A refused
-registration records nothing and runs no installer. `info.version` is only
-stored and handed back by `GetMetadataBuild`, which the client allows, so a
-secret version is accepted. A client without `issecretvalue` has no secret
-values and refuses nothing.
-
-## Limits
-
-ApiKit has no limits to open, so it has no `SetLimits` and no `UNBOUNDED`
-(design constitution, principle 4a). What it retains is fixed at load: the
-five namespace tables, the installed flavour's bindings (one table per
-Blizzard namespace, one entry per function) and the `info` of each registered
-flavour. Nothing grows with use.
-
-## Load cost
+## Performance
 
 The installer was measured on the Retail file generated for client 12.1.0,
 build 69933 (about 9,800 lines, 560 KB, 312 namespaces and 4,900 bindings),
@@ -180,7 +191,7 @@ described in the types only. The README gives the counts of every flavour.
 A call through the wrapper is one table index more than the raw call and
 allocates nothing. Nothing in the package grows with use.
 
-## Embedded identity and upgrades
+## Embedded copies and upgrades
 
 ApiKit registers with Registry as package `apiKit`, API generation 1. When two
 addons embed different revisions, Registry keeps the newest copy and hands it
@@ -202,8 +213,11 @@ flavour files generated from the 2026-11-14 captures (changelog, 0.2.0), and
 the same first-registration rule decides which build's surface a session
 gets.
 Revision 6 keeps the revision 5 state; it names a written key without
-`tostring` (see [Errors](#errors)). The view's metatable is protected, so an
+`tostring` (see [Errors](#error-behaviour)). The view's metatable is protected, so an
 upgrade cannot change the refusal an older view carries: it publishes a fresh
 view over the same `supportedFlavors` list as `SUPPORTED_FLAVORS`. A reference
 to the older view taken before the upgrade reads the same ids and keeps the
 older message.
+Revision 7 keeps the revision 6 state and replaces the methods only: its
+secret check is the shared helper block, which asks the `issecretvalue` found
+at load (see [Secret values](#secret-values)).

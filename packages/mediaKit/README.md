@@ -96,5 +96,5 @@ LibStub and LibSharedMedia-3.0 are optional and found when
 `AdoptLibSharedMedia` or `MirrorToLibSharedMedia` is called, so they may load
 before or after MediaKit; call those two after them (on `PLAYER_LOGIN`, say, to
 also see packs that load later without LibSharedMedia's callback). MediaKit
-reads the host's `GetLocale` and `issecretvalue` when it needs them; each one
-is optional (see *Host facilities* in the API).
+reads the host's `GetLocale` when it needs it and `issecretvalue` once at load
+(again at each check only when it was absent at load); each one is optional (see *Host facilities* in the API).

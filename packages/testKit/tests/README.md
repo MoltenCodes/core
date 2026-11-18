@@ -16,6 +16,8 @@ The TestKit suite covers:
 - cost: loading and registering create no frame, timer or `OnUpdate`, and a finished run leaves no armed timer, event registration or `OnUpdate` behind;
 - duplicate embedded loading, Registry publication, yielding to a newer revision, missing Registry, LifecycleKit or SchedulerKit, an incomplete facade, and an in-place upgrade that keeps a waiting test and a queued suite, and the upgrades of a revision 1, a revision 2, a revision 3 and a revision 4 copy by the current file;
 - `error` levels: facade and suite argument errors, and facade methods called with a dot, report the caller's line, and context errors, matcher errors and matcher failures report the test's own line;
+- the shared helper blocks: an `OnFinished` failure printed when the host error handler itself raises, the facade message with its hint, and the in-place upgrade over the committed revision 5 file (`fixtures/TestKit-revision5.lua`);
+- the repository conformance suite (`tests/support/KitConformance.lua`): manifest, receivers and upgrade; limits and arguments are pending, with the reason in the spec;
 - manifest/runtime API and revision consistency.
 
 | Spec | Covers |
@@ -36,6 +38,8 @@ The TestKit suite covers:
 | `Bootstrap_spec.lua` | publication, dependencies, duplicate loads, upgrades |
 | `Limits_spec.lua` | `SetLimits` / `GetLimits`, `UNBOUNDED`, each limit opened, the `maxEqualDepth` ceiling, atomic validation, limits kept across `Reset` |
 | `Manifest_spec.lua` | manifest and runtime consistency |
+| `SharedHelpers_spec.lua` | the shared `reportError` and `validateFacade` blocks, the upgrade from revision 5 |
+| `Conformance_spec.lua` | the conformance suite on a mainline-profile environment |
 
 `support/TestKitTestEnv.lua` adds what only these specs need on top of the shared fixture. `Frame(ms)` renders one frame the way the runner experiences it: both clocks advance, every native timer that is due fires (the fixture records a timer's delay but not its creation time, so the helper notes the clock the first time it sees each timer), then every `OnUpdate` handler runs once. `RenderFrames`, `FramesUntil`, `RunToEnd` and `RunOne` drive whole runs; `RunToEnd` installs one `OnFinished` callback per facade so repeated runs do not spend the facade's sixteen slots. `SetGlobal` installs host globals the fixture does not own (`issecurevariable`) and `Reset` removes them.
 

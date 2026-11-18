@@ -33,7 +33,7 @@ globals at call time; it works without any of them.
 |---|---|---|
 | ClientKit API 1 | `Apply`: `context.flavour` and `options.flavours` filtering | `context.flavour` is `false`; every shim applies whatever its `flavours`. |
 | ApiKit API 1 (with the client's flavour file) | `context.hasApi`, `options.covers` | `hasApi` answers `false` for every name; `missing` stays `false`. |
-| `issecretvalue` | every argument check | Nothing is treated as secret. |
+| `issecretvalue` | every argument check; resolved once at load, and read again at each check only on a host that had none at load | Nothing is treated as secret. |
 | `geterrorhandler` | failing shims and probes | The failure is printed, as the client's default handler does. |
 
 ## Public surface
@@ -338,7 +338,7 @@ or raises (kinds); lowering a limit removes nothing.
 the registries themselves. A library should rely on the defaults; an addon
 that raises a limit raises it for everybody.
 
-## Errors
+## Error behaviour
 
 Argument failures report the line that called the public method, never a line
 inside CompatKit, and name the method and the argument:
@@ -381,7 +381,7 @@ Ordinary outcomes (`"ignored"`, `"full"`, `"exists"`, `"none"`) are results,
 not errors: two addons registering the same shim or provider is not a
 programming error in either.
 
-## Cost
+## Performance
 
 | Operation | Cost |
 |---|---|

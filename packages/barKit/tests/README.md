@@ -6,6 +6,8 @@ The BarKit suite covers:
 - timers: draining with the time text, hours, minutes and tenths, filling, `onFinished` once at zero with ticking stopped, an `onFinished` that raises reported, `releaseOnFinish` after `onFinished`, a bar that `onFinished` started again kept despite `releaseOnFinish`, an `onFinished` that releases its bar and acquires another, pause and resume keeping the time left, `Stop` and a second `Start` without the callback, `SetValue` and `SetMinMax` stopping a timer, and a text set by hand kept until the time text changes;
 - arguments, limits and secrets: every argument failure reported at the caller's line, the limit refusing at the caller and freed by `Release`, secret options, numbers, colours, limits and receivers refused, and a host without `UIParent`;
 - Registry publication, a duplicate embedded load keeping bars, yielding to a newer revision, an in-place upgrade keeping bars, the pool and the limit while a timer started before it finishes with the new code, a record made by revision 1 (without the secret text fields) taken over, a refusal of state holding an invalid limit, missing Registry or PoolKit, and an incomplete facade;
+- the shared helper blocks: the secret probe kept from load and a probe installed after load asked, the facade message, a timer's `onFinished` printed when the host error handler raises, and the in-place upgrade over the committed revision 2 file (`fixtures/BarKit-revision2.lua`);
+- the repository conformance suite (`tests/support/KitConformance.lua`): manifest, receivers, arguments and upgrade; its limits group is pending, with the reason in the spec;
 - manifest/runtime API and revision consistency, and the declared dependencies.
 
 `support/BarKitTestEnv.lua` provides `UIParent`, a `GetTime` clock (`SetTime`, and `Advance`, which also runs a frame's `OnUpdate` whether or not the frame is shown), `Run`, `TakeReportedValues`, the secret probe, `ModelSecretTextAspect` (a font string that keeps a secret text aspect until `ClearText`, as the client does) and `LoadRevision`. The shared frame stub models the `StatusBar` type.
@@ -16,4 +18,6 @@ The BarKit suite covers:
 | `Timer_spec.lua` | `Start`, the time text, `Pause`, `Resume`, `Stop`, `onFinished` |
 | `Arguments_spec.lua` | argument errors at the caller's line, the limit, secrets |
 | `Bootstrap_spec.lua` | publication, duplicate loads, load order, upgrades |
+| `SharedHelpers_spec.lua` | the shared `isSecret`, `reportError` and `validateFacade` blocks, the upgrade from revision 2 |
+| `Conformance_spec.lua` | the conformance suite on a mainline-profile environment |
 | `Manifest_spec.lua` | manifest and runtime `API` / `REVISION` agreement, declared dependencies |

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.2 — 2026-11-18
+
+- Fixed: a host error handler that raises (an error-display addon with a bug) turned the report of a dialog's callback that failed into a second error, raised into the client's script call. `reportError` is now the shared helper block (`tooling/shared/lua/reportError.lua`): it calls the handler under `pcall` and prints the failure when the handler is missing or raises. Spec: `SharedHelpers_spec.lua` ("prints ... when the host error handler raises").
+- `isSecret` and `validateFacade` are now the shared helper blocks too, kept in step by `python3 -m tooling.shared.sync`. The secret check takes the probe rule: `issecretvalue` is read once at load and asked directly, about 50 ns less per check on the host; only a host that had no probe at load reads the global again on each check. A probe that replaces the one present at load is no longer asked. Refusal messages are unchanged. `validateFacade` no longer asks the secret probe before its `type` test (a secret is never a table): one probe call fewer on every facade method.
+- Implementation revision 3; an embedded revision 2 is upgraded in place, keeping what it made.
+- New specs: `SharedHelpers_spec.lua` (the probe rule, the facade message, the raising handler, the upgrade over the committed revision 2 file in `tests/fixtures/DialogKit-revision2.lua`) and `Conformance_spec.lua` (the repository's conformance suite; its limits group is pending, see the spec).
+
 ## 0.1.1 — 2026-11-15
 
 - Fixed: hiding the interface cancelled the shown dialog. The client runs a frame's `OnHide` when a parent hides (warcraft.wiki.gg, the `OnHide` script handler page), so Alt+Z, which hides `UIParent`, ended the dialog with `onCancel(data, "escape")`. The frame's `OnHide` now ends the dialog only when the frame itself was hidden (its `IsShown()` answers `false`), as Escape through `UISpecialFrames` does; otherwise the dialog stays and shows again with its parent. Specs: `Dialog_spec.lua` ("keeps the dialog when only a parent hides, as when the player hides the interface"), `Bootstrap_spec.lua` ("upgrades revision 1 in place: its frame then ignores a parent's hide").

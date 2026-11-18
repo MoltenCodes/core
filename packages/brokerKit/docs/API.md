@@ -28,7 +28,7 @@ BrokerKit reads two host globals, each at call time rather than at load, and wor
 
 | Facility | Used by | Without it |
 |---|---|---|
-| `issecretvalue` | every argument check and every attribute write | Nothing is treated as secret. |
+| `issecretvalue` | every argument check and every attribute write; resolved once at load, and read again at each check only on a host that had none at load | Nothing is treated as secret. |
 | `LibStub` | `ExposeToLibDataBroker`, `AdoptFromLibDataBroker` | Both return `false, "absent"`. |
 
 `LibStub` is read with `rawget(_G, "LibStub")`, and LibDataBroker with `LibStub:GetLibrary("LibDataBroker-1.1", true)`. BrokerKit does not use the `interopKit` bridge: it needs the library's methods and callbacks, which the bridge's Registry entry does not add, and depending on `interopKit` would make every addon embedding BrokerKit embed it too.
@@ -243,7 +243,7 @@ On Retail 12.x the client hands tainted code secret values that raise when compa
 
 Absence of a value BrokerKit did not create (an argument, a definition or limits field, anything LibDataBroker hands over) is tested with `type`, never with `== nil`: that is the repository rule, which never compares anything. A secret compared with `nil` happens not to raise; one compared with a value of its own type, or used as a table key, does (measured on Retail 12.1.0 b69933).
 
-`issecretvalue` is looked up at every call; without it nothing is secret. See [`docs/EMBEDDING.md`](../../../docs/EMBEDDING.md#secret-values-retail-12x).
+`issecretvalue` is read once at load and asked directly; a host that had none at load is asked again at each check, so a probe installed later is honoured, while one that replaces the probe present at load is not (revision 4). Without it nothing is secret. See [`docs/EMBEDDING.md`](../../../docs/EMBEDDING.md#secret-values-retail-12x).
 
 ## Limits
 

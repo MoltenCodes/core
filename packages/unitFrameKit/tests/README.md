@@ -12,8 +12,12 @@ The UnitFrameKit suite covers:
 
 `support/UnitFrameKitTestEnv.lua` provides `Widget` and `UnitButton` (stand-in frames with attributes, visibility, names and parent keys, walked by a stand-in `EnumerateFrames` that `VisitCount` counts), `SetUnits` (which token is which unit, for `UnitIsUnit` and `UnitExists`), `SetNamePlate`, `RunScan` (ticks until a scan is done), the secret probe, `LoadRevision` and `NewPackageAtRevision` (a fresh host with the working file loaded as an older revision). The Kit's event frame comes from the shared fixture's `CreateFrame`, so `Emit` and `Tick` drive it.
 
+The shared helper specs load the Kit with the secret probe already installed (through `package.preload`), raise from the host error handler, and load the committed revision 2 file (`fixtures/UnitFrameKit-revision2.lua`) before the current one.
+
 | Spec | Covers |
 |---|---|
+| `SharedHelpers_spec.lua` | the shared `isSecret`, `reportError` and `validateFacade` blocks, the upgrade from revision 2 |
+| `Conformance_spec.lua` | the repository conformance suite (`tests/support/KitConformance.lua`) |
 | `Scanning_spec.lua` | what a scan keeps, slicing, events, coalescing, queueing, `maxFrames`, a missing host |
 | `Ranking_spec.lua` | rank bands, priorities, kinds, the solo-token rule, ignore, `GetKindPatterns` |
 | `Queries_spec.lua` | matching, reassigned and hidden frames, nameplates, limits |

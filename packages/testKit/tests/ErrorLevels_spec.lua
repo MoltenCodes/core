@@ -105,35 +105,35 @@ describe("TestKit error levels", function()
         end,
       },
       {
-        "TestKit:Run must be called on the TestKit facade",
+        "TestKit:Run must be called on the TestKit facade; use TestKit:Run(...)",
         function(mark)
           mark()
           TestKit.Run("MyAddon")
         end,
       },
       {
-        "TestKit:Suite must be called on the TestKit facade",
+        "TestKit:Suite must be called on the TestKit facade; use TestKit:Suite(...)",
         function(mark)
           mark()
           TestKit.Suite("MyAddon")
         end,
       },
       {
-        "TestKit:Report must be called on the TestKit facade",
+        "TestKit:Report must be called on the TestKit facade; use TestKit:Report(...)",
         function(mark)
           mark()
           TestKit.Report()
         end,
       },
       {
-        "TestKit:OnFinished must be called on the TestKit facade",
+        "TestKit:OnFinished must be called on the TestKit facade; use TestKit:OnFinished(...)",
         function(mark)
           mark()
           TestKit.OnFinished(noop)
         end,
       },
       {
-        "TestKit:Reset must be called on the TestKit facade",
+        "TestKit:Reset must be called on the TestKit facade; use TestKit:Reset(...)",
         function(mark)
           mark()
           TestKit.Reset()

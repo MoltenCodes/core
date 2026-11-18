@@ -16,6 +16,8 @@ The CacheKit suite covers:
 - `error` levels: every argument failure reports the caller's own line, including `PutNegative`, `cacheable`, `Lazy`, `NewQueue`, `SetLimits`, `GetLimits`, lazy tree paths and queue values;
 - a 5,000-step deterministic property test against a naive LRU model, checking after every step that live plus free entries stay within `maxEntries`;
 - limits: the default `Memoize` and snapshot bounds, `UNBOUNDED` on every constructor, the 1024-entry free list of an unbounded cache, another table refused at the caller's line, the sentinel identity and unbounded caches kept across an in-place upgrade, and `maxQueueCapacity`: the 1024 default bounding `NewQueue`, the 65536 ceiling, lowering without shrinking an existing queue, `UNBOUNDED` refused with its reason on `SetLimits` and `NewQueue`, invalid values, unknown names and a non-table, atomic updates, a fresh table from `GetLimits`, the facade receiver, and the value shared by embedded copies and kept across an upgrade;
+- the shared helper blocks: the facade message with its `; use ...` hint, a probe installed after load asked by the argument checks, the probe from load kept when the global is replaced, and the in-place upgrade over the committed revision 7 file (`fixtures/CacheKit-revision7.lua`);
+- the repository conformance suite (`tests/support/KitConformance.lua`): manifest, receivers and upgrade; its limits and arguments groups are pending, with the reason in the spec;
 - manifest/runtime API and revision consistency.
 
 The randomized and model-based specs draw from a fixed linear congruential generator, so every run replays the same workload. The draw uses the generator's high bits: with a power-of-two modulus the low bits repeat with periods as short as two, which would make a "random" workload cycle through a handful of steps.
@@ -40,4 +42,6 @@ EventKit is an optional dependency, declared under `optionalDependencies` in the
 | `Errors_spec.lua` | argument and state errors |
 | `ErrorLevels_spec.lua` | argument errors reported at the caller's line; a table key named by its type without running its `__tostring` |
 | `Bootstrap_spec.lua` | publication, duplicate loads, upgrades |
+| `SharedHelpers_spec.lua` | the shared `isSecret`, `validateFacade` and `describeKey` blocks, the upgrade from revision 7 |
+| `Conformance_spec.lua` | the conformance suite on a mainline-profile environment |
 | `Manifest_spec.lua` | manifest and runtime `API` / `REVISION` agreement |

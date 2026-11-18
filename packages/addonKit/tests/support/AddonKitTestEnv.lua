@@ -252,16 +252,22 @@ function AddonKitTestEnv.RunSlash(name, text)
 end
 
 ---Install `issecretvalue`, answering `true` for the values `NewSecret` returns.
+---
+---The mainline profile already installs a probe before AddonKit loads, and the
+---shared `isSecret` block keeps the probe it found at load, so a probe
+---installed here after load is not asked by an AddonKit loaded before it.
+---`NewSecret` therefore marks its value in both, and either probe answers.
 function AddonKitTestEnv.InstallSecretProbe()
   AddonKitTestEnv.SetGlobal("issecretvalue", function(value)
     return secrets[value] == true
   end)
 end
 
----A table the probe reports as secret.
+---A table every probe of this environment reports as secret: the client
+---stub's, installed before load, and `InstallSecretProbe`'s.
 ---@return table
 function AddonKitTestEnv.NewSecret()
-  local secret = {}
+  local secret = AddonKitTestEnv.NewSecretValue()
   secrets[secret] = true
   return secret
 end

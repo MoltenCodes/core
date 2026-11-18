@@ -217,7 +217,7 @@ describe("CacheKit error levels", function()
     end)
     assertReportedAt(
       receiverLine,
-      "CacheKit:GetLimits must be called on the CacheKit facade",
+      "CacheKit:GetLimits must be called on the CacheKit facade; use CacheKit:GetLimits(...)",
       receiverOk,
       receiverValue
     )

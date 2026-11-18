@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.3 — 2026-11-18
+
+- Fixed: a host error handler that itself raises (an error-display addon with a bug) made the failure PanelKit was reporting raise again into whatever the client was running. `reportError` now calls the handler through `pcall` and prints the failure when the handler is missing or raises.
+- `isSecret`, `reportError` and `validateFacade` are now the shared helper blocks (`tooling/shared/lua/`, kept in step by `python3 -m tooling.shared.sync`). The secret check takes the probe rule: `issecretvalue` is read once at load and asked directly, about 50 ns less per check on the host; only a host that had no probe at load reads the global again on each check. A probe that replaces the one present at load is no longer asked. Refusal messages are unchanged.
+- Implementation revision 3; an embedded revision 2 is upgraded in place, its state kept.
+- New specs: `SharedHelpers_spec.lua` (the probe rule, the raising error handler, the facade message, the upgrade over the committed revision 2 file in `tests/fixtures/PanelKit-revision2.lua`) and `Conformance_spec.lua` (the repository's conformance suite; pending: limits (its unknown-limit refusal does not name the key), see the spec).
+
 ## 0.1.2 — 2026-11-15
 
 - Changed: PanelKit's WidgetKit contract names WidgetKit's `Renderer` part (`"widgetKit": { "api": 1, "parts": ["Renderer"] }`), so the embeds generator and the builder load the renderer and the type parts it draws with. WidgetKit 0.5.0 split into a core and parts, and its core holds a raising stand-in for `RenderOptions` until the part loads, so the load check now asks `WidgetKit:GetPartRevision("Renderer")` instead of the type of `RenderOptions`; with an older, single-file WidgetKit it still checks `RenderOptions`. Without the part, loading raises `MoltenCodes PanelKit requires WidgetKit API 1 with its Renderer part to be loaded first`.

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.7 — 2026-11-18
+
+- `validateFacade` is now the shared helper block (`tooling/shared/lua/`, kept in step by `python3 -m tooling.shared.sync`); it raises the same message at the same level for every receiver. `describeKey` and the `SetLimits` validation stay ProfileKit's own, opted out in `tooling/shared/pins.json`: the shared `describeKey` needs an `isSecret` block beside the probe ProfileKit binds at load for the disabled `Measure`, and the shared limits block measured larger than this Kit's loop.
+- `docs/API.md`: *Errors* is now *Error behaviour*, *Cost* is *Performance* and *Upgrades* is *Embedded copies and upgrades*, and *Secret values* comes before *Limits*: the section names and order every package's API.md uses.
+- New spec: `Conformance_spec.lua` (the repository's conformance suite; its limits and arguments groups are pending, see the spec). 83 → 89 specs.
+- Documentation and tooling only: implementation revision 4 is unchanged.
+
 ## 0.1.6 — 2026-11-15
 
 - Fixed: `SetLimits` built its unknown-limit message with `tostring(key)`, so a key that is a table or userdata with a `__tostring` metamethod ran that foreign code inside ProfileKit. The metamethod could raise or answer a secret value, and the caller then saw its error instead of the real refusal. A string key is still shown as written and a number or boolean key through `tostring` (no foreign code runs for those, so `limits.1` is unchanged); any other key is named by its type: `ProfileKit:SetLimits limits.<table> is not a recognised limit`, at the caller's line, with no limit changed. `docs/API.md` documents the form under *Limits* and *Errors*.

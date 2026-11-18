@@ -3,10 +3,10 @@
   "displayName": "UnitFrameKit",
   "description": "The unit frame shown on screen for a World of Warcraft unit token: a sliced, bounded scan of the client's frames, ranked matches across Blizzard's and other addons' unit frames, change notifications and nameplates.",
   "summary": "The unit frame shown on screen for a unit token, what LibGetFrame-1.0 gives WeakAuras: a sliced scan of the client's frames, matches ranked across Blizzard's and other addons' unit frames, change notifications and nameplates.",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "license": "MIT",
   "api": 1,
-  "revision": 2,
+  "revision": 3,
   "dependencies": {
     "registry": {
       "api": 2

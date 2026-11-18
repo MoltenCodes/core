@@ -259,7 +259,7 @@ Every suite with at least one result appears, in registration order. Within a su
 
 ## `TestKit:OnFinished(callback)` and `TestKit:Reset()`
 
-`OnFinished` registers `callback(report)` for every run that finishes, at most `maxFinishedCallbacks` (16) callbacks for the session (`nil, "full"` beyond). Each callback runs protected: one that raises is reported through `geterrorhandler()` (or printed) and the others still run.
+`OnFinished` registers `callback(report)` for every run that finishes, at most `maxFinishedCallbacks` (16) callbacks for the session (`nil, "full"` beyond). Each callback runs protected: one that raises is reported through `geterrorhandler()` and the others still run. When there is no handler, or the handler itself raises, the failure is printed instead (revision 6; earlier revisions let a raising handler's error out of the run).
 
 `Reset` clears every result. When a run is in progress it is **abandoned** first: suites waiting for a phase are unsubscribed, queued suites dropped, the active test's replacements restored and its waits released, the runner job cancelled, and no `OnFinished` callback is called. Suites and `OnFinished` callbacks stay registered. `Reset` raises when called from inside a test or hook (`TestKit:Reset cannot be called from inside a running test`).
 
@@ -280,6 +280,18 @@ Every suite with at least one result appears, in registration order. Within a su
 | `issecurevariable reports a Blizzard global as secure` | `issecurevariable("CreateFrame")` answers secure; on a host without `issecurevariable` the test logs that and passes. |
 
 `tests/FixtureFidelity_spec.lua` loads the same file into the fixture and runs the same suite. **The two environments must agree.** The spec lists by name the facts the fixture does not model yet (today `InCombatLockdown` and `C_Timer.After`) and requires them to fail there; every other test must pass. When the fixture learns one of them the spec fails until the entry is removed.
+
+## Secret values
+
+TestKit asks the host's `issecretvalue` on every check, reading the global
+each time rather than once at load, so a test can replace it with
+`ctx:Replace` (the shared `isSecret` block keeps the probe found at load,
+which is why TestKit does not carry it). A suite name, a phase, a test name,
+a `Replace` key or value and a `SetLimits` value that the probe reports
+secret are refused at the caller (`... must not be a secret value`). A secret
+compared or described by a matcher is never compared or printed: it is
+described as `<secret value>` (see [Safe descriptions](#safe-descriptions)),
+and a comparison a secret makes impossible fails even under `Not`.
 
 ## Limits
 
@@ -315,7 +327,7 @@ defaults above, and revisions 3, 4 and 5 keep the revision 2 state as it is.
 
 ## Error behaviour
 
-Argument failures report the line that called the public method, never a line inside TestKit; inside a test that line is the test's own, and the error fails the test. Messages name the method (`TestKit:Suite`, `TestKit.Suite:Test`, `TestKit.Context:WaitFor`, `TestKit.Matcher:ToBe`). A method called on the wrong receiver raises `TestKit.Suite:Test must be called on a TestKit suite`; a facade method called with a dot, such as `TestKit.Run("MyAddon")`, raises `TestKit:Run must be called on the TestKit facade` instead of shifting its arguments.
+Argument failures report the line that called the public method, never a line inside TestKit; inside a test that line is the test's own, and the error fails the test. Messages name the method (`TestKit:Suite`, `TestKit.Suite:Test`, `TestKit.Context:WaitFor`, `TestKit.Matcher:ToBe`). A method called on the wrong receiver raises `TestKit.Suite:Test must be called on a TestKit suite`; a facade method called with a dot, such as `TestKit.Run("MyAddon")`, raises `TestKit:Run must be called on the TestKit facade; use TestKit:Run(...)` instead of shifting its arguments (the hint is new in revision 6).
 
 ## Performance
 

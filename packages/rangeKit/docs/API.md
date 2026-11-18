@@ -34,8 +34,8 @@ RangeKit does not rely on `require()` at runtime.
 | `UnitExists` | `GetRange`, `IsInRange` | Every unit counts as missing: `nil`. |
 | `UnitCanAttack`, `UnitCanAssist`, `UnitIsDeadOrGhost`, `UnitIsUnit` | choosing the list for a unit | The answer counts as no. |
 | `InCombatLockdown` | the combat rule | Never in combat. |
-| `issecretvalue` | every check, every value the client answers | Nothing is treated as secret. |
-| `geterrorhandler` | listener failures | They are printed. |
+| `issecretvalue` | every check, every value the client answers; read once at load, and again on each check only when it was absent at load | Nothing is treated as secret. |
+| `geterrorhandler` | listener failures | The failure is printed, also when the handler itself raises. |
 
 Every call above is in the generated client documentation of Retail 12.1.5, Mists of Pandaria Classic 5.5.4 and Classic Era 1.15.9, except `UnitIsDeadOrGhost`, which Blizzard's own `CompactUnitFrame.lua` calls on Classic Era. `IsPlayerSpell` and `IsSpellKnown` are only deprecation fallbacks over `C_SpellBook` on every flavour and are not used.
 
@@ -167,6 +167,8 @@ Argument errors raise at the caller's line. A secret value is refused with the s
 | `RangeKit.Connection:Disconnect must be called on a RangeKit connection; use connection:Disconnect(...)` (and `IsConnected`) | A connection method called on anything but a connection handle. |
 
 At load, `MoltenCodes RangeKit requires Registry API 2 to be loaded first`, `MoltenCodes RangeKit requires a valid Registry API 2 facade` and `MoltenCodes RangeKit package state is corrupted or incomplete` raise at the loading file. What the client calls (the events) never raises; a listener's error goes to `geterrorhandler()`.
+
+A host error handler that itself raises does not turn a reported failure into a second error raised into the client: the failure is printed instead, as on a host without a handler (implementation revision 3).
 
 ## Performance
 

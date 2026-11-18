@@ -40,7 +40,7 @@
 
 local PACKAGE_NAME = "readinessKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 5
+local IMPLEMENTATION_REVISION = 6
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_TIMERKIT_API = 1
 local OPTIONAL_EVENTKIT_API = 1
@@ -206,23 +206,32 @@ end
 -- boolean, so every argument a comparison would touch, and every probe answer,
 -- is checked with the host probe first. A host without `issecretvalue` has no
 -- secret values.
--- issecretvalue is a World of Warcraft client API reachable only through the global table.
--- selene: allow(global_usage)
-local nativeIsSecretValue = rawget(_G, "issecretvalue")
-if type(nativeIsSecretValue) ~= "function" then
-  nativeIsSecretValue = nil
-end
-
----Whether `value` is a secret value the host forbids comparing or testing as
----a boolean. `issecretvalue` itself answers a plain boolean.
----@param value any
----@return boolean
-local function isSecretValue(value)
-  if nativeIsSecretValue == nil then
-    return false
+-- shared:begin isSecret 1
+-- Copied from tooling/shared/lua/isSecret.lua by python3 -m tooling.shared.sync; edit that file, not this copy.
+---Whether `value` is a secret value the host forbids comparing.
+---@type fun(value: any): boolean
+local isSecret
+do
+  -- issecretvalue is a client API reachable only through the global table.
+  -- selene: allow(global_usage)
+  local loadedProbe = rawget(_G, "issecretvalue")
+  if type(loadedProbe) ~= "function" then
+    loadedProbe = nil
   end
-  return nativeIsSecretValue(value) and true or false
+
+  isSecret = function(value)
+    local probe = loadedProbe
+    if probe == nil then
+      -- selene: allow(global_usage)
+      probe = rawget(_G, "issecretvalue")
+      if type(probe) ~= "function" then
+        return false
+      end
+    end
+    return probe(value) == true
+  end
 end
+-- shared:end isSecret
 
 ---Return the clock reading in seconds, or `false` on a host without the clock.
 ---@return number|false
@@ -233,26 +242,23 @@ local function now()
   return nativeGetTimePreciseSec()
 end
 
----Hand a failure nobody called for (a probe, a queued callback) to the host
----error handler.
----@param message any
-local function reportError(message)
-  -- geterrorhandler is a World of Warcraft client API reachable only through the global table.
+-- shared:begin reportError 1
+-- Copied from tooling/shared/lua/reportError.lua by python3 -m tooling.shared.sync; edit that file, not this copy.
+---Report `failure` through the host error handler, or print it.
+---@param failure any
+local function reportError(failure)
+  -- geterrorhandler is a client API reachable only through the global table.
   -- selene: allow(global_usage)
   local getErrorHandler = rawget(_G, "geterrorhandler")
   if type(getErrorHandler) == "function" then
     local handler = getErrorHandler()
-    if type(handler) == "function" then
-      handler(message)
+    if type(handler) == "function" and pcall(handler, failure) then
       return
     end
   end
-
-  -- Outside a WoW client there is no error handler to report through.
-  -- Printing is what the client's own default handler does, and staying
-  -- silent would turn a probe bug into an invisible one.
-  print(message)
+  print(failure)
 end
+-- shared:end reportError
 
 -- Validation -----------------------------------------------------------------
 
@@ -420,7 +426,7 @@ end
 ---@param label string argument description, used in the argument error
 ---@param level integer stack level the failure is reported at
 local function validateNonEmptyString(value, label, level)
-  if isSecretValue(value) then
+  if isSecret(value) then
     error(label .. " must not be a secret value", level)
   end
   if type(value) ~= "string" or value == "" then
@@ -445,24 +451,25 @@ local function isPositiveFiniteNumber(value)
   return type(value) == "number" and value == value and value > 0 and value ~= math.huge
 end
 
----Name a caller's table key in a refusal without running its `__tostring`.
----`tostring` on a table or userdata runs the caller's `__tostring`, foreign
----code that may raise or answer a secret and so lose the real refusal. A
----string is shown as written, a number or boolean through `tostring` (no
----foreign code runs for those), and anything else by its type, as `<table>`.
----A key read from a Lua table cannot be a secret: storing one raises.
+-- shared:begin describeKey 1
+-- Copied from tooling/shared/lua/describeKey.lua by python3 -m tooling.shared.sync; edit that file, not this copy.
+---Name `key` for an error message without running any of the caller's code.
 ---@param key any
 ---@return string
 local function describeKey(key)
-  local keyType = type(key)
-  if keyType == "string" then
+  if isSecret(key) then
+    return "<secret>"
+  end
+  local kind = type(key)
+  if kind == "string" then
     return key
   end
-  if keyType == "number" or keyType == "boolean" then
+  if kind == "number" or kind == "boolean" then
     return tostring(key)
   end
-  return "<" .. keyType .. ">"
+  return "<" .. kind .. ">"
 end
+-- shared:end describeKey
 
 ---Refuse any field of an option table outside `GATE_OPTION_KEYS`. The caller
 ---has already checked that `options` is a table.
@@ -490,7 +497,7 @@ end
 ---@param field string option field name, used in the failure
 ---@param level integer stack level the failure is reported at
 local function refuseSecretOption(value, field, level)
-  if isSecretValue(value) then
+  if isSecret(value) then
     error("ReadinessKit:Gate " .. field .. " must not be a secret value", level)
   end
 end
@@ -729,7 +736,7 @@ local function runProbe(gate)
   local ok, result = pcall(rawget(gate, "_probe"))
   if not ok then
     recordProbeError(gate, result)
-  elseif isSecretValue(result) then
+  elseif isSecret(result) then
     recordSecretAnswer(gate)
   elseif result then
     return true
@@ -931,7 +938,7 @@ local function withoutPosition(failure)
   -- A failure carrying a host reason could be a secret string, and the
   -- `or` below is a boolean test, which raises on a secret. A fixed
   -- placeholder keeps the re-raised message readable and plain.
-  if isSecretValue(failure) then
+  if isSecret(failure) then
     return "(secret value)"
   end
   local text = tostring(failure)

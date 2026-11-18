@@ -2,7 +2,7 @@
 
 ReadinessKit API generation **1** provides named gates for host data that arrives after load: a gate probes a fact, polls it while it is not yet true, times out, remembers negative answers for one interval, and calls its waiters once with the outcome.
 
-Implementation revision: **5**.
+Implementation revision: **6**.
 
 ## Loading
 
@@ -124,7 +124,7 @@ The timeout is checked after each negative poll, measured from the start of the 
 
 `Await` returns a waiter in every case but the refusal; for a callback that already ran, the waiter is not pending and `Cancel()` returns `false`.
 
-**Callback errors.** A callback run at once runs on your stack, so its error propagates out of `Await` unchanged. A queued callback runs from a TimerKit tick, an EventKit dispatch or somebody else's `Probe`, none of which is the code that queued it, so its error is handed to the host error handler (`geterrorhandler()`, or `print` without one) and the remaining callbacks of the batch still run.
+**Callback errors.** A callback run at once runs on your stack, so its error propagates out of `Await` unchanged. A queued callback runs from a TimerKit tick, an EventKit dispatch or somebody else's `Probe`, none of which is the code that queued it, so its error is handed to the host error handler (`geterrorhandler()`, or `print` without one or when it raises) and the remaining callbacks of the batch still run.
 
 A callback that queues a new waiter on the same gate (after invalidating it, say) queues it for the next outcome, not the one being delivered. A callback may cancel a waiter later in the same batch, and may close the gate; the rest of the batch still receives the outcome being delivered.
 
@@ -203,6 +203,21 @@ A probe over a host API that may answer a secret checks it itself (`issecretvalu
 
 A probe, or something it calls, may close its own gate. The gate stays closed whatever the probe answers: it does not become ready, time out or poll again, and its name stays free. `Gate` returns the closed gate, and `Probe` returns `false`.
 
+## Secret values
+
+A secret value (Retail 12.0.0 and later) cannot be compared or tested as a boolean, so it is refused before any check touches it, at the caller's line:
+
+| Argument | Message |
+|---|---|
+| `name` of `Gate` | `ReadinessKit:Gate name must not be a secret value` |
+| `name` of `Get` | `ReadinessKit:Get name must not be a secret value` |
+| `eventName` of `ReprobeOn` | `ReadinessKit.Gate:ReprobeOn eventName must not be a secret value` |
+| an option of `Gate` | `ReadinessKit:Gate intervalSeconds must not be a secret value` (likewise `timeoutSeconds`, `maxWaiters`) |
+
+An absent option is recognised by its type, never by comparing it with `nil`. `issecretvalue` is read once at load and asked directly; a host that had none at load is asked again at each check, so a probe installed later is honoured (revision 6). Only a plain `true` counts as secret. On a host without `issecretvalue` nothing is secret.
+
+A probe's own answer is asked about too; see [Probes that answer a secret value](#probes-that-answer-a-secret-value).
+
 ## Limits
 
 ReadinessKit bounds one retained collection, and opens it on purpose (design
@@ -229,16 +244,7 @@ per name for the session, so it grows only with the names the consumer defines.
 
 Argument failures report the line that called the public method, never a line inside ReadinessKit. Messages name the method (`ReadinessKit:Gate`, `ReadinessKit.Gate:Await`, `ReadinessKit.Waiter:Cancel`, `ReadinessKit:WhenAll`). Calling a method on something that is not a gate raises `ReadinessKit.Gate:IsReady must be called on a ReadinessKit gate`, and a waiter method on something that is not a waiter `ReadinessKit.Waiter:Cancel must be called on a ReadinessKit waiter`. A callback that is not a function raises `ReadinessKit.Gate:Await callback must be a function` (likewise `ReadinessKit:WhenAll callback`).
 
-A secret value (Retail 12.0.0 and later) cannot be compared or tested as a boolean, so it is refused before any check touches it, at the caller's line:
-
-| Argument | Message |
-|---|---|
-| `name` of `Gate` | `ReadinessKit:Gate name must not be a secret value` |
-| `name` of `Get` | `ReadinessKit:Get name must not be a secret value` |
-| `eventName` of `ReprobeOn` | `ReadinessKit.Gate:ReprobeOn eventName must not be a secret value` |
-| an option of `Gate` | `ReadinessKit:Gate intervalSeconds must not be a secret value` (likewise `timeoutSeconds`, `maxWaiters`) |
-
-An absent option is recognised by its type, never by comparing it with `nil`. On a host without `issecretvalue` nothing is secret and these checks cost one upvalue test.
+A failure nobody called for (a probe that raises, a queued callback, a timer that cannot be cancelled) is handed to the host's `geterrorhandler()` through `pcall`; when there is no handler, or the handler itself raises, it is printed instead (revision 6, the shared `reportError` block), so reporting one failure never raises a second into a TimerKit tick or an EventKit dispatch.
 
 ## Performance
 
@@ -256,5 +262,7 @@ No timer exists for a gate that is ready, timed out or closed. Every poll timer 
 ## Embedded copies and upgrades
 
 Several addons may embed ReadinessKit; Registry selects the newest compatible revision and every copy shares one facade and one set of gates. An upgrade happens in place: gates keep their state, queued waiters and poll timers, and the poll callback, re-probe callbacks and `WhenAll` callbacks an older copy created run the newer implementation.
+
+Revision 6 changes no state and no layout: its `isSecret`, `reportError` and `describeKey` are the repository's shared helper blocks, and an older copy's gates, waiters and timers report through them after the upgrade.
 
 Nothing survives `/reload`: gates live in memory only.

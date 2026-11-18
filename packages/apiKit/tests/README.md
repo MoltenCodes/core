@@ -29,6 +29,12 @@ documented function and nothing else is `tooling/tests/test_api_committed_flavou
   caller's line before the key use and the integer test, a secret
   `info.version` stored, a host without `issecretvalue`;
 - the facade's flavour table against `tooling/api/flavours.json`;
+- the shared `isSecret` and `describeKey` blocks: the probe kept from load when
+  the global is replaced, a probe installed after load asked, a secret key
+  named `<secret>`, and the in-place upgrade over the committed revision 6
+  file (`fixtures/ApiKit-revision6.lua`);
+- the repository conformance suite (`tests/support/KitConformance.lua`) on a
+  mainline-profile environment; its limits group is pending (no `SetLimits`);
 - manifest/runtime API and revision consistency.
 
 Spec files:
@@ -42,6 +48,8 @@ Spec files:
 | `SecretValues_spec.lua` | secret `flavor` and `info.build` refused at the caller's line, secret `info.version` accepted, no `issecretvalue` |
 | `ErrorLevels_spec.lua` | every argument and receiver failure at the caller's line |
 | `FlavourTable_spec.lua` | the facade's table against the tooling's flavour table |
+| `SharedHelpers_spec.lua` | the shared helper blocks and the upgrade from revision 6 |
+| `Conformance_spec.lua` | the conformance suite |
 | `Manifest_spec.lua` | runtime API and revision against `package.manifest.json` |
 | `RetailBindings_spec.lua`, `ClassicEraBindings_spec.lua`, `ClassicMopBindings_spec.lua`, `PtrBindings_spec.lua`, `BetaBindings_spec.lua` | each committed flavour file against the real facade and the shared fixture: direct aliases, absent namespaces, another flavour's client, loading before the facade |
 

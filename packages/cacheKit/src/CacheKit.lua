@@ -40,7 +40,7 @@
 
 local PACKAGE_NAME = "cacheKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 7
+local IMPLEMENTATION_REVISION = 8
 local REQUIRED_REGISTRY_API = 2
 local OPTIONAL_EVENTKIT_API = 1
 
@@ -313,13 +313,35 @@ if type(nativeIsSecretValue) ~= "function" then
   nativeIsSecretValue = nil
 end
 
----Whether the host reports `value` secret. Asked before a caller's limit value
----meets `CacheKit.UNBOUNDED` or a number; without the probe nothing is secret.
----@param value any
----@return boolean
-local function isSecretValue(value)
-  return nativeIsSecretValue ~= nil and nativeIsSecretValue(value) == true
+-- The argument checks ask the shared probe below, which also honours a probe
+-- installed after load on a host that had none; the snapshot fill keeps the
+-- probe bound above, so its hot path pays no extra call per entry.
+-- shared:begin isSecret 1
+-- Copied from tooling/shared/lua/isSecret.lua by python3 -m tooling.shared.sync; edit that file, not this copy.
+---Whether `value` is a secret value the host forbids comparing.
+---@type fun(value: any): boolean
+local isSecret
+do
+  -- issecretvalue is a client API reachable only through the global table.
+  -- selene: allow(global_usage)
+  local loadedProbe = rawget(_G, "issecretvalue")
+  if type(loadedProbe) ~= "function" then
+    loadedProbe = nil
+  end
+
+  isSecret = function(value)
+    local probe = loadedProbe
+    if probe == nil then
+      -- selene: allow(global_usage)
+      probe = rawget(_G, "issecretvalue")
+      if type(probe) ~= "function" then
+        return false
+      end
+    end
+    return probe(value) == true
+  end
 end
+-- shared:end isSecret
 
 -- Validation -----------------------------------------------------------------
 
@@ -587,16 +609,21 @@ local function validateQueue(queue, methodName, level)
   end
 end
 
----The limit methods write shared state, so they insist on the facade as the
----receiver rather than guessing what a stray table meant.
----@param self any receiver the public method was called on
----@param methodName string public method name, used in the argument error
+-- The limit methods write shared state, so they insist on the facade as the
+-- receiver rather than guessing what a stray table meant.
+-- shared:begin validateFacade 1 __FACADE__=CacheKit
+-- Copied from tooling/shared/lua/validateFacade.lua by python3 -m tooling.shared.sync; edit that file, not this copy.
+---Raise at `level` unless `receiver` is the CacheKit facade.
+---@param receiver any the table the method was called on
+---@param label string qualified method name, used in the argument error
 ---@param level integer stack level the failure is reported at
-local function validateFacade(self, methodName, level)
-  if self ~= CacheKit then
-    error(methodName .. " must be called on the CacheKit facade", level)
+local function validateFacade(receiver, label, level)
+  if type(receiver) ~= "table" or receiver ~= CacheKit then
+    local hint = "; use " .. label .. "(...)"
+    error(label .. " must be called on the CacheKit facade" .. hint, level)
   end
 end
+-- shared:end validateFacade
 
 ---Refuse an empty path and any part that is not a string or a number, the
 ---same rule a memoised key follows. Reads the varargs in place, so a valid
@@ -632,7 +659,7 @@ end
 local function validateCapacity(value, methodName, level)
   -- The secret check runs first; a secret is refused like any other
   -- invalid capacity, below, without being compared.
-  local secret = isSecretValue(value)
+  local secret = isSecret(value)
   if not secret and value == UNBOUNDED then
     error(
       methodName
@@ -653,24 +680,25 @@ local function validateCapacity(value, methodName, level)
   end
 end
 
----Name a caller's table key in a refusal without running its `__tostring`.
----`tostring` on a table or userdata runs the caller's `__tostring`, foreign
----code that may raise or answer a secret and so lose the real refusal. A
----string is shown as written, a number or boolean through `tostring` (no
----foreign code runs for those), and anything else by its type, as `<table>`.
----A key read from a Lua table cannot be a secret: storing one raises.
+-- shared:begin describeKey 1
+-- Copied from tooling/shared/lua/describeKey.lua by python3 -m tooling.shared.sync; edit that file, not this copy.
+---Name `key` for an error message without running any of the caller's code.
 ---@param key any
 ---@return string
 local function describeKey(key)
-  local keyType = type(key)
-  if keyType == "string" then
+  if isSecret(key) then
+    return "<secret>"
+  end
+  local kind = type(key)
+  if kind == "string" then
     return key
   end
-  if keyType == "number" or keyType == "boolean" then
+  if kind == "number" or kind == "boolean" then
     return tostring(key)
   end
-  return "<" .. keyType .. ">"
+  return "<" .. kind .. ">"
 end
+-- shared:end describeKey
 
 ---Validate one `SetLimits` entry: a recognised name, an integer within the
 ---limit's ceiling, never `UNBOUNDED` (each limit names its reason).
@@ -682,7 +710,7 @@ local function validateLimitEntry(key, value, level)
   if ceiling == nil then
     error("CacheKit:SetLimits limits." .. describeKey(key) .. " is not a recognised limit", level)
   end
-  local secret = isSecretValue(value)
+  local secret = isSecret(value)
   if not secret and value == UNBOUNDED then
     error(
       "CacheKit:SetLimits limits."
@@ -718,7 +746,7 @@ end
 local function validateOverflowPolicy(value, methodName, level)
   -- A secret string raises when it is used as a key of the policy set, so the
   -- probe is asked first and a secret is refused like any unknown policy.
-  if type(value) ~= "string" or isSecretValue(value) or QUEUE_OVERFLOW_POLICIES[value] ~= true then
+  if type(value) ~= "string" or isSecret(value) or QUEUE_OVERFLOW_POLICIES[value] ~= true then
     error(methodName .. " overflow must be " .. QUEUE_OVERFLOW_POLICY_TEXT, level)
   end
 end
@@ -782,7 +810,7 @@ local function validateMaxEntries(value, methodName, level)
     error(methodName .. " maxEntries is required", level)
   end
   -- The secret check runs before the value meets the sentinel or a number.
-  local secret = isSecretValue(value)
+  local secret = isSecret(value)
   if not secret and value == UNBOUNDED then
     return
   end
@@ -822,7 +850,7 @@ local function validateTtlSeconds(value, methodName, level)
   -- secret is refused like any other invalid lifetime.
   if
     type(value) ~= "number"
-    or isSecretValue(value)
+    or isSecret(value)
     or value ~= value
     or value <= 0
     or value == math.huge
@@ -1531,7 +1559,7 @@ local function memoizedCall(cache, compute, key, cacheable)
     -- is not a "yes": the result is returned without being remembered,
     -- exactly as for `false` or `nil`.
     local verdict = cacheable(value, key)
-    if isSecretValue(verdict) or not verdict then
+    if isSecret(verdict) or not verdict then
       return value
     end
   end

@@ -10,6 +10,17 @@ deprecation warnings.
 local ClientKit = MoltenCodes.Registries[2]:Get("clientKit", 1)
 ```
 
+## Loading
+
+Load `Registry.lua` first, then `ClientKit.lua`; ClientKit has no parts and
+no other dependency. Everything it reports is read from the host once, at
+load (the flavour, build, interface number, locale, capability flags and the
+bound host functions); an addon's `.toc` is read on the first `GetManifest`
+for that addon. `issecretvalue` is bound at load too; when the client had
+none then, `IsSecret` looks the global up on every call, so one installed
+later is still used. Loading without Registry raises `MoltenCodes ClientKit
+requires Registry API 2 to be loaded first`.
+
 ## Public surface
 
 | Method | Returns | Purpose |
@@ -540,7 +551,61 @@ addon) or one `debugstack` call and one lookup without it. Past
 [`maxReports`](#limits) every reporter stops reading call sites and answers
 after that comparison. A repeated warning of a known addon allocates nothing.
 
-## Errors
+## Secret values
+
+ClientKit is the secret probe other Kits may ask: [`IsSecret`](#issecretvalue)
+answers the host's `issecretvalue`, bound at load. ClientKit asks it about
+every caller value it compares, tests, indexes with or formats: `IsAtLeast`'s
+`interfaceNumber`, `Has`'s `capability`, `GetManifest`'s `addonName`,
+`manifest:Get`'s `field`, `Deprecate`'s `spec` and its fields, a reporter's
+`Warn` level, `SetDeprecationMode`'s `mode`, and `SetLimits`' table and
+values. A secret one is refused at the caller (`... must not be a secret
+value`), and an error message describes a secret as `<secret value>` (see
+[Error behaviour](#error-behaviour)). ClientKit carries no copy of the shared
+`isSecret` block: it is the probe's provider, and `IsSecret` reads its own
+binding of the host function first (docs/records/shared-helpers.md).
+
+## Limits
+
+| Limit | Default | How to open | UNBOUNDED allowed? |
+|---|---|---|---|
+| `maxDeprecations`, deprecations declared under distinct names | 128 | `ClientKit:SetLimits({ maxDeprecations = n })`, `n` from 1 to 1024 | No: deprecations are declared by Kits, so a ceiling covers every real need |
+| `maxReports`, reports recorded for the session | 256 | `ClientKit:SetLimits({ maxReports = n })`, `n` from 1 to 4096 | No: each report holds a row and a once-key until the session ends |
+
+```lua
+ClientKit:SetLimits({ maxReports = 1024 })
+local limits = ClientKit:GetLimits() -- { maxDeprecations = 128, maxReports = 1024 }
+```
+
+`SetLimits` accepts any subset and returns nothing. It checks every entry
+before applying any, so a refused call changes nothing, and raises at the
+caller for a table it cannot use (`ClientKit:SetLimits limits must be a
+table`), an unknown name (`ClientKit:SetLimits does not know limit
+"maxCalls"`) and a value that is not an integer within the range
+(`ClientKit:SetLimits limits.maxReports must be an integer from 1 to 4096`).
+A limit lowered below what is already held keeps what is held: past
+`maxDeprecations` a new name gets the inert reporter, past `maxReports`
+nothing more is recorded. `GetLimits` returns a new table on every call. The
+limits are shared by the session and survive an in-place upgrade.
+
+Everything else ClientKit retains needs no limit. It keeps a fixed set of
+values probed at load (flavour, interface number, build, locale, a fixed
+list of capability flags, the bound host functions). The identity and
+capability methods read those values; the taint probes and the shims ask
+the host on every call and cache nothing.
+
+The manifest cache grows, and its bound is the host's: one record per addon
+asked for, keyed by the lower-cased name and stored only when the client
+lists that addon (`GetAddOnInfo` without the reason `"MISSING"`, or a
+readable `## Title` on a host without that call). The set of installed
+addons is fixed when the client starts and no caller can grow it, so a
+consumer cannot fill the cache with names, and a misspelt or foreign name
+is answered `nil, "unknown"` without being stored. Within a manifest, `Get`
+remembers only fields the `.toc` actually has, so that memo is bounded by
+the file's own content. A limit on either would change nothing, which is
+why there is none.
+
+## Error behaviour
 
 Argument errors name the method, the parameter and the expected type, and
 point at the caller's line:
@@ -592,47 +657,15 @@ Bootstrap failures raise at the line that loaded the file:
 | `MoltenCodes ClientKit requires a valid Registry API 2 facade` | The published Registry has no `Bootstrap`. |
 | `MoltenCodes ClientKit package state is corrupted or incomplete` | The shared package state was modified from outside. |
 
-## Limits
+## Performance
 
-| Limit | Default | How to open | UNBOUNDED allowed? |
-|---|---|---|---|
-| `maxDeprecations`, deprecations declared under distinct names | 128 | `ClientKit:SetLimits({ maxDeprecations = n })`, `n` from 1 to 1024 | No: deprecations are declared by Kits, so a ceiling covers every real need |
-| `maxReports`, reports recorded for the session | 256 | `ClientKit:SetLimits({ maxReports = n })`, `n` from 1 to 4096 | No: each report holds a row and a once-key until the session ends |
+Every identity and capability method is a table read of values probed at
+load, and every shim adds one call to the host function it wraps. The taint
+probes ask the host on each call and cache nothing. A manifest is read once
+per addon and kept; `manifest:Get` remembers the fields the `.toc` has. The
+deprecation reporters' costs are under [Cost](#cost) in "Deprecations".
 
-```lua
-ClientKit:SetLimits({ maxReports = 1024 })
-local limits = ClientKit:GetLimits() -- { maxDeprecations = 128, maxReports = 1024 }
-```
-
-`SetLimits` accepts any subset and returns nothing. It checks every entry
-before applying any, so a refused call changes nothing, and raises at the
-caller for a table it cannot use (`ClientKit:SetLimits limits must be a
-table`), an unknown name (`ClientKit:SetLimits does not know limit
-"maxCalls"`) and a value that is not an integer within the range
-(`ClientKit:SetLimits limits.maxReports must be an integer from 1 to 4096`).
-A limit lowered below what is already held keeps what is held: past
-`maxDeprecations` a new name gets the inert reporter, past `maxReports`
-nothing more is recorded. `GetLimits` returns a new table on every call. The
-limits are shared by the session and survive an in-place upgrade.
-
-Everything else ClientKit retains needs no limit. It keeps a fixed set of
-values probed at load (flavour, interface number, build, locale, a fixed
-list of capability flags, the bound host functions). The identity and
-capability methods read those values; the taint probes and the shims ask
-the host on every call and cache nothing.
-
-The manifest cache grows, and its bound is the host's: one record per addon
-asked for, keyed by the lower-cased name and stored only when the client
-lists that addon (`GetAddOnInfo` without the reason `"MISSING"`, or a
-readable `## Title` on a host without that call). The set of installed
-addons is fixed when the client starts and no caller can grow it, so a
-consumer cannot fill the cache with names, and a misspelt or foreign name
-is answered `nil, "unknown"` without being stored. Within a manifest, `Get`
-remembers only fields the `.toc` actually has, so that memo is bounded by
-the file's own content. A limit on either would change nothing, which is
-why there is none.
-
-## Embedded identity and upgrades
+## Embedded copies and upgrades
 
 ClientKit bootstraps through `Registry:Bootstrap` like every Kit (see
 [`docs/ARCHITECTURE.md`](../../../docs/ARCHITECTURE.md#how-a-kit-bootstraps)).

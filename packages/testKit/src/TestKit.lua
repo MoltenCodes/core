@@ -47,7 +47,7 @@
 
 local PACKAGE_NAME = "testKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 5
+local IMPLEMENTATION_REVISION = 6
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_LIFECYCLEKIT_API = 1
 local REQUIRED_SCHEDULERKIT_API = 1
@@ -317,7 +317,9 @@ local function readHostFunction(name)
 end
 
 ---Whether `value` is a secret value. Clients without secret values have no
----`issecretvalue`, and nothing is secret there.
+---`issecretvalue`, and nothing is secret there. Not the shared `isSecret`
+---block, which keeps the probe found at load: TestKit reads it on every call
+---so `ctx:Replace` can swap it (tooling/shared/pins.json opts TestKit out).
 ---@param value any
 ---@return boolean
 local function isSecret(value)
@@ -338,23 +340,23 @@ local function nowMilliseconds()
   return clock() * 1000
 end
 
----Hand a failure nobody called for (an `OnFinished` callback) to the host
----error handler.
----@param message any
-local function reportError(message)
-  local getErrorHandler = readHostFunction("geterrorhandler")
-  if getErrorHandler ~= nil then
+-- shared:begin reportError 1
+-- Copied from tooling/shared/lua/reportError.lua by python3 -m tooling.shared.sync; edit that file, not this copy.
+---Report `failure` through the host error handler, or print it.
+---@param failure any
+local function reportError(failure)
+  -- geterrorhandler is a client API reachable only through the global table.
+  -- selene: allow(global_usage)
+  local getErrorHandler = rawget(_G, "geterrorhandler")
+  if type(getErrorHandler) == "function" then
     local handler = getErrorHandler()
-    if type(handler) == "function" then
-      handler(message)
+    if type(handler) == "function" and pcall(handler, failure) then
       return
     end
   end
-
-  -- Outside a WoW client there is no error handler to report through.
-  -- Printing is what the client's own default handler does.
-  print(message)
+  print(failure)
 end
+-- shared:end reportError
 
 -- Validation -----------------------------------------------------------------
 
@@ -674,17 +676,22 @@ end
 -- TestKit. `level` is always the value `error` needs *inside the function that
 -- receives it*, so every further hop towards `error` adds exactly one.
 
----Refuse a facade method called with anything but the facade, as a dot call
----such as `TestKit.Run("MyAddon")` does: it would shift every argument by one
----and, for `Run`, run every suite instead of the one named.
----@param value any
----@param methodName string
----@param level integer
-local function validateFacade(value, methodName, level)
-  if value ~= TestKit then
-    error(methodName .. " must be called on the TestKit facade", level)
+-- A facade method called with anything but the facade, as a dot call such as
+-- `TestKit.Run("MyAddon")` does, would shift every argument by one and, for
+-- `Run`, run every suite instead of the one named, so it is refused.
+-- shared:begin validateFacade 1 __FACADE__=TestKit
+-- Copied from tooling/shared/lua/validateFacade.lua by python3 -m tooling.shared.sync; edit that file, not this copy.
+---Raise at `level` unless `receiver` is the TestKit facade.
+---@param receiver any the table the method was called on
+---@param label string qualified method name, used in the argument error
+---@param level integer stack level the failure is reported at
+local function validateFacade(receiver, label, level)
+  if type(receiver) ~= "table" or receiver ~= TestKit then
+    local hint = "; use " .. label .. "(...)"
+    error(label .. " must be called on the TestKit facade" .. hint, level)
   end
 end
+-- shared:end validateFacade
 
 ---@param value any
 ---@param methodName string
@@ -917,7 +924,7 @@ end
 ---Describe one step of a key path: `.name` for an identifier, `[...]` else.
 ---@param key any a table key, which can never be a secret
 ---@return string
-local function describeKey(key)
+local function describePathSegment(key)
   if type(key) == "string" and string.find(key, "^[%a_][%w_]*$") and #key <= MAX_VALUE_BYTES then
     return "." .. key
   elseif type(key) == "string" then
@@ -934,7 +941,7 @@ end
 local function describePath(trail)
   local parts = {}
   for index = 1, #trail do
-    parts[index] = describeKey(trail[index])
+    parts[index] = describePathSegment(trail[index])
   end
   return table.concat(parts)
 end

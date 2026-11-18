@@ -9,8 +9,12 @@ The EditModeKit suite covers:
 
 `support/EditModeKitTestEnv.lua` provides `UIParent` (1920 x 1080), stand-ins for `EventRegistry` and `EditModeManagerFrame` with `EnterEditMode`, `ExitEditMode` and `SwitchLayout`, `SetCombat` and `EndCombat`, `FrameAt` (a frame on the screen), `Run` (a frame's script), the secret probe and `LoadRevision`. Specs reach a registration's overlay through its record.
 
+The shared helper specs load the Kit with the secret probe already installed (through `package.preload`), raise from the host error handler, and load the committed revision 2 file (`fixtures/EditModeKit-revision2.lua`) before the current one.
+
 | Spec | Covers |
 |---|---|
+| `SharedHelpers_spec.lua` | the shared `isSecret`, `reportError` and `validateFacade` blocks, the upgrade from revision 2 |
+| `Conformance_spec.lua` | the repository conformance suite (`tests/support/KitConformance.lua`) |
 | `EditMode_spec.lua` | overlays, drags, layouts, storage, combat, unregistering, the limit |
 | `Arguments_spec.lua` | argument errors at the caller's line, secrets, failures, a missing host |
 | `Bootstrap_spec.lua` | publication, duplicate loads, load order, upgrades |

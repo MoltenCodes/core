@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.7 — 2026-11-18
+
+- `isSecret`, `describeKey` and `validateFacade` are now the shared helper blocks (`tooling/shared/lua/`, kept in step by `python3 -m tooling.shared.sync`). The secret check takes the probe rule: `issecretvalue` is read once at load and asked directly, about 50 ns less per check on the host; only a host that had no probe at load reads the global again on each check. A probe that replaces the one present at load is no longer asked. `validateFacade` tests the receiver's type before comparing it with the facade, so a dot call of `SetLimits` or `GetLimits` whose receiver is a secret raises the facade message at the caller instead of whatever comparing a secret raises. `describeKey` is only reached with a key read by `next`, which cannot be secret. Refusal messages are unchanged; the `SetLimits` validation stays MediaKit's own.
+- Implementation revision 6; an embedded revision 5 is upgraded in place, entries and limits kept.
+- New specs: `SharedHelpers_spec.lua` (the probe rule, the facade message, a secret receiver, the upgrade over the committed revision 5 file in `tests/fixtures/MediaKit-revision5.lua`) and `Conformance_spec.lua` (the repository's conformance suite; its limits group is pending and three methods that never read their receiver are exempt from the receivers group, see the spec).
+
 ## 0.1.6 — 2026-11-15
 
 - Documentation: the README had no migration table from the library MediaKit replaces. It now has *Moving from LibSharedMedia-3.0*, mapping `Register`, `Fetch` with and without `noDefault`, `IsValid`, `List`, `HashTable`, `SetDefault` and `GetDefault`, `SetGlobal` and `GetGlobal`, the `LibSharedMedia_Registered` callback and the `MediaType` constants to MediaKit, or saying there is no equivalent. The mapping was checked against LibSharedMedia-3.0's own source.

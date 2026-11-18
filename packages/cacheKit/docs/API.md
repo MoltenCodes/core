@@ -28,6 +28,7 @@ Loaded without Registry, `CacheKit.lua` raises `MoltenCodes CacheKit requires Re
 | Facility | Used by | Without it |
 |---|---|---|
 | `GetTimePreciseSec` | age limits (`NewTtl`, `Memoize` with `ttlSeconds`, `PutNegative`) | CacheKit loads normally and every age limit is disabled: entries, negative ones included, never expire, and a TTL cache behaves as a plain LRU cache. |
+| `issecretvalue` | the argument checks (limits, sizes, ages, `overflow`, a `cacheable` answer) and `fill` | Nothing is treated as secret. The argument checks read it once at load and, on a host that had none at load, again at each check, so a probe installed later is honoured (0.3.0); `fill` uses the probe found at load. |
 | EventKit API 1 | `cache:ClearOn` | `ClearOn` raises at the caller: `CacheKit.Cache:ClearOn requires EventKit API 1, which is not loaded (absent)`. Everything else works. |
 
 EventKit is looked up with `Registry:Find("eventKit", 1)` when `ClearOn` is called, not at load, so EventKit may be embedded before or after CacheKit. The manifest names it under `optionalDependencies`, which the release load order ignores; `dependencies` names Registry alone.
@@ -102,6 +103,18 @@ Queue handles:
 
 `CacheKit.Cache`, `CacheKit.Snapshot`, `CacheKit.LazyTree` and `CacheKit.Queue` are the shared method prototypes.
 
+## Secret values
+
+On Retail 12.x the client hands tainted code **secret values** in combat and instanced content: unit names, GUIDs, health and aura data among them. A secret raises a Lua error when it is compared with a value of its own type (`==`, `~=`, `<`, `<=` and `rawequal` alike) or used as a table key, to read as well as to store, and a cache or snapshot does both with every key (a snapshot also compares every value). Comparing a secret with `nil` or with a value of another type answers without raising, and storing one as a table value is fine (measured on Retail 12.1.0 b69933). The rule from [`docs/EMBEDDING.md`](../../../docs/EMBEDDING.md#secret-values-retail-12x) applies: ask `ClientKit:IsSecret(value)`, or `issecretvalue(value)` where it exists, before handing a value from the client to CacheKit, and skip or defer the secret ones.
+
+```lua
+local isSecret = issecretvalue or function()
+  return false
+end
+```
+
+`fill` checks for you when the client has `issecretvalue`: it refuses a secret key or value at the reader's line (`CacheKit.Snapshot fill key must not be a secret value`) before any comparison, and that refusal fails the refresh like any other. Cache methods (`Get`, `Set`, `PutNegative`, `Peek`, `Delete`), memoised functions, lazy tree paths, queue values and `snapshot:Get` do not probe, to keep their hot paths free of an extra call; a secret key or path part reaching them raises the client's own error, `attempted to index a table that cannot be indexed with secret keys` (measured on Retail 12.1.0 b69933; a queue only stores its values and never compares them, so a secret value survives `Push` and `Pop` unchanged). Cache values are handled the same way: a secret value, as opposed to a secret key, survives `Set`, `Get`, `Peek` and a memoised call unchanged and still secret. The negative-entry check compares the stored value by identity with CacheKit's own marker table, and the client allows that for a secret number or string, because the two differ in type; it would not allow comparing a secret with a number or string. A secret `maxEntries`, `capacity`, `ttlSeconds` (`NewTtl`, `Memoize`, `PutNegative`), `NewQueue` `overflow` or `SetLimits` value is refused at the caller's line with the message an invalid value of that argument gets (for example `CacheKit:NewTtl ttlSeconds must be a finite number greater than zero`), before it is compared with anything or, for `overflow`, used as a key of the policy set. A secret answer from a `Memoize` `cacheable` predicate is never tested for truth, which would raise (measured on Retail 12.1.0 b69933): it is treated as `false`, so the result is returned and not remembered.
+
 ## Limits
 
 Every cache, snapshot, lazy tree and queue is bounded by default. Per-object bounds are an option or argument on the object you create; the one package-wide limit, the largest queue a call may allocate, is set through `SetLimits` and read back through `GetLimits`.
@@ -136,7 +149,7 @@ Changes any subset of the package-wide limits; today that is `maxQueueCapacity`.
 
 **The limits are shared by every consumer in the session**: every embedded copy publishes one facade and one state, so a limit one addon raises is raised for all of them, and a newer revision loaded later inherits the value set rather than resetting it. Lowering `maxQueueCapacity` never shrinks an existing queue; further `NewQueue` calls asking for more than the new value are refused until it allows them again.
 
-`SetLimits` and `GetLimits` must be called on the facade (`CacheKit:SetLimits(...)`); another receiver raises `must be called on the CacheKit facade`.
+`SetLimits` and `GetLimits` must be called on the facade (`CacheKit:SetLimits(...)`); another receiver raises `CacheKit:SetLimits must be called on the CacheKit facade; use CacheKit:SetLimits(...)` (likewise for `GetLimits`; the hint is new in 0.3.0).
 
 ### `CacheKit:GetLimits()`
 
@@ -433,18 +446,6 @@ On a queue with room every policy stores the value and returns `true`. `value` m
 
 Every operation is O(1) per step and allocates nothing after construction. A popped or cleared slot is blanked, so the queue retains nothing it no longer holds.
 
-## Secret values
-
-On Retail 12.x the client hands tainted code **secret values** in combat and instanced content: unit names, GUIDs, health and aura data among them. A secret raises a Lua error when it is compared with a value of its own type (`==`, `~=`, `<`, `<=` and `rawequal` alike) or used as a table key, to read as well as to store, and a cache or snapshot does both with every key (a snapshot also compares every value). Comparing a secret with `nil` or with a value of another type answers without raising, and storing one as a table value is fine (measured on Retail 12.1.0 b69933). The rule from [`docs/EMBEDDING.md`](../../../docs/EMBEDDING.md#secret-values-retail-12x) applies: ask `ClientKit:IsSecret(value)`, or `issecretvalue(value)` where it exists, before handing a value from the client to CacheKit, and skip or defer the secret ones.
-
-```lua
-local isSecret = issecretvalue or function()
-  return false
-end
-```
-
-`fill` checks for you when the client has `issecretvalue`: it refuses a secret key or value at the reader's line (`CacheKit.Snapshot fill key must not be a secret value`) before any comparison, and that refusal fails the refresh like any other. Cache methods (`Get`, `Set`, `PutNegative`, `Peek`, `Delete`), memoised functions, lazy tree paths, queue values and `snapshot:Get` do not probe, to keep their hot paths free of an extra call; a secret key or path part reaching them raises the client's own error, `attempted to index a table that cannot be indexed with secret keys` (measured on Retail 12.1.0 b69933; a queue only stores its values and never compares them, so a secret value survives `Push` and `Pop` unchanged). Cache values are handled the same way: a secret value, as opposed to a secret key, survives `Set`, `Get`, `Peek` and a memoised call unchanged and still secret. The negative-entry check compares the stored value by identity with CacheKit's own marker table, and the client allows that for a secret number or string, because the two differ in type; it would not allow comparing a secret with a number or string. A secret `maxEntries`, `capacity`, `ttlSeconds` (`NewTtl`, `Memoize`, `PutNegative`), `NewQueue` `overflow` or `SetLimits` value is refused at the caller's line with the message an invalid value of that argument gets (for example `CacheKit:NewTtl ttlSeconds must be a finite number greater than zero`), before it is compared with anything or, for `overflow`, used as a key of the policy set. A secret answer from a `Memoize` `cacheable` predicate is never tested for truth, which would raise (measured on Retail 12.1.0 b69933): it is treated as `false`, so the result is returned and not remembered.
-
 ## Error behaviour
 
 Argument failures report the line that called the public method, never a line inside CacheKit. Messages name the method (`CacheKit:NewLru`, `CacheKit.Cache:Set`, `CacheKit.Snapshot:Refresh`, `CacheKit.LazyTree:Get`, `CacheKit.Queue:Push`, `CacheKit memoized function`, `CacheKit.Snapshot fill`). Calling a method without a receiver raises `CacheKit.Cache:Get must be called on a CacheKit cache`, `... on a CacheKit snapshot`, `... on a CacheKit lazy tree` or `... on a CacheKit queue`.
@@ -460,6 +461,7 @@ Messages not given in the sections above:
 | A closed object | `CacheKit.Cache:Set cannot write to a closed cache` (and `PutNegative`); `CacheKit.LazyTree:Get cannot expand a closed tree` |
 | `fill` | `CacheKit.Snapshot fill value must not be nil`; `CacheKit.Snapshot fill key must not be a secret value` (and `value`); `CacheKit.Snapshot fill exceeded maxEntries (40)` |
 | `SetLimits` | `CacheKit:SetLimits limits must be a table` |
+| `SetLimits`, `GetLimits` on another receiver | `CacheKit:SetLimits must be called on the CacheKit facade; use CacheKit:SetLimits(...)` (and `GetLimits`); the `; use ...` hint is new in 0.3.0 |
 
 A shared package state that fails validation at load raises `MoltenCodes CacheKit package state is corrupted or incomplete` instead of being overwritten.
 

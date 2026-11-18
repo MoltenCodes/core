@@ -12,8 +12,12 @@ The LauncherKit suite covers:
 
 `support/LauncherKitTestEnv.lua` provides `UIParent`, a 140 x 140 `Minimap` at a known centre, a `GameTooltip` that records its owner, lines and shown state, `GetCursorPosition` answering `SetCursor`, a stand-in for Retail's `AddonCompartmentFrame` (`InstallCompartment`), `Offset` (a button's offset from the minimap's centre), `Run` (a button's script), `TakeReportedValues`, the secret probe and `LoadRevision`. `Reset` removes every global it installs.
 
+The shared helper specs load the Kit with the secret probe already installed (through `package.preload`), raise from the host error handler, and load the committed revision 2 file (`fixtures/LauncherKit-revision2.lua`) before the current one.
+
 | Spec | Covers |
 |---|---|
+| `SharedHelpers_spec.lua` | the shared `isSecret`, `reportError` and `validateFacade` blocks, the upgrade from revision 2 |
+| `Conformance_spec.lua` | the repository conformance suite (`tests/support/KitConformance.lua`) |
 | `Launcher_spec.lua` | `Register`, placement, dragging, storage, icon, scripts |
 | `Compartment_spec.lua` | `AddToCompartment` |
 | `Limits_spec.lua` | `SetLimits`, `GetLimits`, `maxLaunchers` |

@@ -31,8 +31,8 @@ TooltipKit reads these host globals at call time, never at load:
 | `CreateFrame`, `UIParent` | `Acquire` (the first tooltip and line frames) | `Acquire` raises at the caller: `TooltipKit:Acquire needs the client's CreateFrame and UIParent, which this host does not have`. |
 | the font objects `GameTooltipText` and `GameTooltipHeaderText` | lines and headers | Every promised client defines both (`Blizzard_Fonts_Shared/Shared/FontStyles.xml`, branches `live`, `classic` and `classic_era`, read 2026-11-15). |
 | `FontString:GetUnboundedStringWidth` | measuring a cell | The cell is measured with `GetStringWidth`. Every promised client has it (`SimpleFontStringAPIDocumentation.lua` on the same three branches). |
-| `issecretvalue` | every check, every measured size | Nothing is treated as secret. |
-| `geterrorhandler` | line handlers that raise | The failure is printed. |
+| `issecretvalue` | every check, every measured size; read once at load, and again on each check only when it was absent at load | Nothing is treated as secret. |
+| `geterrorhandler` | line handlers that raise | The failure is printed. A handler that itself raises is not propagated either: the failure is printed instead. |
 
 Every other client call is a method of the frames and font strings TooltipKit made, or of the frame passed to `SmartAnchorTo` (`GetCenter`, `GetEffectiveScale`, `IsMouseOver`).
 
@@ -123,6 +123,8 @@ Every key, column count, justification, line and column index, option, colour co
 `SetLimits` accepts any subset and raises at the caller for an unknown field, a secret, or a value outside its range, before changing anything. The line pool's creation cap is `maxTooltips` times `maxLines`, raised with them and never lowered. The limits are shared by every addon in the session.
 
 ## Error behaviour
+
+A failure of a line handler goes to the host error handler (`geterrorhandler()`), called under `pcall`. When the client has no handler, or the handler itself raises (an error-display addon with a bug), the failure is printed instead, so reporting it never raises into the client's script call (revision 3; earlier revisions let a raising handler's error through).
 
 Argument errors raise at the caller's line, before anything changes. Facade methods called without the facade raise `TooltipKit:Acquire must be called on the TooltipKit facade; use TooltipKit:Acquire(...)`; tooltip methods called on anything but an acquired tooltip raise `TooltipKit.Tooltip:AddLine must be called on an acquired TooltipKit tooltip; use tooltip:AddLine(...)`. The other messages, with `<method>` the method's full name (`TooltipKit.Tooltip:SetCell`):
 

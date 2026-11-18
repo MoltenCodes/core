@@ -40,6 +40,12 @@ The suite covers:
   downgraded, an in-place upgrade that keeps adoptions (the source loaded with
   its revision raised by one), revision 1 and revision 2 copies upgraded with
   the current file, load-order failures, and corrupted-state refusal;
+- the shared `isSecret` block: the probe kept from load when the global is
+  replaced, a probe installed after load asked, and the in-place upgrade over
+  the committed revision 3 file (`fixtures/InteropKit-revision3.lua`);
+- the repository conformance suite (`tests/support/KitConformance.lua`):
+  manifest, arguments and upgrade; limits and receivers are pending, with the
+  reason in the spec;
 - manifest/runtime API and revision consistency.
 
 | Spec | Covers |
@@ -50,4 +56,6 @@ The suite covers:
 | `SecretValues_spec.lua` | secret arguments refused at the caller |
 | `ErrorLevels_spec.lua` | argument errors reported at the caller's line |
 | `Bootstrap_spec.lua` | publication, duplicate loads, upgrades, load order, corrupted state |
+| `SharedHelpers_spec.lua` | the shared `isSecret` block, the upgrade from revision 3 |
+| `Conformance_spec.lua` | the conformance suite on a mainline-profile environment |
 | `Manifest_spec.lua` | manifest and runtime `API` / `REVISION` agreement |

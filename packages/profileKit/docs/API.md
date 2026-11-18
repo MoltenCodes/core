@@ -190,6 +190,25 @@ a hot path.
 Zeroes `count`, `total`, `max` and `last` of every section and abandons open
 measurements. Sections and the enabled state are kept.
 
+## Secret values
+
+On Retail 12.x a secret compared with a value of its own type, or used as a
+table key, raises at that line (measured on Retail 12.1.0 b69933; see
+[`EMBEDDING.md`](../../../docs/EMBEDDING.md#secret-values-retail-12x)).
+ProfileKit asks `issecretvalue`, bound once at load, first:
+
+- `Section(name)` and `Measure(name, fn, ...)`, enabled and disabled alike,
+  refuse a secret `name` at the caller's line with `ProfileKit:<Method> name
+  must not be a secret value`, after the string type check and before `name`
+  is compared with `""` or used as a key of the section index. Nothing is
+  created and `fn` is not called. Section names normally come from the addon's
+  own code, so a plain name pays one probe call and nothing else.
+- `SetLimits` refuses a secret limit value with the invalid-value message
+  above, before comparing it.
+
+The messages never format the value in. A client without `issecretvalue` has
+no secret values and refuses nothing.
+
 ## Limits
 
 | Limit | Default | How to open | UNBOUNDED allowed? |
@@ -233,7 +252,7 @@ again.
 | `"idle"` | `End` | The section is not begun, or its measurement was abandoned. |
 | `"clockReset"` | `End` | The clock went backwards; the sample was dropped. |
 
-## Errors
+## Error behaviour
 
 Argument errors are raised at the caller's line:
 
@@ -248,26 +267,7 @@ Argument errors are raised at the caller's line:
 - `ProfileKit:SetLimits limits.maxSections must be a positive integer or ProfileKit.UNBOUNDED` (also for a secret value)
 - `ProfileKit:SetLimits must be called on the ProfileKit facade; use ProfileKit:SetLimits(...)` (and the same for `GetLimits`)
 
-## Secret values
-
-On Retail 12.x a secret compared with a value of its own type, or used as a
-table key, raises at that line (measured on Retail 12.1.0 b69933; see
-[`EMBEDDING.md`](../../../docs/EMBEDDING.md#secret-values-retail-12x)).
-ProfileKit asks `issecretvalue`, bound once at load, first:
-
-- `Section(name)` and `Measure(name, fn, ...)`, enabled and disabled alike,
-  refuse a secret `name` at the caller's line with `ProfileKit:<Method> name
-  must not be a secret value`, after the string type check and before `name`
-  is compared with `""` or used as a key of the section index. Nothing is
-  created and `fn` is not called. Section names normally come from the addon's
-  own code, so a plain name pays one probe call and nothing else.
-- `SetLimits` refuses a secret limit value with the invalid-value message
-  above, before comparing it.
-
-The messages never format the value in. A client without `issecretvalue` has
-no secret values and refuses nothing.
-
-## Cost
+## Performance
 
 | Path | Cost |
 |---|---|
@@ -279,7 +279,7 @@ no secret values and refuses nothing.
 | `Report` | One array and one table per section, plus a sort. |
 | `GetLimits` | One table. |
 
-## Upgrades
+## Embedded copies and upgrades
 
 ProfileKit bootstraps through `Registry:Bootstrap`. Sections, their statistics,
 the section prototype, the enabled state, the limits a consumer set and the

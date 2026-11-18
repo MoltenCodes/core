@@ -54,7 +54,7 @@
 
 local PACKAGE_NAME = "bridgeKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 8
+local IMPLEMENTATION_REVISION = 9
 local REQUIRED_REGISTRY_API = 2
 local STATE_SCHEMA = 1
 
@@ -564,16 +564,19 @@ end
 -- Every check raises with an explicit stack level so the reported position is
 -- the line that called the public method, never a line inside BridgeKit.
 
+-- shared:begin validateFacade 1 __FACADE__=BridgeKit
+-- Copied from tooling/shared/lua/validateFacade.lua by python3 -m tooling.shared.sync; edit that file, not this copy.
+---Raise at `level` unless `receiver` is the BridgeKit facade.
 ---@param receiver any the table the method was called on
----@param label string the public method, `BridgeKit:AceSerialize`
+---@param label string qualified method name, used in the argument error
 ---@param level integer stack level the failure is reported at
 local function validateFacade(receiver, label, level)
-  -- The type test runs first, so a caller's non-table receiver, a secret
-  -- included, is never compared with the facade.
   if type(receiver) ~= "table" or receiver ~= BridgeKit then
-    error(label .. " must be called on the BridgeKit facade; use " .. label .. "(...)", level)
+    local hint = "; use " .. label .. "(...)"
+    error(label .. " must be called on the BridgeKit facade" .. hint, level)
   end
 end
+-- shared:end validateFacade
 
 ---Refuse a `SetLimits` argument before any limit changes, so a call with one
 ---bad entry leaves every limit as it was.
@@ -1454,20 +1457,39 @@ local function methodExists(spec)
   return type(handler) == "table" and type(handler[spec.method]) == "function"
 end
 
----Whether `value` is secret on this client; never tests it otherwise.
----@param value any
----@return boolean
-local function isSecretValue(value)
-  local probe = readSecretProbe()
-  return probe ~= nil and type(value) ~= "nil" and probe(value) == true
+-- shared:begin isSecret 1
+-- Copied from tooling/shared/lua/isSecret.lua by python3 -m tooling.shared.sync; edit that file, not this copy.
+---Whether `value` is a secret value the host forbids comparing.
+---@type fun(value: any): boolean
+local isSecret
+do
+  -- issecretvalue is a client API reachable only through the global table.
+  -- selene: allow(global_usage)
+  local loadedProbe = rawget(_G, "issecretvalue")
+  if type(loadedProbe) ~= "function" then
+    loadedProbe = nil
+  end
+
+  isSecret = function(value)
+    local probe = loadedProbe
+    if probe == nil then
+      -- selene: allow(global_usage)
+      probe = rawget(_G, "issecretvalue")
+      if type(probe) ~= "function" then
+        return false
+      end
+    end
+    return probe(value) == true
+  end
 end
+-- shared:end isSecret
 
 ---A multiselect state as OptionsKit holds it: a secret answer is placed
 ---unexamined, any other is read for truth.
 ---@param answer any
 ---@return any
 local function stateOf(answer)
-  if isSecretValue(answer) then
+  if isSecret(answer) then
     return answer
   end
   return answer and true or false
@@ -1625,7 +1647,7 @@ end
 function Carry.live(spec, aceInfo, member, accepts, fallback)
   return function()
     local answer = callAce(spec, aceInfo, member)
-    if not isSecretValue(answer) and accepts(answer) then
+    if not isSecret(answer) and accepts(answer) then
       return answer
     end
     return fallback
@@ -1750,7 +1772,7 @@ function Carry.presentation(work, aceOption, target, context, field)
       local aceInfo = context.aceInfo
       target.image = function()
         local image, width, height = callAce(spec, aceInfo, "image")
-        if isSecretValue(image) or not Carry.isTexture(image) then
+        if isSecret(image) or not Carry.isTexture(image) then
           return ""
         end
         return image, width, height
@@ -1758,7 +1780,7 @@ function Carry.presentation(work, aceOption, target, context, field)
     else
       target[field] = Carry.live(spec, context.aceInfo, field, rule[1], rule[2])
     end
-  elseif not isSecretValue(value) and rule[1](value) then
+  elseif not isSecret(value) and rule[1](value) then
     target[field] = value
   else
     noteEntry(work.report, context.path, field, "dropped", "malformedField")
@@ -1784,7 +1806,7 @@ function Carry.confirmArguments(kind, value, getSpec, aceInfo, context, info)
     for key in next, context.keysOf(info) do
       local wanted = value[key] == true
       local current = callAce(getSpec, aceInfo, "get", key)
-      if isSecretValue(current) or (current and true or false) ~= wanted then
+      if isSecret(current) or (current and true or false) ~= wanted then
         return key, wanted
       end
     end
@@ -1804,7 +1826,7 @@ end
 ---@param confirm any the resolved Ace `confirm`
 ---@param confirmText any
 function Carry.confirm(work, target, context, confirm, confirmText)
-  if type(confirmText) == "string" and not isSecretValue(confirmText) then
+  if type(confirmText) == "string" and not isSecret(confirmText) then
     target.confirmText = confirmText
   end
   if confirm == true then
@@ -1828,7 +1850,7 @@ function Carry.confirm(work, target, context, confirm, confirmText)
     if type(answer) == "string" then
       return answer
     end
-    return not isSecretValue(answer) and answer == true
+    return not isSecret(answer) and answer == true
   end
 end
 
@@ -2214,11 +2236,11 @@ local function convertSorting(work, aceOption, target, staticValues, context)
     target.sorting = function(info)
       local answer = callAce(spec, aceInfo, "sorting")
       local keys = {}
-      if type(answer) == "table" and not isSecretValue(answer) then
+      if type(answer) == "table" and not isSecret(answer) then
         local values = context.keysOf(info)
         for index = 1, #answer do
           local key = answer[index]
-          if not isSecretValue(key) and type(key) ~= "nil" and values[key] ~= nil then
+          if not isSecret(key) and type(key) ~= "nil" and values[key] ~= nil then
             keys[#keys + 1] = key
           end
         end
@@ -2237,7 +2259,7 @@ local function convertSorting(work, aceOption, target, staticValues, context)
   local copy = {}
   for index = 1, #sorting do
     local key = sorting[index]
-    if type(key) == "nil" or isSecretValue(key) or staticValues[key] == nil then
+    if type(key) == "nil" or isSecret(key) or staticValues[key] == nil then
       noteEntry(work.report, context.path, "sorting", "dropped", "sortingKey")
       return
     end
@@ -2301,7 +2323,7 @@ local function convertAccessors(work, target, context)
         local wanted = states[key] == true
         local current = callAce(getSpec, aceInfo, "get", key)
         -- A secret state cannot be compared, so its key is always written.
-        if isSecretValue(current) or (current and true or false) ~= wanted then
+        if isSecret(current) or (current and true or false) ~= wanted then
           callAce(setSpec, aceInfo, "set", key, wanted)
         end
       end
@@ -2357,7 +2379,7 @@ local function convertValidate(work, target, context)
       for key in next, keysOf(info) do
         local wanted = states[key] == true
         local current = getSpec and callAce(getSpec, aceInfo, "get", key) or nil
-        if not getSpec or isSecretValue(current) or (current and true or false) ~= wanted then
+        if not getSpec or isSecret(current) or (current and true or false) ~= wanted then
           local ok, message = verdict(callAce(spec, aceInfo, "validate", key, wanted))
           if not ok then
             return false, message
@@ -2479,7 +2501,7 @@ local function convertOwnFields(work, aceOption, target, spec, context)
         if type(size) == "nil" and type(target.fontSize) == "function" then
           -- Carried as a live function above.
           size = nil
-        elseif type(size) == "string" and not isSecretValue(size) and FONT_SIZES[size] then
+        elseif type(size) == "string" and not isSecret(size) and FONT_SIZES[size] then
           target.fontSize = size
         else
           noteEntry(report, path, field, "dropped", "fontSize")
@@ -5042,7 +5064,7 @@ do
     local label = "BridgeKit:ImportAceDB"
     validateFacade(self, label, 3)
     local sourceTable, sourceName = readSource(label, source)
-    if type(targetName) ~= "string" or isSecretValue(targetName) or targetName == "" then
+    if type(targetName) ~= "string" or isSecret(targetName) or targetName == "" then
       refuseOption(label, "targetName must be the name of a global")
     end
     local ctx = readPlan(label, plan, "import")
@@ -5590,12 +5612,12 @@ do
       error(label .. " request must be a table", 2)
     end
     for key in next, request do
-      if isSecretValue(key) or type(key) ~= "string" or not CHANNEL_SEND_KEYS[key] then
+      if isSecret(key) or type(key) ~= "string" or not CHANNEL_SEND_KEYS[key] then
         error(label .. " request has an unknown field", 2)
       end
     end
     local text = rawget(request, "text")
-    if type(text) ~= "string" or isSecretValue(text) or text == "" then
+    if type(text) ~= "string" or isSecret(text) or text == "" then
       error(label .. " request.text must be a non-empty string that is not secret", 2)
     end
     if self:IsClosed() then
@@ -5735,7 +5757,7 @@ do
       refuseOption(label, "options must be a table or nil")
     end
     for key, value in next, options do
-      if isSecretValue(key) or isSecretValue(value) then
+      if isSecret(key) or isSecret(value) then
         refuseOption(label, "options must not hold a secret key or value")
       end
       if type(key) ~= "string" or not CHANNEL_OPTION_KEYS[key] then
@@ -5825,10 +5847,10 @@ do
         2
       )
     end
-    if isSecretValue(scope) or type(scope) ~= "table" or type(scope.RegisterRaw) ~= "function" then
+    if isSecret(scope) or type(scope) ~= "table" or type(scope.RegisterRaw) ~= "function" then
       error(label .. " scope must be a CommKit scope", 2)
     end
-    if type(prefix) ~= "string" or isSecretValue(prefix) or #prefix < 1 or #prefix > 16 then
+    if type(prefix) ~= "string" or isSecret(prefix) or #prefix < 1 or #prefix > 16 then
       error(label .. " prefix must be a string of 1 to 16 bytes that is not secret", 2)
     end
     if type(callback) ~= "function" then

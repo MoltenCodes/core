@@ -17,7 +17,7 @@ A cache is one table with a fixed set of private fields, all created by `newCach
 | `_statsView` | The table `GetStats` returns, `false` until the first call. |
 | `_eventScope`, `_clearOnEvents`, `_clearCallback` | Clear-on-event state, `false` until the first `ClearOn`. |
 | `_closed` | Whether `Close` ran. |
-| `_schema` | The cache layout version, `1`. Revisions 2 to 7 changed nothing in the cache layout. |
+| `_schema` | The cache layout version, `1`. Revisions 2 to 8 changed nothing in the cache layout. |
 
 ## The recency list
 

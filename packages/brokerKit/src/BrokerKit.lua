@@ -15,8 +15,9 @@
 -- call time with `rawget(_G, "LibStub")`; neither is required.
 --
 -- BrokerKit requires Registry API 2 and SignalKit API 1. It reads two optional
--- host facilities at call time: `issecretvalue` (without it nothing is secret)
--- and `LibStub`.
+-- host facilities: `issecretvalue` once at load, and again at each check only
+-- on a host that had none at load (without it nothing is secret), and
+-- `LibStub` at call time.
 --
 -- Contents
 -- --------
@@ -40,7 +41,7 @@
 
 local PACKAGE_NAME = "brokerKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 3
+local IMPLEMENTATION_REVISION = 4
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_SIGNALKIT_API = 1
 local STATE_SCHEMA = 1
@@ -473,14 +474,32 @@ local UNBOUNDED = rawget(state, "unbounded")
 
 -- Host facilities ------------------------------------------------------------
 
----Whether `value` is a secret value (Retail 12.x). `issecretvalue` is looked
----up at every call, so a probe that appears after load is used at once.
----@param value any
----@return boolean
-local function isSecret(value)
-  local probe = readGlobal("issecretvalue")
-  return type(probe) == "function" and probe(value) == true
+-- shared:begin isSecret 1
+-- Copied from tooling/shared/lua/isSecret.lua by python3 -m tooling.shared.sync; edit that file, not this copy.
+---Whether `value` is a secret value the host forbids comparing.
+---@type fun(value: any): boolean
+local isSecret
+do
+  -- issecretvalue is a client API reachable only through the global table.
+  -- selene: allow(global_usage)
+  local loadedProbe = rawget(_G, "issecretvalue")
+  if type(loadedProbe) ~= "function" then
+    loadedProbe = nil
+  end
+
+  isSecret = function(value)
+    local probe = loadedProbe
+    if probe == nil then
+      -- selene: allow(global_usage)
+      probe = rawget(_G, "issecretvalue")
+      if type(probe) ~= "function" then
+        return false
+      end
+    end
+    return probe(value) == true
+  end
 end
+-- shared:end isSecret
 
 -- Argument checks ------------------------------------------------------------
 --
@@ -491,15 +510,19 @@ end
 -- Secrets are checked first, because comparing one raises, and `nil` is
 -- tested with `type`, the repository rule, which never compares anything.
 
+-- shared:begin validateFacade 1 __FACADE__=BrokerKit
+-- Copied from tooling/shared/lua/validateFacade.lua by python3 -m tooling.shared.sync; edit that file, not this copy.
+---Raise at `level` unless `receiver` is the BrokerKit facade.
 ---@param receiver any the table the method was called on
----@param label string public method name, used in the argument error
+---@param label string qualified method name, used in the argument error
 ---@param level integer stack level the failure is reported at
 local function validateFacade(receiver, label, level)
-  -- `type` first: a secret receiver is never a table, and only a table is compared.
   if type(receiver) ~= "table" or receiver ~= BrokerKit then
-    error(label .. " must be called on the BrokerKit facade; use " .. label .. "(...)", level)
+    local hint = "; use " .. label .. "(...)"
+    error(label .. " must be called on the BrokerKit facade" .. hint, level)
   end
 end
+-- shared:end validateFacade
 
 ---@param value any
 ---@param label string argument description, used in the argument error

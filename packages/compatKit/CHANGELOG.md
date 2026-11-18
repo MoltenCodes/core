@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.8 — 2026-11-18
+
+- `isSecret`, `reportError`, `validateFacade` and `describeKey` are now the shared helper blocks (`tooling/shared/lua/`, kept in step by `python3 -m tooling.shared.sync`). The secret check takes the probe rule: `issecretvalue` is read once at load and asked directly, about 50 ns less per check on the host; only a host that had no probe at load reads the global again on each check. A probe that replaces the one present at load is no longer asked. `reportError` and `validateFacade` were already the shared form, and `describeKey` is only reached with a key already refused as secret, so refusal messages and failure reports are unchanged. The `SetLimits` validation stays CompatKit's own.
+- `docs/API.md`: *Errors* is now *Error behaviour* and *Cost* is *Performance*, the section names every package's API.md uses; the *Loading* table gives the probe rule.
+- Implementation revision 5; an embedded revision 4 is upgraded in place, shims and limits kept.
+- New specs: `SharedHelpers_spec.lua` (the probe rule, the facade message, a raising error handler falling back to `print`, the upgrade over the committed revision 4 file in `tests/fixtures/CompatKit-revision4.lua`) and `Conformance_spec.lua` (the repository's conformance suite; its limits group is pending, see the spec).
+
 ## 0.1.7 — 2026-11-15
 
 - Fixed: `SetLimits` built its unknown-limit message with `tostring(key)`. For a table or userdata key that runs the caller's `__tostring`, foreign code inside CompatKit: one that raises replaced the refusal with its own error (reported inside CompatKit, not at the caller's line), and on Retail one could answer a secret. A key that is not a string, number or boolean is now named by its type, `CompatKit:SetLimits limits.<table> is not a recognised limit`, and its `__tostring` never runs; a string, number or boolean key is shown as before (`limits.1`). A secret key is still refused first, as before. `docs/API.md` documents the form under *Limits* and *Errors*.

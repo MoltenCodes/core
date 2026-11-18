@@ -14,8 +14,9 @@
 -- overlay is a child of its target, so it runs nothing while the target is
 -- hidden and resumes when it shows.
 --
--- GlowKit requires Registry API 2 and PoolKit API 1. It reads at call time
--- `CreateFrame`, `issecretvalue` and `geterrorhandler`.
+-- GlowKit requires Registry API 2 and PoolKit API 1. It reads `CreateFrame`
+-- and `geterrorhandler` at call time, and `issecretvalue` once at load (again
+-- on each check only when the host had none at load).
 --
 -- Contents
 -- --------
@@ -35,7 +36,7 @@
 
 local PACKAGE_NAME = "glowKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 1
+local IMPLEMENTATION_REVISION = 2
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_POOLKIT_API = 1
 local STATE_SCHEMA = 1
@@ -276,14 +277,32 @@ local sharedLimits = rawget(state, "limits")
 
 -- Host facilities ------------------------------------------------------------
 
----Whether `value` is a secret value (Retail 12.x). `issecretvalue` is looked
----up at every call, so a probe that appears after load is used at once.
----@param value any
----@return boolean
-local function isSecret(value)
-  local probe = readGlobal("issecretvalue")
-  return type(probe) == "function" and probe(value) == true
+-- shared:begin isSecret 1
+-- Copied from tooling/shared/lua/isSecret.lua by python3 -m tooling.shared.sync; edit that file, not this copy.
+---Whether `value` is a secret value the host forbids comparing.
+---@type fun(value: any): boolean
+local isSecret
+do
+  -- issecretvalue is a client API reachable only through the global table.
+  -- selene: allow(global_usage)
+  local loadedProbe = rawget(_G, "issecretvalue")
+  if type(loadedProbe) ~= "function" then
+    loadedProbe = nil
+  end
+
+  isSecret = function(value)
+    local probe = loadedProbe
+    if probe == nil then
+      -- selene: allow(global_usage)
+      probe = rawget(_G, "issecretvalue")
+      if type(probe) ~= "function" then
+        return false
+      end
+    end
+    return probe(value) == true
+  end
 end
+-- shared:end isSecret
 
 ---A size or level the client answered, or 0 when it answered a secret.
 ---@param value any
@@ -303,15 +322,19 @@ end
 -- receives it*, so every further hop towards `error` adds exactly one.
 -- Secrets are checked first, because comparing one raises.
 
+-- shared:begin validateFacade 1 __FACADE__=GlowKit
+-- Copied from tooling/shared/lua/validateFacade.lua by python3 -m tooling.shared.sync; edit that file, not this copy.
+---Raise at `level` unless `receiver` is the GlowKit facade.
 ---@param receiver any the table the method was called on
----@param label string public method name, used in the argument error
+---@param label string qualified method name, used in the argument error
 ---@param level integer stack level the failure is reported at
 local function validateFacade(receiver, label, level)
-  -- `type` first: a secret receiver is never a table, and only a table is compared.
   if type(receiver) ~= "table" or receiver ~= GlowKit then
-    error(label .. " must be called on the GlowKit facade; use " .. label .. "(...)", level)
+    local hint = "; use " .. label .. "(...)"
+    error(label .. " must be called on the GlowKit facade" .. hint, level)
   end
 end
+-- shared:end validateFacade
 
 ---Raise at the caller unless `frame` is a frame.
 ---@param frame any

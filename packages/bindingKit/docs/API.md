@@ -27,8 +27,8 @@ BindingKit does not rely on `require()` at runtime.
 |---|---|---|
 | `CreateFrame`, `SetOverrideBinding`, `SetOverrideBindingClick`, `ClearOverrideBindings` | every binding | `CreateScope` raises at the caller: `BindingKit:CreateScope needs the client's override binding functions, which this host does not have`. |
 | `InCombatLockdown` | every change | Never in combat: changes apply at once. A secret answer counts as out of combat. |
-| `issecretvalue` | every check | Nothing is treated as secret. |
-| `geterrorhandler` | a function key that raises | The failure is printed. |
+| `issecretvalue` | every check; read once at load, and again on each check only when it was absent at load | Nothing is treated as secret. |
+| `geterrorhandler` | a function key that raises | The failure is printed. A handler that itself raises is not propagated either: the failure is printed instead. |
 
 The client's documentation tables do not describe the override binding functions; they are the old global functions Blizzard's own restricted frames call (`Blizzard_RestrictedAddOnEnvironment/RestrictedFrames.lua`, read 2026-11-15). What they do in combat when called from addon code is measured by the client suite, not assumed: BindingKit never calls them in combat.
 
@@ -82,6 +82,8 @@ Every name, key, command, button name, option, limit and receiver is checked wit
 Lowering a limit keeps what exists and refuses the next. The limits are shared by every addon in the session.
 
 ## Error behaviour
+
+A failure of a function key's function goes to the host error handler (`geterrorhandler()`), called under `pcall`. When the client has no handler, or the handler itself raises (an error-display addon with a bug), the failure is printed instead, so reporting it never raises into the client's script call (revision 3; earlier revisions let a raising handler's error through).
 
 Argument errors raise at the caller's line: `BindingKit.Scope:BindFunction func must be a function`; methods called on anything but a scope raise `BindingKit.Scope:ClearAll must be called on a BindingKit scope; use scope:ClearAll(...)`. What the client calls (a function key's button, the end of combat) never raises.
 

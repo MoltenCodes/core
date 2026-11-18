@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.9 — 2026-11-18
+
+- Fixed: a probe failure, a queued callback's failure or a timer-cancel failure was handed to the host error handler unprotected, so an error handler that itself raised turned the report into a second error inside a TimerKit tick, an EventKit dispatch or `Gate`. `reportError` is now the shared helper block: the handler is called through `pcall`, and the failure is printed when it is missing or raises.
+- `isSecret` (formerly `isSecretValue`) is the shared helper block: `issecretvalue` is still read once at load, and a host that had none then is now asked again at each check, so a probe installed after load is honoured; only a plain `true` answer counts as secret (a truthy non-boolean did before). The load-time `nativeIsSecretValue` local is gone: one main-chunk local fewer. `describeKey` is the shared block too; its option-key messages are unchanged.
+- `docs/API.md` gains the *Secret values* section the repository skeleton asks for.
+- Implementation revision 6; an embedded revision 5 is upgraded in place, gates kept.
+- New specs: `SharedHelpers_spec.lua` (a raising error handler, the late probe, the probe kept from load, a non-boolean probe answer, the upgrade over the committed revision 5 file in `tests/fixtures/ReadinessKit-revision5.lua`) and `Conformance_spec.lua` (the repository's conformance suite; its limits group is pending, see the spec).
+
 ## 0.1.8 — 2026-11-15
 
 - Fixed: `Gate` named an unknown option field by passing the caller's key to `tostring`. `tostring` on a table or userdata runs its `__tostring`, foreign code that could raise (or answer a secret on Retail) inside ReadinessKit, so the caller saw that error instead of the real refusal. A string key is still shown as written and a number or boolean through `tostring`, which runs no foreign code, so `unknown field "aaa"` is unchanged; any other key is named by its type: `ReadinessKit:Gate options contains unknown field "<table>"`. Documented in `docs/API.md`.

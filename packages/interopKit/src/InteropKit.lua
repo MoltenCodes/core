@@ -46,7 +46,7 @@ local globals = _G
 
 local PACKAGE_NAME = "interopKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 3
+local IMPLEMENTATION_REVISION = 4
 local REQUIRED_REGISTRY_API = 2
 local STATE_SCHEMA = 1
 
@@ -220,17 +220,32 @@ local adopted = rawget(state, "adopted")
 
 -- Validation helpers ---------------------------------------------------------
 
----Whether the host reports `value` as a secret value.
----
----`issecretvalue` is read on every call: it exists only on clients with
----secret values, and nothing here is on a hot path.
----@param value any
----@return boolean
-local function isSecret(value)
-  -- The World of Warcraft client API is reachable only through the global table.
-  local isSecretValue = rawget(globals, "issecretvalue")
-  return type(isSecretValue) == "function" and isSecretValue(value) == true
+-- shared:begin isSecret 1
+-- Copied from tooling/shared/lua/isSecret.lua by python3 -m tooling.shared.sync; edit that file, not this copy.
+---Whether `value` is a secret value the host forbids comparing.
+---@type fun(value: any): boolean
+local isSecret
+do
+  -- issecretvalue is a client API reachable only through the global table.
+  -- selene: allow(global_usage)
+  local loadedProbe = rawget(_G, "issecretvalue")
+  if type(loadedProbe) ~= "function" then
+    loadedProbe = nil
+  end
+
+  isSecret = function(value)
+    local probe = loadedProbe
+    if probe == nil then
+      -- selene: allow(global_usage)
+      probe = rawget(_G, "issecretvalue")
+      if type(probe) ~= "function" then
+        return false
+      end
+    end
+    return probe(value) == true
+  end
 end
+-- shared:end isSecret
 
 ---Raise at `level` unless `value` is a non-empty, non-secret string.
 ---

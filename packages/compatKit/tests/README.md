@@ -71,7 +71,8 @@ The suite covers:
   flavours, covers, flavour, cover or option key, a secret provider kind, name,
   implementation, probe, priority or preferred name, a secret name in the
   context helpers, and a secret limit value or key, all refused at the caller
-  through an `issecretvalue` stub looked up at call time; a probe answering a
+  through an `issecretvalue` stub installed after load, which the shared
+  probe reads at each check when there was none at load; a probe answering a
   secret counted as dead, `hasGlobal` reporting a secret global as present, and
   a secret receiver reported as a call without the facade;
 - the limits: defaults and fresh `GetLimits` tables, `"full"` for shims and
@@ -92,6 +93,13 @@ The suite covers:
   alone, missing Registry, an incomplete facade, a shared table missing a
   method or the catalogue, and corrupted state (limits missing or invalid, an
   unknown schema on a reload and on an upgrade);
+- the shared helper blocks: the secret probe kept from load and a probe
+  installed after load asked, the facade message, a raising error handler
+  falling back to `print`, and the in-place upgrade over the committed
+  revision 4 file (`fixtures/CompatKit-revision4.lua`);
+- the repository conformance suite (`tests/support/KitConformance.lua`):
+  manifest, receivers, the secret `Shim` and `SkipShim` names, and upgrade;
+  its limits group is pending, with the reason in the spec;
 - manifest/runtime API and revision consistency, the declared dependency, the
   two optional dependencies and their position after `api`.
 
@@ -108,4 +116,6 @@ The suite covers:
 | `Limits_spec.lua` | `SetLimits`, `GetLimits`, `"full"` and `UNBOUNDED` |
 | `ErrorLevels_spec.lua` | argument errors reported at the caller's line |
 | `Bootstrap_spec.lua` | publication, duplicate loads, upgrades, load order, corrupted state |
+| `SharedHelpers_spec.lua` | the shared helper blocks, the upgrade from revision 4 |
+| `Conformance_spec.lua` | the conformance suite on a mainline-profile environment |
 | `Manifest_spec.lua` | manifest and runtime `API` / `REVISION` agreement, declared dependencies |
