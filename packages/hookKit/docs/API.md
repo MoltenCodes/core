@@ -2,27 +2,7 @@
 
 HookKit API generation **1** hooks global functions, object methods and frame scripts reversibly, under three named semantics, and refuses the hooks that break the client's secure code.
 
-Implementation revision: **7**.
-
-## The taint model: read this first
-
-World of Warcraft runs Blizzard's code **secure** and every addon's code **tainted**. Execution becomes tainted the moment it runs a function an addon wrote or reads a value an addon wrote. Tainted execution may not call protected functions (casting, targeting, moving protected frames in combat); when it reaches one, the client blocks the action and blames the addon whose taint got there. [`docs/EMBEDDING.md` → Taint](../../../docs/EMBEDDING.md#taint) describes the model and the host calls involved.
-
-A hook puts addon code into someone else's call path, so the choice of semantic decides what gets tainted:
-
-| Semantic | Methods | How it installs | What becomes tainted |
-|---|---|---|---|
-| **Secure post-hook** (the default choice) | `SecureHook`, `SecureHookScript` | `hooksecurefunc(object, method, closure)`, `frame:HookScript(script, closure)` | **Nothing but your handler.** The host calls the original first, in whatever security state the caller had, then calls your handler; the taint your handler picks up does not flow back into the caller. The field keeps a secure value: `issecurevariable` still answers `true`. |
-| **Safe pre-hook** | `Hook`, `HookScript` | Writes HookKit's closure over the field (`rawset`), or `frame:SetScript` | **The field and every call through it.** The field now holds addon code, so every caller that reaches it — Blizzard's included — runs tainted from that point on, and so does the original, called from the closure. `issecurevariable` answers `false` for the field. |
-| **Raw replacement** | `RawHook`, `RawHookScript` | The same writes as a pre-hook | **The same as a pre-hook**, and the original runs only if your handler calls it. |
-
-Consequences worth knowing before choosing:
-
-- **Post-hook whenever you only need to react.** It is the only semantic that cannot cause "action blocked" errors elsewhere in the UI. HookKit makes it reversible, which `hooksecurefunc` alone is not.
-- **A pre-hook or replacement of a function Blizzard calls during combat can block actions for the rest of the session.** Everything downstream of the tainted field runs tainted. This is why HookKit refuses it on a secure target unless you pass `options.forceSecure`.
-- **Unhooking does not remove taint.** Restoring the original writes it from addon code, so the field stays tainted until the next `/reload`. When the original came through `__index`, HookKit deletes the field instead, so no addon-written value stays in it; the host may still report the slot as tainted (see [Unhook](#unhook-restore-or-go-inert)). HookKit remembers that the target *was* secure, so later hooks are still refused.
-- **Running the handler through `securecallfunction` would change nothing** and HookKit does not do it. A post-hook handler is already isolated by `hooksecurefunc`; a pre-hook handler runs inside HookKit's closure, which is tainted anyway because it is addon code. Handler errors are caught with `pcall` and reported to the host error handler.
-- **Secret values pass through untouched.** Arguments and results travel through HookKit's closures as `...`; HookKit never compares, indexes, stores or formats them. Your handler receives exactly what the caller passed, secrets included, and inherits the rules in [`EMBEDDING.md` → Secret values](../../../docs/EMBEDDING.md#secret-values-retail-12x).
+Implementation revision: **9**. Read [The taint model](#the-taint-model-read-this-first) before your first hook.
 
 ## Loading
 
@@ -94,9 +74,29 @@ Scope methods:
 | `GetAddonName()` | The owning addon name, or `nil` for a manual scope. |
 | `GetMaxHooks()` | The scope's limit: a positive integer, or `HookKit.UNBOUNDED`. |
 
-Every hook method returns `true` when it installed the hook and `nil, "full"` when the scope already holds its `maxHooks` hooks (256 unless opened). Everything else that stops a hook raises at the caller's line (see [Refusals](#refusals)).
+Every hook method returns `true` when it installed the hook and `nil, "full"` when the scope already holds its `maxHooks` hooks (256 unless opened). Everything else that stops a hook raises at the caller's line (see [Refusals](#error-behaviour)).
 
 A kind is one of `"secure"`, `"secureScript"`, `"hook"`, `"rawHook"`, `"hookScript"` and `"rawHookScript"`. For a global, `object` in a `Hooks()` row is `_G`.
+
+## The taint model: read this first
+
+World of Warcraft runs Blizzard's code **secure** and every addon's code **tainted**. Execution becomes tainted the moment it runs a function an addon wrote or reads a value an addon wrote. Tainted execution may not call protected functions (casting, targeting, moving protected frames in combat); when it reaches one, the client blocks the action and blames the addon whose taint got there. [`docs/EMBEDDING.md` → Taint](../../../docs/EMBEDDING.md#taint) describes the model and the host calls involved.
+
+A hook puts addon code into someone else's call path, so the choice of semantic decides what gets tainted:
+
+| Semantic | Methods | How it installs | What becomes tainted |
+|---|---|---|---|
+| **Secure post-hook** (the default choice) | `SecureHook`, `SecureHookScript` | `hooksecurefunc(object, method, closure)`, `frame:HookScript(script, closure)` | **Nothing but your handler.** The host calls the original first, in whatever security state the caller had, then calls your handler; the taint your handler picks up does not flow back into the caller. The field keeps a secure value: `issecurevariable` still answers `true`. |
+| **Safe pre-hook** | `Hook`, `HookScript` | Writes HookKit's closure over the field (`rawset`), or `frame:SetScript` | **The field and every call through it.** The field now holds addon code, so every caller that reaches it — Blizzard's included — runs tainted from that point on, and so does the original, called from the closure. `issecurevariable` answers `false` for the field. |
+| **Raw replacement** | `RawHook`, `RawHookScript` | The same writes as a pre-hook | **The same as a pre-hook**, and the original runs only if your handler calls it. |
+
+Consequences worth knowing before choosing:
+
+- **Post-hook whenever you only need to react.** It is the only semantic that cannot cause "action blocked" errors elsewhere in the UI. HookKit makes it reversible, which `hooksecurefunc` alone is not.
+- **A pre-hook or replacement of a function Blizzard calls during combat can block actions for the rest of the session.** Everything downstream of the tainted field runs tainted. This is why HookKit refuses it on a secure target unless you pass `options.forceSecure`.
+- **Unhooking does not remove taint.** Restoring the original writes it from addon code, so the field stays tainted until the next `/reload`. When the original came through `__index`, HookKit deletes the field instead, so no addon-written value stays in it; the host may still report the slot as tainted (see [Unhook](#unhook-restore-or-go-inert)). HookKit remembers that the target *was* secure, so later hooks are still refused.
+- **Running the handler through `securecallfunction` would change nothing** and HookKit does not do it. A post-hook handler is already isolated by `hooksecurefunc`; a pre-hook handler runs inside HookKit's closure, which is tainted anyway because it is addon code. Handler errors are caught with `pcall` and reported to the host error handler.
+- **Secret values pass through untouched.** Arguments and results travel through HookKit's closures as `...`; HookKit never compares, indexes, stores or formats them. Your handler receives exactly what the caller passed, secrets included, and inherits the rules in [`EMBEDDING.md` → Secret values](../../../docs/EMBEDDING.md#secret-values-retail-12x).
 
 ## The three semantics
 
@@ -183,33 +183,7 @@ for behaviour only):
   and the original still runs; a replacement lets it propagate, like any error
   of a replacement handler. The hook stays installed either way.
 - The per-call cost over a function handler is one closure frame and one table
-  read; see [Cost](#cost).
-
-## Refusals
-
-Every refusal raises at the caller's line and installs nothing.
-
-| Refused | Message (prefix `HookKit.Scope:<Method>`) | Override |
-|---|---|---|
-| A non-secure hook (`Hook`, `RawHook`) of a secure target | `refuses to hook secure "<method>" non-securely; use SecureHook, or pass options.forceSecure` | `options.forceSecure = true` |
-| A non-secure script hook of a **protected script** on a protected frame | `refuses to replace protected script "<script>" of a protected frame; use SecureHookScript` | none |
-| A non-secure script hook of any other script on a protected frame | `refuses to replace script "<script>" of a protected frame; use SecureHookScript, or pass options.forceSecure` | `options.forceSecure = true` |
-| A non-secure script hook on a protected frame in combat lockdown | `cannot replace a script of a protected frame during combat lockdown` | none: a conservative HookKit rule, not a host restriction HookKit relies on |
-| A non-secure script hook of a script HookKit already holds a `SecureHookScript` post-hook on, in any scope | `refuses to replace script "<script>": HookKit holds a SecureHookScript post-hook on it, which SetScript may drop; Unhook it first, or install the pre-hook before the post-hook` | none |
-| Any script hook of a frame that is forbidden (`IsForbidden`) or not accessible in this context (`CanBeAccessedInContext`) | `frame is forbidden or not accessible in this context` | none |
-| A target that is not a function | `target "<method>" is not a function` | — |
-| A second hook of the same target in one scope | `"<method>" is already hooked in this scope; Unhook it first` | — |
-| Any hook on a closed scope | `cannot hook in a closed scope` | — |
-
-**Secure status is remembered.** "Secure" means `issecurevariable(object, method)` (or `issecurevariable(globalName)`) answered `true` the first time HookKit checked that target, which is always before HookKit's first non-secure write to it. A forced hook taints the field, after which the host answers `false`; HookKit keeps answering from its memo, so a second scope, or the same scope after `Unhook`, is still refused. The memo is weak-keyed by the hooked object.
-
-**Inherited methods.** The client reports an absent raw key as secure, so asking about the object itself would refuse every method it inherits. When `object[method]` is not a raw field, HookKit follows the metatables' `__index` tables (at most 8 levels) to the table that actually holds the method and asks `issecurevariable` about that one. A method your addon's mixin provides can therefore be hooked without `forceSecure`, while a method a real frame inherits from the host's method table (`frame.Show`, say) is secure even on a frame your addon created, and needs `forceSecure`. A method behind an `__index` **function**, behind a protected metatable, or deeper than 8 levels cannot be located and is treated as not secure: HookKit cannot check it, so it does not refuse it.
-
-**Scripts of protected frames.** A frame is protected when `frame:IsProtected()` answers `true`. Only the click and attribute scripts — `OnClick`, `PreClick`, `PostClick`, `OnDoubleClick` and `OnAttributeChanged`, from which secure action buttons, secure handlers and state drivers act — are refused outright. The secure handler templates drive further scripts (`OnEnter`/`OnLeave`, `OnShow`/`OnHide`, `OnMouseDown`/`OnMouseUp`, `OnMouseWheel`, `OnDragStart`/`OnReceiveDrag`); those, like every other script of a protected frame, are refused unless you pass `forceSecure`, and in combat lockdown not even then. Post-hooking any script with `SecureHookScript` is always allowed.
-
-**Double hooks** are refused rather than silently replaced: an implicit unhook-then-hook would reorder the chain behind the caller's back. Two *different* scopes may hook the same target; their closures chain.
-
-Argument errors name the parameter: `HookKit.Scope:Hook method must be a non-empty string`, `... handler must be a function, or a receiver table followed by an optional handler name` (revision 8; the receiver form's own messages are under [Method-name handlers](#method-name-handlers)), `... object must be a table` (and `frame` for the script methods), `... options must be a table`, `... options contains unknown field "<name>"`, `... options.forceSecure must be a boolean`, `HookKit.Scope:HookScript frame must have a GetScript method`. A scope method called on something that is not a scope raises `HookKit.Scope:Hook must be called on a HookKit scope`, and a facade method called with a dot `HookKit:ForAddon must be called on the HookKit facade; use HookKit:ForAddon(...)`. A method, script, global or addon name that is a secret value is refused with `... must not be a secret value`, before HookKit compares it or uses it as a key. A secret `options.forceSecure` (Retail 12.x; a secret boolean passes the type check) is refused the same way, with `... options.forceSecure must not be a secret value`, before HookKit compares or tests it; testing a secret boolean raises in tainted code (measured on Retail 12.1.0 b69933).
+  read; see [Cost](#performance).
 
 ## Unhook: restore or go inert
 
@@ -263,16 +237,27 @@ The decision is made at the first `ForAddon(addonName)` and taken again by every
 
 In case (b) HookKit's `OnShutdown` subscription is made at the first `ForAddon`, so it runs before the addon's own shutdown callbacks subscribed later: those callbacks then find the hooks already undone. Only case (a) guarantees that shutdown callbacks can still rely on their hooks, which is why LifecycleKit 0.6.0 announces the list. Manual scopes are never closed at logout.
 
-## Cost
+## Deviations from the planned contract
 
-- **A hooked call** reads one flag, then calls: `pcall(handler, ...)` written into the closure for a post-hook or pre-hook (revision 8; a failure is reported through one dispatch field), a dispatch function for a replacement. It allocates nothing, whether active or inert.
-- **The secret check on a validated name or option** calls the host's `issecretvalue` and nothing else: no `Registry:Find` (revision 7), and on a host without the probe one raw read of the global.
-- **A method-name handler** adds one closure of two upvalues, made when the hook is installed (about 136 bytes), and per call one Lua frame and one table read on the receiver (about 13 ns and 3 ns on the host benchmark's Lua 5.1).
-- **One closure and one record per hook**, created when the hook is installed (about 464 bytes on a 64-bit Lua 5.1: a 376-byte record and a closure with one upvalue). The first hook of an object also creates that object's method table in the scope, which stays, empty, after its last hook goes, so hooking the same object again allocates only the record and closure; the table goes with the object. A secure hook's closure lives for the session.
-- **`IsHooked`, `Original` and `GetActiveCount`** allocate nothing. A lookup of an object the scope never hooked creates nothing.
-- **`Hooks()`, `UnhookAll()` and `Close()`** allocate one array per call (plus one row per hook for `Hooks()`); they are for diagnostics and teardown.
-- **The `maxHooks` check reads a stored upper bound** of the scope's live records, raised by every install and lowered by every `Unhook` (revision 8). Below the limit that proves there is room, so installing n hooks costs n constant checks: on the host benchmark an install with 200 hooks already in the scope fell from about 11.3 µs to about 1.3 µs, the same as into an empty scope. Records of a garbage-collected object do not lower the bound, so it can only be high: when it reaches the limit, the records are counted, which is the answer that may refuse, and the count also forgets the collected ones. A scope opened with `HookKit.UNBOUNDED` skips the check entirely.
-- **`GetActiveCount()` counts the records** rather than reading the bound, so the records of a garbage-collected object stop counting at once. The count walks every record. `Hooks()`, `UnhookAll()` and `Close()` sort by insertion, which is quadratic in the hooks held; that is negligible at 256 and worth knowing at thousands.
+The nine-point plan in `docs/ROADMAP.md` is followed except where recorded here:
+
+- **The replacement handler receives the original first**, not last; see [Raw replacement](#raw-replacement).
+- **Scripts of protected frames:** only the click and attribute scripts are refused outright; every other script of a protected frame needs `forceSecure`, and none is replaced in combat lockdown. See [Refusals](#error-behaviour).
+- **A script pre-hook or replacement is refused while HookKit holds a `SecureHookScript` post-hook on that script**, because `SetScript` may drop it.
+- **`CloseAddonScopes` records nothing for an addon without a scope** and returns `false`, as SignalKit's `CloseAddonBus` does, instead of recording a closed scope.
+- **Additions:** `RawHookScript`; `Original`; `IsClosed`, `GetActiveCount`, `GetAddonName` and `HookKit:CloseAddonScopes` (the TimerKit and EventKit scope vocabulary); the global-name forms of the hook and lookup methods; the kind as `IsHooked`'s second result; `HookKit.MAX_HOOKS`; `options.maxHooks`, `HookKit.UNBOUNDED` and `GetMaxHooks` (see [Limits](#limits)).
+- **`securecallfunction` is not used**, and neither is ClientKit (revision 7; earlier revisions asked its `IsSecret` on a host without `issecretvalue`); see [The taint model](#the-taint-model-read-this-first).
+
+## Secret values
+
+HookKit asks the host's `issecretvalue` (read once at load; when the host had none then, read again at each check) about the values it compares, tests or uses as a key, and about nothing else (ADR 0002):
+
+- a method, script, global or addon name, refused with `... must not be a secret value` before it is compared with `""` or used as a key;
+- `options.forceSecure`, refused the same way before it is tested (a secret boolean passes the type check);
+- a scope's `maxHooks`, refused with the `maxHooks` message before it is compared;
+- the handler `GetScript` answers at `Unhook`, which may be secret while restrictions apply: a secret one is treated as someone else's and the closure stays, inert (see [Unhook](#unhook-restore-or-go-inert)).
+
+The arguments and results of a hooked call are never asked about: they pass through as `...`, untouched (see [The taint model](#the-taint-model-read-this-first)).
 
 ## Limits
 
@@ -291,23 +276,49 @@ print(hooks:GetMaxHooks()) -- 1024
 - **A hook beyond the limit is refused with `nil, "full"`**, never installed silently and never dropped; the target is left untouched.
 - **`maxHooks` is a positive integer or `HookKit.UNBOUNDED`.** Zero, a negative, fractional, infinite or NaN number, any other type, a secret value and an unknown option field raise at the caller's line: `HookKit:CreateScope options.maxHooks must be a positive integer or HookKit.UNBOUNDED`. The secret check runs first, before the value is compared with `HookKit.UNBOUNDED` or a number. Nothing changes when the options are refused.
 - **The limit is per scope and fixed when the scope is created.** A manual scope's limit is fixed at `CreateScope`. An addon's canonical scope is shared by every file of the addon, so the first `ForAddon` call fixes its limit: `options.maxHooks`, or `HookKit.MAX_HOOKS` when that call names none. A later call naming a different limit raises at the caller (`HookKit:ForAddon options.maxHooks differs from the limit this addon's scope was created with`) and changes nothing; a later call naming the same limit, or none, returns the scope. State the limit in the file that loads first and omit it elsewhere. This is the rule every Kit follows for limit options on a shared object (CommandKit's `ForAddon`, LocaleKit's `GetLocale`; SignalKit buses differ only in that a call stating no limit does not fix the default).
-- **Why open it deliberately.** The limit is a guard against hooking in a loop by mistake, and every secure post-hook stays in the host's call chain for the session even after `Unhook`. Raising it costs only the owner's own memory and the counting described under [Cost](#cost).
+- **Why open it deliberately.** The limit is a guard against hooking in a loop by mistake, and every secure post-hook stays in the host's call chain for the session even after `Unhook`. Raising it costs only the owner's own memory and the counting described under [Cost](#performance).
 - **`HookKit.UNBOUNDED` is one table shared by every embedded copy.** It lives in the package state, so a scope opened with it stays unbounded across an in-place upgrade.
 
-One bound stays a hard ceiling. The secure-target check follows at most **8** `__index` tables (`MAX_INDEX_DEPTH`) to find the table that actually holds an inherited method. It bounds a walk, not retained memory, and exists so a cyclic `__index` chain cannot loop for ever; real frames and mixins are one or two levels deep. A method deeper than that cannot be located and is treated as not secure, so it is not refused (see [Refusals](#refusals)).
+One bound stays a hard ceiling. The secure-target check follows at most **8** `__index` tables (`MAX_INDEX_DEPTH`) to find the table that actually holds an inherited method. It bounds a walk, not retained memory, and exists so a cyclic `__index` chain cannot loop for ever; real frames and mixins are one or two levels deep. A method deeper than that cannot be located and is treated as not secure, so it is not refused (see [Refusals](#error-behaviour)).
 
-## Deviations from the planned contract
+## Error behaviour
 
-The nine-point plan in `docs/ROADMAP.md` is followed except where recorded here:
+Every refusal raises at the caller's line and installs nothing. A handler failure in a post-hook or pre-hook is not raised: it goes to the host's `geterrorhandler()`, called through `pcall`; when there is no handler, or the handler itself raises, the failure is printed instead (revision 9, the shared `reportError` block), so the hooked call always completes.
 
-- **The replacement handler receives the original first**, not last; see [Raw replacement](#raw-replacement).
-- **Scripts of protected frames:** only the click and attribute scripts are refused outright; every other script of a protected frame needs `forceSecure`, and none is replaced in combat lockdown. See [Refusals](#refusals).
-- **A script pre-hook or replacement is refused while HookKit holds a `SecureHookScript` post-hook on that script**, because `SetScript` may drop it.
-- **`CloseAddonScopes` records nothing for an addon without a scope** and returns `false`, as SignalKit's `CloseAddonBus` does, instead of recording a closed scope.
-- **Additions:** `RawHookScript`; `Original`; `IsClosed`, `GetActiveCount`, `GetAddonName` and `HookKit:CloseAddonScopes` (the TimerKit and EventKit scope vocabulary); the global-name forms of the hook and lookup methods; the kind as `IsHooked`'s second result; `HookKit.MAX_HOOKS`; `options.maxHooks`, `HookKit.UNBOUNDED` and `GetMaxHooks` (see [Limits](#limits)).
-- **`securecallfunction` is not used**, and neither is ClientKit (revision 7; earlier revisions asked its `IsSecret` on a host without `issecretvalue`); see [The taint model](#the-taint-model-read-this-first).
+| Refused | Message (prefix `HookKit.Scope:<Method>`) | Override |
+|---|---|---|
+| A non-secure hook (`Hook`, `RawHook`) of a secure target | `refuses to hook secure "<method>" non-securely; use SecureHook, or pass options.forceSecure` | `options.forceSecure = true` |
+| A non-secure script hook of a **protected script** on a protected frame | `refuses to replace protected script "<script>" of a protected frame; use SecureHookScript` | none |
+| A non-secure script hook of any other script on a protected frame | `refuses to replace script "<script>" of a protected frame; use SecureHookScript, or pass options.forceSecure` | `options.forceSecure = true` |
+| A non-secure script hook on a protected frame in combat lockdown | `cannot replace a script of a protected frame during combat lockdown` | none: a conservative HookKit rule, not a host restriction HookKit relies on |
+| A non-secure script hook of a script HookKit already holds a `SecureHookScript` post-hook on, in any scope | `refuses to replace script "<script>": HookKit holds a SecureHookScript post-hook on it, which SetScript may drop; Unhook it first, or install the pre-hook before the post-hook` | none |
+| Any script hook of a frame that is forbidden (`IsForbidden`) or not accessible in this context (`CanBeAccessedInContext`) | `frame is forbidden or not accessible in this context` | none |
+| A target that is not a function | `target "<method>" is not a function` | — |
+| A second hook of the same target in one scope | `"<method>" is already hooked in this scope; Unhook it first` | — |
+| Any hook on a closed scope | `cannot hook in a closed scope` | — |
 
-## Upgrades
+**Secure status is remembered.** "Secure" means `issecurevariable(object, method)` (or `issecurevariable(globalName)`) answered `true` the first time HookKit checked that target, which is always before HookKit's first non-secure write to it. A forced hook taints the field, after which the host answers `false`; HookKit keeps answering from its memo, so a second scope, or the same scope after `Unhook`, is still refused. The memo is weak-keyed by the hooked object.
+
+**Inherited methods.** The client reports an absent raw key as secure, so asking about the object itself would refuse every method it inherits. When `object[method]` is not a raw field, HookKit follows the metatables' `__index` tables (at most 8 levels) to the table that actually holds the method and asks `issecurevariable` about that one. A method your addon's mixin provides can therefore be hooked without `forceSecure`, while a method a real frame inherits from the host's method table (`frame.Show`, say) is secure even on a frame your addon created, and needs `forceSecure`. A method behind an `__index` **function**, behind a protected metatable, or deeper than 8 levels cannot be located and is treated as not secure: HookKit cannot check it, so it does not refuse it.
+
+**Scripts of protected frames.** A frame is protected when `frame:IsProtected()` answers `true`. Only the click and attribute scripts — `OnClick`, `PreClick`, `PostClick`, `OnDoubleClick` and `OnAttributeChanged`, from which secure action buttons, secure handlers and state drivers act — are refused outright. The secure handler templates drive further scripts (`OnEnter`/`OnLeave`, `OnShow`/`OnHide`, `OnMouseDown`/`OnMouseUp`, `OnMouseWheel`, `OnDragStart`/`OnReceiveDrag`); those, like every other script of a protected frame, are refused unless you pass `forceSecure`, and in combat lockdown not even then. Post-hooking any script with `SecureHookScript` is always allowed.
+
+**Double hooks** are refused rather than silently replaced: an implicit unhook-then-hook would reorder the chain behind the caller's back. Two *different* scopes may hook the same target; their closures chain.
+
+Argument errors name the parameter: `HookKit.Scope:Hook method must be a non-empty string`, `... handler must be a function, or a receiver table followed by an optional handler name` (revision 8; the receiver form's own messages are under [Method-name handlers](#method-name-handlers)), `... object must be a table` (and `frame` for the script methods), `... options must be a table`, `... options contains unknown field "<name>"`, `... options.forceSecure must be a boolean`, `HookKit.Scope:HookScript frame must have a GetScript method`. A scope method called on something that is not a scope raises `HookKit.Scope:Hook must be called on a HookKit scope`, and a facade method called with a dot `HookKit:ForAddon must be called on the HookKit facade; use HookKit:ForAddon(...)`. A method, script, global or addon name that is a secret value is refused with `... must not be a secret value`, before HookKit compares it or uses it as a key. A secret `options.forceSecure` (Retail 12.x; a secret boolean passes the type check) is refused the same way, with `... options.forceSecure must not be a secret value`, before HookKit compares or tests it; testing a secret boolean raises in tainted code (measured on Retail 12.1.0 b69933).
+
+## Performance
+
+- **A hooked call** reads one flag, then calls: `pcall(handler, ...)` written into the closure for a post-hook or pre-hook (revision 8; a failure is reported through one dispatch field), a dispatch function for a replacement. It allocates nothing, whether active or inert.
+- **The secret check on a validated name or option** calls the host's `issecretvalue` and nothing else: no `Registry:Find` (revision 7), and on a host without the probe one raw read of the global.
+- **A method-name handler** adds one closure of two upvalues, made when the hook is installed (about 136 bytes), and per call one Lua frame and one table read on the receiver (about 13 ns and 3 ns on the host benchmark's Lua 5.1).
+- **One closure and one record per hook**, created when the hook is installed (about 464 bytes on a 64-bit Lua 5.1: a 376-byte record and a closure with one upvalue). The first hook of an object also creates that object's method table in the scope, which stays, empty, after its last hook goes, so hooking the same object again allocates only the record and closure; the table goes with the object. A secure hook's closure lives for the session.
+- **`IsHooked`, `Original` and `GetActiveCount`** allocate nothing. A lookup of an object the scope never hooked creates nothing.
+- **`Hooks()`, `UnhookAll()` and `Close()`** allocate one array per call (plus one row per hook for `Hooks()`); they are for diagnostics and teardown.
+- **The `maxHooks` check reads a stored upper bound** of the scope's live records, raised by every install and lowered by every `Unhook` (revision 8). Below the limit that proves there is room, so installing n hooks costs n constant checks: on the host benchmark an install with 200 hooks already in the scope fell from about 11.3 µs to about 1.3 µs, the same as into an empty scope. Records of a garbage-collected object do not lower the bound, so it can only be high: when it reaches the limit, the records are counted, which is the answer that may refuse, and the count also forgets the collected ones. A scope opened with `HookKit.UNBOUNDED` skips the check entirely.
+- **`GetActiveCount()` counts the records** rather than reading the bound, so the records of a garbage-collected object stop counting at once. The count walks every record. `Hooks()`, `UnhookAll()` and `Close()` sort by insertion, which is quadratic in the hooks held; that is negligible at 256 and worth knowing at thousands.
+
+## Embedded copies and upgrades
 
 Every installed closure calls through the shared `_state.dispatch` table, and scopes keep their metatable across upgrades. A newer compatible revision therefore replaces the behaviour behind hooks an older copy installed — including the permanent secure closures — without touching the host's chain, and existing scopes gain the new methods in place. The `HookKit.UNBOUNDED` sentinel and each scope's `maxHooks` are kept, so a scope opened by an older copy stays open.
 
@@ -315,8 +326,10 @@ Revision 2 upgrades the addon scopes revision 1 built (scope layout 1) in place 
 
 Revision 5 changes no state and no layout. It asks whether a script's current handler is secret before comparing it at release (see [Unhook](#unhook-restore-or-go-inert)); scopes an older copy opened gain that rule in place, because release runs in the scope methods the upgrade replaces.
 
-Revision 6 changes no state and no layout. It makes installing, removing and calling a hook cheaper (see [Cost](#cost)); hooks an older copy installed call the new `dispatch` functions, and an object whose method table an older copy deleted gets a new one at its next hook.
+Revision 6 changes no state and no layout. It makes installing, removing and calling a hook cheaper (see [Performance](#performance)); hooks an older copy installed call the new `dispatch` functions, and an object whose method table an older copy deleted gets a new one at its next hook.
 
 Revision 8 adds `recordBounds` to the state (created on load when missing) and changes no scope or record layout. A scope an older copy built has no bound and is counted at its first install. Post-hooks and pre-hooks it installs call their handler under `pcall` themselves and report a failure through `dispatch.reportFailure`, which a newer copy replaces; closures of revision 7 and older keep calling `dispatch.isolatedCall`, which stays published. A scope an older copy closed can be reopened.
 
 Revision 7 changes no state and no layout. It asks only the host's `issecretvalue` whether a value is secret and no longer looks ClientKit up (see [Optional facilities](#optional-facilities)); scopes an older copy opened use the new check at once, because the argument checks run in the scope methods the upgrade replaces.
+
+Revision 9 changes no state and no layout. Its `reportError`, `isSecret` and `validateFacade` are the shared helper blocks of the repository. A handler failure is reported through the host error handler under `pcall`, and printed when that handler raises, so a buggy error handler no longer breaks the hooked call; every closure an older copy installed reports through `dispatch.reportFailure`, which the upgrade replaces, so it gains the rule at once. Secret checks and messages are unchanged.

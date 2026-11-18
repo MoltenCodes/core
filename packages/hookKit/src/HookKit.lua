@@ -55,7 +55,7 @@
 
 local PACKAGE_NAME = "hookKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 8
+local IMPLEMENTATION_REVISION = 9
 local REQUIRED_REGISTRY_API = 2
 local STATE_SCHEMA = 1
 
@@ -284,7 +284,6 @@ end
 local nativeHookSecureFunc = readHostFunction("hooksecurefunc")
 local nativeIsSecureVariable = readHostFunction("issecurevariable")
 local nativeInCombatLockdown = readHostFunction("InCombatLockdown")
-local nativeIsSecretValue = readHostFunction("issecretvalue")
 
 -- Validation -----------------------------------------------------------------
 
@@ -444,28 +443,23 @@ local recordBounds = rawget(state, "recordBounds")
 
 -- Error reporting ------------------------------------------------------------
 
----Hand a handler failure to the host error handler.
----
----The failure is passed on unchanged: it may be a secret string built from a
----secret argument, and HookKit never inspects it.
+-- shared:begin reportError 1
+-- Copied from tooling/shared/lua/reportError.lua by python3 -m tooling.shared.sync; edit that file, not this copy.
+---Report `failure` through the host error handler, or print it.
 ---@param failure any
 local function reportError(failure)
-  -- geterrorhandler is a World of Warcraft client API reachable only through the global table.
+  -- geterrorhandler is a client API reachable only through the global table.
   -- selene: allow(global_usage)
   local getErrorHandler = rawget(_G, "geterrorhandler")
   if type(getErrorHandler) == "function" then
     local handler = getErrorHandler()
-    if type(handler) == "function" then
-      handler(failure)
+    if type(handler) == "function" and pcall(handler, failure) then
       return
     end
   end
-
-  -- Outside a WoW client there is no error handler to report through.
-  -- Printing is what the client's own default handler does, and staying
-  -- silent would turn a handler bug into an invisible one.
   print(failure)
 end
+-- shared:end reportError
 
 ---Find an optional package through `Registry:Find`, or `nil` when it is not
 ---registered (or the Registry revision has no `Find`).
@@ -484,29 +478,32 @@ local function findOptional(packageName, api)
   return nil
 end
 
----Whether `value` is a secret value.
----
----Only the host's `issecretvalue` can tell, and ClientKit's `IsSecret` answers
----from that same function, so HookKit asks the host alone (revision 7; revision
----6 still asked ClientKit through `Registry:Find`, about 750 ns of a hook and
----unhook cycle, on a host without the probe). The probe read at load is used
----when there was one, as on every promised client flavour. A host without it
----at load makes no secret values; the global is read again on each call all the same,
----for a few nanoseconds, so a probe installed later (a test environment or a
----compatibility shim) is honoured at once rather than never. Used only on
----argument paths, never on a hooked call.
----@param value any
----@return boolean
-local function isSecret(value)
-  local probe = nativeIsSecretValue
-  if probe == nil then
-    probe = readHostFunction("issecretvalue")
-    if probe == nil then
-      return false
-    end
+-- shared:begin isSecret 1
+-- Copied from tooling/shared/lua/isSecret.lua by python3 -m tooling.shared.sync; edit that file, not this copy.
+---Whether `value` is a secret value the host forbids comparing.
+---@type fun(value: any): boolean
+local isSecret
+do
+  -- issecretvalue is a client API reachable only through the global table.
+  -- selene: allow(global_usage)
+  local loadedProbe = rawget(_G, "issecretvalue")
+  if type(loadedProbe) ~= "function" then
+    loadedProbe = nil
   end
-  return probe(value) == true
+
+  isSecret = function(value)
+    local probe = loadedProbe
+    if probe == nil then
+      -- selene: allow(global_usage)
+      probe = rawget(_G, "issecretvalue")
+      if type(probe) ~= "function" then
+        return false
+      end
+    end
+    return probe(value) == true
+  end
 end
+-- shared:end isSecret
 
 -- Argument checks ------------------------------------------------------------
 --
@@ -1988,17 +1985,19 @@ local function newScope(addonName, maxHooks)
   }, SCOPE_METATABLE)
 end
 
----Refuse a receiver other than the HookKit facade (a `.` call, say).
----@param receiver any
----@param label string qualified public method name, used in the argument error
+-- shared:begin validateFacade 1 __FACADE__=HookKit
+-- Copied from tooling/shared/lua/validateFacade.lua by python3 -m tooling.shared.sync; edit that file, not this copy.
+---Raise at `level` unless `receiver` is the HookKit facade.
+---@param receiver any the table the method was called on
+---@param label string qualified method name, used in the argument error
 ---@param level integer stack level the failure is reported at
 local function validateFacade(receiver, label, level)
-  -- `rawequal`: the receiver is caller-supplied, and `~=` could run an
-  -- `__eq` metamethod; a secret is never a table, so this answers false.
-  if not rawequal(receiver, HookKit) then
-    error(label .. " must be called on the HookKit facade; use " .. label .. "(...)", level)
+  if type(receiver) ~= "table" or receiver ~= HookKit then
+    local hint = "; use " .. label .. "(...)"
+    error(label .. " must be called on the HookKit facade" .. hint, level)
   end
 end
+-- shared:end validateFacade
 
 ---Create a manually owned hook scope, closed only by its owner.
 ---
