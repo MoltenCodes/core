@@ -28,8 +28,8 @@ DialogKit does not rely on `require()` at runtime.
 | `CreateFrame`, `UIParent`; the templates `UIPanelButtonTemplate` and `InputBoxTemplate` | the dialog frame, made by the first `Show` | `Show` raises at the caller: `DialogKit:Show needs the client's CreateFrame and UIParent, which this host does not have`. |
 | `UISpecialFrames` | Escape | The dialog closes only through its buttons, `Hide`, `HideAll` and its timeout. |
 | `GetTime` | timeouts | A timeout never runs out. |
-| `issecretvalue` | every check | Nothing is treated as secret. |
-| `geterrorhandler` | callbacks that raise | The failure is printed. |
+| `issecretvalue` | every check; read once at load, and again on each check only when it was absent at load | Nothing is treated as secret. |
+| `geterrorhandler` | callbacks that raise | The failure is printed. A handler that itself raises is not propagated either: the failure is printed instead. |
 
 Every promised client defines `UISpecialFrames` the same way, as the list of frame names `CloseSpecialWindows` hides on Escape (Blizzard's `UIParentPanelManager.lua`, branches `live`, `classic` and `classic_era`, read 2026-11-15).
 
@@ -100,6 +100,8 @@ A secret `text` is refused unless `allowSecret` is `true`, before anything conve
 Lowering `maxQueued` keeps every waiting dialog and refuses the next. The limit is shared by every addon in the session.
 
 ## Error behaviour
+
+A failure of a dialog's callback goes to the host error handler (`geterrorhandler()`), called under `pcall`. When the client has no handler, or the handler itself raises (an error-display addon with a bug), the failure is printed instead, so reporting it never raises into the client's script call (revision 3; earlier revisions let a raising handler's error through).
 
 Argument errors raise at the caller's line: `DialogKit:Show options.timeout must be a number above 0`; methods called on anything but a dialog raise `DialogKit.Dialog:Hide must be called on a DialogKit dialog; use dialog:Hide(...)`. What the client calls (the buttons, Enter, Escape, the timeout) never raises.
 

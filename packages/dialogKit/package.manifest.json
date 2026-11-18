@@ -3,10 +3,10 @@
   "displayName": "DialogKit",
   "description": "Confirmation and input dialogs for World of Warcraft addons without StaticPopupDialogs: one frame of their own, a bounded queue, Escape through UISpecialFrames, timeouts.",
   "summary": "Confirmation and input dialogs without StaticPopupDialogs: one frame of their own, a bounded queue, Escape through UISpecialFrames, timeouts.",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "license": "MIT",
   "api": 1,
-  "revision": 2,
+  "revision": 3,
   "dependencies": {
     "registry": {
       "api": 2
