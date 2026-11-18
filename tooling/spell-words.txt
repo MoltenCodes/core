@@ -39,7 +39,6 @@ cancelaura
 Cata
 CLEU
 COMMANDKIT
-SCHEMAKIT
 Cooldowns
 CURSEFORGE
 dataobj
@@ -73,6 +72,7 @@ Quadrata
 raidpet
 REGEN
 safecall
+SCHEMAKIT
 securecall
 Skada
 Skurri
