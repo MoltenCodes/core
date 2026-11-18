@@ -403,7 +403,7 @@ Measurements, classification, the upgrade floor and the part contract:
    SignalKit), `docs/MIGRATING_FROM_ACE3.md` (unit events and the combat log
    name their parts), the example addon's `embeds.xml` if it uses unit
    events.
-9. Status: implemented 2026-11-18, 0.12.0, revision 23, 320 specs (Units
+9. Status: implemented 2026-11-18, 0.12.0, revision 23, 322 specs (Units
    and CombatLog parts revision 1, Coalescing part revision 2, part
    interface 2). Measured (shared fake client, Lua 5.1.5, debug information
    kept, after Registry): the core 87.2 → 66.3 KB resident alone (63.9 KB

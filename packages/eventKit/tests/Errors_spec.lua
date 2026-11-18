@@ -84,6 +84,34 @@ describe("EventKit errors", function()
     end
   end)
 
+  it("prints a raising listener's error when the host has no error handler", function()
+    -- Outside a client neither `securecallfunction` nor `geterrorhandler`
+    -- exists; docs/API.md promises the message is printed, not swallowed.
+    -- selene: allow(global_usage)
+    rawset(_G, "geterrorhandler", nil)
+    -- selene: allow(global_usage)
+    local savedPrint = rawget(_G, "print")
+    local printed = {}
+    -- selene: allow(global_usage)
+    rawset(_G, "print", function(message)
+      printed[#printed + 1] = message
+    end)
+    local delivered = 0
+    EventKit:Connect("PLAYER_LOGIN", function()
+      error("listener failed", 0)
+    end)
+    EventKit:Connect("PLAYER_LOGIN", function()
+      delivered = delivered + 1
+    end)
+    local ok, failure = pcall(TestEnv.Emit, "PLAYER_LOGIN")
+    -- selene: allow(global_usage)
+    rawset(_G, "print", savedPrint)
+
+    assert.is_true(ok, failure)
+    assert.are.same({ "listener failed" }, printed)
+    assert.are.equal(1, delivered)
+  end)
+
   it("names the misuse when a connection method is called without a receiver", function()
     -- `EventKit.Connection` is a shared prototype, so a caller can reach these
     -- methods with no receiver at all. Without the guard the first `rawget`

@@ -155,6 +155,35 @@ describe("EventKit Coalescing part bootstrap", function()
     assert.is_true(handle:Close())
   end)
 
+  it("closes a handle of a revision 1 part loaded after this core with the core's close", function()
+    local _, _, _, EventKit = Scheduled.NewPackage()
+    TestEnv.LoadSchedulerLaneParts()
+    TestEnv.LoadRevision22("coalescing")
+    assert.are.equal(1, EventKit._state.parts.Coalescing.revision)
+
+    local deliveries = 0
+    local scope = EventKit:CreateScope()
+    local handle = scope:Coalesce("UNIT_HEALTH", 0.5, function()
+      deliveries = deliveries + 1
+    end)
+    local other = EventKit:Coalesce("UNIT_HEALTH", 0.5, function() end)
+
+    -- Revision 1 has no close of its own; the core's stops the events.
+    assert.is_true(handle:Close())
+    assert.is_true(handle:IsClosed())
+    assert.is_false(handle:Close())
+    Scheduled.Emit("UNIT_HEALTH", "player")
+    Scheduled.FireNative(#Scheduled.NativeTimers())
+    assert.are.equal(0, deliveries)
+
+    -- A scope's close reaches a revision 1 handle the same way.
+    local scoped = scope:Coalesce("UNIT_HEALTH", 0.5, function() end)
+    scope:Close()
+    assert.is_true(scoped:IsClosed())
+    assert.is_false(other:IsClosed())
+    assert.is_true(other:Close())
+  end)
+
   it("is served by a core upgraded after it loaded", function()
     local EventKit = Scheduled.NewEventKit()
     local coalesce = EventKit.Coalesce

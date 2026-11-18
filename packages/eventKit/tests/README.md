@@ -109,14 +109,14 @@ It also covers:
 | `Once_spec.lua` | One-shot subscriptions. |
 | `UnitEvents_spec.lua` | Unit filters, the two-token limit, unit-group release and the Frame cap. |
 | `SecretValues_spec.lua` | Secret names, unit tokens, options and limits refused at the caller before a comparison; the probe resolved at load; secret `Coalesce` payloads keyed by event name; secret `Derive` values counted as a change. |
-| `Errors_spec.lua` | Argument, receiver and host-environment errors and their levels; refused registrations; listener isolation. |
+| `Errors_spec.lua` | Argument, receiver and host-environment errors and their levels; refused registrations; listener isolation, printed without a host error handler. |
 | `CombatLog_spec.lua` | `ConnectCombatLog`: routing, forwarding, the single client read, the wildcard, allocation, host registration beside a plain `Connect`, the refusal without a reader, isolation, scopes, errors; `IsCombatLogAvailable`. |
 | `EventValidity_spec.lua` | Unknown event names refused through `C_EventUtils.IsEventValid`, with the function present and absent. |
 | `LogoutCoverage_spec.lua` | The logout routes, scoped `PLAYER_LOGOUT` listeners around the close, re-examination, the one-shot carried across an upgrade. |
 | `Scope_spec.lua` | Manual and addon scopes, deferred close, `CloseAddonScopes`. |
 | `Coalesce_spec.lua` | `Coalesce`, with and without TimerKit, and with TimerKit loaded after a refused call; the part's one TimerKit scope, one lookup, the handle cost, and a table option key named by its type without running its `__tostring`. |
 | `Derive_spec.lua` | `Derive`, with and without TimerKit. |
-| `Parts_spec.lua` | The three parts' bootstrap and revisions, the core's stubs and `HasPart`, the core without its parts, a scope with every kind of member. |
+| `Parts_spec.lua` | The three parts' bootstrap and revisions, the core's stubs and `HasPart`, the core without its parts, a scope with every kind of member, a Coalescing part revision 1 closed through the core. |
 | `Timing_spec.lua` | Every TimerKit timing rule of `Coalesce` and `Derive` with no SchedulerKit loaded, and the `lane` path. |
 | `Limits_spec.lua` | `SetLimits`, `GetLimits`, `EventKit.UNBOUNDED`, the `maxUnitFrames` limit, and a table limit key named by its type without running its `__tostring`. |
 | `ListenerStorage_spec.lua` | Listener arrays in and out of a dispatch, the channel pool, handle-only allocation guards (unscoped and scoped handle bounds). |
