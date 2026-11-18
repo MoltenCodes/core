@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.4 — 2026-11-18
+
+- `isSecret` is now the shared helper block (`tooling/shared/lua/isSecret.lua`, kept in step by `python3 -m tooling.shared.sync`). The secret check takes the probe rule: `issecretvalue` is read once at load and asked directly, about 50 ns less per check on the host; only a host that had no probe at load reads the global again on each check. A probe that replaces the one present at load is no longer asked. `Find`'s inlined check is unchanged. Refusal messages are unchanged.
+- `docs/API.md` follows the repository skeleton: new *Loading* and *Performance* sections, *Errors* renamed *Error behaviour* and placed after *Limits*, *Embedded identity and upgrades* renamed *Embedded copies and upgrades*.
+- Implementation revision 4; an embedded revision 3 is upgraded in place, adoptions kept.
+- New specs: `SharedHelpers_spec.lua` (the probe rule, the upgrade over the committed revision 3 file in `tests/fixtures/InteropKit-revision3.lua`). `Conformance_spec.lua` opts into the repository's conformance suite; its limits group is pending (no `SetLimits`) and so is its receivers group, because every method ignores its receiver.
+
 ## 0.1.3 — 2026-11-15
 
 - The README had no migration table from LibStub. It now maps the silent `GetLibrary(major, true)` (`AdoptFromLibStub`, then `Find`), the raising `LibStub(major)` (no equivalent: every lookup is silent), `NewLibrary` (`Registry:Bootstrap`, and `ExposeToLibStub` for LibStub consumers), `IterateLibraries` (`Adopted`, `Registry:Packages`) and a LibStub consumer reading an exposed Kit, and links the LibStub section of `docs/MIGRATING_FROM_ACE3.md`.
