@@ -194,6 +194,59 @@ describe("LifecycleKit parts loaded after the core", function()
     assert.are.equal(halt, LifecycleKit.Instance.Halt)
   end)
 
+  it("loads an equal CombatGate revision a second time without a second watcher", function()
+    local LifecycleKit = TestEnv.NewPackage()
+    local life = LifecycleKit:ForAddon("MyAddon")
+    TestEnv.LoadAddon("MyAddon")
+    local whenOutOfCombat = LifecycleKit.Instance.WhenOutOfCombat
+    package.loaded["LifecycleKit-CombatGate"] = nil
+    assert.are.equal(LifecycleKit, require("LifecycleKit-CombatGate"))
+    assert.are.equal(whenOutOfCombat, LifecycleKit.Instance.WhenOutOfCombat)
+
+    local starts = 0
+    life:OnCombatStart(function()
+      starts = starts + 1
+    end)
+    TestEnv.EnterCombat()
+    assert.are.equal(1, starts)
+  end)
+
+  it("replaces an older CombatGate revision's watchers with its own", function()
+    local LifecycleKit = TestEnv.NewPackage()
+    local life = LifecycleKit:ForAddon("MyAddon")
+    TestEnv.LoadAddon("MyAddon")
+    local starts, ends = 0, 0
+    life:OnCombatStart(function()
+      starts = starts + 1
+    end)
+    life:OnCombatEnd(function()
+      ends = ends + 1
+    end)
+    local watchers = LifecycleKit._state.globalWatchers
+    local olderStart, olderEnd = watchers.combatStart, watchers.combatEnd
+
+    local path = "packages/lifecycleKit/src/parts/LifecycleKit-CombatGate.lua"
+    local file = assert(io.open(path, "r"))
+    local source = file:read("*a")
+    file:close()
+    local patched, count = source:gsub("local PART_REVISION = 1", "local PART_REVISION = 2", 1)
+    assert.are.equal(1, count)
+    assert(loadstring(patched, "@" .. path))()
+    assert.is_false(olderStart:IsConnected())
+    assert.is_false(olderEnd:IsConnected())
+    assert.is_true(watchers.combatStart:IsConnected())
+    assert.is_true(watchers.combatEnd:IsConnected())
+
+    -- One watcher per event: the older revision's are disconnected, so each
+    -- event reaches a subscriber once, through the newer revision's handlers.
+    TestEnv.EnterCombat()
+    assert.is_true(LifecycleKit:IsInCombat())
+    TestEnv.LeaveCombat()
+    assert.is_false(LifecycleKit:IsInCombat())
+    assert.are.equal(1, starts)
+    assert.are.equal(1, ends)
+  end)
+
   it("refuses to load a part before the core", function()
     TestEnv.Reset()
     TestEnv.InstallWowApi()

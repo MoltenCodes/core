@@ -208,7 +208,7 @@ Measurements, classification, the upgrade floor and the part contract:
    maintainer: `docs/EMBEDDING.md` footprint rows and load order,
    `docs/ARCHITECTURE.md` dependency graph (LifecycleKit no longer requires
    SignalKit), `docs/MIGRATING_FROM_ACE3.md` (no Ace3 row changes).
-9. Status: implemented 2026-11-18, 0.7.0, revision 19, 235 specs.
+9. Status: implemented 2026-11-18, 0.7.0, revision 19, 237 specs.
    Measured (host Lua 5.1.5, debug information kept, the core-runtime
    method): core 72.4 → 51.3 KB resident (allocated while loading 231.8 →
    179.7 KB); CombatGate part 12.5 KB, Halt part 5.3 KB when embedded; per
