@@ -13,7 +13,7 @@ A smaller core: spec profiles and plain defaults become parts, plans are sparse,
 - Not taken: one rule table for the option readers (record "core trims", point 2c): with the four readers stubbed out entirely the core measured only 3.1 KB smaller, so a rule table and its reader could not save the 2 KB the record requires.
 - Resident memory, host Lua 5.1.5, debug information kept, 2026-11-18, SchemaKit loaded: core 192.1 KB → 185.1 KB; Defaults part 20.9 KB; SpecProfiles part 15.3 KB. Registry, SignalKit, SettingsKit and the Defaults part, without SchemaKit: 320.8 KB (the set with SchemaKit: 388.4 KB). The bench-shaped schema plus its first `Open`: 49.9 KB → 40.1 KB; as plain defaults 27.0 KB.
 - Implementation revision 16. An in-place upgrade from revision 15 keeps every database, view and plan; with the SpecProfiles part absent it keeps revision 15's spec-profile members and entries until the part loads (`tests/fixtures/SettingsKit-revision15.lua` is a byte copy of revision 15 for these specs). A revision 15 copy loaded after revision 16 yields, and its spec calls raise the not-loaded message until some addon embeds the part.
-- Specs: 370 → 420. `SpecProfilesPart_spec.lua`, `DefaultsPart_spec.lua`, `CoreTrims_spec.lua`, `Conformance_spec.lua`, and the existing specs adjusted to the parts and messages.
+- Specs: 370 → 420. `SpecProfilesPart_spec.lua`, `DefaultsPart_spec.lua`, `CoreTrims_spec.lua`, `Conformance_spec.lua`, and the existing specs adjusted to the parts and messages. The Defaults part's allocation guard carries the `#allocation` tag like every other allocation spec, so the coverage run, whose line hook allocates, leaves it out.
 
 ## 0.6.0 — 2026-11-15
 

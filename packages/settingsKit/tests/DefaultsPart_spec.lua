@@ -420,7 +420,7 @@ describe("SettingsKit Defaults part", function()
     assert.is_true(SettingsKit:HasPart("Defaults"))
   end)
 
-  it("allocates nothing for a read or a scalar write of a plain database", function()
+  it("allocates nothing for a read or a scalar write of a plain database #allocation", function()
     local db = SettingsKit:Open("PlainDB", { profile = { scale = 1, frame = { x = 0 } } })
     db.profile.scale = 2
     db.profile.frame.x = 1
