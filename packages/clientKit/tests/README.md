@@ -87,6 +87,7 @@ The suite covers:
 | `Deprecation_spec.lua` | `Deprecate`, `Warn`, call sites, modes, reports, limits, the optional-Kit pattern |
 | `ErrorLevels_spec.lua` | argument errors reported at the caller's line |
 | `Bootstrap_spec.lua` | publication, duplicate loads, upgrades, load order, corrupted state |
+| `Conformance_spec.lua` | the repository conformance suite (`tests/support/KitConformance.lua`) on a mainline-profile environment: manifest, both limits, `IsAtLeast`'s secret argument and the upgrade; receivers are pending, with the reason in the spec |
 | `Manifest_spec.lua` | manifest and runtime `API` / `REVISION` agreement |
 
 `support/ClientKitTestEnv.lua` selects a client profile, builds frame doubles
