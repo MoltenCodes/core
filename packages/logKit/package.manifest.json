@@ -12,7 +12,10 @@
       "api": 2
     },
     "signalKit": {
-      "api": 1
+      "api": 1,
+      "parts": [
+        "Journal"
+      ]
     }
   },
   "optionalDependencies": {

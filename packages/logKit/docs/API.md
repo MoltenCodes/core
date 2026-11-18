@@ -4,7 +4,7 @@ LogKit API generation **1** provides levelled, structured logging: one logger
 per addon with lazily formatted, secret-safe messages, a tri-state level, a
 bounded journal readable after the fact, and sinks.
 
-Implementation revision: **5**.
+Implementation revision: **6**.
 
 ## Loading
 
@@ -13,6 +13,7 @@ Runtime files must be loaded in dependency order:
 ```text
 Registry.lua
 SignalKit.lua
+SignalKit-Journal.lua
 LogKit.lua
 ```
 
@@ -24,7 +25,9 @@ local LogKit = MoltenCodes.Registries[2]:Get("logKit", 1)
 
 LogKit does not rely on `require()` at runtime. Loading it without a dependency
 raises `MoltenCodes LogKit requires Registry API 2 to be loaded first` (or
-`SignalKit API 1`).
+`SignalKit API 1`). Loading it without SignalKit's Journal part raises
+SignalKit's own message, `SignalKit:NewJournal is in SignalKit's Journal part,
+which is not loaded`, because the journal is created at load.
 
 ### Optional dependencies and host facilities
 

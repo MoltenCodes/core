@@ -26,12 +26,18 @@ describe("LogKit manifest", function()
     assert.are.equal(LogKit.REVISION, tonumber(contents:match('"revision"%s*:%s*(%d+)')))
   end)
 
-  it("declares the Registry API 2 and SignalKit API 1 dependencies only", function()
+  it("declares the Registry API 2 and SignalKit API 1 (Journal part) dependencies only", function()
     local contents = readManifest()
     local dependencies = contents:match('"dependencies"%s*:%s*(%b{})')
     assert.is_not_nil(dependencies)
     assert.is_not_nil(dependencies:match('"registry"%s*:%s*{%s*"api"%s*:%s*2%s*}'))
-    assert.is_not_nil(dependencies:match('"signalKit"%s*:%s*{%s*"api"%s*:%s*1%s*}'))
+    -- The core builds its journal with SignalKit:NewJournal, which lives in
+    -- SignalKit's Journal part.
+    assert.is_not_nil(
+      dependencies:match(
+        '"signalKit"%s*:%s*{%s*"api"%s*:%s*1%s*,%s*"parts"%s*:%s*%[%s*"Journal"%s*%]%s*}'
+      )
+    )
     local _, dependencyCount = dependencies:gsub('"%w+"%s*:%s*{', "")
     assert.are.equal(2, dependencyCount)
   end)

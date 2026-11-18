@@ -433,7 +433,10 @@ Each of these ten Kits carries the same three copies with the same bodies
 7. Specs: probe rule; upgrade from revision 5. KitConformance opt-in.
 8. Docs: CHANGELOG `## 0.2.3`; API.md skeleton (`## Errors`, `## Cost`
    renames, `## Secret values`).
-9. Status: implemented 2026-11-18, 0.2.3, revision 6, 173 specs.
+9. Status: implemented 2026-11-18, 0.2.3, revision 6, 173 specs. At
+   integration the manifest names SignalKit's Journal part, which the core's
+   `NewJournal` call needs since SignalKit 0.10.0, and a bootstrap spec covers
+   the load without it: 174 specs.
 
 **mediaKit: shared `isSecret`, `describeKey`, `validateFacade`; `limits` opted out** — a change to facade `MediaKit`
 

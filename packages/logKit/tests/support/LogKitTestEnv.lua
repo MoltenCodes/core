@@ -18,12 +18,13 @@
 --- CommandKit and SettingsKit are optional dependencies of LogKit, declared
 --- under `optionalDependencies`, so the test runner puts them and their own
 --- required closure (SchemaKit) on `LUA_PATH`. `NewPackage` loads Registry,
---- SignalKit and LogKit only, as an addon that embeds neither does;
+--- SignalKit with its Journal part (the journal LogKit builds at load) and
+--- LogKit only, as an addon that embeds neither does;
 --- `LoadCommandKit` and `LoadSettingsKit` add one on top of the chain, after
 --- LogKit, as an addon that embeds it would, and `Reset` unloads them again.
 local FrameworkTestEnv = require("FrameworkTestEnv")
 
-local MODULES = { "Registry", "SignalKit", "LogKit" }
+local MODULES = { "Registry", "SignalKit", "SignalKit-Journal", "LogKit" }
 
 -- The mainline profile publishes `issecretvalue`, which the secret-value
 -- specs need behind `NewSecretValue`; LogKit reads nothing else from it.
@@ -140,9 +141,10 @@ function LogKitTestEnv.NewPackageWithoutClock()
   LogKitTestEnv.Reset()
   LogKitTestEnv.InstallWowApi()
   setGlobal("GetTimePreciseSec", nil)
-  require(MODULES[1])
-  require(MODULES[2])
-  return require(MODULES[3])
+  for index = 1, #MODULES - 1 do
+    require(MODULES[index])
+  end
+  return require(MODULES[#MODULES])
 end
 
 ---Install `SlashCmdList` and load SchemaKit and CommandKit on top of the chain.

@@ -89,13 +89,16 @@ troubleshooting. This package's load order inside a consuming addon is:
 ```toc
 Libs\MoltenCodes\registry\Registry.lua
 Libs\MoltenCodes\signalKit\SignalKit.lua
+Libs\MoltenCodes\signalKit\parts\SignalKit-Journal.lua
 Libs\MoltenCodes\logKit\LogKit.lua
 ```
 
-Minimum footprint: embed 3 files: `registry/Registry.lua`,
-`signalKit/SignalKit.lua`, `logKit/LogKit.lua`.
+Minimum footprint: embed 4 files: `registry/Registry.lua`,
+`signalKit/SignalKit.lua`, `signalKit/parts/SignalKit-Journal.lua`,
+`logKit/LogKit.lua`.
 
-Direct runtime dependencies: Registry API 2, SignalKit API 1. Every file above
+Direct runtime dependencies: Registry API 2, SignalKit API 1 with its Journal
+part (the journal is a `SignalKit:NewJournal` ring). Every file above
 is required; omitting one makes this package raise at load. CommandKit API 1 and
 SettingsKit API 1 are optional and found at call time. `GetTimePreciseSec` is
 optional: without it a record's `time` is `false`.

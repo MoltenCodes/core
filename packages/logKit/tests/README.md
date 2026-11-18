@@ -64,7 +64,7 @@ The LogKit suite covers:
 - allocation guards on a disabled call, an enabled bare message with a sink, an
   enabled formatted message whose result is interned, `IsEnabled`/`GetLevel`,
   and filtered and unfiltered history walks;
-- loading refused without Registry or SignalKit and over an incomplete facade,
+- loading refused without Registry, SignalKit or its Journal part and over an incomplete facade,
   Registry publication, duplicate embedded loading, refusal to downgrade, an
   in-place upgrade from
   revision 1 (the real source loaded as revision 1, then the shipped revision
